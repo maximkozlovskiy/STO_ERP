@@ -1,0 +1,1003 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────
+
+enum UserRole {
+  OWNER
+  ADMIN
+  RECEPTIONIST
+  MECHANIC
+  STOREKEEPER
+  ACCOUNTANT
+  CLIENT
+}
+
+enum WorkOrderStatus {
+  DRAFT
+  ESTIMATE
+  APPROVED
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  INVOICED
+  PAID
+  ARCHIVED
+  CANCELLED
+}
+
+enum ZoneType {
+  MECHANICAL
+  BODY
+  TIRE
+  WASH
+  ELECTRICAL
+  OTHER
+}
+
+enum LiftType {
+  TWO_POST
+  FOUR_POST
+  ALIGNMENT
+  STENCIL
+  STAND
+  OTHER
+}
+
+enum WarehouseType {
+  MAIN
+  WORKSHOP
+  TIRE_HOTEL
+  MOBILE
+}
+
+enum CounterpartyType {
+  CLIENT
+  SUPPLIER
+  BOTH
+}
+
+enum StockMovementType {
+  RECEIPT
+  WRITEOFF
+  TRANSFER
+  RESERVATION
+  RESERVATION_RELEASE
+  OPENING_BALANCE
+}
+
+enum StockDocumentType {
+  WRITEOFF
+  TRANSFER
+  OPENING_BALANCE
+}
+
+enum StockDocumentStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum DocumentType {
+  WORK_ORDER
+  INVOICE
+  PURCHASE_ORDER
+  STOCK_RECEIPT
+  STOCK_WRITEOFF
+  STOCK_TRANSFER
+  STOCK_OPENING
+  RECONCILIATION_ACT
+}
+
+enum ResetPeriod {
+  NEVER
+  YEARLY
+  MONTHLY
+}
+
+enum VatMode {
+  NONE
+  EXCLUSIVE
+  INCLUSIVE
+}
+
+enum NotificationEventType {
+  WO_CREATED
+  WO_ESTIMATE_READY
+  WO_APPROVED
+  WO_IN_PROGRESS
+  WO_COMPLETED
+  WO_READY_FOR_PICKUP
+  PAYMENT_RECEIVED
+  INVOICE_SENT
+  LOW_STOCK_ALERT
+}
+
+enum NotificationChannel {
+  SMS
+  VIBER
+  EMAIL
+}
+
+enum SettlementTransactionType {
+  CHARGE
+  PAYMENT
+  REFUND
+  PREPAYMENT
+  CREDIT_NOTE
+}
+
+// ─── INFRASTRUCTURE ──────────────────────────────────────
+
+model Organisation {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  edrpou      String?   @unique
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  branches              GarageBranch[]
+  employees             Employee[]
+  counterparties        Counterparty[]
+  documentNumberConfigs DocumentNumberConfig[]
+  settings              OrganisationSettings?
+  notificationTemplates NotificationTemplate[]
+  taxRates              TaxRate[]
+  paymentMethods        PaymentMethodConfig[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("organisations")
+}
+
+model AuthAccount {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String    @db.Uuid
+  employeeId   String    @unique @db.Uuid
+  email        String
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  employee     Employee  @relation(fields: [employeeId], references: [id])
+
+  @@unique([orgId, email])
+  @@index([orgId, email])
+  @@map("auth_accounts")
+}
+
+model GarageBranch {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  address     String
+  timezone    String    @default("Europe/Kyiv")
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org            Organisation    @relation(fields: [orgId], references: [id])
+  zones          Zone[]
+  warehouses     Warehouse[]
+  branchSettings BranchSettings?
+  workOrders     WorkOrder[]
+  stockDocuments StockDocument[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("garage_branches")
+}
+
+model Zone {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  branchId    String    @db.Uuid
+  name        String
+  type        ZoneType
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  branch        GarageBranch  @relation(fields: [branchId], references: [id])
+  lifts         Lift[]
+  employeeZones EmployeeZone[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("zones")
+}
+
+model Lift {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  zoneId      String    @db.Uuid
+  name        String
+  type        LiftType
+  maxWeightKg Int?
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  zone           Zone            @relation(fields: [zoneId], references: [id])
+  employeeLifts  EmployeeLift[]
+  calendarSlots  CalendarSlot[]
+  workOrderLines WorkOrderLine[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("lifts")
+}
+
+model Warehouse {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String        @db.Uuid
+  branchId    String        @db.Uuid
+  name        String
+  type        WarehouseType @default(MAIN)
+  syncVersion BigInt        @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  branch               GarageBranch        @relation(fields: [branchId], references: [id])
+  stockItems           StockItem[]
+  movements            StockMovement[]
+  workOrderParts       WorkOrderPart[]
+  purchaseOrders       PurchaseOrder[]
+  stockDocumentsSource StockDocument[]     @relation("SourceWarehouse")
+  stockDocumentsTarget StockDocument[]     @relation("TargetWarehouse")
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("warehouses")
+}
+
+// ─── EMPLOYEES ───────────────────────────────────────────
+
+model Employee {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  userId      String?   @db.Uuid
+  firstName   String
+  lastName    String
+  phone       String?
+  role        UserRole
+  rateScheme  Json
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org                    Organisation           @relation(fields: [orgId], references: [id])
+  employeeZones          EmployeeZone[]
+  employeeLifts          EmployeeLift[]
+  employeeWorkCategories EmployeeWorkCategory[]
+  workOrderLines         WorkOrderLine[]
+  workOrderLineAssists   WorkOrderLineEmployee[]
+  authAccount            AuthAccount?
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("employees")
+}
+
+model EmployeeZone {
+  employeeId String   @db.Uuid
+  zoneId     String   @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  zone       Zone     @relation(fields: [zoneId], references: [id])
+
+  @@id([employeeId, zoneId])
+  @@map("employee_zones")
+}
+
+model EmployeeLift {
+  employeeId String   @db.Uuid
+  liftId     String   @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  lift       Lift     @relation(fields: [liftId], references: [id])
+
+  @@id([employeeId, liftId])
+  @@map("employee_lifts")
+}
+
+model EmployeeWorkCategory {
+  employeeId     String       @db.Uuid
+  workCategoryId String       @db.Uuid
+  employee       Employee     @relation(fields: [employeeId], references: [id])
+  workCategory   WorkCategory @relation(fields: [workCategoryId], references: [id])
+
+  @@id([employeeId, workCategoryId])
+  @@map("employee_work_categories")
+}
+
+// ─── CRM ─────────────────────────────────────────────────
+
+model Counterparty {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String           @db.Uuid
+  type        CounterpartyType
+  firstName   String?
+  lastName    String?
+  companyName String?
+  edrpou      String?
+  vatPayer    Boolean          @default(false)
+  phone       String?
+  email       String?
+  notes       String?
+  syncVersion BigInt           @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+
+  org               Organisation       @relation(fields: [orgId], references: [id])
+  customerGarages   CustomerGarage[]
+  settlementAccount SettlementAccount?
+  purchaseOrders    PurchaseOrder[]
+  invoices          Invoice[]
+  workOrders        WorkOrder[]
+  payments          Payment[]
+  reconciliationActs ReconciliationAct[]
+
+  @@index([orgId, type, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("counterparties")
+}
+
+model CustomerGarage {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  counterpartyId String    @db.Uuid
+  name           String
+  address        String?
+  notes          String?
+  syncVersion    BigInt    @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+  vehicles     Vehicle[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("customer_garages")
+}
+
+model Vehicle {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId            String    @db.Uuid
+  customerGarageId String    @db.Uuid
+  vin              String?
+  licensePlate     String?
+  make             String
+  model            String
+  year             Int?
+  engineVolume     Float?
+  fuelType         String?
+  currentMileage   Int?
+  color            String?
+  notes            String?
+  syncVersion      BigInt    @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  customerGarage CustomerGarage @relation(fields: [customerGarageId], references: [id])
+  vehicleNodes   VehicleNode[]
+  workOrders     WorkOrder[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, vin])
+  @@index([orgId, syncVersion])
+  @@map("vehicles")
+}
+
+model VehicleNode {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId            String    @db.Uuid
+  vehicleId        String    @db.Uuid
+  category         String
+  name             String
+  mileageAtInstall Int?
+  notes            String?
+  syncVersion      BigInt    @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([orgId, vehicleId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("vehicle_nodes")
+}
+
+// ─── SERVICE CATALOG ─────────────────────────────────────
+
+model WorkCategory {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  parentId    String?   @db.Uuid
+  name        String
+  icon        String?
+  sortOrder   Int       @default(0)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  parent                 WorkCategory?          @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children               WorkCategory[]         @relation("CategoryHierarchy")
+  works                  Work[]
+  employeeWorkCategories EmployeeWorkCategory[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("work_categories")
+}
+
+model Work {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  categoryId  String    @db.Uuid
+  name        String
+  normoHours  Float
+  price       Decimal   @db.Decimal(12, 2)
+  description String?
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  category       WorkCategory    @relation(fields: [categoryId], references: [id])
+  serviceWorks   ServiceWork[]
+  workOrderLines WorkOrderLine[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("works")
+}
+
+model Good {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId         String    @db.Uuid
+  sku           String?
+  name          String
+  unit          String    @default("шт")
+  purchasePrice Decimal?  @db.Decimal(12, 2)
+  salePrice     Decimal   @db.Decimal(12, 2)
+  category      String?
+  barcode       String?
+  notes         String?
+  syncVersion   BigInt    @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  stockItems         StockItem[]
+  movements          StockMovement[]
+  serviceGoods       ServiceGood[]
+  workOrderParts     WorkOrderPart[]
+  purchaseOrderLines PurchaseOrderLine[]
+  stockDocumentLines StockDocumentLine[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, sku])
+  @@index([orgId, syncVersion])
+  @@map("goods")
+}
+
+model Service {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  description String?
+  price       Decimal?  @db.Decimal(12, 2)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  serviceWorks ServiceWork[]
+  serviceGoods ServiceGood[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("services")
+}
+
+model ServiceWork {
+  serviceId String  @db.Uuid
+  workId    String  @db.Uuid
+  quantity  Float   @default(1)
+  service   Service @relation(fields: [serviceId], references: [id])
+  work      Work    @relation(fields: [workId], references: [id])
+
+  @@id([serviceId, workId])
+  @@map("service_works")
+}
+
+model ServiceGood {
+  serviceId String  @db.Uuid
+  goodId    String  @db.Uuid
+  quantity  Float   @default(1)
+  service   Service @relation(fields: [serviceId], references: [id])
+  good      Good    @relation(fields: [goodId], references: [id])
+
+  @@id([serviceId, goodId])
+  @@map("service_goods")
+}
+
+// ─── WORK ORDERS ─────────────────────────────────────────
+
+model WorkOrder {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String          @db.Uuid
+  branchId       String          @db.Uuid
+  vehicleId      String          @db.Uuid
+  counterpartyId String          @db.Uuid
+  number         String
+  status         WorkOrderStatus @default(DRAFT)
+  description    String?
+  inMileage      Int?
+  outMileage     Int?
+  plannedAt      DateTime?
+  completedAt    DateTime?
+  warrantyUntil  DateTime?
+  totalLabor     Decimal         @default(0) @db.Decimal(12, 2)
+  totalParts     Decimal         @default(0) @db.Decimal(12, 2)
+  totalAmount    Decimal         @default(0) @db.Decimal(12, 2)
+  paidAmount     Decimal         @default(0) @db.Decimal(12, 2)
+  syncVersion    BigInt          @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+
+  branch       GarageBranch    @relation(fields: [branchId], references: [id])
+  vehicle      Vehicle         @relation(fields: [vehicleId], references: [id])
+  counterparty Counterparty    @relation(fields: [counterpartyId], references: [id])
+  lines        WorkOrderLine[]
+  parts        WorkOrderPart[]
+  payments     Payment[]
+  invoices     Invoice[]
+  calendarSlots CalendarSlot[]
+
+  @@index([orgId, status, deletedAt])
+  @@index([orgId, syncVersion])
+  @@index([orgId, counterpartyId])
+  @@index([orgId, branchId, deletedAt])
+  @@map("work_orders")
+}
+
+model WorkOrderLine {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  workOrderId String    @db.Uuid
+  workId      String    @db.Uuid
+  employeeId  String    @db.Uuid
+  liftId      String?   @db.Uuid
+  normoHours  Float
+  price       Decimal   @db.Decimal(12, 2)
+  amount      Decimal   @db.Decimal(12, 2)
+  startedAt   DateTime?
+  completedAt DateTime?
+  notes       String?
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workOrder       WorkOrder              @relation(fields: [workOrderId], references: [id])
+  work            Work                   @relation(fields: [workId], references: [id])
+  employee        Employee               @relation(fields: [employeeId], references: [id])
+  lift            Lift?                  @relation(fields: [liftId], references: [id])
+  assistEmployees WorkOrderLineEmployee[]
+
+  @@index([orgId, workOrderId])
+  @@index([orgId, employeeId])
+  @@map("work_order_lines")
+}
+
+model WorkOrderLineEmployee {
+  workOrderLineId String        @db.Uuid
+  employeeId      String        @db.Uuid
+  line            WorkOrderLine @relation(fields: [workOrderLineId], references: [id])
+  employee        Employee      @relation(fields: [employeeId], references: [id])
+
+  @@id([workOrderLineId, employeeId])
+  @@map("work_order_line_employees")
+}
+
+model WorkOrderPart {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String   @db.Uuid
+  workOrderId String   @db.Uuid
+  goodId      String   @db.Uuid
+  warehouseId String   @db.Uuid
+  quantity    Float
+  price       Decimal  @db.Decimal(12, 2)
+  amount      Decimal  @db.Decimal(12, 2)
+  syncVersion BigInt   @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id])
+  good      Good      @relation(fields: [goodId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@index([orgId, workOrderId])
+  @@map("work_order_parts")
+}
+
+// ─── INVENTORY ───────────────────────────────────────────
+
+model StockItem {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String   @db.Uuid
+  goodId      String   @db.Uuid
+  warehouseId String   @db.Uuid
+  quantity    Float    @default(0)
+  reserved    Float    @default(0)
+  minStock    Float?
+  syncVersion BigInt   @default(0)
+  updatedAt   DateTime @updatedAt
+
+  good      Good      @relation(fields: [goodId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([orgId, goodId, warehouseId])
+  @@index([orgId, warehouseId])
+  @@map("stock_items")
+}
+
+// Append-only — ніколи не редагується
+model StockMovement {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String            @db.Uuid
+  goodId       String            @db.Uuid
+  warehouseId  String            @db.Uuid
+  type         StockMovementType
+  quantity     Float
+  price        Decimal?          @db.Decimal(12, 2)
+  documentType String?
+  documentId   String?           @db.Uuid
+  notes        String?
+  createdAt    DateTime          @default(now())
+  createdBy    String?           @db.Uuid
+
+  good      Good      @relation(fields: [goodId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@index([orgId, goodId, warehouseId])
+  @@index([orgId, documentType, documentId])
+  @@map("stock_movements")
+}
+
+model PurchaseOrder {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  supplierId  String    @db.Uuid
+  warehouseId String    @db.Uuid
+  number      String
+  status      String    @default("DRAFT")
+  totalAmount Decimal   @default(0) @db.Decimal(12, 2)
+  notes       String?
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  supplier  Counterparty        @relation(fields: [supplierId], references: [id])
+  warehouse Warehouse           @relation(fields: [warehouseId], references: [id])
+  lines     PurchaseOrderLine[]
+
+  @@index([orgId, status, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  purchaseOrderId String   @db.Uuid
+  goodId          String   @db.Uuid
+  quantity        Float
+  price           Decimal  @db.Decimal(12, 2)
+  receivedQty     Float    @default(0)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  good          Good          @relation(fields: [goodId], references: [id])
+
+  @@map("purchase_order_lines")
+}
+
+model StockDocument {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String              @db.Uuid
+  branchId          String              @db.Uuid
+  number            String
+  type              StockDocumentType
+  status            StockDocumentStatus @default(DRAFT)
+  warehouseId       String              @db.Uuid
+  targetWarehouseId String?             @db.Uuid
+  notes             String?
+  confirmedAt       DateTime?
+  confirmedBy       String?             @db.Uuid
+  syncVersion       BigInt              @default(0)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  deletedAt         DateTime?
+
+  branch          GarageBranch       @relation(fields: [branchId], references: [id])
+  warehouse       Warehouse          @relation("SourceWarehouse", fields: [warehouseId], references: [id])
+  targetWarehouse Warehouse?         @relation("TargetWarehouse", fields: [targetWarehouseId], references: [id])
+  lines           StockDocumentLine[]
+
+  @@index([orgId, status, deletedAt])
+  @@index([orgId, type, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("stock_documents")
+}
+
+model StockDocumentLine {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String   @db.Uuid
+  stockDocumentId String   @db.Uuid
+  goodId          String   @db.Uuid
+  quantity        Float
+  price           Decimal? @db.Decimal(12, 2)
+
+  stockDocument StockDocument @relation(fields: [stockDocumentId], references: [id])
+  good          Good          @relation(fields: [goodId], references: [id])
+
+  @@index([orgId, stockDocumentId])
+  @@map("stock_document_lines")
+}
+
+// ─── SETTINGS ────────────────────────────────────────────
+
+model DocumentNumberConfig {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String       @db.Uuid
+  documentType DocumentType
+  prefix       String?
+  includeDate  Boolean      @default(true)
+  dateFormat   String       @default("YYYYMMDD")
+  separator    String       @default("-")
+  padding      Int          @default(6)
+  currentSeq   BigInt       @default(0)
+  resetPeriod  ResetPeriod  @default(NEVER)
+  updatedAt    DateTime     @updatedAt
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, documentType])
+  @@index([orgId])
+  @@map("document_number_configs")
+}
+
+model OrganisationSettings {
+  orgId                 String   @id @db.Uuid
+  currency              String   @default("UAH")
+  vatMode               VatMode  @default(EXCLUSIVE)
+  defaultVatRateId      String?  @db.Uuid
+  invoiceDueDays        Int      @default(7)
+  autoArchiveDays       Int      @default(30)
+  defaultWarrantyDays   Int      @default(30)
+  requireClientApproval Boolean  @default(true)
+  allowPartialPayment   Boolean  @default(true)
+  updatedAt             DateTime @updatedAt
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@map("organisation_settings")
+}
+
+model BranchSettings {
+  branchId               String   @id @db.Uuid
+  orgId                  String   @db.Uuid
+  workStartTime          String   @default("09:00")
+  workEndTime            String   @default("18:00")
+  workDays               Json     @default("[1,2,3,4,5]")
+  slotDurationMinutes    Int      @default(60)
+  fiscalEnabled          Boolean  @default(false)
+  checkboxApiUrl         String?
+  checkboxLicenseKey     String?
+  checkboxPinCode        String?
+  checkboxCashRegisterId String?
+  smsEnabled             Boolean  @default(false)
+  smsProvider            String?
+  smsApiKey              String?
+  smsSenderName          String?
+  updatedAt              DateTime @updatedAt
+
+  branch GarageBranch @relation(fields: [branchId], references: [id])
+
+  @@map("branch_settings")
+}
+
+model NotificationTemplate {
+  id        String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId     String                @db.Uuid
+  eventType NotificationEventType
+  channel   NotificationChannel
+  subject   String?
+  body      String
+  isActive  Boolean               @default(true)
+  updatedAt DateTime              @updatedAt
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, eventType, channel])
+  @@index([orgId])
+  @@map("notification_templates")
+}
+
+model TaxRate {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId     String   @db.Uuid
+  name      String
+  rate      Decimal  @db.Decimal(5, 2)
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, rate])
+  @@index([orgId])
+  @@map("tax_rates")
+}
+
+model PaymentMethodConfig {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  code           String
+  name           String
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  requiresFiscal Boolean  @default(false)
+  updatedAt      DateTime @updatedAt
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId])
+  @@map("payment_method_configs")
+}
+
+// ─── FINANCE & SETTLEMENTS ───────────────────────────────
+
+model Invoice {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  counterpartyId String    @db.Uuid
+  workOrderId    String?   @db.Uuid
+  number         String
+  amount         Decimal   @db.Decimal(12, 2)
+  status         String    @default("DRAFT")
+  dueDate        DateTime?
+  syncVersion    BigInt    @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+  workOrder    WorkOrder?   @relation(fields: [workOrderId], references: [id])
+  payments     Payment[]
+
+  @@index([orgId, status, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("invoices")
+}
+
+// Append-only — ніколи не редагується
+model Payment {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String   @db.Uuid
+  counterpartyId  String   @db.Uuid
+  workOrderId     String?  @db.Uuid
+  invoiceId       String?  @db.Uuid
+  amount          Decimal  @db.Decimal(12, 2)
+  method          String
+  notes           String?
+  fiscalReceiptId String?
+  syncVersion     BigInt   @default(0)
+  createdAt       DateTime @default(now())
+
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+  workOrder    WorkOrder?   @relation(fields: [workOrderId], references: [id])
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+
+  @@index([orgId, workOrderId])
+  @@index([orgId, counterpartyId])
+  @@map("payments")
+}
+
+model SettlementAccount {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  counterpartyId String   @unique @db.Uuid
+  balance        Decimal  @default(0) @db.Decimal(12, 2)
+  updatedAt      DateTime @updatedAt
+
+  counterparty Counterparty            @relation(fields: [counterpartyId], references: [id])
+  transactions SettlementTransaction[]
+
+  @@index([orgId])
+  @@map("settlement_accounts")
+}
+
+// Append-only — ніколи не редагується
+model SettlementTransaction {
+  id                  String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId               String                    @db.Uuid
+  settlementAccountId String                    @db.Uuid
+  type                SettlementTransactionType
+  amount              Decimal                   @db.Decimal(12, 2)
+  documentType        String?
+  documentId          String?                   @db.Uuid
+  notes               String?
+  createdAt           DateTime                  @default(now())
+  createdBy           String?                   @db.Uuid
+
+  account SettlementAccount @relation(fields: [settlementAccountId], references: [id])
+
+  @@index([orgId, settlementAccountId])
+  @@index([orgId, documentType, documentId])
+  @@map("settlement_transactions")
+}
+
+model ReconciliationAct {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  counterpartyId String   @db.Uuid
+  periodFrom     DateTime
+  periodTo       DateTime
+  openingBalance Decimal  @db.Decimal(12, 2)
+  closingBalance Decimal  @db.Decimal(12, 2)
+  snapshotJson   Json
+  createdAt      DateTime @default(now())
+  createdBy      String?  @db.Uuid
+
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+
+  @@index([orgId, counterpartyId])
+  @@map("reconciliation_acts")
+}
+
+// ─── SCHEDULING ──────────────────────────────────────────
+
+model CalendarSlot {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  liftId      String?   @db.Uuid
+  employeeId  String?   @db.Uuid
+  workOrderId String?   @db.Uuid
+  startAt     DateTime
+  endAt       DateTime
+  notes       String?
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lift      Lift?      @relation(fields: [liftId], references: [id])
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+
+  @@index([orgId, liftId, startAt, endAt])
+  @@index([orgId, employeeId, startAt])
+  @@index([orgId, syncVersion])
+  @@map("calendar_slots")
+}

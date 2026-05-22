@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "STO ERP",
+    "slug": "sto-erp",
+    "version": "0.1.0",
+    "orientation": "landscape",
+    "scheme": "sto-erp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "ua.stoerp.app"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        { "cameraPermission": "Дозвольте STO ERP доступ до камери для фото нарядів" }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

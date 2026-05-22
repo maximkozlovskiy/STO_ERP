@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "README.md",
+                "file": "CLAUDE.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "README"
+              "title": "CLAUDE"
             }
           }
         ]
@@ -183,11 +183,24 @@
       "bases:Створити нову базу": false
     }
   },
-  "active": "bbf92d6f96a6ff53",
+  "active": "b5c3ef08be87d2e5",
   "lastOpenFiles": [
+    "apps/api/package.json.3528397980",
+    "pnpm-lock.yaml.520576898",
+    "apps/api/src/app.module.ts.tmp.28024.bc56c02661a9",
+    "apps/api/src/modules/setup/setup.module.ts",
+    "apps/api/src/modules/setup/setup.module.ts.tmp.28024.df492012903d",
+    "apps/api/src/modules/setup/setup.controller.ts",
+    "apps/api/src/modules/setup/setup.service.ts",
+    "apps/api/src/modules/setup/setup.service.ts.tmp.28024.5d8647a8d7c3",
+    "apps/api/src/auth/auth.service.ts.tmp.28024.5a9aae62e699",
+    "apps/api/src/modules/setup/setup.dto.ts",
+    "apps/api/src/modules/setup/setup.dto.ts.tmp.28024.70f2e317d3c7",
+    "README.md",
     "CLAUDE.md",
     "docs/TESTING-STRATEGY.md",
     "docs/TECH-RESEARCH.md",
+    "docs/PHASES.md",
     "docs/GIT-WORKFLOW.md",
     "docs/ENV-REFERENCE.md",
     "docs/DOCUMENTATION-PLAN.md",
@@ -195,10 +208,9 @@
     "docs/architecture/RBAC-MATRIX.md",
     "docs/architecture/FSM.md",
     "docs/architecture/ERD.md",
-    "docs/architecture/ADR-003-windows-installer.md",
-    "docs/architecture/ADR-002-docker-compose-deployment.md",
     "docs/architecture/ADR-001-local-first-offline-architecture.md",
     "docs/api/CONVENTIONS.md",
-    "README.md"
+    "docs/architecture/ADR-003-windows-installer.md",
+    "docs/architecture/ADR-002-docker-compose-deployment.md"
   ]
 }

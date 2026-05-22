@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment — НІКОЛИ не комітити!
+.env
+.env.local
+.env.*.local
+
+# .env.dev можна комітити (без реальних секретів)
+# але .env.production — ні
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Runtime
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Prisma
+packages/database/prisma/migrations/dev.db
+packages/database/prisma/*.db
+
+# Installer bundles (генеруються CI) та output
+installer/bundle/*.exe
+installer/bundle/images/
+installer/output/
+
+# Docker volumes (якщо монтуються локально)
+.docker-data/
+
+# pnpm
+.pnpm-store/

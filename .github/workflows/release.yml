@@ -1,0 +1,112 @@
+name: Build Installer
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  ORG: ${{ github.repository_owner }}
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version
+        id: version
+        run: |
+          $ver = "${{ github.ref_name }}" -replace '^v',''
+          echo "VERSION=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all apps
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3000
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and save Docker images
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          New-Item -ItemType Directory -Force installer/bundle/images | Out-Null
+
+          # Build app images
+          docker build -t sto-api:$version -f apps/api/Dockerfile .
+          docker build -t sto-web:$version -f apps/web/Dockerfile .
+
+          # Save app images
+          docker save sto-api:$version | gzip > installer/bundle/images/sto-api.tar.gz
+          docker save sto-web:$version | gzip > installer/bundle/images/sto-web.tar.gz
+
+          # Pull and save base images
+          docker pull postgres:16-alpine
+          docker save postgres:16-alpine | gzip > installer/bundle/images/postgres-16.tar.gz
+
+          docker pull redis:7-alpine
+          docker save redis:7-alpine | gzip > installer/bundle/images/redis-7.tar.gz
+
+          docker pull minio/minio
+          docker save minio/minio | gzip > installer/bundle/images/minio.tar.gz
+
+          docker pull caddy:2-alpine
+          docker save caddy:2-alpine | gzip > installer/bundle/images/caddy.tar.gz
+
+      - name: Download NSSM
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force installer/bundle | Out-Null
+          Invoke-WebRequest -Uri "https://nssm.cc/ci/nssm-2.24-103-gdee49fc.zip" -OutFile nssm.zip
+          Expand-Archive nssm.zip -DestinationPath nssm-temp
+          Copy-Item nssm-temp\nssm-*\win64\nssm.exe installer\bundle\nssm.exe
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Installer
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "installer\inno\setup.iss" `
+            "/DAppVersion=$version"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: STO-ERP-Setup-${{ github.ref_name }}
+          path: installer/output/*.exe
+          retention-days: 90
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer/output/*.exe
+          generate_release_notes: true
+          name: STO ERP ${{ github.ref_name }}

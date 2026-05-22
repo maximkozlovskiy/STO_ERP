@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Select-String \"docker\")",
+      "Bash(docker compose *)",
+      "Bash(pnpm --version)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm view *)",
+      "Bash(cp \"../../.env.dev\" \".env\")",
+      "Bash(DATABASE_URL=\"postgresql://sto:sto_dev_secret@localhost:5432/sto_erp\" pnpm prisma migrate dev --name init)",
+      "Bash(DATABASE_URL=\"postgresql://sto:sto_dev_secret@localhost:5432/sto_erp\" pnpm prisma db seed)",
+      "Bash(pnpm --filter @sto/api build)",
+      "Bash(pnpm --filter @sto/database db:generate)",
+      "Bash(pnpm generate *)",
+      "Bash(node -e \"console.log\\(require.resolve\\('@prisma/client'\\)\\)\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(pnpm --filter @sto/api test)",
+      "Bash(node -e ' *)",
+      "Bash(npx vitest *)",
+      "Bash(pnpm --filter @sto/api add -D unplugin-swc @swc/core)",
+      "Bash(pnpm approve-builds *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d.keys\\(\\)\\)[:5]\\)\")",
+      "Bash(python3 -c ' *)",
+      "Bash(pnpm migrate *)",
+      "Bash(npx prisma *)",
+      "Bash(docker exec *)",
+      "Bash(pnpm seed *)",
+      "Bash(pnpm --filter @sto/web type-check)",
+      "Bash(pnpm --filter @sto/api add ioredis)"
+    ]
+  }
+}

@@ -48,16 +48,26 @@
 > Залежності: немає. Старт проєкту.  
 > Мета: порожній, але запускаємий monorepo з усіма конфігами.
 
-- [ ] `[ручна]` Ініціалізувати pnpm workspace + Turborepo (`turbo.json`, `pnpm-workspace.yaml`)
-- [ ] `[ручна]` Створити структуру пакетів: `apps/{api,web,mobile}`, `packages/{database,shared,ui,config}`
-- [ ] `[sto-database]` `packages/config` — ESLint, TSConfig (base, nestjs, nextjs, react-native), Vitest base config
-- [ ] `[sto-backend]` `apps/api` — NestJS 10 + Fastify scaffold (`AppModule`, `main.ts`, Swagger, health endpoint)
-- [ ] `[sto-web]` `apps/web` — Next.js 15 static export scaffold (`layout.tsx`, `globals.css`, shadcn/ui init)
-- [ ] `[sto-mobile]` `apps/mobile` — Expo SDK 53 scaffold (bare workflow, `app/_layout.tsx`, NativeWind)
-- [ ] `[sto-database]` `packages/database` — Prisma init, підключення до PostgreSQL, порожній `schema.prisma` з базовими налаштуваннями
-- [ ] `[sto-database]` `packages/shared` — TypeScript типи з `@prisma/client`, Zod-схеми (порожні, готові до наповнення)
-- [ ] `[ручна]` `docker-compose.yml` — PostgreSQL 16, Redis 7, MinIO, Caddy (з конфігами)
-- [ ] `[sto-installer]` `installer/` — scaffold Inno Setup `.iss` + PowerShell bootstrap-скрипт
+- [x] `[ручна]` Ініціалізувати pnpm workspace + Turborepo (`turbo.json`, `pnpm-workspace.yaml`)
+    > `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `.npmrc`. pnpm install — 1095 пакетів. allowBuilds для prisma/bcrypt/nestjs/esbuild.
+- [x] `[ручна]` Створити структуру пакетів: `apps/{api,web,mobile}`, `packages/{database,shared,ui,config}`
+    > `package.json` для всіх 7 пакетів. `packages/shared/src/` — types, schemas, constants. `packages/database/prisma/schema.prisma` (порожня). `.gitignore`, `.env.dev`, `docker-compose.dev.yml`.
+- [x] `[sto-database]` `packages/config` — ESLint, TSConfig (base, nestjs, nextjs, react-native), Vitest base config
+    > `packages/config/tsconfig/{base,nestjs,nextjs,react-native}.json`, `eslint/{base,nestjs,nextjs}.js`, `vitest/base.ts`. @typescript-eslint v8, eslint-config-prettier.
+- [x] `[sto-backend]` `apps/api` — NestJS 10 + Fastify scaffold (`AppModule`, `main.ts`, Swagger, health endpoint)
+    > `apps/api/src/main.ts` (Fastify adapter, CORS, Swagger на /api/docs), `AppModule` + `ConfigModule`, `HealthModule` (GET /api/health), `HttpExceptionFilter`, `nest-cli.json`.
+- [x] `[sto-web]` `apps/web` — Next.js 15 static export scaffold (`layout.tsx`, `globals.css`, shadcn/ui init)
+    > `apps/web/src/app/{layout.tsx,page.tsx,globals.css}`, `next.config.ts` (output: export, transpilePackages), `lib/api-client.ts`. Tailwind 4 через @import.
+- [x] `[sto-mobile]` `apps/mobile` — Expo SDK 53 scaffold (bare workflow, `app/_layout.tsx`, NativeWind)
+    > `apps/mobile/app/{_layout.tsx,+not-found.tsx}`, `app.json` (expo-router, landscape, ua.stoerp.app), `tsconfig.json`.
+- [x] `[sto-database]` `packages/database` — Prisma init, підключення до PostgreSQL, порожній `schema.prisma` з базовими налаштуваннями
+    > `packages/database/prisma/schema.prisma` (generator + datasource), `prisma/seed.ts` (stub), `tsconfig.json`. prisma.seed → ts-node.
+- [x] `[sto-database]` `packages/shared` — TypeScript типи з `@prisma/client`, Zod-схеми (порожні, готові до наповнення)
+    > `packages/shared/src/{types.ts,schemas.ts,constants.ts,index.ts}`. BaseEntity, PaginatedResponse, uuidSchema, paginationSchema, локальні константи uk-UA.
+- [x] `[ручна]` `docker-compose.yml` — PostgreSQL 16, Redis 7, MinIO, Caddy (з конфігами)
+    > `docker-compose.yml` (production), `docker-compose.dev.yml` (dev: відкриті порти, minio-init bucket, без api/web/caddy). `.env.dev` з дефолтними dev-секретами.
+- [x] `[sto-installer]` `installer/` — scaffold Inno Setup `.iss` + PowerShell bootstrap-скрипт
+    > `installer/inno/setup.iss` (lzma2/ultra64, uk локаль, Tasks, Run/UninstallRun), `messages_uk.isl`. Скрипти: Check-Requirements, Install-Docker, Setup-Stack (генерує секрети, healthcheck), First-Run (migrate+seed), Register-Service (NSSM), Update, Backup (ротація 30), Restore, Uninstall. `.github/workflows/release.yml` — CI збирає images, NSSM, ISCC → `.exe` → GitHub Release.
 
 ---
 
@@ -66,18 +76,30 @@
 > Залежності: Фаза 0 (Prisma ініціалізовано).  
 > Мета: всі 35+ моделей з ERD.md в схемі, перша міграція пройшла.
 
-- [ ] `[sto-database]` Всі enum-и: `WorkOrderStatus`, `EmployeeRole`, `StockMovementType`, `DocumentType`, `VatMode` та інші
-- [ ] `[sto-database]` Bounded context **Infrastructure**: `Organisation`, `GarageBranch`, `Zone`, `Lift`, `Warehouse`
-- [ ] `[sto-database]` Bounded context **Employees**: `Employee`, `EmployeeZone`, `EmployeeLift`, `EmployeeWorkCategory`
-- [ ] `[sto-database]` Bounded context **CRM**: `Counterparty`, `CustomerGarage`, `Vehicle`, `VehicleNode`
-- [ ] `[sto-database]` Bounded context **Catalog**: `WorkCategory`, `Work`, `Good`, `Service`, `ServiceWork`, `ServiceGood`
-- [ ] `[sto-database]` Bounded context **Work Orders**: `WorkOrder`, `WorkOrderLine`, `WorkOrderLineEmployee`, `WorkOrderPart`
-- [ ] `[sto-database]` Bounded context **Inventory**: `StockItem`, `StockMovement`, `PurchaseOrder`, `PurchaseOrderLine`, `StockDocument`, `StockDocumentLine`
-- [ ] `[sto-database]` Bounded context **Finance**: `Invoice`, `Payment`, `SettlementAccount`, `SettlementTransaction`, `ReconciliationAct`
-- [ ] `[sto-database]` Bounded context **Calendar**: `CalendarSlot`
-- [ ] `[sto-database]` Bounded context **Settings**: `OrganisationSettings`, `BranchSettings`, `DocumentNumberConfig`, `NotificationTemplate`, `TaxRate`, `PaymentMethodConfig`
-- [ ] `[sto-database]` Перша міграція: `prisma migrate dev --name init`
-- [ ] `[sto-database]` `packages/shared` — TypeScript типи + Zod-схеми для всіх моделей
+- [x] `[sto-database]` Всі enum-и: `WorkOrderStatus`, `EmployeeRole`, `StockMovementType`, `DocumentType`, `VatMode` та інші
+    > 11 enum-ів: UserRole, WorkOrderStatus, ZoneType, LiftType, WarehouseType, CounterpartyType, StockMovementType, StockDocumentType/Status, DocumentType, ResetPeriod, VatMode, NotificationEventType/Channel, SettlementTransactionType.
+- [x] `[sto-database]` Bounded context **Infrastructure**: `Organisation`, `GarageBranch`, `Zone`, `Lift`, `Warehouse`
+    > Всі 5 моделей з обов'язковими полями (id UUID, orgId, timestamps, syncVersion, deletedAt). Indexes по orgId+deletedAt та orgId+syncVersion.
+- [x] `[sto-database]` Bounded context **Employees**: `Employee`, `EmployeeZone`, `EmployeeLift`, `EmployeeWorkCategory`
+    > Employee з rateScheme Json, phone. Junction tables EmployeeZone/Lift/WorkCategory з composite PK.
+- [x] `[sto-database]` Bounded context **CRM**: `Counterparty`, `CustomerGarage`, `Vehicle`, `VehicleNode`
+    > Counterparty з vatPayer, типи CLIENT/SUPPLIER/BOTH. Vehicle з VIN index. VehicleNode з category string.
+- [x] `[sto-database]` Bounded context **Catalog**: `WorkCategory`, `Work`, `Good`, `Service`, `ServiceWork`, `ServiceGood`
+    > WorkCategory self-ref hierarchy. Good з SKU index. Service з опціональною price. Junction tables ServiceWork/Good.
+- [x] `[sto-database]` Bounded context **Work Orders**: `WorkOrder`, `WorkOrderLine`, `WorkOrderLineEmployee`, `WorkOrderPart`
+    > WorkOrder FSM enum. totalLabor/Parts/Amount/paidAmount. WorkOrderLine з liftId. Junction WorkOrderLineEmployee.
+- [x] `[sto-database]` Bounded context **Inventory**: `StockItem`, `StockMovement`, `PurchaseOrder`, `PurchaseOrderLine`, `StockDocument`, `StockDocumentLine`
+    > StockItem UNIQUE(orgId,goodId,warehouseId). StockMovement append-only. StockDocument з source/targetWarehouse relations.
+- [x] `[sto-database]` Bounded context **Finance**: `Invoice`, `Payment`, `SettlementAccount`, `SettlementTransaction`, `ReconciliationAct`
+    > Payment append-only, method як string (з PaymentMethodConfig). SettlementAccount UNIQUE counterpartyId. ReconciliationAct з snapshotJson.
+- [x] `[sto-database]` Bounded context **Calendar**: `CalendarSlot`
+    > CalendarSlot з liftId, employeeId, workOrderId, startAt/endAt. Indexes по lift+час і employee+час.
+- [x] `[sto-database]` Bounded context **Settings**: `OrganisationSettings`, `BranchSettings`, `DocumentNumberConfig`, `NotificationTemplate`, `TaxRate`, `PaymentMethodConfig`
+    > OrganisationSettings (invoiceDueDays, autoArchiveDays, warrantyDays — з БД, не hardcoded). BranchSettings (ПРРО Checkbox, SMS per branch). DocumentNumberConfig UNIQUE(orgId,documentType). NotificationTemplate UNIQUE(orgId,eventType,channel). PaymentMethodConfig з requiresFiscal.
+- [x] `[sto-database]` Перша міграція: `prisma migrate dev --name init`
+    > `packages/database/prisma/migrations/20260522181129_init/migration.sql`. 37 таблиць, 11 enum-ів, всі FK, indexes. Prisma Client згенеровано.
+- [x] `[sto-database]` `packages/shared` — TypeScript типи + Zod-схеми для всіх моделей
+    > seed.ts оновлено: org + branch + settings + taxRates(3) + paymentMethods(5) + documentConfigs(8) + notificationTemplates(3) + zones(2) + lifts(2) + warehouse(1) + workCategories(3). Всі upsert — ідемпотентні.
 
 ---
 
@@ -86,12 +108,18 @@
 > Залежності: Фаза 1 (є таблиця `Employee` + `Organisation`).  
 > Мета: JWT login/refresh, guard'и для всіх подальших модулів.
 
-- [ ] `[sto-backend]` `AuthModule`: `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`
-- [ ] `[sto-backend]` `JwtStrategy` (access 15 хв) + `RefreshTokenStrategy` (7 днів, httpOnly cookie)
-- [ ] `[sto-backend]` `JwtAuthGuard`, `RolesGuard`, `OrgGuard` (автоматична фільтрація по `orgId`)
-- [ ] `[sto-backend]` `CurrentUser` декоратор → `{ userId, orgId, role, branchId }`
-- [ ] `[sto-web]` Login-сторінка (`/login`) + зберігання токена в httpOnly cookie
-- [ ] `[sto-web]` `AuthProvider` (Next.js) + middleware для захисту роутів
+- [x] `[sto-backend]` `AuthModule`: `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`
+    > `apps/api/src/auth/`. JWT access 15хв (Bearer) + refresh 30д (httpOnly cookie `sto_refresh` path=/api/auth). Bcrypt rounds=12. `AuthAccount` модель у схемі — email/passwordHash окремо від `Employee`. Seed: admin@sto.local / admin123.
+- [x] `[sto-backend]` `JwtStrategy` (access 15 хв) + `RefreshTokenStrategy` (30 днів, httpOnly cookie)
+    > `apps/api/src/auth/strategies/jwt.strategy.ts`. PassportStrategy('jwt'), ExtractJwt.fromAuthHeaderAsBearerToken(). Перевіряє `employee.deletedAt`.
+- [x] `[sto-backend]` `JwtAuthGuard`, `RolesGuard`, `OrgGuard` (автоматична фільтрація по `orgId`)
+    > `apps/api/src/auth/guards/`. JwtAuthGuard extends AuthGuard('jwt'). RolesGuard через Reflector + @Roles decorator. @OrgContext() витягує orgId з JWT payload.
+- [x] `[sto-backend]` `CurrentUser` декоратор → `{ sub, orgId, role, branchId }`
+    > `apps/api/src/auth/decorators/current-user.decorator.ts`, `org-context.decorator.ts`, `roles.decorator.ts`. 8 unit-тестів (vitest + @nestjs/testing + unplugin-swc).
+- [x] `[sto-web]` Login-сторінка (`/login`) + зберігання токена в httpOnly cookie
+    > `apps/web/src/app/(auth)/login/page.tsx`. POST /api/auth/login → accessToken в sessionStorage. Refresh cookie (httpOnly) надсилається браузером автоматично. Silent refresh при 401.
+- [x] `[sto-web]` `AuthProvider` (Next.js) + захист роутів
+    > `apps/web/src/lib/auth/`. AuthProvider (context + reducer), useAuth(), ProtectedRoute, useRequireAuth(roles?). api-client.ts з Bearer token + auto-refresh. tsconfig.json inline (без extends workspace). type-check чистий.
 
 ---
 
@@ -302,9 +330,9 @@
 
 | Фаза | Назва | Статус |
 |------|-------|--------|
-| 0 | Bootstrap | ⬜ не розпочато |
-| 1 | Повна схема БД | ⬜ не розпочато |
-| 2 | Автентифікація | ⬜ не розпочато |
+| 0 | Bootstrap | ✅ завершено (10/10) |
+| 1 | Повна схема БД | ✅ завершено (10/10) |
+| 2 | Автентифікація | ✅ завершено (6/6) |
 | 3 | Налаштування + перший запуск | ⬜ не розпочато |
 | 4 | Інфраструктура (довідники) | ⬜ не розпочато |
 | 5 | Співробітники | ⬜ не розпочато |
