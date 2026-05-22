@@ -168,10 +168,14 @@
 > Залежності: Фаза 4 (є Zone, Lift, WorkCategory).  
 > Мета: CRUD співробітників з прив'язкою до зон і підйомників.
 
-- [ ] `[sto-backend]` `EmployeeModule`: CRUD (`/employees`)
-- [ ] `[sto-backend]` `POST /employees/:id/zones`, `POST /employees/:id/lifts`, `POST /employees/:id/work-categories`
-- [ ] `[sto-backend]` Валідація `rateScheme` JSON (Zod): `percent_normo` | `fixed_plus_bonus`
-- [ ] `[sto-web]` UI: Список співробітників + картка + форма прив'язки зон/підйомників
+- [x] `[sto-backend]` `EmployeeModule`: CRUD (`/employees`)
+    > `apps/api/src/modules/employees/`. CRUD з soft delete. include employeeZones/Lifts/WorkCategories в кожній відповіді.
+- [x] `[sto-backend]` `POST /employees/:id/zones`, `POST /employees/:id/lifts`, `POST /employees/:id/work-categories`
+    > Replace-семантика: delete+recreate в $transaction. Перевірка що всі переданні ID належать до orgId.
+- [x] `[sto-backend]` Валідація `rateScheme` JSON (Zod): `percent_normo` | `fixed_plus_bonus`
+    > `rateSchemeSchema` (Zod discriminatedUnion) в employees.dto.ts. validateRateScheme() кидає BadRequestException з деталями.
+- [x] `[sto-web]` UI: Список співробітників + картка + форма прив'язки зон/підйомників
+    > `apps/web/src/app/employees/page.tsx`. Таблиця зі схемою нарахування + зони/підйомники. Модалка створення з динамічною формою rateScheme. Модалка картки — checkbox-списки прив'язки зон/підйомників/категорій.
 
 ---
 

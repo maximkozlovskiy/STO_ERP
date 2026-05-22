@@ -11,6 +11,7 @@ import { BranchesModule } from './modules/branches/branches.module';
 import { ZonesModule } from './modules/zones/zones.module';
 import { WarehousesModule } from './modules/warehouses/warehouses.module';
 import { WorkCategoriesModule } from './modules/work-categories/work-categories.module';
+import { EmployeesModule } from './modules/employees/employees.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { WorkCategoriesModule } from './modules/work-categories/work-categories.
     ZonesModule,
     WarehousesModule,
     WorkCategoriesModule,
+    EmployeesModule,
   ],
 })
 export class AppModule {}
