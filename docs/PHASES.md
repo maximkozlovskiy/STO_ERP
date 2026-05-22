@@ -150,11 +150,16 @@
 > Залежності: Фаза 3.  
 > Мета: CRUD для всіх структурних довідників.
 
-- [ ] `[sto-backend]` `GarageBranchModule`: CRUD (`/branches`)
-- [ ] `[sto-backend]` `ZoneModule` + `LiftModule`: CRUD (`/zones`, `/lifts`)
-- [ ] `[sto-backend]` `WarehouseModule`: CRUD (`/warehouses`)
-- [ ] `[sto-backend]` `WorkCategoryModule`: CRUD дерево (self-ref, `/work-categories`)
-- [ ] `[sto-web]` UI: Сторінки Зони, Підйомники, Склади (таблиці + форми)
+- [x] `[sto-backend]` `GarageBranchModule`: CRUD (`/branches`)
+    > `apps/api/src/modules/branches/`. Soft delete. @Roles OWNER/ADMIN на write.
+- [x] `[sto-backend]` `ZoneModule` + `LiftModule`: CRUD (`/zones`, `/lifts`)
+    > `apps/api/src/modules/zones/`. Один модуль, два контролери. ?branchId / ?zoneId фільтрація. Enum ZoneType/LiftType.
+- [x] `[sto-backend]` `WarehouseModule`: CRUD (`/warehouses`)
+    > `apps/api/src/modules/warehouses/`. ?branchId фільтрація. Enum WarehouseType.
+- [x] `[sto-backend]` `WorkCategoryModule`: CRUD дерево (self-ref, `/work-categories`)
+    > `apps/api/src/modules/work-categories/`. GET повертає повне дерево (buildTree recursive). DELETE каскадно soft-delete нащадків.
+- [x] `[sto-web]` UI: Сторінки Зони, Підйомники, Склади (таблиці + форми)
+    > `apps/web/src/app/infrastructure/page.tsx`. Таби: Філії / Зони / Підйомники / Склади. Таблиці + модальні форми додавання + soft-delete. useRequireAuth(['OWNER','ADMIN']).
 
 ---
 

@@ -7,6 +7,10 @@ import { RedisModule } from './redis/redis.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.module';
 import { SetupModule } from './modules/setup/setup.module';
+import { BranchesModule } from './modules/branches/branches.module';
+import { ZonesModule } from './modules/zones/zones.module';
+import { WarehousesModule } from './modules/warehouses/warehouses.module';
+import { WorkCategoriesModule } from './modules/work-categories/work-categories.module';
 
 @Module({
   imports: [
@@ -21,6 +25,10 @@ import { SetupModule } from './modules/setup/setup.module';
     SettingsModule,
     PaymentMethodsModule,
     SetupModule,
+    BranchesModule,
+    ZonesModule,
+    WarehousesModule,
+    WorkCategoriesModule,
   ],
 })
 export class AppModule {}
