@@ -12,6 +12,8 @@ import { ZonesModule } from './modules/zones/zones.module';
 import { WarehousesModule } from './modules/warehouses/warehouses.module';
 import { WorkCategoriesModule } from './modules/work-categories/work-categories.module';
 import { EmployeesModule } from './modules/employees/employees.module';
+import { CounterpartiesModule } from './modules/counterparties/counterparties.module';
+import { VehiclesModule } from './modules/vehicles/vehicles.module';
 
 @Module({
   imports: [
@@ -31,6 +33,8 @@ import { EmployeesModule } from './modules/employees/employees.module';
     WarehousesModule,
     WorkCategoriesModule,
     EmployeesModule,
+    CounterpartiesModule,
+    VehiclesModule,
   ],
 })
 export class AppModule {}

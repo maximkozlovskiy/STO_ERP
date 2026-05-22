@@ -184,12 +184,18 @@
 > Залежності: Фаза 3.  
 > Мета: повноцінна база клієнтів і автомобілів.
 
-- [ ] `[sto-backend]` `CounterpartyModule`: CRUD + пошук (`/counterparties`, `?q=`, `?type=CLIENT`)
-- [ ] `[sto-backend]` `CustomerGarageModule`: CRUD (`/counterparties/:id/garages`)
-- [ ] `[sto-backend]` `VehicleModule`: CRUD + `VehicleNode` (`/vehicles`, `/vehicles/:id/nodes`)
-- [ ] `[sto-backend]` `SettlementAccountService.getOrCreate(orgId, counterpartyId)` — автостворення рахунку
-- [ ] `[sto-web]` UI: Список контрагентів + картка (гаражі + авто + баланс)
-- [ ] `[sto-web]` UI: Картка автомобіля (вузли + історія нарядів)
+- [x] `[sto-backend]` `CounterpartyModule`: CRUD + пошук (`/counterparties`, `?q=`, `?type=CLIENT`)
+    > `apps/api/src/modules/counterparties/`. Пошук по firstName/lastName/companyName/phone/edrpou (insensitive). Пагінація. Balance з settlementAccount.
+- [x] `[sto-backend]` `CustomerGarageModule`: CRUD (`/counterparties/:id/garages`)
+    > Вкладений ресурс в CounterpartiesController. GET/POST /counterparties/:id/garages, DELETE /counterparties/:id/garages/:garageId.
+- [x] `[sto-backend]` `VehicleModule`: CRUD + `VehicleNode` (`/vehicles`, `/vehicles/:id/nodes`)
+    > `apps/api/src/modules/vehicles/`. ?customerGarageId фільтр. Вузли: GET/POST/DELETE /vehicles/:id/nodes.
+- [x] `[sto-backend]` `SettlementAccountService.getOrCreate(orgId, counterpartyId)` — автостворення рахунку
+    > Автостворення в транзакції при POST /counterparties. Balance відображається в CounterpartyResponseDto.
+- [x] `[sto-web]` UI: Список контрагентів + картка (гаражі + авто + баланс)
+    > `apps/web/src/app/crm/page.tsx` (список+пошук+фільтр+пагінація+модалка), `apps/web/src/app/crm/[id]/page.tsx` (картка: баланс, гаражі-таби, авто).
+- [x] `[sto-web]` UI: Картка автомобіля (вузли + історія нарядів)
+    > `apps/web/src/app/vehicles/[id]/page.tsx`. Поля авто, вузли згруповані по категорії, форма додавання вузла.
 
 ---
 
