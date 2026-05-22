@@ -1,5 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type Redis from 'ioredis';
+import { VatMode } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import {
@@ -145,7 +146,7 @@ export class SettingsService {
   private mapOrgSettings(s: {
     orgId: string;
     currency: string;
-    vatMode: string;
+    vatMode: VatMode;
     defaultVatRateId: string | null;
     invoiceDueDays: number;
     autoArchiveDays: number;

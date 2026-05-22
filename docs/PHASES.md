@@ -128,13 +128,20 @@
 > Залежності: Фаза 2 (є OWNER-акаунт).  
 > Мета: wizard першого запуску, автонумерація, SettingsService.
 
-- [ ] `[sto-backend]` `SettingsService.get(orgId)` → читає `OrganisationSettings` + `BranchSettings` з Redis-кешем (5 хв)
-- [ ] `[sto-backend]` `DocumentNumberingService.next(orgId, docType)` → атомарна видача номера через PostgreSQL `SELECT FOR UPDATE`
-- [ ] `[sto-backend]` `SettingsModule`: `GET/PATCH /settings/organisation`, `GET/PATCH /settings/branch/:id`
-- [ ] `[sto-backend]` `PaymentMethodConfigModule`: CRUD методів оплати
-- [ ] `[sto-backend]` First Run Wizard API: `POST /setup/init` (org + owner + branch + warehouse)
-- [ ] `[sto-web]` Wizard першого запуску — 5 кроків: org → branch → warehouse → ПРРО (skip) → SMS (skip)
-- [ ] `[sto-web]` Сторінка налаштувань: Організація, Філії, Нумерація, Методи оплати
+- [x] `[sto-backend]` `SettingsService.get(orgId)` → читає `OrganisationSettings` + `BranchSettings` з Redis-кешем (5 хв)
+    > `apps/api/src/modules/settings/settings.service.ts`. Redis TTL=5хв, fallback без кешу (offline-first). upsert defaults при першому зверненні. `invalidateOrgCache`/`invalidateBranchCache`.
+- [x] `[sto-backend]` `DocumentNumberingService.next(orgId, docType)` → атомарна видача номера через PostgreSQL `SELECT FOR UPDATE`
+    > `apps/api/src/modules/settings/document-numbering.service.ts`. `$queryRaw FOR UPDATE` → атомарний інкремент. Підтримка YEARLY/MONTHLY reset. Формат: prefix+date+padded_seq.
+- [x] `[sto-backend]` `SettingsModule`: `GET/PATCH /settings/organisation`, `GET/PATCH /settings/branch/:id`
+    > `apps/api/src/modules/settings/`. Controller з @Roles('OWNER','ADMIN'). RedisModule (@Global). ioredis 5.x. Зареєстровано в AppModule.
+- [x] `[sto-backend]` `PaymentMethodConfigModule`: CRUD методів оплати
+    > `apps/api/src/modules/payment-methods/`. Hard delete (no deletedAt на config таблиці). UNIQUE(orgId,code). Зареєстровано в AppModule.
+- [x] `[sto-backend]` First Run Wizard API: `POST /setup/init` (org + owner + branch + warehouse)
+    > `apps/api/src/modules/setup/`. `GET /setup/status` (перевірка ініціалізації). `POST /setup/init` — транзакція: org+settings+docConfigs+paymentMethods+taxRates+branch+branchSettings+warehouse+employee+authAccount. Повертає accessToken.
+- [x] `[sto-web]` Wizard першого запуску — 5 кроків: org → branch → warehouse → ПРРО (skip) → SMS (skip)
+    > `apps/web/src/app/setup/page.tsx`. 5-крокова форма зі step-індикатором. POST /setup/init → зберігає accessToken. Сторінка `/` перевіряє `/setup/status` і редіректить на /setup якщо не ініціалізовано.
+- [x] `[sto-web]` Сторінка налаштувань: Організація, Філії, Нумерація, Методи оплати
+    > `apps/web/src/app/settings/page.tsx`. Таби: Організація (vatMode, invoiceDueDays, autoArchiveDays, warrantyDays, toggles) + Методи оплати (toggle isActive). useRequireAuth(['OWNER','ADMIN']).
 
 ---
 

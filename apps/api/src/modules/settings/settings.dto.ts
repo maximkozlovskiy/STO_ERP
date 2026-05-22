@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -8,12 +9,13 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { VatMode } from '@prisma/client';
 
 export class UpdateOrganisationSettingsDto {
-  @ApiPropertyOptional({ enum: ['NONE', 'EXCLUSIVE', 'INCLUSIVE'] })
+  @ApiPropertyOptional({ enum: VatMode })
   @IsOptional()
-  @IsString()
-  vatMode?: string;
+  @IsEnum(VatMode)
+  vatMode?: VatMode;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -119,7 +121,7 @@ export class UpdateBranchSettingsDto {
 export class OrganisationSettingsResponseDto {
   @ApiProperty() orgId!: string;
   @ApiProperty() currency!: string;
-  @ApiProperty() vatMode!: string;
+  @ApiProperty({ enum: VatMode }) vatMode!: VatMode;
   @ApiPropertyOptional() defaultVatRateId?: string | null;
   @ApiProperty() invoiceDueDays!: number;
   @ApiProperty() autoArchiveDays!: number;

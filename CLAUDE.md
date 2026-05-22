@@ -42,6 +42,7 @@ sto-erp/
 /sto-mobile     ← для Expo додатку
 /sto-review     ← для code review
 /sto-installer  ← для Windows installer
+/sto-git        ← для git: commit, branch, changelog, статус
 ```
 
 ## Типовий workflow нової фічі
