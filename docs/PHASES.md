@@ -204,11 +204,16 @@
 > Залежності: Фаза 4 (WorkCategory).  
 > Мета: каталог робіт, товарів, комплексних послуг.
 
-- [ ] `[sto-backend]` `WorkModule`: CRUD (`/works`)
-- [ ] `[sto-backend]` `GoodModule`: CRUD + пошук по barcode (`/goods`)
-- [ ] `[sto-backend]` `ServiceModule`: CRUD + `ServiceWork` + `ServiceGood` (`/services`)
-- [ ] `[sto-web]` UI: Каталог робіт (дерево категорій + список) + форма
-- [ ] `[sto-web]` UI: Товари та запчастини (таблиця + форма) + сканер штрихкоду
+- [x] `[sto-backend]` `WorkModule`: CRUD (`/works`)
+    > `apps/api/src/modules/works/`. CRUD + ?categoryId/?q фільтрація. Перевірка існування категорії. Пагінація.
+- [x] `[sto-backend]` `GoodModule`: CRUD + пошук по barcode (`/goods`)
+    > `apps/api/src/modules/goods/`. CRUD + ?q (name/sku/barcode) / ?barcode точний пошук. ConflictException на дублікат SKU.
+- [x] `[sto-backend]` `ServiceModule`: CRUD + `ServiceWork` + `ServiceGood` (`/services`)
+    > `apps/api/src/modules/services/`. Create/Update: replace-семантика для works і goods у $transaction. Повертає вкладені роботи та товари.
+- [x] `[sto-web]` UI: Каталог робіт (дерево категорій + список) + форма
+    > `apps/web/src/app/catalog/page.tsx`. Таб "Роботи": пошук + фільтр по категорії (flat select з indent), таблиця, модалка.
+- [x] `[sto-web]` UI: Товари та запчастини (таблиця + форма) + сканер штрихкоду
+    > Таб "Товари та запчастини": пошук (назва/артикул/штрихкод), таблиця з цінами, модалка. Таб "Комплексні послуги": список з вкладеними роботами/товарами.
 
 ---
 
