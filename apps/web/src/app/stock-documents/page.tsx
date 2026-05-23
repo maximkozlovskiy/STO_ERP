@@ -62,6 +62,7 @@ export default function StockDocumentsPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
@@ -80,6 +81,7 @@ export default function StockDocumentsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (typeFilter) params.set('type', typeFilter);
@@ -87,6 +89,8 @@ export default function StockDocumentsPage() {
       const data: Paginated = await apiFetch(`/stock-documents?${params}`);
       setDocs(data.items);
       setTotal(data.total);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження');
     } finally {
       setLoading(false);
     }
@@ -104,7 +108,7 @@ export default function StockDocumentsPage() {
         setBranches(b.items ?? b);
         setWarehouses(w.items ?? w);
         setGoods(g.items ?? g);
-      });
+      }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
     }
   }, [showCreate]);
 
@@ -130,17 +134,21 @@ export default function StockDocumentsPage() {
       setForm({ type: 'WRITEOFF', branchId: '', warehouseId: '', targetWarehouseId: '', notes: '' });
       setLines([]);
       load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка збереження');
     } finally { setSaving(false); }
   };
 
   const handleTransition = async (doc: StockDoc, newStatus: string) => {
     const label = newStatus === 'CONFIRMED' ? 'підтвердити' : 'скасувати';
     if (!confirm(`Бажаєте ${label} документ ${doc.number}?`)) return;
-    await apiFetch(`/stock-documents/${doc.id}/transition`, {
-      method: 'POST', body: JSON.stringify({ status: newStatus }),
-    });
-    setShowDetail(null);
-    load();
+    try {
+      await apiFetch(`/stock-documents/${doc.id}/transition`, {
+        method: 'POST', body: JSON.stringify({ status: newStatus }),
+      });
+      setShowDetail(null);
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка зміни статусу'); }
   };
 
   const addLine = () => setLines(l => [...l, { goodId: '', quantity: '1', price: '' }]);
@@ -153,6 +161,7 @@ export default function StockDocumentsPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Складські документи</h1>

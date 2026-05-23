@@ -51,14 +51,18 @@ export default function ReportsPage() {
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     setData(null);
+    setError('');
     try {
       const params = new URLSearchParams({ from, to });
       const result = await apiFetch(`/reports/${tab}?${params}`);
       setData({ ...result, _tab: tab } as ReportData);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження звіту');
     } finally { setLoading(false); }
   }, [tab, from, to]);
 
@@ -74,6 +78,7 @@ export default function ReportsPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Звіти</h1>
 
       {/* Tabs */}

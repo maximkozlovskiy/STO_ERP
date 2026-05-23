@@ -68,6 +68,7 @@ export default function PurchaseOrdersPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<PurchaseOrder | null>(null);
@@ -88,12 +89,15 @@ export default function PurchaseOrdersPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (status) params.set('status', status);
       const data: Paginated = await apiFetch(`/purchase-orders?${params}`);
       setOrders(data.items);
       setTotal(data.total);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження');
     } finally {
       setLoading(false);
     }
@@ -111,7 +115,7 @@ export default function PurchaseOrdersPage() {
         setSuppliers(s.items ?? s);
         setWarehouses(w.items ?? w);
         setGoods(g.items ?? g);
-      });
+      }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
     }
   }, [showCreate]);
 
@@ -131,16 +135,20 @@ export default function PurchaseOrdersPage() {
       setForm({ supplierId: '', warehouseId: '', notes: '' });
       setLines([]);
       load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка збереження');
     } finally { setSaving(false); }
   };
 
   const handleTransition = async (po: PurchaseOrder, newStatus: string) => {
     if (!confirm(`Перевести замовлення ${po.number} → ${STATUS_LABELS[newStatus]}?`)) return;
-    await apiFetch(`/purchase-orders/${po.id}/transition`, {
-      method: 'POST', body: JSON.stringify({ status: newStatus }),
-    });
-    setShowDetail(null);
-    load();
+    try {
+      await apiFetch(`/purchase-orders/${po.id}/transition`, {
+        method: 'POST', body: JSON.stringify({ status: newStatus }),
+      });
+      setShowDetail(null);
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка переходу статусу'); }
   };
 
   const openReceive = (po: PurchaseOrder) => {
@@ -154,11 +162,13 @@ export default function PurchaseOrdersPage() {
       .filter(l => parseFloat(l.receivedQty) > 0)
       .map(l => ({ lineId: l.lineId, receivedQty: parseFloat(l.receivedQty) }));
     if (!lines.length) { alert('Вкажіть кількість для хоча б однієї позиції'); return; }
-    await apiFetch(`/purchase-orders/${showReceive.id}/receive`, {
-      method: 'POST', body: JSON.stringify({ lines }),
-    });
-    setShowReceive(null);
-    load();
+    try {
+      await apiFetch(`/purchase-orders/${showReceive.id}/receive`, {
+        method: 'POST', body: JSON.stringify({ lines }),
+      });
+      setShowReceive(null);
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка прийому товару'); }
   };
 
   const addLine = () => setLines(l => [...l, { goodId: '', quantity: '1', price: '' }]);
@@ -170,6 +180,7 @@ export default function PurchaseOrdersPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Замовлення постачальникам</h1>

@@ -56,11 +56,13 @@ export default function SettlementsPage() {
   const [loading, setLoading] = useState(false);
   const [showActModal, setShowActModal] = useState(false);
   const [actForm, setActForm] = useState({ periodFrom: '', periodTo: '' });
-  const [actResult, setActResult] = useState<any>(null);
+  const [actResult, setActResult] = useState<RecAct & { transactions: Transaction[] } | null>(null);
+  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    apiFetch('/counterparties?limit=200').then(d => setCounterparties(d.items ?? d));
+    apiFetch('/counterparties?limit=200').then(d => setCounterparties(d.items ?? d))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження контрагентів'));
   }, []);
 
   const loadCounterparty = useCallback(async (cp: Counterparty) => {
@@ -79,6 +81,8 @@ export default function SettlementsPage() {
       setTransactions(txs.items);
       setTxTotal(txs.total);
       setActs(actsData);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження даних');
     } finally { setLoading(false); }
   }, []);
 
@@ -92,6 +96,8 @@ export default function SettlementsPage() {
       });
       setActResult(result);
       setActs(prev => [result, ...prev]);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка створення акту');
     } finally { setSaving(false); }
   };
 
@@ -104,6 +110,7 @@ export default function SettlementsPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Взаєморозрахунки</h1>
 
       <div className="grid grid-cols-12 gap-6">
@@ -229,7 +236,7 @@ export default function SettlementsPage() {
                 <div className="text-xs text-gray-600 space-y-1">
                   <div>Відкриваючий залишок: {fmt(actResult.openingBalance)}</div>
                   <div>Закриваючий залишок: {fmt(actResult.closingBalance)}</div>
-                  <div>Транзакцій: {(actResult.transactions as any[]).length}</div>
+                  <div>Транзакцій: {actResult.transactions.length}</div>
                 </div>
               </div>
               <button onClick={() => setShowActModal(false)}

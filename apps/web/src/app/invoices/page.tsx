@@ -53,6 +53,7 @@ export default function InvoicesPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const [showCreate, setShowCreate] = useState(false);
   const [showPayment, setShowPayment] = useState<Invoice | null>(null);
@@ -67,12 +68,15 @@ export default function InvoicesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (status) params.set('status', status);
       const data: Paginated = await apiFetch(`/invoices?${params}`);
       setInvoices(data.items);
       setTotal(data.total);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження');
     } finally { setLoading(false); }
   }, [page, status]);
 
@@ -80,13 +84,16 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     if (showCreate) {
-      apiFetch('/counterparties?limit=200').then(d => setCounterparties(d.items ?? d));
+      apiFetch('/counterparties?limit=200').then(d => setCounterparties(d.items ?? d))
+        .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження контрагентів'));
     }
   }, [showCreate]);
 
   useEffect(() => {
     if (showPayment) {
-      apiFetch('/payment-methods').then(d => setPayMethods(d.filter((m: any) => m.isActive)));
+      apiFetch('/payment-methods')
+        .then((d: { code: string; name: string; isActive: boolean }[]) => setPayMethods(d.filter(m => m.isActive)))
+        .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження способів оплати'));
     }
   }, [showPayment]);
 
@@ -104,15 +111,19 @@ export default function InvoicesPage() {
       setShowCreate(false);
       setForm({ counterpartyId: '', amount: '', dueDate: '' });
       load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка збереження');
     } finally { setSaving(false); }
   };
 
   const handleTransition = async (inv: Invoice, newStatus: string) => {
     if (!confirm(`Перевести рахунок ${inv.number} → ${STATUS_LABELS[newStatus]}?`)) return;
-    await apiFetch(`/invoices/${inv.id}/transition`, {
-      method: 'POST', body: JSON.stringify({ status: newStatus }),
-    });
-    load();
+    try {
+      await apiFetch(`/invoices/${inv.id}/transition`, {
+        method: 'POST', body: JSON.stringify({ status: newStatus }),
+      });
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка зміни статусу'); }
   };
 
   const handlePay = async () => {
@@ -132,6 +143,8 @@ export default function InvoicesPage() {
       setShowPayment(null);
       setPayForm({ method: 'cash', amount: '', notes: '' });
       load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка оплати');
     } finally { setSaving(false); }
   };
 
@@ -139,6 +152,7 @@ export default function InvoicesPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Рахунки</h1>
