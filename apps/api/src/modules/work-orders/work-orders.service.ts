@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrderStatus } from '@prisma/client';
 import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
 import {
@@ -17,6 +18,7 @@ export class WorkOrdersService {
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
     private readonly settlements: SettlementsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
@@ -176,10 +178,21 @@ export class WorkOrdersService {
       data: updates,
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+        counterparty: { select: { firstName: true, lastName: true, companyName: true, phone: true } },
         branch: { select: { name: true } },
       },
     });
+
+    // Send notifications (fire-and-forget via BullMQ queue — offline safe)
+    if (newStatus === 'COMPLETED') {
+      this.notifications.send(orgId, 'WO_COMPLETED', {
+        branchId: updated.branchId,
+        phone: updated.counterparty.phone,
+        workOrderNumber: updated.number,
+        clientName: updated.counterparty.companyName ??
+          [updated.counterparty.lastName, updated.counterparty.firstName].filter(Boolean).join(' '),
+      }).catch(() => {/* non-critical */});
+    }
 
     return this.toDto(updated);
   }

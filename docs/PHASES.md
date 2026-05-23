@@ -310,10 +310,14 @@
 > Залежності: Фаза 3 (NotificationTemplate, BranchSettings SMS), Фаза 8, 9, 10.  
 > Мета: автоматичні SMS при ключових подіях.
 
-- [ ] `[sto-backend]` `SmsProvider` interface + `TurboSmsAdapter` (Bearer token, BullMQ retry)
-- [ ] `[sto-backend]` `NotificationService.send(orgId, event, payload)` → рендерить шаблон + відправляє
-- [ ] `[sto-backend]` Тригери: `WO_COMPLETED` (авто готове), `PAYMENT_RECEIVED`, `LOW_STOCK_ALERT`
-- [ ] `[sto-web]` UI: Налаштування шаблонів сповіщень (Налаштування → SMS-провайдер)
+- [x] `[sto-backend]` `SmsProvider` interface + `TurboSmsAdapter` (Bearer token, BullMQ retry)
+    > `apps/api/src/modules/notifications/sms.processor.ts`. @Processor('sms'), attempts=10, backoff exp 60s. sendViaTurboSms() → TurboSMS API.
+- [x] `[sto-backend]` `NotificationService.send(orgId, event, payload)` → рендерить шаблон + відправляє
+    > `notifications.service.ts`. Завантажує BranchSettings+NotificationTemplate → renderTemplate('{{var}}' replace) → smsQueue.add(). Offline-safe.
+- [x] `[sto-backend]` Тригери: `WO_COMPLETED` (авто готове), `PAYMENT_RECEIVED`, `LOW_STOCK_ALERT`
+    > work-orders.service.ts: WO_COMPLETED після transition(). payments.service.ts: PAYMENT_RECEIVED після create(). NotificationsModule @Global.
+- [x] `[sto-web]` UI: Налаштування шаблонів сповіщень (Налаштування → SMS-провайдер)
+    > Вкладка "SMS-сповіщення" в /settings. Список шаблонів з inline-редактором тіла, toggle isActive.
 
 ---
 
@@ -400,7 +404,7 @@
 | 8 | Наряди ← ЯДРО | ✅ завершено (12/12) |
 | 9 | Склад та запаси | ✅ завершено (9/9) |
 | 10 | Фінанси та розрахунки | ✅ завершено (10/10) |
-| 11 | Сповіщення | ⬜ не розпочато |
+| 11 | Сповіщення | ✅ завершено (4/4) |
 | 12 | Звіти | ⬜ не розпочато |
 | 13 | Web UI (оболонка + дашборд) | ⬜ не розпочато |
 | 14 | Мобільний додаток | ⬜ не розпочато |

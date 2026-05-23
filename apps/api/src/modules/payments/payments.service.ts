@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settlements: SettlementsService,
+    private readonly notifications: NotificationsService,
     @InjectQueue('checkbox') private readonly checkboxQueue: Queue,
   ) {}
 
@@ -81,6 +83,19 @@ export class PaymentsService {
 
       return created;
     });
+
+    // Notify counterparty about payment received
+    const cp = await this.prisma.counterparty.findFirst({
+      where: { id: dto.counterpartyId, orgId },
+      select: { phone: true, firstName: true, lastName: true, companyName: true },
+    });
+    if (cp?.phone) {
+      this.notifications.send(orgId, 'PAYMENT_RECEIVED', {
+        phone: cp.phone,
+        amount: dto.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 }),
+        clientName: cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' '),
+      }).catch(() => {/* non-critical */});
+    }
 
     // Enqueue Checkbox fiscal receipt (offline-first: retry 288 times = 24h)
     await this.checkboxQueue.add('fiscal-receipt', {

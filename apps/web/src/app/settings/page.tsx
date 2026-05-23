@@ -25,7 +25,19 @@ interface PaymentMethod {
   requiresFiscal: boolean;
 }
 
-type Tab = 'org' | 'payments';
+interface NotificationTemplate {
+  id: string; eventType: string; channel: string;
+  subject: string | null; body: string; isActive: boolean;
+}
+
+const EVENT_LABELS: Record<string, string> = {
+  WO_COMPLETED: 'Наряд завершено', WO_ESTIMATE_READY: 'Кошторис готовий',
+  WO_APPROVED: 'Наряд підтверджено', WO_IN_PROGRESS: 'Наряд в роботі',
+  WO_READY_FOR_PICKUP: 'Авто готове до видачі', PAYMENT_RECEIVED: 'Оплата отримана',
+  INVOICE_SENT: 'Рахунок надіслано', LOW_STOCK_ALERT: 'Низький залишок',
+};
+
+type Tab = 'org' | 'payments' | 'sms';
 
 const VAT_LABELS: Record<string, string> = {
   NONE: 'Без ПДВ',
@@ -38,6 +50,8 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>('org');
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
   const [payments, setPayments] = useState<PaymentMethod[]>([]);
+  const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
+  const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -45,7 +59,22 @@ export default function SettingsPage() {
   useEffect(() => {
     apiFetch<OrgSettings>('/settings/organisation').then(setOrgSettings).catch(console.error);
     apiFetch<PaymentMethod[]>('/payment-methods').then(setPayments).catch(console.error);
+    apiFetch<NotificationTemplate[]>('/notification-templates').then(setTemplates).catch(console.error);
   }, []);
+
+  const saveTemplate = async () => {
+    if (!editingTemplate) return;
+    setSaving(true);
+    try {
+      const updated = await apiFetch<NotificationTemplate>(`/notification-templates/${editingTemplate.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ body: editingTemplate.body, subject: editingTemplate.subject, isActive: editingTemplate.isActive }),
+      });
+      setTemplates(ts => ts.map(t => t.id === updated.id ? updated : t));
+      setEditingTemplate(null);
+      setMsg('Шаблон збережено');
+    } finally { setSaving(false); }
+  };
 
   const saveOrgSettings = async () => {
     if (!orgSettings) return;
@@ -91,7 +120,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b mb-6">
-        {(['org', 'payments'] as Tab[]).map((t) => (
+        {(['org', 'payments', 'sms'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -101,7 +130,7 @@ export default function SettingsPage() {
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'org' ? 'Організація' : 'Методи оплати'}
+            {t === 'org' ? 'Організація' : t === 'payments' ? 'Методи оплати' : 'SMS-сповіщення'}
           </button>
         ))}
       </div>
@@ -175,6 +204,63 @@ export default function SettingsPage() {
           >
             {saving ? 'Збереження...' : 'Зберегти'}
           </button>
+        </div>
+      )}
+
+      {/* SMS templates */}
+      {tab === 'sms' && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Використовуйте змінні у подвійних дужках: {'{{workOrderNumber}}'}, {'{{clientName}}'}, {'{{amount}}'}
+          </p>
+          {templates.length === 0 && (
+            <p className="text-gray-400 text-sm">Шаблони не знайдено</p>
+          )}
+          {templates.map(t => (
+            <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-4">
+              {editingTemplate?.id === t.id ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-900">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
+                    <span className="text-xs text-gray-400">{t.channel}</span>
+                  </div>
+                  <textarea
+                    value={editingTemplate.body}
+                    onChange={e => setEditingTemplate(et => et ? { ...et, body: e.target.value } : et)}
+                    rows={3}
+                    className="w-full px-3 py-2 border rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={saveTemplate} disabled={saving}
+                      className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                      {saving ? 'Збереження...' : 'Зберегти'}
+                    </button>
+                    <button onClick={() => setEditingTemplate(null)}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200">
+                      Скасувати
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-gray-900">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
+                      <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">{t.channel}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${t.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                        {t.isActive ? 'Активний' : 'Вимкнено'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 font-mono bg-gray-50 rounded p-2">{t.body}</p>
+                  </div>
+                  <button onClick={() => setEditingTemplate(t)}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap">
+                    Редагувати
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
