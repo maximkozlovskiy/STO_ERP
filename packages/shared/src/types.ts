@@ -23,3 +23,20 @@ export interface ApiError {
   message: string;
   error?: string;
 }
+
+export interface SyncRecord {
+  table: string;
+  id: string;
+  operation: 'INSERT' | 'UPDATE' | 'DELETE';
+  syncVersion: number;
+  payload: Record<string, unknown>;
+}
+
+export function formatPersonName(
+  lastName?: string | null,
+  firstName?: string | null,
+  companyName?: string | null,
+): string {
+  if (companyName) return companyName;
+  return [lastName, firstName].filter(Boolean).join(' ') || '';
+}

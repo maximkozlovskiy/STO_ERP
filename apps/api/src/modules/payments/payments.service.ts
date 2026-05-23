@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
+import { formatPersonName } from '@sto/shared';
 import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -93,7 +94,7 @@ export class PaymentsService {
       this.notifications.send(orgId, 'PAYMENT_RECEIVED', {
         phone: cp.phone,
         amount: dto.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 }),
-        clientName: cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' '),
+        clientName: formatPersonName(cp.lastName, cp.firstName, cp.companyName),
       }).catch(() => {/* non-critical */});
     }
 
@@ -119,7 +120,7 @@ export class PaymentsService {
     counterparty: { companyName: string | null; lastName: string | null; firstName: string | null } | null;
   }): PaymentResponseDto {
     const cp = p.counterparty;
-    const counterpartyName = cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ');
+    const counterpartyName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName);
     return {
       id: p.id, orgId: p.orgId,
       counterpartyId: p.counterpartyId, counterpartyName,

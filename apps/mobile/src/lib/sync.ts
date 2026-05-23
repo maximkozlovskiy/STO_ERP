@@ -18,6 +18,23 @@ interface ApiWorkOrderPart {
   id: string; goodName?: string; quantity: number; price: number; amount: number;
 }
 
+function applyWorkOrderFields(r: any, api: ApiWorkOrder, syncedAt: number) {
+  r.number = api.number;
+  r.status = api.status;
+  r.vehicleSummary = api.vehicleSummary ?? null;
+  r.counterpartyName = api.counterpartyName ?? null;
+  r.description = api.description ?? null;
+  r.inMileage = api.inMileage ?? null;
+  r.outMileage = api.outMileage ?? null;
+  r.plannedAt = api.plannedAt ? new Date(api.plannedAt).getTime() : null;
+  r.completedAt = api.completedAt ? new Date(api.completedAt).getTime() : null;
+  r.totalLabor = Number(api.totalLabor);
+  r.totalParts = Number(api.totalParts);
+  r.totalAmount = Number(api.totalAmount);
+  r.paidAmount = Number(api.paidAmount);
+  r.syncedAt = syncedAt;
+}
+
 export async function syncWorkOrders(): Promise<void> {
   let items: ApiWorkOrder[] = [];
 
@@ -63,22 +80,7 @@ export async function syncWorkOrders(): Promise<void> {
       if (existing) {
         if (!(existing as any).isDirty) {
           operations.push(
-            (existing as any).prepareUpdate((r: any) => {
-              r.number = api.number;
-              r.status = api.status;
-              r.vehicleSummary = api.vehicleSummary ?? null;
-              r.counterpartyName = api.counterpartyName ?? null;
-              r.description = api.description ?? null;
-              r.inMileage = api.inMileage ?? null;
-              r.outMileage = api.outMileage ?? null;
-              r.plannedAt = api.plannedAt ? new Date(api.plannedAt).getTime() : null;
-              r.completedAt = api.completedAt ? new Date(api.completedAt).getTime() : null;
-              r.totalLabor = Number(api.totalLabor);
-              r.totalParts = Number(api.totalParts);
-              r.totalAmount = Number(api.totalAmount);
-              r.paidAmount = Number(api.paidAmount);
-              r.syncedAt = now;
-            }),
+            (existing as any).prepareUpdate((r: any) => applyWorkOrderFields(r, api, now)),
           );
         }
       } else {
@@ -86,21 +88,8 @@ export async function syncWorkOrders(): Promise<void> {
           wos.prepareCreate((r: any) => {
             r.remoteId = api.id;
             r.orgId = api.orgId;
-            r.number = api.number;
-            r.status = api.status;
-            r.vehicleSummary = api.vehicleSummary ?? null;
-            r.counterpartyName = api.counterpartyName ?? null;
-            r.description = api.description ?? null;
-            r.inMileage = api.inMileage ?? null;
-            r.outMileage = api.outMileage ?? null;
-            r.plannedAt = api.plannedAt ? new Date(api.plannedAt).getTime() : null;
-            r.completedAt = api.completedAt ? new Date(api.completedAt).getTime() : null;
-            r.totalLabor = Number(api.totalLabor);
-            r.totalParts = Number(api.totalParts);
-            r.totalAmount = Number(api.totalAmount);
-            r.paidAmount = Number(api.paidAmount);
-            r.syncedAt = now;
             r.isDirty = false;
+            applyWorkOrderFields(r, api, now);
           }),
         );
       }

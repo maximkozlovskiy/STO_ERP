@@ -1,14 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { formatPersonName } from '@sto/shared';
+
+function normalizeDateRange(from: string, to: string) {
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+  toDate.setHours(23, 59, 59, 999);
+  return { fromDate, toDate };
+}
+
+const WORK_HOURS_PER_DAY = 9;
 
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async revenue(orgId: string, from: string, to: string, branchId?: string) {
-    const fromDate = new Date(from);
-    const toDate = new Date(to);
-    toDate.setHours(23, 59, 59, 999);
+    const { fromDate, toDate } = normalizeDateRange(from, to);
 
     const where: {
       orgId: string; deletedAt: null;
@@ -48,9 +56,7 @@ export class ReportsService {
   }
 
   async workOrders(orgId: string, from: string, to: string, employeeId?: string) {
-    const fromDate = new Date(from);
-    const toDate = new Date(to);
-    toDate.setHours(23, 59, 59, 999);
+    const { fromDate, toDate } = normalizeDateRange(from, to);
 
     const lineWhere: {
       orgId: string; deletedAt: null;
@@ -78,7 +84,7 @@ export class ReportsService {
       if (!byEmp[empId]) {
         byEmp[empId] = {
           employeeId: empId,
-          employeeName: [line.employee.lastName, line.employee.firstName].filter(Boolean).join(' '),
+          employeeName: formatPersonName(line.employee.lastName, line.employee.firstName),
           totalNormoHours: 0,
           totalAmount: 0,
           linesCount: 0,
@@ -163,8 +169,7 @@ export class ReportsService {
 
     const rows = accounts.map(a => ({
       counterpartyId: a.counterpartyId,
-      counterpartyName: a.counterparty.companyName ??
-        [a.counterparty.lastName, a.counterparty.firstName].filter(Boolean).join(' '),
+      counterpartyName: formatPersonName(a.counterparty.lastName, a.counterparty.firstName, a.counterparty.companyName),
       type: a.counterparty.type,
       balance: Number(a.balance),
     }));
@@ -177,30 +182,23 @@ export class ReportsService {
   }
 
   async load(orgId: string, from: string, to: string, branchId?: string) {
-    const fromDate = new Date(from);
-    const toDate = new Date(to);
-    toDate.setHours(23, 59, 59, 999);
-
-    const slotsWhere: { orgId: string; deletedAt: null; startAt: { gte: Date; lte: Date } } = {
-      orgId,
-      deletedAt: null,
-      startAt: { gte: fromDate, lte: toDate },
-    };
+    const { fromDate, toDate } = normalizeDateRange(from, to);
 
     const slots = await this.prisma.calendarSlot.findMany({
-      where: slotsWhere,
+      where: {
+        orgId,
+        deletedAt: null,
+        startAt: { gte: fromDate, lte: toDate },
+        ...(branchId ? { lift: { zone: { branchId } } } : {}),
+      },
       include: {
-        lift: { select: { name: true, zone: { select: { name: true, branchId: true } } } },
+        lift: { select: { name: true, zone: { select: { name: true } } } },
       },
     });
 
-    const filtered = branchId
-      ? slots.filter(s => s.lift?.zone?.branchId === branchId)
-      : slots;
-
     // Aggregate by lift
     const byLift: Record<string, { liftId: string | null; liftName: string; zoneName: string; totalSlots: number; totalHours: number }> = {};
-    for (const slot of filtered) {
+    for (const slot of slots) {
       const liftId = slot.liftId;
       if (!byLift[liftId]) {
         byLift[liftId] = {
@@ -217,12 +215,11 @@ export class ReportsService {
     }
 
     const totalDays = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / 86_400_000));
-    const workHoursPerDay = 9; // 09:00–18:00
 
     return {
       rows: Object.values(byLift).map((r) => ({
         ...r,
-        loadPercent: Math.round((r.totalHours / (totalDays * workHoursPerDay)) * 100),
+        loadPercent: Math.round((r.totalHours / (totalDays * WORK_HOURS_PER_DAY)) * 100),
       })),
       from, to, totalDays,
     };

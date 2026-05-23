@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SyncRecord } from '@sto/shared';
+
+export { SyncRecord };
 
 // Tables included in cloud sync pull (read-only from server perspective for most)
 const PULL_TABLES = [
@@ -15,14 +18,6 @@ const PUSH_SAFE_TABLES = new Set([
   'counterparties', 'vehicles', 'customer_garages',
   'calendar_slots',
 ]);
-
-export interface SyncRecord {
-  table: string;
-  id: string;
-  operation: 'INSERT' | 'UPDATE' | 'DELETE';
-  syncVersion: number;
-  payload: Record<string, unknown>;
-}
 
 @Injectable()
 export class SyncService {

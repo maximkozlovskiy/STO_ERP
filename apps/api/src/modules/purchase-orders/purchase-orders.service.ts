@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { formatPersonName } from '@sto/shared';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import {
@@ -205,7 +206,7 @@ export class PurchaseOrdersService {
 
   private toDto(po: any): PurchaseOrderResponseDto {
     const sup = po.supplier;
-    const supplierName = sup?.companyName ?? [sup?.lastName, sup?.firstName].filter(Boolean).join(' ') ?? undefined;
+    const supplierName = formatPersonName(sup?.lastName, sup?.firstName, sup?.companyName) || undefined;
     return {
       id: po.id, orgId: po.orgId, number: po.number, status: po.status,
       supplierId: po.supplierId, supplierName,

@@ -1,16 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { SyncRecord } from '@sto/shared';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
-
-interface SyncRecord {
-  table: string;
-  id: string;
-  operation: 'INSERT' | 'UPDATE' | 'DELETE';
-  syncVersion: number;
-  payload: Record<string, unknown>;
-}
 
 interface SyncStatus {
   pendingJobs: number;

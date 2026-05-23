@@ -4,6 +4,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrderStatus } from '@prisma/client';
+import { formatPersonName } from '@sto/shared';
 import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
 import {
   CreateWorkOrderDto, UpdateWorkOrderDto, WorkOrderQueryDto,
@@ -194,8 +195,7 @@ export class WorkOrdersService {
         branchId: updated.branchId,
         phone: updated.counterparty.phone,
         workOrderNumber: updated.number,
-        clientName: updated.counterparty.companyName ??
-          [updated.counterparty.lastName, updated.counterparty.firstName].filter(Boolean).join(' '),
+        clientName: formatPersonName(updated.counterparty.lastName, updated.counterparty.firstName, updated.counterparty.companyName),
       }).catch(() => {/* non-critical */});
     }
 
@@ -204,8 +204,8 @@ export class WorkOrdersService {
 
   private async reserveParts(orgId: string, workOrderId: string, userId?: string): Promise<void> {
     const parts = await this.prisma.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
-    for (const part of parts) {
-      await this.inventory.createMovement(orgId, {
+    await Promise.all(parts.map(part =>
+      this.inventory.createMovement(orgId, {
         goodId: part.goodId,
         warehouseId: part.warehouseId,
         type: 'RESERVATION',
@@ -213,14 +213,14 @@ export class WorkOrdersService {
         documentType: 'WorkOrder',
         documentId: workOrderId,
         createdBy: userId,
-      });
-    }
+      }),
+    ));
   }
 
   private async releasePartReservations(orgId: string, workOrderId: string, userId?: string): Promise<void> {
     const parts = await this.prisma.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
-    for (const part of parts) {
-      await this.inventory.createMovement(orgId, {
+    await Promise.all(parts.map(part =>
+      this.inventory.createMovement(orgId, {
         goodId: part.goodId,
         warehouseId: part.warehouseId,
         type: 'RESERVATION_RELEASE',
@@ -228,8 +228,8 @@ export class WorkOrdersService {
         documentType: 'WorkOrder',
         documentId: workOrderId,
         createdBy: userId,
-      });
-    }
+      }),
+    ));
   }
 
   private async writeOffPartsAndCharge(orgId: string, wo: { id: string; counterpartyId: string; totalAmount: { toString(): string } }, userId?: string): Promise<void> {
@@ -422,7 +422,7 @@ export class WorkOrdersService {
 
   private toDto(wo: any): WorkOrderResponseDto {
     const cp = wo.counterparty;
-    const cpName = cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ') ?? undefined;
+    const cpName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || undefined;
     return {
       id: wo.id, orgId: wo.orgId, number: wo.number, status: wo.status,
       branchId: wo.branchId, branchName: wo.branch?.name,
