@@ -46,7 +46,7 @@ export class SettlementsService {
         0;
 
       await db.settlementAccount.update({
-        where: { id: account.id },
+        where: { id: account.id, orgId },
         data: { balance: { increment: balanceDelta } },
       });
     };

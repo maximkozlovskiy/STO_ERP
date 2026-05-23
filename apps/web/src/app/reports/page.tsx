@@ -10,6 +10,19 @@ import {
 
 type Tab = 'revenue' | 'work-orders' | 'stock' | 'settlements' | 'load';
 
+type RevenueRow = { date: string; revenue: number; labor: number; parts: number; count: number };
+type WorkOrderRow = { employeeId: string; employeeName: string; totalNormoHours: number; linesCount: number; totalAmount: number };
+type StockItem = { goodName: string; goodSku: string | null; warehouseName: string; unit: string; quantity: number; available: number; value: number };
+type SettlementRow = { counterpartyId: string; counterpartyName: string; balance: number };
+type LoadRow = { liftId: string; liftName: string; zoneName: string; totalSlots: number; totalHours: number; loadPercent: number };
+
+type ReportData =
+  | { _tab: 'revenue'; totalRevenue: number; totalOrders: number; rows: RevenueRow[] }
+  | { _tab: 'work-orders'; totalNormoHours: number; totalAmount: number; rows: WorkOrderRow[] }
+  | { _tab: 'stock'; totalValue: number; stockItems: StockItem[] }
+  | { _tab: 'settlements'; totalDebit: number; totalCredit: number; rows: SettlementRow[] }
+  | { _tab: 'load'; rows: LoadRow[] };
+
 function fmt(n: number) {
   return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';
 }
@@ -36,7 +49,7 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<Tab>('revenue');
   const [from, setFrom] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10));
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -45,7 +58,7 @@ export default function ReportsPage() {
     try {
       const params = new URLSearchParams({ from, to });
       const result = await apiFetch(`/reports/${tab}?${params}`);
-      setData(result);
+      setData({ ...result, _tab: tab } as ReportData);
     } finally { setLoading(false); }
   }, [tab, from, to]);
 
@@ -118,7 +131,7 @@ export default function ReportsPage() {
       )}
 
       {/* Revenue report */}
-      {data && tab === 'revenue' && (
+      {data && data._tab === 'revenue' && (
         <div className="space-y-6">
           <div className="grid grid-cols-3 gap-4">
             <Card label="Загальна виручка" value={fmt(data.totalRevenue)} />
@@ -155,7 +168,7 @@ export default function ReportsPage() {
       )}
 
       {/* Work orders report */}
-      {data && tab === 'work-orders' && (
+      {data && data._tab === 'work-orders' && (
         <div className="space-y-6">
           <div className="grid grid-cols-3 gap-4">
             <Card label="Всього норм-годин" value={fmtNum(data.totalNormoHours)} />
@@ -173,7 +186,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.rows.map((r: any) => (
+                {data.rows.map((r) => (
                   <tr key={r.employeeId} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{r.employeeName}</td>
                     <td className="px-4 py-3 text-right">{fmtNum(r.totalNormoHours)}</td>
@@ -188,7 +201,7 @@ export default function ReportsPage() {
       )}
 
       {/* Stock report */}
-      {data && tab === 'stock' && (
+      {data && data._tab === 'stock' && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <Card label="Позицій на складах" value={String(data.stockItems.length)} />
@@ -227,7 +240,7 @@ export default function ReportsPage() {
       )}
 
       {/* Settlements report */}
-      {data && tab === 'settlements' && (
+      {data && data._tab === 'settlements' && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <Card label="Дебіторська заборгованість" value={fmt(data.totalDebit)} sub="Клієнти нам" />
@@ -259,7 +272,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {data.rows.filter((r: any) => r.balance !== 0).map((r: any) => (
+                  {data.rows.filter((r) => r.balance !== 0).map((r) => (
                     <tr key={r.counterpartyId} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-gray-900">{r.counterpartyName}</td>
                       <td className={`px-4 py-3 text-right font-semibold ${r.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
@@ -275,7 +288,7 @@ export default function ReportsPage() {
       )}
 
       {/* Load report */}
-      {data && tab === 'load' && (
+      {data && data._tab === 'load' && (
         <div className="space-y-6">
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-medium text-gray-900 mb-4">Завантаженість підйомників (%)</h3>
@@ -286,7 +299,7 @@ export default function ReportsPage() {
                 <YAxis type="category" dataKey="liftName" tick={{ fontSize: 11 }} width={120} />
                 <Tooltip formatter={(v: number) => v + '%'} />
                 <Bar dataKey="loadPercent" fill="#3b82f6" radius={[0, 4, 4, 0]} name="Завантаженість">
-                  {data.rows.map((_: any, idx: number) => (
+                  {data.rows.map((_, idx: number) => (
                     <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
                   ))}
                 </Bar>
@@ -305,7 +318,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.rows.map((r: any) => (
+                {data.rows.map((r) => (
                   <tr key={r.liftId} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{r.liftName}</td>
                     <td className="px-4 py-3 text-gray-500">{r.zoneName}</td>
@@ -332,25 +345,25 @@ export default function ReportsPage() {
   );
 }
 
-function buildCsv(tab: Tab, data: any): string {
-  if (tab === 'revenue') {
-    const rows = [['Дата', 'Виручка', 'Роботи', 'Запчастини', 'Нарядів'], ...data.rows.map((r: any) => [r.date, r.revenue, r.labor, r.parts, r.count])];
+function buildCsv(tab: Tab, data: ReportData): string {
+  if (tab === 'revenue' && data._tab === 'revenue') {
+    const rows = [['Дата', 'Виручка', 'Роботи', 'Запчастини', 'Нарядів'], ...data.rows.map(r => [r.date, r.revenue, r.labor, r.parts, r.count])];
     return rows.map(r => r.join(';')).join('\n');
   }
-  if (tab === 'work-orders') {
-    const rows = [['Механік', 'Норм-год', 'Позицій', 'Сума'], ...data.rows.map((r: any) => [r.employeeName, r.totalNormoHours, r.linesCount, r.totalAmount])];
+  if (tab === 'work-orders' && data._tab === 'work-orders') {
+    const rows = [['Механік', 'Норм-год', 'Позицій', 'Сума'], ...data.rows.map(r => [r.employeeName, r.totalNormoHours, r.linesCount, r.totalAmount])];
     return rows.map(r => r.join(';')).join('\n');
   }
-  if (tab === 'stock') {
-    const rows = [['Товар', 'Склад', 'Кількість', 'Доступно', 'Вартість'], ...data.stockItems.map((i: any) => [i.goodName, i.warehouseName, i.quantity, i.available, i.value])];
+  if (tab === 'stock' && data._tab === 'stock') {
+    const rows = [['Товар', 'Склад', 'Кількість', 'Доступно', 'Вартість'], ...data.stockItems.map(i => [i.goodName, i.warehouseName, i.quantity, i.available, i.value])];
     return rows.map(r => r.join(';')).join('\n');
   }
-  if (tab === 'settlements') {
-    const rows = [['Контрагент', 'Баланс'], ...data.rows.map((r: any) => [r.counterpartyName, r.balance])];
+  if (tab === 'settlements' && data._tab === 'settlements') {
+    const rows = [['Контрагент', 'Баланс'], ...data.rows.map(r => [r.counterpartyName, r.balance])];
     return rows.map(r => r.join(';')).join('\n');
   }
-  if (tab === 'load') {
-    const rows = [['Підйомник', 'Зона', 'Слотів', 'Годин', 'Завантаженість%'], ...data.rows.map((r: any) => [r.liftName, r.zoneName, r.totalSlots, r.totalHours.toFixed(1), r.loadPercent])];
+  if (tab === 'load' && data._tab === 'load') {
+    const rows = [['Підйомник', 'Зона', 'Слотів', 'Годин', 'Завантаженість%'], ...data.rows.map(r => [r.liftName, r.zoneName, r.totalSlots, r.totalHours.toFixed(1), r.loadPercent])];
     return rows.map(r => r.join(';')).join('\n');
   }
   return '';

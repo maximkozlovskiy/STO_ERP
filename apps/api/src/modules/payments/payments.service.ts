@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { formatPersonName } from '@sto/shared';
 import { Queue } from 'bull';
@@ -9,6 +9,8 @@ import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './pa
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly settlements: SettlementsService,
@@ -107,7 +109,7 @@ export class PaymentsService {
         phone: counterparty.phone,
         amount: dto.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 }),
         clientName: formatPersonName(counterparty.lastName, counterparty.firstName, counterparty.companyName),
-      }).catch(() => {/* non-critical */});
+      }).catch((err: unknown) => this.logger.warn(`Payment notification failed: ${err instanceof Error ? err.message : err}`));
     }
 
     // Enqueue Checkbox fiscal receipt (offline-first: retry 288 times = 24h)
