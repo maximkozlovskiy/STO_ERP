@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { DocumentNumberService } from '../document-number/document-number.service';
+import { DocumentType } from '@prisma/client';
 import {
   CreateStockDocumentDto, UpdateStockDocumentDto,
   StockDocumentResponseDto, PaginatedStockDocumentsDto,
@@ -26,6 +28,7 @@ export class StockDocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
+    private readonly docNumbers: DocumentNumberService,
   ) {}
 
   async findAll(orgId: string, page = 1, limit = 20, type?: string, status?: string): Promise<PaginatedStockDocumentsDto> {
@@ -83,9 +86,12 @@ export class StockDocumentsService {
       }
     }
 
-    const count = await this.prisma.stockDocument.count({ where: { orgId } });
-    const prefix = dto.type === 'WRITEOFF' ? 'WO' : dto.type === 'TRANSFER' ? 'TR' : 'OB';
-    const number = `${prefix}-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    const docTypeMap: Record<string, DocumentType> = {
+      WRITEOFF: 'STOCK_WRITEOFF',
+      TRANSFER: 'STOCK_TRANSFER',
+      OPENING_BALANCE: 'STOCK_OPENING',
+    };
+    const number = await this.docNumbers.next(orgId, docTypeMap[dto.type] ?? 'STOCK_WRITEOFF');
 
     const lines = dto.lines ?? [];
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+﻿import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -17,14 +17,14 @@ export class SettlementsController {
 
   @Get('balance')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Баланс контрагента' })
+  @ApiOperation({ summary: 'Р‘Р°Р»Р°РЅСЃ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°' })
   getBalance(@OrgContext() orgId: string, @Param('counterpartyId') counterpartyId: string) {
     return this.service.getBalance(orgId, counterpartyId);
   }
 
   @Get('transactions')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Транзакції контрагента' })
+  @ApiOperation({ summary: 'РўСЂР°РЅР·Р°РєС†С–С— РєРѕРЅС‚СЂР°РіРµРЅС‚Р°' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   getTransactions(
@@ -38,19 +38,19 @@ export class SettlementsController {
 
   @Post('reconciliation-acts')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Створити акт звірки' })
+  @ApiOperation({ summary: 'РЎС‚РІРѕСЂРёС‚Рё Р°РєС‚ Р·РІС–СЂРєРё' })
   createAct(
     @OrgContext() orgId: string,
     @Param('counterpartyId') counterpartyId: string,
     @Body() dto: CreateReconciliationActDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: { sub: string },
   ) {
     return this.service.createReconciliationAct(orgId, counterpartyId, dto, user?.sub);
   }
 
   @Get('reconciliation-acts')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Акти звірки контрагента' })
+  @ApiOperation({ summary: 'РђРєС‚Рё Р·РІС–СЂРєРё РєРѕРЅС‚СЂР°РіРµРЅС‚Р°' })
   getActs(@OrgContext() orgId: string, @Param('counterpartyId') counterpartyId: string) {
     return this.service.getReconciliationActs(orgId, counterpartyId);
   }

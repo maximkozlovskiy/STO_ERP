@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
@@ -22,7 +22,7 @@ export class StockDocumentsController {
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  @ApiOperation({ summary: 'Список складських документів' })
+  @ApiOperation({ summary: 'РЎРїРёСЃРѕРє СЃРєР»Р°РґСЃСЊРєРёС… РґРѕРєСѓРјРµРЅС‚С–РІ' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'type', required: false, enum: ['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'] })
@@ -39,21 +39,21 @@ export class StockDocumentsController {
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  @ApiOperation({ summary: 'Складський документ по ID' })
+  @ApiOperation({ summary: 'РЎРєР»Р°РґСЃСЊРєРёР№ РґРѕРєСѓРјРµРЅС‚ РїРѕ ID' })
   findOne(@OrgContext() orgId: string, @Param('id') id: string) {
     return this.service.findOne(orgId, id);
   }
 
   @Post()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  @ApiOperation({ summary: 'Створити складський документ' })
+  @ApiOperation({ summary: 'РЎС‚РІРѕСЂРёС‚Рё СЃРєР»Р°РґСЃСЊРєРёР№ РґРѕРєСѓРјРµРЅС‚' })
   create(@OrgContext() orgId: string, @Body() dto: CreateStockDocumentDto) {
     return this.service.create(orgId, dto);
   }
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  @ApiOperation({ summary: 'Оновити чернетку документа' })
+  @ApiOperation({ summary: 'РћРЅРѕРІРёС‚Рё С‡РµСЂРЅРµС‚РєСѓ РґРѕРєСѓРјРµРЅС‚Р°' })
   update(
     @OrgContext() orgId: string,
     @Param('id') id: string,
@@ -65,19 +65,19 @@ export class StockDocumentsController {
   @Delete(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Видалити чернетку документа' })
+  @ApiOperation({ summary: 'Р’РёРґР°Р»РёС‚Рё С‡РµСЂРЅРµС‚РєСѓ РґРѕРєСѓРјРµРЅС‚Р°' })
   remove(@OrgContext() orgId: string, @Param('id') id: string) {
     return this.service.remove(orgId, id);
   }
 
   @Post(':id/transition')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  @ApiOperation({ summary: 'Змінити статус документа (FSM)' })
+  @ApiOperation({ summary: 'Р—РјС–РЅРёС‚Рё СЃС‚Р°С‚СѓСЃ РґРѕРєСѓРјРµРЅС‚Р° (FSM)' })
   transition(
     @OrgContext() orgId: string,
     @Param('id') id: string,
     @Body() dto: TransitionStockDocumentDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: { sub: string },
   ) {
     return this.service.transition(orgId, id, dto.status as any, user?.sub);
   }

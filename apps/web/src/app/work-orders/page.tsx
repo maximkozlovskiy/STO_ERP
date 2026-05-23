@@ -77,16 +77,15 @@ export default function WorkOrdersPage() {
 
   const loadVehicles = (counterpartyId: string) => {
     if (!counterpartyId) return;
-    apiFetch<{ items: Array<{ id: string; make: string; model: string; licensePlate: string | null }> }>(`/counterparties/${counterpartyId}/garages`)
-      .then(async garages => {
+    apiFetch<Array<{ id: string }>>(`/counterparties/${counterpartyId}/garages`)
+      .then(garages => {
         const garagesArr = Array.isArray(garages) ? garages : [];
-        const all: Vehicle[] = [];
-        for (const g of garagesArr as Array<{ id: string }>) {
-          const vs = await apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`).catch(() => []);
-          all.push(...vs);
-        }
-        setVehicles(all);
-      }).catch(() => {});
+        return Promise.all(
+          garagesArr.map(g => apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`).catch(() => [] as Vehicle[]))
+        );
+      })
+      .then(results => setVehicles(results.flat()))
+      .catch(() => {});
   };
 
   const cpName = (cp: Counterparty) =>

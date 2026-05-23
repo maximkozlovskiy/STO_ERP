@@ -87,7 +87,7 @@ export class PurchaseOrdersController {
     @OrgContext() orgId: string,
     @Param('id') id: string,
     @Body() dto: ReceivePurchaseOrderDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: { sub: string },
   ) {
     return this.service.receive(orgId, id, dto, user?.sub);
   }

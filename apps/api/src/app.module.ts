@@ -30,6 +30,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ReportsModule } from './modules/reports/reports.module';
 import { FilesModule } from './modules/files/files.module';
 import { SyncModule } from './modules/sync/sync.module';
+import { DocumentNumberModule } from './modules/document-number/document-number.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { SyncModule } from './modules/sync/sync.module';
     ReportsModule,
     FilesModule,
     SyncModule,
+    DocumentNumberModule,
   ],
 })
 export class AppModule {}

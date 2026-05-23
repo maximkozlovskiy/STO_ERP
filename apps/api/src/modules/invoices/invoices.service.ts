@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DocumentNumberService } from '../document-number/document-number.service';
 import {
   CreateInvoiceDto, UpdateInvoiceDto,
   InvoiceResponseDto, PaginatedInvoicesDto,
@@ -17,7 +18,10 @@ const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
 
 @Injectable()
 export class InvoicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly docNumbers: DocumentNumberService,
+  ) {}
 
   async findAll(orgId: string, page = 1, limit = 20, status?: string): Promise<PaginatedInvoicesDto> {
     const where: any = { orgId, deletedAt: null };
@@ -77,8 +81,7 @@ export class InvoicesService {
     });
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
-    const count = await this.prisma.invoice.count({ where: { orgId } });
-    const number = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    const number = await this.docNumbers.next(orgId, 'INVOICE');
 
     const inv = await this.prisma.invoice.create({
       data: {

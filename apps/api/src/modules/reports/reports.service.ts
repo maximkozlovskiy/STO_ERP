@@ -197,9 +197,10 @@ export class ReportsService {
     });
 
     // Aggregate by lift
-    const byLift: Record<string, { liftId: string | null; liftName: string; zoneName: string; totalSlots: number; totalHours: number }> = {};
+    const byLift: Record<string, { liftId: string; liftName: string; zoneName: string; totalSlots: number; totalHours: number }> = {};
     for (const slot of slots) {
       const liftId = slot.liftId;
+      if (!liftId) continue;
       if (!byLift[liftId]) {
         byLift[liftId] = {
           liftId,

@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
@@ -20,7 +20,7 @@ export class InvoicesController {
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Список рахунків' })
+  @ApiOperation({ summary: 'РЎРїРёСЃРѕРє СЂР°С…СѓРЅРєС–РІ' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'status', required: false })
@@ -35,36 +35,36 @@ export class InvoicesController {
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Рахунок по ID' })
+  @ApiOperation({ summary: 'Р Р°С…СѓРЅРѕРє РїРѕ ID' })
   findOne(@OrgContext() orgId: string, @Param('id') id: string) {
     return this.service.findOne(orgId, id);
   }
 
   @Post()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Створити рахунок вручну' })
+  @ApiOperation({ summary: 'РЎС‚РІРѕСЂРёС‚Рё СЂР°С…СѓРЅРѕРє РІСЂСѓС‡РЅСѓ' })
   create(
     @OrgContext() orgId: string,
     @Body() dto: CreateInvoiceDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: { sub: string },
   ) {
     return this.service.create(orgId, dto, user?.sub);
   }
 
   @Post('from-work-order/:workOrderId')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Виставити рахунок з наряду' })
+  @ApiOperation({ summary: 'Р’РёСЃС‚Р°РІРёС‚Рё СЂР°С…СѓРЅРѕРє Р· РЅР°СЂСЏРґСѓ' })
   createFromWorkOrder(
     @OrgContext() orgId: string,
     @Param('workOrderId') workOrderId: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: { sub: string },
   ) {
     return this.service.createFromWorkOrder(orgId, workOrderId, user?.sub);
   }
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Оновити рахунок (тільки DRAFT)' })
+  @ApiOperation({ summary: 'РћРЅРѕРІРёС‚Рё СЂР°С…СѓРЅРѕРє (С‚С–Р»СЊРєРё DRAFT)' })
   update(
     @OrgContext() orgId: string,
     @Param('id') id: string,
@@ -75,7 +75,7 @@ export class InvoicesController {
 
   @Post(':id/transition')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Змінити статус рахунку (FSM)' })
+  @ApiOperation({ summary: 'Р—РјС–РЅРёС‚Рё СЃС‚Р°С‚СѓСЃ СЂР°С…СѓРЅРєСѓ (FSM)' })
   transition(
     @OrgContext() orgId: string,
     @Param('id') id: string,
@@ -87,7 +87,7 @@ export class InvoicesController {
   @Delete(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Видалити рахунок (тільки DRAFT)' })
+  @ApiOperation({ summary: 'Р’РёРґР°Р»РёС‚Рё СЂР°С…СѓРЅРѕРє (С‚С–Р»СЊРєРё DRAFT)' })
   remove(@OrgContext() orgId: string, @Param('id') id: string) {
     return this.service.remove(orgId, id);
   }

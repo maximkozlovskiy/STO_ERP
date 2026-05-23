@@ -17,13 +17,14 @@ export class CalendarService {
       deletedAt: null;
       startAt: { gte: Date };
       endAt: { lte: Date };
-      branchId?: string;
+      lift?: { zone: { branchId: string } };
     } = {
       orgId,
       deletedAt: null,
       startAt: { gte: start },
       endAt: { lte: end },
     };
+    if (branchId) where.lift = { zone: { branchId } };
 
     const slots = await this.prisma.calendarSlot.findMany({
       where,

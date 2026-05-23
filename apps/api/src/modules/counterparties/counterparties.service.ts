@@ -47,7 +47,7 @@ export class CounterpartiesService {
       include: { settlementAccount: { select: { balance: true } } },
     });
     if (!item) throw new NotFoundException('Контрагента не знайдено');
-    return this.toDto(item);
+    return this.toDto(item, true);
   }
 
   async create(orgId: string, dto: CreateCounterpartyDto): Promise<CounterpartyResponseDto> {
@@ -72,7 +72,7 @@ export class CounterpartiesService {
       data: dto,
       include: { settlementAccount: { select: { balance: true } } },
     });
-    return this.toDto(item);
+    return this.toDto(item, true);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
@@ -113,11 +113,13 @@ export class CounterpartiesService {
     companyName: string | null; edrpou: string | null; vatPayer: boolean; phone: string | null;
     email: string | null; notes: string | null; createdAt: Date; updatedAt: Date;
     settlementAccount: { balance: object } | null;
-  }): CounterpartyResponseDto {
+  }, includeEdrpou = false): CounterpartyResponseDto {
     return {
       id: item.id, orgId: item.orgId, type: item.type as any,
       firstName: item.firstName, lastName: item.lastName,
-      companyName: item.companyName, edrpou: item.edrpou,
+      companyName: item.companyName,
+      // edrpou exposed only on detail view — sensitive identifier
+      edrpou: includeEdrpou ? item.edrpou : undefined,
       vatPayer: item.vatPayer, phone: item.phone, email: item.email, notes: item.notes,
       balance: item.settlementAccount ? Number(item.settlementAccount.balance) : 0,
       createdAt: item.createdAt, updatedAt: item.updatedAt,

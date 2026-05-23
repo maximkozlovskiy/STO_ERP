@@ -5,6 +5,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrderStatus } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
+import { DocumentNumberService } from '../document-number/document-number.service';
 import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
 import {
   CreateWorkOrderDto, UpdateWorkOrderDto, WorkOrderQueryDto,
@@ -20,6 +21,7 @@ export class WorkOrdersService {
     private readonly inventory: InventoryService,
     private readonly settlements: SettlementsService,
     private readonly notifications: NotificationsService,
+    private readonly docNumbers: DocumentNumberService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
@@ -92,8 +94,7 @@ export class WorkOrdersService {
     if (!vehicle) throw new NotFoundException('Автомобіль не знайдено');
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
-    const count = await this.prisma.workOrder.count({ where: { orgId } });
-    const number = `WO-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
 
     const wo = await this.prisma.workOrder.create({
       data: {
@@ -204,17 +205,19 @@ export class WorkOrdersService {
 
   private async reserveParts(orgId: string, workOrderId: string, userId?: string): Promise<void> {
     const parts = await this.prisma.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
-    await Promise.all(parts.map(part =>
-      this.inventory.createMovement(orgId, {
-        goodId: part.goodId,
-        warehouseId: part.warehouseId,
-        type: 'RESERVATION',
-        quantity: part.quantity,
-        documentType: 'WorkOrder',
-        documentId: workOrderId,
-        createdBy: userId,
-      }),
-    ));
+    await this.prisma.$transaction(async (tx) => {
+      for (const part of parts) {
+        await this.inventory.createMovement(orgId, {
+          goodId: part.goodId,
+          warehouseId: part.warehouseId,
+          type: 'RESERVATION',
+          quantity: part.quantity,
+          documentType: 'WorkOrder',
+          documentId: workOrderId,
+          createdBy: userId,
+        }, tx);
+      }
+    });
   }
 
   private async releasePartReservations(orgId: string, workOrderId: string, userId?: string): Promise<void> {
@@ -283,25 +286,15 @@ export class WorkOrdersService {
     const price = dto.price !== undefined ? dto.price : Number(work.price);
     const amount = normoHours * price;
 
-    const line = await this.prisma.workOrderLine.create({
-      data: {
-        orgId,
-        workOrderId,
-        workId: dto.workId,
-        employeeId: dto.employeeId,
-        liftId: dto.liftId ?? null,
-        normoHours,
-        price,
-        amount,
-        notes: dto.notes,
-      },
-      include: {
-        work: { select: { name: true } },
-        employee: { select: { firstName: true, lastName: true } },
-      },
+    const line = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.workOrderLine.create({
+        data: { orgId, workOrderId, workId: dto.workId, employeeId: dto.employeeId, liftId: dto.liftId ?? null, normoHours, price, amount, notes: dto.notes },
+        include: { work: { select: { name: true } }, employee: { select: { firstName: true, lastName: true } } },
+      });
+      await this.recalcTotals(workOrderId, tx);
+      return created;
     });
 
-    await this.recalcTotals(workOrderId);
     return this.toLineDto(line);
   }
 
@@ -314,16 +307,16 @@ export class WorkOrdersService {
     const price = dto.price !== undefined ? dto.price : Number(line.price);
     const amount = normoHours * price;
 
-    const updated = await this.prisma.workOrderLine.update({
-      where: { id: lineId },
-      data: { normoHours, price, amount, liftId: dto.liftId, notes: dto.notes },
-      include: {
-        work: { select: { name: true } },
-        employee: { select: { firstName: true, lastName: true } },
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.workOrderLine.update({
+        where: { id: lineId },
+        data: { normoHours, price, amount, liftId: dto.liftId, notes: dto.notes },
+        include: { work: { select: { name: true } }, employee: { select: { firstName: true, lastName: true } } },
+      });
+      await this.recalcTotals(workOrderId, tx);
+      return result;
     });
 
-    await this.recalcTotals(workOrderId);
     return this.toLineDto(updated);
   }
 
@@ -331,8 +324,10 @@ export class WorkOrdersService {
     await this.getEditableWorkOrder(orgId, workOrderId);
     const line = await this.prisma.workOrderLine.findFirst({ where: { id: lineId, workOrderId, deletedAt: null } });
     if (!line) throw new NotFoundException('Позицію не знайдено');
-    await this.prisma.workOrderLine.update({ where: { id: lineId }, data: { deletedAt: new Date() } });
-    await this.recalcTotals(workOrderId);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.workOrderLine.update({ where: { id: lineId }, data: { deletedAt: new Date() } });
+      await this.recalcTotals(workOrderId, tx);
+    });
   }
 
   // ─── Parts ───────────────────────────────────────────────
@@ -349,20 +344,15 @@ export class WorkOrdersService {
     const price = dto.price !== undefined ? dto.price : Number(good.salePrice);
     const amount = dto.quantity * price;
 
-    const part = await this.prisma.workOrderPart.create({
-      data: {
-        orgId,
-        workOrderId,
-        goodId: dto.goodId,
-        warehouseId: dto.warehouseId,
-        quantity: dto.quantity,
-        price,
-        amount,
-      },
-      include: { good: { select: { name: true } } },
+    const part = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.workOrderPart.create({
+        data: { orgId, workOrderId, goodId: dto.goodId, warehouseId: dto.warehouseId, quantity: dto.quantity, price, amount },
+        include: { good: { select: { name: true } } },
+      });
+      await this.recalcTotals(workOrderId, tx);
+      return created;
     });
 
-    await this.recalcTotals(workOrderId);
     return this.toPartDto(part);
   }
 
@@ -375,13 +365,16 @@ export class WorkOrdersService {
     const price = dto.price !== undefined ? dto.price : Number(part.price);
     const amount = quantity * price;
 
-    const updated = await this.prisma.workOrderPart.update({
-      where: { id: partId },
-      data: { quantity, price, amount },
-      include: { good: { select: { name: true } } },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.workOrderPart.update({
+        where: { id: partId },
+        data: { quantity, price, amount },
+        include: { good: { select: { name: true } } },
+      });
+      await this.recalcTotals(workOrderId, tx);
+      return result;
     });
 
-    await this.recalcTotals(workOrderId);
     return this.toPartDto(updated);
   }
 
@@ -389,8 +382,10 @@ export class WorkOrdersService {
     await this.getEditableWorkOrder(orgId, workOrderId);
     const part = await this.prisma.workOrderPart.findFirst({ where: { id: partId, workOrderId, deletedAt: null } });
     if (!part) throw new NotFoundException('Позицію не знайдено');
-    await this.prisma.workOrderPart.update({ where: { id: partId }, data: { deletedAt: new Date() } });
-    await this.recalcTotals(workOrderId);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.workOrderPart.update({ where: { id: partId }, data: { deletedAt: new Date() } });
+      await this.recalcTotals(workOrderId, tx);
+    });
   }
 
   // ─── Helpers ─────────────────────────────────────────────
@@ -405,14 +400,15 @@ export class WorkOrdersService {
     return wo;
   }
 
-  private async recalcTotals(workOrderId: string): Promise<void> {
+  private async recalcTotals(workOrderId: string, tx?: any): Promise<void> {
+    const db = tx ?? this.prisma;
     const [lines, parts] = await Promise.all([
-      this.prisma.workOrderLine.findMany({ where: { workOrderId, deletedAt: null }, select: { amount: true } }),
-      this.prisma.workOrderPart.findMany({ where: { workOrderId, deletedAt: null }, select: { amount: true } }),
+      db.workOrderLine.findMany({ where: { workOrderId, deletedAt: null }, select: { amount: true } }),
+      db.workOrderPart.findMany({ where: { workOrderId, deletedAt: null }, select: { amount: true } }),
     ]);
-    const totalLabor = lines.reduce((s, l) => s + Number(l.amount), 0);
-    const totalParts = parts.reduce((s, p) => s + Number(p.amount), 0);
-    await this.prisma.workOrder.update({
+    const totalLabor = lines.reduce((s: number, l: { amount: object }) => s + Number(l.amount), 0);
+    const totalParts = parts.reduce((s: number, p: { amount: object }) => s + Number(p.amount), 0);
+    await db.workOrder.update({
       where: { id: workOrderId },
       data: { totalLabor, totalParts, totalAmount: totalLabor + totalParts },
     });

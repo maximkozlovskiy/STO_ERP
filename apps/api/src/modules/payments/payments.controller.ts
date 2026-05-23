@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
+﻿import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -17,7 +17,7 @@ export class PaymentsController {
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Список платежів' })
+  @ApiOperation({ summary: 'РЎРїРёСЃРѕРє РїР»Р°С‚РµР¶С–РІ' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'counterpartyId', required: false })
@@ -32,11 +32,11 @@ export class PaymentsController {
 
   @Post()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Зареєструвати оплату' })
+  @ApiOperation({ summary: 'Р—Р°СЂРµС”СЃС‚СЂСѓРІР°С‚Рё РѕРїР»Р°С‚Сѓ' })
   create(
     @OrgContext() orgId: string,
     @Body() dto: CreatePaymentDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: { sub: string },
   ) {
     return this.service.create(orgId, dto, user?.sub);
   }

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName } from '@sto/shared';
+import { DocumentNumberService } from '../document-number/document-number.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import {
@@ -25,6 +26,7 @@ export class PurchaseOrdersService {
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
     private readonly settlements: SettlementsService,
+    private readonly docNumbers: DocumentNumberService,
   ) {}
 
   async findAll(orgId: string, page = 1, limit = 20, status?: string): Promise<PaginatedPurchaseOrdersDto> {
@@ -68,8 +70,7 @@ export class PurchaseOrdersService {
     if (!supplier) throw new NotFoundException('Постачальника не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
 
-    const count = await this.prisma.purchaseOrder.count({ where: { orgId } });
-    const number = `PO-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    const number = await this.docNumbers.next(orgId, 'PURCHASE_ORDER');
 
     const lines = dto.lines ?? [];
     const totalAmount = lines.reduce((s, l) => s + l.quantity * l.price, 0);
@@ -80,7 +81,7 @@ export class PurchaseOrdersService {
       });
       if (lines.length) {
         await tx.purchaseOrderLine.createMany({
-          data: lines.map(l => ({ purchaseOrderId: created.id, goodId: l.goodId, quantity: l.quantity, price: l.price })),
+          data: lines.map(l => ({ orgId, purchaseOrderId: created.id, goodId: l.goodId, quantity: l.quantity, price: l.price })),
         });
       }
       return tx.purchaseOrder.findFirstOrThrow({
@@ -112,7 +113,7 @@ export class PurchaseOrdersService {
         });
         if (lines.length) {
           await tx.purchaseOrderLine.createMany({
-            data: lines.map(l => ({ purchaseOrderId: id, goodId: l.goodId, quantity: l.quantity, price: l.price })),
+            data: lines.map(l => ({ orgId, purchaseOrderId: id, goodId: l.goodId, quantity: l.quantity, price: l.price })),
           });
         }
       }
@@ -153,6 +154,8 @@ export class PurchaseOrdersService {
       throw new BadRequestException('Прийом можливий лише для замовлень зі статусом ORDERED або PARTIAL');
     }
 
+    let chargeAmount = 0;
+
     await this.prisma.$transaction(async (tx) => {
       for (const recv of dto.lines) {
         const line = po.lines.find(l => l.id === recv.lineId);
@@ -174,17 +177,21 @@ export class PurchaseOrdersService {
           where: { id: recv.lineId },
           data: { receivedQty: { increment: recv.receivedQty } },
         });
+
+        chargeAmount += recv.receivedQty * Number(line.price);
       }
 
-      // Charge supplier account
-      await this.settlements.createTransaction(orgId, {
-        counterpartyId: po.supplierId,
-        type: 'CHARGE',
-        amount: Number(po.totalAmount),
-        documentType: 'PurchaseOrder',
-        documentId: id,
-        createdBy: userId,
-      }, tx);
+      // Charge supplier only for goods received in this batch
+      if (chargeAmount > 0) {
+        await this.settlements.createTransaction(orgId, {
+          counterpartyId: po.supplierId,
+          type: 'CHARGE',
+          amount: chargeAmount,
+          documentType: 'PurchaseOrder',
+          documentId: id,
+          createdBy: userId,
+        }, tx);
+      }
     });
 
     // Determine new status

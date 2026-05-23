@@ -19,6 +19,14 @@ const PUSH_SAFE_TABLES = new Set([
   'calendar_slots',
 ]);
 
+// Per-table field whitelists for push — prevents clients from overwriting protected fields
+const PUSH_FIELD_WHITELIST: Record<string, Set<string>> = {
+  counterparties: new Set(['firstName', 'lastName', 'companyName', 'phone', 'email', 'notes', 'type', 'vatPayer', 'edrpou']),
+  vehicles: new Set(['licensePlate', 'make', 'model', 'year', 'vin', 'engineVolume', 'fuelType', 'currentMileage', 'color', 'notes', 'customerGarageId']),
+  customer_garages: new Set(['name', 'address', 'notes']),
+  calendar_slots: new Set(['liftId', 'employeeId', 'workOrderId', 'startAt', 'endAt', 'notes']),
+};
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
@@ -97,8 +105,15 @@ export class SyncService {
       select: { id: true, syncVersion: true },
     });
 
-    // Strip orgId from payload to prevent cross-tenant injection
-    const { id, orgId: _payloadOrgId, ...safePayload } = rec.payload as any;
+    // Strip protected fields — only allow whitelisted fields through
+    const whitelist = PUSH_FIELD_WHITELIST[rec.table];
+    const rawPayload = rec.payload as Record<string, unknown>;
+    const safePayload: Record<string, unknown> = {};
+    if (whitelist) {
+      for (const key of whitelist) {
+        if (key in rawPayload) safePayload[key] = rawPayload[key];
+      }
+    }
 
     if (!existing) {
       await model.create({ data: { ...safePayload, id: rec.id, orgId } });
@@ -117,12 +132,16 @@ export class SyncService {
     lastSyncAt: Date | null;
     maxSyncVersion: number;
   }> {
-    const [pending, failed, maxVersionResult] = await Promise.all([
+    const [pending, failed, ...maxVersionResults] = await Promise.all([
       this.prisma.syncJob.count({ where: { orgId, status: 'PENDING' } }),
       this.prisma.syncJob.count({ where: { orgId, status: 'FAILED' } }),
-      this.prisma.$queryRaw<{ max: bigint | null }[]>`
-        SELECT MAX(sync_version) as max FROM work_orders WHERE org_id = ${orgId}
-      `,
+      // Query max syncVersion across all pull tables to give clients a correct since cursor
+      ...PULL_TABLES.map(table =>
+        (this.prisma as any)[toCamel(table)].aggregate({
+          where: { orgId },
+          _max: { syncVersion: true },
+        }).catch(() => ({ _max: { syncVersion: null } }))
+      ),
     ]);
 
     const lastJob = await this.prisma.syncJob.findFirst({
@@ -131,11 +150,16 @@ export class SyncService {
       select: { processedAt: true },
     });
 
+    const maxSyncVersion = maxVersionResults.reduce((max: number, res: any) => {
+      const v = Number(res?._max?.syncVersion ?? 0);
+      return v > max ? v : max;
+    }, 0);
+
     return {
       pendingJobs: pending,
       failedJobs: failed,
       lastSyncAt: lastJob?.processedAt ?? null,
-      maxSyncVersion: Number(maxVersionResult[0]?.max ?? 0),
+      maxSyncVersion,
     };
   }
 }

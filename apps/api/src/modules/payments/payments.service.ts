@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { formatPersonName } from '@sto/shared';
 import { Queue } from 'bull';
@@ -18,7 +18,12 @@ export class PaymentsService {
 
   async findAll(orgId: string, page = 1, limit = 20, counterpartyId?: string): Promise<PaginatedPaymentsDto> {
     const where: { orgId: string; counterpartyId?: string } = { orgId };
-    if (counterpartyId) where.counterpartyId = counterpartyId;
+    if (counterpartyId) {
+      // Verify the counterparty belongs to this org to prevent cross-tenant data leaks
+      const cp = await this.prisma.counterparty.findFirst({ where: { id: counterpartyId, orgId, deletedAt: null }, select: { id: true } });
+      if (!cp) throw new NotFoundException('Контрагента не знайдено');
+      where.counterpartyId = counterpartyId;
+    }
 
     const skip = (page - 1) * limit;
     const [items, total] = await this.prisma.$transaction([
@@ -37,6 +42,7 @@ export class PaymentsService {
   async create(orgId: string, dto: CreatePaymentDto, userId?: string): Promise<PaymentResponseDto> {
     const counterparty = await this.prisma.counterparty.findFirst({
       where: { id: dto.counterpartyId, orgId, deletedAt: null },
+      select: { id: true, phone: true, firstName: true, lastName: true, companyName: true },
     });
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
@@ -66,18 +72,20 @@ export class PaymentsService {
         createdBy: userId,
       }, tx);
 
-      // Mark invoice as PAID if linked and fully paid
+      // Mark invoice SENT→PAID if linked
       if (dto.invoiceId) {
         const inv = await tx.invoice.findFirst({ where: { id: dto.invoiceId, orgId, deletedAt: null } });
-        if (inv && inv.status === 'SENT') {
+        if (inv) {
+          if (inv.status !== 'SENT') throw new BadRequestException(`Рахунок у статусі "${inv.status}" — оплата неможлива`);
           await tx.invoice.update({ where: { id: dto.invoiceId }, data: { status: 'PAID' } });
         }
       }
 
-      // Mark work order as INVOICED→PAID if linked
+      // Mark work order INVOICED→PAID if linked (FSM: only INVOICED may transition to PAID)
       if (dto.workOrderId) {
         const wo = await tx.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
-        if (wo && wo.status === 'INVOICED') {
+        if (wo) {
+          if (wo.status !== 'INVOICED') throw new BadRequestException(`Наряд у статусі "${wo.status}" — оплата неможлива`);
           await tx.workOrder.update({ where: { id: dto.workOrderId }, data: { status: 'PAID' } });
         }
       }
@@ -86,15 +94,11 @@ export class PaymentsService {
     });
 
     // Notify counterparty about payment received
-    const cp = await this.prisma.counterparty.findFirst({
-      where: { id: dto.counterpartyId, orgId },
-      select: { phone: true, firstName: true, lastName: true, companyName: true },
-    });
-    if (cp?.phone) {
+    if (counterparty.phone) {
       this.notifications.send(orgId, 'PAYMENT_RECEIVED', {
-        phone: cp.phone,
+        phone: counterparty.phone,
         amount: dto.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 }),
-        clientName: formatPersonName(cp.lastName, cp.firstName, cp.companyName),
+        clientName: formatPersonName(counterparty.lastName, counterparty.firstName, counterparty.companyName),
       }).catch(() => {/* non-critical */});
     }
 

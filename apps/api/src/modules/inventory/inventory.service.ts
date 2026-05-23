@@ -21,13 +21,18 @@ export class InventoryService {
   async createMovement(orgId: string, dto: CreateMovementDto, tx?: any): Promise<void> {
     const db = tx ?? this.prisma;
 
-    if (dto.quantity < 0 || dto.type === 'RESERVATION_RELEASE') {
+    if (dto.quantity < 0 || dto.type === 'RESERVATION' || dto.type === 'RESERVATION_RELEASE') {
       const item = await db.stockItem.findUnique({
         where: { orgId_goodId_warehouseId: { orgId, goodId: dto.goodId, warehouseId: dto.warehouseId } },
       });
-      const available = item ? (item.quantity - item.reserved) : 0;
+      const quantity = item?.quantity ?? 0;
+      const reserved = item?.reserved ?? 0;
+      const available = quantity - reserved;
       if (dto.quantity < 0 && available < Math.abs(dto.quantity)) {
         throw new BadRequestException('Недостатньо товару на складі');
+      }
+      if (dto.type === 'RESERVATION' && dto.quantity > available) {
+        throw new BadRequestException('Недостатньо доступного товару для резервування');
       }
     }
 
