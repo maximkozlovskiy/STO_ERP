@@ -244,8 +244,10 @@
     > `apps/web/src/app/work-orders/[id]/page.tsx`. FSM кнопки з кольорами + confirm dialog. Секції: роботи + запчастини + підсумки. Модалки додавання (auto-fill normoHours/price).
 - [x] `[sto-web]` UI: Календар завантаженості підйомників
     > `apps/web/src/app/calendar/page.tsx`. Timeline grid 08:00–19:00 × підйомники. Позиціонування слотів по % ширині. Навігація по днях.
-- [ ] `[sto-mobile]` Екран "Мої наряди" (механік)
-- [ ] `[sto-mobile]` Екран деталі наряду + зміна статусу операцій
+- [x] `[sto-mobile]` Екран "Мої наряди" (механік)
+    > `apps/mobile/app/(tabs)/index.tsx`. FlatList з pull-to-refresh, фільтри статусів (pill tabs), пагінація з loadMore. Кольорові badge. Login screen + ProfileScreen (logout).
+- [x] `[sto-mobile]` Екран деталі наряду + зміна статусу операцій
+    > `apps/mobile/app/work-order/[id].tsx`. FSM кнопки з Alert confirm. Секції: підсумки (3 картки), деталі, роботи, запчастини. Pull-to-refresh. `src/lib/api.ts` (fetch wrapper), `src/lib/auth.ts`.
 
 ---
 
