@@ -384,10 +384,14 @@
 > Залежності: Фаза 13 (стабільна локальна версія).  
 > Мета: синхронізація між філіями і хмарний бекап.
 
-- [ ] `[sto-backend]` `SyncJob` таблиця + `OutboxWorker` (відстежує зміни через `syncVersion`)
-- [ ] `[sto-backend]` Conflict resolution: `last-write-wins` по `syncVersion`, `manual` для критичних полів
-- [ ] `[sto-backend]` Cloud Sync API: `POST /sync/push`, `GET /sync/pull?since=`
-- [ ] `[sto-web]` UI: Статус синхронізації + ручний тригер
+- [x] `[sto-backend]` `SyncJob` таблиця + `OutboxWorker` (відстежує зміни через `syncVersion`)
+    > `packages/database/prisma/schema.prisma` — SyncJob (orgId, tableName, recordId, operation, syncVersion, payload, status, attempts). Migration 20260523042322_add_sync_jobs.
+- [x] `[sto-backend]` Conflict resolution: `last-write-wins` по `syncVersion`, `manual` для критичних полів
+    > `apps/api/src/modules/sync/sync.service.ts`. pull() — returns delta by syncVersion. push() — last-write-wins: skip if remote syncVersion ≤ local. Conflicts → SyncJob status=FAILED for manual review.
+- [x] `[sto-backend]` Cloud Sync API: `POST /sync/push`, `GET /sync/pull?since=`
+    > `apps/api/src/modules/sync/sync.controller.ts`. GET /sync/status, GET /sync/pull?since=N, POST /sync/push. Roles: OWNER, ADMIN.
+- [x] `[sto-web]` UI: Статус синхронізації + ручний тригер
+    > `apps/web/src/app/settings/sync/page.tsx`. Status cards (pending/failed jobs), last sync time, syncVersion, manual trigger button. Link in TopShell NAV.
 
 ---
 
@@ -425,7 +429,7 @@
 | 12 | Звіти | ✅ завершено (6/6) |
 | 13 | Web UI (оболонка + дашборд) | ✅ завершено (5/5) |
 | 14 | Мобільний додаток | ✅ завершено (6/6) |
-| 15 | Cloud Sync | ⬜ опціонально |
+| 15 | Cloud Sync | ✅ завершено (4/4) |
 | 16 | Installer та Production | ⬜ не розпочато |
 
 > Оновлюється автоматично після кожного завершеного завдання.  

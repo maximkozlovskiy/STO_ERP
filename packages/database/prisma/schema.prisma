@@ -1002,3 +1002,31 @@ model CalendarSlot {
   @@index([orgId, syncVersion])
   @@map("calendar_slots")
 }
+
+// ─── CLOUD SYNC ──────────────────────────────────────────
+
+enum SyncJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+model SyncJob {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String        @db.Uuid
+  tableName   String
+  recordId    String        @db.Uuid
+  operation   String        // INSERT | UPDATE | DELETE
+  syncVersion BigInt
+  payload     Json
+  status      SyncJobStatus @default(PENDING)
+  attempts    Int           @default(0)
+  lastError   String?
+  createdAt   DateTime      @default(now())
+  processedAt DateTime?
+
+  @@index([orgId, status])
+  @@index([orgId, tableName, syncVersion])
+  @@map("sync_jobs")
+}

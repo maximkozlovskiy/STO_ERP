@@ -29,6 +29,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { FilesModule } from './modules/files/files.module';
+import { SyncModule } from './modules/sync/sync.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { FilesModule } from './modules/files/files.module';
     NotificationsModule,
     ReportsModule,
     FilesModule,
+    SyncModule,
   ],
 })
 export class AppModule {}

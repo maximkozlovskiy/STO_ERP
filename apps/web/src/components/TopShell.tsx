@@ -27,6 +27,7 @@ const NAV: NavItem[] = [
   { href: '/employees', label: 'Персонал', icon: '👨‍🔧', roles: ['OWNER', 'ADMIN'] },
   { href: '/infrastructure', label: 'Підрозділи', icon: '🏢', roles: ['OWNER', 'ADMIN'] },
   { href: '/settings', label: 'Налаштування', icon: '⚙️', roles: ['OWNER', 'ADMIN'] },
+  { href: '/settings/sync', label: 'Cloud Sync', icon: '☁️', roles: ['OWNER', 'ADMIN'] },
 ];
 
 const QUICK_TABS_KEY = 'sto_quick_tabs';
