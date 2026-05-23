@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateWorkDto, UpdateWorkDto, WorkQueryDto, WorkResponseDto, PaginatedWorksDto } from './works.dto';
 
@@ -7,7 +8,7 @@ export class WorksService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(orgId: string, query: WorkQueryDto): Promise<PaginatedWorksDto> {
-    const where: any = { orgId, deletedAt: null };
+    const where: Prisma.WorkWhereInput = { orgId, deletedAt: null };
     if (query.categoryId) where.categoryId = query.categoryId;
     if (query.q) where.name = { contains: query.q, mode: 'insensitive' };
 

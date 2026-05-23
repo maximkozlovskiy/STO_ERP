@@ -38,12 +38,12 @@ export default function CalendarPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<Lift[]>('/lifts').then(setLifts).catch(() => {});
+    apiFetch<Lift[]>('/lifts').then(setLifts).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'));
   }, []);
 
   const load = useCallback(() => {
     setLoading(true);
-    apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`).then(setSlots).catch(() => {}).finally(() => setLoading(false));
+    apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`).then(setSlots).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   }, [date]);
 
   useEffect(() => { load(); }, [load]);
@@ -73,7 +73,7 @@ export default function CalendarPage() {
 
   const removeSlot = async (id: string) => {
     if (!confirm('Видалити слот?')) return;
-    try { await apiFetch(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); } catch {}
+    try { await apiFetch(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
   };
 
   const slotsForLift = (liftId: string) => slots.filter(s => s.liftId === liftId);
@@ -93,6 +93,8 @@ export default function CalendarPage() {
           + Слот
         </button>
       </div>
+
+      {error && !showAdd && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
 
       {/* Date nav */}
       <div className="flex items-center gap-4 mb-6">

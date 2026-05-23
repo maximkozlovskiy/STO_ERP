@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { DocumentType, Prisma, StockDocumentType, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
-import { DocumentType } from '@prisma/client';
 import {
   CreateStockDocumentDto, UpdateStockDocumentDto,
   StockDocumentResponseDto, PaginatedStockDocumentsDto,
@@ -17,10 +17,9 @@ const DOC_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   CANCELLED: [],
 };
 
-const MOVEMENT_TYPES: Record<string, string> = {
-  WRITEOFF:        'WRITEOFF',
-  TRANSFER:        'TRANSFER',
-  OPENING_BALANCE: 'OPENING_BALANCE',
+const MOVEMENT_TYPES: Partial<Record<StockDocumentType, StockMovementType>> = {
+  WRITEOFF:        StockMovementType.WRITEOFF,
+  OPENING_BALANCE: StockMovementType.OPENING_BALANCE,
 };
 
 @Injectable()
@@ -32,9 +31,9 @@ export class StockDocumentsService {
   ) {}
 
   async findAll(orgId: string, page = 1, limit = 20, type?: string, status?: string): Promise<PaginatedStockDocumentsDto> {
-    const where: any = { orgId, deletedAt: null };
-    if (type) where.type = type;
-    if (status) where.status = status;
+    const where: Prisma.StockDocumentWhereInput = { orgId, deletedAt: null };
+    if (type) where.type = type as StockDocumentType;
+    if (status) where.status = status as DocStatus;
 
     const skip = (page - 1) * limit;
     const [items, total] = await this.prisma.$transaction([
@@ -178,7 +177,7 @@ export class StockDocumentsService {
       }
 
       await this.prisma.$transaction(async (tx) => {
-        const movType = MOVEMENT_TYPES[doc.type];
+        const movType = MOVEMENT_TYPES[doc.type as StockDocumentType];
 
         for (const line of doc.lines) {
           if (doc.type === 'TRANSFER') {
@@ -205,11 +204,12 @@ export class StockDocumentsService {
               createdBy: userId,
             }, tx);
           } else {
+            if (!movType) throw new BadRequestException(`Непідтримуваний тип документу: ${doc.type}`);
             const quantity = doc.type === 'WRITEOFF' ? -line.quantity : line.quantity;
             await this.inventory.createMovement(orgId, {
               goodId: line.goodId,
               warehouseId: doc.warehouseId,
-              type: movType as any,
+              type: movType,
               quantity,
               price: line.price ? Number(line.price) : undefined,
               documentType: 'StockDocument',

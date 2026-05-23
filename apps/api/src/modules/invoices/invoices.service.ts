@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import {
@@ -24,8 +25,8 @@ export class InvoicesService {
   ) {}
 
   async findAll(orgId: string, page = 1, limit = 20, status?: string): Promise<PaginatedInvoicesDto> {
-    const where: any = { orgId, deletedAt: null };
-    if (status) where.status = status;
+    const where: Prisma.InvoiceWhereInput = { orgId, deletedAt: null };
+    if (status) where.status = status as InvStatus;
 
     const skip = (page - 1) * limit;
     const [items, total] = await this.prisma.$transaction([

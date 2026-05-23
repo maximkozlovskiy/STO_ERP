@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateGoodDto, UpdateGoodDto, GoodQueryDto, GoodResponseDto, PaginatedGoodsDto } from './goods.dto';
 
@@ -7,7 +8,7 @@ export class GoodsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(orgId: string, query: GoodQueryDto): Promise<PaginatedGoodsDto> {
-    const where: any = { orgId, deletedAt: null };
+    const where: Prisma.GoodWhereInput = { orgId, deletedAt: null };
     if (query.barcode) {
       where.barcode = query.barcode;
     } else if (query.q) {

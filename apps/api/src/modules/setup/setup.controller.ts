@@ -3,6 +3,8 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SetupInitDto, SetupInitResponseDto } from './setup.dto';
 import { SetupService } from './setup.service';
 
+// No JwtAuthGuard — intentionally public. Called before org/user exist (first-run wizard).
+// POST /init self-locks after first call via isAlreadyInitialized() check.
 @ApiTags('Перший запуск')
 @Controller('setup')
 export class SetupController {

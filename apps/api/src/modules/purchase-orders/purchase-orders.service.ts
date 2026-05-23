@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -30,8 +31,8 @@ export class PurchaseOrdersService {
   ) {}
 
   async findAll(orgId: string, page = 1, limit = 20, status?: string): Promise<PaginatedPurchaseOrdersDto> {
-    const where: any = { orgId, deletedAt: null };
-    if (status) where.status = status;
+    const where: Prisma.PurchaseOrderWhereInput = { orgId, deletedAt: null };
+    if (status) where.status = status as POStatus;
 
     const skip = (page - 1) * limit;
     const [items, total] = await this.prisma.$transaction([
@@ -174,7 +175,7 @@ export class PurchaseOrdersService {
         }, tx);
 
         await tx.purchaseOrderLine.update({
-          where: { id: recv.lineId },
+          where: { id: recv.lineId, orgId },
           data: { receivedQty: { increment: recv.receivedQty } },
         });
 
@@ -195,8 +196,8 @@ export class PurchaseOrdersService {
 
       // Determine and apply new status inside the same transaction
       const updatedLines = await tx.purchaseOrderLine.findMany({ where: { purchaseOrderId: id, deletedAt: null } });
-      const allReceived = updatedLines.every((l: any) => l.receivedQty >= l.quantity);
-      const anyReceived = updatedLines.some((l: any) => l.receivedQty > 0);
+      const allReceived = updatedLines.every(l => l.receivedQty >= l.quantity);
+      const anyReceived = updatedLines.some(l => l.receivedQty > 0);
       const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL' : po.status;
       await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
     });
