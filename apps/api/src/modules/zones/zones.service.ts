@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { LiftType, ZoneType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateLiftDto, CreateZoneDto, LiftResponseDto,
@@ -82,10 +83,10 @@ export class ZonesService {
   }
 
   private toZoneDto(z: { id: string; orgId: string; branchId: string; name: string; type: string; createdAt: Date; updatedAt: Date }): ZoneResponseDto {
-    return { id: z.id, orgId: z.orgId, branchId: z.branchId, name: z.name, type: z.type as any, createdAt: z.createdAt, updatedAt: z.updatedAt };
+    return { id: z.id, orgId: z.orgId, branchId: z.branchId, name: z.name, type: z.type as ZoneType, createdAt: z.createdAt, updatedAt: z.updatedAt };
   }
 
   private toLiftDto(l: { id: string; orgId: string; zoneId: string; name: string; type: string; maxWeightKg: number | null; createdAt: Date; updatedAt: Date }): LiftResponseDto {
-    return { id: l.id, orgId: l.orgId, zoneId: l.zoneId, name: l.name, type: l.type as any, maxWeightKg: l.maxWeightKg, createdAt: l.createdAt, updatedAt: l.updatedAt };
+    return { id: l.id, orgId: l.orgId, zoneId: l.zoneId, name: l.name, type: l.type as LiftType, maxWeightKg: l.maxWeightKg, createdAt: l.createdAt, updatedAt: l.updatedAt };
   }
 }

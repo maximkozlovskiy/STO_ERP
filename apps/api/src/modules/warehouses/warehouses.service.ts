@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { WarehouseType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateWarehouseDto, UpdateWarehouseDto, WarehouseResponseDto } from './warehouses.dto';
 
@@ -41,6 +42,6 @@ export class WarehousesService {
   }
 
   private toDto(w: { id: string; orgId: string; branchId: string; name: string; type: string; createdAt: Date; updatedAt: Date }): WarehouseResponseDto {
-    return { id: w.id, orgId: w.orgId, branchId: w.branchId, name: w.name, type: w.type as any, createdAt: w.createdAt, updatedAt: w.updatedAt };
+    return { id: w.id, orgId: w.orgId, branchId: w.branchId, name: w.name, type: w.type as WarehouseType, createdAt: w.createdAt, updatedAt: w.updatedAt };
   }
 }

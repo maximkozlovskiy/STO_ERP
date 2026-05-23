@@ -41,6 +41,20 @@ export class CalendarService {
 
     if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
 
+    // Validate FK ownership to prevent cross-tenant injection
+    if (dto.liftId) {
+      const lift = await this.prisma.lift.findFirst({ where: { id: dto.liftId, orgId, deletedAt: null } });
+      if (!lift) throw new NotFoundException('Підйомник не знайдено');
+    }
+    if (dto.employeeId) {
+      const employee = await this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } });
+      if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    }
+    if (dto.workOrderId) {
+      const workOrder = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
+      if (!workOrder) throw new NotFoundException('Наряд не знайдено');
+    }
+
     if (dto.liftId) {
       const conflict = await this.prisma.calendarSlot.findFirst({
         where: {
@@ -77,7 +91,11 @@ export class CalendarService {
     await this.prisma.calendarSlot.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
-  private toDto(slot: any): CalendarSlotResponseDto {
+  private toDto(slot: {
+    id: string; liftId: string | null; employeeId: string | null; workOrderId: string | null;
+    startAt: Date; endAt: Date; notes: string | null;
+    workOrder: { number: string } | null;
+  }): CalendarSlotResponseDto {
     return {
       id: slot.id,
       liftId: slot.liftId ?? null,

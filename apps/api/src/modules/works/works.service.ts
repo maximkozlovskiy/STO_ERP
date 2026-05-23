@@ -66,10 +66,15 @@ export class WorksService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    await this.findOne(orgId, id);
     await this.prisma.work.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
-  private toDto(item: any): WorkResponseDto {
+  private toDto(item: {
+    id: string; orgId: string; categoryId: string; name: string; normoHours: number;
+    price: object; description: string | null; createdAt: Date; updatedAt: Date;
+    category: { name: string };
+  }): WorkResponseDto {
     return {
       id: item.id,
       orgId: item.orgId,

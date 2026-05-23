@@ -59,10 +59,15 @@ export class GoodsService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    await this.findOne(orgId, id);
     await this.prisma.good.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
-  private toDto(item: any): GoodResponseDto {
+  private toDto(item: {
+    id: string; orgId: string; sku: string | null; name: string; unit: string;
+    purchasePrice: object | null; salePrice: object; category: string | null;
+    barcode: string | null; notes: string | null; createdAt: Date; updatedAt: Date;
+  }): GoodResponseDto {
     return {
       id: item.id,
       orgId: item.orgId,

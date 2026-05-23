@@ -41,10 +41,13 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [lowItems, setLowItems] = useState<StockItem[]>([]);
   const [showLowModal, setShowLowModal] = useState(false);
+  const [error, setError] = useState('');
 
   const loadWarehouses = useCallback(async () => {
-    const data = await apiFetch('/warehouses');
-    setWarehouses(data.items ?? data);
+    try {
+      const data = await apiFetch('/warehouses');
+      setWarehouses(data.items ?? data);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження складів'); }
   }, []);
 
   const loadItems = useCallback(async () => {
@@ -55,14 +58,18 @@ export default function InventoryPage() {
       if (q) params.set('q', q);
       const data = await apiFetch(`/stock-items?${params}`);
       setItems(data);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження');
     } finally {
       setLoading(false);
     }
   }, [warehouseId, q]);
 
   const loadLow = useCallback(async () => {
-    const data = await apiFetch('/stock-items/low');
-    setLowItems(data);
+    try {
+      const data = await apiFetch('/stock-items/low');
+      setLowItems(data);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження'); }
   }, []);
 
   useEffect(() => { loadWarehouses(); }, [loadWarehouses]);
@@ -72,6 +79,7 @@ export default function InventoryPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Залишки на складах</h1>
