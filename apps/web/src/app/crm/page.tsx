@@ -58,7 +58,7 @@ export default function CrmPage() {
     const params = new URLSearchParams({ page: String(page), limit: '20' });
     if (search) params.set('q', search);
     if (typeFilter) params.set('type', typeFilter);
-    apiFetch<Paginated>(`/counterparties?${params}`).then(setData).catch(() => {}).finally(() => setLoading(false));
+    apiFetch<Paginated>(`/counterparties?${params}`).then(setData).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   }, [page, search, typeFilter]);
 
   useEffect(() => { load(); }, [load]);
@@ -98,6 +98,8 @@ export default function CrmPage() {
           + Додати
         </button>
       </div>
+
+      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
 
       {/* Filters */}
       <div className="flex gap-3 mb-4">

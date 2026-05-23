@@ -86,7 +86,7 @@ export class InventoryService {
   }
 
   async findStockItems(orgId: string, warehouseId?: string, goodId?: string, q?: string) {
-    const where: any = { orgId, deletedAt: null };
+    const where: Prisma.StockItemWhereInput = { orgId, deletedAt: null };
     if (warehouseId) where.warehouseId = warehouseId;
     if (goodId) where.goodId = goodId;
     if (q) where.good = { name: { contains: q, mode: 'insensitive' } };

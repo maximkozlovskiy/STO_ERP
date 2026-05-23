@@ -112,7 +112,7 @@ export class SyncService {
 
   private async applyRecord(orgId: string, rec: SyncRecord): Promise<void> {
     const model = (this.prisma as any)[toCamel(rec.table)];
-    if (!model) return;
+    if (!model) throw new Error(`Unknown model for table: ${rec.table}`);
 
     const existing = await model.findFirst({
       where: { id: rec.id, orgId },

@@ -120,7 +120,7 @@ export default function EmployeesPage() {
       apiFetch<Zone[]>('/zones').then(setZones),
       apiFetch<Lift[]>('/lifts').then(setLifts),
       apiFetch<WorkCategory[]>('/work-categories').then(setWorkCategories),
-    ]).catch(() => {}).finally(() => setLoading(false));
+    ]).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
@@ -190,6 +190,8 @@ export default function EmployeesPage() {
           + Додати
         </button>
       </div>
+
+      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
 
       {/* Table */}
       <div className="bg-white rounded-xl border overflow-hidden">

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateServiceDto, UpdateServiceDto, ServiceResponseDto, PaginatedServicesDto } from './services.dto';
 
@@ -7,7 +8,7 @@ export class ServicesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(orgId: string, page = 1, limit = 50, q?: string): Promise<PaginatedServicesDto> {
-    const where: any = { orgId, deletedAt: null };
+    const where: Prisma.ServiceWhereInput = { orgId, deletedAt: null };
     if (q) where.name = { contains: q, mode: 'insensitive' };
 
     const skip = (page - 1) * limit;
