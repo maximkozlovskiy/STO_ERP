@@ -1,27 +1,22 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  RefreshControl, ActivityIndicator, TextInput,
+  RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { apiFetch } from '../../src/lib/api';
+import { Q } from '@nozbe/watermelondb';
+import { database } from '../../src/lib/database';
+import { syncWorkOrders } from '../../src/lib/sync';
 
 interface WorkOrder {
   id: string;
+  remoteId: string;
   number: string;
   status: string;
   vehicleSummary?: string;
   counterpartyName?: string;
   totalAmount: number;
-  plannedAt?: string | null;
-  createdAt: string;
-}
-
-interface Paginated {
-  items: WorkOrder[];
-  total: number;
-  page: number;
-  limit: number;
+  plannedAt?: number | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -44,51 +39,44 @@ const STATUS_FILTER_LABELS: Record<string, string> = {
 
 export default function MyWorkOrdersScreen() {
   const router = useRouter();
-  const [data, setData] = useState<Paginated | null>(null);
+  const [items, setItems] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
-  const [page, setPage] = useState(1);
-  const [loadingMore, setLoadingMore] = useState(false);
 
-  const load = useCallback(async (reset = false) => {
-    const p = new URLSearchParams({ page: String(reset ? 1 : page), limit: '20' });
-    if (statusFilter) p.set('status', statusFilter);
-
-    try {
-      const res = await apiFetch<Paginated>(`/work-orders?${p}`);
-      if (reset || page === 1) {
-        setData(res);
-        setPage(1);
-      } else {
-        setData(prev => prev ? { ...res, items: [...prev.items, ...res.items] } : res);
-      }
-    } catch {}
-  }, [page, statusFilter]);
+  const loadFromDb = useCallback(async () => {
+    const wos = database.get('work_orders');
+    const query = statusFilter
+      ? wos.query(Q.where('status', statusFilter))
+      : wos.query();
+    const records = await query.fetch();
+    setItems(records.map((r: any) => ({
+      id: r.id,
+      remoteId: r.remoteId,
+      number: r.number,
+      status: r.status,
+      vehicleSummary: r.vehicleSummary,
+      counterpartyName: r.counterpartyName,
+      totalAmount: r.totalAmount,
+      plannedAt: r.plannedAt,
+    })));
+  }, [statusFilter]);
 
   useEffect(() => {
     setLoading(true);
-    load(true).finally(() => setLoading(false));
-  }, [statusFilter]);
+    loadFromDb().finally(() => setLoading(false));
+  }, [loadFromDb]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load(true);
+    // Background sync — updates WDB, then reload
+    await syncWorkOrders().catch(() => {});
+    await loadFromDb();
     setRefreshing(false);
   };
 
-  const loadMore = async () => {
-    if (!data || loadingMore) return;
-    const totalPages = Math.ceil(data.total / data.limit);
-    if (page >= totalPages) return;
-    setLoadingMore(true);
-    setPage(p => p + 1);
-    await load(false);
-    setLoadingMore(false);
-  };
-
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
+  const formatDate = (ts: number) => {
+    const d = new Date(ts);
     return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
 
@@ -118,22 +106,19 @@ export default function MyWorkOrdersScreen() {
       </View>
 
       <FlatList
-        data={data?.items ?? []}
+        data={items}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563eb" />}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.3}
         ListEmptyComponent={
           <View style={styles.center}>
             <Text style={styles.emptyText}>Нарядів немає</Text>
           </View>
         }
-        ListFooterComponent={loadingMore ? <ActivityIndicator color="#2563eb" style={{ marginVertical: 12 }} /> : null}
         renderItem={({ item: wo }) => (
           <TouchableOpacity
             style={styles.card}
-            onPress={() => router.push(`/work-order/${wo.id}`)}
+            onPress={() => router.push(`/work-order/${wo.remoteId}`)}
             activeOpacity={0.7}
           >
             <View style={styles.cardHeader}>
@@ -156,7 +141,7 @@ export default function MyWorkOrdersScreen() {
               <Text style={styles.amount}>
                 {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
               </Text>
-              {wo.plannedAt && (
+              {wo.plannedAt != null && (
                 <Text style={styles.date}>📅 {formatDate(wo.plannedAt)}</Text>
               )}
             </View>

@@ -4,17 +4,20 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { FilesService } from './files.service';
 
 @ApiTags('Files')
 @Controller('files')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class FilesController {
   constructor(private readonly service: FilesService) {}
 
   @Post('upload')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({ summary: 'Upload file (photo) to MinIO' })
   @ApiConsumes('multipart/form-data')
   async upload(
@@ -49,6 +52,10 @@ export class FilesController {
     if (!mimetype.startsWith('image/')) throw new BadRequestException('Дозволені тільки зображення');
     if (fileBuffer.length > 10 * 1024 * 1024) throw new BadRequestException('Файл завеликий (максимум 10 МБ)');
 
-    return this.service.upload(orgId, { buffer: fileBuffer, originalname: filename, mimetype, size: fileBuffer.length }, workOrderId);
+    return this.service.upload(
+      orgId,
+      { buffer: fileBuffer, originalname: filename, mimetype, size: fileBuffer.length },
+      workOrderId,
+    );
   }
 }

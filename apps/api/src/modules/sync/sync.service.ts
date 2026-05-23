@@ -1,14 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
-// Tables that are included in cloud sync
-const SYNC_TABLES = [
+// Tables included in cloud sync pull (read-only from server perspective for most)
+const PULL_TABLES = [
   'work_orders', 'work_order_lines', 'work_order_parts',
   'counterparties', 'vehicles', 'customer_garages',
   'stock_items', 'stock_movements',
   'invoices', 'payments',
   'calendar_slots',
 ] as const;
+
+// Tables safe for push — excludes append-only logs and FSM-controlled models
+const PUSH_SAFE_TABLES = new Set([
+  'counterparties', 'vehicles', 'customer_garages',
+  'calendar_slots',
+]);
 
 export interface SyncRecord {
   table: string;
@@ -20,34 +26,34 @@ export interface SyncRecord {
 
 @Injectable()
 export class SyncService {
+  private readonly logger = new Logger(SyncService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async pull(orgId: string, since: bigint): Promise<SyncRecord[]> {
-    const records: SyncRecord[] = [];
+    const results = await Promise.all(
+      PULL_TABLES.map(async (table) => {
+        try {
+          const rows = await (this.prisma as any)[toCamel(table)].findMany({
+            where: { orgId, syncVersion: { gt: since } },
+            take: 500,
+          });
 
-    for (const table of SYNC_TABLES) {
-      try {
-        // Dynamically query each table for records with syncVersion > since
-        const rows = await (this.prisma as any)[toCamel(table)].findMany({
-          where: { orgId, syncVersion: { gt: since } },
-          take: 500,
-        });
-
-        for (const row of rows) {
-          records.push({
+          return rows.map((row: any): SyncRecord => ({
             table,
             id: row.id,
             operation: row.deletedAt ? 'DELETE' : 'UPDATE',
             syncVersion: Number(row.syncVersion),
             payload: row,
-          });
+          }));
+        } catch (err) {
+          this.logger.warn(`pull: skipped table ${table}: ${err}`);
+          return [];
         }
-      } catch {
-        // Table might not have orgId — skip
-      }
-    }
+      }),
+    );
 
-    // Sort by syncVersion ascending for deterministic apply order
+    const records = results.flat();
     records.sort((a, b) => a.syncVersion - b.syncVersion);
     return records;
   }
@@ -57,12 +63,18 @@ export class SyncService {
     let conflicts = 0;
 
     for (const rec of records) {
+      if (!PUSH_SAFE_TABLES.has(rec.table)) {
+        this.logger.warn(`push: rejected write to restricted table ${rec.table} for org ${orgId}`);
+        conflicts++;
+        continue;
+      }
+
       try {
         await this.applyRecord(orgId, rec);
         accepted++;
-      } catch {
+      } catch (err) {
         conflicts++;
-        // Log to SyncJob for manual resolution
+        this.logger.error(`push: conflict on ${rec.table}/${rec.id}: ${err}`);
         await this.prisma.syncJob.create({
           data: {
             orgId,
@@ -72,7 +84,7 @@ export class SyncService {
             syncVersion: BigInt(rec.syncVersion),
             payload: rec.payload as any,
             status: 'FAILED',
-            lastError: 'Conflict during push',
+            lastError: err instanceof Error ? err.message : 'Conflict during push',
           },
         });
       }
@@ -90,18 +102,18 @@ export class SyncService {
       select: { id: true, syncVersion: true },
     });
 
+    // Strip orgId from payload to prevent cross-tenant injection
+    const { id, orgId: _payloadOrgId, ...safePayload } = rec.payload as any;
+
     if (!existing) {
-      // INSERT
-      await model.create({ data: { ...rec.payload, orgId } });
+      await model.create({ data: { ...safePayload, id: rec.id, orgId } });
       return;
     }
 
     // last-write-wins by syncVersion
     if (BigInt(rec.syncVersion) > existing.syncVersion) {
-      const { id, ...rest } = rec.payload;
-      await model.update({ where: { id: rec.id }, data: rest });
+      await model.update({ where: { id: rec.id }, data: safePayload });
     }
-    // If remote syncVersion ≤ local — local wins, skip
   }
 
   async getStatus(orgId: string): Promise<{

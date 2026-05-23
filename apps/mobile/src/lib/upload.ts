@@ -1,4 +1,3 @@
-import { apiFetch } from './api';
 import { getToken } from './auth';
 import { Platform } from 'react-native';
 

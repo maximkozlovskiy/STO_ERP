@@ -2,16 +2,36 @@ import {
   Controller, Get, Post, Body, Query, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { IsArray, IsNumber, IsOptional } from 'class-validator';
+import {
+  IsArray, IsEnum, IsNumber, IsObject, IsOptional, IsString, IsUUID,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
-import { SyncService, SyncRecord } from './sync.service';
+import { SyncService } from './sync.service';
+
+class SyncRecordDto {
+  @IsString() table!: string;
+  @IsUUID() id!: string;
+  @IsEnum(['INSERT', 'UPDATE', 'DELETE']) operation!: 'INSERT' | 'UPDATE' | 'DELETE';
+  @IsNumber() syncVersion!: number;
+  @IsObject() payload!: Record<string, unknown>;
+}
 
 class PushDto {
-  @IsArray() records!: SyncRecord[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SyncRecordDto)
+  records!: SyncRecordDto[];
+}
+
+class SinceQueryDto {
+  @IsOptional()
+  @IsString()
+  since?: string;
 }
 
 @ApiTags('Sync')
@@ -34,9 +54,9 @@ export class SyncController {
   @ApiQuery({ name: 'since', required: false, type: Number })
   pull(
     @OrgContext() orgId: string,
-    @Query('since') since?: string,
+    @Query() query: SinceQueryDto,
   ) {
-    const sinceVersion = since ? BigInt(since) : BigInt(0);
+    const sinceVersion = query.since ? BigInt(query.since) : BigInt(0);
     return this.service.pull(orgId, sinceVersion);
   }
 

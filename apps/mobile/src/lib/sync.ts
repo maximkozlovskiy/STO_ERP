@@ -32,15 +32,60 @@ export async function syncWorkOrders(): Promise<void> {
   const lines = database.get('work_order_lines');
   const parts = database.get('work_order_parts');
 
-  await database.write(async () => {
-    for (const api of items) {
-      const existing = await wos.query().where('remote_id', api.id).fetch();
-      const now = Date.now();
+  // Fetch all existing records BEFORE entering write transaction
+  const [existingWos, existingLines, existingParts] = await Promise.all([
+    wos.query().fetch(),
+    lines.query().fetch(),
+    parts.query().fetch(),
+  ]);
 
-      if (existing.length > 0) {
-        const record = existing[0] as any;
-        if (!record.isDirty) {
-          await record.update((r: any) => {
+  const woByRemoteId = new Map(existingWos.map((r: any) => [r.remoteId, r]));
+  const linesByWoId = new Map<string, Set<string>>();
+  const partsByWoId = new Map<string, Set<string>>();
+
+  for (const l of existingLines as any[]) {
+    if (!linesByWoId.has(l.workOrderId)) linesByWoId.set(l.workOrderId, new Set());
+    linesByWoId.get(l.workOrderId)!.add(l.remoteId);
+  }
+  for (const p of existingParts as any[]) {
+    if (!partsByWoId.has(p.workOrderId)) partsByWoId.set(p.workOrderId, new Set());
+    partsByWoId.get(p.workOrderId)!.add(p.remoteId);
+  }
+
+  const now = Date.now();
+
+  await database.write(async () => {
+    const operations: any[] = [];
+
+    for (const api of items) {
+      const existing = woByRemoteId.get(api.id);
+
+      if (existing) {
+        if (!(existing as any).isDirty) {
+          operations.push(
+            (existing as any).prepareUpdate((r: any) => {
+              r.number = api.number;
+              r.status = api.status;
+              r.vehicleSummary = api.vehicleSummary ?? null;
+              r.counterpartyName = api.counterpartyName ?? null;
+              r.description = api.description ?? null;
+              r.inMileage = api.inMileage ?? null;
+              r.outMileage = api.outMileage ?? null;
+              r.plannedAt = api.plannedAt ? new Date(api.plannedAt).getTime() : null;
+              r.completedAt = api.completedAt ? new Date(api.completedAt).getTime() : null;
+              r.totalLabor = Number(api.totalLabor);
+              r.totalParts = Number(api.totalParts);
+              r.totalAmount = Number(api.totalAmount);
+              r.paidAmount = Number(api.paidAmount);
+              r.syncedAt = now;
+            }),
+          );
+        }
+      } else {
+        operations.push(
+          wos.prepareCreate((r: any) => {
+            r.remoteId = api.id;
+            r.orgId = api.orgId;
             r.number = api.number;
             r.status = api.status;
             r.vehicleSummary = api.vehicleSummary ?? null;
@@ -55,64 +100,47 @@ export async function syncWorkOrders(): Promise<void> {
             r.totalAmount = Number(api.totalAmount);
             r.paidAmount = Number(api.paidAmount);
             r.syncedAt = now;
-          });
-        }
-      } else {
-        await wos.create((r: any) => {
-          r.remoteId = api.id;
-          r.orgId = api.orgId;
-          r.number = api.number;
-          r.status = api.status;
-          r.vehicleSummary = api.vehicleSummary ?? null;
-          r.counterpartyName = api.counterpartyName ?? null;
-          r.description = api.description ?? null;
-          r.inMileage = api.inMileage ?? null;
-          r.outMileage = api.outMileage ?? null;
-          r.plannedAt = api.plannedAt ? new Date(api.plannedAt).getTime() : null;
-          r.completedAt = api.completedAt ? new Date(api.completedAt).getTime() : null;
-          r.totalLabor = Number(api.totalLabor);
-          r.totalParts = Number(api.totalParts);
-          r.totalAmount = Number(api.totalAmount);
-          r.paidAmount = Number(api.paidAmount);
-          r.syncedAt = now;
-          r.isDirty = false;
-        });
+            r.isDirty = false;
+          }),
+        );
       }
 
-      // Sync lines
-      const existingLines = await lines.query().where('work_order_id', api.id).fetch();
-      const existingLineIds = new Set(existingLines.map((l: any) => l.remoteId));
+      const existingLineIds = linesByWoId.get(api.id) ?? new Set<string>();
       for (const line of api.lines ?? []) {
         if (!existingLineIds.has(line.id)) {
-          await lines.create((r: any) => {
-            r.remoteId = line.id;
-            r.workOrderId = api.id;
-            r.workName = line.workName ?? null;
-            r.employeeName = line.employeeName ?? null;
-            r.normoHours = line.normoHours;
-            r.price = Number(line.price);
-            r.amount = Number(line.amount);
-            r.notes = line.notes ?? null;
-          });
+          operations.push(
+            lines.prepareCreate((r: any) => {
+              r.remoteId = line.id;
+              r.workOrderId = api.id;
+              r.workName = line.workName ?? null;
+              r.employeeName = line.employeeName ?? null;
+              r.normoHours = line.normoHours;
+              r.price = Number(line.price);
+              r.amount = Number(line.amount);
+              r.notes = line.notes ?? null;
+            }),
+          );
         }
       }
 
-      // Sync parts
-      const existingParts = await parts.query().where('work_order_id', api.id).fetch();
-      const existingPartIds = new Set(existingParts.map((p: any) => p.remoteId));
+      const existingPartIds = partsByWoId.get(api.id) ?? new Set<string>();
       for (const part of api.parts ?? []) {
         if (!existingPartIds.has(part.id)) {
-          await parts.create((r: any) => {
-            r.remoteId = part.id;
-            r.workOrderId = api.id;
-            r.goodName = part.goodName ?? null;
-            r.quantity = part.quantity;
-            r.price = Number(part.price);
-            r.amount = Number(part.amount);
-          });
+          operations.push(
+            parts.prepareCreate((r: any) => {
+              r.remoteId = part.id;
+              r.workOrderId = api.id;
+              r.goodName = part.goodName ?? null;
+              r.quantity = part.quantity;
+              r.price = Number(part.price);
+              r.amount = Number(part.amount);
+            }),
+          );
         }
       }
     }
+
+    await database.batch(...operations);
   });
 }
 

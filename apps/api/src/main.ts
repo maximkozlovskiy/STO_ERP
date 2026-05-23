@@ -3,7 +3,7 @@ import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import fastifyCookie from '@fastify/cookie';
 import fastifyMultipart from '@fastify/multipart';
@@ -51,8 +51,11 @@ async function bootstrap() {
 
   const port = parseInt(process.env.PORT ?? '3000', 10);
   await app.listen(port, '0.0.0.0');
-  console.warn(`API запущено на порту ${port}`);
-  console.warn(`Swagger: http://localhost:${port}/api/docs`);
+  const logger = new Logger('Bootstrap');
+  logger.log(`API запущено на порту ${port}`);
+  if (process.env.NODE_ENV !== 'production') {
+    logger.log(`Swagger: http://localhost:${port}/api/docs`);
+  }
 }
 
 bootstrap();

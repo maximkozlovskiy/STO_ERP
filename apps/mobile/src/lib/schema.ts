@@ -21,7 +21,7 @@ export const schema = appSchema({
         { name: 'total_parts', type: 'number' },
         { name: 'total_amount', type: 'number' },
         { name: 'paid_amount', type: 'number' },
-        { name: 'synced_at', type: 'number' },
+        { name: 'synced_at', type: 'number', isOptional: true },
         { name: 'is_dirty', type: 'boolean' },
       ],
     }),

@@ -4,6 +4,14 @@ import { useEffect, useState } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 
+interface SyncRecord {
+  table: string;
+  id: string;
+  operation: 'INSERT' | 'UPDATE' | 'DELETE';
+  syncVersion: number;
+  payload: Record<string, unknown>;
+}
+
 interface SyncStatus {
   pendingJobs: number;
   failedJobs: number;
@@ -38,8 +46,18 @@ export default function SyncPage() {
     setError('');
     try {
       const since = status?.maxSyncVersion ?? 0;
-      const pulled = await apiFetch<{ length: number }>(`/sync/pull?since=${since}`);
-      setMsg(`Синхронізація завершена. Отримано ${Array.isArray(pulled) ? pulled.length : 0} записів.`);
+      const pulled = await apiFetch<SyncRecord[]>(`/sync/pull?since=${since}`);
+      const pulledCount = Array.isArray(pulled) ? pulled.length : 0;
+
+      const pushResult = await apiFetch<{ accepted: number; conflicts: number }>('/sync/push', {
+        method: 'POST',
+        body: JSON.stringify({ records: [] }), // web client has no local dirty records to push
+      });
+
+      setMsg(
+        `Синхронізація завершена. Отримано ${pulledCount} записів. ` +
+        `Відправлено: ${pushResult.accepted} прийнято, ${pushResult.conflicts} конфліктів.`,
+      );
       await loadStatus();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка синхронізації');
