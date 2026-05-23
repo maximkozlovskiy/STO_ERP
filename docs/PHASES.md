@@ -326,12 +326,18 @@
 > Залежності: Фази 8–10 (є дані).  
 > Мета: основні аналітичні звіти.
 
-- [ ] `[sto-backend]` `RevenueReport`: `GET /reports/revenue?from=&to=&branchId=` — виручка по днях
-- [ ] `[sto-backend]` `WorkOrderReport`: `GET /reports/work-orders?employeeId=&from=&to=` — наряди / механіки / норм-години
-- [ ] `[sto-backend]` `StockReport`: `GET /reports/stock?warehouseId=` — залишки + рухи за період
-- [ ] `[sto-backend]` `SettlementsReport`: `GET /reports/settlements?counterpartyId=` — дебіторка / кредиторка
-- [ ] `[sto-backend]` `LoadReport`: `GET /reports/load?branchId=&from=&to=` — завантаженість підйомників
-- [ ] `[sto-web]` UI: Сторінки звітів з фільтрами + графіки (recharts) + експорт CSV
+- [x] `[sto-backend]` `RevenueReport`: `GET /reports/revenue?from=&to=&branchId=` — виручка по днях
+    > `apps/api/src/modules/reports/reports.service.ts`. Групування по completedAt date, totalRevenue/labor/parts.
+- [x] `[sto-backend]` `WorkOrderReport`: `GET /reports/work-orders?employeeId=&from=&to=` — наряди / механіки / норм-години
+    > Агрегація WorkOrderLine по employeeId: totalNormoHours + totalAmount + linesCount.
+- [x] `[sto-backend]` `StockReport`: `GET /reports/stock?warehouseId=` — залишки + рухи за період
+    > stockItems (з вартістю) + movements (500 останніх). totalValue.
+- [x] `[sto-backend]` `SettlementsReport`: `GET /reports/settlements?counterpartyId=` — дебіторка / кредиторка
+    > SettlementAccount.balance → totalDebit (>0) + totalCredit (<0). Усі контрагенти з ненульовим балансом.
+- [x] `[sto-backend]` `LoadReport`: `GET /reports/load?branchId=&from=&to=` — завантаженість підйомників
+    > CalendarSlot → groupBy liftId: totalHours / (totalDays * 9h) = loadPercent%.
+- [x] `[sto-web]` UI: Сторінки звітів з фільтрами + графіки (recharts) + експорт CSV
+    > `apps/web/src/app/reports/page.tsx`. 5 вкладок: BarChart (виручка), таблиця (наряди), таблиця (склад), PieChart (розрахунки), горизонтальний BarChart (завантаженість). Кнопка CSV.
 
 ---
 
@@ -405,7 +411,7 @@
 | 9 | Склад та запаси | ✅ завершено (9/9) |
 | 10 | Фінанси та розрахунки | ✅ завершено (10/10) |
 | 11 | Сповіщення | ✅ завершено (4/4) |
-| 12 | Звіти | ⬜ не розпочато |
+| 12 | Звіти | ✅ завершено (6/6) |
 | 13 | Web UI (оболонка + дашборд) | ⬜ не розпочато |
 | 14 | Мобільний додаток | ⬜ не розпочато |
 | 15 | Cloud Sync | ⬜ опціонально |

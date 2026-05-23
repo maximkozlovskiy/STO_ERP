@@ -11,19 +11,20 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@hookform/resolvers": "^3.10.0",
     "@sto/shared": "workspace:*",
     "@sto/ui": "workspace:*",
+    "@tanstack/react-query": "^5.64.0",
+    "@tanstack/react-query-devtools": "^5.64.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
     "next": "15.3.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@tanstack/react-query": "^5.64.0",
-    "@tanstack/react-query-devtools": "^5.64.0",
-    "zod": "^3.24.0",
     "react-hook-form": "^7.54.0",
-    "@hookform/resolvers": "^3.10.0",
-    "lucide-react": "^0.475.0",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^3.6.0"
+    "recharts": "^3.8.1",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
