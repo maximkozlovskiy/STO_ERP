@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { StockMovementType } from '@prisma/client';
 
 export interface CreateMovementDto {
   goodId: string;
@@ -18,7 +18,7 @@ export interface CreateMovementDto {
 export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createMovement(orgId: string, dto: CreateMovementDto, tx?: any): Promise<void> {
+  async createMovement(orgId: string, dto: CreateMovementDto, tx?: Prisma.TransactionClient): Promise<void> {
     const db = tx ?? this.prisma;
 
     if (dto.quantity < 0 || dto.type === 'RESERVATION' || dto.type === 'RESERVATION_RELEASE') {

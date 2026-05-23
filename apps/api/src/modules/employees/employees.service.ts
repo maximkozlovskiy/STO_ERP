@@ -89,8 +89,8 @@ export class EmployeesService {
     // Replace assignment atomically using callback form (array form doesn't guarantee atomicity in Prisma 5)
     await this.prisma.$transaction(async (tx) => {
       await tx.employeeZone.deleteMany({ where: { employeeId: id } });
-      for (const zoneId of dto.zoneIds) {
-        await tx.employeeZone.create({ data: { employeeId: id, zoneId } });
+      if (dto.zoneIds.length) {
+        await tx.employeeZone.createMany({ data: dto.zoneIds.map(zoneId => ({ employeeId: id, zoneId })) });
       }
     });
     return this.findOne(orgId, id);
@@ -108,8 +108,8 @@ export class EmployeesService {
     }
     await this.prisma.$transaction(async (tx) => {
       await tx.employeeLift.deleteMany({ where: { employeeId: id } });
-      for (const liftId of dto.liftIds) {
-        await tx.employeeLift.create({ data: { employeeId: id, liftId } });
+      if (dto.liftIds.length) {
+        await tx.employeeLift.createMany({ data: dto.liftIds.map(liftId => ({ employeeId: id, liftId })) });
       }
     });
     return this.findOne(orgId, id);
@@ -131,8 +131,8 @@ export class EmployeesService {
     }
     await this.prisma.$transaction(async (tx) => {
       await tx.employeeWorkCategory.deleteMany({ where: { employeeId: id } });
-      for (const workCategoryId of dto.workCategoryIds) {
-        await tx.employeeWorkCategory.create({ data: { employeeId: id, workCategoryId } });
+      if (dto.workCategoryIds.length) {
+        await tx.employeeWorkCategory.createMany({ data: dto.workCategoryIds.map(workCategoryId => ({ employeeId: id, workCategoryId })) });
       }
     });
     return this.findOne(orgId, id);

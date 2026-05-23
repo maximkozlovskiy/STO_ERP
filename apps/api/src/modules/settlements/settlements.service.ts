@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SettlementTransactionType } from '@prisma/client';
+import { Prisma, SettlementTransactionType } from '@prisma/client';
 
 export interface CreateTransactionDto {
   counterpartyId: string;
@@ -16,8 +16,8 @@ export interface CreateTransactionDto {
 export class SettlementsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createTransaction(orgId: string, dto: CreateTransactionDto, tx?: any): Promise<void> {
-    const run = async (db: any) => {
+  async createTransaction(orgId: string, dto: CreateTransactionDto, tx?: Prisma.TransactionClient): Promise<void> {
+    const run = async (db: Prisma.TransactionClient | PrismaService) => {
       const account = await db.settlementAccount.findFirst({
         where: { orgId, counterpartyId: dto.counterpartyId, deletedAt: null },
       });

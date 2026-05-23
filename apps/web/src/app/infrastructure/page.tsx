@@ -72,6 +72,7 @@ export default function InfrastructurePage() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modal, setModal] = useState<'branch' | 'zone' | 'lift' | 'warehouse' | null>(null);
   const [saving, setSaving] = useState(false);
@@ -80,10 +81,13 @@ export default function InfrastructurePage() {
   const [form, setForm] = useState<Record<string, string>>({});
 
   const loadAll = () => {
-    apiFetch<Branch[]>('/branches').then(setBranches).catch(() => {});
-    apiFetch<Zone[]>('/zones').then(setZones).catch(() => {});
-    apiFetch<Lift[]>('/lifts').then(setLifts).catch(() => {});
-    apiFetch<Warehouse[]>('/warehouses').then(setWarehouses).catch(() => {});
+    setLoading(true);
+    Promise.all([
+      apiFetch<Branch[]>('/branches').then(setBranches),
+      apiFetch<Zone[]>('/zones').then(setZones),
+      apiFetch<Lift[]>('/lifts').then(setLifts),
+      apiFetch<Warehouse[]>('/warehouses').then(setWarehouses),
+    ]).catch(() => {}).finally(() => setLoading(false));
   };
 
   useEffect(() => { loadAll(); }, []);
@@ -147,6 +151,8 @@ export default function InfrastructurePage() {
           </button>
         ))}
       </div>
+
+      {loading && <p className="text-sm text-gray-400 text-center py-8">Завантаження...</p>}
 
       {/* BRANCHES */}
       {tab === 'branches' && (

@@ -44,6 +44,7 @@ export default function CrmPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT']);
   const router = useRouter();
   const [data, setData] = useState<Paginated | null>(null);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -53,10 +54,11 @@ export default function CrmPage() {
   const [form, setForm] = useState({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '' });
 
   const load = useCallback(() => {
+    setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: '20' });
     if (search) params.set('q', search);
     if (typeFilter) params.set('type', typeFilter);
-    apiFetch<Paginated>(`/counterparties?${params}`).then(setData).catch(() => {});
+    apiFetch<Paginated>(`/counterparties?${params}`).then(setData).catch(() => {}).finally(() => setLoading(false));
   }, [page, search, typeFilter]);
 
   useEffect(() => { load(); }, [load]);
@@ -118,7 +120,10 @@ export default function CrmPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {data?.items.map(cp => (
+            {loading && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+            )}
+            {!loading && data?.items.map(cp => (
               <tr key={cp.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3">
                   <button onClick={() => router.push(`/crm/${cp.id}`)}
@@ -140,7 +145,7 @@ export default function CrmPage() {
                 </td>
               </tr>
             ))}
-            {data?.items.length === 0 && (
+            {!loading && data?.items.length === 0 && (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Нічого не знайдено</td></tr>
             )}
           </tbody>

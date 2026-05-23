@@ -60,7 +60,7 @@ export class ServicesService {
       }
 
       return tx.service.findFirstOrThrow({
-        where: { id: svc.id },
+        where: { id: svc.id, deletedAt: null },
         include: {
           serviceWorks: { include: { work: { select: { name: true, normoHours: true, price: true } } } },
           serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } } },
@@ -102,7 +102,7 @@ export class ServicesService {
       }
 
       return tx.service.findFirstOrThrow({
-        where: { id },
+        where: { id, deletedAt: null },
         include: {
           serviceWorks: { include: { work: { select: { name: true, normoHours: true, price: true } } } },
           serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } } },

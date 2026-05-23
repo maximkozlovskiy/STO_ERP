@@ -58,7 +58,7 @@ export class CounterpartiesService {
         data: { orgId, counterpartyId: cp.id, balance: 0 },
       });
       return tx.counterparty.findFirstOrThrow({
-        where: { id: cp.id },
+        where: { id: cp.id, deletedAt: null },
         include: { settlementAccount: { select: { balance: true } } },
       });
     });

@@ -98,6 +98,7 @@ export default function EmployeesPage() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [workCategories, setWorkCategories] = useState<WorkCategory[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [modal, setModal] = useState<'create' | 'card' | null>(null);
   const [selected, setSelected] = useState<Employee | null>(null);
@@ -113,10 +114,13 @@ export default function EmployeesPage() {
   const [assignedCats, setAssignedCats] = useState<string[]>([]);
 
   const load = () => {
-    apiFetch<Employee[]>('/employees').then(setEmployees).catch(() => {});
-    apiFetch<Zone[]>('/zones').then(setZones).catch(() => {});
-    apiFetch<Lift[]>('/lifts').then(setLifts).catch(() => {});
-    apiFetch<WorkCategory[]>('/work-categories').then(setWorkCategories).catch(() => {});
+    setLoading(true);
+    Promise.all([
+      apiFetch<Employee[]>('/employees').then(setEmployees),
+      apiFetch<Zone[]>('/zones').then(setZones),
+      apiFetch<Lift[]>('/lifts').then(setLifts),
+      apiFetch<WorkCategory[]>('/work-categories').then(setWorkCategories),
+    ]).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
@@ -198,7 +202,10 @@ export default function EmployeesPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {employees.map(emp => (
+            {loading && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+            )}
+            {!loading && employees.map(emp => (
               <tr key={emp.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3">
                   <button onClick={() => openCard(emp)} className="text-sm font-medium text-blue-600 hover:underline text-left">
@@ -228,7 +235,7 @@ export default function EmployeesPage() {
                 </td>
               </tr>
             ))}
-            {employees.length === 0 && (
+            {!loading && employees.length === 0 && (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Немає співробітників</td></tr>
             )}
           </tbody>

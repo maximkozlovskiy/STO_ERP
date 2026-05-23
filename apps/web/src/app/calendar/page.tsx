@@ -30,6 +30,7 @@ export default function CalendarPage() {
 
   const [date, setDate] = useState(toDateString(new Date()));
   const [slots, setSlots] = useState<CalendarSlot[]>([]);
+  const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ liftId: '', employeeId: '', workOrderId: '', startAt: '', endAt: '', notes: '' });
@@ -41,7 +42,8 @@ export default function CalendarPage() {
   }, []);
 
   const load = useCallback(() => {
-    apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`).then(setSlots).catch(() => {});
+    setLoading(true);
+    apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`).then(setSlots).catch(() => {}).finally(() => setLoading(false));
   }, [date]);
 
   useEffect(() => { load(); }, [load]);
@@ -153,7 +155,13 @@ export default function CalendarPage() {
       )}
 
       {/* Timeline grid */}
-      {lifts.length > 0 ? (
+      {loading && <p className="text-sm text-gray-400 text-center py-8">Завантаження...</p>}
+      {!loading && lifts.length === 0 && (
+        <div className="bg-white border rounded-xl p-8 text-center text-sm text-gray-400">
+          Немає підйомників. Додайте їх у розділі <a href="/infrastructure" className="text-blue-600 hover:underline">Інфраструктура</a>.
+        </div>
+      )}
+      {!loading && lifts.length > 0 && (
         <div className="bg-white border rounded-xl overflow-hidden">
           {/* Hour headers */}
           <div className="grid border-b" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
@@ -203,10 +211,6 @@ export default function CalendarPage() {
               </div>
             );
           })}
-        </div>
-      ) : (
-        <div className="bg-white border rounded-xl p-8 text-center text-sm text-gray-400">
-          Немає підйомників. Додайте їх у розділі <a href="/infrastructure" className="text-blue-600 hover:underline">Інфраструктура</a>.
         </div>
       )}
 

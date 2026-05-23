@@ -85,7 +85,7 @@ export class PurchaseOrdersService {
         });
       }
       return tx.purchaseOrder.findFirstOrThrow({
-        where: { id: created.id },
+        where: { id: created.id, deletedAt: null },
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },

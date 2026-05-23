@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -206,7 +207,7 @@ export class WorkOrdersService {
     return this.toDto(updated);
   }
 
-  private async reserveParts(orgId: string, workOrderId: string, userId?: string, tx?: any): Promise<void> {
+  private async reserveParts(orgId: string, workOrderId: string, userId?: string, tx?: Prisma.TransactionClient): Promise<void> {
     const db = tx ?? this.prisma;
     const parts = await db.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
     for (const part of parts) {
@@ -222,7 +223,7 @@ export class WorkOrdersService {
     }
   }
 
-  private async releasePartReservations(orgId: string, workOrderId: string, userId?: string, tx?: any): Promise<void> {
+  private async releasePartReservations(orgId: string, workOrderId: string, userId?: string, tx?: Prisma.TransactionClient): Promise<void> {
     const db = tx ?? this.prisma;
     const parts = await db.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
     for (const part of parts) {
@@ -238,7 +239,7 @@ export class WorkOrdersService {
     }
   }
 
-  private async writeOffPartsAndCharge(orgId: string, wo: { id: string; counterpartyId: string; totalAmount: { toString(): string } }, userId?: string, tx?: any): Promise<void> {
+  private async writeOffPartsAndCharge(orgId: string, wo: { id: string; counterpartyId: string; totalAmount: { toString(): string } }, userId?: string, tx?: Prisma.TransactionClient): Promise<void> {
     const db = tx ?? this.prisma;
     const parts = await db.workOrderPart.findMany({ where: { workOrderId: wo.id, deletedAt: null } });
     for (const part of parts) {
@@ -402,7 +403,7 @@ export class WorkOrdersService {
     return wo;
   }
 
-  private async recalcTotals(workOrderId: string, tx?: any): Promise<void> {
+  private async recalcTotals(workOrderId: string, tx?: Prisma.TransactionClient): Promise<void> {
     const db = tx ?? this.prisma;
     const [lines, parts] = await Promise.all([
       db.workOrderLine.findMany({ where: { workOrderId, deletedAt: null }, select: { amount: true } }),
