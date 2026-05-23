@@ -49,6 +49,7 @@ export default function WorkOrdersPage() {
   const router = useRouter();
 
   const [data, setData] = useState<Paginated | null>(null);
+  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
@@ -68,9 +69,10 @@ export default function WorkOrdersPage() {
   }, []);
 
   const load = useCallback(() => {
+    setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '20' });
     if (statusFilter) p.set('status', statusFilter);
-    apiFetch<Paginated>(`/work-orders?${p}`).then(setData).catch(e => setError(e?.message ?? 'Помилка завантаження'));
+    apiFetch<Paginated>(`/work-orders?${p}`).then(setData).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   }, [page, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
@@ -85,7 +87,7 @@ export default function WorkOrdersPage() {
         );
       })
       .then(results => setVehicles(results.flat()))
-      .catch(() => {});
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження автомобілів'));
   };
 
   const cpName = (cp: Counterparty) =>
@@ -123,6 +125,8 @@ export default function WorkOrdersPage() {
         </button>
       </div>
 
+      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+
       <div className="flex gap-2 mb-4 flex-wrap">
         {[['', 'Всі'], ...Object.entries(STATUS_LABELS)].map(([v, l]) => (
           <button key={v} onClick={() => { setStatusFilter(v); setPage(1); }}
@@ -142,7 +146,10 @@ export default function WorkOrdersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {data?.items.map(wo => (
+            {loading && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+            )}
+            {!loading && data?.items.map(wo => (
               <tr key={wo.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3">
                   <button onClick={() => router.push(`/work-orders/${wo.id}`)} className="text-sm font-medium text-blue-600 hover:underline">
@@ -171,7 +178,7 @@ export default function WorkOrdersPage() {
                 </td>
               </tr>
             ))}
-            {data?.items.length === 0 && (
+            {!loading && data?.items.length === 0 && (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Нічого не знайдено</td></tr>
             )}
           </tbody>

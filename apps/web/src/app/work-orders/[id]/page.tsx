@@ -115,10 +115,10 @@ export default function WorkOrderCardPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    apiFetch<{ items: Work[] }>('/works?limit=200').then(r => setWorks(r.items)).catch(() => {});
-    apiFetch<{ items: Employee[] }>('/employees?limit=200').then((r: any) => setEmployees(Array.isArray(r) ? r : r.items ?? [])).catch(() => {});
-    apiFetch<{ items: Good[] }>('/goods?limit=200').then(r => setGoods(r.items)).catch(() => {});
-    apiFetch<Warehouse[]>('/warehouses').then(setWarehouses).catch(() => {});
+    apiFetch<{ items: Work[] }>('/works?limit=200').then(r => setWorks(r.items)).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
+    apiFetch<{ items: Employee[] }>('/employees?limit=200').then((r: { items?: Employee[] } | Employee[]) => setEmployees(Array.isArray(r) ? r : r.items ?? [])).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
+    apiFetch<{ items: Good[] }>('/goods?limit=200').then(r => setGoods(r.items)).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
+    apiFetch<Warehouse[]>('/warehouses').then(setWarehouses).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
   }, []);
 
   const selectWork = (workId: string) => {
@@ -153,7 +153,8 @@ export default function WorkOrderCardPage() {
 
   const removeLine = async (lineId: string) => {
     if (!confirm('Видалити роботу?')) return;
-    try { await apiFetch(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' }); load(); } catch {}
+    try { await apiFetch(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' }); load(); }
+    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
   };
 
   const addPart = async () => {
@@ -177,7 +178,8 @@ export default function WorkOrderCardPage() {
 
   const removePart = async (partId: string) => {
     if (!confirm('Видалити запчастину?')) return;
-    try { await apiFetch(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' }); load(); } catch {}
+    try { await apiFetch(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' }); load(); }
+    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
   };
 
   const transition = async (newStatus: string) => {

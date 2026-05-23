@@ -49,6 +49,7 @@ function Field({ label, value, onChange, placeholder, type = 'text', required }:
 function WorksTab() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [works, setWorks] = useState<PaginatedWorks | null>(null);
+  const [loading, setLoading] = useState(true);
   const [selectedCat, setSelectedCat] = useState('');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
@@ -58,14 +59,15 @@ function WorksTab() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<Category[]>('/work-categories').then(setCategories).catch(() => {});
+    apiFetch<Category[]>('/work-categories').then(setCategories).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження категорій'));
   }, []);
 
   const load = useCallback(() => {
+    setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (selectedCat) p.set('categoryId', selectedCat);
     if (q) p.set('q', q);
-    apiFetch<PaginatedWorks>(`/works?${p}`).then(setWorks).catch(() => {});
+    apiFetch<PaginatedWorks>(`/works?${p}`).then(setWorks).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   }, [page, selectedCat, q]);
 
   useEffect(() => { load(); }, [load]);
@@ -103,6 +105,7 @@ function WorksTab() {
 
   return (
     <div>
+      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       <div className="flex items-center gap-3 mb-4">
         <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук робіт..."
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -125,7 +128,10 @@ function WorksTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {works?.items.map(w => (
+            {loading && (
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+            )}
+            {!loading && works?.items.map(w => (
               <tr key={w.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3">
                   <p className="text-sm font-medium text-gray-900">{w.name}</p>
@@ -139,7 +145,7 @@ function WorksTab() {
                 </td>
               </tr>
             ))}
-            {works?.items.length === 0 && (
+            {!loading && works?.items.length === 0 && (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Нічого не знайдено</td></tr>
             )}
           </tbody>
@@ -185,6 +191,7 @@ function WorksTab() {
 
 function GoodsTab() {
   const [goods, setGoods] = useState<PaginatedGoods | null>(null);
+  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
@@ -193,9 +200,10 @@ function GoodsTab() {
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
+    setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (q) p.set('q', q);
-    apiFetch<PaginatedGoods>(`/goods?${p}`).then(setGoods).catch(() => {});
+    apiFetch<PaginatedGoods>(`/goods?${p}`).then(setGoods).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   }, [page, q]);
 
   useEffect(() => { load(); }, [load]);
@@ -232,6 +240,7 @@ function GoodsTab() {
 
   return (
     <div>
+      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       <div className="flex items-center gap-3 mb-4">
         <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук за назвою, артикулом, штрихкодом..."
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -249,7 +258,10 @@ function GoodsTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {goods?.items.map(g => (
+            {loading && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+            )}
+            {!loading && goods?.items.map(g => (
               <tr key={g.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3">
                   <p className="text-sm font-medium text-gray-900">{g.name}</p>
@@ -265,7 +277,7 @@ function GoodsTab() {
                 </td>
               </tr>
             ))}
-            {goods?.items.length === 0 && (
+            {!loading && goods?.items.length === 0 && (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Нічого не знайдено</td></tr>
             )}
           </tbody>
@@ -312,6 +324,7 @@ function GoodsTab() {
 
 function ServicesTab() {
   const [services, setServices] = useState<PaginatedServices | null>(null);
+  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
@@ -320,9 +333,10 @@ function ServicesTab() {
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
+    setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (q) p.set('q', q);
-    apiFetch<PaginatedServices>(`/services?${p}`).then(setServices).catch(() => {});
+    apiFetch<PaginatedServices>(`/services?${p}`).then(setServices).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   }, [page, q]);
 
   useEffect(() => { load(); }, [load]);
@@ -354,6 +368,7 @@ function ServicesTab() {
 
   return (
     <div>
+      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       <div className="flex items-center gap-3 mb-4">
         <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук послуг..."
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -371,7 +386,10 @@ function ServicesTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {services?.items.map(s => (
+            {loading && (
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+            )}
+            {!loading && services?.items.map(s => (
               <tr key={s.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3">
                   <p className="text-sm font-medium text-gray-900">{s.name}</p>
@@ -387,7 +405,7 @@ function ServicesTab() {
                 </td>
               </tr>
             ))}
-            {services?.items.length === 0 && (
+            {!loading && services?.items.length === 0 && (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Нічого не знайдено</td></tr>
             )}
           </tbody>

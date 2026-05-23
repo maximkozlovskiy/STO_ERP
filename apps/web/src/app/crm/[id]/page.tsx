@@ -33,22 +33,25 @@ export default function CounterpartyCardPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedGarage, setSelectedGarage] = useState<string | null>(null);
   const [showAddGarage, setShowAddGarage] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [garageName, setGarageName] = useState('');
   const [garageAddress, setGarageAddress] = useState('');
 
   const load = () => {
-    apiFetch<Counterparty>(`/counterparties/${id}`).then(setCp).catch(() => {});
-    apiFetch<Garage[]>(`/counterparties/${id}/garages`).then(g => {
-      setGarages(g);
-      if (g.length > 0 && !selectedGarage) setSelectedGarage(g[0].id);
-    }).catch(() => {});
+    Promise.all([
+      apiFetch<Counterparty>(`/counterparties/${id}`).then(setCp),
+      apiFetch<Garage[]>(`/counterparties/${id}/garages`).then(g => {
+        setGarages(g);
+        if (g.length > 0 && !selectedGarage) setSelectedGarage(g[0].id);
+      }),
+    ]).catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
   };
 
   useEffect(() => { load(); }, [id]);
 
   useEffect(() => {
     if (!selectedGarage) return;
-    apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${selectedGarage}`).then(setVehicles).catch(() => {});
+    apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${selectedGarage}`).then(setVehicles).catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
   }, [selectedGarage]);
 
   const addGarage = async () => {

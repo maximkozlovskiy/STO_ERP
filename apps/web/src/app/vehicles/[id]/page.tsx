@@ -27,10 +27,13 @@ export default function VehicleCardPage() {
   const [showAddNode, setShowAddNode] = useState(false);
   const [nodeForm, setNodeForm] = useState({ category: 'engine', name: '', mileageAtInstall: '', notes: '' });
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const load = () => {
-    apiFetch<Vehicle>(`/vehicles/${id}`).then(setVehicle).catch(() => {});
-    apiFetch<VehicleNode[]>(`/vehicles/${id}/nodes`).then(setNodes).catch(() => {});
+    Promise.all([
+      apiFetch<Vehicle>(`/vehicles/${id}`).then(setVehicle),
+      apiFetch<VehicleNode[]>(`/vehicles/${id}/nodes`).then(setNodes),
+    ]).catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
   };
   useEffect(() => { load(); }, [id]);
 
@@ -67,6 +70,7 @@ export default function VehicleCardPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+      {loadError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{loadError}</p>}
       <div className="flex items-center gap-3">
         <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-600 text-sm">← Назад</button>
         <h1 className="text-2xl font-bold text-gray-900">{vehicle.make} {vehicle.model}</h1>
