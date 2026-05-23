@@ -125,7 +125,7 @@ export class WorkOrdersService {
     }
 
     const updated = await this.prisma.workOrder.update({
-      where: { id },
+      where: { id, orgId },
       data: {
         description: dto.description,
         inMileage: dto.inMileage,
@@ -148,7 +148,7 @@ export class WorkOrdersService {
     if (!['DRAFT', 'CANCELLED'].includes(wo.status)) {
       throw new BadRequestException('Можна видалити лише наряд у статусі Чернетка або Скасовано');
     }
-    await this.prisma.workOrder.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.workOrder.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   // ─── FSM ─────────────────────────────────────────────────
@@ -183,7 +183,7 @@ export class WorkOrdersService {
       }
 
       return tx.workOrder.update({
-        where: { id },
+        where: { id, orgId },
         data: updates,
         include: {
           vehicle: { select: { make: true, model: true, licensePlate: true } },
@@ -311,7 +311,7 @@ export class WorkOrdersService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.workOrderLine.update({
-        where: { id: lineId },
+        where: { id: lineId, orgId },
         data: { normoHours, price, amount, liftId: dto.liftId, notes: dto.notes },
         include: { work: { select: { name: true } }, employee: { select: { firstName: true, lastName: true } } },
       });
@@ -327,7 +327,7 @@ export class WorkOrdersService {
     const line = await this.prisma.workOrderLine.findFirst({ where: { id: lineId, workOrderId, deletedAt: null } });
     if (!line) throw new NotFoundException('Позицію не знайдено');
     await this.prisma.$transaction(async (tx) => {
-      await tx.workOrderLine.update({ where: { id: lineId }, data: { deletedAt: new Date() } });
+      await tx.workOrderLine.update({ where: { id: lineId, orgId }, data: { deletedAt: new Date() } });
       await this.recalcTotals(workOrderId, tx);
     });
   }
@@ -369,7 +369,7 @@ export class WorkOrdersService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.workOrderPart.update({
-        where: { id: partId },
+        where: { id: partId, orgId },
         data: { quantity, price, amount },
         include: { good: { select: { name: true } } },
       });
@@ -385,7 +385,7 @@ export class WorkOrdersService {
     const part = await this.prisma.workOrderPart.findFirst({ where: { id: partId, workOrderId, deletedAt: null } });
     if (!part) throw new NotFoundException('Позицію не знайдено');
     await this.prisma.$transaction(async (tx) => {
-      await tx.workOrderPart.update({ where: { id: partId }, data: { deletedAt: new Date() } });
+      await tx.workOrderPart.update({ where: { id: partId, orgId }, data: { deletedAt: new Date() } });
       await this.recalcTotals(workOrderId, tx);
     });
   }

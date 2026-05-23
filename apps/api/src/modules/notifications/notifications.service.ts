@@ -77,7 +77,7 @@ export class NotificationsService {
     });
     if (!template) throw new NotFoundException('Шаблон не знайдено');
     return this.prisma.notificationTemplate.update({
-      where: { id },
+      where: { id, orgId },
       data: { body: dto.body, subject: dto.subject, isActive: dto.isActive },
     });
   }

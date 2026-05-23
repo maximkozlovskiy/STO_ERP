@@ -118,7 +118,7 @@ export class PurchaseOrdersService {
         }
       }
       return tx.purchaseOrder.update({
-        where: { id },
+        where: { id, orgId },
         data: { notes: dto.notes, totalAmount },
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
@@ -140,7 +140,7 @@ export class PurchaseOrdersService {
       throw new BadRequestException(`Перехід зі статусу "${po.status}" в "${newStatus}" неможливий`);
     }
 
-    await this.prisma.purchaseOrder.update({ where: { id }, data: { status: newStatus } });
+    await this.prisma.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
     return this.findOne(orgId, id);
   }
 
@@ -198,7 +198,7 @@ export class PurchaseOrdersService {
       const allReceived = updatedLines.every((l: any) => l.receivedQty >= l.quantity);
       const anyReceived = updatedLines.some((l: any) => l.receivedQty > 0);
       const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL' : po.status;
-      await tx.purchaseOrder.update({ where: { id }, data: { status: newStatus } });
+      await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
     });
     return this.findOne(orgId, id);
   }
@@ -207,7 +207,7 @@ export class PurchaseOrdersService {
     const po = await this.prisma.purchaseOrder.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
     if (po.status !== 'DRAFT') throw new BadRequestException('Видалити можна лише чернетку');
-    await this.prisma.purchaseOrder.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.purchaseOrder.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(po: any): PurchaseOrderResponseDto {

@@ -36,13 +36,13 @@ export class ZonesService {
 
   async updateZone(orgId: string, id: string, dto: UpdateZoneDto): Promise<ZoneResponseDto> {
     await this.findOneZone(orgId, id);
-    const item = await this.prisma.zone.update({ where: { id }, data: dto });
+    const item = await this.prisma.zone.update({ where: { id, orgId }, data: dto });
     return this.toZoneDto(item);
   }
 
   async removeZone(orgId: string, id: string): Promise<void> {
     await this.findOneZone(orgId, id);
-    await this.prisma.zone.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.zone.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   // ─── Lifts ───────────────────────────────────────────────
@@ -72,13 +72,13 @@ export class ZonesService {
 
   async updateLift(orgId: string, id: string, dto: UpdateLiftDto): Promise<LiftResponseDto> {
     await this.findOneLift(orgId, id);
-    const item = await this.prisma.lift.update({ where: { id }, data: dto });
+    const item = await this.prisma.lift.update({ where: { id, orgId }, data: dto });
     return this.toLiftDto(item);
   }
 
   async removeLift(orgId: string, id: string): Promise<void> {
     await this.findOneLift(orgId, id);
-    await this.prisma.lift.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.lift.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toZoneDto(z: { id: string; orgId: string; branchId: string; name: string; type: string; createdAt: Date; updatedAt: Date }): ZoneResponseDto {

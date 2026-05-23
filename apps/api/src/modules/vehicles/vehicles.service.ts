@@ -65,7 +65,7 @@ export class VehiclesService {
       where: { id: nodeId, vehicleId, orgId, deletedAt: null },
     });
     if (!node) throw new NotFoundException('Вузол не знайдено');
-    await this.prisma.vehicleNode.update({ where: { id: nodeId }, data: { deletedAt: new Date() } });
+    await this.prisma.vehicleNode.update({ where: { id: nodeId, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(v: {

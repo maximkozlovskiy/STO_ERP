@@ -31,13 +31,13 @@ export class WarehousesService {
 
   async update(orgId: string, id: string, dto: UpdateWarehouseDto): Promise<WarehouseResponseDto> {
     await this.findOne(orgId, id);
-    const item = await this.prisma.warehouse.update({ where: { id }, data: dto });
+    const item = await this.prisma.warehouse.update({ where: { id, orgId }, data: dto });
     return this.toDto(item);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
     await this.findOne(orgId, id);
-    await this.prisma.warehouse.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.warehouse.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(w: { id: string; orgId: string; branchId: string; name: string; type: string; createdAt: Date; updatedAt: Date }): WarehouseResponseDto {

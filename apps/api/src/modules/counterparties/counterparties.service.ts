@@ -103,7 +103,7 @@ export class CounterpartiesService {
       where: { id: garageId, counterpartyId, orgId, deletedAt: null },
     });
     if (!garage) throw new NotFoundException('Гараж не знайдено');
-    await this.prisma.customerGarage.update({ where: { id: garageId }, data: { deletedAt: new Date() } });
+    await this.prisma.customerGarage.update({ where: { id: garageId, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(item: {

@@ -146,7 +146,7 @@ export class StockDocumentsService {
         }
       }
       return tx.stockDocument.update({
-        where: { id },
+        where: { id, orgId },
         data: { notes: dto.notes },
         include: {
           branch: { select: { name: true } },
@@ -220,12 +220,12 @@ export class StockDocumentsService {
         }
 
         await tx.stockDocument.update({
-          where: { id },
+          where: { id, orgId },
           data: { status: 'CONFIRMED', confirmedAt: new Date(), confirmedBy: userId ?? null },
         });
       });
     } else {
-      await this.prisma.stockDocument.update({ where: { id }, data: { status: newStatus } });
+      await this.prisma.stockDocument.update({ where: { id, orgId }, data: { status: newStatus } });
     }
 
     return this.findOne(orgId, id);
@@ -235,7 +235,7 @@ export class StockDocumentsService {
     const doc = await this.prisma.stockDocument.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!doc) throw new NotFoundException('Документ не знайдено');
     if (doc.status !== 'DRAFT') throw new BadRequestException('Видалити можна лише чернетку');
-    await this.prisma.stockDocument.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.stockDocument.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(doc: any): StockDocumentResponseDto {

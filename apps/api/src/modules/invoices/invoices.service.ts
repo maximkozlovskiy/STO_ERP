@@ -108,7 +108,7 @@ export class InvoicesService {
     if (inv.status !== 'DRAFT') throw new BadRequestException('Редагувати можна лише чернетку');
 
     const updated = await this.prisma.invoice.update({
-      where: { id },
+      where: { id, orgId },
       data: {
         amount: dto.amount ?? undefined,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
@@ -131,7 +131,7 @@ export class InvoicesService {
       throw new BadRequestException(`Перехід зі статусу "${inv.status}" в "${newStatus}" неможливий`);
     }
 
-    await this.prisma.invoice.update({ where: { id }, data: { status: newStatus } });
+    await this.prisma.invoice.update({ where: { id, orgId }, data: { status: newStatus } });
     return this.findOne(orgId, id);
   }
 
@@ -139,7 +139,7 @@ export class InvoicesService {
     const inv = await this.prisma.invoice.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
     if (inv.status !== 'DRAFT') throw new BadRequestException('Видалити можна лише чернетку');
-    await this.prisma.invoice.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.invoice.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(inv: any): InvoiceResponseDto {

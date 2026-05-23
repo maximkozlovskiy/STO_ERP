@@ -60,7 +60,7 @@ export class PaymentMethodsService {
     if (!existing) throw new NotFoundException('Метод оплати не знайдено');
 
     const item = await this.prisma.paymentMethodConfig.update({
-      where: { id },
+      where: { id, orgId },
       data: dto,
     });
     return this.toDto(item);

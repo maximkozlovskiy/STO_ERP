@@ -74,7 +74,7 @@ export class CalendarService {
   async removeSlot(orgId: string, id: string): Promise<void> {
     const slot = await this.prisma.calendarSlot.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!slot) throw new NotFoundException('Слот не знайдено');
-    await this.prisma.calendarSlot.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.calendarSlot.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(slot: any): CalendarSlotResponseDto {

@@ -76,7 +76,7 @@ export class ServicesService {
 
     const item = await this.prisma.$transaction(async (tx) => {
       await tx.service.update({
-        where: { id },
+        where: { id, orgId },
         data: {
           name: dto.name,
           description: dto.description,
@@ -115,7 +115,7 @@ export class ServicesService {
 
   async remove(orgId: string, id: string): Promise<void> {
     await this.findOne(orgId, id);
-    await this.prisma.service.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.service.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(item: any): ServiceResponseDto {
