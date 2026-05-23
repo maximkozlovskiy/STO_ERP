@@ -16,7 +16,7 @@ export class PaymentsService {
   ) {}
 
   async findAll(orgId: string, page = 1, limit = 20, counterpartyId?: string): Promise<PaginatedPaymentsDto> {
-    const where: any = { orgId };
+    const where: { orgId: string; counterpartyId?: string } = { orgId };
     if (counterpartyId) where.counterpartyId = counterpartyId;
 
     const skip = (page - 1) * limit;
@@ -67,7 +67,7 @@ export class PaymentsService {
 
       // Mark invoice as PAID if linked and fully paid
       if (dto.invoiceId) {
-        const inv = await tx.invoice.findFirst({ where: { id: dto.invoiceId } });
+        const inv = await tx.invoice.findFirst({ where: { id: dto.invoiceId, orgId, deletedAt: null } });
         if (inv && inv.status === 'SENT') {
           await tx.invoice.update({ where: { id: dto.invoiceId }, data: { status: 'PAID' } });
         }
@@ -75,7 +75,7 @@ export class PaymentsService {
 
       // Mark work order as INVOICED→PAID if linked
       if (dto.workOrderId) {
-        const wo = await tx.workOrder.findFirst({ where: { id: dto.workOrderId } });
+        const wo = await tx.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
         if (wo && wo.status === 'INVOICED') {
           await tx.workOrder.update({ where: { id: dto.workOrderId }, data: { status: 'PAID' } });
         }
@@ -112,7 +112,12 @@ export class PaymentsService {
     return this.toDto(payment);
   }
 
-  private toDto(p: any): PaymentResponseDto {
+  private toDto(p: {
+    id: string; orgId: string; counterpartyId: string; workOrderId: string | null;
+    invoiceId: string | null; amount: { toString(): string }; method: string;
+    notes: string | null; fiscalReceiptId: string | null; createdAt: Date;
+    counterparty: { companyName: string | null; lastName: string | null; firstName: string | null } | null;
+  }): PaymentResponseDto {
     const cp = p.counterparty;
     const counterpartyName = cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ');
     return {

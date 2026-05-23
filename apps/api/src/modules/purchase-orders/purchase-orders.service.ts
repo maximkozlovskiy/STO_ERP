@@ -37,7 +37,7 @@ export class PurchaseOrdersService {
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
-          lines: { include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       }),
       this.prisma.purchaseOrder.count({ where }),
@@ -87,7 +87,7 @@ export class PurchaseOrdersService {
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
-          lines: { include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
     });
@@ -121,7 +121,7 @@ export class PurchaseOrdersService {
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
-          lines: { include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
     });
@@ -145,7 +145,7 @@ export class PurchaseOrdersService {
   async receive(orgId: string, id: string, dto: ReceivePurchaseOrderDto, userId?: string): Promise<PurchaseOrderResponseDto> {
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { lines: true },
+      include: { lines: { where: { deletedAt: null } } },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
     if (!['ORDERED', 'PARTIAL'].includes(po.status)) {
@@ -187,7 +187,7 @@ export class PurchaseOrdersService {
     });
 
     // Determine new status
-    const updatedLines = await this.prisma.purchaseOrderLine.findMany({ where: { purchaseOrderId: id } });
+    const updatedLines = await this.prisma.purchaseOrderLine.findMany({ where: { purchaseOrderId: id, deletedAt: null } });
     const allReceived = updatedLines.every(l => l.receivedQty >= l.quantity);
     const anyReceived = updatedLines.some(l => l.receivedQty > 0);
     const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL' : po.status;

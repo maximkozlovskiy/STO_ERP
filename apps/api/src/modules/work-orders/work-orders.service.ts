@@ -234,7 +234,7 @@ export class WorkOrdersService {
 
   private async writeOffPartsAndCharge(orgId: string, wo: { id: string; counterpartyId: string; totalAmount: { toString(): string } }, userId?: string): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      const parts = await tx.workOrderPart.findMany({ where: { workOrderId: wo.id } });
+      const parts = await tx.workOrderPart.findMany({ where: { workOrderId: wo.id, deletedAt: null } });
       for (const part of parts) {
         await this.inventory.createMovement(orgId, {
           goodId: part.goodId,
@@ -307,7 +307,7 @@ export class WorkOrdersService {
 
   async updateLine(orgId: string, workOrderId: string, lineId: string, dto: UpdateWorkOrderLineDto): Promise<WorkOrderLineResponseDto> {
     await this.getEditableWorkOrder(orgId, workOrderId);
-    const line = await this.prisma.workOrderLine.findFirst({ where: { id: lineId, workOrderId } });
+    const line = await this.prisma.workOrderLine.findFirst({ where: { id: lineId, workOrderId, deletedAt: null } });
     if (!line) throw new NotFoundException('Позицію не знайдено');
 
     const normoHours = dto.normoHours ?? line.normoHours;
@@ -329,7 +329,7 @@ export class WorkOrdersService {
 
   async removeLine(orgId: string, workOrderId: string, lineId: string): Promise<void> {
     await this.getEditableWorkOrder(orgId, workOrderId);
-    const line = await this.prisma.workOrderLine.findFirst({ where: { id: lineId, workOrderId } });
+    const line = await this.prisma.workOrderLine.findFirst({ where: { id: lineId, workOrderId, deletedAt: null } });
     if (!line) throw new NotFoundException('Позицію не знайдено');
     await this.prisma.workOrderLine.update({ where: { id: lineId }, data: { deletedAt: new Date() } });
     await this.recalcTotals(workOrderId);
@@ -368,7 +368,7 @@ export class WorkOrdersService {
 
   async updatePart(orgId: string, workOrderId: string, partId: string, dto: UpdateWorkOrderPartDto): Promise<WorkOrderPartResponseDto> {
     await this.getEditableWorkOrder(orgId, workOrderId);
-    const part = await this.prisma.workOrderPart.findFirst({ where: { id: partId, workOrderId } });
+    const part = await this.prisma.workOrderPart.findFirst({ where: { id: partId, workOrderId, deletedAt: null } });
     if (!part) throw new NotFoundException('Позицію не знайдено');
 
     const quantity = dto.quantity ?? part.quantity;
@@ -387,7 +387,7 @@ export class WorkOrdersService {
 
   async removePart(orgId: string, workOrderId: string, partId: string): Promise<void> {
     await this.getEditableWorkOrder(orgId, workOrderId);
-    const part = await this.prisma.workOrderPart.findFirst({ where: { id: partId, workOrderId } });
+    const part = await this.prisma.workOrderPart.findFirst({ where: { id: partId, workOrderId, deletedAt: null } });
     if (!part) throw new NotFoundException('Позицію не знайдено');
     await this.prisma.workOrderPart.update({ where: { id: partId }, data: { deletedAt: new Date() } });
     await this.recalcTotals(workOrderId);

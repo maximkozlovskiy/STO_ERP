@@ -10,11 +10,16 @@ export class ReportsService {
     const toDate = new Date(to);
     toDate.setHours(23, 59, 59, 999);
 
-    const where: any = {
+    const where: {
+      orgId: string; deletedAt: null;
+      status: { in: string[] };
+      completedAt: { gte: Date; lte: Date };
+      branchId?: string;
+    } = {
       orgId,
+      deletedAt: null,
       status: { in: ['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED'] },
       completedAt: { gte: fromDate, lte: toDate },
-      deletedAt: null,
     };
     if (branchId) where.branchId = branchId;
 
@@ -47,8 +52,13 @@ export class ReportsService {
     const toDate = new Date(to);
     toDate.setHours(23, 59, 59, 999);
 
-    const lineWhere: any = {
+    const lineWhere: {
+      orgId: string; deletedAt: null;
+      workOrder: { deletedAt: null; createdAt: { gte: Date; lte: Date } };
+      employeeId?: string;
+    } = {
       orgId,
+      deletedAt: null,
       workOrder: { deletedAt: null, createdAt: { gte: fromDate, lte: toDate } },
     };
     if (employeeId) lineWhere.employeeId = employeeId;
@@ -62,7 +72,7 @@ export class ReportsService {
     });
 
     // Aggregate by employee
-    const byEmp: Record<string, any> = {};
+    const byEmp: Record<string, { employeeId: string; employeeName: string; totalNormoHours: number; totalAmount: number; linesCount: number }> = {};
     for (const line of lines) {
       const empId = line.employeeId;
       if (!byEmp[empId]) {
@@ -88,7 +98,7 @@ export class ReportsService {
   }
 
   async stock(orgId: string, warehouseId?: string, from?: string, to?: string) {
-    const stockWhere: any = { orgId };
+    const stockWhere: { orgId: string; warehouseId?: string } = { orgId };
     if (warehouseId) stockWhere.warehouseId = warehouseId;
 
     const stockItems = await this.prisma.stockItem.findMany({
@@ -100,7 +110,7 @@ export class ReportsService {
       orderBy: [{ warehouse: { name: 'asc' } }, { good: { name: 'asc' } }],
     });
 
-    const movWhere: any = { orgId };
+    const movWhere: { orgId: string; warehouseId?: string; createdAt?: { gte?: Date; lte?: Date } } = { orgId };
     if (warehouseId) movWhere.warehouseId = warehouseId;
     if (from) movWhere.createdAt = { gte: new Date(from) };
     if (to) {
@@ -140,7 +150,7 @@ export class ReportsService {
   }
 
   async settlements(orgId: string, counterpartyId?: string) {
-    const where: any = { orgId };
+    const where: { orgId: string; counterpartyId?: string } = { orgId };
     if (counterpartyId) where.counterpartyId = counterpartyId;
 
     const accounts = await this.prisma.settlementAccount.findMany({
@@ -171,8 +181,9 @@ export class ReportsService {
     const toDate = new Date(to);
     toDate.setHours(23, 59, 59, 999);
 
-    const slotsWhere: any = {
-      orgId: orgId as any,
+    const slotsWhere: { orgId: string; deletedAt: null; startAt: { gte: Date; lte: Date } } = {
+      orgId,
+      deletedAt: null,
       startAt: { gte: fromDate, lte: toDate },
     };
 
@@ -188,7 +199,7 @@ export class ReportsService {
       : slots;
 
     // Aggregate by lift
-    const byLift: Record<string, any> = {};
+    const byLift: Record<string, { liftId: string | null; liftName: string; zoneName: string; totalSlots: number; totalHours: number }> = {};
     for (const slot of filtered) {
       const liftId = slot.liftId;
       if (!byLift[liftId]) {
@@ -209,7 +220,7 @@ export class ReportsService {
     const workHoursPerDay = 9; // 09:00–18:00
 
     return {
-      rows: Object.values(byLift).map((r: any) => ({
+      rows: Object.values(byLift).map((r) => ({
         ...r,
         loadPercent: Math.round((r.totalHours / (totalDays * workHoursPerDay)) * 100),
       })),
