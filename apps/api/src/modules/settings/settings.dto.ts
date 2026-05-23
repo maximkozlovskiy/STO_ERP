@@ -52,6 +52,11 @@ export class UpdateOrganisationSettingsDto {
   @IsOptional()
   @IsBoolean()
   allowPartialPayment?: boolean;
+
+  @ApiPropertyOptional({ enum: ['blue', 'green', 'purple', 'orange', 'gray'] })
+  @IsOptional()
+  @IsString()
+  brandTheme?: string;
 }
 
 export class UpdateBranchSettingsDto {
@@ -128,6 +133,7 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty() defaultWarrantyDays!: number;
   @ApiProperty() requireClientApproval!: boolean;
   @ApiProperty() allowPartialPayment!: boolean;
+  @ApiProperty() brandTheme!: string;
   @ApiProperty() updatedAt!: Date;
 }
 

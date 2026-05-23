@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { THEMES, type ThemeName, applyTheme } from '@/lib/theme';
 
 interface OrgSettings {
   orgId: string;
@@ -13,6 +14,7 @@ interface OrgSettings {
   defaultWarrantyDays: number;
   requireClientApproval: boolean;
   allowPartialPayment: boolean;
+  brandTheme: string;
   updatedAt: string;
 }
 
@@ -37,7 +39,7 @@ const EVENT_LABELS: Record<string, string> = {
   INVOICE_SENT: 'Рахунок надіслано', LOW_STOCK_ALERT: 'Низький залишок',
 };
 
-type Tab = 'org' | 'payments' | 'sms';
+type Tab = 'org' | 'payments' | 'sms' | 'theme';
 
 const VAT_LABELS: Record<string, string> = {
   NONE: 'Без ПДВ',
@@ -57,7 +59,7 @@ export default function SettingsPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<OrgSettings>('/settings/organisation').then(setOrgSettings).catch(console.error);
+    apiFetch<OrgSettings>('/settings/organisation').then(s => { setOrgSettings(s); applyTheme(s.brandTheme); }).catch(console.error);
     apiFetch<PaymentMethod[]>('/payment-methods').then(setPayments).catch(console.error);
     apiFetch<NotificationTemplate[]>('/notification-templates').then(setTemplates).catch(console.error);
   }, []);
@@ -91,8 +93,10 @@ export default function SettingsPage() {
           defaultWarrantyDays: orgSettings.defaultWarrantyDays,
           requireClientApproval: orgSettings.requireClientApproval,
           allowPartialPayment: orgSettings.allowPartialPayment,
+          brandTheme: orgSettings.brandTheme,
         }),
       });
+      applyTheme(updated.brandTheme);
       setOrgSettings(updated);
       setMsg('Збережено');
     } catch (e: unknown) {
@@ -120,7 +124,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b mb-6">
-        {(['org', 'payments', 'sms'] as Tab[]).map((t) => (
+        {(['org', 'payments', 'sms', 'theme'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -130,7 +134,7 @@ export default function SettingsPage() {
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'org' ? 'Організація' : t === 'payments' ? 'Методи оплати' : 'SMS-сповіщення'}
+            {t === 'org' ? 'Організація' : t === 'payments' ? 'Методи оплати' : t === 'sms' ? 'SMS-сповіщення' : 'Оформлення'}
           </button>
         ))}
       </div>
@@ -261,6 +265,28 @@ export default function SettingsPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Theme */}
+      {tab === 'theme' && orgSettings && (
+        <div className="bg-white rounded-xl border p-6">
+          <p className="text-sm text-gray-500 mb-4">Оберіть кольорову палітру інтерфейсу</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+            {(Object.entries(THEMES) as [ThemeName, typeof THEMES[ThemeName]][]).map(([key, theme]) => (
+              <button key={key} onClick={() => { setOrgSettings({ ...orgSettings, brandTheme: key }); applyTheme(key); }}
+                className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                  orgSettings.brandTheme === key ? 'border-gray-900 shadow-sm' : 'border-gray-200 hover:border-gray-300'
+                }`}>
+                <span className="w-8 h-8 rounded-full shrink-0" style={{ background: theme.primary }} />
+                <span className="text-sm font-medium text-gray-700">{theme.label}</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={saveOrgSettings} disabled={saving}
+            className="w-full py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
+            {saving ? 'Збереження...' : 'Зберегти тему'}
+          </button>
         </div>
       )}
 

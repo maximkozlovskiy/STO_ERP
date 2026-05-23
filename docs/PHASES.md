@@ -346,11 +346,16 @@
 > Залежності: Фази 3–12 (всі API готові).  
 > Мета: фінальна web-оболонка з навігацією та дашбордом.
 
-- [ ] `[sto-web]` `TopShell` компонент: TopBar + MegaMenu + QuickTabsBar (з localStorage)
-- [ ] `[sto-web]` `Dashboard` — KPI картки (наряди, виручка, залишки), графік активності, сповіщення
-- [ ] `[sto-web]` `ViewToggle` — перемикач Дашборд / Робоча область (стан в URL)
-- [ ] `[sto-web]` Теми оформлення: 5 палітр, зберігається в `OrganisationSettings.brandTheme`
-- [ ] `[sto-web]` PWA manifest + service worker (offline fallback сторінка)
+- [x] `[sto-web]` `TopShell` компонент: TopBar + MegaMenu + QuickTabsBar (з localStorage)
+    > `apps/web/src/components/TopShell.tsx`. Sticky TopBar + hamburger MegaMenu (slide-out) + quick tabs (localStorage, max 6, shows 5). Role-filtered NAV, user badge, logout button.
+- [x] `[sto-web]` `Dashboard` — KPI картки (наряди, виручка, залишки), графік активності, сповіщення
+    > `apps/web/src/app/dashboard/page.tsx`. 8 KPI cards (Promise.allSettled), recharts BarChart revenue 7д, quick actions. TopShell wired in layout.tsx.
+- [x] `[sto-web]` `ViewToggle` — перемикач Дашборд / Робоча область (стан в URL)
+    > `apps/web/src/components/TopShell.tsx`. Pill toggle (Дашборд / last visited section) in TopBar, resolves from quickTabs[0].
+- [x] `[sto-web]` Теми оформлення: 5 палітр, зберігається в `OrganisationSettings.brandTheme`
+    > `apps/web/src/lib/theme.ts`, `apps/web/src/app/settings/page.tsx` (tab "Оформлення"). CSS vars --color-primary/light/dark. Schema: brandTheme String @default("blue"), migration 20260523041555_add_brand_theme.
+- [x] `[sto-web]` PWA manifest + service worker (offline fallback сторінка)
+    > `apps/web/public/{manifest.json,sw.js,offline.html}`. `ServiceWorkerRegistrar` client component in layout. Offline fallback: локальна мережа СТО hint.
 
 ---
 
@@ -412,7 +417,7 @@
 | 10 | Фінанси та розрахунки | ✅ завершено (10/10) |
 | 11 | Сповіщення | ✅ завершено (4/4) |
 | 12 | Звіти | ✅ завершено (6/6) |
-| 13 | Web UI (оболонка + дашборд) | ⬜ не розпочато |
+| 13 | Web UI (оболонка + дашборд) | ✅ завершено (5/5) |
 | 14 | Мобільний додаток | ⬜ не розпочато |
 | 15 | Cloud Sync | ⬜ опціонально |
 | 16 | Installer та Production | ⬜ не розпочато |

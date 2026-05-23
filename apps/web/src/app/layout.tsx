@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth';
+import { TopShell } from '@/components/TopShell';
+import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import './globals.css';
 
 const geistSans = Geist({
@@ -17,6 +19,8 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'STO ERP',
   description: 'Система управління автосервісом',
+  manifest: '/manifest.json',
+  themeColor: '#2563eb',
 };
 
 export default function RootLayout({
@@ -27,7 +31,10 @@ export default function RootLayout({
   return (
     <html lang="uk">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <AuthProvider>{children}</AuthProvider>
+        <ServiceWorkerRegistrar />
+        <AuthProvider>
+          <TopShell>{children}</TopShell>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -798,6 +798,7 @@ model OrganisationSettings {
   defaultWarrantyDays   Int      @default(30)
   requireClientApproval Boolean  @default(true)
   allowPartialPayment   Boolean  @default(true)
+  brandTheme            String   @default("blue")
   updatedAt             DateTime @updatedAt
 
   org Organisation @relation(fields: [orgId], references: [id])

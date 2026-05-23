@@ -153,6 +153,7 @@ export class SettingsService {
     defaultWarrantyDays: number;
     requireClientApproval: boolean;
     allowPartialPayment: boolean;
+    brandTheme: string;
     updatedAt: Date;
   }): OrganisationSettingsResponseDto {
     return {
@@ -165,6 +166,7 @@ export class SettingsService {
       defaultWarrantyDays: s.defaultWarrantyDays,
       requireClientApproval: s.requireClientApproval,
       allowPartialPayment: s.allowPartialPayment,
+      brandTheme: s.brandTheme,
       updatedAt: s.updatedAt,
     };
   }
