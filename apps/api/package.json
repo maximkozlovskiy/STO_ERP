@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.0",
+    "@fastify/multipart": "^10.0.0",
     "@nestjs/bull": "^10.2.1",
     "@nestjs/common": "^10.4.0",
     "@nestjs/config": "^3.3.0",
@@ -28,6 +29,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "ioredis": "^5.10.1",
+    "minio": "^8.0.7",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",

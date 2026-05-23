@@ -6,6 +6,7 @@ import {
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import fastifyCookie from '@fastify/cookie';
+import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
@@ -15,8 +16,9 @@ async function bootstrap() {
     new FastifyAdapter({ logger: process.env.NODE_ENV === 'development' }),
   );
 
-  // Register Fastify cookie plugin
+  // Register Fastify plugins
   await app.register(fastifyCookie);
+  await app.register(fastifyMultipart, { limits: { fileSize: 10 * 1024 * 1024 } });
 
   app.setGlobalPrefix('api');
 

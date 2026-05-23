@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, RefreshControl,
+  ActivityIndicator, Alert, RefreshControl, Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
+import { uploadWorkOrderPhoto } from '../../src/lib/upload';
 
 interface WorkOrderLine {
   id: string; workName?: string; employeeName?: string;
@@ -65,6 +67,8 @@ export default function WorkOrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [photos, setPhotos] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -84,6 +88,32 @@ export default function WorkOrderDetailScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Дозвіл відхилено', 'Дозвольте доступ до камери в налаштуваннях');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      allowsEditing: false,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    setUploading(true);
+    try {
+      const asset = result.assets[0];
+      const filename = `wo_${id}_${Date.now()}.jpg`;
+      const uploaded = await uploadWorkOrderPhoto(id as string, asset.uri, filename);
+      setPhotos(prev => [...prev, uploaded.url]);
+    } catch (e: unknown) {
+      Alert.alert('Помилка', e instanceof Error ? e.message : 'Не вдалося завантажити фото');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const doTransition = (newStatus: string) => {
@@ -241,6 +271,28 @@ export default function WorkOrderDetailScreen() {
             </View>
           )}
       </View>
+
+      {/* Photos */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Фото ({photos.length})</Text>
+        <TouchableOpacity
+          style={[styles.photoBtn, uploading && { opacity: 0.6 }]}
+          onPress={takePhoto}
+          disabled={uploading}
+          activeOpacity={0.8}
+        >
+          {uploading
+            ? <ActivityIndicator color="#2563eb" size="small" />
+            : <Text style={styles.photoBtnText}>📷 Зробити фото</Text>}
+        </TouchableOpacity>
+        {photos.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+            {photos.map((url, i) => (
+              <Image key={i} source={{ uri: url }} style={styles.photoThumb} />
+            ))}
+          </ScrollView>
+        )}
+      </View>
     </ScrollView>
   );
 }
@@ -320,4 +372,8 @@ const styles = StyleSheet.create({
   itemAmount: { fontSize: 14, fontWeight: '600', color: '#111827', marginLeft: 8 },
 
   emptyText: { color: '#9ca3af', fontSize: 13, fontStyle: 'italic' },
+
+  photoBtn: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  photoBtnText: { color: '#2563eb', fontSize: 14, fontWeight: '600' },
+  photoThumb: { width: 100, height: 100, borderRadius: 8, marginRight: 8, backgroundColor: '#f3f4f6' },
 });

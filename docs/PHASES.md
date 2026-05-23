@@ -364,12 +364,18 @@
 > Залежності: Фаза 8 (Work Orders API).  
 > Мета: Expo-додаток для механіків з офлайн-підтримкою.
 
-- [ ] `[sto-mobile]` Auth + навігація (Expo Router, Tab + Stack)
-- [ ] `[sto-mobile]` WatermelonDB схема: `WorkOrder`, `WorkOrderLine`, `WorkOrderPart`
-- [ ] `[sto-mobile]` Sync layer: pull від API → WatermelonDB, push змін → API
-- [ ] `[sto-mobile]` Екран "Мої наряди" — список з фільтром по статусу
-- [ ] `[sto-mobile]` Екран деталі наряду — операції, запчастини, кнопки переходу
-- [ ] `[sto-mobile]` Фото до наряду через `expo-camera` → MinIO
+- [x] `[sto-mobile]` Auth + навігація (Expo Router, Tab + Stack)
+    > `apps/mobile/app/_layout.tsx`, `app/login.tsx`, `app/(tabs)/_layout.tsx`. Stack: Login + (tabs) + work-order/[id]. JWT login via `/auth/login`. Tab: Наряди + Профіль.
+- [x] `[sto-mobile]` WatermelonDB схема: `WorkOrder`, `WorkOrderLine`, `WorkOrderPart`
+    > `apps/mobile/src/lib/schema.ts`, `src/models/`. appSchema v1, 3 tables. `src/lib/database.ts` initializes SQLiteAdapter + Database.
+- [x] `[sto-mobile]` Sync layer: pull від API → WatermelonDB, push змін → API
+    > `apps/mobile/src/lib/sync.ts`. `syncWorkOrders()` — pull /work-orders?include=lines,parts → upsert WDB (skip isDirty records). `pushDirtyOrders()` — POST /work-orders/:id/transition for dirty records.
+- [x] `[sto-mobile]` Екран "Мої наряди" — список з фільтром по статусу
+    > `apps/mobile/app/(tabs)/index.tsx`. Status filter pills, FlatList with pull-to-refresh + infinite scroll, cards with status badges.
+- [x] `[sto-mobile]` Екран деталі наряду — операції, запчастини, кнопки переходу
+    > `apps/mobile/app/work-order/[id].tsx`. FSM transition buttons, totals, lines/parts sections, photo section.
+- [x] `[sto-mobile]` Фото до наряду через `expo-camera` → MinIO
+    > `apps/mobile/src/lib/upload.ts`, uses `expo-image-picker` (ImagePicker.launchCameraAsync). Upload to `POST /api/files/upload`. Backend: `FilesModule` with `@fastify/multipart` + minio client.
 
 ---
 
@@ -418,7 +424,7 @@
 | 11 | Сповіщення | ✅ завершено (4/4) |
 | 12 | Звіти | ✅ завершено (6/6) |
 | 13 | Web UI (оболонка + дашборд) | ✅ завершено (5/5) |
-| 14 | Мобільний додаток | ⬜ не розпочато |
+| 14 | Мобільний додаток | ✅ завершено (6/6) |
 | 15 | Cloud Sync | ⬜ опціонально |
 | 16 | Installer та Production | ⬜ не розпочато |
 
