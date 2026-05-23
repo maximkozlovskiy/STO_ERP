@@ -126,7 +126,10 @@ export class StockDocumentsService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (dto.lines !== undefined) {
-        await tx.stockDocumentLine.deleteMany({ where: { stockDocumentId: id } });
+        await tx.stockDocumentLine.updateMany({
+          where: { stockDocumentId: id },
+          data: { deletedAt: new Date() },
+        });
         if (dto.lines.length) {
           await tx.stockDocumentLine.createMany({
             data: dto.lines.map(l => ({
@@ -154,7 +157,7 @@ export class StockDocumentsService {
   async transition(orgId: string, id: string, newStatus: DocStatus, userId?: string): Promise<StockDocumentResponseDto> {
     const doc = await this.prisma.stockDocument.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { lines: true },
+      include: { lines: { where: { deletedAt: null } } },
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');
 

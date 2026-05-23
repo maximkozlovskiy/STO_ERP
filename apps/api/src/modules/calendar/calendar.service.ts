@@ -12,8 +12,15 @@ export class CalendarService {
     const end = new Date(date);
     end.setHours(23, 59, 59, 999);
 
-    const where: any = {
+    const where: {
+      orgId: string;
+      deletedAt: null;
+      startAt: { gte: Date };
+      endAt: { lte: Date };
+      branchId?: string;
+    } = {
       orgId,
+      deletedAt: null,
       startAt: { gte: start },
       endAt: { lte: end },
     };
@@ -38,6 +45,7 @@ export class CalendarService {
         where: {
           orgId,
           liftId: dto.liftId,
+          deletedAt: null,
           OR: [
             { startAt: { lt: endAt }, endAt: { gt: startAt } },
           ],
@@ -63,9 +71,9 @@ export class CalendarService {
   }
 
   async removeSlot(orgId: string, id: string): Promise<void> {
-    const slot = await this.prisma.calendarSlot.findFirst({ where: { id, orgId } });
+    const slot = await this.prisma.calendarSlot.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!slot) throw new NotFoundException('Слот не знайдено');
-    await this.prisma.calendarSlot.delete({ where: { id } });
+    await this.prisma.calendarSlot.update({ where: { id }, data: { deletedAt: new Date() } });
   }
 
   private toDto(slot: any): CalendarSlotResponseDto {

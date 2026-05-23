@@ -61,14 +61,16 @@ export default function WorkOrdersPage() {
   const [form, setForm] = useState({ branchId: '', vehicleId: '', counterpartyId: '', description: '', inMileage: '', plannedAt: '' });
 
   useEffect(() => {
-    apiFetch<Branch[]>('/branches').then(setBranches).catch(() => {});
-    apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200').then(r => setCounterparties(r.items)).catch(() => {});
+    apiFetch<Branch[]>('/branches').then(setBranches).catch(() => setError('Не вдалося завантажити філії'));
+    apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200')
+      .then(r => setCounterparties(r.items))
+      .catch(() => setError('Не вдалося завантажити контрагентів'));
   }, []);
 
   const load = useCallback(() => {
     const p = new URLSearchParams({ page: String(page), limit: '20' });
     if (statusFilter) p.set('status', statusFilter);
-    apiFetch<Paginated>(`/work-orders?${p}`).then(setData).catch(() => {});
+    apiFetch<Paginated>(`/work-orders?${p}`).then(setData).catch(e => setError(e?.message ?? 'Помилка завантаження'));
   }, [page, statusFilter]);
 
   useEffect(() => { load(); }, [load]);

@@ -105,7 +105,10 @@ export class PurchaseOrdersService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (lines !== undefined) {
-        await tx.purchaseOrderLine.deleteMany({ where: { purchaseOrderId: id } });
+        await tx.purchaseOrderLine.updateMany({
+          where: { purchaseOrderId: id },
+          data: { deletedAt: new Date() },
+        });
         if (lines.length) {
           await tx.purchaseOrderLine.createMany({
             data: lines.map(l => ({ purchaseOrderId: id, goodId: l.goodId, quantity: l.quantity, price: l.price })),

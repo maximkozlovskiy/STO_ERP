@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SetupInitDto, SetupInitResponseDto } from './setup.dto';
 import { SetupService } from './setup.service';
@@ -19,7 +19,11 @@ export class SetupController {
   @Post('init')
   @ApiOperation({ summary: 'Ініціалізація системи (перший запуск)' })
   @ApiResponse({ status: 201, type: SetupInitResponseDto })
-  init(@Body() dto: SetupInitDto) {
+  @ApiResponse({ status: 403, description: 'Систему вже налаштовано' })
+  async init(@Body() dto: SetupInitDto) {
+    if (await this.service.isAlreadyInitialized()) {
+      throw new ForbiddenException('Систему вже налаштовано. Повторна ініціалізація заборонена.');
+    }
     return this.service.init(dto);
   }
 }
