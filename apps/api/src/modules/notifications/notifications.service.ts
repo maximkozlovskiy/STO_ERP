@@ -1,17 +1,10 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { NotificationEventType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
-export type NotificationEvent =
-  | 'WO_COMPLETED'
-  | 'WO_ESTIMATE_READY'
-  | 'WO_APPROVED'
-  | 'WO_IN_PROGRESS'
-  | 'WO_READY_FOR_PICKUP'
-  | 'PAYMENT_RECEIVED'
-  | 'INVOICE_SENT'
-  | 'LOW_STOCK_ALERT';
+export type NotificationEvent = NotificationEventType;
 
 @Injectable()
 export class NotificationsService {
@@ -22,7 +15,7 @@ export class NotificationsService {
     @InjectQueue('sms') private readonly smsQueue: Queue,
   ) {}
 
-  async send(orgId: string, event: NotificationEvent, payload: Record<string, any>): Promise<void> {
+  async send(orgId: string, event: NotificationEvent, payload: Record<string, unknown>): Promise<void> {
     // Load branch settings for SMS config
     const branchId = payload.branchId;
     const branchSettings = branchId
@@ -36,7 +29,7 @@ export class NotificationsService {
 
     // Load notification template
     const template = await this.prisma.notificationTemplate.findFirst({
-      where: { orgId, eventType: event as any, channel: 'SMS', isActive: true },
+      where: { orgId, eventType: event, channel: 'SMS', isActive: true },
     });
 
     if (!template) {
@@ -82,7 +75,7 @@ export class NotificationsService {
     });
   }
 
-  private renderTemplate(template: string, vars: Record<string, any>): string {
+  private renderTemplate(template: string, vars: Record<string, unknown>): string {
     return template.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key] ?? ''));
   }
 }

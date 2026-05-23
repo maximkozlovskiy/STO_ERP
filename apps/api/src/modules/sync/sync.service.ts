@@ -115,7 +115,7 @@ export class SyncService {
     if (!model) throw new Error(`Unknown model for table: ${rec.table}`);
 
     const existing = await model.findFirst({
-      where: { id: rec.id, orgId },
+      where: { id: rec.id, orgId, deletedAt: null },
       select: { id: true, syncVersion: true },
     });
 
@@ -166,14 +166,17 @@ export class SyncService {
   private async validateForeignKeys(orgId: string, table: string, payload: Record<string, unknown>): Promise<void> {
     const checks = SyncService.FK_CHECKS[table];
     if (!checks) return;
-    for (const { field, model } of checks) {
-      const id = payload[field] as string | undefined;
-      if (!id) continue;
-      const record = await (this.prisma as any)[model].findFirst({ where: { id, orgId }, select: { id: true } });
-      if (!record) {
-        throw new Error(`Поле ${field}=${id} не з��айдено в ��ежах організації`);
-      }
-    }
+    await Promise.all(
+      checks
+        .filter(({ field }) => payload[field])
+        .map(async ({ field, model }) => {
+          const id = payload[field] as string;
+          const record = await (this.prisma as any)[model].findFirst({ where: { id, orgId }, select: { id: true } });
+          if (!record) {
+            throw new Error(`Поле ${field}=${id} не знайдено в межах організації`);
+          }
+        }),
+    );
   }
 
   async getStatus(orgId: string): Promise<{

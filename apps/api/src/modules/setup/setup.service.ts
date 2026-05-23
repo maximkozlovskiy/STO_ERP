@@ -138,7 +138,7 @@ export class SetupService {
       });
 
       // 10. AuthAccount
-      await (tx as any).authAccount.create({
+      await tx.authAccount.create({
         data: {
           orgId: org.id,
           employeeId: employee.id,
