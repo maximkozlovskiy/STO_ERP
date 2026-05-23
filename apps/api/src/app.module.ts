@@ -21,6 +21,8 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { SettlementsModule } from './modules/settlements/settlements.module';
 import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
+import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
+import { StockDocumentsModule } from './modules/stock-documents/stock-documents.module';
 
 @Module({
   imports: [
@@ -49,6 +51,8 @@ import { CalendarModule } from './modules/calendar/calendar.module';
     SettlementsModule,
     WorkOrdersModule,
     CalendarModule,
+    PurchaseOrdersModule,
+    StockDocumentsModule,
   ],
 })
 export class AppModule {}

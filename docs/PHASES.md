@@ -256,15 +256,24 @@
 > Залежності: Фаза 7 (Good, Warehouse), Фаза 8 (WorkOrder резервує запчастини).  
 > Мета: повний облік ТМЦ.
 
-- [ ] `[sto-backend]` `InventoryService.createMovement(dto)` — єдина точка входу для всіх рухів
-- [ ] `[sto-backend]` `StockItemModule`: `GET /stock-items?warehouseId=&goodId=` (залишки)
-- [ ] `[sto-backend]` `PurchaseOrderModule`: CRUD + FSM (DRAFT→ORDERED→RECEIVED/PARTIAL) + `POST /purchase-orders/:id/receive`
-- [ ] `[sto-backend]` `StockDocumentModule`: CRUD + FSM (DRAFT→CONFIRMED→CANCELLED) — типи WRITEOFF, TRANSFER, OPENING_BALANCE
-- [ ] `[sto-backend]` Списання на наряд при переході `COMPLETED`: `RESERVATION → WRITEOFF`
-- [ ] `[sto-backend]` `GET /stock-items/low` — товари нижче мінімального залишку
-- [ ] `[sto-web]` UI: Залишки по складах (таблиця + фільтр по складу)
-- [ ] `[sto-web]` UI: Замовлення постачальнику (список + форма + прийом)
-- [ ] `[sto-web]` UI: Документи списання / переміщення / початкові залишки
+- [x] `[sto-backend]` `InventoryService.createMovement(dto)` — єдина точка входу для всіх рухів
+    > `apps/api/src/modules/inventory/inventory.service.ts`. Upsert StockItem, validація available при WRITEOFF, підтримка tx параметра для транзакцій.
+- [x] `[sto-backend]` `StockItemModule`: `GET /stock-items?warehouseId=&goodId=` (залишки)
+    > `apps/api/src/modules/inventory/stock-items.controller.ts`. GET /stock-items (з фільтрами) + GET /stock-items/low.
+- [x] `[sto-backend]` `PurchaseOrderModule`: CRUD + FSM (DRAFT→ORDERED→RECEIVED/PARTIAL) + `POST /purchase-orders/:id/receive`
+    > `apps/api/src/modules/purchase-orders/`. FSM: DRAFT→ORDERED→PARTIAL/RECEIVED/CANCELLED. receive() → RECEIPT movements + CHARGE settlement в $transaction.
+- [x] `[sto-backend]` `StockDocumentModule`: CRUD + FSM (DRAFT→CONFIRMED→CANCELLED) — типи WRITEOFF, TRANSFER, OPENING_BALANCE
+    > `apps/api/src/modules/stock-documents/`. CONFIRMED → createMovement для кожної позиції. TRANSFER = WRITEOFF+RECEIPT між складами.
+- [x] `[sto-backend]` Списання на наряд при переході `COMPLETED`: `RESERVATION → WRITEOFF`
+    > В `work-orders.service.ts` writeOffPartsAndCharge(): RESERVATION_RELEASE + WRITEOFF + SettlementsService.CHARGE в $transaction.
+- [x] `[sto-backend]` `GET /stock-items/low` — товари нижче мінімального залишку
+    > В stock-items.controller.ts: GET /stock-items/low фільтрує де quantity <= minStock.
+- [x] `[sto-web]` UI: Залишки по складах (таблиця + фільтр по складу)
+    > `apps/web/src/app/inventory/page.tsx`. Фільтр по складу + пошук, ⚠ індикатор низьких залишків, модалка LOW stock.
+- [x] `[sto-web]` UI: Замовлення постачальнику (список + форма + прийом)
+    > `apps/web/src/app/purchase-orders/page.tsx`. Список + статус-фільтри + модалка створення з позиціями + модалка прийому.
+- [x] `[sto-web]` UI: Документи списання / переміщення / початкові залишки
+    > `apps/web/src/app/stock-documents/page.tsx`. Тип- і статус-фільтри, форма з динамічними полями (targetWarehouse для TRANSFER).
 
 ---
 
@@ -373,13 +382,13 @@
 | 0 | Bootstrap | ✅ завершено (10/10) |
 | 1 | Повна схема БД | ✅ завершено (10/10) |
 | 2 | Автентифікація | ✅ завершено (6/6) |
-| 3 | Налаштування + перший запуск | ⬜ не розпочато |
-| 4 | Інфраструктура (довідники) | ⬜ не розпочато |
-| 5 | Співробітники | ⬜ не розпочато |
-| 6 | CRM | ⬜ не розпочато |
-| 7 | Каталог послуг і товарів | ⬜ не розпочато |
-| 8 | Наряди ← ЯДРО | ⬜ не розпочато |
-| 9 | Склад та запаси | ⬜ не розпочато |
+| 3 | Налаштування + перший запуск | ✅ завершено (7/7) |
+| 4 | Інфраструктура (довідники) | ✅ завершено (5/5) |
+| 5 | Співробітники | ✅ завершено (4/4) |
+| 6 | CRM | ✅ завершено (6/6) |
+| 7 | Каталог послуг і товарів | ✅ завершено (5/5) |
+| 8 | Наряди ← ЯДРО | ✅ завершено (12/12) |
+| 9 | Склад та запаси | ✅ завершено (9/9) |
 | 10 | Фінанси та розрахунки | ⬜ не розпочато |
 | 11 | Сповіщення | ⬜ не розпочато |
 | 12 | Звіти | ⬜ не розпочато |
