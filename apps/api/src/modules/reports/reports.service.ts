@@ -104,7 +104,7 @@ export class ReportsService {
   }
 
   async stock(orgId: string, warehouseId?: string, from?: string, to?: string) {
-    const stockWhere: { orgId: string; warehouseId?: string } = { orgId };
+    const stockWhere: { orgId: string; warehouseId?: string; deletedAt: null } = { orgId, deletedAt: null };
     if (warehouseId) stockWhere.warehouseId = warehouseId;
 
     const stockItems = await this.prisma.stockItem.findMany({

@@ -17,14 +17,14 @@ export class SettlementsController {
 
   @Get('balance')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Р‘Р°Р»Р°РЅСЃ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°' })
+  @ApiOperation({ summary: ‘Баланс контрагента’ })
   getBalance(@OrgContext() orgId: string, @Param('counterpartyId') counterpartyId: string) {
     return this.service.getBalance(orgId, counterpartyId);
   }
 
   @Get('transactions')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'РўСЂР°РЅР·Р°РєС†С–С— РєРѕРЅС‚СЂР°РіРµРЅС‚Р°' })
+  @ApiOperation({ summary: 'Транзакції контрагента' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   getTransactions(
@@ -38,7 +38,7 @@ export class SettlementsController {
 
   @Post('reconciliation-acts')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'РЎС‚РІРѕСЂРёС‚Рё Р°РєС‚ Р·РІС–СЂРєРё' })
+  @ApiOperation({ summary: 'Створити акт звірки' })
   createAct(
     @OrgContext() orgId: string,
     @Param('counterpartyId') counterpartyId: string,
@@ -50,7 +50,7 @@ export class SettlementsController {
 
   @Get('reconciliation-acts')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'РђРєС‚Рё Р·РІС–СЂРєРё РєРѕРЅС‚СЂР°РіРµРЅС‚Р°' })
+  @ApiOperation({ summary: 'Акти звірки контрагента' })
   getActs(@OrgContext() orgId: string, @Param('counterpartyId') counterpartyId: string) {
     return this.service.getReconciliationActs(orgId, counterpartyId);
   }

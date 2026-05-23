@@ -69,7 +69,7 @@ export class SettingsService {
   }
 
   async getBranchSettings(orgId: string, branchId: string): Promise<BranchSettingsResponseDto> {
-    const cacheKey = `settings:branch:${branchId}`;
+    const cacheKey = `settings:branch:${orgId}:${branchId}`;
 
     try {
       const cached = await this.redis.get(cacheKey);

@@ -25,18 +25,20 @@ export class CheckboxProcessor {
       where: { orgId },
     });
 
-    if (!branchSettings?.checkboxApiKey || !branchSettings?.checkboxEnabled) {
+    if (!branchSettings?.checkboxLicenseKey || !branchSettings?.fiscalEnabled) {
       this.logger.debug(`Checkbox не налаштовано для org=${orgId}, пропускаємо`);
       return;
     }
 
+    const apiUrl = branchSettings.checkboxApiUrl ?? 'https://api.checkbox.ua';
+
     // Call Checkbox API
-    const response = await fetch('https://api.checkbox.ua/api/v1/receipts/sell', {
+    const response = await fetch(`${apiUrl}/api/v1/receipts/sell`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${branchSettings.checkboxApiKey}`,
+        'Authorization': `Bearer ${branchSettings.checkboxLicenseKey}`,
         'Content-Type': 'application/json',
-        'X-License-Key': branchSettings.checkboxLicenseKey ?? '',
+        'X-License-Key': branchSettings.checkboxLicenseKey,
       },
       body: JSON.stringify({
         goods: [{ good: { name: 'Послуги автосервісу', price: Math.round(amount * 100) }, quantity: 1000 }],

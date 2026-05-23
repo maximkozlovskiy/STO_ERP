@@ -168,26 +168,29 @@ export class WorkOrdersService {
     const updates: { status: WorkOrderStatus; completedAt?: Date } = { status: newStatus };
     if (newStatus === 'COMPLETED') updates.completedAt = new Date();
 
-    if (newStatus === 'IN_PROGRESS') {
-      await this.reserveParts(orgId, id, userId);
-    }
+    // All side-effects + status update run in one transaction to prevent partial state
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (newStatus === 'IN_PROGRESS') {
+        await this.reserveParts(orgId, id, userId, tx);
+      }
 
-    if (newStatus === 'COMPLETED') {
-      await this.writeOffPartsAndCharge(orgId, wo, userId);
-    }
+      if (newStatus === 'COMPLETED') {
+        await this.writeOffPartsAndCharge(orgId, wo, userId, tx);
+      }
 
-    if (newStatus === 'CANCELLED' && wo.status === 'IN_PROGRESS') {
-      await this.releasePartReservations(orgId, id, userId);
-    }
+      if (newStatus === 'CANCELLED' && wo.status === 'IN_PROGRESS') {
+        await this.releasePartReservations(orgId, id, userId, tx);
+      }
 
-    const updated = await this.prisma.workOrder.update({
-      where: { id },
-      data: updates,
-      include: {
-        vehicle: { select: { make: true, model: true, licensePlate: true } },
-        counterparty: { select: { firstName: true, lastName: true, companyName: true, phone: true } },
-        branch: { select: { name: true } },
-      },
+      return tx.workOrder.update({
+        where: { id },
+        data: updates,
+        include: {
+          vehicle: { select: { make: true, model: true, licensePlate: true } },
+          counterparty: { select: { firstName: true, lastName: true, companyName: true, phone: true } },
+          branch: { select: { name: true } },
+        },
+      });
     });
 
     // Send notifications (fire-and-forget via BullMQ queue — offline safe)
@@ -203,27 +206,27 @@ export class WorkOrdersService {
     return this.toDto(updated);
   }
 
-  private async reserveParts(orgId: string, workOrderId: string, userId?: string): Promise<void> {
-    const parts = await this.prisma.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
-    await this.prisma.$transaction(async (tx) => {
-      for (const part of parts) {
-        await this.inventory.createMovement(orgId, {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
-          type: 'RESERVATION',
-          quantity: part.quantity,
-          documentType: 'WorkOrder',
-          documentId: workOrderId,
-          createdBy: userId,
-        }, tx);
-      }
-    });
+  private async reserveParts(orgId: string, workOrderId: string, userId?: string, tx?: any): Promise<void> {
+    const db = tx ?? this.prisma;
+    const parts = await db.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
+    for (const part of parts) {
+      await this.inventory.createMovement(orgId, {
+        goodId: part.goodId,
+        warehouseId: part.warehouseId,
+        type: 'RESERVATION',
+        quantity: part.quantity,
+        documentType: 'WorkOrder',
+        documentId: workOrderId,
+        createdBy: userId,
+      }, db);
+    }
   }
 
-  private async releasePartReservations(orgId: string, workOrderId: string, userId?: string): Promise<void> {
-    const parts = await this.prisma.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
-    await Promise.all(parts.map(part =>
-      this.inventory.createMovement(orgId, {
+  private async releasePartReservations(orgId: string, workOrderId: string, userId?: string, tx?: any): Promise<void> {
+    const db = tx ?? this.prisma;
+    const parts = await db.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
+    for (const part of parts) {
+      await this.inventory.createMovement(orgId, {
         goodId: part.goodId,
         warehouseId: part.warehouseId,
         type: 'RESERVATION_RELEASE',
@@ -231,44 +234,43 @@ export class WorkOrdersService {
         documentType: 'WorkOrder',
         documentId: workOrderId,
         createdBy: userId,
-      }),
-    ));
+      }, db);
+    }
   }
 
-  private async writeOffPartsAndCharge(orgId: string, wo: { id: string; counterpartyId: string; totalAmount: { toString(): string } }, userId?: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      const parts = await tx.workOrderPart.findMany({ where: { workOrderId: wo.id, deletedAt: null } });
-      for (const part of parts) {
-        await this.inventory.createMovement(orgId, {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
-          type: 'WRITEOFF',
-          quantity: -part.quantity,
-          price: Number(part.price),
-          documentType: 'WorkOrder',
-          documentId: wo.id,
-          createdBy: userId,
-        }, tx);
-        // Release the reservation that was created on IN_PROGRESS
-        await this.inventory.createMovement(orgId, {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
-          type: 'RESERVATION_RELEASE',
-          quantity: -part.quantity,
-          documentType: 'WorkOrder',
-          documentId: wo.id,
-          createdBy: userId,
-        }, tx);
-      }
-      await this.settlements.createTransaction(orgId, {
-        counterpartyId: wo.counterpartyId,
-        type: 'CHARGE',
-        amount: Number(wo.totalAmount),
+  private async writeOffPartsAndCharge(orgId: string, wo: { id: string; counterpartyId: string; totalAmount: { toString(): string } }, userId?: string, tx?: any): Promise<void> {
+    const db = tx ?? this.prisma;
+    const parts = await db.workOrderPart.findMany({ where: { workOrderId: wo.id, deletedAt: null } });
+    for (const part of parts) {
+      await this.inventory.createMovement(orgId, {
+        goodId: part.goodId,
+        warehouseId: part.warehouseId,
+        type: 'WRITEOFF',
+        quantity: -part.quantity,
+        price: Number(part.price),
         documentType: 'WorkOrder',
         documentId: wo.id,
         createdBy: userId,
-      }, tx);
-    });
+      }, db);
+      // Release the reservation that was created on IN_PROGRESS
+      await this.inventory.createMovement(orgId, {
+        goodId: part.goodId,
+        warehouseId: part.warehouseId,
+        type: 'RESERVATION_RELEASE',
+        quantity: -part.quantity,
+        documentType: 'WorkOrder',
+        documentId: wo.id,
+        createdBy: userId,
+      }, db);
+    }
+    await this.settlements.createTransaction(orgId, {
+      counterpartyId: wo.counterpartyId,
+      type: 'CHARGE',
+      amount: Number(wo.totalAmount),
+      documentType: 'WorkOrder',
+      documentId: wo.id,
+      createdBy: userId,
+    }, db);
   }
 
   // ─── Lines ───────────────────────────────────────────────

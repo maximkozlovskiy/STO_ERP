@@ -17,7 +17,7 @@ export class PaymentsController {
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'РЎРїРёСЃРѕРє РїР»Р°С‚РµР¶С–РІ' })
+  @ApiOperation({ summary: 'Список платежів' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'counterpartyId', required: false })
@@ -32,7 +32,7 @@ export class PaymentsController {
 
   @Post()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Р—Р°СЂРµС”СЃС‚СЂСѓРІР°С‚Рё РѕРїР»Р°С‚Сѓ' })
+  @ApiOperation({ summary: 'Зареєструвати оплату' })
   create(
     @OrgContext() orgId: string,
     @Body() dto: CreatePaymentDto,

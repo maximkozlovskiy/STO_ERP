@@ -13,12 +13,13 @@ export class DocumentNumberService {
   async next(orgId: string, documentType: DocumentType, tx?: any): Promise<string> {
     const db = tx ?? this.prisma;
 
-    const config = await db.documentNumberConfig.update({
-      where: { orgId_documentType: { orgId, documentType } },
-      data: { currentSeq: { increment: 1 } },
-    });
-
-    if (!config) {
+    let config;
+    try {
+      config = await db.documentNumberConfig.update({
+        where: { orgId_documentType: { orgId, documentType } },
+        data: { currentSeq: { increment: 1 } },
+      });
+    } catch {
       throw new BadRequestException(`Конфігурацію нумерації для "${documentType}" не знайдено`);
     }
 

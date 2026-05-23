@@ -192,15 +192,14 @@ export class PurchaseOrdersService {
           createdBy: userId,
         }, tx);
       }
+
+      // Determine and apply new status inside the same transaction
+      const updatedLines = await tx.purchaseOrderLine.findMany({ where: { purchaseOrderId: id, deletedAt: null } });
+      const allReceived = updatedLines.every((l: any) => l.receivedQty >= l.quantity);
+      const anyReceived = updatedLines.some((l: any) => l.receivedQty > 0);
+      const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL' : po.status;
+      await tx.purchaseOrder.update({ where: { id }, data: { status: newStatus } });
     });
-
-    // Determine new status
-    const updatedLines = await this.prisma.purchaseOrderLine.findMany({ where: { purchaseOrderId: id, deletedAt: null } });
-    const allReceived = updatedLines.every(l => l.receivedQty >= l.quantity);
-    const anyReceived = updatedLines.some(l => l.receivedQty > 0);
-    const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL' : po.status;
-
-    await this.prisma.purchaseOrder.update({ where: { id }, data: { status: newStatus } });
     return this.findOne(orgId, id);
   }
 

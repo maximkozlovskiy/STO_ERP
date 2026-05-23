@@ -26,21 +26,31 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto, res: CookieResponse): Promise<AuthResponseDto> {
-    const authRecord = await this.findAuthByEmail(dto.email);
+    // Find by email first; then validate orgId matches the employee's org to prevent cross-tenant auth
+    const authRecord = await this.prisma.authAccount.findFirst({
+      where: { email: dto.email },
+      include: { employee: true },
+    });
+
     if (!authRecord) {
       throw new UnauthorizedException('Невірний email або пароль');
     }
 
-    const passwordValid = await bcrypt.compare(dto.password, authRecord.passwordHash as string);
+    const passwordValid = await bcrypt.compare(dto.password, authRecord.passwordHash);
     if (!passwordValid) {
       throw new UnauthorizedException('Невірний email або пароль');
     }
 
-    if ((authRecord.employee as any).deletedAt) {
+    const emp = authRecord.employee;
+    if (!emp || emp.deletedAt) {
       throw new ForbiddenException('Обліковий запис заблоковано');
     }
 
-    const emp = authRecord.employee as any;
+    // Tenant guard: authAccount.orgId must match the employee's orgId
+    if (authRecord.orgId !== emp.orgId) {
+      throw new ForbiddenException('Обліковий запис заблоковано');
+    }
+
     const payload: JwtPayload = {
       sub: emp.id,
       orgId: emp.orgId,
@@ -91,7 +101,17 @@ export class AuthService {
     const newRefreshToken = this.signRefresh(newPayload);
     this.setRefreshCookie(res, newRefreshToken);
 
-    return { accessToken };
+    // Return employee so the frontend can restore session state after a page reload
+    return {
+      accessToken,
+      employee: {
+        id: employee.id,
+        orgId: employee.orgId,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        role: employee.role,
+      },
+    };
   }
 
   logout(res: CookieResponse): void {
@@ -124,14 +144,5 @@ export class AuthService {
       path: '/api/auth',
       maxAge: REFRESH_COOKIE_MAX_AGE_MS,
     });
-  }
-
-  // Placeholder until AuthAccount model is added — uses prisma.$queryRaw or dynamic access
-  private async findAuthByEmail(email: string) {
-    const record = await (this.prisma as any).authAccount?.findFirst({
-      where: { email },
-      include: { employee: true },
-    });
-    return record ?? null;
   }
 }
