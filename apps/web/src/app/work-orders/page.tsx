@@ -62,10 +62,10 @@ export default function WorkOrdersPage() {
   const [form, setForm] = useState({ branchId: '', vehicleId: '', counterpartyId: '', description: '', inMileage: '', plannedAt: '' });
 
   useEffect(() => {
-    apiFetch<Branch[]>('/branches').then(setBranches).catch(() => setError('Не вдалося завантажити філії'));
+    apiFetch<Branch[]>('/branches').then(setBranches).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Не вдалося завантажити філії'));
     apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200')
       .then(r => setCounterparties(r.items))
-      .catch(() => setError('Не вдалося завантажити контрагентів'));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Не вдалося завантажити контрагентів'));
   }, []);
 
   const load = useCallback(() => {

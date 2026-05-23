@@ -224,7 +224,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.stockItems.map((i: any, idx: number) => (
+                {data.stockItems.map((i, idx) => (
                   <tr key={idx} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-900">{i.goodName}</div>
