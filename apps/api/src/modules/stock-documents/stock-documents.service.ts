@@ -99,7 +99,7 @@ export class StockDocumentsService {
         data: {
           orgId, branchId: dto.branchId, warehouseId: dto.warehouseId,
           targetWarehouseId: dto.targetWarehouseId ?? null,
-          type: dto.type as any, number, notes: dto.notes,
+          type: dto.type as StockDocumentType, number, notes: dto.notes,
         },
       });
       if (lines.length) {
@@ -238,7 +238,15 @@ export class StockDocumentsService {
     await this.prisma.stockDocument.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
-  private toDto(doc: any): StockDocumentResponseDto {
+  private toDto(doc: {
+    id: string; orgId: string; number: string; type: string; status: string;
+    branchId: string; warehouseId: string; targetWarehouseId: string | null;
+    notes: string | null; confirmedAt: Date | null; createdAt: Date; updatedAt: Date;
+    branch: { name: string } | null;
+    warehouse: { name: string } | null;
+    targetWarehouse: { name: string } | null;
+    lines: Array<{ id: string; goodId: string; quantity: number; price: object | null; good: { name: string; sku: string | null; unit: string } | null }>;
+  }): StockDocumentResponseDto {
     return {
       id: doc.id, orgId: doc.orgId, number: doc.number,
       type: doc.type, status: doc.status,
@@ -248,7 +256,7 @@ export class StockDocumentsService {
       targetWarehouseName: doc.targetWarehouse?.name ?? null,
       notes: doc.notes ?? null,
       confirmedAt: doc.confirmedAt ?? null,
-      lines: (doc.lines ?? []).map((l: any) => ({
+      lines: (doc.lines ?? []).map((l) => ({
         id: l.id, goodId: l.goodId,
         goodName: l.good?.name, goodSku: l.good?.sku ?? null, unit: l.good?.unit,
         quantity: l.quantity, price: l.price != null ? Number(l.price) : null,

@@ -211,7 +211,14 @@ export class PurchaseOrdersService {
     await this.prisma.purchaseOrder.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
-  private toDto(po: any): PurchaseOrderResponseDto {
+  private toDto(po: {
+    id: string; orgId: string; number: string; status: string;
+    supplierId: string; warehouseId: string; totalAmount: object; notes: string | null;
+    createdAt: Date; updatedAt: Date;
+    supplier: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
+    warehouse: { name: string } | null;
+    lines: Array<{ id: string; goodId: string; quantity: number; price: object; receivedQty: number; good: { name: string; sku: string | null; unit: string } | null }>;
+  }): PurchaseOrderResponseDto {
     const sup = po.supplier;
     const supplierName = formatPersonName(sup?.lastName, sup?.firstName, sup?.companyName) || undefined;
     return {
@@ -220,7 +227,7 @@ export class PurchaseOrdersService {
       warehouseId: po.warehouseId, warehouseName: po.warehouse?.name,
       totalAmount: Number(po.totalAmount),
       notes: po.notes ?? null,
-      lines: (po.lines ?? []).map((l: any) => ({
+      lines: (po.lines ?? []).map((l) => ({
         id: l.id, goodId: l.goodId,
         goodName: l.good?.name, goodSku: l.good?.sku ?? null, unit: l.good?.unit,
         quantity: l.quantity, price: Number(l.price),

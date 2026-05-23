@@ -52,13 +52,14 @@ export default function VehicleCardPage() {
       setNodeForm({ category: 'engine', name: '', mileageAtInstall: '', notes: '' });
       setShowAddNode(false);
       load();
-    } catch {}
+    } catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка збереження'); }
     finally { setSaving(false); }
   };
 
   const removeNode = async (nodeId: string) => {
     if (!confirm('Видалити вузол?')) return;
-    try { await apiFetch(`/vehicles/${id}/nodes/${nodeId}`, { method: 'DELETE' }); load(); } catch {}
+    try { await apiFetch(`/vehicles/${id}/nodes/${nodeId}`, { method: 'DELETE' }); load(); }
+    catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка видалення'); }
   };
 
   if (!vehicle) return <div className="flex items-center justify-center min-h-screen"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>;
