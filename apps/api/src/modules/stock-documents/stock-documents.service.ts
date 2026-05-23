@@ -41,7 +41,7 @@ export class StockDocumentsService {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
           targetWarehouse: { select: { name: true } },
-          lines: { include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       }),
       this.prisma.stockDocument.count({ where }),
@@ -111,7 +111,7 @@ export class StockDocumentsService {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
           targetWarehouse: { select: { name: true } },
-          lines: { include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
     });
@@ -146,7 +146,7 @@ export class StockDocumentsService {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
           targetWarehouse: { select: { name: true } },
-          lines: { include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
     });

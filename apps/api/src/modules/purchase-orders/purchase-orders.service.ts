@@ -52,7 +52,7 @@ export class PurchaseOrdersService {
       include: {
         supplier: { select: { firstName: true, lastName: true, companyName: true } },
         warehouse: { select: { name: true } },
-        lines: { include: { good: { select: { name: true, sku: true, unit: true } } } },
+        lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
       },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
