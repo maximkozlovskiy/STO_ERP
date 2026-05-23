@@ -107,7 +107,9 @@ export default function WorkOrderCardPage() {
   const [partForm, setPartForm] = useState({ goodId: '', warehouseId: '', quantity: '1', price: '' });
 
   const load = useCallback(() => {
-    apiFetch<WorkOrderDetail>(`/work-orders/${id}`).then(setWo).catch(() => {});
+    apiFetch<WorkOrderDetail>(`/work-orders/${id}`)
+      .then(setWo)
+      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження наряду'));
   }, [id]);
 
   useEffect(() => { load(); }, [load]);

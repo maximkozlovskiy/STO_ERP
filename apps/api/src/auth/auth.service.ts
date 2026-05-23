@@ -78,7 +78,7 @@ export class AuthService {
     let payload: JwtPayload;
     try {
       payload = this.jwt.verify<JwtPayload>(refreshToken, {
-        secret: this.config.get<string>('JWT_REFRESH_SECRET'),
+        secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
       });
     } catch {
       throw new UnauthorizedException('Сесія застаріла, увійдіть знову');
@@ -124,14 +124,14 @@ export class AuthService {
 
   private signAccess(payload: JwtPayload): string {
     return this.jwt.sign(payload, {
-      secret: this.config.get<string>('JWT_ACCESS_SECRET'),
+      secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
       expiresIn: this.config.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '15m',
     });
   }
 
   private signRefresh(payload: JwtPayload): string {
     return this.jwt.sign(payload, {
-      secret: this.config.get<string>('JWT_REFRESH_SECRET'),
+      secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
       expiresIn: this.config.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '30d',
     });
   }

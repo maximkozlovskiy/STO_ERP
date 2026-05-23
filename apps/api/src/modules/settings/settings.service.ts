@@ -122,7 +122,7 @@ export class SettingsService {
       update: dto,
     });
 
-    await this.invalidateBranchCache(branchId);
+    await this.invalidateBranchCache(orgId, branchId);
 
     return this.mapBranchSettings(settings);
   }
@@ -135,9 +135,9 @@ export class SettingsService {
     }
   }
 
-  async invalidateBranchCache(branchId: string): Promise<void> {
+  async invalidateBranchCache(orgId: string, branchId: string): Promise<void> {
     try {
-      await this.redis.del(`settings:branch:${branchId}`);
+      await this.redis.del(`settings:branch:${orgId}:${branchId}`);
     } catch {
       // ignore
     }

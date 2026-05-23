@@ -1,4 +1,4 @@
-import { IsString, IsUUID, IsOptional, IsEnum, IsInt, IsNumber, Min, IsISO8601 } from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsEnum, IsInt, IsNumber, Min, Max, IsISO8601 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { WorkOrderStatus } from '@prisma/client';
@@ -53,6 +53,7 @@ export class WorkOrderQueryDto {
   @Type(() => Number)
   @IsNumber()
   @Min(1)
+  @Max(100)
   limit: number = 20;
 }
 

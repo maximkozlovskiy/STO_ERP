@@ -87,13 +87,13 @@ export class EmployeesService {
         throw new NotFoundException('Одну або кілька зон не знайдено');
       }
     }
-    // Replace assignment (delete + recreate)
-    await this.prisma.$transaction([
-      this.prisma.employeeZone.deleteMany({ where: { employeeId: id } }),
-      ...dto.zoneIds.map((zoneId) =>
-        this.prisma.employeeZone.create({ data: { employeeId: id, zoneId } }),
-      ),
-    ]);
+    // Replace assignment atomically using callback form (array form doesn't guarantee atomicity in Prisma 5)
+    await this.prisma.$transaction(async (tx) => {
+      await tx.employeeZone.deleteMany({ where: { employeeId: id } });
+      for (const zoneId of dto.zoneIds) {
+        await tx.employeeZone.create({ data: { employeeId: id, zoneId } });
+      }
+    });
     return this.findOne(orgId, id);
   }
 
@@ -107,12 +107,12 @@ export class EmployeesService {
         throw new NotFoundException('Один або кілька підйомників не знайдено');
       }
     }
-    await this.prisma.$transaction([
-      this.prisma.employeeLift.deleteMany({ where: { employeeId: id } }),
-      ...dto.liftIds.map((liftId) =>
-        this.prisma.employeeLift.create({ data: { employeeId: id, liftId } }),
-      ),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.employeeLift.deleteMany({ where: { employeeId: id } });
+      for (const liftId of dto.liftIds) {
+        await tx.employeeLift.create({ data: { employeeId: id, liftId } });
+      }
+    });
     return this.findOne(orgId, id);
   }
 
@@ -130,12 +130,12 @@ export class EmployeesService {
         throw new NotFoundException('Одну або кілька категорій не знайдено');
       }
     }
-    await this.prisma.$transaction([
-      this.prisma.employeeWorkCategory.deleteMany({ where: { employeeId: id } }),
-      ...dto.workCategoryIds.map((workCategoryId) =>
-        this.prisma.employeeWorkCategory.create({ data: { employeeId: id, workCategoryId } }),
-      ),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.employeeWorkCategory.deleteMany({ where: { employeeId: id } });
+      for (const workCategoryId of dto.workCategoryIds) {
+        await tx.employeeWorkCategory.create({ data: { employeeId: id, workCategoryId } });
+      }
+    });
     return this.findOne(orgId, id);
   }
 

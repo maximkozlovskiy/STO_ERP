@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsUUID, IsNumber, Min, IsOptional, IsPositive } from 'class-validator';
+import { IsString, IsNotEmpty, IsUUID, IsNumber, Min, Max, IsOptional, IsPositive } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -39,6 +39,7 @@ export class WorkQueryDto {
   @Type(() => Number)
   @IsNumber()
   @IsPositive()
+  @Max(200)
   limit: number = 50;
 }
 

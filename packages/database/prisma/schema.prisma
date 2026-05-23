@@ -786,17 +786,19 @@ model StockDocumentLine {
 // ─── SETTINGS ────────────────────────────────────────────
 
 model DocumentNumberConfig {
-  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId        String       @db.Uuid
-  documentType DocumentType
-  prefix       String?
-  includeDate  Boolean      @default(true)
-  dateFormat   String       @default("YYYYMMDD")
-  separator    String       @default("-")
-  padding      Int          @default(6)
-  currentSeq   BigInt       @default(0)
-  resetPeriod  ResetPeriod  @default(NEVER)
-  updatedAt    DateTime     @updatedAt
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String       @db.Uuid
+  documentType   DocumentType
+  prefix         String?
+  includeDate    Boolean      @default(true)
+  dateFormat     String       @default("YYYYMMDD")
+  separator      String       @default("-")
+  padding        Int          @default(6)
+  currentSeq     BigInt       @default(0)
+  resetPeriod    ResetPeriod  @default(NEVER)
+  lastResetYear  Int?
+  lastResetMonth Int?
+  updatedAt      DateTime     @updatedAt
 
   org Organisation @relation(fields: [orgId], references: [id])
 

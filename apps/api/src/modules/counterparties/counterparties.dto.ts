@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsInt, IsOptional, IsString, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CounterpartyType } from '@prisma/client';
 
@@ -35,7 +35,7 @@ export class CounterpartyQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
   @ApiPropertyOptional({ enum: CounterpartyType }) @IsOptional() @IsEnum(CounterpartyType) type?: CounterpartyType;
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) page: number = 1;
-  @ApiPropertyOptional({ default: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) limit: number = 20;
+  @ApiPropertyOptional({ default: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit: number = 20;
 }
 
 export class CounterpartyResponseDto {

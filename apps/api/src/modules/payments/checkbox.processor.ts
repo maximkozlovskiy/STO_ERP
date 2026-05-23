@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 interface FiscalReceiptJob {
   paymentId: string;
   orgId: string;
+  branchId: string | null;
   amount: number;
   method: string;
 }
@@ -18,11 +19,11 @@ export class CheckboxProcessor {
 
   @Process('fiscal-receipt')
   async handleFiscalReceipt(job: Job<FiscalReceiptJob>) {
-    const { paymentId, orgId, amount, method } = job.data;
+    const { paymentId, orgId, branchId, amount, method } = job.data;
 
-    // Load branch settings to get Checkbox API key
+    // Load branch settings to get Checkbox credentials — scoped to the specific branch
     const branchSettings = await this.prisma.branchSettings.findFirst({
-      where: { orgId },
+      where: branchId ? { orgId, branchId } : { orgId },
     });
 
     if (!branchSettings?.checkboxLicenseKey || !branchSettings?.fiscalEnabled) {

@@ -40,10 +40,15 @@ export class PaymentsService {
   }
 
   async create(orgId: string, dto: CreatePaymentDto, userId?: string): Promise<PaymentResponseDto> {
-    const counterparty = await this.prisma.counterparty.findFirst({
-      where: { id: dto.counterpartyId, orgId, deletedAt: null },
-      select: { id: true, phone: true, firstName: true, lastName: true, companyName: true },
-    });
+    const [counterparty, workOrder] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: dto.counterpartyId, orgId, deletedAt: null },
+        select: { id: true, phone: true, firstName: true, lastName: true, companyName: true },
+      }),
+      dto.workOrderId
+        ? this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null }, select: { branchId: true } })
+        : Promise.resolve(null),
+    ]);
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
     const payment = await this.prisma.$transaction(async (tx) => {
@@ -81,12 +86,15 @@ export class PaymentsService {
         }
       }
 
-      // Mark work order INVOICED→PAID if linked (FSM: only INVOICED may transition to PAID)
+      // Mark work order INVOICED→PAID if linked and increment paidAmount for partial payment tracking
       if (dto.workOrderId) {
         const wo = await tx.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
         if (wo) {
           if (wo.status !== 'INVOICED') throw new BadRequestException(`Наряд у статусі "${wo.status}" — оплата неможлива`);
-          await tx.workOrder.update({ where: { id: dto.workOrderId }, data: { status: 'PAID' } });
+          await tx.workOrder.update({
+            where: { id: dto.workOrderId },
+            data: { status: 'PAID', paidAmount: { increment: dto.amount } },
+          });
         }
       }
 
@@ -106,6 +114,7 @@ export class PaymentsService {
     await this.checkboxQueue.add('fiscal-receipt', {
       paymentId: payment.id,
       orgId,
+      branchId: workOrder?.branchId ?? null,
       amount: dto.amount,
       method: dto.method,
     }, {

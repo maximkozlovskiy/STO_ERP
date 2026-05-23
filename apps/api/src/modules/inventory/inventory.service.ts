@@ -118,26 +118,38 @@ export class InventoryService {
   }
 
   async findLowStockItems(orgId: string) {
-    // Prisma doesn't support cross-field comparisons, so load items with minStock set and filter in JS
-    const items = await this.prisma.stockItem.findMany({
-      where: { orgId, deletedAt: null, minStock: { not: null } },
-      include: {
-        good: { select: { id: true, name: true, sku: true, unit: true } },
-        warehouse: { select: { id: true, name: true } },
-      },
-    });
+    // Use raw query for cross-field comparison (quantity <= min_stock) — Prisma doesn't support it in where
+    const rows = await this.prisma.$queryRaw<Array<{
+      good_id: string; good_name: string; good_sku: string | null; unit: string;
+      warehouse_name: string; quantity: number; min_stock: number;
+    }>>`
+      SELECT
+        si.good_id,
+        g.name AS good_name,
+        g.sku  AS good_sku,
+        g.unit,
+        w.name AS warehouse_name,
+        si.quantity,
+        si.min_stock
+      FROM stock_items si
+      JOIN goods g ON g.id = si.good_id
+      JOIN warehouses w ON w.id = si.warehouse_id
+      WHERE si.org_id = ${orgId}::uuid
+        AND si.deleted_at IS NULL
+        AND si.min_stock IS NOT NULL
+        AND si.quantity <= si.min_stock
+      ORDER BY w.name, g.name
+    `;
 
-    return items
-      .filter(i => i.quantity <= (i.minStock ?? 0))
-      .map(i => ({
-        goodId: i.goodId,
-        goodName: i.good.name,
-        goodSku: i.good.sku,
-        unit: i.good.unit,
-        warehouseName: i.warehouse.name,
-        quantity: i.quantity,
-        minStock: i.minStock,
-        deficit: (i.minStock ?? 0) - i.quantity,
-      }));
+    return rows.map(r => ({
+      goodId: r.good_id,
+      goodName: r.good_name,
+      goodSku: r.good_sku,
+      unit: r.unit,
+      warehouseName: r.warehouse_name,
+      quantity: r.quantity,
+      minStock: r.min_stock,
+      deficit: r.min_stock - r.quantity,
+    }));
   }
 }

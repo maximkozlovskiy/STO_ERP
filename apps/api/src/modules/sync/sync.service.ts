@@ -5,10 +5,11 @@ import { SyncRecord } from '@sto/shared';
 export { SyncRecord };
 
 // Tables included in cloud sync pull (read-only from server perspective for most)
+// Note: stock_movements is append-only and has no syncVersion — excluded from delta-sync
 const PULL_TABLES = [
   'work_orders', 'work_order_lines', 'work_order_parts',
   'counterparties', 'vehicles', 'customer_garages',
-  'stock_items', 'stock_movements',
+  'stock_items',
   'invoices', 'payments',
   'calendar_slots',
 ] as const;
@@ -116,6 +117,8 @@ export class SyncService {
     }
 
     if (!existing) {
+      // Validate FK fields belong to the same org to prevent cross-tenant injection
+      await this.validateForeignKeys(orgId, rec.table, safePayload);
       await model.create({ data: { ...safePayload, id: rec.id, orgId } });
       return;
     }
@@ -123,6 +126,31 @@ export class SyncService {
     // last-write-wins by syncVersion
     if (BigInt(rec.syncVersion) > existing.syncVersion) {
       await model.update({ where: { id: rec.id }, data: safePayload });
+    }
+  }
+
+  // FK fields that must belong to the same org, keyed by table name
+  private static readonly FK_CHECKS: Record<string, { field: string; model: string }[]> = {
+    calendar_slots: [
+      { field: 'liftId', model: 'lift' },
+      { field: 'employeeId', model: 'employee' },
+      { field: 'workOrderId', model: 'workOrder' },
+    ],
+    vehicles: [
+      { field: 'customerGarageId', model: 'customerGarage' },
+    ],
+  };
+
+  private async validateForeignKeys(orgId: string, table: string, payload: Record<string, unknown>): Promise<void> {
+    const checks = SyncService.FK_CHECKS[table];
+    if (!checks) return;
+    for (const { field, model } of checks) {
+      const id = payload[field] as string | undefined;
+      if (!id) continue;
+      const record = await (this.prisma as any)[model].findFirst({ where: { id, orgId }, select: { id: true } });
+      if (!record) {
+        throw new Error(`Поле ${field}=${id} не з��айдено в ��ежах організації`);
+      }
     }
   }
 
