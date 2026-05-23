@@ -33,14 +33,13 @@ export class VehiclesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateVehicleDto): Promise<VehicleResponseDto> {
-    await this.findOne(orgId, id);
-    const item = await this.prisma.vehicle.update({ where: { id }, data: dto });
+    const item = await this.prisma.vehicle.update({ where: { id, orgId }, data: dto });
+    if (!item) throw new Error('Автомобіль не знайдено');
     return this.toDto(item);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
-    await this.prisma.vehicle.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.vehicle.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   // ─── VehicleNodes ────────────────────────────────────────

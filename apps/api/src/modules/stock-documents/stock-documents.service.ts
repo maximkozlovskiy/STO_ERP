@@ -60,7 +60,7 @@ export class StockDocumentsService {
         branch: { select: { name: true } },
         warehouse: { select: { name: true } },
         targetWarehouse: { select: { name: true } },
-        lines: { include: { good: { select: { name: true, sku: true, unit: true } } } },
+        lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
       },
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');

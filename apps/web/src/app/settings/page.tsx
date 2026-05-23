@@ -59,9 +59,15 @@ export default function SettingsPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<OrgSettings>('/settings/organisation').then(s => { setOrgSettings(s); applyTheme(s.brandTheme); }).catch(console.error);
-    apiFetch<PaymentMethod[]>('/payment-methods').then(setPayments).catch(console.error);
-    apiFetch<NotificationTemplate[]>('/notification-templates').then(setTemplates).catch(console.error);
+    apiFetch<OrgSettings>('/settings/organisation')
+      .then(s => { setOrgSettings(s); applyTheme(s.brandTheme); })
+      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'));
+    apiFetch<PaymentMethod[]>('/payment-methods')
+      .then(setPayments)
+      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження методів оплати'));
+    apiFetch<NotificationTemplate[]>('/notification-templates')
+      .then(setTemplates)
+      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження шаблонів'));
   }, []);
 
   const saveTemplate = async () => {

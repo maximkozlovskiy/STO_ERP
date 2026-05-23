@@ -20,6 +20,11 @@ const PUSH_SAFE_TABLES = new Set([
   'calendar_slots',
 ]);
 
+// Fields stripped from pull payloads to protect sensitive data sent to mobile clients
+const PULL_FIELD_BLACKLIST: Record<string, Set<string>> = {
+  counterparties: new Set(['phone', 'edrpou', 'email']),
+};
+
 // Per-table field whitelists for push — prevents clients from overwriting protected fields
 const PUSH_FIELD_WHITELIST: Record<string, Set<string>> = {
   counterparties: new Set(['firstName', 'lastName', 'companyName', 'phone', 'email', 'notes', 'type', 'vatPayer', 'edrpou']),
@@ -43,13 +48,21 @@ export class SyncService {
             take: 500,
           });
 
-          return rows.map((row: any): SyncRecord => ({
-            table,
-            id: row.id,
-            operation: row.deletedAt ? 'DELETE' : 'UPDATE',
-            syncVersion: Number(row.syncVersion),
-            payload: row,
-          }));
+          const blacklist = PULL_FIELD_BLACKLIST[table];
+          return rows.map((row: any): SyncRecord => {
+            let payload = row;
+            if (blacklist) {
+              payload = { ...row };
+              for (const field of blacklist) delete payload[field];
+            }
+            return {
+              table,
+              id: row.id,
+              operation: row.deletedAt ? 'DELETE' : 'UPDATE',
+              syncVersion: Number(row.syncVersion),
+              payload,
+            };
+          });
         } catch (err) {
           this.logger.warn(`pull: skipped table ${table}: ${err}`);
           return [];
@@ -116,6 +129,14 @@ export class SyncService {
       }
     }
 
+    // Handle DELETE from client (soft delete)
+    if (rec.operation === 'DELETE') {
+      if (existing) {
+        await model.update({ where: { id: rec.id, orgId }, data: { deletedAt: new Date() } });
+      }
+      return;
+    }
+
     if (!existing) {
       // Validate FK fields belong to the same org to prevent cross-tenant injection
       await this.validateForeignKeys(orgId, rec.table, safePayload);
@@ -123,9 +144,10 @@ export class SyncService {
       return;
     }
 
-    // last-write-wins by syncVersion
+    // last-write-wins by syncVersion — also validate FKs on update to prevent cross-tenant FK injection
     if (BigInt(rec.syncVersion) > existing.syncVersion) {
-      await model.update({ where: { id: rec.id }, data: safePayload });
+      await this.validateForeignKeys(orgId, rec.table, safePayload);
+      await model.update({ where: { id: rec.id, orgId }, data: safePayload });
     }
   }
 

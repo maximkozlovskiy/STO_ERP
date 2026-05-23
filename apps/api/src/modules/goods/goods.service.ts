@@ -53,13 +53,12 @@ export class GoodsService {
       });
       if (existing) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     }
-    const item = await this.prisma.good.update({ where: { id }, data: dto });
+    const item = await this.prisma.good.update({ where: { id, orgId }, data: dto });
     return this.toDto(item);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
-    await this.prisma.good.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.good.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(item: any): GoodResponseDto {

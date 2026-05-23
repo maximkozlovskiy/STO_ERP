@@ -56,7 +56,7 @@ export class CheckboxProcessor {
     const fiscalReceiptId = receipt.id ?? receipt.fiscal_code;
 
     await this.prisma.payment.update({
-      where: { id: paymentId },
+      where: { id: paymentId, orgId },
       data: { fiscalReceiptId },
     });
 

@@ -30,18 +30,16 @@ export class BranchesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateBranchDto): Promise<BranchResponseDto> {
-    await this.findOne(orgId, id);
     const item = await this.prisma.garageBranch.update({
-      where: { id },
+      where: { id, orgId },
       data: dto,
     });
     return this.toDto(item);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
     await this.prisma.garageBranch.update({
-      where: { id },
+      where: { id, orgId },
       data: { deletedAt: new Date() },
     });
   }

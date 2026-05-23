@@ -66,9 +66,8 @@ export class CounterpartiesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateCounterpartyDto): Promise<CounterpartyResponseDto> {
-    await this.findOne(orgId, id);
     const item = await this.prisma.counterparty.update({
-      where: { id },
+      where: { id, orgId },
       data: dto,
       include: { settlementAccount: { select: { balance: true } } },
     });
@@ -76,8 +75,7 @@ export class CounterpartiesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
-    await this.prisma.counterparty.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.counterparty.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   // ─── Garages ─────────────────────────────────────────────

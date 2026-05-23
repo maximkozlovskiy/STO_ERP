@@ -1,7 +1,17 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import { loadToken } from '../src/lib/auth';
 
 export default function RootLayout() {
+  const router = useRouter();
+
+  useEffect(() => {
+    loadToken().then((token) => {
+      if (!token) router.replace('/login');
+    });
+  }, []);
+
   return (
     <>
       <Stack>

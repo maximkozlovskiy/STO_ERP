@@ -1,12 +1,12 @@
-import { Controller, Get, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Body, Param, UseGuards, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { IsString, IsBoolean, IsOptional, IsEnum } from 'class-validator';
+import { IsString, IsBoolean, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
-import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from './notifications.service';
 
 class UpdateTemplateDto {
   @ApiPropertyOptional() @IsOptional() @IsString() subject?: string;
@@ -19,29 +19,23 @@ class UpdateTemplateDto {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class NotificationsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly notifications: NotificationsService) {}
 
   @Get()
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Шаблони сповіщень' })
-  async findAll(@OrgContext() orgId: string) {
-    return this.prisma.notificationTemplate.findMany({
-      where: { orgId },
-      orderBy: [{ eventType: 'asc' }, { channel: 'asc' }],
-    });
+  findAll(@OrgContext() orgId: string) {
+    return this.notifications.findTemplates(orgId);
   }
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Оновити шаблон сповіщення' })
-  async update(
+  update(
     @OrgContext() orgId: string,
     @Param('id') id: string,
     @Body() dto: UpdateTemplateDto,
   ) {
-    return this.prisma.notificationTemplate.update({
-      where: { id },
-      data: { body: dto.body, subject: dto.subject, isActive: dto.isActive },
-    });
+    return this.notifications.updateTemplate(orgId, id, dto);
   }
 }

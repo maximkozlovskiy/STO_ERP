@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -61,6 +61,24 @@ export class NotificationsService {
       attempts: 10,
       backoff: { type: 'exponential', delay: 60_000 },
       removeOnComplete: true,
+    });
+  }
+
+  async findTemplates(orgId: string) {
+    return this.prisma.notificationTemplate.findMany({
+      where: { orgId },
+      orderBy: [{ eventType: 'asc' }, { channel: 'asc' }],
+    });
+  }
+
+  async updateTemplate(orgId: string, id: string, dto: { body: string; subject?: string; isActive: boolean }) {
+    const template = await this.prisma.notificationTemplate.findFirst({
+      where: { id, orgId },
+    });
+    if (!template) throw new NotFoundException('Шаблон не знайдено');
+    return this.prisma.notificationTemplate.update({
+      where: { id },
+      data: { body: dto.body, subject: dto.subject, isActive: dto.isActive },
     });
   }
 

@@ -57,7 +57,7 @@ export class WorksService {
       if (!category) throw new NotFoundException('Категорію не знайдено');
     }
     const item = await this.prisma.work.update({
-      where: { id },
+      where: { id, orgId },
       data: dto,
       include: { category: { select: { name: true } } },
     });
@@ -65,8 +65,7 @@ export class WorksService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
-    await this.prisma.work.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.work.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(item: any): WorkResponseDto {

@@ -82,7 +82,7 @@ export class PaymentsService {
         const inv = await tx.invoice.findFirst({ where: { id: dto.invoiceId, orgId, deletedAt: null } });
         if (inv) {
           if (inv.status !== 'SENT') throw new BadRequestException(`Рахунок у статусі "${inv.status}" — оплата неможлива`);
-          await tx.invoice.update({ where: { id: dto.invoiceId }, data: { status: 'PAID' } });
+          await tx.invoice.update({ where: { id: dto.invoiceId, orgId }, data: { status: 'PAID' } });
         }
       }
 
@@ -92,7 +92,7 @@ export class PaymentsService {
         if (wo) {
           if (wo.status !== 'INVOICED') throw new BadRequestException(`Наряд у статусі "${wo.status}" — оплата неможлива`);
           await tx.workOrder.update({
-            where: { id: dto.workOrderId },
+            where: { id: dto.workOrderId, orgId },
             data: { status: 'PAID', paidAmount: { increment: dto.amount } },
           });
         }

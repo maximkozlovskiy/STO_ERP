@@ -65,7 +65,7 @@ export class ReportsService {
     } = {
       orgId,
       deletedAt: null,
-      workOrder: { deletedAt: null, createdAt: { gte: fromDate, lte: toDate } },
+      workOrder: { orgId, deletedAt: null, createdAt: { gte: fromDate, lte: toDate } },
     };
     if (employeeId) lineWhere.employeeId = employeeId;
 

@@ -97,11 +97,14 @@ export class EmployeeResponseDto {
   @ApiProperty() firstName!: string;
   @ApiProperty() lastName!: string;
   @ApiProperty({ enum: UserRole }) role!: UserRole;
-  @ApiProperty() rateScheme!: RateScheme;
   @ApiPropertyOptional() phone?: string | null;
   @ApiProperty({ type: [String] }) zoneIds!: string[];
   @ApiProperty({ type: [String] }) liftIds!: string[];
   @ApiProperty({ type: [String] }) workCategoryIds!: string[];
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+}
+
+export class EmployeeDetailDto extends EmployeeResponseDto {
+  @ApiProperty({ description: 'Схема нарахування (тільки OWNER/ADMIN)' }) rateScheme!: RateScheme;
 }

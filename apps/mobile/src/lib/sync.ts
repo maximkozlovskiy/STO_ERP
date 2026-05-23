@@ -1,3 +1,4 @@
+import { Q } from '@nozbe/watermelondb';
 import { database } from './database';
 import { apiFetch } from './api';
 
@@ -135,7 +136,7 @@ export async function syncWorkOrders(): Promise<void> {
 
 export async function pushDirtyOrders(): Promise<void> {
   const wos = database.get('work_orders');
-  const dirty = await wos.query().where('is_dirty', true).fetch() as any[];
+  const dirty = await wos.query(Q.where('is_dirty', true)).fetch() as any[];
 
   for (const record of dirty) {
     try {

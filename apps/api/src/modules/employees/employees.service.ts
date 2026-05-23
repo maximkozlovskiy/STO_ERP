@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   AssignLiftsDto, AssignWorkCategoriesDto, AssignZonesDto,
   CreateEmployeeDto, EmployeeResponseDto, UpdateEmployeeDto,
-  rateSchemeSchema,
+  rateSchemeSchema, RateScheme,
 } from './employees.dto';
 
 @Injectable()
@@ -56,7 +56,7 @@ export class EmployeesService {
     await this.findOne(orgId, id);
     if (dto.rateScheme) this.validateRateScheme(dto.rateScheme);
     const item = await this.prisma.employee.update({
-      where: { id },
+      where: { id, orgId },
       data: {
         ...(dto.firstName !== undefined && { firstName: dto.firstName }),
         ...(dto.lastName !== undefined && { lastName: dto.lastName }),
@@ -70,8 +70,7 @@ export class EmployeesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
-    await this.prisma.employee.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.prisma.employee.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   // ─── Assignments ─────────────────────────────────────────
@@ -162,7 +161,7 @@ export class EmployeesService {
       firstName: item.firstName,
       lastName: item.lastName,
       role: item.role as any,
-      rateScheme: item.rateScheme as any,
+      // rateScheme intentionally omitted — exposed only via OWNER/ADMIN-scoped endpoint
       phone: item.phone,
       zoneIds: item.employeeZones.map((z) => z.zoneId),
       liftIds: item.employeeLifts.map((l) => l.liftId),
@@ -170,5 +169,14 @@ export class EmployeesService {
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };
+  }
+
+  async findOneDetail(orgId: string, id: string): Promise<EmployeeResponseDto & { rateScheme: RateScheme }> {
+    const item = await this.prisma.employee.findFirst({
+      where: { id, orgId, deletedAt: null },
+      include: { employeeZones: true, employeeLifts: true, employeeWorkCategories: true },
+    });
+    if (!item) throw new Error('Співробітника не знайдено');
+    return { ...this.toDto(item), rateScheme: item.rateScheme as RateScheme };
   }
 }

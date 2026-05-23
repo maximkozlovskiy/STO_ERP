@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentType } from '@prisma/client';
 
@@ -7,60 +7,73 @@ export class DocumentNumberService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Atomically increments the sequence counter and returns a formatted document number.
-   * Handles YEARLY and MONTHLY resets: if the period boundary has passed, resets currentSeq to 1
-   * and records the new period marker — all in one atomic UPDATE to prevent TOCTOU races.
+   * Atomically increment and return the next document number.
+   * Uses SELECT FOR UPDATE to prevent TOCTOU race conditions under concurrent requests.
    */
-  async next(orgId: string, documentType: DocumentType, tx?: any): Promise<string> {
-    const db = tx ?? this.prisma;
+  async next(orgId: string, documentType: DocumentType, _tx?: unknown): Promise<string> {
+    return this.prisma.$transaction(async (tx) => {
+      const configs = await tx.$queryRaw<
+        Array<{
+          id: string;
+          prefix: string | null;
+          include_date: boolean;
+          separator: string;
+          padding: number;
+          current_seq: bigint;
+          reset_period: string;
+          last_reset_year: number | null;
+          last_reset_month: number | null;
+          updated_at: Date;
+        }>
+      >`
+        SELECT id, prefix, include_date, separator, padding,
+               current_seq, reset_period, last_reset_year, last_reset_month, updated_at
+        FROM document_number_configs
+        WHERE org_id = ${orgId}::uuid
+          AND document_type = ${documentType}::"DocumentType"
+        FOR UPDATE
+      `;
 
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
+      if (!configs.length) {
+        throw new NotFoundException(`Конфігурацію нумерації для "${documentType}" не знайдено`);
+      }
 
-    // First read the config to decide if a reset is needed
-    let config;
-    try {
-      config = await db.documentNumberConfig.findUniqueOrThrow({
-        where: { orgId_documentType: { orgId, documentType } },
-      });
-    } catch {
-      throw new BadRequestException(`Конфігурацію нумерації для "${documentType}" не знайдено`);
-    }
+      const cfg = configs[0];
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
 
-    const needsYearlyReset =
-      config.resetPeriod === 'YEARLY' &&
-      config.lastResetYear !== null &&
-      config.lastResetYear !== currentYear;
+      const needsYearlyReset =
+        cfg.reset_period === 'YEARLY' &&
+        cfg.last_reset_year !== null &&
+        cfg.last_reset_year !== currentYear;
 
-    const needsMonthlyReset =
-      config.resetPeriod === 'MONTHLY' &&
-      (config.lastResetYear !== currentYear || config.lastResetMonth !== currentMonth);
+      const needsMonthlyReset =
+        cfg.reset_period === 'MONTHLY' &&
+        (cfg.last_reset_year !== currentYear || cfg.last_reset_month !== currentMonth);
 
-    const isReset = needsYearlyReset || needsMonthlyReset;
+      const isReset = needsYearlyReset || needsMonthlyReset;
+      const newSeq = isReset ? 1n : BigInt(cfg.current_seq) + 1n;
 
-    try {
-      config = await db.documentNumberConfig.update({
-        where: { orgId_documentType: { orgId, documentType } },
-        data: isReset
-          ? { currentSeq: 1, lastResetYear: currentYear, lastResetMonth: currentMonth }
-          : { currentSeq: { increment: 1 } },
-      });
-    } catch {
-      throw new BadRequestException(`Конфігурацію нумерації для "${documentType}" не знайдено`);
-    }
+      await tx.$executeRaw`
+        UPDATE document_number_configs
+        SET current_seq       = ${newSeq},
+            last_reset_year   = ${currentYear},
+            last_reset_month  = ${currentMonth},
+            updated_at        = NOW()
+        WHERE id = ${cfg.id}::uuid
+      `;
 
-    const seq = isReset ? 1 : Number(config.currentSeq);
-    const pad = config.padding ?? 4;
-    const seqStr = String(seq).padStart(pad, '0');
+      const seq = Number(newSeq);
+      const seqStr = String(seq).padStart(cfg.padding, '0');
 
-    if (config.includeDate) {
-      const year = currentYear;
-      const prefix = config.prefix ? `${config.prefix}${config.separator}` : '';
-      return `${prefix}${year}${config.separator}${seqStr}`;
-    }
+      if (cfg.include_date) {
+        const prefix = cfg.prefix ? `${cfg.prefix}${cfg.separator}` : '';
+        return `${prefix}${currentYear}${cfg.separator}${seqStr}`;
+      }
 
-    const prefix = config.prefix ? `${config.prefix}${config.separator}` : '';
-    return `${prefix}${seqStr}`;
+      const prefix = cfg.prefix ? `${cfg.prefix}${cfg.separator}` : '';
+      return `${prefix}${seqStr}`;
+    });
   }
 }
