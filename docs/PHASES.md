@@ -222,17 +222,28 @@
 > Залежності: Фази 5, 6, 7 (є Employee, Vehicle, Work, Good, Warehouse).  
 > Мета: повний цикл наряду від DRAFT до PAID.
 
-- [ ] `[sto-backend]` `WorkOrderModule`: `POST /work-orders`, `GET /work-orders`, `GET /work-orders/:id`
-- [ ] `[sto-backend]` `WorkOrderFSMService.transition(id, targetStatus, user)` — всі переходи з guard'ами та side-effects
-- [ ] `[sto-backend]` `POST /work-orders/:id/transition` — HTTP endpoint переходу
-- [ ] `[sto-backend]` `WorkOrderLineModule`: `POST/PATCH/DELETE /work-orders/:id/lines`
-- [ ] `[sto-backend]` `WorkOrderPartModule`: `POST/PATCH/DELETE /work-orders/:id/parts` + резервування через `InventoryService`
-- [ ] `[sto-backend]` Перерахунок підсумків: `totalLabor`, `totalParts`, `totalAmount` після кожної зміни
-- [ ] `[sto-backend]` `CalendarSlotModule`: `POST /calendar/slots`, `GET /calendar/slots?date=&branchId=`
-- [ ] `[sto-web]` UI: Список нарядів (таблиця + фільтри + швидкий статус)
-- [ ] `[sto-web]` UI: Форма створення наряду (клієнт → авто → послуги → деталі)
-- [ ] `[sto-web]` UI: Картка наряду (лінії, запчастини, FSM-кнопки з підтвердженням)
-- [ ] `[sto-web]` UI: Календар завантаженості підйомників
+- [x] `[sto-backend]` `WorkOrderModule`: `POST /work-orders`, `GET /work-orders`, `GET /work-orders/:id`
+    > `apps/api/src/modules/work-orders/`. CRUD з soft-delete. findAll: фільтри status/branchId/counterpartyId/vehicleId + пагінація. findOne: includes lines+parts.
+- [x] `[sto-backend]` `WorkOrderFSMService.transition(id, targetStatus, user)` — всі переходи з guard'ами та side-effects
+    > `work-orders.fsm.ts` — transition map. При IN_PROGRESS → RESERVATION на всі parts. При COMPLETED → WRITEOFF + RESERVATION_RELEASE + SettlementsService.CHARGE у $transaction.
+- [x] `[sto-backend]` `POST /work-orders/:id/transition` — HTTP endpoint переходу
+    > `WorkOrdersController` POST /:id/transition. @CurrentUser для передачі userId в side-effects.
+- [x] `[sto-backend]` `WorkOrderLineModule`: `POST/PATCH/DELETE /work-orders/:id/lines`
+    > Вкладені endpoints в WorkOrdersController. defaults normoHours/price з Work. recalcTotals() після кожної зміни.
+- [x] `[sto-backend]` `WorkOrderPartModule`: `POST/PATCH/DELETE /work-orders/:id/parts` + резервування через `InventoryService`
+    > Вкладені endpoints. price defaults з Good.salePrice. recalcTotals() після кожної зміни.
+- [x] `[sto-backend]` Перерахунок підсумків: `totalLabor`, `totalParts`, `totalAmount` після кожної зміни
+    > `recalcTotals(workOrderId)` — агрегує lines.amount + parts.amount, оновлює WorkOrder atomically.
+- [x] `[sto-backend]` `CalendarSlotModule`: `POST /calendar/slots`, `GET /calendar/slots?date=&branchId=`
+    > `apps/api/src/modules/calendar/`. Конфлікт-перевірка на підйомник. GET фільтрує по дню (00:00–23:59). DELETE hard delete (не soft).
+- [x] `[sto-web]` UI: Список нарядів (таблиця + фільтри + швидкий статус)
+    > `apps/web/src/app/work-orders/page.tsx`. Фільтри по статусу (pill-buttons). Таблиця: номер, клієнт/авто, статус (кольоровий badge), сума, запланована дата.
+- [x] `[sto-web]` UI: Форма створення наряду (клієнт → авто → послуги → деталі)
+    > Модальне вікно в /work-orders: вибір контрагента → підвантаження авто по гаражам, філія, опис, пробіг, дата. Redirect на /work-orders/:id після створення.
+- [x] `[sto-web]` UI: Картка наряду (лінії, запчастини, FSM-кнопки з підтвердженням)
+    > `apps/web/src/app/work-orders/[id]/page.tsx`. FSM кнопки з кольорами + confirm dialog. Секції: роботи + запчастини + підсумки. Модалки додавання (auto-fill normoHours/price).
+- [x] `[sto-web]` UI: Календар завантаженості підйомників
+    > `apps/web/src/app/calendar/page.tsx`. Timeline grid 08:00–19:00 × підйомники. Позиціонування слотів по % ширині. Навігація по днях.
 - [ ] `[sto-mobile]` Екран "Мої наряди" (механік)
 - [ ] `[sto-mobile]` Екран деталі наряду + зміна статусу операцій
 

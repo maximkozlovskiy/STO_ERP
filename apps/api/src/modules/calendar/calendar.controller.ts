@@ -1,0 +1,44 @@
+import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CalendarService } from './calendar.service';
+import { CreateCalendarSlotDto } from './calendar.dto';
+
+@ApiTags('Calendar')
+@Controller('calendar/slots')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth()
+export class CalendarController {
+  constructor(private readonly service: CalendarService) {}
+
+  @Get()
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
+  @ApiOperation({ summary: 'Слоти на дату' })
+  @ApiQuery({ name: 'date', required: true, example: '2026-05-22' })
+  @ApiQuery({ name: 'branchId', required: false })
+  findSlots(
+    @OrgContext() orgId: string,
+    @Query('date') date: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.service.findSlots(orgId, date, branchId);
+  }
+
+  @Post()
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Створити слот' })
+  createSlot(@OrgContext() orgId: string, @Body() dto: CreateCalendarSlotDto) {
+    return this.service.createSlot(orgId, dto);
+  }
+
+  @Delete(':id')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Видалити слот' })
+  removeSlot(@OrgContext() orgId: string, @Param('id') id: string) {
+    return this.service.removeSlot(orgId, id);
+  }
+}
