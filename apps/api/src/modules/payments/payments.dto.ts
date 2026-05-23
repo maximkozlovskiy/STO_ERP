@@ -1,0 +1,32 @@
+import { IsUUID, IsOptional, IsNumber, Min, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+export class CreatePaymentDto {
+  @ApiProperty() @IsUUID() counterpartyId!: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() workOrderId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() invoiceId?: string;
+  @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
+  @ApiProperty() @IsString() method!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+}
+
+export class PaymentResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() orgId!: string;
+  @ApiProperty() counterpartyId!: string;
+  @ApiPropertyOptional() counterpartyName?: string;
+  @ApiPropertyOptional() workOrderId?: string | null;
+  @ApiPropertyOptional() invoiceId?: string | null;
+  @ApiProperty() amount!: number;
+  @ApiProperty() method!: string;
+  @ApiPropertyOptional() notes?: string | null;
+  @ApiPropertyOptional() fiscalReceiptId?: string | null;
+  @ApiProperty() createdAt!: Date;
+}
+
+export class PaginatedPaymentsDto {
+  @ApiProperty({ type: [PaymentResponseDto] }) items!: PaymentResponseDto[];
+  @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() limit!: number;
+}

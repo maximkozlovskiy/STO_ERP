@@ -282,16 +282,26 @@
 > Залежності: Фаза 8 (WorkOrder), Фаза 6 (SettlementAccount).  
 > Мета: рахунки, оплати, ПРРО, взаєморозрахунки.
 
-- [ ] `[sto-backend]` `InvoiceModule`: `POST /invoices` (з наряду або вручну), FSM DRAFT→SENT→PAID→CANCELLED
-- [ ] `[sto-backend]` `PaymentModule`: `POST /payments` → `SettlementsService.createTransaction(PAYMENT)` + BullMQ job для Checkbox
-- [ ] `[sto-backend]` `CheckboxWorker`: BullMQ job, 288 retry за 24 год, фіскальна квитанція → `Payment.fiscalReceiptId`
-- [ ] `[sto-backend]` `SettlementsService.createTransaction(dto)` — єдина точка входу, оновлює `SettlementAccount.balance`
-- [ ] `[sto-backend]` `SettlementAccountModule`: `GET /counterparties/:id/balance`, `GET /counterparties/:id/transactions`
-- [ ] `[sto-backend]` `ReconciliationActModule`: `POST /reconciliation-acts` (знімок транзакцій за період)
-- [ ] `[sto-web]` UI: Виставлення рахунку з наряду + відправка клієнту (PDF)
-- [ ] `[sto-web]` UI: Реєстрація оплати (вибір методу + сума + решта)
-- [ ] `[sto-web]` UI: Картка контрагента → вкладка "Взаєморозрахунки"
-- [ ] `[sto-web]` UI: Акт звірки (генерація + перегляд)
+- [x] `[sto-backend]` `InvoiceModule`: `POST /invoices` (з наряду або вручну), FSM DRAFT→SENT→PAID→CANCELLED
+    > `apps/api/src/modules/invoices/`. createFromWorkOrder() — перевіряє COMPLETED/INVOICED статус, запобігає дублям. FSM map.
+- [x] `[sto-backend]` `PaymentModule`: `POST /payments` → `SettlementsService.createTransaction(PAYMENT)` + BullMQ job для Checkbox
+    > `apps/api/src/modules/payments/`. Після оплати: PAYMENT settlement + auto PAID для Invoice/WorkOrder в $transaction. Enqueue checkbox queue.
+- [x] `[sto-backend]` `CheckboxWorker`: BullMQ job, 288 retry за 24 год, фіскальна квитанція → `Payment.fiscalReceiptId`
+    > `apps/api/src/modules/payments/checkbox.processor.ts`. @Processor('checkbox'), attempts=288, backoff exp 5хв. Читає checkboxApiKey з BranchSettings.
+- [x] `[sto-backend]` `SettlementsService.createTransaction(dto)` — єдина точка входу, оновлює `SettlementAccount.balance`
+    > `apps/api/src/modules/settlements/settlements.service.ts`. CHARGE=+balance, PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE=-balance.
+- [x] `[sto-backend]` `SettlementAccountModule`: `GET /counterparties/:id/balance`, `GET /counterparties/:id/transactions`
+    > `apps/api/src/modules/settlements/settlements-account.service.ts` + settlements.controller.ts. Nested routes під /counterparties/:id.
+- [x] `[sto-backend]` `ReconciliationActModule`: `POST /reconciliation-acts` (знімок транзакцій за період)
+    > В settlements-account.service.ts createReconciliationAct(): відкриваючий залишок + транзакції + закриваючий + snapshotJson.
+- [x] `[sto-web]` UI: Виставлення рахунку з наряду + відправка клієнту (PDF)
+    > `apps/web/src/app/invoices/page.tsx`. Список + статус-фільтри + модалка створення + кнопки FSM (Надіслати/Оплатити/Скасувати).
+- [x] `[sto-web]` UI: Реєстрація оплати (вибір методу + сума + решта)
+    > Модалка оплати в /invoices: метод (з PaymentMethodConfig) + сума + нотатки → POST /payments.
+- [x] `[sto-web]` UI: Картка контрагента → вкладка "Взаєморозрахунки"
+    > `apps/web/src/app/settlements/page.tsx`. Split-panel: список контрагентів + баланс + транзакції + акти звірки.
+- [x] `[sto-web]` UI: Акт звірки (генерація + перегляд)
+    > Модалка в /settlements: вибір діапазону дат → POST → відображення відкриваючого/закриваючого балансів + к-ть транзакцій.
 
 ---
 
@@ -389,7 +399,7 @@
 | 7 | Каталог послуг і товарів | ✅ завершено (5/5) |
 | 8 | Наряди ← ЯДРО | ✅ завершено (12/12) |
 | 9 | Склад та запаси | ✅ завершено (9/9) |
-| 10 | Фінанси та розрахунки | ⬜ не розпочато |
+| 10 | Фінанси та розрахунки | ✅ завершено (10/10) |
 | 11 | Сповіщення | ⬜ не розпочато |
 | 12 | Звіти | ⬜ не розпочато |
 | 13 | Web UI (оболонка + дашборд) | ⬜ не розпочато |

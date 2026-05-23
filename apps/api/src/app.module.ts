@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { BullModule } from '@nestjs/bull';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -23,12 +24,20 @@ import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { StockDocumentsModule } from './modules/stock-documents/stock-documents.module';
+import { InvoicesModule } from './modules/invoices/invoices.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env.dev', '.env'],
+    }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        redis: config.get<string>('REDIS_URL') ?? 'redis://localhost:6379',
+      }),
     }),
     PrismaModule,
     RedisModule,
@@ -53,6 +62,8 @@ import { StockDocumentsModule } from './modules/stock-documents/stock-documents.
     CalendarModule,
     PurchaseOrdersModule,
     StockDocumentsModule,
+    InvoicesModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}
