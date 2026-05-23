@@ -294,7 +294,7 @@ export class WorkOrdersService {
         data: { orgId, workOrderId, workId: dto.workId, employeeId: dto.employeeId, liftId: dto.liftId ?? null, normoHours, price, amount, notes: dto.notes },
         include: { work: { select: { name: true } }, employee: { select: { firstName: true, lastName: true } } },
       });
-      await this.recalcTotals(workOrderId, tx);
+      await this.recalcTotals(workOrderId, tx, orgId);
       return created;
     });
 
@@ -316,7 +316,7 @@ export class WorkOrdersService {
         data: { normoHours, price, amount, liftId: dto.liftId, notes: dto.notes },
         include: { work: { select: { name: true } }, employee: { select: { firstName: true, lastName: true } } },
       });
-      await this.recalcTotals(workOrderId, tx);
+      await this.recalcTotals(workOrderId, tx, orgId);
       return result;
     });
 
@@ -329,7 +329,7 @@ export class WorkOrdersService {
     if (!line) throw new NotFoundException('Позицію не знайдено');
     await this.prisma.$transaction(async (tx) => {
       await tx.workOrderLine.update({ where: { id: lineId, orgId }, data: { deletedAt: new Date() } });
-      await this.recalcTotals(workOrderId, tx);
+      await this.recalcTotals(workOrderId, tx, orgId);
     });
   }
 
@@ -352,7 +352,7 @@ export class WorkOrdersService {
         data: { orgId, workOrderId, goodId: dto.goodId, warehouseId: dto.warehouseId, quantity: dto.quantity, price, amount },
         include: { good: { select: { name: true } } },
       });
-      await this.recalcTotals(workOrderId, tx);
+      await this.recalcTotals(workOrderId, tx, orgId);
       return created;
     });
 
@@ -374,7 +374,7 @@ export class WorkOrdersService {
         data: { quantity, price, amount },
         include: { good: { select: { name: true } } },
       });
-      await this.recalcTotals(workOrderId, tx);
+      await this.recalcTotals(workOrderId, tx, orgId);
       return result;
     });
 
@@ -387,7 +387,7 @@ export class WorkOrdersService {
     if (!part) throw new NotFoundException('Позицію не знайдено');
     await this.prisma.$transaction(async (tx) => {
       await tx.workOrderPart.update({ where: { id: partId, orgId }, data: { deletedAt: new Date() } });
-      await this.recalcTotals(workOrderId, tx);
+      await this.recalcTotals(workOrderId, tx, orgId);
     });
   }
 
@@ -403,7 +403,7 @@ export class WorkOrdersService {
     return wo;
   }
 
-  private async recalcTotals(workOrderId: string, tx?: Prisma.TransactionClient): Promise<void> {
+  private async recalcTotals(workOrderId: string, tx?: Prisma.TransactionClient, orgId?: string): Promise<void> {
     const db = tx ?? this.prisma;
     const [lines, parts] = await Promise.all([
       db.workOrderLine.findMany({ where: { workOrderId, deletedAt: null }, select: { amount: true } }),
@@ -411,8 +411,9 @@ export class WorkOrdersService {
     ]);
     const totalLabor = lines.reduce((s: number, l: { amount: object }) => s + Number(l.amount), 0);
     const totalParts = parts.reduce((s: number, p: { amount: object }) => s + Number(p.amount), 0);
+    const where = orgId ? { id: workOrderId, orgId } : { id: workOrderId };
     await db.workOrder.update({
-      where: { id: workOrderId },
+      where,
       data: { totalLabor, totalParts, totalAmount: totalLabor + totalParts },
     });
   }

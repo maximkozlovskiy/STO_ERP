@@ -111,7 +111,7 @@ export class StockDocumentsService {
         });
       }
       return tx.stockDocument.findFirstOrThrow({
-        where: { id: created.id, deletedAt: null },
+        where: { id: created.id, orgId, deletedAt: null },
         include: {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },

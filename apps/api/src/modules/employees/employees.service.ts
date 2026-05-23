@@ -70,6 +70,8 @@ export class EmployeesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    const existing = await this.prisma.employee.findFirst({ where: { id, orgId, deletedAt: null } });
+    if (!existing) throw new NotFoundException('Співробітника не знайдено');
     await this.prisma.employee.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
@@ -176,7 +178,7 @@ export class EmployeesService {
       where: { id, orgId, deletedAt: null },
       include: { employeeZones: true, employeeLifts: true, employeeWorkCategories: true },
     });
-    if (!item) throw new Error('Співробітника не знайдено');
+    if (!item) throw new NotFoundException('Співробітника не знайдено');
     return { ...this.toDto(item), rateScheme: item.rateScheme as RateScheme };
   }
 }

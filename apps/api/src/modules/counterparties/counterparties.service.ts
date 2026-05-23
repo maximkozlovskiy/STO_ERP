@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { CounterpartyType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CounterpartyQueryDto, CounterpartyResponseDto, CreateCounterpartyDto,
@@ -66,6 +67,8 @@ export class CounterpartiesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateCounterpartyDto): Promise<CounterpartyResponseDto> {
+    const existing = await this.prisma.counterparty.findFirst({ where: { id, orgId, deletedAt: null } });
+    if (!existing) throw new NotFoundException('Контрагента не знайдено');
     const item = await this.prisma.counterparty.update({
       where: { id, orgId },
       data: dto,
@@ -75,6 +78,8 @@ export class CounterpartiesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    const existing = await this.prisma.counterparty.findFirst({ where: { id, orgId, deletedAt: null } });
+    if (!existing) throw new NotFoundException('Контрагента не знайдено');
     await this.prisma.counterparty.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
@@ -113,7 +118,7 @@ export class CounterpartiesService {
     settlementAccount: { balance: object } | null;
   }, includeEdrpou = false): CounterpartyResponseDto {
     return {
-      id: item.id, orgId: item.orgId, type: item.type as any,
+      id: item.id, orgId: item.orgId, type: item.type as CounterpartyType,
       firstName: item.firstName, lastName: item.lastName,
       companyName: item.companyName,
       // edrpou exposed only on detail view — sensitive identifier

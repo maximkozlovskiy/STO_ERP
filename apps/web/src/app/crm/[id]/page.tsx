@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -37,7 +37,7 @@ export default function CounterpartyCardPage() {
   const [garageName, setGarageName] = useState('');
   const [garageAddress, setGarageAddress] = useState('');
 
-  const load = () => {
+  const load = useCallback(() => {
     Promise.all([
       apiFetch<Counterparty>(`/counterparties/${id}`).then(setCp),
       apiFetch<Garage[]>(`/counterparties/${id}/garages`).then(g => {
@@ -45,9 +45,9 @@ export default function CounterpartyCardPage() {
         if (g.length > 0 && !selectedGarage) setSelectedGarage(g[0].id);
       }),
     ]).catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
-  };
+  }, [id]);
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (!selectedGarage) return;
@@ -62,7 +62,7 @@ export default function CounterpartyCardPage() {
       });
       setGarageName(''); setGarageAddress(''); setShowAddGarage(false);
       load();
-    } catch {}
+    } catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка збереження'); }
   };
 
   const displayName = (c: Counterparty) =>
@@ -72,6 +72,7 @@ export default function CounterpartyCardPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+      {loadError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{loadError}</p>}
       {/* Header */}
       <div className="flex items-start gap-4">
         <button onClick={() => router.back()} className="mt-1 text-gray-400 hover:text-gray-600 text-sm">← Назад</button>
