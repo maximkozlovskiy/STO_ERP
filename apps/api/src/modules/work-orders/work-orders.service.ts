@@ -420,7 +420,17 @@ export class WorkOrdersService {
 
   // ─── Mappers ─────────────────────────────────────────────
 
-  private toDto(wo: any): WorkOrderResponseDto {
+  private toDto(wo: {
+    id: string; orgId: string; number: string; status: string;
+    branchId: string; vehicleId: string; counterpartyId: string;
+    description: string | null; inMileage: number | null; outMileage: number | null;
+    plannedAt: Date | null; completedAt: Date | null;
+    totalLabor: object; totalParts: object; totalAmount: object; paidAmount: object;
+    createdAt: Date; updatedAt: Date;
+    branch?: { name: string } | null;
+    vehicle?: { make: string; model: string; licensePlate: string | null } | null;
+    counterparty?: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
+  }): WorkOrderResponseDto {
     const cp = wo.counterparty;
     const cpName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || undefined;
     return {
@@ -438,7 +448,12 @@ export class WorkOrdersService {
     };
   }
 
-  private toLineDto(line: any): WorkOrderLineResponseDto {
+  private toLineDto(line: {
+    id: string; workOrderId: string; workId: string; employeeId: string; liftId: string | null;
+    normoHours: number; price: object; amount: object; notes: string | null; createdAt: Date;
+    work?: { name: string } | null;
+    employee?: { firstName: string; lastName: string } | null;
+  }): WorkOrderLineResponseDto {
     return {
       id: line.id, workOrderId: line.workOrderId,
       workId: line.workId, workName: line.work?.name,
@@ -450,7 +465,11 @@ export class WorkOrdersService {
     };
   }
 
-  private toPartDto(part: any): WorkOrderPartResponseDto {
+  private toPartDto(part: {
+    id: string; workOrderId: string; goodId: string; warehouseId: string;
+    quantity: number; price: object; amount: object; createdAt: Date;
+    good?: { name: string } | null;
+  }): WorkOrderPartResponseDto {
     return {
       id: part.id, workOrderId: part.workOrderId,
       goodId: part.goodId, goodName: part.good?.name,

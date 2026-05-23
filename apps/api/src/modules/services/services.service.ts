@@ -119,21 +119,26 @@ export class ServicesService {
     await this.prisma.service.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
-  private toDto(item: any): ServiceResponseDto {
+  private toDto(item: {
+    id: string; orgId: string; name: string; description: string | null; price: object | null;
+    createdAt: Date; updatedAt: Date;
+    serviceWorks: Array<{ workId: string; quantity: number; work: { name: string; normoHours: number; price: object } }>;
+    serviceGoods: Array<{ goodId: string; quantity: number; good: { name: string; unit: string; salePrice: object } }>;
+  }): ServiceResponseDto {
     return {
       id: item.id,
       orgId: item.orgId,
       name: item.name,
       description: item.description ?? null,
       price: item.price != null ? Number(item.price) : null,
-      works: item.serviceWorks.map((sw: any) => ({
+      works: item.serviceWorks.map((sw) => ({
         workId: sw.workId,
         workName: sw.work.name,
         normoHours: sw.work.normoHours,
         price: Number(sw.work.price),
         quantity: sw.quantity,
       })),
-      goods: item.serviceGoods.map((sg: any) => ({
+      goods: item.serviceGoods.map((sg) => ({
         goodId: sg.goodId,
         goodName: sg.good.name,
         unit: sg.good.unit,

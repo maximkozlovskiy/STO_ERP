@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   AssignLiftsDto, AssignWorkCategoriesDto, AssignZonesDto,
@@ -162,7 +163,7 @@ export class EmployeesService {
       userId: item.userId,
       firstName: item.firstName,
       lastName: item.lastName,
-      role: item.role as any,
+      role: item.role as UserRole,
       // rateScheme intentionally omitted — exposed only via OWNER/ADMIN-scoped endpoint
       phone: item.phone,
       zoneIds: item.employeeZones.map((z) => z.zoneId),

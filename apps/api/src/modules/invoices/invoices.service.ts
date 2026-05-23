@@ -143,7 +143,13 @@ export class InvoicesService {
     await this.prisma.invoice.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
-  private toDto(inv: any): InvoiceResponseDto {
+  private toDto(inv: {
+    id: string; orgId: string; number: string; status: string;
+    counterpartyId: string; workOrderId: string | null; amount: object;
+    dueDate: Date | null; createdAt: Date; updatedAt: Date;
+    counterparty: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
+    workOrder: { number: string } | null;
+  }): InvoiceResponseDto {
     const cp = inv.counterparty;
     const counterpartyName = cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ');
     return {

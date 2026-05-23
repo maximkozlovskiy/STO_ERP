@@ -128,7 +128,7 @@ export default function InfrastructurePage() {
       await apiFetch(`${endpoint}/${id}`, { method: 'DELETE' });
       loadAll();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : 'Помилка видалення');
     }
   };
 
