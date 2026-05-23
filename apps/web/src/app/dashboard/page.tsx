@@ -18,6 +18,8 @@ interface KPI {
 }
 
 interface RevenueDay { date: string; revenue: number; count: number; }
+interface WorkOrderSummary { status: string; completedAt?: string | null; totalAmount: number; }
+interface InvoiceSummary { amount: number; }
 
 function KpiCard({ label, value, sub, color, href }: {
   label: string; value: string | number; sub?: string;
@@ -42,6 +44,7 @@ export default function DashboardPage() {
   const [kpi, setKpi] = useState<KPI | null>(null);
   const [revenue, setRevenue] = useState<RevenueDay[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
@@ -63,22 +66,22 @@ export default function DashboardPage() {
         const invoicesData = invoices.status === 'fulfilled' ? invoices.value : { items: [] };
         const revData = revenueData.status === 'fulfilled' ? revenueData.value : { rows: [], totalRevenue: 0 };
 
-        const allOrders = ordersData.items ?? [];
-        const todayOrders = allOrders.filter((o: any) =>
+        const allOrders: WorkOrderSummary[] = ordersData.items ?? [];
+        const todayOrders = allOrders.filter(o =>
           o.completedAt && o.completedAt.slice(0, 10) === today);
 
-        const allInvoices = invoicesData.items ?? [];
-        const unpaidAmount = allInvoices.reduce((s: number, i: any) => s + i.amount, 0);
+        const allInvoices: InvoiceSummary[] = invoicesData.items ?? [];
+        const unpaidAmount = allInvoices.reduce((s, i) => s + i.amount, 0);
 
-        const monthRevenue = revData.rows
-          .filter((r: any) => r.date >= monthStart)
-          .reduce((s: number, r: any) => s + r.revenue, 0);
+        const monthRevenue = (revData.rows as RevenueDay[])
+          .filter(r => r.date >= monthStart)
+          .reduce((s, r) => s + r.revenue, 0);
 
         setKpi({
-          openOrders: allOrders.filter((o: any) => ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(o.status)).length,
-          inProgressOrders: allOrders.filter((o: any) => o.status === 'IN_PROGRESS').length,
+          openOrders: allOrders.filter(o => ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(o.status)).length,
+          inProgressOrders: allOrders.filter(o => o.status === 'IN_PROGRESS').length,
           completedToday: todayOrders.length,
-          revenueToday: todayOrders.reduce((s: number, o: any) => s + o.totalAmount, 0),
+          revenueToday: todayOrders.reduce((s, o) => s + o.totalAmount, 0),
           revenueMonth: monthRevenue,
           lowStockCount: Array.isArray(lowStockData) ? lowStockData.length : 0,
           unpaidInvoices: allInvoices.length,
@@ -86,6 +89,8 @@ export default function DashboardPage() {
         });
 
         setRevenue(revData.rows ?? []);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Помилка завантаження дашборду');
       } finally { setLoading(false); }
     };
 
@@ -103,6 +108,7 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">

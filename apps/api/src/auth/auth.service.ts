@@ -80,7 +80,7 @@ export class AuthService {
       payload = this.jwt.verify<JwtPayload>(refreshToken, {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
       });
-    } catch {
+    } catch (_err) {
       throw new UnauthorizedException('Сесія застаріла, увійдіть знову');
     }
 

@@ -81,6 +81,8 @@ export default function SettingsPage() {
       setTemplates(ts => ts.map(t => t.id === updated.id ? updated : t));
       setEditingTemplate(null);
       setMsg('Шаблон збережено');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка збереження шаблону');
     } finally { setSaving(false); }
   };
 
