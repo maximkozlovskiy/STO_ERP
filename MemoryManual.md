@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-11b468b feat(skills): add /sto-tester skill — automated bug finder and fixer
+d9ebecd docs(memory): add MemoryManual.md + wire into session flow
 ```
 
 Дата: 2026-05-24
@@ -312,6 +312,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `d9ebecd` | docs(memory): add MemoryManual.md + wire into session flow |
 | `11b468b` | feat(skills): add /sto-tester skill |
 | `900c24b` | fix(web): Button 'default' variant + Select placeholder prop |
 | `a6cafd5` | fix(web): postcss.config.mjs — Tailwind 4 CSS processing |
