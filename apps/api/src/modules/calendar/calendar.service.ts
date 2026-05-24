@@ -7,10 +7,9 @@ export class CalendarService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findSlots(orgId: string, date: string, branchId?: string): Promise<CalendarSlotResponseDto[]> {
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
+    // Parse as Kyiv midnight to correctly cover the calendar day for Ukrainian users
+    const start = new Date(`${date}T00:00:00+03:00`);
+    const end = new Date(`${date}T23:59:59.999+03:00`);
 
     const where: {
       orgId: string;

@@ -62,9 +62,8 @@ export class SettlementsAccountService {
     });
     if (!account) throw new NotFoundException('Розрахунковий рахунок не знайдено');
 
-    const from = new Date(dto.periodFrom);
-    const to = new Date(dto.periodTo);
-    to.setHours(23, 59, 59, 999);
+    const from = new Date(`${dto.periodFrom}T00:00:00+03:00`);
+    const to = new Date(`${dto.periodTo}T23:59:59.999+03:00`);
 
     // Transactions within period
     const transactions = await this.prisma.settlementTransaction.findMany({
