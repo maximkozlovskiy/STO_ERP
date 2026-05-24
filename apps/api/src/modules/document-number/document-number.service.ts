@@ -40,8 +40,10 @@ export class DocumentNumberService {
 
       const cfg = configs[0];
       const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth() + 1;
+      const kyivFmt = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit',
+      });
+      const [currentYear, currentMonth] = kyivFmt.format(now).split('-').map(Number);
 
       const needsYearlyReset =
         cfg.reset_period === 'YEARLY' &&
