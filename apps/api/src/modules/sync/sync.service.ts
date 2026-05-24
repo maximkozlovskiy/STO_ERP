@@ -137,7 +137,7 @@ export class SyncService {
 
     const existing = await model.findFirst({
       where: { id: rec.id, orgId },
-      select: { id: true, syncVersion: true, deletedAt: true },
+      select: { id: true, syncVersion: true, deletedAt: true, workOrderId: true },
     });
 
     // Strip protected fields — only allow whitelisted fields through
@@ -155,6 +155,14 @@ export class SyncService {
     if (rec.operation === 'DELETE') {
       if (rec.table === 'counterparties' || rec.table === 'vehicles') {
         throw new Error('Видалення контрагентів та автомобілів через синхронізацію заборонено');
+      }
+      // calendar_slots with an active work order must not be deleted via sync
+      // — the operator must cancel the slot through the proper API
+      if (rec.table === 'calendar_slots' && existing) {
+        const slot = existing as Record<string, unknown>;
+        if (slot.workOrderId) {
+          throw new Error('Видалення слоту з прив\'язаним нарядом через синхронізацію заборонено');
+        }
       }
       if (existing) {
         await model.update({ where: { id: rec.id, orgId }, data: { deletedAt: new Date() } });

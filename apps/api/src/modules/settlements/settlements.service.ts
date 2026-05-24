@@ -18,6 +18,7 @@ export class SettlementsService {
 
   async createTransaction(orgId: string, dto: CreateTransactionDto, tx?: Prisma.TransactionClient): Promise<void> {
     const run = async (db: Prisma.TransactionClient | PrismaService) => {
+      // SettlementAccount has no deletedAt — it's a singleton per counterparty, never soft-deleted
       const account = await db.settlementAccount.findFirst({
         where: { orgId, counterpartyId: dto.counterpartyId },
       });

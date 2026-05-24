@@ -44,6 +44,7 @@ export default function SettlementsPage() {
   const [txTotal, setTxTotal] = useState(0);
   const [acts, setActs] = useState<RecAct[]>([]);
   const [q, setQ] = useState('');
+  const [cpLoading, setCpLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [showActModal, setShowActModal] = useState(false);
   const [actForm, setActForm] = useState({ periodFrom: '', periodTo: '' });
@@ -52,8 +53,11 @@ export default function SettlementsPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    apiFetch<{ items: Counterparty[] } | Counterparty[]>('/counterparties?limit=200').then(d => setCounterparties(Array.isArray(d) ? d : d.items))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження контрагентів'));
+    setCpLoading(true);
+    apiFetch<{ items: Counterparty[] } | Counterparty[]>('/counterparties?limit=200')
+      .then(d => setCounterparties(Array.isArray(d) ? d : d.items))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження контрагентів'))
+      .finally(() => setCpLoading(false));
   }, []);
 
   const loadCounterparty = useCallback(async (cp: Counterparty) => {
@@ -125,7 +129,9 @@ export default function SettlementsPage() {
               </div>
             </div>
             <div className="overflow-y-auto max-h-[calc(100vh-250px)]">
-              {filtered.length === 0 ? (
+              {cpLoading ? (
+                <div className="p-4 flex justify-center"><Spinner className="h-5 w-5" /></div>
+              ) : filtered.length === 0 ? (
                 <div className="p-4 text-center text-muted-foreground text-[13px]">Не знайдено</div>
               ) : filtered.map(cp => (
                 <button

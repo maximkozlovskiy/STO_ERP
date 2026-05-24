@@ -58,6 +58,7 @@ export default function InvoicesPage() {
   const [form, setForm] = useState({ counterpartyId: '', amount: '', dueDate: '' });
   const [payForm, setPayForm] = useState({ method: 'cash', amount: '', notes: '' });
   const [saving, setSaving] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   const limit = 20;
 
@@ -115,7 +116,7 @@ export default function InvoicesPage() {
 
   const handleTransition = async (inv: Invoice, newStatus: string) => {
     if (!confirm(`Перевести рахунок ${inv.number} → ${STATUS_LABELS[newStatus]}?`)) return;
-    setSaving(true);
+    setSavingId(inv.id);
     setError('');
     try {
       await apiFetch<void>(`/invoices/${inv.id}/transition`, {
@@ -123,7 +124,7 @@ export default function InvoicesPage() {
       });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка зміни статусу'); }
-    finally { setSaving(false); }
+    finally { setSavingId(null); }
   };
 
   const handlePay = async () => {
@@ -236,7 +237,7 @@ export default function InvoicesPage() {
                         variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s)}
-                        loading={saving}
+                        loading={savingId === inv.id}
                       >
                         {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
                       </Button>

@@ -133,15 +133,17 @@ export class PurchaseOrdersService {
   }
 
   async transition(orgId: string, id: string, newStatus: POStatus): Promise<PurchaseOrderResponseDto> {
-    const po = await this.prisma.purchaseOrder.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!po) throw new NotFoundException('Замовлення не знайдено');
+    await this.prisma.$transaction(async (tx) => {
+      const po = await tx.purchaseOrder.findFirst({ where: { id, orgId, deletedAt: null } });
+      if (!po) throw new NotFoundException('Замовлення не знайдено');
 
-    const allowed = PO_TRANSITIONS[po.status as POStatus] ?? [];
-    if (!allowed.includes(newStatus)) {
-      throw new BadRequestException(`Перехід зі статусу "${po.status}" в "${newStatus}" неможливий`);
-    }
+      const allowed = PO_TRANSITIONS[po.status as POStatus] ?? [];
+      if (!allowed.includes(newStatus)) {
+        throw new BadRequestException(`Перехід зі статусу "${po.status}" в "${newStatus}" неможливий`);
+      }
 
-    await this.prisma.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
+      await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
+    });
     return this.findOne(orgId, id);
   }
 

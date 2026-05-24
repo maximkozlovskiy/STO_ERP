@@ -94,6 +94,10 @@ export class PaymentsService {
         const inv = await tx.invoice.findFirst({ where: { id: dto.invoiceId, orgId, deletedAt: null } });
         if (inv) {
           if (inv.status !== 'SENT') throw new BadRequestException(`Рахунок у статусі "${inv.status}" — оплата неможлива`);
+          // Guard against cross-reference: invoice must belong to the same work order
+          if (dto.workOrderId && inv.workOrderId && inv.workOrderId !== dto.workOrderId) {
+            throw new BadRequestException('Рахунок не належить до вказаного наряду');
+          }
           await tx.invoice.update({ where: { id: dto.invoiceId, orgId }, data: { status: 'PAID' } });
         }
       }

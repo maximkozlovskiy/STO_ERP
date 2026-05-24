@@ -38,6 +38,9 @@ export class InventoryService {
       if (dto.type === 'RESERVATION' && dto.quantity > available) {
         throw new BadRequestException('Недостатньо доступного товару для резервування');
       }
+      if (dto.type === 'RESERVATION_RELEASE' && Math.abs(dto.quantity) > reserved) {
+        throw new BadRequestException('Неможливо зняти резерв: зарезервована кількість менша за запитану');
+      }
     }
 
     await db.stockMovement.create({

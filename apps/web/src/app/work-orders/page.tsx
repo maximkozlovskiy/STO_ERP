@@ -64,6 +64,7 @@ export default function WorkOrdersPage() {
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [formError, setFormError] = useState('');
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -75,10 +76,10 @@ export default function WorkOrdersPage() {
 
   useEffect(() => {
     apiFetch<Branch[]>('/branches').then(setBranches)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Не вдалося завантажити філії'));
+      .catch((e: unknown) => setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити філії'));
     apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200')
       .then(r => setCounterparties(r.items))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Не вдалося завантажити контрагентів'));
+      .catch((e: unknown) => setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити контрагентів'));
   }, []);
 
   const load = useCallback(() => {
@@ -279,9 +280,9 @@ export default function WorkOrdersPage() {
           </Button>
         }
       >
-        {error && (
+        {formError && (
           <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">
-            {error}
+            {formError}
           </div>
         )}
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, type ReactNode } from 'react';
+import { useEffect, useCallback, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -30,9 +30,13 @@ const sizes: Record<ModalSize, string> = {
 export function Modal({
   open, onClose, title, description, children, footer, size = 'md', className, hideClose,
 }: ModalProps) {
+  const [mounted, setMounted] = useState(false);
+
   const handleKey = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose();
   }, [onClose]);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -44,7 +48,7 @@ export function Modal({
     };
   }, [open, handleKey]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   return createPortal(
     <div

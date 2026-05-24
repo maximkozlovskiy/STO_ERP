@@ -49,6 +49,8 @@ export default function DashboardPage() {
   const [revenue, setRevenue] = useState<RevenueDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [todayStr, setTodayStr] = useState('');
+  const [greeting, setGreeting] = useState('Вітаємо');
 
   useEffect(() => {
     const loadData = async () => {
@@ -102,14 +104,16 @@ export default function DashboardPage() {
     };
 
     loadData();
+    setTodayStr(new Date().toLocaleDateString('uk-UA', {
+      timeZone: 'Europe/Kyiv', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    }));
+    const h = parseInt(
+      new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', hour: 'numeric', hour12: false }).format(new Date()), 10,
+    );
+    setGreeting(h < 12 ? 'Доброго ранку' : h < 18 ? 'Доброго дня' : 'Доброго вечора');
   }, []);
 
   if (!employee) return null;
-
-  const hour = parseInt(
-    new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', hour: 'numeric', hour12: false }).format(new Date()), 10,
-  );
-  const greeting = hour < 12 ? 'Доброго ранку' : hour < 18 ? 'Доброго дня' : 'Доброго вечора';
 
   return (
     <div className="page-container">
@@ -124,7 +128,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="page-title">{greeting}, {employee.firstName}!</h1>
           <p className="page-subtitle">
-            {new Date().toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            {todayStr}
           </p>
         </div>
       </div>
