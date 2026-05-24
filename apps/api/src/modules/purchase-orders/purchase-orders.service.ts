@@ -56,7 +56,7 @@ export class PurchaseOrdersService {
       include: {
         supplier: { select: { firstName: true, lastName: true, companyName: true } },
         warehouse: { select: { name: true } },
-        lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
+        lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } }, take: 1000 },
       },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');

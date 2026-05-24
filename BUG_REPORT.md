@@ -65,3 +65,22 @@
 **Статус:** [x] виправлено
 
 ---
+
+## Bug #4 — [LOW] purchase-orders.service.ts findOne lines relation include без take
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:59`
+**Severity:** LOW
+**Категорія:** performance / database
+
+**Опис:**
+`lines: { where: { deletedAt: null }, include: { good: ... } }` — пропущений `take` на relation include. Минулий цикл `/sto-tester` (Bug #4 у попередній сесії) додав `take: 1000` до інших викликів, але цей пропустив.
+
+**Очікувана поведінка:**
+Додати `take: 1000` до relation include.
+
+**Фактична поведінка:**
+Без `take`.
+
+**Статус:** [x] виправлено
+
+---
