@@ -162,6 +162,7 @@ export default function PurchaseOrdersPage() {
       .filter(l => parseFloat(l.receivedQty) > 0)
       .map(l => ({ lineId: l.lineId, receivedQty: parseFloat(l.receivedQty) }));
     if (!lines.length) { setError('Вкажіть кількість для хоча б однієї позиції'); return; }
+    setSaving(true); setError('');
     try {
       await apiFetch(`/purchase-orders/${showReceive.id}/receive`, {
         method: 'POST', body: JSON.stringify({ lines }),
@@ -169,6 +170,7 @@ export default function PurchaseOrdersPage() {
       setShowReceive(null);
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка прийому товару'); }
+    finally { setSaving(false); }
   };
 
   const addLine = () => setLines(l => [...l, { goodId: '', quantity: '1', price: '' }]);

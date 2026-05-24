@@ -142,6 +142,8 @@ export default function StockDocumentsPage() {
   const handleTransition = async (doc: StockDoc, newStatus: string) => {
     const label = newStatus === 'CONFIRMED' ? 'підтвердити' : 'скасувати';
     if (!confirm(`Бажаєте ${label} документ ${doc.number}?`)) return;
+    setSaving(true);
+    setError('');
     try {
       await apiFetch(`/stock-documents/${doc.id}/transition`, {
         method: 'POST', body: JSON.stringify({ status: newStatus }),
@@ -149,6 +151,7 @@ export default function StockDocumentsPage() {
       setShowDetail(null);
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка зміни статусу'); }
+    finally { setSaving(false); }
   };
 
   const addLine = () => setLines(l => [...l, { goodId: '', quantity: '1', price: '' }]);

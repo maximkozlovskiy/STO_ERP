@@ -59,7 +59,7 @@ export default function ReportsPage() {
     setError('');
     try {
       const params = new URLSearchParams({ from, to });
-      const result = await apiFetch(`/reports/${tab}?${params}`);
+      const result = await apiFetch<Record<string, unknown>>(`/reports/${tab}?${params}`);
       setData({ ...result, _tab: tab } as ReportData);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка завантаження звіту');

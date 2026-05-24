@@ -102,6 +102,7 @@ export default function WorkOrderCardPage() {
   const [transitioning, setTransitioning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [refsError, setRefsError] = useState('');
 
   const [lineForm, setLineForm] = useState({ workId: '', employeeId: '', normoHours: '', price: '', notes: '' });
   const [partForm, setPartForm] = useState({ goodId: '', warehouseId: '', quantity: '1', price: '' });
@@ -115,10 +116,10 @@ export default function WorkOrderCardPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    apiFetch<{ items: Work[] }>('/works?limit=200').then(r => setWorks(r.items)).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
-    apiFetch<{ items: Employee[] }>('/employees?limit=200').then((r: { items?: Employee[] } | Employee[]) => setEmployees(Array.isArray(r) ? r : r.items ?? [])).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
-    apiFetch<{ items: Good[] }>('/goods?limit=200').then(r => setGoods(r.items)).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
-    apiFetch<Warehouse[]>('/warehouses').then(setWarehouses).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
+    apiFetch<{ items: Work[] }>('/works?limit=200').then(r => setWorks(r.items)).catch((e: unknown) => setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
+    apiFetch<{ items: Employee[] }>('/employees?limit=200').then((r: { items?: Employee[] } | Employee[]) => setEmployees(Array.isArray(r) ? r : r.items ?? [])).catch((e: unknown) => setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
+    apiFetch<{ items: Good[] }>('/goods?limit=200').then(r => setGoods(r.items)).catch((e: unknown) => setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
+    apiFetch<Warehouse[]>('/warehouses').then(setWarehouses).catch((e: unknown) => setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
   }, []);
 
   const selectWork = (workId: string) => {
@@ -206,6 +207,8 @@ export default function WorkOrderCardPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+      {refsError && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">Довідники: {refsError}</p>}
       {/* Header */}
       <div className="flex items-start gap-4">
         <button onClick={() => router.back()} className="mt-1 text-gray-400 hover:text-gray-600 text-sm">← Назад</button>

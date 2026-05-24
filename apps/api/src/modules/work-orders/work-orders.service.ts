@@ -303,7 +303,7 @@ export class WorkOrdersService {
 
   async updateLine(orgId: string, workOrderId: string, lineId: string, dto: UpdateWorkOrderLineDto): Promise<WorkOrderLineResponseDto> {
     await this.getEditableWorkOrder(orgId, workOrderId);
-    const line = await this.prisma.workOrderLine.findFirst({ where: { id: lineId, workOrderId, deletedAt: null } });
+    const line = await this.prisma.workOrderLine.findFirst({ where: { id: lineId, workOrderId, orgId, deletedAt: null } });
     if (!line) throw new NotFoundException('Позицію не знайдено');
 
     const normoHours = dto.normoHours ?? line.normoHours;
@@ -325,7 +325,7 @@ export class WorkOrdersService {
 
   async removeLine(orgId: string, workOrderId: string, lineId: string): Promise<void> {
     await this.getEditableWorkOrder(orgId, workOrderId);
-    const line = await this.prisma.workOrderLine.findFirst({ where: { id: lineId, workOrderId, deletedAt: null } });
+    const line = await this.prisma.workOrderLine.findFirst({ where: { id: lineId, workOrderId, orgId, deletedAt: null } });
     if (!line) throw new NotFoundException('Позицію не знайдено');
     await this.prisma.$transaction(async (tx) => {
       await tx.workOrderLine.update({ where: { id: lineId, orgId }, data: { deletedAt: new Date() } });
@@ -361,7 +361,7 @@ export class WorkOrdersService {
 
   async updatePart(orgId: string, workOrderId: string, partId: string, dto: UpdateWorkOrderPartDto): Promise<WorkOrderPartResponseDto> {
     await this.getEditableWorkOrder(orgId, workOrderId);
-    const part = await this.prisma.workOrderPart.findFirst({ where: { id: partId, workOrderId, deletedAt: null } });
+    const part = await this.prisma.workOrderPart.findFirst({ where: { id: partId, workOrderId, orgId, deletedAt: null } });
     if (!part) throw new NotFoundException('Позицію не знайдено');
 
     const quantity = dto.quantity ?? part.quantity;
@@ -383,7 +383,7 @@ export class WorkOrdersService {
 
   async removePart(orgId: string, workOrderId: string, partId: string): Promise<void> {
     await this.getEditableWorkOrder(orgId, workOrderId);
-    const part = await this.prisma.workOrderPart.findFirst({ where: { id: partId, workOrderId, deletedAt: null } });
+    const part = await this.prisma.workOrderPart.findFirst({ where: { id: partId, workOrderId, orgId, deletedAt: null } });
     if (!part) throw new NotFoundException('Позицію не знайдено');
     await this.prisma.$transaction(async (tx) => {
       await tx.workOrderPart.update({ where: { id: partId, orgId }, data: { deletedAt: new Date() } });

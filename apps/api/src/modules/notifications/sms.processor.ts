@@ -42,7 +42,7 @@ export class SmsProcessor {
       throw new Error(`TurboSMS error ${response.status}: ${err}`);
     }
 
-    const result = await response.json();
+    const result: unknown = await response.json();
     this.logger.log(`SMS надіслано на ${phone}: ${JSON.stringify(result)}`);
   }
 }

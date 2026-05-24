@@ -24,8 +24,8 @@ export default function SyncPage() {
     try {
       const s = await apiFetch<SyncStatus>('/sync/status');
       setStatus(s);
-    } catch {
-      setError('Не вдалося отримати статус синхронізації');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Не вдалося отримати статус синхронізації');
     } finally {
       setLoading(false);
     }

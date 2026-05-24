@@ -191,7 +191,7 @@ export class SettingsService {
       orgId: s.orgId,
       workStartTime: s.workStartTime,
       workEndTime: s.workEndTime,
-      workDays: s.workDays as number[],
+      workDays: Array.isArray(s.workDays) ? (s.workDays as number[]) : [],
       slotDurationMinutes: s.slotDurationMinutes,
       fiscalEnabled: s.fiscalEnabled,
       checkboxApiUrl: s.checkboxApiUrl,

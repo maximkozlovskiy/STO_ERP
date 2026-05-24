@@ -52,7 +52,7 @@ export class CheckboxProcessor {
       throw new Error(`Checkbox API error ${response.status}: ${err}`);
     }
 
-    const receipt = await response.json();
+    const receipt = await response.json() as { id?: string; fiscal_code?: string };
     const fiscalReceiptId = receipt.id ?? receipt.fiscal_code;
 
     await this.prisma.payment.update({

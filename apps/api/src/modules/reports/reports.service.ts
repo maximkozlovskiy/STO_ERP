@@ -63,6 +63,11 @@ export class ReportsService {
   async workOrders(orgId: string, from: string, to: string, employeeId?: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
+    if (employeeId) {
+      const emp = await this.prisma.employee.findFirst({ where: { id: employeeId, orgId, deletedAt: null } });
+      if (!emp) throw new NotFoundException('Співробітника не знайдено');
+    }
+
     const lineWhere: {
       orgId: string; deletedAt: null;
       workOrder: { deletedAt: null; createdAt: { gte: Date; lte: Date } };
@@ -109,6 +114,11 @@ export class ReportsService {
   }
 
   async stock(orgId: string, warehouseId?: string, from?: string, to?: string) {
+    if (warehouseId) {
+      const wh = await this.prisma.warehouse.findFirst({ where: { id: warehouseId, orgId, deletedAt: null } });
+      if (!wh) throw new NotFoundException('Склад не знайдено');
+    }
+
     const stockWhere: { orgId: string; warehouseId?: string; deletedAt: null } = { orgId, deletedAt: null };
     if (warehouseId) stockWhere.warehouseId = warehouseId;
 
