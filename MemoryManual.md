@@ -9,11 +9,11 @@
 ## Останній commit
 
 ```
+6b3363e feat(phase16): 16.A-G — XlsxImport, Barcodes, Units, XLSX_MANAGER, CRM tabs, nav mode, dark theme
+7566b6d docs(memory): update Phase 16 progress summary
 78ed50c docs(phase16): update PHASES.md — mark 16.1-16.7 partial completion
 140c89a feat(phase16): 16.7 — CRM default garage auto-creation
 5ea46db feat(phase16): 16.5 — XlsxModule for catalog import
-4d53c80 feat(phase16): 16.2-16.4 — Barcodes, Units, XLSX_MANAGER role
-9f9cb8d feat(phase16): 16.1 — Brand model + BrandModule + UI integration
 ```
 
 Дата: 2026-05-25
@@ -24,9 +24,9 @@
 
 | Параметр | Значення |
 |---|---|
-| Фаза | **Фаза 16 — Каталог v2 + CRM + XLSX-імпорт** (7/27 done) |
-| Прогрес | 16.1✅ 16.2✅(BE) 16.3✅(BE) 16.4✅(BE) 16.5✅(BE) 16.6⏳ 16.7✅(BE) |
-| TypeScript | ✅ 0 errors (web + api + shared) — verified 2026-05-25 |
+| Фаза | **Фаза 16 — Каталог v2 + CRM + XLSX-імпорт** (Tasks A-G done) |
+| Прогрес | 16.1-16.5✅ 16.6⏳ 16.7✅ 16.8✅ 16.9✅ 16.10✅(partial) |
+| TypeScript | ✅ 0 errors (web + api) — verified 2026-05-25 |
 | Unit тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
 | Contract тести | ✅ 15/15 passed (auth: 9, work-orders: 6) |
 | Property-based | ✅ 26/26 passed (fsm: 11, inventory: 7, settlements: 8) |
@@ -221,16 +221,19 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
   - CounterpartiesService.create() → auto-create CustomerGarage(name='Основний', isDefault=true)
   - Migration: `20260524222539_add_customer_garage_is_default`
 
-### TODO (UI + інші)
-- **16.2** — Barcodes tab у CartDetail товару
-- **16.3** — Units select у GoodsTab form + UI tab у /settings або /catalog
-- **16.4** — XLSX_MANAGER у ROLE_LABELS + employee form
-- **16.5** — XlsxImportButton компонент + UI інтеграція в /catalog
-- **16.6** — XLSX import для PO/SD/WO лінійок
-- **16.7** — UI: основний гараж в картці контрагента
-- **16.8** — CRM card 4-tab реорганізація (загальна інф + гаражи+авто + розрахунки + наряди)
-- **16.9** — Nav mode toggle (sections vs functions) у /settings
-- **16.10** — Dark/Light theme (color-mode.ts + globals.css .dark + ColorModeProvider + UI toggle)
+### Завершено (frontend, 2026-05-25 session 2)
+- **16.2** ✅ — Barcodes DetailTab (info/barcodes tabs, add/delete, Star isPrimary icon)
+- **16.3** ✅ — Units select у GoodsTab form + UnitsTab CRUD у /catalog
+- **16.4** ✅ — XLSX_MANAGER у ROLE_LABELS (TopShell + employees page)
+- **16.5** ✅ — XlsxImportButton component + toolbar integration у GoodsTab, WorksTab
+- **16.7** ✅ — isDefault badge у гаражах (CRM card)
+- **16.8** ✅ — CRM /crm/[id]/PageClient повністю 4 таби з inline edit, accordion garages
+- **16.9** ✅ — Nav mode toggle (NAV_GROUPS_FUNCTIONS + navMode state + localStorage)
+- **16.10** ✅ — color-mode.ts + ColorModeProvider + anti-flash script + dark CSS vars + settings UI
+
+### TODO (залишилось)
+- **16.6** — XLSX import для PO/SD/WO лінійок (бекенд + фронтенд)
+- **16.10** — Skeleton dark variant у globals.css
 
 ## Архітектура змін Фаза 16
 

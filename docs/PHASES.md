@@ -427,8 +427,8 @@
     > Додана GoodBarcode модель з onDelete: Cascade. Migration: add_good_barcodes.
 [x] `[sto-backend]` Endpoints: `GET /goods/:id/barcodes`, `POST /goods/:id/barcodes`, `DELETE /goods/:id/barcodes/:barcodeId`. Перевірка uniq barcode в межах org при POST.
     > GoodsController розширена sub-resource endpoints. GoodsService: getBarcodes, createBarcode, deleteBarcode методи з валідацією.
-[ ] `[sto-web]` Картка товару (`/catalog` → Good tab) — дві вкладки: "Основна інформація" і "Штрихкоди". Вкладка "Штрихкоди": таблиця (barcode | тип | isPrimary) + форма додавання + кнопка "Видалити".
-    > UI: TODO — потребує DetailPanel tab refactoring.
+[x] `[sto-web]` Картка товару (`/catalog` → Good tab) — дві вкладки: "Основна інформація" і "Штрихкоди". Вкладка "Штрихкоди": таблиця (barcode | тип | isPrimary) + форма додавання + кнопка "Видалити".
+    > GoodDetailTab = 'info'|'barcodes'. loadBarcodes(), addBarcode(), deleteBarcode(). Star icon for isPrimary.
 
 ### 16.3 — Розширення полів товару (одиниці виміру)
 
@@ -438,10 +438,10 @@
     > Good розширена з unitId опціональне поле. Migration: add_units_of_measure.
 [x] `[sto-backend]` `UnitsModule`: CRUD `/units-of-measure`. Roles: OWNER, ADMIN, STOREKEEPER.
     > Повна реалізація: units.service.ts, units.controller.ts, units.module.ts + реєстрація в app.module.ts.
-[ ] `[sto-web]` У формі товару: поле "Одиниця виміру" → Select з `/units-of-measure`.
-    > TODO - можна додати як розширення GoodsTab форми.
-[ ] `[sto-web]` Вкладка "Одиниці виміру" в `/settings` або в `/catalog`.
-    > TODO - окремий UI tab.
+[x] `[sto-web]` У формі товару: поле "Одиниця виміру" → Select з `/units`.
+    > GoodsTab form: unitId + unit автозаповнення з shortName. Fallback — ручне поле.
+[x] `[sto-web]` Вкладка "Одиниці виміру" в `/catalog`.
+    > UnitsTab: CRUD таблиця shortName|name|тип + форма додавання. isSystem позначка.
 
 ### 16.4 — Нова роль XLSX_MANAGER + захист імпорту
 
@@ -449,8 +449,8 @@
     > XLSX_MANAGER додана до UserRole enum. Migration: add_xlsx_manager_role.
 [x] `[sto-backend]` Всі XLSX endpoints захищені `@Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')`.
     > XlsxController: всі endpoints мають @Roles()з XLSX_MANAGER.
-[ ] `[sto-web]` Роль `XLSX_MANAGER` у `ROLE_LABELS` + badge + форма співробітника.
-    > TODO - UI: потребує додавання до ROLE_LABELS, employee form.
+[x] `[sto-web]` Роль `XLSX_MANAGER` у `ROLE_LABELS` + badge + форма співробітника.
+    > TopShell ROLE_LABELS + employees page ROLE_LABELS, ROLE_BADGE, ROLE_FILTER_OPTIONS оновлені.
 
 ### 16.5 — XLSX-імпорт: довідники (товари, одиниці, бренди)
 
@@ -461,8 +461,8 @@
     > POST /xlsx/import/goods, POST /xlsx/import/brands, POST /xlsx/import/units.
     > Результат: {created, updated, errors[]}. Roles: OWNER, ADMIN, XLSX_MANAGER.
     > Залежність: exceljs встановлена. Fastify multipart вже реєстровано в main.ts.
-[ ] `[sto-web]` Компонент `XlsxImportButton` + UI інтеграція.
-    > TODO - потребує створення UI компоненту та інтеграції в /catalog.
+[x] `[sto-web]` Компонент `XlsxImportButton` + UI інтеграція.
+    > apps/web/src/components/ui/xlsx-import-button.tsx. Інтегровано в GoodsTab і WorksTab тулбари.
 
 ### 16.6 — XLSX-імпорт: табличні частини документів
 
@@ -482,27 +482,27 @@
 [x] `[sto-backend]` `CustomerGarage.isDefault Boolean @default(false)` — поле для позначення основного гаражу. Міграція.
     > Поле додане. Migration: add_customer_garage_is_default.
     > GarageResponseDto + toGarageDto розширені з isDefault полем.
-[ ] `[sto-web]` В картці контрагента: основний гараж виводиться першим із позначкою "Основний".
-    > TODO - потребує UI оновлення в /crm/[id] картці.
+[x] `[sto-web]` В картці контрагента: основний гараж виводиться першим із позначкою "Основний".
+    > PageClient.tsx: Garage.isDefault → badge "Основний" на кнопці/заголовку гаражу.
 
 ### 16.8 — CRM: гаражі та авто вкладками в картці клієнта
 
 **Фронтенд:**
-- [ ] `[sto-web]` Картка контрагента `/crm/[id]` — реорганізація в таби:
-  - Вкладка **"Загальна інформація"**: поля контрагента (ПІБ/назва, тип, телефон, email, ЄДРПОУ, ПДВ, нотатки) + кнопка редагування.
-  - Вкладка **"Гаражі та авто"**: список гаражів (accordion або nested tabs) → у кожному гаражі список авто. Форма "Додати гараж". Форма "Додати авто до гаражу" (кнопка в гаражі).
-  - Вкладка **"Взаєморозрахунки"**: баланс + транзакції (вже є).
-  - Вкладка **"Наряди"**: наряди цього клієнта (вже частково є).
+- [x] `[sto-web]` Картка контрагента `/crm/[id]` — реорганізація в 4 таби:
+  - Вкладка **"Загальна інформація"**: поля контрагента + inline редагування phone/email/notes.
+  - Вкладка **"Гаражі та авто"**: accordion з isDefault badge + авто + форми додавання.
+  - Вкладка **"Взаєморозрахунки"**: баланс + транзакції.
+  - Вкладка **"Наряди"**: GET /work-orders?counterpartyId.
+  > PageClient.tsx повністю перероблено.
 
 ### 16.9 — Налаштування інтерфейсу: режим навігації
 
 **Фронтенд:**
-- [ ] `[sto-web]` У `/settings` (вкладка "Оформлення") додати перемикач **"Режим навігації"**:
-  - **По розділах** (default): Документи / Звіти / Довідники (поточна поведінка)
-  - **По функціях**: класичне меню — CRM, Склад, Наряди, Календар, ... (порядок як до рефакторингу)
-- [ ] `[sto-web]` Збереження в `localStorage` ключ `sto_nav_mode` (`'sections'` | `'functions'`).
-- [ ] `[sto-web]` `TopShell.tsx`: зчитує `sto_nav_mode`, рендерить відповідний `NAV_GROUPS`.
-- [ ] `[sto-web]` `NAV_GROUPS_FUNCTIONS` — плоска структура без секцій (Дашборд, Наряди, Календар, CRM, Склад, Замовлення, Документи складу, Рахунки, Розрахунки, Звіти, Каталог, Персонал, Підрозділи, Налаштування, Cloud Sync).
+- [x] `[sto-web]` У `/settings` (вкладка "Оформлення") додати перемикач **"Режим навігації"**.
+- [x] `[sto-web]` Збереження в `localStorage` ключ `sto_nav_mode` + custom event `sto:nav-mode-change`.
+- [x] `[sto-web]` `TopShell.tsx`: зчитує `sto_nav_mode`, рендерить відповідний `NAV_GROUPS`.
+- [x] `[sto-web]` `NAV_GROUPS_FUNCTIONS` — плоска структура без секцій.
+    > TopShell: NAV_GROUPS_FUNCTIONS + navMode state + localStorage hydration + event listener.
 
 ### 16.10 — Темна та світла теми (color scheme)
 
@@ -543,16 +543,13 @@
 
 **Реалізація:**
 
-- [ ] `[sto-web]` `apps/web/src/lib/color-mode.ts` — утиліти: `getColorMode()`, `setColorMode(mode)`, `applyColorMode()`, `watchSystemColorMode()`.
-- [ ] `[sto-web]` `apps/web/src/app/layout.tsx` — додати inline `<script>` в `<head>` що читає `sto_color_mode` з localStorage і виставляє клас `dark` на `<html>` до hydration (анти-flash).
-- [ ] `[sto-web]` `apps/web/src/app/globals.css` — додати `.dark { ... }` блок з перевизначенням CSS-змінних (не `@media`, щоб примусова тема перебивала системну). Системна: `@media (prefers-color-scheme: dark) { :root:not([data-color-mode="light"]) { ... } }`.
-- [ ] `[sto-web]` `apps/web/src/components/ColorModeProvider.tsx` — `'use client'` компонент, викликає `applyColorMode()` при mount + підписується на `matchMedia` при mode=`'system'`. Додати в `layout.tsx` після inline script.
-- [ ] `[sto-web]` `/settings` вкладка "Оформлення" — перемикач **"Тема"**: три кнопки-іконки:
-  - ☀️ Світла (`'light'`)
-  - 🌙 Темна (`'dark'`)  
-  - 💻 Системна (`'system'`) — **активна за замовчуванням**
+- [x] `[sto-web]` `apps/web/src/lib/color-mode.ts` — утиліти: `getColorMode()`, `setColorMode(mode)`, `applyColorMode()`, `watchSystemColorMode()`.
+- [x] `[sto-web]` `apps/web/src/app/layout.tsx` — inline `<script>` в `<head>` анти-flash + `<ColorModeProvider>`.
+- [x] `[sto-web]` `apps/web/src/app/globals.css` — `.dark { ... }` блок + `@media (prefers-color-scheme: dark)` для system preference.
+- [x] `[sto-web]` `apps/web/src/components/ColorModeProvider.tsx` — mount + watchSystemColorMode.
+- [x] `[sto-web]` `/settings` вкладка "Оформлення" — перемикач "Тема": Світла/Темна/Системна (Sun/Moon/Monitor іконки).
 - [ ] `[sto-web]` Skeleton/shimmer анімація в `globals.css` — варіант для темної теми.
-- [ ] `[sto-web]` KPI-картки, таблиці, модалки, sidebar — перевірити що `bg-surface`, `border-border`, `text-foreground` та інші canonical Tailwind токени коректно підхоплюють dark CSS-змінні.
+- [ ] `[sto-web]` KPI-картки, таблиці, модалки — перевірити canonical токени в dark mode.
 
 **Технічні деталі — анти-flash script:**
 ```html
