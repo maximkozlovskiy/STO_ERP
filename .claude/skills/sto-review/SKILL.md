@@ -52,8 +52,14 @@ grep -rn ": any" apps/api/src/ apps/web/src/ --include="*.ts" --include="*.tsx"
 # console.log у продакшн-коді
 grep -rn "console\.log" apps/api/src/ apps/web/src/ --include="*.ts" --include="*.tsx"
 
-# Tailwind 4 — застаріла [var(--x)] форма (має бути canonical token або (--x) shorthand)
+# Tailwind 4 — застаріла [var(--x)] форма (має бути canonical token)
 grep -rn "\[var(--" apps/web/src/ --include="*.tsx" --include="*.ts"
+
+# Tailwind 4 — (--color-X) shorthand теж не canonical, треба token (bg-primary замість bg-(--color-primary))
+grep -rn "(--color-" apps/web/src/ --include="*.tsx" --include="*.ts"
+
+# Tailwind 4 — інші shorthand токенів які мають бути canonical
+grep -rnE "(rounded|shadow|text|bg|border|divide|ring)-\(--" apps/web/src/ --include="*.tsx" --include="*.ts"
 
 # Pixel значення замість Tailwind scale
 grep -rnE "(w|h|top|left|right|bottom|max-w|min-w|p|m|gap)-\[[0-9]+px\]" apps/web/src/ --include="*.tsx"
@@ -80,6 +86,9 @@ grep -rn "ignoreDeprecations.*6\.0" apps/ packages/ --include="tsconfig*.json"
 | `TS5103: Invalid value for '--ignoreDeprecations'` | На TS 5.x використовуй `"5.0"`, не `"6.0"`. `"6.0"` стане валідним з TS 6.0 |
 | `Option 'baseUrl' is deprecated` | Видалити `baseUrl` повністю — у TS 5+ `paths` працює відносно tsconfig.json |
 | `The class '[var(--color-x)]' can be written as 'bg-x'` | Замінити `[var(--color-x)]` на canonical Tailwind token (див. `/sto-dev` Tailwind 4 секцію) |
+| `bg-(--color-X)` / `border-(--color-X)` shorthand | Замінити на canonical token: `bg-X` / `border-X` (`bg-(--color-primary)` → `bg-primary`) |
+| `shadow-(--shadow-xl)` / `rounded-(--radius)` | Canonical: `shadow-xl` / `rounded` |
+| `findMany` без `take` ліміту | Додати `take: N` (зони/підйомники: 100, авто/співробітники: 200, slots: 500, list endpoints: 200) — інакше при N → ∞ записах піде OOM |
 | `The class 'w-[Npx]' can be written as 'w-M'` | Перевести px → Tailwind scale: M = N/4 (52px→w-13, 216px→w-54, 420px→w-105) |
 | `The class 'flex-shrink-0' can be written as 'shrink-0'` | Просто перейменувати |
 | `The class 'tracking-[Nem]' can be written as 'tracking-X'` | 0.05em→wider, 0.08em→widest, 0.025em→wide |
