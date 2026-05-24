@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth';
 import { TopShell } from '@/components/TopShell';
@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   title: 'STO ERP',
   description: 'Система управління автосервісом',
   manifest: '/manifest.json',
+};
+
+export const viewport: Viewport = {
   themeColor: '#2563eb',
 };
 
