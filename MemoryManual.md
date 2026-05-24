@@ -9,11 +9,11 @@
 ## Останній commit
 
 ```
+fix(review): cycle 2 — drop unused import + clarify 403 test name in contract specs
+79a23cb docs(memory): update MemoryManual with cycle 2 test counts and gotchas
 81765cb docs(tester): mark Bugs #10-#13 fixed in BUG_REPORT.md
 b191792 fix(tester): Bug #13 — add E2E tests for API error resilience and inventory
 04958b5 fix(tester): Bug #12 — add Testing Library component tests for UI primitives
-ca08381 fix(tester): Bug #10 — add HTTP contract tests for auth and work-orders
-a55b9fb fix(tester): Bug #11 — add fast-check property-based invariants tests
 ```
 
 Дата: 2026-05-25

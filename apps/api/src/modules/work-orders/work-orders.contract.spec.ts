@@ -106,18 +106,17 @@ describe('WorkOrders — HTTP Contract', () => {
       });
     });
 
-    it('повертає 401 без авторизації', async () => {
+    it('повертає 403 коли guard не пропустив (mock canActivate=false)', async () => {
       jwtAllow = false;
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
         url: '/work-orders',
       });
       jwtAllow = true;
-      // NestJS Passport AuthGuard → 401 при canActivate=false
-      expect(res.statusCode).toBe(403); // overridden guard returns false → 403
       // Зауваження: реальний JwtAuthGuard кидає UnauthorizedException → 401,
       // але при overrideGuard().useValue() з canActivate=false NestJS повертає 403.
       // Для перевірки auth gateway цього достатньо.
+      expect(res.statusCode).toBe(403);
     });
   });
 
