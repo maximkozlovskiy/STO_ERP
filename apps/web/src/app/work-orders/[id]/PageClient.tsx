@@ -45,15 +45,15 @@ const STATUS_LABELS: Record<string, string> = {
   INVOICED: 'Виставлено', PAID: 'Оплачено', ARCHIVED: 'Архів', CANCELLED: 'Скасовано',
 };
 const STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-(--color-secondary) text-muted-foreground',
+  DRAFT: 'bg-secondary text-muted-foreground',
   ESTIMATE: 'bg-warning-subtle text-warning',
-  APPROVED: 'bg-(--color-primary-subtle) text-(--color-primary)',
+  APPROVED: 'bg-primary-subtle text-primary',
   IN_PROGRESS: 'bg-purple-100 text-purple-700',
   ON_HOLD: 'bg-orange-100 text-orange-700',
   COMPLETED: 'bg-success-subtle text-success',
   INVOICED: 'bg-teal-100 text-teal-700',
   PAID: 'bg-emerald-100 text-emerald-700',
-  ARCHIVED: 'bg-(--color-secondary) text-muted-foreground',
+  ARCHIVED: 'bg-secondary text-muted-foreground',
   CANCELLED: 'bg-destructive-subtle text-destructive',
 };
 const TRANSITIONS: Record<string, string[]> = {
@@ -215,7 +215,7 @@ export default function WorkOrderCardPage() {
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold text-foreground">{wo.number}</h1>
-            <span className={cn('text-sm font-medium px-2.5 py-1 rounded-full', STATUS_COLORS[wo.status] ?? 'bg-(--color-secondary) text-muted-foreground')}>
+            <span className={cn('text-sm font-medium px-2.5 py-1 rounded-full', STATUS_COLORS[wo.status] ?? 'bg-secondary text-muted-foreground')}>
               {STATUS_LABELS[wo.status] ?? wo.status}
             </span>
           </div>
@@ -264,7 +264,7 @@ export default function WorkOrderCardPage() {
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-foreground">Роботи</h2>
-          {canEdit && <button onClick={() => { setError(''); setLineModal(true); }} className="text-sm text-(--color-primary) hover:underline">+ Робота</button>}
+          {canEdit && <button onClick={() => { setError(''); setLineModal(true); }} className="text-sm text-primary hover:underline">+ Робота</button>}
         </div>
         {wo.lines.length === 0
           ? <p className="text-sm text-muted-foreground">Роботи не додані</p>
@@ -292,7 +292,7 @@ export default function WorkOrderCardPage() {
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-foreground">Запчастини та матеріали</h2>
-          {canEdit && <button onClick={() => { setError(''); setPartModal(true); }} className="text-sm text-(--color-primary) hover:underline">+ Запчастина</button>}
+          {canEdit && <button onClick={() => { setError(''); setPartModal(true); }} className="text-sm text-primary hover:underline">+ Запчастина</button>}
         </div>
         {wo.parts.length === 0
           ? <p className="text-sm text-muted-foreground">Запчастини не додані</p>

@@ -215,16 +215,16 @@ export default function CalendarPage() {
       )}
       {!loading && lifts.length === 0 && (
         <div className="bg-surface border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
-          Немає підйомників. Додайте їх у розділі <a href="/infrastructure" className="text-(--color-primary) hover:underline">Інфраструктура</a>.
+          Немає підйомників. Додайте їх у розділі <a href="/infrastructure" className="text-primary hover:underline">Інфраструктура</a>.
         </div>
       )}
       {!loading && lifts.length > 0 && (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           {/* Hour headers */}
           <div className="grid border-b border-border" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
-            <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-(--color-secondary) border-r border-border">Підйомник</div>
+            <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">Підйомник</div>
             {HOURS.map(h => (
-              <div key={h} className="px-1 py-2 text-xs text-center text-muted-foreground bg-(--color-secondary) border-r border-border last:border-r-0">
+              <div key={h} className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0">
                 {pad(h)}:00
               </div>
             ))}
@@ -235,7 +235,7 @@ export default function CalendarPage() {
             const liftSlots = slotsForLift(lift.id);
             return (
               <div key={lift.id} className="grid border-b border-border last:border-b-0" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
-                <div className="px-3 py-3 text-sm font-medium text-foreground bg-(--color-secondary) border-r border-border flex items-center">
+                <div className="px-3 py-3 text-sm font-medium text-foreground bg-secondary border-r border-border flex items-center">
                   {lift.name}
                 </div>
                 <div className="col-span-12 relative min-h-12" style={{ gridColumn: `2 / span ${HOURS.length}` }}>
@@ -252,7 +252,7 @@ export default function CalendarPage() {
                     return (
                       <div
                         key={s.id}
-                        className="absolute top-1 bottom-1 bg-(--color-primary) rounded text-white text-xs flex items-center px-1.5 overflow-hidden cursor-pointer hover:opacity-90 group"
+                        className="absolute top-1 bottom-1 bg-primary rounded text-white text-xs flex items-center px-1.5 overflow-hidden cursor-pointer hover:opacity-90 group"
                         style={{ left: `${left}%`, width: `${width}%` }}
                         title={s.workOrderNumber ? `Наряд ${s.workOrderNumber}` : s.notes ?? ''}
                       >
@@ -277,10 +277,10 @@ export default function CalendarPage() {
           <h3 className="font-semibold text-foreground mb-3 text-sm">Без підйомника</h3>
           <div className="space-y-2">
             {unassignedSlots.map(s => (
-              <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-(--color-secondary) rounded-lg">
+              <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-secondary rounded-lg">
                 <div>
                   <span className="text-sm text-foreground">{fmtTime(s.startAt)} – {fmtTime(s.endAt)}</span>
-                  {s.workOrderNumber && <span className="ml-2 text-xs text-(--color-primary)">Наряд {s.workOrderNumber}</span>}
+                  {s.workOrderNumber && <span className="ml-2 text-xs text-primary">Наряд {s.workOrderNumber}</span>}
                   {s.notes && <span className="ml-2 text-xs text-muted-foreground">{s.notes}</span>}
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => removeSlot(s.id)}>

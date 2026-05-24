@@ -166,7 +166,7 @@ export default function CrmPage() {
           {!loading && data?.items.map(cp => (
             <TableRow key={cp.id} onClick={() => router.push(`/crm/${cp.id}`)}>
               <TableCell>
-                <p className="text-[13px] font-medium text-(--color-primary)">{displayName(cp)}</p>
+                <p className="text-[13px] font-medium text-primary">{displayName(cp)}</p>
                 {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
               </TableCell>
               <TableCell>
@@ -200,8 +200,8 @@ export default function CrmPage() {
               className={cn(
                 'h-8 w-8 rounded-lg text-[13px] font-medium border transition-colors',
                 p === page
-                  ? 'bg-(--color-primary) text-white border-(--color-primary)'
-                  : 'border-(--color-border) text-foreground-muted bg-white hover:bg-(--color-secondary)',
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
               )}
             >
               {p}

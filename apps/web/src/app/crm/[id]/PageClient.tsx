@@ -137,7 +137,7 @@ export default function CounterpartyCardPage() {
         </div>
 
         {showAddGarage && (
-          <div className="mb-4 p-3 bg-(--color-secondary) rounded-lg space-y-2">
+          <div className="mb-4 p-3 bg-secondary rounded-lg space-y-2">
             <Input
               value={garageName}
               onChange={e => setGarageName(e.target.value)}
@@ -172,8 +172,8 @@ export default function CounterpartyCardPage() {
                 className={cn(
                   'px-3 py-1.5 rounded-lg text-sm border transition-colors',
                   selectedGarage === g.id
-                    ? 'bg-(--color-primary) text-white border-(--color-primary)'
-                    : 'border-border text-muted-foreground hover:bg-(--color-secondary)',
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border text-muted-foreground hover:bg-secondary',
                 )}
               >
                 {g.name}
@@ -200,7 +200,7 @@ export default function CounterpartyCardPage() {
                     <button
                       key={v.id}
                       onClick={() => router.push(`/vehicles/${v.id}`)}
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-(--color-secondary) text-left transition-colors"
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary text-left transition-colors"
                     >
                       <div>
                         <p className="text-sm font-medium text-foreground">{v.make} {v.model}</p>

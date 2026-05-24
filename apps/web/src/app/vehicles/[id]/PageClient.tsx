@@ -118,7 +118,7 @@ export default function VehicleCardPage() {
         </div>
 
         {showAddNode && (
-          <div className="mb-4 p-3 bg-(--color-secondary) rounded-lg space-y-2">
+          <div className="mb-4 p-3 bg-secondary rounded-lg space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Категорія</label>

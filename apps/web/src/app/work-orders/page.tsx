@@ -167,8 +167,8 @@ export default function WorkOrdersPage() {
             className={cn(
               'px-3 py-1 rounded-full text-[12px] font-medium border transition-all duration-100',
               statusFilter === v
-                ? 'bg-(--color-primary) text-white border-(--color-primary) shadow-sm'
-                : 'border-(--color-border) text-foreground-muted bg-white hover:bg-(--color-secondary) hover:text-foreground',
+                ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
             )}
           >
             {l}
@@ -213,7 +213,7 @@ export default function WorkOrdersPage() {
           {!loading && data?.items.map(wo => (
             <TableRow key={wo.id} onClick={() => router.push(`/work-orders/${wo.id}`)}>
               <TableCell>
-                <span className="text-[13px] font-semibold text-(--color-primary)">{wo.number}</span>
+                <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
               </TableCell>
               <TableCell>
                 <p className="text-[13px] font-medium text-foreground">{wo.counterpartyName ?? '—'}</p>
@@ -252,8 +252,8 @@ export default function WorkOrdersPage() {
               className={cn(
                 'h-8 w-8 rounded-lg text-[13px] font-medium border transition-colors',
                 p === page
-                  ? 'bg-(--color-primary) text-white border-(--color-primary)'
-                  : 'border-(--color-border) text-foreground-muted bg-white hover:bg-(--color-secondary)',
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
               )}
             >
               {p}

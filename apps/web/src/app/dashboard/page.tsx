@@ -114,7 +114,7 @@ export default function DashboardPage() {
   return (
     <div className="page-container">
       {error && (
-        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-(--color-destructive-subtle) border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">
+        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">
           {error}
         </div>
       )}
@@ -199,7 +199,7 @@ export default function DashboardPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Виручка за 7 днів</CardTitle>
-                  <Link href="/reports" className="text-[12px] text-(--color-primary) hover:underline font-medium">
+                  <Link href="/reports" className="text-[12px] text-primary hover:underline font-medium">
                     Всі звіти →
                   </Link>
                 </div>
@@ -250,7 +250,7 @@ export default function DashboardPage() {
                   <Link
                     key={href}
                     href={href}
-                    className="inline-flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium rounded-(--radius) border border-(--color-border) bg-white text-foreground hover:bg-(--color-secondary) hover:border-border-hover transition-all duration-150"
+                    className="inline-flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium rounded-lg border border-border bg-surface text-foreground hover:bg-secondary hover:border-border transition-all duration-150"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     {label}
