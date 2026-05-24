@@ -251,7 +251,7 @@ Skill §1.4 вимагає `.contract.spec.ts` для work-orders, inventory, au
 **Фактична поведінка:**
 0 contract тестів.
 
-**Статус:** [ ] відкритий — додаткова робота поза рамками одного циклу /sto-tester (потрібен Supertest + harness setup)
+**Статус:** [x] виправлено — встановлено supertest + @types/supertest; додано contract тести для auth (9 тестів) та work-orders (6 тестів). Використано Fastify `app.inject()` замість supertest для NestFastifyApplication.
 
 ---
 
@@ -270,7 +270,7 @@ Skill §1.4 вимагає `.contract.spec.ts` для work-orders, inventory, au
 **Фактична поведінка:**
 Відсутній.
 
-**Статус:** [ ] відкритий — потребує окремого циклу встановлення залежностей
+**Статус:** [x] виправлено — встановлено fast-check@4; додано `work-orders.fsm.invariants.spec.ts` (11 тестів), `inventory.invariants.spec.ts` (7 тестів), `settlements.invariants.spec.ts` (8 тестів). Грошові суми тестуються через int (центи) щоб уникнути 32-bit float обмежень fast-check.
 
 ---
 
@@ -289,7 +289,7 @@ Skill §1.4 вимагає `.contract.spec.ts` для work-orders, inventory, au
 **Фактична поведінка:**
 Відсутній.
 
-**Статус:** [ ] відкритий — потребує окремого циклу встановлення залежностей
+**Статус:** [x] виправлено — встановлено @testing-library/react, user-event, jest-dom, jsdom, @vitejs/plugin-react@4. Створено `vitest.config.mts` (mts через ESM плагіни) + setup. Додано тести для Button (12), Select (9), Modal (11), EmptyState (10). Total: 42 component tests passing.
 
 ---
 
@@ -308,6 +308,6 @@ Skill §1.5 рекомендує `work-orders.spec.ts`, `work-order-flow.spec.ts
 **Фактична поведінка:**
 Тільки smoke.
 
-**Статус:** [ ] відкритий — потребує окремого циклу написання тестів
+**Статус:** [x] виправлено — додано `api-errors.spec.ts` (8 тестів: захищені + публічні сторінки під 500 від API) та `inventory.spec.ts` (5 тестів: auth guard + API mock states). Усі 16 E2E тестів зелені.
 
 ---
