@@ -93,13 +93,15 @@ export default function InvoicesPage() {
   }, [showPayment]);
 
   const handleCreate = async () => {
+    const amt = parseFloat(form.amount);
+    if (isNaN(amt) || amt <= 0) { setError('Введіть коректну суму'); return; }
     setSaving(true);
     try {
       await apiFetch<Invoice>('/invoices', {
         method: 'POST',
         body: JSON.stringify({
           counterpartyId: form.counterpartyId,
-          amount: parseFloat(form.amount),
+          amount: amt,
           dueDate: form.dueDate || undefined,
         }),
       });
@@ -133,7 +135,7 @@ export default function InvoicesPage() {
         body: JSON.stringify({
           counterpartyId: showPayment.counterpartyId,
           invoiceId: showPayment.id,
-          amount: parseFloat(payForm.amount) || showPayment.amount,
+          amount: (() => { const a = parseFloat(payForm.amount); return (!payForm.amount || isNaN(a)) ? showPayment.amount : a; })(),
           method: payForm.method,
           notes: payForm.notes || undefined,
         }),

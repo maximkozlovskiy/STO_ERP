@@ -72,6 +72,10 @@ export default function InfrastructurePage() {
   const closeModal = () => { setModal(null); setError(''); };
 
   const save = async () => {
+    if (modal === 'lift' && form.maxWeightKg) {
+      const w = Number(form.maxWeightKg);
+      if (isNaN(w) || w <= 0) { setError('Вантажність має бути додатнім числом'); return; }
+    }
     setSaving(true);
     setError('');
     try {
@@ -80,7 +84,8 @@ export default function InfrastructurePage() {
       } else if (modal === 'zone') {
         await apiFetch<Zone>('/zones', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
       } else if (modal === 'lift') {
-        await apiFetch<Lift>('/lifts', { method: 'POST', body: JSON.stringify({ zoneId: form.zoneId, name: form.name, type: form.type, maxWeightKg: form.maxWeightKg ? Number(form.maxWeightKg) : undefined }) });
+        const w = form.maxWeightKg ? Number(form.maxWeightKg) : undefined;
+        await apiFetch<Lift>('/lifts', { method: 'POST', body: JSON.stringify({ zoneId: form.zoneId, name: form.name, type: form.type, maxWeightKg: w }) });
       } else if (modal === 'warehouse') {
         await apiFetch<Warehouse>('/warehouses', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
       }

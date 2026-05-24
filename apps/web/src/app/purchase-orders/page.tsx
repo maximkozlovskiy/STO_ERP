@@ -112,14 +112,22 @@ export default function PurchaseOrdersPage() {
   }, [showCreate]);
 
   const handleCreate = async () => {
+    const validLines = lines.filter(l => l.goodId);
+    for (const l of validLines) {
+      const qty = parseFloat(l.quantity); const price = parseFloat(l.price);
+      if (isNaN(qty) || qty <= 0) { setError('Вкажіть коректну кількість для всіх позицій'); return; }
+      if (isNaN(price) || price < 0) { setError('Вкажіть коректну ціну для всіх позицій'); return; }
+    }
     setSaving(true);
     try {
       await apiFetch<PurchaseOrder>('/purchase-orders', {
         method: 'POST',
         body: JSON.stringify({
           supplierId: form.supplierId, warehouseId: form.warehouseId, notes: form.notes || undefined,
-          lines: lines.filter(l => l.goodId).map(l => ({
-            goodId: l.goodId, quantity: parseFloat(l.quantity) || 1, price: parseFloat(l.price) || 0,
+          lines: validLines.map(l => ({
+            goodId: l.goodId,
+            quantity: parseFloat(l.quantity),
+            price: parseFloat(l.price),
           })),
         }),
       });

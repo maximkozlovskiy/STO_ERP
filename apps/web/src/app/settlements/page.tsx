@@ -79,6 +79,9 @@ export default function SettlementsPage() {
 
   const handleCreateAct = async () => {
     if (!selected) return;
+    if (actForm.periodTo < actForm.periodFrom) {
+      setError('Кінець періоду не може бути раніше початку'); return;
+    }
     setSaving(true);
     try {
       const result = await apiFetch<RecAct & { transactions: Transaction[] }>(`/counterparties/${selected.id}/reconciliation-acts`, {

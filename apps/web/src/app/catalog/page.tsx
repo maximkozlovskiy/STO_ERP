@@ -60,6 +60,9 @@ function WorksTab() {
     cats.flatMap(c => [{ ...c, depth }, ...flatCategories(c.children, depth + 1)]);
 
   const create = async () => {
+    const normo = Number(form.normoHours); const price = Number(form.price);
+    if (isNaN(normo) || normo <= 0) { setError('Норма-годин повинна бути більше нуля'); return; }
+    if (isNaN(price) || price < 0) { setError('Ціна повинна бути невід\'ємним числом'); return; }
     setSaving(true); setError('');
     try {
       await apiFetch<Work>('/works', {
@@ -67,8 +70,8 @@ function WorksTab() {
         body: JSON.stringify({
           categoryId: form.categoryId,
           name: form.name,
-          normoHours: Number(form.normoHours),
-          price: Number(form.price),
+          normoHours: normo,
+          price,
           description: form.description || undefined,
         }),
       });
@@ -232,6 +235,12 @@ function GoodsTab() {
   useEffect(() => { load(); }, [load]);
 
   const create = async () => {
+    const salePrice = Number(form.salePrice);
+    if (isNaN(salePrice) || salePrice < 0) { setError('Ціна продажу повинна бути невід\'ємним числом'); return; }
+    if (form.purchasePrice) {
+      const pp = Number(form.purchasePrice);
+      if (isNaN(pp) || pp < 0) { setError('Ціна закупівлі повинна бути невід\'ємним числом'); return; }
+    }
     setSaving(true); setError('');
     try {
       await apiFetch<Good>('/goods', {
@@ -241,7 +250,7 @@ function GoodsTab() {
           name: form.name,
           unit: form.unit || 'шт',
           purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : undefined,
-          salePrice: Number(form.salePrice),
+          salePrice,
           category: form.category || undefined,
           barcode: form.barcode || undefined,
           notes: form.notes || undefined,

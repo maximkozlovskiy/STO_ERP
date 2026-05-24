@@ -123,6 +123,14 @@ export default function EmployeesPage() {
   };
 
   const create = async () => {
+    if (form.rateType === 'percent_normo') {
+      const pct = Number(form.percent);
+      if (isNaN(pct) || pct <= 0 || pct > 100) { setError('Відсоток має бути від 1 до 100'); return; }
+    } else {
+      const fixed = Number(form.fixedMonthly); const bonus = Number(form.bonusPercent);
+      if (isNaN(fixed) || fixed < 0) { setError('Фіксована ставка повинна бути невід\'ємним числом'); return; }
+      if (isNaN(bonus) || bonus < 0 || bonus > 100) { setError('Бонус має бути від 0 до 100'); return; }
+    }
     setSaving(true); setError('');
     try {
       await apiFetch<Employee>('/employees', {

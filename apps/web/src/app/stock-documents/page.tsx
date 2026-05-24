@@ -107,6 +107,11 @@ export default function StockDocumentsPage() {
   }, [showCreate]);
 
   const handleCreate = async () => {
+    const validLines = lines.filter(l => l.goodId);
+    for (const l of validLines) {
+      const qty = parseFloat(l.quantity);
+      if (isNaN(qty) || qty <= 0) { setError('Вкажіть коректну кількість для всіх позицій'); return; }
+    }
     setSaving(true);
     try {
       await apiFetch<StockDoc>('/stock-documents', {
@@ -117,9 +122,9 @@ export default function StockDocumentsPage() {
           warehouseId: form.warehouseId,
           targetWarehouseId: form.targetWarehouseId || undefined,
           notes: form.notes || undefined,
-          lines: lines.filter(l => l.goodId).map(l => ({
+          lines: validLines.map(l => ({
             goodId: l.goodId,
-            quantity: parseFloat(l.quantity) || 1,
+            quantity: parseFloat(l.quantity),
             price: l.price ? parseFloat(l.price) : undefined,
           })),
         }),
