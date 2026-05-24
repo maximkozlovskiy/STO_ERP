@@ -1,12 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 // ─── Vehicle ─────────────────────────────────────────────
 
 export class CreateVehicleDto {
   @ApiProperty() @IsUUID() customerGarageId!: string;
-  @ApiProperty({ example: 'Toyota' }) @IsString() make!: string;
-  @ApiProperty({ example: 'Camry' }) @IsString() model!: string;
+  @ApiProperty({ example: 'Toyota' }) @IsString() @IsNotEmpty() make!: string;
+  @ApiProperty({ example: 'Camry' }) @IsString() @IsNotEmpty() model!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() vin?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() licensePlate?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() year?: number;
@@ -51,8 +51,8 @@ export class VehicleResponseDto {
 // ─── VehicleNode ─────────────────────────────────────────
 
 export class CreateVehicleNodeDto {
-  @ApiProperty({ example: 'engine' }) @IsString() category!: string;
-  @ApiProperty({ example: 'Двигун 2.0 TSI' }) @IsString() name!: string;
+  @ApiProperty({ example: 'engine' }) @IsString() @IsNotEmpty() category!: string;
+  @ApiProperty({ example: 'Двигун 2.0 TSI' }) @IsString() @IsNotEmpty() name!: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) mileageAtInstall?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }

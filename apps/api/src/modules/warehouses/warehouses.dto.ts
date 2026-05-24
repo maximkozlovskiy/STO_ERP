@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 import { WarehouseType } from '@prisma/client';
 
 export class CreateWarehouseDto {
@@ -8,7 +8,7 @@ export class CreateWarehouseDto {
   branchId!: string;
 
   @ApiProperty({ example: 'Основний склад' })
-  @IsString()
+  @IsString() @IsNotEmpty()
   name!: string;
 
   @ApiPropertyOptional({ enum: WarehouseType, default: WarehouseType.MAIN })

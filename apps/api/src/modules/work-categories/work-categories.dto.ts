@@ -1,9 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class CreateWorkCategoryDto {
   @ApiProperty({ example: 'Двигун' })
-  @IsString()
+  @IsString() @IsNotEmpty()
   name!: string;
 
   @ApiPropertyOptional({ description: 'UUID батьківської категорії (null = коренева)' })
