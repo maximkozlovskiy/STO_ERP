@@ -47,8 +47,13 @@ export default function ReportsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
 
   const [tab, setTab] = useState<Tab>('revenue');
-  const [from, setFrom] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10));
-  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const kyivDate = (d: Date) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
+  const now = new Date();
+  const [from, setFrom] = useState(() => {
+    const kyivNow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+    return `${kyivNow.slice(0, 4)}-01-01`;
+  });
+  const [to, setTo] = useState(() => kyivDate(now));
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

@@ -109,7 +109,7 @@ export class PurchaseOrdersService {
     const updated = await this.prisma.$transaction(async (tx) => {
       if (lines !== undefined) {
         await tx.purchaseOrderLine.updateMany({
-          where: { purchaseOrderId: id },
+          where: { purchaseOrderId: id, orgId },
           data: { deletedAt: new Date() },
         });
         if (lines.length) {

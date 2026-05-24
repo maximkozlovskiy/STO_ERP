@@ -43,10 +43,13 @@ export class ReportsService {
       orderBy: { completedAt: 'asc' },
     });
 
+    const kyivDate = (d: Date) =>
+      new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
+
     // Group by date
     const byDate: Record<string, { date: string; revenue: number; labor: number; parts: number; count: number }> = {};
     for (const wo of orders) {
-      const date = wo.completedAt!.toISOString().slice(0, 10);
+      const date = kyivDate(wo.completedAt!);
       if (!byDate[date]) byDate[date] = { date, revenue: 0, labor: 0, parts: 0, count: 0 };
       byDate[date].revenue += Number(wo.totalAmount);
       byDate[date].labor += Number(wo.totalLabor);
