@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+b22d375 docs(memory): document UI changes — nav sections, bookmarks, DetailPanel, soft-delete UI
 f919de8 feat(web): DetailPanel + filters + mark-for-deletion in purchase-orders, stock-documents, catalog
 866ca90 feat(web): DetailPanel + filters in work-orders, invoices, inventory
 32b9185 feat(web): mark-for-deletion UI + DetailPanel + filters in employees and CRM
@@ -193,6 +194,66 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
 ### Tenant isolation
 - Кожен `findFirst`/`findMany` — завжди `where: { orgId, ... }`
 - `create` — `{ ...dto, orgId }` де `orgId` ОСТАННІЙ (щоб перезаписати forged field)
+
+---
+
+## Майбутні зміни — Фаза 16 (специфікація, 2026-05-25)
+
+### 16.1 Довідник брендів + розширення Good
+- Нова модель `Brand` (orgId, name unique per org)
+- `Good.brandId` (optional FK → Brand)
+- `BrandModule` CRUD `/brands`
+- У формі товару: Select бренду + inline "+ Новий бренд"
+
+### 16.2 Штрихкоди — окрема вкладка в картці товару
+- Нова модель `GoodBarcode` (goodId, barcode, type, isPrimary). Append-only (без deletedAt).
+- `@@index([orgId, barcode])` для швидкого пошуку по скануванню
+- В `/catalog` Goods tab: розгортається модалка/слайд з 2 вкладками "Основна" + "Штрихкоди"
+- Endpoints: `GET/POST/DELETE /goods/:id/barcodes`
+
+### 16.3 Одиниці виміру
+- Нова модель `UnitOfMeasure` (orgId, name, shortName unique per org, isSystem). Seed: шт, кг, л, м, компл, пара, набір, уп, рул, м²
+- `Good.unitId` (optional FK) + зворотна сумісність з `Good.unit String`
+- `UnitsModule` CRUD `/units-of-measure`
+- Select у формі товару
+
+### 16.4 Нова роль XLSX_MANAGER
+- Додати до `UserRole` enum значення `XLSX_MANAGER`
+- Захист всіх XLSX-endpoints через `@Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')`
+- UI: роль відображається в `ROLE_LABELS`, доступна при створенні співробітника
+
+### 16.5 XLSX-імпорт довідників
+- `XlsxModule` (`/xlsx`), використовує **exceljs** (npm)
+- `GET /xlsx/templates/:type` — завантажити шаблон (goods | works | brands | units)
+- `POST /xlsx/import/:type` — multipart .xlsx → upsert + відповідь `{ created, updated, errors }`
+- Компонент `XlsxImportButton` — пара кнопок "Шаблон" + "Імпорт" з результатом toast
+- Інтегрувати у `/catalog` (Товари, Роботи, Бренди вкладки)
+
+### 16.6 XLSX-імпорт табличних частин
+- `POST /xlsx/import/purchase-order-lines/:poId` — SKU+qty+price → POLines (тільки DRAFT)
+- `POST /xlsx/import/stock-document-lines/:docId` — аналогічно StockDocument (DRAFT)
+- `POST /xlsx/import/work-order-parts/:woId` — аналогічно WorkOrder (DRAFT/ESTIMATE)
+- Шаблони: `GET /xlsx/templates/po-lines`, `sd-lines`, `wo-parts`
+- `XlsxImportButton` в картці PO, StockDoc, WorkOrder
+
+### 16.7 CRM — гараж "Основний" за замовчуванням
+- `CustomerGarage.isDefault Boolean @default(false)` — нове поле, міграція
+- `POST /counterparties` автоматично створює гараж з назвою "Основний" і `isDefault: true`
+- Основний гараж відображається першим із позначкою в UI
+
+### 16.8 CRM — картка клієнта (вкладки)
+- `/crm/[id]` реорганізована в 4 вкладки:
+  1. **Загальна інформація** — поля + редагування inline
+  2. **Гаражі та авто** — accordion гаражів, у кожному список авто + "Додати авто", форма "Додати гараж"
+  3. **Взаєморозрахунки** — баланс + транзакції
+  4. **Наряди** — наряди цього контрагента
+
+### 16.9 Налаштування навігації
+- `localStorage` ключ `sto_nav_mode`: `'sections'` | `'functions'`
+- Режим **"По розділах"** (default): Документи / Звіти / Довідники (поточний)
+- Режим **"По функціях"**: плоска структура без секцій, порядок: Дашборд, Наряди, Календар, CRM, Склад, Замовлення, Документи складу, Рахунки, Розрахунки, Звіти, Каталог, Персонал, Підрозділи, Налаштування, Cloud Sync
+- Перемикач у `/settings` вкладка "Оформлення"
+- `TopShell.tsx` зчитує `sto_nav_mode` через useEffect (SSR-safe)
 
 ---
 

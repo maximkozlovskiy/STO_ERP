@@ -403,9 +403,112 @@
 
 ---
 
-## Фаза 16 — Installer та Production
+## Фаза 16 — Каталог товарів v2 + CRM покращення + XLSX-імпорт
 
-> Залежності: Фаза 13–14 (фінальні збірки).  
+> Залежності: Фази 6, 7, 9.  
+> Мета: розширений каталог товарів (бренд, штрихкоди-вкладка, одиниці виміру), CRM-покращення (гараж "Основний" + вкладки в картці), XLSX-шаблони для довідників і табличних частин, нова роль IMPORT_MANAGER.
+
+### 16.1 — Довідник брендів + розширення Good
+
+**Бекенд:**
+- [ ] `[sto-database]` Нова модель `Brand`: `id`, `orgId`, `name`, `createdAt`, `updatedAt`, `deletedAt`, `syncVersion`. `@@unique([orgId, name])`.
+- [ ] `[sto-database]` Поле `Good.brandId String? @db.Uuid` + relation `brand Brand?`. Міграція.
+- [ ] `[sto-backend]` `BrandModule`: CRUD `/brands` (`GET`, `POST`, `PATCH :id`, `DELETE :id`). Roles: OWNER, ADMIN, STOREKEEPER.
+
+**Фронтенд:**
+- [ ] `[sto-web]` Вкладка "Бренди" в `/catalog` (або окрема секція в Довідники). Таблиця брендів + форма.
+- [ ] `[sto-web]` У формі товару: поле "Бренд" (Select з `/brands` + кнопка "+ Новий бренд" inline).
+
+### 16.2 — Штрихкоди як окрема вкладка в картці товару
+
+**Бекенд:**
+- [ ] `[sto-database]` Нова модель `GoodBarcode`: `id`, `orgId`, `goodId`, `barcode String`, `type String @default("EAN13")`, `isPrimary Boolean @default(false)`, `createdAt`. Без `deletedAt` (append-only). `@@index([orgId, barcode])`.
+- [ ] `[sto-backend]` Endpoints: `GET /goods/:id/barcodes`, `POST /goods/:id/barcodes`, `DELETE /goods/:id/barcodes/:barcodeId`. Перевірка uniq barcode в межах org при POST.
+
+**Фронтенд:**
+- [ ] `[sto-web]` Картка товару (`/catalog` → Good tab) — дві вкладки: "Основна інформація" і "Штрихкоди". Вкладка "Штрихкоди": таблиця (barcode | тип | isPrimary) + форма додавання + кнопка "Видалити".
+
+### 16.3 — Розширення полів товару (одиниці виміру)
+
+**Бекенд:**
+- [ ] `[sto-database]` Нова модель `UnitOfMeasure`: `id`, `orgId`, `name String` (шт, кг, л, м, компл...), `shortName String`, `isSystem Boolean @default(false)`. `@@unique([orgId, shortName])`. Seed: стандартні 10 одиниць.
+- [ ] `[sto-database]` `Good.unit` залишається `String` (зберігаємо shortName) — зворотна сумісність. Додати `Good.unitId String? @db.Uuid` → relation `unitOfMeasure UnitOfMeasure?` (опціональне, для нових записів).
+- [ ] `[sto-backend]` `UnitsModule`: CRUD `/units-of-measure`. Roles: OWNER, ADMIN, STOREKEEPER.
+
+**Фронтенд:**
+- [ ] `[sto-web]` У формі товару: поле "Одиниця виміру" → Select з `/units-of-measure`.
+- [ ] `[sto-web]` Вкладка "Одиниці виміру" в `/settings` або в `/catalog`.
+
+### 16.4 — Нова роль XLSX_MANAGER + захист імпорту
+
+**Бекенд:**
+- [ ] `[sto-database]` Додати `XLSX_MANAGER` до enum `UserRole`. Міграція.
+- [ ] `[sto-backend]` Всі XLSX endpoints захищені `@Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')`.
+
+**Фронтенд:**
+- [ ] `[sto-web]` Роль `XLSX_MANAGER` у `ROLE_LABELS` + badge + форма співробітника.
+
+### 16.5 — XLSX-імпорт: довідники (товари, одиниці, бренди)
+
+**Принцип**: завантажити шаблон → заповнити → завантажити назад.
+
+**Бекенд:**
+- [ ] `[sto-backend]` `XlsxModule` (`/xlsx`):
+  - `GET /xlsx/templates/:type` → повертає `.xlsx` файл-шаблон (тип: `goods`, `works`, `brands`, `units`). Шаблон містить заголовки + приклади.
+  - `POST /xlsx/import/goods` → multipart, парсить xlsx (exceljs), upsert Goods по SKU. Повертає `{ created, updated, errors[] }`.
+  - `POST /xlsx/import/works` → upsert Works по name+categoryName.
+  - `POST /xlsx/import/brands` → upsert Brands по name.
+  - `POST /xlsx/import/units` → upsert UnitsOfMeasure по shortName.
+  - Ролі: `OWNER`, `ADMIN`, `XLSX_MANAGER`.
+
+**Фронтенд:**
+- [ ] `[sto-web]` Компонент `XlsxImportButton` (`components/ui/xlsx-import-button.tsx`): кнопка "Завантажити шаблон" → запит GET + download, кнопка "Імпорт з XLSX" → file input → POST → toast з результатом (`created X / updated Y / помилок Z`).
+- [ ] `[sto-web]` Інтегрувати `XlsxImportButton` у вкладку Товари і Роботи в `/catalog` + вкладку Бренди.
+
+### 16.6 — XLSX-імпорт: табличні частини документів
+
+**Бекенд:**
+- [ ] `[sto-backend]` `POST /xlsx/import/purchase-order-lines/:poId` → multipart xlsx → parse рядки (SKU + qty + price) → upsert POLines. Перевіряє що PO у статусі DRAFT і належить orgId.
+- [ ] `[sto-backend]` `POST /xlsx/import/stock-document-lines/:docId` → аналогічно для StockDocument (тільки DRAFT).
+- [ ] `[sto-backend]` `POST /xlsx/import/work-order-parts/:woId` → аналогічно для WorkOrder (DRAFT/ESTIMATE).
+- [ ] `[sto-backend]` `GET /xlsx/templates/po-lines`, `sd-lines`, `wo-parts` → шаблони з колонками SKU, Назва, К-ть, Ціна.
+
+**Фронтенд:**
+- [ ] `[sto-web]` `XlsxImportButton` в картці PurchaseOrder (PO лінії), StockDocument (лінії), WorkOrder (запчастини — вкладка).
+
+### 16.7 — CRM: гараж "Основний" за замовчуванням
+
+**Бекенд:**
+- [ ] `[sto-backend]` `POST /counterparties` → після створення контрагента автоматично викликати `CustomerGarageService.create(orgId, { counterpartyId, name: 'Основний' })`. В транзакції.
+- [ ] `[sto-backend]` `CustomerGarage.isDefault Boolean @default(false)` — поле для позначення основного гаражу. Міграція.
+
+**Фронтенд:**
+- [ ] `[sto-web]` В картці контрагента: основний гараж виводиться першим із позначкою "Основний".
+
+### 16.8 — CRM: гаражі та авто вкладками в картці клієнта
+
+**Фронтенд:**
+- [ ] `[sto-web]` Картка контрагента `/crm/[id]` — реорганізація в таби:
+  - Вкладка **"Загальна інформація"**: поля контрагента (ПІБ/назва, тип, телефон, email, ЄДРПОУ, ПДВ, нотатки) + кнопка редагування.
+  - Вкладка **"Гаражі та авто"**: список гаражів (accordion або nested tabs) → у кожному гаражі список авто. Форма "Додати гараж". Форма "Додати авто до гаражу" (кнопка в гаражі).
+  - Вкладка **"Взаєморозрахунки"**: баланс + транзакції (вже є).
+  - Вкладка **"Наряди"**: наряди цього клієнта (вже частково є).
+
+### 16.9 — Налаштування інтерфейсу: режим навігації
+
+**Фронтенд:**
+- [ ] `[sto-web]` У `/settings` (вкладка "Оформлення") додати перемикач **"Режим навігації"**:
+  - **По розділах** (default): Документи / Звіти / Довідники (поточна поведінка)
+  - **По функціях**: класичне меню — CRM, Склад, Наряди, Календар, ... (порядок як до рефакторингу)
+- [ ] `[sto-web]` Збереження в `localStorage` ключ `sto_nav_mode` (`'sections'` | `'functions'`).
+- [ ] `[sto-web]` `TopShell.tsx`: зчитує `sto_nav_mode`, рендерить відповідний `NAV_GROUPS`.
+- [ ] `[sto-web]` `NAV_GROUPS_FUNCTIONS` — плоска структура без секцій (Дашборд, Наряди, Календар, CRM, Склад, Замовлення, Документи складу, Рахунки, Розрахунки, Звіти, Каталог, Персонал, Підрозділи, Налаштування, Cloud Sync).
+
+---
+
+## Фаза 17 — Installer та Production
+
+> Залежності: Фази 13–16.  
 > Мета: `.exe` installer + auto-update + production hardening.
 
 - [ ] `[sto-installer]` Inno Setup скрипт: завантаження/розпакування Docker images, `docker compose up`, Windows service
@@ -435,10 +538,11 @@
 | 10 | Фінанси та розрахунки | ✅ завершено (10/10) |
 | 11 | Сповіщення | ✅ завершено (4/4) |
 | 12 | Звіти | ✅ завершено (6/6) |
-| 13 | Web UI (оболонка + дашборд) | ✅ завершено (5/5) |
+| 13 | Web UI (оболонка + дашборд) | ✅ завершено (5/5+2) |
 | 14 | Мобільний додаток | ✅ завершено (6/6) |
 | 15 | Cloud Sync | ✅ завершено (4/4) |
-| 16 | Installer та Production | ⬜ не розпочато |
+| 16 | Каталог v2 + CRM + XLSX-імпорт | ⬜ не розпочато (27 задач) |
+| 17 | Installer та Production | ⬜ не розпочато (7 задач) |
 
 > Оновлюється автоматично після кожного завершеного завдання.  
 > Статус таблиці: ⬜ не розпочато / 🔄 в процесі / ✅ завершено
