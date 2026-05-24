@@ -26,8 +26,8 @@ export class InventoryService {
     const db = tx ?? this.prisma;
 
     if (dto.quantity < 0 || dto.type === 'RESERVATION' || dto.type === 'RESERVATION_RELEASE') {
-      const item = await db.stockItem.findUnique({
-        where: { orgId_goodId_warehouseId: { orgId, goodId: dto.goodId, warehouseId: dto.warehouseId } },
+      const item = await db.stockItem.findFirst({
+        where: { orgId, goodId: dto.goodId, warehouseId: dto.warehouseId, deletedAt: null },
       });
       const quantity = item?.quantity ?? 0;
       const reserved = item?.reserved ?? 0;
@@ -69,6 +69,8 @@ export class InventoryService {
       update: {
         quantity: { increment: quantityDelta },
         reserved: { increment: reservedDelta },
+        // Ensure soft-deleted items are restored when a movement re-creates them
+        deletedAt: null,
       },
       create: {
         orgId,
@@ -81,8 +83,8 @@ export class InventoryService {
   }
 
   async getStockLevel(orgId: string, goodId: string, warehouseId: string): Promise<{ quantity: number; reserved: number; available: number }> {
-    const item = await this.prisma.stockItem.findUnique({
-      where: { orgId_goodId_warehouseId: { orgId, goodId, warehouseId } },
+    const item = await this.prisma.stockItem.findFirst({
+      where: { orgId, goodId, warehouseId, deletedAt: null },
     });
     const quantity = item ? item.quantity : 0;
     const reserved = item ? item.reserved : 0;

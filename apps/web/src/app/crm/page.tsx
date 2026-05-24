@@ -2,8 +2,20 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { Plus, Search, Users } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { Modal } from '@/components/ui/modal';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/ui/empty-state';
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 interface Counterparty {
   id: string; type: string;
@@ -14,31 +26,8 @@ interface Counterparty {
 interface Paginated { items: Counterparty[]; total: number; page: number; limit: number; }
 
 const TYPE_LABELS: Record<string, string> = { CLIENT: 'Клієнт', SUPPLIER: 'Постачальник', BOTH: 'Обидва' };
+const TYPE_BADGE: Record<string, BadgeVariant> = { CLIENT: 'default', SUPPLIER: 'secondary', BOTH: 'warning' };
 const TYPE_FILTER_OPTIONS = [['', 'Всі'], ['CLIENT', 'Клієнти'], ['SUPPLIER', 'Постачальники'], ['BOTH', 'Обидва']] as const;
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
-  return (
-    <div className="mb-3">
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-    </div>
-  );
-}
 
 export default function CrmPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT']);
@@ -90,76 +79,123 @@ export default function CrmPage() {
   const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Контрагенти</h1>
-        <button onClick={() => { setForm({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '' }); setError(''); setModal(true); }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-          + Додати
-        </button>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Контрагенти</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {data ? `${data.total} записів` : 'Завантаження...'}
+          </p>
+        </div>
+        <Button onClick={() => { setForm({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '' }); setError(''); setModal(true); }}>
+          <Plus className="h-4 w-4" />
+          Додати
+        </Button>
       </div>
 
-      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+      {!modal && error && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+          {error}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex gap-3 mb-4">
-        <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Пошук за ім'ям, телефоном, ЄДРПОУ..."
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          <Input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Пошук за ім'ям, телефоном, ЄДРПОУ..."
+            className="pl-9"
+          />
+        </div>
+        <Select
+          value={typeFilter}
+          onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
+        >
           {TYPE_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
+        </Select>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              {['Контрагент', 'Тип', 'Телефон', 'ЄДРПОУ', 'Баланс, ₴', ''].map(h => (
-                <th key={h} className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Контрагент</TableHead>
+              <TableHead>Тип</TableHead>
+              <TableHead>Телефон</TableHead>
+              <TableHead>ЄДРПОУ</TableHead>
+              <TableHead>Баланс, ₴</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+              <TableRow>
+                <TableCell colSpan={6} className="py-10 text-center">
+                  <div className="flex justify-center"><Spinner size="md" /></div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && data?.items.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="p-0">
+                  <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" />
+                </TableCell>
+              </TableRow>
             )}
             {!loading && data?.items.map(cp => (
-              <tr key={cp.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3">
-                  <button onClick={() => router.push(`/crm/${cp.id}`)}
-                    className="text-sm font-medium text-blue-600 hover:underline text-left">
+              <TableRow key={cp.id}>
+                <TableCell>
+                  <button
+                    onClick={() => router.push(`/crm/${cp.id}`)}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                  >
                     {displayName(cp)}
                   </button>
                   {cp.email && <p className="text-xs text-gray-400 mt-0.5">{cp.email}</p>}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-500">{TYPE_LABELS[cp.type]}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{cp.phone ?? '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{cp.edrpou ?? '—'}</td>
-                <td className={`px-4 py-3 text-sm font-medium ${cp.balance < 0 ? 'text-red-600' : cp.balance > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
+                    {TYPE_LABELS[cp.type]}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-gray-500">{cp.phone ?? '—'}</TableCell>
+                <TableCell className="text-gray-500">{cp.edrpou ?? '—'}</TableCell>
+                <TableCell className={cn(
+                  'font-medium',
+                  cp.balance < 0 ? 'text-red-600' : cp.balance > 0 ? 'text-green-600' : 'text-gray-500'
+                )}>
                   {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => router.push(`/crm/${cp.id}`)} className="text-xs text-blue-500 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50">
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button variant="ghost" size="sm" onClick={() => router.push(`/crm/${cp.id}`)}>
                     Картка →
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-            {!loading && data?.items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Нічого не знайдено</td></tr>
-            )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
+        <div className="flex justify-center gap-1.5 mt-4">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-            <button key={p} onClick={() => setPage(p)}
-              className={`px-3 py-1 rounded text-sm ${p === page ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+            <button
+              key={p}
+              onClick={() => setPage(p)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                p === page
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50',
+              )}
+            >
               {p}
             </button>
           ))}
@@ -167,32 +203,54 @@ export default function CrmPage() {
       )}
 
       {/* Create modal */}
-      {modal && (
-        <Modal title="Новий контрагент" onClose={() => setModal(false)}>
-          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Тип *</label>
-            <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <Modal
+        open={modal}
+        onClose={() => setModal(false)}
+        title="Новий контрагент"
+      >
+        {error && (
+          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+        )}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Тип <span className="text-red-500">*</span></label>
+            <Select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
               {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+            </Select>
           </div>
           {form.type !== 'SUPPLIER' && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Ім'я" value={form.firstName} onChange={v => setForm(f => ({ ...f, firstName: v }))} placeholder="Іван" />
-              <Field label="Прізвище" value={form.lastName} onChange={v => setForm(f => ({ ...f, lastName: v }))} placeholder="Коваль" />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Ім'я</label>
+                <Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} placeholder="Іван" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Прізвище</label>
+                <Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} placeholder="Коваль" />
+              </div>
             </div>
           )}
-          <Field label="Назва компанії" value={form.companyName} onChange={v => setForm(f => ({ ...f, companyName: v }))} placeholder="ТОВ «Авто»" />
-          <Field label="Телефон" value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} placeholder="+38 (067) 123-45-67" />
-          <Field label="Email" value={form.email} onChange={v => setForm(f => ({ ...f, email: v }))} type="email" />
-          <Field label="ЄДРПОУ" value={form.edrpou} onChange={v => setForm(f => ({ ...f, edrpou: v }))} placeholder="12345678" />
-          <button onClick={create} disabled={saving}
-            className="w-full mt-2 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-            {saving ? 'Збереження...' : 'Зберегти'}
-          </button>
-        </Modal>
-      )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Назва компанії</label>
+            <Input value={form.companyName} onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))} placeholder="ТОВ «Авто»" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Телефон</label>
+            <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+38 (067) 123-45-67" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+            <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">ЄДРПОУ</label>
+            <Input value={form.edrpou} onChange={e => setForm(f => ({ ...f, edrpou: e.target.value }))} placeholder="12345678" />
+          </div>
+          <Button onClick={create} loading={saving} className="w-full mt-2">
+            Зберегти
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
 @Injectable()
@@ -15,6 +16,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly settlements: SettlementsService,
     private readonly notifications: NotificationsService,
+    private readonly workOrders: WorkOrdersService,
     @InjectQueue('checkbox') private readonly checkboxQueue: Queue,
   ) {}
 
@@ -53,6 +55,14 @@ export class PaymentsService {
     ]);
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
+    // Pre-validate work order status before opening transaction to avoid partial commit
+    if (dto.workOrderId) {
+      const wo = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
+      if (wo && wo.status !== 'INVOICED') {
+        throw new BadRequestException(`Наряд у статусі "${wo.status}" — оплата неможлива`);
+      }
+    }
+
     const payment = await this.prisma.$transaction(async (tx) => {
       const created = await tx.payment.create({
         data: {
@@ -88,22 +98,25 @@ export class PaymentsService {
         }
       }
 
-      // Mark work order INVOICED→PAID if linked and increment paidAmount for partial payment tracking
-      // Uses the FSM transition map implicitly by validating current status before writing
+      // Increment paidAmount on work order inside the atomic transaction
       if (dto.workOrderId) {
-        const wo = await tx.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
-        if (wo) {
-          if (wo.status !== 'INVOICED') throw new BadRequestException(`Наряд у статусі "${wo.status}" — оплата неможлива`);
-          // INVOICED → PAID is a valid FSM transition; apply directly inside this atomic transaction
-          await tx.workOrder.update({
-            where: { id: dto.workOrderId, orgId },
-            data: { status: 'PAID', paidAmount: { increment: dto.amount } },
-          });
-        }
+        await tx.workOrder.update({
+          where: { id: dto.workOrderId, orgId },
+          data: { paidAmount: { increment: dto.amount } },
+        });
       }
 
       return created;
     });
+
+    // Apply FSM transition INVOICED→PAID via WorkOrdersService (outside tx — has its own transaction)
+    // This is safe because: payment record + settlement are already committed above;
+    // if transition fails, the payment stands and the operator can retry status change manually.
+    if (dto.workOrderId) {
+      await this.workOrders.transition(orgId, dto.workOrderId, 'PAID', userId).catch((e: unknown) => {
+        this.logger.warn(`Не вдалось перевести наряд ${dto.workOrderId} у статус PAID після оплати: ${e instanceof Error ? e.message : e}`);
+      });
+    }
 
     // Notify counterparty about payment received
     if (counterparty.phone) {

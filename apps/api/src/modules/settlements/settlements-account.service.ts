@@ -2,6 +2,29 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateReconciliationActDto } from './settlements.dto';
 
+/** Returns the UTC instant corresponding to 00:00:00 Kyiv time on the given calendar date (YYYY-MM-DD). DST-safe. */
+function kyivStartOfDay(date: string): Date {
+  // Use noon in UTC to safely determine the Kyiv offset for that calendar date
+  const probe = new Date(`${date}T12:00:00Z`);
+  const kyivHour = parseInt(
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(probe),
+    10,
+  );
+  const offsetMs = (kyivHour - probe.getUTCHours() + 24) % 24 * 3_600_000;
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() - offsetMs);
+}
+
+/** Returns the UTC instant corresponding to 23:59:59.999 Kyiv time on the given calendar date (YYYY-MM-DD). DST-safe. */
+function kyivEndOfDay(date: string): Date {
+  const probe = new Date(`${date}T12:00:00Z`);
+  const kyivHour = parseInt(
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(probe),
+    10,
+  );
+  const offsetMs = (kyivHour - probe.getUTCHours() + 24) % 24 * 3_600_000;
+  return new Date(new Date(`${date}T23:59:59.999Z`).getTime() - offsetMs);
+}
+
 @Injectable()
 export class SettlementsAccountService {
   constructor(private readonly prisma: PrismaService) {}
@@ -62,8 +85,9 @@ export class SettlementsAccountService {
     });
     if (!account) throw new NotFoundException('Розрахунковий рахунок не знайдено');
 
-    const from = new Date(`${dto.periodFrom}T00:00:00+03:00`);
-    const to = new Date(`${dto.periodTo}T23:59:59.999+03:00`);
+    // Convert Kyiv calendar boundaries to UTC using Intl (handles DST: UTC+2 winter / UTC+3 summer)
+    const from = kyivStartOfDay(dto.periodFrom);
+    const to = kyivEndOfDay(dto.periodTo);
 
     // Transactions within period
     const transactions = await this.prisma.settlementTransaction.findMany({

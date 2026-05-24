@@ -1,8 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Plus, Users } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { Modal } from '@/components/ui/modal';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/ui/empty-state';
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/components/ui/table';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -20,47 +31,13 @@ const ROLE_LABELS: Record<string, string> = {
   OWNER: 'Власник', ADMIN: 'Адміністратор', RECEPTIONIST: 'Приймальник',
   MECHANIC: 'Механік', STOREKEEPER: 'Комірник', ACCOUNTANT: 'Бухгалтер', CLIENT: 'Клієнт',
 };
+const ROLE_BADGE: Record<string, BadgeVariant> = {
+  OWNER: 'destructive', ADMIN: 'default', RECEPTIONIST: 'secondary',
+  MECHANIC: 'warning', STOREKEEPER: 'secondary', ACCOUNTANT: 'secondary', CLIENT: 'secondary',
+};
 const RATE_LABELS: Record<string, string> = {
   percent_normo: '% від норма-год', fixed_plus_bonus: 'Ставка + бонус',
 };
-
-// ─── Modal ───────────────────────────────────────────────
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg my-4">
-        <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
-  return (
-    <div className="mb-3">
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-    </div>
-  );
-}
-
-function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: Record<string, string> }) {
-  return (
-    <div className="mb-3">
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <select value={value} onChange={e => onChange(e.target.value)}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-        {Object.entries(options).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-      </select>
-    </div>
-  );
-}
 
 function CheckboxList({ label, items, selected, onChange }: {
   label: string; items: { id: string; name: string }[];
@@ -85,7 +62,6 @@ function CheckboxList({ label, items, selected, onChange }: {
   );
 }
 
-// Flatten category tree for checkbox list
 function flattenTree(cats: WorkCategory[]): { id: string; name: string }[] {
   return cats.flatMap(c => [{ id: c.id, name: c.name }, ...flattenTree(c.children)]);
 }
@@ -105,10 +81,8 @@ export default function EmployeesPage() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Create form
   const [form, setForm] = useState({ firstName: '', lastName: '', role: 'MECHANIC', phone: '', rateType: 'percent_normo', percent: '40', fixedMonthly: '0', bonusPercent: '10' });
 
-  // Assignment state (for card modal)
   const [assignedZones, setAssignedZones] = useState<string[]>([]);
   const [assignedLifts, setAssignedLifts] = useState<string[]>([]);
   const [assignedCats, setAssignedCats] = useState<string[]>([]);
@@ -185,108 +159,165 @@ export default function EmployeesPage() {
   const flatCats = flattenTree(workCategories);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
+    <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Співробітники</h1>
-        <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-          + Додати
-        </button>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Співробітники</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{employees.length} записів</p>
+        </div>
+        <Button onClick={openCreate}>
+          <Plus className="h-4 w-4" />
+          Додати
+        </Button>
       </div>
 
-      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+      {!modal && error && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-xl border overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              {['ПІБ', 'Посада', 'Схема нарахування', 'Зони', 'Підйомники', ''].map(h => (
-                <th key={h} className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>ПІБ</TableHead>
+              <TableHead>Посада</TableHead>
+              <TableHead>Схема нарахування</TableHead>
+              <TableHead>Зони</TableHead>
+              <TableHead>Підйомники</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+              <TableRow>
+                <TableCell colSpan={6} className="py-10 text-center">
+                  <div className="flex justify-center"><Spinner size="md" /></div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && employees.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="p-0">
+                  <EmptyState icon={Users} title="Немає співробітників" description="Додайте першого співробітника" />
+                </TableCell>
+              </TableRow>
             )}
             {!loading && employees.map(emp => (
-              <tr key={emp.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3">
-                  <button onClick={() => openCard(emp)} className="text-sm font-medium text-blue-600 hover:underline text-left">
+              <TableRow key={emp.id}>
+                <TableCell>
+                  <button onClick={() => openCard(emp)} className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left">
                     {emp.lastName} {emp.firstName}
                   </button>
                   {emp.phone && <p className="text-xs text-gray-400 mt-0.5">{emp.phone}</p>}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{ROLE_LABELS[emp.role] ?? emp.role}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">
+                </TableCell>
+                <TableCell>
+                  <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
+                    {ROLE_LABELS[emp.role] ?? emp.role}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-gray-500">
                   {RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type}
                   {emp.rateScheme.type === 'percent_normo' && ` ${emp.rateScheme.params.percent}%`}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-500">
+                </TableCell>
+                <TableCell className="text-gray-500">
                   {emp.zoneIds.length > 0
                     ? emp.zoneIds.map(id => zones.find(z => z.id === id)?.name ?? id).join(', ')
                     : <span className="text-gray-300">—</span>}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-500">
+                </TableCell>
+                <TableCell className="text-gray-500">
                   {emp.liftIds.length > 0
                     ? emp.liftIds.map(id => lifts.find(l => l.id === id)?.name ?? id).join(', ')
                     : <span className="text-gray-300">—</span>}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => remove(emp.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50">
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button variant="destructive" size="sm" onClick={() => remove(emp.id)}>
                     Видалити
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-            {!loading && employees.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Немає співробітників</td></tr>
-            )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {/* Create modal */}
-      {modal === 'create' && (
-        <Modal title="Новий співробітник" onClose={closeModal}>
-          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+      <Modal open={modal === 'create'} onClose={closeModal} title="Новий співробітник">
+        {error && (
+          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+        )}
+        <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Ім'я *" value={form.firstName} onChange={v => setForm(f => ({ ...f, firstName: v }))} placeholder="Іван" />
-            <Field label="Прізвище *" value={form.lastName} onChange={v => setForm(f => ({ ...f, lastName: v }))} placeholder="Коваль" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Ім'я <span className="text-red-500">*</span></label>
+              <Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} placeholder="Іван" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Прізвище <span className="text-red-500">*</span></label>
+              <Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} placeholder="Коваль" />
+            </div>
           </div>
-          <SelectField label="Посада *" value={form.role} onChange={v => setForm(f => ({ ...f, role: v }))} options={ROLE_LABELS} />
-          <Field label="Телефон" value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} placeholder="+38 (067) 123-45-67" />
-          <SelectField label="Схема нарахування *" value={form.rateType} onChange={v => setForm(f => ({ ...f, rateType: v }))} options={RATE_LABELS} />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Посада <span className="text-red-500">*</span></label>
+            <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+              {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Телефон</label>
+            <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+38 (067) 123-45-67" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Схема нарахування <span className="text-red-500">*</span></label>
+            <Select value={form.rateType} onChange={e => setForm(f => ({ ...f, rateType: e.target.value }))}>
+              {Object.entries(RATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+          </div>
           {form.rateType === 'percent_normo' && (
-            <Field label="Відсоток, %" value={form.percent} onChange={v => setForm(f => ({ ...f, percent: v }))} type="number" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Відсоток, %</label>
+              <Input type="number" value={form.percent} onChange={e => setForm(f => ({ ...f, percent: e.target.value }))} />
+            </div>
           )}
           {form.rateType === 'fixed_plus_bonus' && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Ставка, грн/міс" value={form.fixedMonthly} onChange={v => setForm(f => ({ ...f, fixedMonthly: v }))} type="number" />
-              <Field label="Бонус, %" value={form.bonusPercent} onChange={v => setForm(f => ({ ...f, bonusPercent: v }))} type="number" />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Ставка, грн/міс</label>
+                <Input type="number" value={form.fixedMonthly} onChange={e => setForm(f => ({ ...f, fixedMonthly: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Бонус, %</label>
+                <Input type="number" value={form.bonusPercent} onChange={e => setForm(f => ({ ...f, bonusPercent: e.target.value }))} />
+              </div>
             </div>
           )}
-          <button onClick={create} disabled={saving || !form.firstName || !form.lastName}
-            className="w-full mt-2 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-            {saving ? 'Збереження...' : 'Зберегти'}
-          </button>
-        </Modal>
-      )}
+          <Button onClick={create} loading={saving} disabled={!form.firstName || !form.lastName} className="w-full">
+            Зберегти
+          </Button>
+        </div>
+      </Modal>
 
       {/* Card modal — assignment */}
-      {modal === 'card' && selected && (
-        <Modal title={`${selected.lastName} ${selected.firstName}`} onClose={closeModal}>
-          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-          <p className="text-sm text-gray-500 mb-4">{ROLE_LABELS[selected.role]} · {RATE_LABELS[selected.rateScheme.type]}</p>
-          <CheckboxList label="Зони" items={zones} selected={assignedZones} onChange={setAssignedZones} />
-          <CheckboxList label="Підйомники" items={lifts} selected={assignedLifts} onChange={setAssignedLifts} />
-          <CheckboxList label="Категорії робіт" items={flatCats} selected={assignedCats} onChange={setAssignedCats} />
-          <button onClick={saveAssignments} disabled={saving}
-            className="w-full mt-2 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-            {saving ? 'Збереження...' : 'Зберегти прив\'язки'}
-          </button>
-        </Modal>
-      )}
+      <Modal
+        open={modal === 'card' && !!selected}
+        onClose={closeModal}
+        title={selected ? `${selected.lastName} ${selected.firstName}` : ''}
+      >
+        {error && (
+          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+        )}
+        {selected && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-500 mb-4">{ROLE_LABELS[selected.role]} · {RATE_LABELS[selected.rateScheme.type]}</p>
+            <CheckboxList label="Зони" items={zones} selected={assignedZones} onChange={setAssignedZones} />
+            <CheckboxList label="Підйомники" items={lifts} selected={assignedLifts} onChange={setAssignedLifts} />
+            <CheckboxList label="Категорії робіт" items={flatCats} selected={assignedCats} onChange={setAssignedCats} />
+            <Button onClick={saveAssignments} loading={saving} className="w-full">
+              Зберегти прив'язки
+            </Button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

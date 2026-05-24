@@ -211,7 +211,7 @@ export class WorkOrdersService {
 
   private async reserveParts(orgId: string, workOrderId: string, userId?: string, tx?: Prisma.TransactionClient): Promise<void> {
     const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
+    const parts = await db.workOrderPart.findMany({ where: { workOrderId, orgId, deletedAt: null } });
     for (const part of parts) {
       await this.inventory.createMovement(orgId, {
         goodId: part.goodId,
@@ -227,7 +227,7 @@ export class WorkOrdersService {
 
   private async releasePartReservations(orgId: string, workOrderId: string, userId?: string, tx?: Prisma.TransactionClient): Promise<void> {
     const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({ where: { workOrderId, deletedAt: null } });
+    const parts = await db.workOrderPart.findMany({ where: { workOrderId, orgId, deletedAt: null } });
     for (const part of parts) {
       await this.inventory.createMovement(orgId, {
         goodId: part.goodId,
@@ -243,7 +243,7 @@ export class WorkOrdersService {
 
   private async writeOffPartsAndCharge(orgId: string, wo: { id: string; counterpartyId: string; totalAmount: Prisma.Decimal | null }, userId?: string, tx?: Prisma.TransactionClient): Promise<void> {
     const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({ where: { workOrderId: wo.id, deletedAt: null } });
+    const parts = await db.workOrderPart.findMany({ where: { workOrderId: wo.id, orgId, deletedAt: null } });
     for (const part of parts) {
       await this.inventory.createMovement(orgId, {
         goodId: part.goodId,

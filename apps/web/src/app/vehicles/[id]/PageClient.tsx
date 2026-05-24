@@ -2,8 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 
 interface Vehicle {
   id: string; make: string; model: string; vin: string | null; licensePlate: string | null;
@@ -68,7 +73,7 @@ export default function VehicleCardPage() {
     <div className="flex items-center justify-center min-h-screen flex-col gap-4">
       {loadError
         ? <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{loadError}</p>
-        : <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />}
+        : <Spinner size="lg" />}
     </div>
   );
 
@@ -79,9 +84,14 @@ export default function VehicleCardPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-      {loadError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{loadError}</p>}
+      {loadError && (
+        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{loadError}</div>
+      )}
       <div className="flex items-center gap-3">
-        <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-600 text-sm">← Назад</button>
+        <Button variant="ghost" size="sm" onClick={() => router.back()}>
+          <ArrowLeft className="h-4 w-4" />
+          Назад
+        </Button>
         <h1 className="text-2xl font-bold text-gray-900">{vehicle.make} {vehicle.model}</h1>
       </div>
 
@@ -101,7 +111,10 @@ export default function VehicleCardPage() {
       <div className="bg-white rounded-xl border p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-gray-900">Вузли автомобіля</h2>
-          <button onClick={() => setShowAddNode(v => !v)} className="text-sm text-blue-600 hover:underline">+ Вузол</button>
+          <Button variant="ghost" size="sm" onClick={() => setShowAddNode(v => !v)}>
+            <Plus className="h-4 w-4" />
+            Вузол
+          </Button>
         </div>
 
         {showAddNode && (
@@ -109,30 +122,41 @@ export default function VehicleCardPage() {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Категорія</label>
-                <select value={nodeForm.category} onChange={e => setNodeForm(f => ({ ...f, category: e.target.value }))}
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                <Select
+                  value={nodeForm.category}
+                  onChange={e => setNodeForm(f => ({ ...f, category: e.target.value }))}
+                >
                   {Object.entries(NODE_CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   <option value="other">Інше</option>
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Назва *</label>
-                <input value={nodeForm.name} onChange={e => setNodeForm(f => ({ ...f, name: e.target.value }))}
+                <Input
+                  value={nodeForm.name}
+                  onChange={e => setNodeForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="Двигун 2.0 TSI"
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+                />
               </div>
             </div>
-            <input value={nodeForm.mileageAtInstall} onChange={e => setNodeForm(f => ({ ...f, mileageAtInstall: e.target.value }))}
-              placeholder="Пробіг при встановленні, км" type="number"
-              className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
-            <input value={nodeForm.notes} onChange={e => setNodeForm(f => ({ ...f, notes: e.target.value }))}
-              placeholder="Нотатки" className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+            <Input
+              value={nodeForm.mileageAtInstall}
+              onChange={e => setNodeForm(f => ({ ...f, mileageAtInstall: e.target.value }))}
+              placeholder="Пробіг при встановленні, км"
+              type="number"
+            />
+            <Input
+              value={nodeForm.notes}
+              onChange={e => setNodeForm(f => ({ ...f, notes: e.target.value }))}
+              placeholder="Нотатки"
+            />
             <div className="flex gap-2">
-              <button onClick={addNode} disabled={saving || !nodeForm.name}
-                className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-60">
-                {saving ? '...' : 'Зберегти'}
-              </button>
-              <button onClick={() => setShowAddNode(false)} className="px-4 py-1.5 text-gray-500 text-sm">Скасувати</button>
+              <Button size="sm" onClick={addNode} loading={saving} disabled={!nodeForm.name}>
+                Зберегти
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowAddNode(false)}>
+                Скасувати
+              </Button>
             </div>
           </div>
         )}
@@ -156,7 +180,14 @@ export default function VehicleCardPage() {
                     )}
                     {n.notes && <p className="text-xs text-gray-400">{n.notes}</p>}
                   </div>
-                  <button onClick={() => removeNode(n.id)} className="text-xs text-red-400 hover:text-red-600 px-2">×</button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeNode(n.id)}
+                    className="text-red-400 hover:text-red-600"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               ))}
             </div>

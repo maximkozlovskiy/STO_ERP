@@ -1,8 +1,18 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { Plus, Search, Trash2, BookOpen, Package, Layers } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/ui/empty-state';
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/components/ui/table';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -17,32 +27,6 @@ interface Service { id: string; name: string; description: string | null; price:
 interface PaginatedServices { items: Service[]; total: number; page: number; limit: number; }
 
 type Tab = 'works' | 'goods' | 'services';
-
-// ─── Modal ───────────────────────────────────────────────────────────────────
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, type = 'text', required }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; required?: boolean }) {
-  return (
-    <div className="mb-3">
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}{required && ' *'}</label>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-    </div>
-  );
-}
 
 // ─── Works Tab ───────────────────────────────────────────────────────────────
 
@@ -108,84 +92,120 @@ function WorksTab() {
 
   return (
     <div>
-      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+      {!modal && error && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+      )}
       <div className="flex items-center gap-3 mb-4">
-        <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук робіт..."
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <select value={selectedCat} onChange={e => { setSelectedCat(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук робіт..." className="pl-9" />
+        </div>
+        <Select value={selectedCat} onChange={e => { setSelectedCat(e.target.value); setPage(1); }}>
           <option value="">Всі категорії</option>
           {flat.map(c => <option key={c.id} value={c.id}>{' '.repeat(c.depth * 4)}{c.name}</option>)}
-        </select>
-        <button onClick={() => { setForm({ categoryId: flat[0]?.id ?? '', name: '', normoHours: '', price: '', description: '' }); setError(''); setModal(true); }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 whitespace-nowrap">+ Робота</button>
+        </Select>
+        <Button onClick={() => { setForm({ categoryId: flat[0]?.id ?? '', name: '', normoHours: '', price: '', description: '' }); setError(''); setModal(true); }}>
+          <Plus className="h-4 w-4" />
+          Робота
+        </Button>
       </div>
 
       <div className="bg-white rounded-xl border overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              {['Назва', 'Категорія', 'Нормо-год', 'Ціна, ₴', ''].map(h => (
-                <th key={h} className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Назва</TableHead>
+              <TableHead>Категорія</TableHead>
+              <TableHead>Нормо-год</TableHead>
+              <TableHead>Ціна, ₴</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+              <TableRow>
+                <TableCell colSpan={5} className="py-10 text-center">
+                  <div className="flex justify-center"><Spinner size="md" /></div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && works?.items.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="p-0">
+                  <EmptyState icon={BookOpen} title="Нічого не знайдено" />
+                </TableCell>
+              </TableRow>
             )}
             {!loading && works?.items.map(w => (
-              <tr key={w.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3">
+              <TableRow key={w.id}>
+                <TableCell>
                   <p className="text-sm font-medium text-gray-900">{w.name}</p>
                   {w.description && <p className="text-xs text-gray-400 mt-0.5">{w.description}</p>}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-500">{w.categoryName}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{w.normoHours}</td>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => remove(w.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-1">×</button>
-                </td>
-              </tr>
+                </TableCell>
+                <TableCell className="text-gray-500">{w.categoryName}</TableCell>
+                <TableCell className="text-gray-500">{w.normoHours}</TableCell>
+                <TableCell className="font-medium text-gray-900">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
+                <TableCell className="text-right">
+                  <Button variant="ghost" size="sm" onClick={() => remove(w.id)} className="text-red-400 hover:text-red-600">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-            {!loading && works?.items.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Нічого не знайдено</td></tr>
-            )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
+        <div className="flex justify-center gap-1.5 mt-4">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
             <button key={p} onClick={() => setPage(p)}
-              className={`px-3 py-1 rounded text-sm ${p === page ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>{p}</button>
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'}`}>
+              {p}
+            </button>
           ))}
         </div>
       )}
 
-      {modal && (
-        <Modal title="Нова робота" onClose={() => setModal(false)}>
-          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Категорія *</label>
-            <select value={form.categoryId} onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <Modal open={modal} onClose={() => setModal(false)} title="Нова робота">
+        {error && (
+          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+        )}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Категорія <span className="text-red-500">*</span></label>
+            <Select value={form.categoryId} onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}>
               {flat.map(c => <option key={c.id} value={c.id}>{' '.repeat(c.depth * 4)}{c.name}</option>)}
-            </select>
+            </Select>
           </div>
-          <Field label="Назва" required value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} placeholder="Заміна масла" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Назва <span className="text-red-500">*</span></label>
+            <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Заміна масла" />
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Нормо-год" required value={form.normoHours} onChange={v => setForm(f => ({ ...f, normoHours: v }))} type="number" placeholder="1.5" />
-            <Field label="Ціна, ₴" required value={form.price} onChange={v => setForm(f => ({ ...f, price: v }))} type="number" placeholder="500" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Нормо-год <span className="text-red-500">*</span></label>
+              <Input type="number" value={form.normoHours} onChange={e => setForm(f => ({ ...f, normoHours: e.target.value }))} placeholder="1.5" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Ціна, ₴ <span className="text-red-500">*</span></label>
+              <Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="500" />
+            </div>
           </div>
-          <Field label="Опис" value={form.description} onChange={v => setForm(f => ({ ...f, description: v }))} />
-          <button onClick={create} disabled={saving || !form.name || !form.categoryId || !form.normoHours || !form.price}
-            className="w-full mt-2 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-            {saving ? 'Збереження...' : 'Зберегти'}
-          </button>
-        </Modal>
-      )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Опис</label>
+            <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+          </div>
+          <Button
+            onClick={create}
+            loading={saving}
+            disabled={!form.name || !form.categoryId || !form.normoHours || !form.price}
+            className="w-full"
+          >
+            Зберегти
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -246,82 +266,128 @@ function GoodsTab() {
 
   return (
     <div>
-      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+      {!modal && error && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+      )}
       <div className="flex items-center gap-3 mb-4">
-        <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук за назвою, артикулом, штрихкодом..."
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <button onClick={() => { setError(''); setModal(true); }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 whitespace-nowrap">+ Товар</button>
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук за назвою, артикулом, штрихкодом..." className="pl-9" />
+        </div>
+        <Button onClick={() => { setError(''); setModal(true); }}>
+          <Plus className="h-4 w-4" />
+          Товар
+        </Button>
       </div>
 
       <div className="bg-white rounded-xl border overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              {['Назва / Артикул', 'Категорія', 'Од.', 'Закупка, ₴', 'Продаж, ₴', ''].map(h => (
-                <th key={h} className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Назва / Артикул</TableHead>
+              <TableHead>Категорія</TableHead>
+              <TableHead>Од.</TableHead>
+              <TableHead>Закупка, ₴</TableHead>
+              <TableHead>Продаж, ₴</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+              <TableRow>
+                <TableCell colSpan={6} className="py-10 text-center">
+                  <div className="flex justify-center"><Spinner size="md" /></div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && goods?.items.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="p-0">
+                  <EmptyState icon={Package} title="Нічого не знайдено" />
+                </TableCell>
+              </TableRow>
             )}
             {!loading && goods?.items.map(g => (
-              <tr key={g.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3">
+              <TableRow key={g.id}>
+                <TableCell>
                   <p className="text-sm font-medium text-gray-900">{g.name}</p>
                   {g.sku && <p className="text-xs text-gray-400 mt-0.5">Арт: {g.sku}</p>}
                   {g.barcode && <p className="text-xs text-gray-400">Штрих: {g.barcode}</p>}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-500">{g.category ?? '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{g.unit}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{g.purchasePrice != null ? g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}</td>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => remove(g.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-1">×</button>
-                </td>
-              </tr>
+                </TableCell>
+                <TableCell className="text-gray-500">{g.category ?? '—'}</TableCell>
+                <TableCell className="text-gray-500">{g.unit}</TableCell>
+                <TableCell className="text-gray-500">{g.purchasePrice != null ? g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}</TableCell>
+                <TableCell className="font-medium text-gray-900">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
+                <TableCell className="text-right">
+                  <Button variant="ghost" size="sm" onClick={() => remove(g.id)} className="text-red-400 hover:text-red-600">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-            {!loading && goods?.items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Нічого не знайдено</td></tr>
-            )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
+        <div className="flex justify-center gap-1.5 mt-4">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
             <button key={p} onClick={() => setPage(p)}
-              className={`px-3 py-1 rounded text-sm ${p === page ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>{p}</button>
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'}`}>
+              {p}
+            </button>
           ))}
         </div>
       )}
 
-      {modal && (
-        <Modal title="Новий товар / запчастина" onClose={() => setModal(false)}>
-          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-          <Field label="Назва" required value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} placeholder="Масло моторне 5W-40" />
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Артикул (SKU)" value={form.sku} onChange={v => setForm(f => ({ ...f, sku: v }))} placeholder="OIL-5W40" />
-            <Field label="Одиниця" value={form.unit} onChange={v => setForm(f => ({ ...f, unit: v }))} placeholder="шт" />
+      <Modal open={modal} onClose={() => setModal(false)} title="Новий товар / запчастина">
+        {error && (
+          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+        )}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Назва <span className="text-red-500">*</span></label>
+            <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Масло моторне 5W-40" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Ціна закупки, ₴" value={form.purchasePrice} onChange={v => setForm(f => ({ ...f, purchasePrice: v }))} type="number" placeholder="350" />
-            <Field label="Ціна продажу, ₴" required value={form.salePrice} onChange={v => setForm(f => ({ ...f, salePrice: v }))} type="number" placeholder="500" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Артикул (SKU)</label>
+              <Input value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} placeholder="OIL-5W40" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Одиниця</label>
+              <Input value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} placeholder="шт" />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Категорія" value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} placeholder="Мастила" />
-            <Field label="Штрихкод" value={form.barcode} onChange={v => setForm(f => ({ ...f, barcode: v }))} placeholder="4820000000000" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Ціна закупки, ₴</label>
+              <Input type="number" value={form.purchasePrice} onChange={e => setForm(f => ({ ...f, purchasePrice: e.target.value }))} placeholder="350" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Ціна продажу, ₴ <span className="text-red-500">*</span></label>
+              <Input type="number" value={form.salePrice} onChange={e => setForm(f => ({ ...f, salePrice: e.target.value }))} placeholder="500" />
+            </div>
           </div>
-          <Field label="Нотатки" value={form.notes} onChange={v => setForm(f => ({ ...f, notes: v }))} />
-          <button onClick={create} disabled={saving || !form.name || !form.salePrice}
-            className="w-full mt-2 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-            {saving ? 'Збереження...' : 'Зберегти'}
-          </button>
-        </Modal>
-      )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Категорія</label>
+              <Input value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} placeholder="Мастила" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Штрихкод</label>
+              <Input value={form.barcode} onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))} placeholder="4820000000000" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Нотатки</label>
+            <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </div>
+          <Button onClick={create} loading={saving} disabled={!form.name || !form.salePrice} className="w-full">
+            Зберегти
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -377,72 +443,102 @@ function ServicesTab() {
 
   return (
     <div>
-      {!modal && error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+      {!modal && error && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+      )}
       <div className="flex items-center gap-3 mb-4">
-        <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук послуг..."
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <button onClick={() => { setError(''); setModal(true); }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 whitespace-nowrap">+ Послуга</button>
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук послуг..." className="pl-9" />
+        </div>
+        <Button onClick={() => { setError(''); setModal(true); }}>
+          <Plus className="h-4 w-4" />
+          Послуга
+        </Button>
       </div>
 
       <div className="bg-white rounded-xl border overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              {['Назва', 'Роботи', 'Товари', 'Ціна, ₴', ''].map(h => (
-                <th key={h} className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Назва</TableHead>
+              <TableHead>Роботи</TableHead>
+              <TableHead>Товари</TableHead>
+              <TableHead>Ціна, ₴</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Завантаження...</td></tr>
+              <TableRow>
+                <TableCell colSpan={5} className="py-10 text-center">
+                  <div className="flex justify-center"><Spinner size="md" /></div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && services?.items.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="p-0">
+                  <EmptyState icon={Layers} title="Нічого не знайдено" />
+                </TableCell>
+              </TableRow>
             )}
             {!loading && services?.items.map(s => (
-              <tr key={s.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3">
+              <TableRow key={s.id}>
+                <TableCell>
                   <p className="text-sm font-medium text-gray-900">{s.name}</p>
                   {s.description && <p className="text-xs text-gray-400 mt-0.5">{s.description}</p>}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-500">{s.works.length > 0 ? s.works.map(w => w.workName).join(', ') : '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{s.goods.length > 0 ? s.goods.map(g => g.goodName).join(', ') : '—'}</td>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                </TableCell>
+                <TableCell className="text-gray-500">{s.works.length > 0 ? s.works.map(w => w.workName).join(', ') : '—'}</TableCell>
+                <TableCell className="text-gray-500">{s.goods.length > 0 ? s.goods.map(g => g.goodName).join(', ') : '—'}</TableCell>
+                <TableCell className="font-medium text-gray-900">
                   {s.price != null ? s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : 'авто'}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => remove(s.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-1">×</button>
-                </td>
-              </tr>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button variant="ghost" size="sm" onClick={() => remove(s.id)} className="text-red-400 hover:text-red-600">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-            {!loading && services?.items.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Нічого не знайдено</td></tr>
-            )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
+        <div className="flex justify-center gap-1.5 mt-4">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
             <button key={p} onClick={() => setPage(p)}
-              className={`px-3 py-1 rounded text-sm ${p === page ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>{p}</button>
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'}`}>
+              {p}
+            </button>
           ))}
         </div>
       )}
 
-      {modal && (
-        <Modal title="Нова комплексна послуга" onClose={() => setModal(false)}>
-          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-          <Field label="Назва" required value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} placeholder="ТО-1 (20 000 км)" />
-          <Field label="Опис" value={form.description} onChange={v => setForm(f => ({ ...f, description: v }))} />
-          <Field label="Фіксована ціна, ₴ (не заповнювати = авто)" value={form.price} onChange={v => setForm(f => ({ ...f, price: v }))} type="number" placeholder="2500" />
-          <p className="text-xs text-gray-400 mb-3">Роботи та товари можна додати після створення</p>
-          <button onClick={create} disabled={saving || !form.name}
-            className="w-full mt-2 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-            {saving ? 'Збереження...' : 'Зберегти'}
-          </button>
-        </Modal>
-      )}
+      <Modal open={modal} onClose={() => setModal(false)} title="Нова комплексна послуга">
+        {error && (
+          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+        )}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Назва <span className="text-red-500">*</span></label>
+            <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="ТО-1 (20 000 км)" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Опис</label>
+            <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Фіксована ціна, ₴ (не заповнювати = авто)</label>
+            <Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="2500" />
+          </div>
+          <p className="text-xs text-gray-400">Роботи та товари можна додати після створення</p>
+          <Button onClick={create} loading={saving} disabled={!form.name} className="w-full">
+            Зберегти
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -460,13 +556,16 @@ export default function CatalogPage() {
   const [tab, setTab] = useState<Tab>('works');
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Каталог</h1>
+    <div className="p-6 max-w-7xl mx-auto">
+      <h1 className="text-xl font-bold text-gray-900 mb-6">Каталог</h1>
 
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-6 w-fit">
         {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+          >
             {t.label}
           </button>
         ))}

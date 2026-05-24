@@ -1,8 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
+import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 
 interface Counterparty { id: string; firstName?: string; lastName?: string; companyName?: string; }
 interface Transaction {
@@ -28,20 +34,6 @@ function fmt(n: number) {
   return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
 export default function SettlementsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
 
@@ -50,7 +42,6 @@ export default function SettlementsPage() {
   const [balance, setBalance] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [txTotal, setTxTotal] = useState(0);
-  const [txPage, setTxPage] = useState(1);
   const [acts, setActs] = useState<RecAct[]>([]);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(false);
@@ -69,7 +60,7 @@ export default function SettlementsPage() {
     setSelected(cp);
     setBalance(null);
     setTransactions([]);
-    setTxPage(1);
+    setTxTotal(0);
     setLoading(true);
     try {
       const [bal, txs, actsData] = await Promise.all([
@@ -110,27 +101,38 @@ export default function SettlementsPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      {error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Взаєморозрахунки</h1>
+      {error && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+      )}
+      <h1 className="text-xl font-bold text-gray-900 mb-6">Взаєморозрахунки</h1>
 
       <div className="grid grid-cols-12 gap-6">
         {/* Left: counterparty list */}
         <div className="col-span-4">
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="p-3 border-b">
-              <input value={q} onChange={e => setQ(e.target.value)}
-                placeholder="Пошук контрагента..."
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                <Input
+                  value={q}
+                  onChange={e => setQ(e.target.value)}
+                  placeholder="Пошук контрагента..."
+                  className="pl-9"
+                />
+              </div>
             </div>
             <div className="overflow-y-auto max-h-[calc(100vh-250px)]">
               {filtered.length === 0 ? (
                 <div className="p-4 text-center text-gray-400 text-sm">Не знайдено</div>
               ) : filtered.map(cp => (
-                <button key={cp.id}
+                <button
+                  key={cp.id}
                   onClick={() => loadCounterparty(cp)}
-                  className={`w-full text-left px-4 py-3 text-sm border-b border-gray-50 hover:bg-gray-50 transition-colors ${
-                    selected?.id === cp.id ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''
-                  }`}>
+                  className={cn(
+                    'w-full text-left px-4 py-3 text-sm border-b border-gray-50 hover:bg-gray-50 transition-colors',
+                    selected?.id === cp.id && 'bg-blue-50 border-l-2 border-l-blue-500',
+                  )}
+                >
                   <div className="font-medium text-gray-900">{cpName(cp)}</div>
                 </button>
               ))}
@@ -145,7 +147,9 @@ export default function SettlementsPage() {
               Оберіть контрагента зі списку
             </div>
           ) : loading ? (
-            <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Завантаження...</div>
+            <div className="flex items-center justify-center h-64">
+              <Spinner size="lg" />
+            </div>
           ) : (
             <div className="space-y-5">
               {/* Balance card */}
@@ -153,19 +157,23 @@ export default function SettlementsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm text-gray-500">Поточний баланс</div>
-                    <div className={`text-2xl font-bold mt-1 ${
+                    <div className={cn(
+                      'text-2xl font-bold mt-1',
                       (balance ?? 0) > 0 ? 'text-red-600' : (balance ?? 0) < 0 ? 'text-green-600' : 'text-gray-900'
-                    }`}>
+                    )}>
                       {balance != null ? fmt(balance) : '—'}
                     </div>
                     <div className="text-xs text-gray-400 mt-1">
                       {(balance ?? 0) > 0 ? 'Заборгованість клієнта' : (balance ?? 0) < 0 ? 'Переплата клієнта' : 'Немає заборгованостей'}
                     </div>
                   </div>
-                  <button onClick={() => { setActForm({ periodFrom: '', periodTo: '' }); setActResult(null); setShowActModal(true); }}
-                    className="px-4 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setActForm({ periodFrom: '', periodTo: '' }); setActResult(null); setShowActModal(true); }}
+                  >
                     Акт звірки
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -186,7 +194,7 @@ export default function SettlementsPage() {
                           {new Date(tx.createdAt).toLocaleDateString('uk-UA')}
                         </div>
                       </div>
-                      <div className={`text-sm font-semibold ${TX_COLORS[tx.type] ?? 'text-gray-700'}`}>
+                      <div className={cn('text-sm font-semibold', TX_COLORS[tx.type] ?? 'text-gray-700')}>
                         {tx.type === 'CHARGE' ? '+' : '−'}{fmt(tx.amount)}
                       </div>
                     </div>
@@ -212,7 +220,10 @@ export default function SettlementsPage() {
                         </div>
                         <div className="text-right">
                           <div className="text-xs text-gray-400">Відкриття: {fmt(act.openingBalance)}</div>
-                          <div className={`font-semibold ${act.closingBalance > 0 ? 'text-red-600' : act.closingBalance < 0 ? 'text-green-600' : 'text-gray-700'}`}>
+                          <div className={cn(
+                            'font-semibold',
+                            act.closingBalance > 0 ? 'text-red-600' : act.closingBalance < 0 ? 'text-green-600' : 'text-gray-700'
+                          )}>
                             Закриття: {fmt(act.closingBalance)}
                           </div>
                         </div>
@@ -227,46 +238,50 @@ export default function SettlementsPage() {
       </div>
 
       {/* Reconciliation act modal */}
-      {showActModal && (
-        <Modal title="Акт звірки" onClose={() => setShowActModal(false)}>
-          {actResult ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-                <div className="text-sm font-medium text-green-800 mb-2">Акт звірки сформовано</div>
-                <div className="text-xs text-gray-600 space-y-1">
-                  <div>Відкриваючий залишок: {fmt(actResult.openingBalance)}</div>
-                  <div>Закриваючий залишок: {fmt(actResult.closingBalance)}</div>
-                  <div>Транзакцій: {actResult.transactions.length}</div>
-                </div>
+      <Modal open={showActModal} onClose={() => setShowActModal(false)} title="Акт звірки">
+        {actResult ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-green-50 rounded-lg border border-green-100">
+              <div className="text-sm font-medium text-green-800 mb-2">Акт звірки сформовано</div>
+              <div className="text-xs text-gray-600 space-y-1">
+                <div>Відкриваючий залишок: {fmt(actResult.openingBalance)}</div>
+                <div>Закриваючий залишок: {fmt(actResult.closingBalance)}</div>
+                <div>Транзакцій: {actResult.transactions.length}</div>
               </div>
-              <button onClick={() => setShowActModal(false)}
-                className="w-full py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
-                Закрити
-              </button>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Початок періоду *</label>
-                <input type="date" value={actForm.periodFrom}
-                  onChange={e => setActForm(f => ({ ...f, periodFrom: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Кінець періоду *</label>
-                <input type="date" value={actForm.periodTo}
-                  onChange={e => setActForm(f => ({ ...f, periodTo: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-lg text-sm" />
-              </div>
-              <button onClick={handleCreateAct}
-                disabled={!actForm.periodFrom || !actForm.periodTo || saving}
-                className="w-full py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                {saving ? 'Формування...' : 'Сформувати акт'}
-              </button>
+            <Button variant="outline" onClick={() => setShowActModal(false)} className="w-full">
+              Закрити
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Початок періоду <span className="text-red-500">*</span></label>
+              <Input
+                type="date"
+                value={actForm.periodFrom}
+                onChange={e => setActForm(f => ({ ...f, periodFrom: e.target.value }))}
+              />
             </div>
-          )}
-        </Modal>
-      )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Кінець періоду <span className="text-red-500">*</span></label>
+              <Input
+                type="date"
+                value={actForm.periodTo}
+                onChange={e => setActForm(f => ({ ...f, periodTo: e.target.value }))}
+              />
+            </div>
+            <Button
+              onClick={handleCreateAct}
+              loading={saving}
+              disabled={!actForm.periodFrom || !actForm.periodTo}
+              className="w-full"
+            >
+              Сформувати акт
+            </Button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

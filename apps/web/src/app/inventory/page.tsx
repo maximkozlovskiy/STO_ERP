@@ -1,8 +1,20 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { AlertTriangle, Package, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Modal } from '@/components/ui/modal';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/ui/empty-state';
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 interface Warehouse { id: string; name: string; }
 interface StockItem {
@@ -10,20 +22,6 @@ interface StockItem {
   salePrice: number; warehouseId: string; warehouseName: string;
   quantity: number; reserved: number; available: number;
   minStock: number | null; isLow: boolean;
-}
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
 }
 
 function fmt(n: number) {
@@ -79,36 +77,42 @@ export default function InventoryPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      {error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+      {error && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Залишки на складах</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{items.length} позицій</p>
+          <h1 className="text-xl font-bold text-gray-900">Залишки на складах</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{items.length} позицій</p>
         </div>
-        <button
+        <Button
+          variant="outline"
           onClick={() => { loadLow(); setShowLowModal(true); }}
-          className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+          className="text-amber-700 border-amber-200 bg-amber-50 hover:bg-amber-100"
         >
-          ⚠ Нижче мінімуму
-        </button>
+          <AlertTriangle className="h-4 w-4" />
+          Нижче мінімуму
+        </Button>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
-        <input
-          value={q}
-          onChange={e => setQ(e.target.value)}
-          placeholder="Пошук по назві..."
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
-        />
-        <select
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          <Input
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Пошук по назві..."
+            className="pl-9"
+          />
+        </div>
+        <Select
           value={warehouseId}
           onChange={e => setWarehouseId(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Всі склади</option>
           {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-        </select>
+        </Select>
         <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
           <input
             type="checkbox"
@@ -121,77 +125,87 @@ export default function InventoryPage() {
       </div>
 
       {/* Table */}
-      {loading ? (
-        <div className="text-center py-12 text-gray-400">Завантаження...</div>
-      ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="text-left px-4 py-3 text-gray-500 font-medium">Товар</th>
-                <th className="text-left px-4 py-3 text-gray-500 font-medium">Артикул</th>
-                <th className="text-left px-4 py-3 text-gray-500 font-medium">Склад</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">Кількість</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">Резерв</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">Доступно</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">Ціна продажу</th>
-                <th className="text-left px-4 py-3 text-gray-500 font-medium">Мін. залишок</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {displayed.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-8 text-gray-400">Позицій не знайдено</td></tr>
-              ) : displayed.map(item => (
-                <tr key={item.id} className={`hover:bg-gray-50 transition-colors ${item.isLow ? 'bg-amber-50/50' : ''}`}>
-                  <td className="px-4 py-3 font-medium text-gray-900">
-                    {item.isLow && <span className="text-amber-500 mr-1">⚠</span>}
-                    {item.goodName}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 font-mono text-xs">{item.goodSku ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{item.warehouseName}</td>
-                  <td className="px-4 py-3 text-right font-medium">{item.quantity} {item.unit}</td>
-                  <td className="px-4 py-3 text-right text-orange-600">{item.reserved > 0 ? item.reserved : '—'}</td>
-                  <td className={`px-4 py-3 text-right font-semibold ${item.available <= 0 ? 'text-red-600' : 'text-green-700'}`}>
-                    {item.available} {item.unit}
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-700">{fmt(item.salePrice)}</td>
-                  <td className="px-4 py-3">
-                    {item.minStock != null ? (
-                      <span className={`text-xs px-2 py-1 rounded-full ${item.isLow ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'}`}>
-                        ≥ {item.minStock} {item.unit}
-                      </span>
-                    ) : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Товар</TableHead>
+              <TableHead>Артикул</TableHead>
+              <TableHead>Склад</TableHead>
+              <TableHead className="text-right">Кількість</TableHead>
+              <TableHead className="text-right">Резерв</TableHead>
+              <TableHead className="text-right">Доступно</TableHead>
+              <TableHead className="text-right">Ціна продажу</TableHead>
+              <TableHead>Мін. залишок</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading && (
+              <TableRow>
+                <TableCell colSpan={8} className="py-10 text-center">
+                  <div className="flex justify-center"><Spinner size="md" /></div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && displayed.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} className="p-0">
+                  <EmptyState icon={Package} title="Позицій не знайдено" />
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && displayed.map(item => (
+              <TableRow key={item.id} className={cn(item.isLow && 'bg-amber-50/50')}>
+                <TableCell className="font-medium text-gray-900">
+                  {item.isLow && <AlertTriangle className="inline h-3.5 w-3.5 text-amber-500 mr-1" />}
+                  {item.goodName}
+                </TableCell>
+                <TableCell className="text-gray-500 font-mono text-xs">{item.goodSku ?? '—'}</TableCell>
+                <TableCell className="text-gray-600">{item.warehouseName}</TableCell>
+                <TableCell className="text-right font-medium">{item.quantity} {item.unit}</TableCell>
+                <TableCell className="text-right text-orange-600">{item.reserved > 0 ? item.reserved : '—'}</TableCell>
+                <TableCell className={cn('text-right font-semibold', item.available <= 0 ? 'text-red-600' : 'text-green-700')}>
+                  {item.available} {item.unit}
+                </TableCell>
+                <TableCell className="text-right text-gray-700">{fmt(item.salePrice)}</TableCell>
+                <TableCell>
+                  {item.minStock != null ? (
+                    <Badge variant={item.isLow ? 'warning' : 'secondary'}>
+                      ≥ {item.minStock} {item.unit}
+                    </Badge>
+                  ) : '—'}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
 
       {/* Low stock modal */}
-      {showLowModal && (
-        <Modal title="Товари нижче мінімального залишку" onClose={() => setShowLowModal(false)}>
-          {lowItems.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">Все гаразд — критичних позицій немає</p>
-          ) : (
-            <div className="space-y-2">
-              {lowItems.map((item, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-100">
-                  <div>
-                    <div className="font-medium text-gray-900 text-sm">{item.goodName}</div>
-                    <div className="text-xs text-gray-500">{item.warehouseName}</div>
-                  </div>
-                  <div className="text-right text-sm">
-                    <div className="font-semibold text-red-600">{item.quantity} {item.unit}</div>
-                    <div className="text-gray-400">мін: {item.minStock}</div>
-                  </div>
+      <Modal
+        open={showLowModal}
+        onClose={() => setShowLowModal(false)}
+        title="Товари нижче мінімального залишку"
+      >
+        {lowItems.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">Все гаразд — критичних позицій немає</p>
+        ) : (
+          <div className="space-y-2">
+            {lowItems.map((item, i) => (
+              <div key={i} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-100">
+                <div>
+                  <div className="font-medium text-gray-900 text-sm">{item.goodName}</div>
+                  <div className="text-xs text-gray-500">{item.warehouseName}</div>
                 </div>
-              ))}
-            </div>
-          )}
-        </Modal>
-      )}
+                <div className="text-right text-sm">
+                  <div className="font-semibold text-red-600">{item.quantity} {item.unit}</div>
+                  <div className="text-gray-400">мін: {item.minStock}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

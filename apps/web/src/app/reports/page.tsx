@@ -3,6 +3,13 @@
 import { useState, useCallback } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend,
@@ -31,7 +38,7 @@ function fmtNum(n: number, dec = 1) {
   return n.toLocaleString('uk-UA', { maximumFractionDigits: dec });
 }
 
-function Card({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
       <div className="text-sm text-gray-500">{label}</div>
@@ -83,16 +90,22 @@ export default function ReportsPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      {error && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Звіти</h1>
+      {error && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+      )}
+      <h1 className="text-xl font-bold text-gray-900 mb-6">Звіти</h1>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b mb-6">
         {tabs.map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); setData(null); }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}>
+          <button
+            key={t.id}
+            onClick={() => { setTab(t.id); setData(null); }}
+            className={cn(
+              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+              tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700',
+            )}
+          >
             {t.label}
           </button>
         ))}
@@ -104,29 +117,29 @@ export default function ReportsPage() {
           <>
             <div>
               <label className="block text-xs text-gray-500 mb-1">З</label>
-              <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+              <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">По</label>
-              <input type="date" value={to} onChange={e => setTo(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+              <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40" />
             </div>
           </>
         )}
-        <button onClick={load} disabled={loading}
-          className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-          {loading ? 'Завантаження...' : 'Сформувати'}
-        </button>
+        <Button onClick={load} loading={loading}>
+          Сформувати
+        </Button>
         {data && (
-          <button onClick={() => {
-            const csv = buildCsv(tab, data);
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = `${tab}-report.csv`; a.click();
-          }} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
+          <Button
+            variant="outline"
+            onClick={() => {
+              const csv = buildCsv(tab, data);
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a'); a.href = url; a.download = `${tab}-report.csv`; a.click();
+            }}
+          >
             Експорт CSV
-          </button>
+          </Button>
         )}
       </div>
 
@@ -137,16 +150,18 @@ export default function ReportsPage() {
       )}
 
       {loading && (
-        <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Завантаження...</div>
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
+        </div>
       )}
 
       {/* Revenue report */}
       {data && data._tab === 'revenue' && (
         <div className="space-y-6">
           <div className="grid grid-cols-3 gap-4">
-            <Card label="Загальна виручка" value={fmt(data.totalRevenue)} />
-            <Card label="Кількість нарядів" value={String(data.totalOrders)} />
-            <Card label="Середній чек" value={data.totalOrders > 0 ? fmt(data.totalRevenue / data.totalOrders) : '—'} />
+            <StatCard label="Загальна виручка" value={fmt(data.totalRevenue)} />
+            <StatCard label="Кількість нарядів" value={String(data.totalOrders)} />
+            <StatCard label="Середній чек" value={data.totalOrders > 0 ? fmt(data.totalRevenue / data.totalOrders) : '—'} />
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-medium text-gray-900 mb-4">Виручка по днях</h3>
@@ -181,31 +196,31 @@ export default function ReportsPage() {
       {data && data._tab === 'work-orders' && (
         <div className="space-y-6">
           <div className="grid grid-cols-3 gap-4">
-            <Card label="Всього норм-годин" value={fmtNum(data.totalNormoHours)} />
-            <Card label="Сума робіт" value={fmt(data.totalAmount)} />
-            <Card label="Механіків" value={String(data.rows.length)} />
+            <StatCard label="Всього норм-годин" value={fmtNum(data.totalNormoHours)} />
+            <StatCard label="Сума робіт" value={fmt(data.totalAmount)} />
+            <StatCard label="Механіків" value={String(data.rows.length)} />
           </div>
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left px-4 py-3 text-gray-500 font-medium">Механік</th>
-                  <th className="text-right px-4 py-3 text-gray-500 font-medium">Норм-год</th>
-                  <th className="text-right px-4 py-3 text-gray-500 font-medium">Позицій</th>
-                  <th className="text-right px-4 py-3 text-gray-500 font-medium">Сума</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Механік</TableHead>
+                  <TableHead className="text-right">Норм-год</TableHead>
+                  <TableHead className="text-right">Позицій</TableHead>
+                  <TableHead className="text-right">Сума</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {data.rows.map((r) => (
-                  <tr key={r.employeeId} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{r.employeeName}</td>
-                    <td className="px-4 py-3 text-right">{fmtNum(r.totalNormoHours)}</td>
-                    <td className="px-4 py-3 text-right text-gray-500">{r.linesCount}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{fmt(r.totalAmount)}</td>
-                  </tr>
+                  <TableRow key={r.employeeId}>
+                    <TableCell className="font-medium text-gray-900">{r.employeeName}</TableCell>
+                    <TableCell className="text-right">{fmtNum(r.totalNormoHours)}</TableCell>
+                    <TableCell className="text-right text-gray-500">{r.linesCount}</TableCell>
+                    <TableCell className="text-right font-semibold">{fmt(r.totalAmount)}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}
@@ -214,37 +229,37 @@ export default function ReportsPage() {
       {data && data._tab === 'stock' && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
-            <Card label="Позицій на складах" value={String(data.stockItems.length)} />
-            <Card label="Загальна вартість" value={fmt(data.totalValue)} />
+            <StatCard label="Позицій на складах" value={String(data.stockItems.length)} />
+            <StatCard label="Загальна вартість" value={fmt(data.totalValue)} />
           </div>
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left px-4 py-3 text-gray-500 font-medium">Товар</th>
-                  <th className="text-left px-4 py-3 text-gray-500 font-medium">Склад</th>
-                  <th className="text-right px-4 py-3 text-gray-500 font-medium">Кількість</th>
-                  <th className="text-right px-4 py-3 text-gray-500 font-medium">Доступно</th>
-                  <th className="text-right px-4 py-3 text-gray-500 font-medium">Вартість</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Товар</TableHead>
+                  <TableHead>Склад</TableHead>
+                  <TableHead className="text-right">Кількість</TableHead>
+                  <TableHead className="text-right">Доступно</TableHead>
+                  <TableHead className="text-right">Вартість</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {data.stockItems.map((i, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
+                  <TableRow key={idx}>
+                    <TableCell>
                       <div className="font-medium text-gray-900">{i.goodName}</div>
                       <div className="text-xs text-gray-400 font-mono">{i.goodSku ?? '—'}</div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">{i.warehouseName}</td>
-                    <td className="px-4 py-3 text-right">{fmtNum(i.quantity)} {i.unit}</td>
-                    <td className={`px-4 py-3 text-right font-medium ${i.available <= 0 ? 'text-red-600' : 'text-green-700'}`}>
+                    </TableCell>
+                    <TableCell className="text-gray-500">{i.warehouseName}</TableCell>
+                    <TableCell className="text-right">{fmtNum(i.quantity)} {i.unit}</TableCell>
+                    <TableCell className={cn('text-right font-medium', i.available <= 0 ? 'text-red-600' : 'text-green-700')}>
                       {fmtNum(i.available)}
-                    </td>
-                    <td className="px-4 py-3 text-right">{fmt(i.value)}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="text-right">{fmt(i.value)}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}
@@ -253,8 +268,8 @@ export default function ReportsPage() {
       {data && data._tab === 'settlements' && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
-            <Card label="Дебіторська заборгованість" value={fmt(data.totalDebit)} sub="Клієнти нам" />
-            <Card label="Кредиторська заборгованість" value={fmt(data.totalCredit)} sub="Ми постачальникам" />
+            <StatCard label="Дебіторська заборгованість" value={fmt(data.totalDebit)} sub="Клієнти нам" />
+            <StatCard label="Кредиторська заборгованість" value={fmt(data.totalCredit)} sub="Ми постачальникам" />
           </div>
           <div className="grid grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border p-5">
@@ -274,24 +289,24 @@ export default function ReportsPage() {
               </ResponsiveContainer>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-gray-500 font-medium">Контрагент</th>
-                    <th className="text-right px-4 py-3 text-gray-500 font-medium">Баланс</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Контрагент</TableHead>
+                    <TableHead className="text-right">Баланс</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {data.rows.filter((r) => r.balance !== 0).map((r) => (
-                    <tr key={r.counterpartyId} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-900">{r.counterpartyName}</td>
-                      <td className={`px-4 py-3 text-right font-semibold ${r.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    <TableRow key={r.counterpartyId}>
+                      <TableCell className="text-gray-900">{r.counterpartyName}</TableCell>
+                      <TableCell className={cn('text-right font-semibold', r.balance > 0 ? 'text-red-600' : 'text-green-600')}>
                         {r.balance > 0 ? '+' : ''}{fmt(r.balance)}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           </div>
         </div>
@@ -317,37 +332,37 @@ export default function ReportsPage() {
             </ResponsiveContainer>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left px-4 py-3 text-gray-500 font-medium">Підйомник</th>
-                  <th className="text-left px-4 py-3 text-gray-500 font-medium">Зона</th>
-                  <th className="text-right px-4 py-3 text-gray-500 font-medium">Слотів</th>
-                  <th className="text-right px-4 py-3 text-gray-500 font-medium">Годин</th>
-                  <th className="text-right px-4 py-3 text-gray-500 font-medium">Завантаженість</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Підйомник</TableHead>
+                  <TableHead>Зона</TableHead>
+                  <TableHead className="text-right">Слотів</TableHead>
+                  <TableHead className="text-right">Годин</TableHead>
+                  <TableHead className="text-right">Завантаженість</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {data.rows.map((r) => (
-                  <tr key={r.liftId} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{r.liftName}</td>
-                    <td className="px-4 py-3 text-gray-500">{r.zoneName}</td>
-                    <td className="px-4 py-3 text-right">{r.totalSlots}</td>
-                    <td className="px-4 py-3 text-right">{fmtNum(r.totalHours)}г</td>
-                    <td className="px-4 py-3 text-right">
+                  <TableRow key={r.liftId}>
+                    <TableCell className="font-medium text-gray-900">{r.liftName}</TableCell>
+                    <TableCell className="text-gray-500">{r.zoneName}</TableCell>
+                    <TableCell className="text-right">{r.totalSlots}</TableCell>
+                    <TableCell className="text-right">{fmtNum(r.totalHours)}г</TableCell>
+                    <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <div className="w-24 bg-gray-100 rounded-full h-2">
                           <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(r.loadPercent, 100)}%` }} />
                         </div>
-                        <span className={`text-xs font-medium ${r.loadPercent >= 80 ? 'text-red-600' : r.loadPercent >= 50 ? 'text-amber-600' : 'text-green-600'}`}>
+                        <span className={cn('text-xs font-medium', r.loadPercent >= 80 ? 'text-red-600' : r.loadPercent >= 50 ? 'text-amber-600' : 'text-green-600')}>
                           {r.loadPercent}%
                         </span>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}

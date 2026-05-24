@@ -122,8 +122,8 @@ export class SyncService {
     if (!model) throw new Error(`Unknown model for table: ${rec.table}`);
 
     const existing = await model.findFirst({
-      where: { id: rec.id, orgId, deletedAt: null },
-      select: { id: true, syncVersion: true },
+      where: { id: rec.id, orgId },
+      select: { id: true, syncVersion: true, deletedAt: true },
     });
 
     // Strip protected fields — only allow whitelisted fields through
@@ -182,7 +182,7 @@ export class SyncService {
         .filter(({ field }) => payload[field])
         .map(async ({ field, model }) => {
           const id = payload[field] as string;
-          const record = await (this.prisma as any)[model].findFirst({ where: { id, orgId }, select: { id: true } });
+          const record = await (this.prisma as any)[model].findFirst({ where: { id, orgId, deletedAt: null }, select: { id: true } });
           if (!record) {
             throw new Error(`Поле ${field}=${id} не знайдено в межах організації`);
           }
