@@ -131,7 +131,7 @@ export function TopShell({ children }: { children: ReactNode }) {
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
-  const toggleBookmark = useCallback((href: string, e: React.MouseEvent) => {
+  const toggleBookmark = useCallback((href: string, e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setBookmarks(prev => {
