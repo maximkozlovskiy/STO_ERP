@@ -7,9 +7,10 @@ export class CalendarService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findSlots(orgId: string, date: string, branchId?: string): Promise<CalendarSlotResponseDto[]> {
-    // Parse as Kyiv midnight to correctly cover the calendar day for Ukrainian users
-    const start = new Date(`${date}T00:00:00+03:00`);
-    const end = new Date(`${date}T23:59:59.999+03:00`);
+    // Convert Kyiv calendar date to UTC range using Intl (handles DST correctly)
+    const kyivOffset = this.kyivOffsetMs(new Date(`${date}T12:00:00Z`));
+    const start = new Date(new Date(`${date}T00:00:00Z`).getTime() - kyivOffset);
+    const end = new Date(new Date(`${date}T23:59:59.999Z`).getTime() - kyivOffset);
 
     const where: {
       orgId: string;
@@ -99,6 +100,14 @@ export class CalendarService {
     const slot = await this.prisma.calendarSlot.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!slot) throw new NotFoundException('Слот не знайдено');
     await this.prisma.calendarSlot.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+  }
+
+  private kyivOffsetMs(d: Date): number {
+    // Returns Kyiv UTC offset in ms (e.g. +3h = 10800000) using Intl
+    const utcStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(d);
+    const utcHour = new Date(d).getUTCHours();
+    const kyivHour = parseInt(utcStr, 10);
+    return ((kyivHour - utcHour + 24) % 24) * 3600000;
   }
 
   private toDto(slot: {
