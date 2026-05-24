@@ -1,15 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 export default function RootPage() {
-  const { employee, isLoading } = useAuth();
   const router = useRouter();
-  const [setupChecked, setSetupChecked] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/api/setup/status`)
@@ -17,21 +14,14 @@ export default function RootPage() {
       .then((d: { initialized: boolean }) => {
         if (!d.initialized) {
           router.replace('/setup');
-        } else {
-          setSetupChecked(true);
+          return;
         }
+        // If a token exists, try to go straight to dashboard
+        const token = sessionStorage.getItem('sto_access_token');
+        router.replace(token ? '/dashboard' : '/login');
       })
-      .catch(() => setSetupChecked(true));
+      .catch(() => router.replace('/login'));
   }, [router]);
-
-  useEffect(() => {
-    if (!setupChecked || isLoading) return;
-    if (employee) {
-      router.replace('/dashboard');
-    } else {
-      router.replace('/login');
-    }
-  }, [employee, isLoading, router, setupChecked]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">
