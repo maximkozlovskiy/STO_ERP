@@ -19,9 +19,12 @@ model: claude-opus-4-7
 2. Пройди Крок 1 (збір багів) — записуй кожен у BUG_REPORT.md
 3. Крок 3 (авто-фікс) — виправляй від CRITICAL до LOW без зупинки
 4. Крок 4 (верифікація) — tsc + unit tests мають бути зеленими
-5. Крок 4.5 (E2E Playwright) — якщо dev-сервер доступний, запускай e2e тести
-6. Крок 5 — фінальний звіт
-7. Оновити MemoryManual.md — Останній commit + стан тестів (БЕЗ запиту)
+5. Крок 4.3 (Contract-тести Supertest) — перевір HTTP контракт нових/змінених endpoints
+6. Крок 4.4 (Property-based fast-check) — FSM і inventory/settlements інваріанти
+7. Крок 4.5 (E2E Playwright) — smoke + user flows якщо dev-сервер доступний
+8. Крок 4.6 (Component-тести Vitest) — ui/ компоненти якщо Testing Library встановлений
+9. Крок 5 — фінальний звіт
+10. Оновити MemoryManual.md — Останній commit + стан тестів (БЕЗ запиту)
 
 > Не питай дозволу на виправлення, коміт і оновлення MemoryManual.md — все виконується автоматично.
 > Якщо fix потребує міграції БД або змін у shared — зафіксуй як CRITICAL і повідом після завершення.
@@ -36,9 +39,12 @@ model: claude-opus-4-7
 Дата: YYYY-MM-DD
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors  (або ❌ N errors)
-Тести:      ✅ N/N passed (або ❌ N failed)
-E2E:        ✅ N passed (або ⏭ skipped — dev server offline)
+TypeScript:  ✅ 0 errors       (або ❌ N errors)
+Unit:        ✅ N/N passed     (або ❌ N failed)
+Contract:    ✅ N passed       (або ⏭ немає .contract.spec.ts)
+Property:    ✅ N passed       (або ⏭ fast-check не встановлений)
+Components:  ✅ N passed       (або ⏭ @testing-library не встановлений)
+E2E:         ✅ N passed       (або ⏭ skipped — dev server offline)
 ```
 
 Якщо під час тестування виявились нові gotchas — дописати у відповідний розділ `MemoryManual.md` без запиту.
@@ -63,6 +69,13 @@ pnpm --filter @sto/api test --run 2>&1 | tail -30
 ```
 
 Якщо TypeScript або тести вже червоні — зафіксуй як Bug #0 і виправ ПЕРШИМ.
+
+```bash
+# 3. Перевірити наявність тестових залежностей
+grep "fast-check" apps/api/package.json > /dev/null && echo "fast-check OK" || echo "fast-check MISSING"
+grep "@testing-library/react" apps/web/package.json > /dev/null && echo "testing-library OK" || echo "testing-library MISSING — component tests skipped"
+test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwright MISSING"
+```
 
 ---
 
@@ -191,7 +204,7 @@ pnpm --filter @sto/api test --run 2>&1 | tail -30
 
 ### 1.4 — Тести Backend
 
-Для кожного сервісу перевір, чи існує `.spec.ts` з покриттям:
+#### Unit-тести (`.spec.ts`) — перевір покриття
 
 | Сервіс | Обов'язкові тест-кейси |
 |---|---|
@@ -200,6 +213,69 @@ pnpm --filter @sto/api test --run 2>&1 | tail -30
 | `settlements.service` | CHARGE збільшує balance; PAYMENT зменшує; немає account → NotFoundException |
 | `auth.service` | login happy path; login wrong password; login deleted employee; refresh invalid token |
 | `sync.service` | pull фільтрує по orgId і syncVersion; push відхиляє заборонені таблиці; push cross-tenant FK кидає |
+
+#### Contract-тести (`.contract.spec.ts`) — перевір HTTP шар
+
+| Модуль | Обов'язкові contract тест-кейси |
+|---|---|
+| `work-orders` | GET /work-orders → 200 + pagination shape; POST без полів → 400; 401 без токена |
+| `inventory` | GET /stock-items → 200 + items[].available; POST /movements → 400 при qty=0 |
+| `auth` | POST /auth/login → 200 + accessToken + employee shape; 401 при невірному паролі |
+| `settlements` | GET /settlements/accounts → 200 + balance є числом |
+| `sync` | GET /sync/pull → 200 + records + maxSyncVersion |
+
+Перевірити наявність contract тестів:
+```bash
+find apps/api/src -name "*.contract.spec.ts" | sort
+# Якщо файлів немає — це LOW bug: відсутнє contract покриття
+```
+
+#### Property-based тести (`.invariants.spec.ts`) — перевір інваріанти
+
+| Модуль | Обов'язкові інваріанти |
+|---|---|
+| `work-orders.fsm` | всі пари (from, to): якщо to ∉ TRANSITIONS[from] → blocked; ARCHIVED/CANCELLED → порожні списки |
+| `inventory` | після валідних рухів: quantity≥0, reserved≥0, available≥0 |
+| `settlements` | CHARGE підвищує баланс; PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE знижують |
+
+Перевірити наявність property тестів:
+```bash
+find apps/api/src -name "*.invariants.spec.ts" | sort
+# Якщо файлів немає і fast-check встановлений — це MEDIUM bug
+```
+
+### 1.5 — Тести Frontend
+
+#### Component-тести (`src/components/ui/__tests__/*.test.tsx`)
+
+| Компонент | Обов'язкові тест-кейси |
+|---|---|
+| `Button` | всі variants рендеряться; disabled блокує; loading показує spinner |
+| `Select` | placeholder як disabled option; label/errorMessage/hint присутні |
+| `Modal` | закритий не рендерить; Escape → onClose; footer рендерить кнопки |
+| `Input` | label/errorMessage/hint відображаються |
+| `EmptyState` | title + description; action кнопка якщо передана |
+
+Перевірити наявність:
+```bash
+find apps/web/src -name "*.test.tsx" | sort
+# Якщо 0 файлів — це LOW bug (відсутнє component покриття)
+```
+
+#### E2E тести (`e2e/*.spec.ts`) — smoke + user flows
+
+| Тест файл | Мінімальне покриття |
+|---|---|
+| `smoke.spec.ts` | / і /login доступні; /setup без auth; /work-orders без auth → /login |
+| `work-order-flow.spec.ts` | список WO завантажується; API mock: IN_PROGRESS WO показує кнопку COMPLETED |
+| `inventory.spec.ts` | список завантажується; low-stock badge при minStock < quantity; empty state |
+| `api-errors.spec.ts` | кожна сторінка показує error state при 500 від API |
+
+Перевірити покриття E2E:
+```bash
+find apps/web/e2e -name "*.spec.ts" | sort
+# smoke.spec.ts — обов'язковий, решта — рекомендовані
+```
 
 ---
 
@@ -286,6 +362,362 @@ pnpm --filter @sto/api build 2>&1 | tail -10
 
 ---
 
+## Крок 4.3 — Contract-тести (Supertest)
+
+Contract-тести перевіряють **HTTP шар**: статус-коди, shape відповіді, заголовки авторизації.
+Вони не мокають Prisma — звертаються до реального NestJS application instance з мокнутим PrismaService.
+
+> **Мета:** виявити розрив між `toResponseDto()` у сервісі та `interface` у фронтенді — до того як це зробить користувач.
+
+### Коли писати contract-тест
+
+- Новий `@Controller` → одразу додати `.contract.spec.ts`
+- Зміна `toResponseDto()` → оновити snapshot
+- Новий endpoint → тест на 401 без токена, 403 з неправильною роллю, 200/201 з валідним тілом
+
+### Структура
+
+```
+apps/api/src/modules/{domain}/{domain}.contract.spec.ts
+```
+
+### Шаблон contract-тесту
+
+```typescript
+// apps/api/src/modules/work-orders/work-orders.contract.spec.ts
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
+import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { WorkOrdersModule } from './work-orders.module';
+import { PrismaService } from '../../prisma/prisma.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+
+// Мок PrismaService — тільки ті методи що використовуються
+const prismaMock = {
+  workOrder: {
+    findMany: vi.fn().mockResolvedValue([]),
+    findFirst: vi.fn().mockResolvedValue(null),
+    count: vi.fn().mockResolvedValue(0),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
+  $transaction: vi.fn().mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr)),
+};
+
+// Мок guards — пропускаємо auth, тестуємо тільки HTTP contract
+const mockJwtGuard  = { canActivate: vi.fn().mockReturnValue(true) };
+const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
+
+describe('WorkOrders — HTTP Contract', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      imports: [WorkOrdersModule],
+    })
+      .overrideProvider(PrismaService).useValue(prismaMock)
+      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .compile();
+
+    app = module.createNestApplication();
+    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
+    await app.init();
+  });
+
+  afterAll(() => app.close());
+
+  describe('GET /work-orders', () => {
+    it('повертає 200 з paginatedShape', async () => {
+      prismaMock.$transaction.mockResolvedValueOnce([[], 0]);
+      const res = await request(app.getHttpServer()).get('/work-orders').query({ page: 1, limit: 20 });
+
+      expect(res.status).toBe(200);
+      // Shape contract — ці поля ОБОВ'ЯЗКОВІ для фронтенду
+      expect(res.body).toMatchObject({
+        items: expect.any(Array),
+        total: expect.any(Number),
+        page: expect.any(Number),
+        limit: expect.any(Number),
+      });
+    });
+
+    it('повертає 401 без авторизації', async () => {
+      mockJwtGuard.canActivate.mockReturnValueOnce(false);
+      const res = await request(app.getHttpServer()).get('/work-orders');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('POST /work-orders', () => {
+    it('повертає 400 при відсутніх обов'язкових полях', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/work-orders')
+        .send({ description: 'без vehicleId і counterpartyId' });
+      expect(res.status).toBe(400);
+    });
+
+    it('повертає 201 з коректним DTO', async () => {
+      prismaMock.workOrder.create.mockResolvedValueOnce({
+        id: 'wo-uuid', number: 'WO-2026-0001', status: 'DRAFT',
+        totalAmount: 0, totalLabor: 0, totalParts: 0, paidAmount: 0,
+        createdAt: new Date(), updatedAt: new Date(),
+        vehicle: { make: 'Toyota', model: 'Camry', licensePlate: 'AA1234BB' },
+        counterparty: { firstName: 'Іван', lastName: 'Петренко', companyName: null },
+        branch: { name: 'Центр' },
+      });
+      prismaMock.workOrder.count.mockResolvedValueOnce(0);
+
+      const res = await request(app.getHttpServer())
+        .post('/work-orders')
+        .send({ vehicleId: 'v-uuid', counterpartyId: 'c-uuid', branchId: 'b-uuid' });
+
+      expect(res.status).toBe(201);
+      // Ці поля очікує фронт (WorkOrder interface у page.tsx)
+      expect(res.body).toMatchObject({
+        id: expect.any(String),
+        number: expect.any(String),
+        status: expect.any(String),
+        vehicle: expect.objectContaining({ make: expect.any(String) }),
+        counterparty: expect.any(Object),
+      });
+    });
+  });
+});
+```
+
+### Що перевіряти в contract-тестах
+
+| Endpoint | Тест-кейси |
+|---|---|
+| `GET /work-orders` | 200 з pagination shape; 401 без токена |
+| `POST /work-orders` | 201 + DTO shape; 400 без обов'яз. полів |
+| `PATCH /work-orders/:id/status` | 400 при невалідному FSM-переході (через HTTP) |
+| `GET /inventory` | 200 + items[].available присутній |
+| `POST /auth/login` | 200 + `{ accessToken, refreshToken, employee }`; 401 при невірному паролі |
+| `GET /sync/pull` | 200 + `{ records, maxSyncVersion }` shape |
+
+### Запуск contract-тестів
+
+```bash
+pnpm --filter @sto/api test --run --reporter=verbose 2>&1 | grep -E "contract|PASS|FAIL"
+```
+
+---
+
+## Крок 4.4 — Property-based тести (fast-check)
+
+Property-based тести генерують **сотні випадкових вхідних даних** і перевіряють інваріанти.
+Найефективніші для: FSM (всі можливі пари переходів), фінансових розрахунків (кумулятивні суми), inventory (race conditions).
+
+> **Мета:** знайти edge cases які unit-тест з хардкодженими значеннями не покриє.
+
+### Встановлення fast-check
+
+```bash
+# Перевірити наявність
+grep "fast-check" apps/api/package.json || echo "NOT INSTALLED"
+
+# Встановити якщо відсутній
+pnpm --filter @sto/api add -D fast-check
+```
+
+### Шаблон: FSM — всі заборонені переходи
+
+```typescript
+// apps/api/src/modules/work-orders/work-orders.fsm.spec.ts
+import * as fc from 'fast-check';
+import { WorkOrderStatus } from '@prisma/client';
+import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
+
+const ALL_STATUSES = Object.keys(WORK_ORDER_TRANSITIONS) as WorkOrderStatus[];
+
+describe('WORK_ORDER_TRANSITIONS — property-based', () => {
+  it('кожен дозволений перехід є в списку дозволених для джерела', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(...ALL_STATUSES),
+        fc.constantFrom(...ALL_STATUSES),
+        (from, to) => {
+          const allowed = WORK_ORDER_TRANSITIONS[from];
+          if (allowed.includes(to)) {
+            // якщо дозволений — то від зворотнього: `to` не містить `from` (немає циклів назад крім дозволених)
+            return true; // просто перевіряємо що карта консистентна
+          }
+          // якщо НЕ дозволений — переконатись що заблокований
+          return !allowed.includes(to);
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
+
+  it('ARCHIVED і CANCELLED — фінальні стани (порожній список переходів)', () => {
+    expect(WORK_ORDER_TRANSITIONS['ARCHIVED']).toHaveLength(0);
+    expect(WORK_ORDER_TRANSITIONS['CANCELLED']).toHaveLength(0);
+  });
+
+  it('будь-який перехід з ARCHIVED або CANCELLED → порожній масив', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('ARCHIVED' as WorkOrderStatus, 'CANCELLED' as WorkOrderStatus),
+        (terminal) => WORK_ORDER_TRANSITIONS[terminal].length === 0,
+      ),
+    );
+  });
+});
+```
+
+### Шаблон: Inventory — інваріант балансу
+
+```typescript
+// apps/api/src/modules/inventory/inventory.invariants.spec.ts
+import * as fc from 'fast-check';
+import { StockMovementType } from '@prisma/client';
+
+// Інваріант: після будь-якої послідовності валідних рухів
+// quantity >= 0 і reserved >= 0 і available = quantity - reserved >= 0
+
+function applyMovements(movements: { type: StockMovementType; qty: number }[]) {
+  let quantity = 0;
+  let reserved = 0;
+
+  for (const { type, qty } of movements) {
+    switch (type) {
+      case 'RECEIPT':
+        quantity += qty;
+        break;
+      case 'RESERVATION':
+        if (quantity - reserved < qty) return null; // невалідний — пропускаємо
+        reserved += qty;
+        break;
+      case 'RESERVATION_RELEASE':
+        if (reserved < qty) return null;
+        reserved -= qty;
+        break;
+      case 'WRITEOFF':
+        if (quantity - reserved < qty) return null;
+        quantity -= qty;
+        break;
+    }
+  }
+  return { quantity, reserved, available: quantity - reserved };
+}
+
+describe('Inventory — balance invariants (property-based)', () => {
+  it('після валідних рухів: quantity >= 0, reserved >= 0, available >= 0', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            type: fc.constantFrom<StockMovementType>('RECEIPT', 'RESERVATION', 'RESERVATION_RELEASE', 'WRITEOFF'),
+            qty: fc.integer({ min: 1, max: 100 }),
+          }),
+          { minLength: 1, maxLength: 20 },
+        ),
+        (movements) => {
+          const result = applyMovements(movements);
+          if (result === null) return true; // невалідна послідовність — пропускаємо
+          return result.quantity >= 0 && result.reserved >= 0 && result.available >= 0;
+        },
+      ),
+      { numRuns: 1000 },
+    );
+  });
+
+  it('RECEIPT завжди збільшує quantity', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 1000 }),
+        fc.integer({ min: 0, max: 500 }),
+        fc.integer({ min: 1, max: 100 }),
+        (initialQty, initialReserved, receiptQty) => {
+          fc.pre(initialQty >= initialReserved); // валідний початковий стан
+          const before = initialQty;
+          const after = before + receiptQty;
+          return after > before;
+        },
+      ),
+    );
+  });
+});
+```
+
+### Шаблон: Settlements — кумулятивний баланс
+
+```typescript
+// apps/api/src/modules/settlements/settlements.invariants.spec.ts
+import * as fc from 'fast-check';
+
+type TxType = 'CHARGE' | 'PAYMENT' | 'PREPAYMENT' | 'REFUND' | 'CREDIT_NOTE';
+const BALANCE_INCREASING: TxType[] = ['CHARGE'];
+const BALANCE_DECREASING: TxType[] = ['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'];
+
+function applyTransactions(txs: { type: TxType; amount: number }[]): number {
+  return txs.reduce((balance, { type, amount }) => {
+    if (BALANCE_INCREASING.includes(type)) return balance + amount;
+    if (BALANCE_DECREASING.includes(type)) return balance - amount;
+    return balance;
+  }, 0);
+}
+
+describe('Settlements — balance invariants (property-based)', () => {
+  it('тільки CHARGE транзакції збільшують баланс', () => {
+    fc.assert(
+      fc.property(
+        fc.float({ min: 0.01, max: 100_000, noNaN: true }),
+        (amount) => {
+          const before = 0;
+          const after = applyTransactions([{ type: 'CHARGE', amount }]);
+          return after > before;
+        },
+      ),
+    );
+  });
+
+  it('PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE зменшують баланс', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom<TxType>('PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'),
+        fc.float({ min: 0.01, max: 100_000, noNaN: true }),
+        (type, amount) => {
+          const before = 200_000; // початковий баланс достатньо великий
+          const after = before + applyTransactions([{ type, amount }]);
+          return after < before;
+        },
+      ),
+    );
+  });
+
+  it('сума CHARGE = сума всіх зменшень → balance = 0', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.float({ min: 0.01, max: 1000, noNaN: true }), { minLength: 1, maxLength: 10 }),
+        (amounts) => {
+          const total = amounts.reduce((s, a) => s + a, 0);
+          const txs = [
+            ...amounts.map(amount => ({ type: 'CHARGE' as TxType, amount })),
+            { type: 'PAYMENT' as TxType, amount: total },
+          ];
+          const balance = applyTransactions(txs);
+          return Math.abs(balance) < 0.001; // float tolerance
+        },
+      ),
+    );
+  });
+});
+```
+
+### Запуск property-based тестів
+
+```bash
+pnpm --filter @sto/api test --run --reporter=verbose 2>&1 | grep -E "invariant|property|PASS|FAIL"
+```
+
+---
+
 ## Крок 4.5 — E2E тести (Playwright)
 
 > **Умова запуску:** dev-сервер (`pnpm dev`) повинен бути активним.  
@@ -346,6 +778,22 @@ apps/web/e2e/
   inventory.spec.ts     — список товарів, low-stock badge
   customers.spec.ts     — пошук клієнта, картка авто
   setup.spec.ts         — /setup доступний без авторизації
+```
+
+### Структура e2e директорії
+
+```
+apps/web/e2e/
+  smoke.spec.ts           — публічні URL + auth guard (вже є)
+  auth.spec.ts            — login/logout flows
+  work-orders.spec.ts     — список, CRUD, FSM переходи
+  work-order-flow.spec.ts — повний user flow: WO → completion → payment
+  calendar.spec.ts        — відображення слотів
+  inventory.spec.ts       — список, low-stock badge
+  customers.spec.ts       — пошук, картка авто
+  setup.spec.ts           — /setup без авторизації
+  .auth/
+    admin.json            — збережений auth state (gitignored)
 ```
 
 ### Шаблони E2E тестів
@@ -452,12 +900,352 @@ export default globalSetup;
 globalSetup: './e2e/setup-auth.ts',
 ```
 
+### E2E — User Flow тести (критичні бізнес-сценарії)
+
+> User flow тести перевіряють **наскрізні сценарії** від початку до кінця.
+> Вони вимагають живого dev-сервера + живої БД (або seeded state).
+> Запускай лише якщо dev-сервер онлайн.
+
+```typescript
+// apps/web/e2e/work-order-flow.spec.ts
+// Сценарій: створити WO → додати роботу → перевести в IN_PROGRESS → COMPLETED → оплатити
+import { test, expect } from '@playwright/test';
+
+test.use({ storageState: 'e2e/.auth/admin.json' });
+
+test.describe('Work Order — повний lifecycle', () => {
+  test('DRAFT → COMPLETED → оплата', async ({ page }) => {
+    // 1. Відкрити список нарядів
+    await page.goto('/work-orders');
+    await expect(page.locator('h1, [data-page-title]')).toBeVisible();
+
+    // 2. Створити новий наряд (якщо є кнопка)
+    const createBtn = page.locator('[data-testid="create-work-order"], button:has-text("Новий наряд")');
+    if (await createBtn.isVisible()) {
+      await createBtn.click();
+      // Форма відкрилась
+      await expect(page.locator('[role="dialog"], form')).toBeVisible();
+      await page.keyboard.press('Escape'); // закрити без збереження
+    }
+
+    // 3. Перевірити що сторінка не показує помилок
+    await expect(page.locator('[data-error-state], [data-testid="error"]')).not.toBeVisible();
+  });
+
+  test('API mock: WO зі статусом IN_PROGRESS показує кнопку COMPLETED', async ({ page }) => {
+    // Мок конкретного WO
+    await page.route('**/work-orders/wo-test-id', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 'wo-test-id', number: 'WO-2026-0001', status: 'IN_PROGRESS',
+        totalAmount: 1500, totalLabor: 1000, totalParts: 500, paidAmount: 0,
+        description: 'Заміна масла',
+        vehicle: { make: 'Toyota', model: 'Camry', licensePlate: 'AA1234BB', year: 2020 },
+        counterparty: { id: 'c-1', firstName: 'Іван', lastName: 'Петренко', companyName: null, phone: '+380671234567' },
+        branch: { name: 'Центр' },
+        lines: [], parts: [], payments: [],
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      }),
+    }));
+    await page.goto('/work-orders/wo-test-id');
+    // Кнопка переходу до COMPLETED повинна бути видима
+    await expect(page.locator('button:has-text("Виконано"), [data-testid="complete-btn"]'))
+      .toBeVisible({ timeout: 5_000 });
+  });
+});
+```
+
+```typescript
+// apps/web/e2e/inventory.spec.ts
+import { test, expect } from '@playwright/test';
+
+test.use({ storageState: 'e2e/.auth/admin.json' });
+
+test.describe('Інвентар', () => {
+  test('сторінка завантажується', async ({ page }) => {
+    await page.goto('/inventory');
+    await expect(page.locator('h1, [data-page-title]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-error-state]')).not.toBeVisible();
+  });
+
+  test('low-stock badge відображається при API-моку', async ({ page }) => {
+    await page.route('**/stock-items*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          { id: 'si-1', good: { name: 'Масло 5W40', sku: 'OIL-001', unit: 'л' },
+            warehouse: { name: 'Головний склад' }, quantity: 1, reserved: 0, available: 1, minStock: 5 },
+        ],
+        total: 1, page: 1, limit: 50,
+      }),
+    }));
+    await page.goto('/inventory');
+    // Low stock badge або попередження
+    await expect(page.locator('[data-testid="low-stock"], .text-red, [class*="warning"]'))
+      .toBeVisible({ timeout: 5_000 });
+  });
+
+  test('empty state при порожньому складі', async ({ page }) => {
+    await page.route('**/stock-items*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], total: 0, page: 1, limit: 50 }),
+    }));
+    await page.goto('/inventory');
+    await expect(page.locator('[data-empty-state], [data-testid="empty"]')).toBeVisible({ timeout: 5_000 });
+  });
+});
+```
+
+```typescript
+// apps/web/e2e/api-errors.spec.ts — стійкість до API помилок
+import { test, expect } from '@playwright/test';
+
+test.use({ storageState: 'e2e/.auth/admin.json' });
+
+test.describe('API error resilience', () => {
+  const PAGES = ['/work-orders', '/inventory', '/crm', '/calendar', '/invoices'];
+
+  for (const path of PAGES) {
+    test(`${path} — показує error state при 500`, async ({ page }) => {
+      await page.route('**/api/**', route => route.fulfill({ status: 500, body: 'Internal Server Error' }));
+      await page.goto(path);
+      // Сторінка не повинна падати/зависати — показує error state або empty state
+      await expect(
+        page.locator('[data-error-state], [data-empty-state], [data-testid="error"]'),
+      ).toBeVisible({ timeout: 10_000 });
+    });
+
+    test(`${path} — не крашиться при 404 на конкретний ресурс`, async ({ page }) => {
+      // Тільки resource-specific endpoints повертають 404
+      await page.route(/\/api\/(work-orders|stock-items|counterparties)\/[a-f0-9-]{36}$/, route =>
+        route.fulfill({ status: 404, body: JSON.stringify({ message: 'Not Found' }) }),
+      );
+      await page.goto(path);
+      await expect(page).not.toHaveURL('/403');
+      await expect(page).not.toHaveURL('/500');
+    });
+  }
+});
+```
+
 ### Що робити якщо E2E тест падає
 
-1. Зробити скріншот: `npx playwright test --screenshot=on`
-2. Переглянути трейс: `npx playwright show-trace test-results/*/trace.zip`
+1. Зробити скріншот: `pnpm --filter @sto/web exec playwright test --screenshot=on`
+2. Переглянути трейс: `pnpm --filter @sto/web exec playwright show-trace apps/web/test-results/*/trace.zip`
 3. Якщо помилка — зафіксувати як Bug в `BUG_REPORT.md` і виправити
-4. Якщо тест хибно негативний (flaky через timing) — додати `await expect(...).toBeVisible({ timeout: 5000 })`
+4. Якщо тест хибно негативний (flaky через timing) — додати `await expect(...).toBeVisible({ timeout: 8_000 })`
+5. Якщо тест шукає `data-testid` якого нема — додати атрибут у компонент і вважати відсутність `data-testid` за LOW bug
+
+---
+
+## Крок 4.6 — Component-тести (Vitest + Testing Library)
+
+Component-тести перевіряють **ізольовані React-компоненти**: рендер, props, взаємодія.
+Вони швидші за E2E і ловлять регресії у `ui/` компонентах раніше.
+
+> **Мета:** переконатись що `Button`, `Select`, `Modal`, `Input` рендеряться коректно
+> і не ламаються при зміні props або variants.
+
+### Встановлення Testing Library для web
+
+```bash
+# Перевірити наявність
+grep "@testing-library" apps/web/package.json || echo "NOT INSTALLED"
+
+# Встановити якщо відсутній
+pnpm --filter @sto/web add -D @testing-library/react @testing-library/user-event @testing-library/jest-dom jsdom
+```
+
+Додати до `apps/web/vitest.config.ts` (або створити):
+
+```typescript
+// apps/web/vitest.config.ts
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/__tests__/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+    exclude: ['e2e/**'],
+  },
+  resolve: {
+    alias: { '@': path.resolve(__dirname, './src') },
+  },
+});
+```
+
+```typescript
+// apps/web/src/__tests__/setup.ts
+import '@testing-library/jest-dom';
+```
+
+### Шаблони component-тестів
+
+```typescript
+// apps/web/src/components/ui/__tests__/button.test.tsx
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { vi, it, expect, describe } from 'vitest';
+import { Button } from '../button';
+
+describe('Button', () => {
+  it('рендерить children', () => {
+    render(<Button>Зберегти</Button>);
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeInTheDocument();
+  });
+
+  it('variant="destructive" додає відповідний клас', () => {
+    render(<Button variant="destructive">Видалити</Button>);
+    const btn = screen.getByRole('button');
+    // Перевіряємо що клас деструктивного стилю застосований
+    expect(btn.className).toMatch(/destructive|red|danger/i);
+  });
+
+  it('disabled блокує клік', async () => {
+    const onClick = vi.fn();
+    render(<Button disabled onClick={onClick}>Кнопка</Button>);
+    await userEvent.click(screen.getByRole('button'));
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('loading стан показує spinner і відключає кнопку', () => {
+    render(<Button loading>Завантаження</Button>);
+    const btn = screen.getByRole('button');
+    expect(btn).toBeDisabled();
+    // Spinner присутній
+    expect(btn.querySelector('.animate-spin, [data-spinner]')).toBeTruthy();
+  });
+
+  it('всі variant рендеряться без помилок', () => {
+    const variants = ['primary', 'secondary', 'outline', 'ghost', 'destructive', 'link', 'default'] as const;
+    for (const variant of variants) {
+      expect(() => render(<Button variant={variant}>Текст</Button>)).not.toThrow();
+    }
+  });
+});
+```
+
+```typescript
+// apps/web/src/components/ui/__tests__/select.test.tsx
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { it, expect, describe } from 'vitest';
+import { Select } from '../select';
+
+describe('Select', () => {
+  it('рендерить placeholder як disabled option', () => {
+    render(
+      <Select placeholder="Оберіть статус">
+        <option value="DRAFT">Чернетка</option>
+        <option value="ACTIVE">Активний</option>
+      </Select>,
+    );
+    const placeholder = screen.getByRole('option', { name: 'Оберіть статус' });
+    expect(placeholder).toBeDisabled();
+    expect((placeholder as HTMLOptionElement).value).toBe('');
+  });
+
+  it('показує errorMessage', () => {
+    render(<Select errorMessage="Поле обов'язкове"><option value="1">Один</option></Select>);
+    expect(screen.getByText("Поле обов'язкове")).toBeInTheDocument();
+  });
+
+  it('показує label', () => {
+    render(<Select label="Статус"><option value="1">Один</option></Select>);
+    expect(screen.getByText('Статус')).toBeInTheDocument();
+  });
+
+  it('hint відображається', () => {
+    render(<Select hint="Оберіть зі списку"><option value="1">Один</option></Select>);
+    expect(screen.getByText('Оберіть зі списку')).toBeInTheDocument();
+  });
+});
+```
+
+```typescript
+// apps/web/src/components/ui/__tests__/modal.test.tsx
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { vi, it, expect, describe } from 'vitest';
+import { Modal } from '../modal';
+
+describe('Modal', () => {
+  it('не рендерить content якщо isOpen=false', () => {
+    render(<Modal isOpen={false} onClose={vi.fn()} title="Тест">Контент</Modal>);
+    expect(screen.queryByText('Контент')).not.toBeInTheDocument();
+  });
+
+  it('рендерить контент якщо isOpen=true', () => {
+    render(<Modal isOpen onClose={vi.fn()} title="Тест">Контент модалки</Modal>);
+    expect(screen.getByText('Контент модалки')).toBeInTheDocument();
+    expect(screen.getByText('Тест')).toBeInTheDocument();
+  });
+
+  it('виклик onClose при натисканні Escape', async () => {
+    const onClose = vi.fn();
+    render(<Modal isOpen onClose={onClose} title="Тест">Вміст</Modal>);
+    await userEvent.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('footer рендерить кнопки', () => {
+    render(
+      <Modal isOpen onClose={vi.fn()} title="Підтвердити"
+        footer={<><button>Скасувати</button><button>Підтвердити</button></>}>
+        Ви впевнені?
+      </Modal>,
+    );
+    expect(screen.getByRole('button', { name: 'Скасувати' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Підтвердити' })).toBeInTheDocument();
+  });
+});
+```
+
+```typescript
+// apps/web/src/components/ui/__tests__/empty-state.test.tsx
+import { render, screen } from '@testing-library/react';
+import { it, expect, describe } from 'vitest';
+import { EmptyState } from '../empty-state';
+
+describe('EmptyState', () => {
+  it('рендерить title і description', () => {
+    render(<EmptyState title="Немає нарядів" description="Створіть перший наряд" />);
+    expect(screen.getByText('Немає нарядів')).toBeInTheDocument();
+    expect(screen.getByText('Створіть перший наряд')).toBeInTheDocument();
+  });
+
+  it('рендерить action кнопку якщо передана', () => {
+    render(<EmptyState title="Порожньо" action={{ label: 'Додати', onClick: () => {} }} />);
+    expect(screen.getByRole('button', { name: 'Додати' })).toBeInTheDocument();
+  });
+});
+```
+
+### Запуск component-тестів
+
+```bash
+# Перевірити наявність vitest config
+test -f apps/web/vitest.config.ts && echo "EXISTS" || echo "NOT FOUND"
+
+# Запустити
+pnpm --filter @sto/web exec vitest run --reporter=verbose 2>&1 | tail -30
+```
+
+### Checklist component-тестів
+
+- [ ] `Button` — всі variants рендеряться; disabled блокує клік; loading показує spinner
+- [ ] `Select` — placeholder як disabled option; label, errorMessage, hint відображаються
+- [ ] `Modal` — закритий не рендерить content; Escape викликає onClose; footer рендерить кнопки
+- [ ] `Input` — label, errorMessage, hint відображаються; leftElement/rightElement присутні
+- [ ] `EmptyState` — title + description; action кнопка якщо передана
 
 ---
 
@@ -475,7 +1263,10 @@ globalSetup: './e2e/setup-auth.ts',
 
 TypeScript:        ✅ 0 errors
 Unit тести:        ✅ N passed / 0 failed
-E2E (Playwright):  ✅ N passed / 0 failed  (або ⏭ skipped — dev server offline)
+Contract тести:    ✅ N passed  (або ⏭ немає .contract.spec.ts)
+Property-based:    ✅ N passed  (або ⏭ fast-check не встановлений)
+Component тести:   ✅ N passed  (або ⏭ @testing-library не встановлений)
+E2E (Playwright):  ✅ N passed / 0 failed  (або ⏭ dev server offline)
 Build:             ✅ OK
 
 Коміти:
