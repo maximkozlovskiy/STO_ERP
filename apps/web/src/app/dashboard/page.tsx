@@ -57,8 +57,9 @@ export default function DashboardPage() {
           new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
         const today = kyivDate(new Date());
         const now = new Date();
-        const kyivNow = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now));
-        const monthStart = kyivDate(new Date(kyivNow.getFullYear(), kyivNow.getMonth(), 1));
+        const kyivStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+        const [kyivYear, kyivMonth] = kyivStr.split('-').map(Number);
+        const monthStart = `${kyivYear}-${String(kyivMonth).padStart(2, '0')}-01`;
         const weekStart = kyivDate(new Date(Date.now() - 6 * 86_400_000));
 
         const [orders, lowStock, invoices, revenueData] = await Promise.allSettled([
