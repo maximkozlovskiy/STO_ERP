@@ -4,6 +4,12 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Modal } from '@/components/ui/modal';
+import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,11 +45,16 @@ const STATUS_LABELS: Record<string, string> = {
   INVOICED: 'Виставлено', PAID: 'Оплачено', ARCHIVED: 'Архів', CANCELLED: 'Скасовано',
 };
 const STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-600', ESTIMATE: 'bg-yellow-100 text-yellow-700',
-  APPROVED: 'bg-blue-100 text-blue-700', IN_PROGRESS: 'bg-purple-100 text-purple-700',
-  ON_HOLD: 'bg-orange-100 text-orange-700', COMPLETED: 'bg-green-100 text-green-700',
-  INVOICED: 'bg-teal-100 text-teal-700', PAID: 'bg-emerald-100 text-emerald-700',
-  ARCHIVED: 'bg-gray-100 text-gray-400', CANCELLED: 'bg-red-100 text-red-600',
+  DRAFT: 'bg-(--color-secondary) text-muted-foreground',
+  ESTIMATE: 'bg-warning-subtle text-warning',
+  APPROVED: 'bg-(--color-primary-subtle) text-(--color-primary)',
+  IN_PROGRESS: 'bg-purple-100 text-purple-700',
+  ON_HOLD: 'bg-orange-100 text-orange-700',
+  COMPLETED: 'bg-success-subtle text-success',
+  INVOICED: 'bg-teal-100 text-teal-700',
+  PAID: 'bg-emerald-100 text-emerald-700',
+  ARCHIVED: 'bg-(--color-secondary) text-muted-foreground',
+  CANCELLED: 'bg-destructive-subtle text-destructive',
 };
 const TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['ESTIMATE', 'CANCELLED'],
@@ -60,29 +71,13 @@ const TRANSITION_LABELS: Record<string, string> = {
   ON_HOLD: 'Призупинити', COMPLETED: 'Виконано', INVOICED: 'Виставити рахунок',
   PAID: 'Оплачено', ARCHIVED: 'В архів', CANCELLED: 'Скасувати', DRAFT: 'Повернути в чернетку',
 };
-const TRANSITION_COLORS: Record<string, string> = {
-  IN_PROGRESS: 'bg-purple-600 hover:bg-purple-700',
-  COMPLETED: 'bg-green-600 hover:bg-green-700',
-  PAID: 'bg-emerald-600 hover:bg-emerald-700',
-  CANCELLED: 'bg-red-500 hover:bg-red-600',
-  APPROVED: 'bg-blue-600 hover:bg-blue-700',
+const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'> = {
+  CANCELLED: 'destructive',
+  COMPLETED: 'default',
+  PAID: 'default',
+  APPROVED: 'default',
+  IN_PROGRESS: 'default',
 };
-
-// ─── Modals ───────────────────────────────────────────────────────────────────
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -201,8 +196,8 @@ export default function WorkOrderCardPage() {
   if (!wo) return (
     <div className="flex items-center justify-center min-h-screen flex-col gap-4">
       {error
-        ? <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>
-        : <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />}
+        ? <p className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{error}</p>
+        : <Spinner size="lg" />}
     </div>
   );
 
@@ -210,77 +205,83 @@ export default function WorkOrderCardPage() {
   const allowedTransitions = TRANSITIONS[wo.status] ?? [];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
-      {refsError && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">Довідники: {refsError}</p>}
+    <div className="page-container max-w-4xl space-y-6">
+      {error && <p className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{error}</p>}
+      {refsError && <p className="text-[13px] text-warning bg-warning-subtle border border-warning/20 rounded-lg px-4 py-2">Довідники: {refsError}</p>}
+
       {/* Header */}
       <div className="flex items-start gap-4">
-        <button onClick={() => router.back()} className="mt-1 text-gray-400 hover:text-gray-600 text-sm">← Назад</button>
+        <button onClick={() => router.back()} className="mt-1 text-muted-foreground hover:text-foreground text-sm">← Назад</button>
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold text-gray-900">{wo.number}</h1>
-            <span className={`text-sm font-medium px-2.5 py-1 rounded-full ${STATUS_COLORS[wo.status] ?? 'bg-gray-100 text-gray-600'}`}>
+            <h1 className="text-2xl font-bold text-foreground">{wo.number}</h1>
+            <span className={cn('text-sm font-medium px-2.5 py-1 rounded-full', STATUS_COLORS[wo.status] ?? 'bg-(--color-secondary) text-muted-foreground')}>
               {STATUS_LABELS[wo.status] ?? wo.status}
             </span>
           </div>
-          <p className="text-sm text-gray-500 mt-1">{wo.counterpartyName} · {wo.vehicleSummary}</p>
+          <p className="text-sm text-muted-foreground mt-1">{wo.counterpartyName} · {wo.vehicleSummary}</p>
         </div>
         <div className="text-right">
-          <p className="text-lg font-bold text-gray-900">{wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
-          <p className="text-xs text-gray-400">загальна сума</p>
+          <p className="text-lg font-bold text-foreground">{wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+          <p className="text-xs text-muted-foreground">загальна сума</p>
         </div>
       </div>
 
       {/* Info */}
-      <div className="bg-white rounded-xl border p-5 grid grid-cols-2 gap-3 text-sm">
-        {wo.branchName && <div><p className="text-xs text-gray-400">Філія</p><p className="text-gray-900">{wo.branchName}</p></div>}
-        {wo.inMileage != null && <div><p className="text-xs text-gray-400">Пробіг (вхід)</p><p className="text-gray-900">{wo.inMileage.toLocaleString('uk-UA')} км</p></div>}
-        {wo.outMileage != null && <div><p className="text-xs text-gray-400">Пробіг (вихід)</p><p className="text-gray-900">{wo.outMileage.toLocaleString('uk-UA')} км</p></div>}
-        {wo.plannedAt && <div><p className="text-xs text-gray-400">Заплановано</p><p className="text-gray-900">{new Date(wo.plannedAt).toLocaleString('uk-UA')}</p></div>}
-        {wo.description && <div className="col-span-2"><p className="text-xs text-gray-400">Опис</p><p className="text-gray-900">{wo.description}</p></div>}
+      <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-2 gap-3 text-sm">
+        {wo.branchName && <div><p className="text-xs text-muted-foreground">Філія</p><p className="text-foreground">{wo.branchName}</p></div>}
+        {wo.inMileage != null && <div><p className="text-xs text-muted-foreground">Пробіг (вхід)</p><p className="text-foreground">{wo.inMileage.toLocaleString('uk-UA')} км</p></div>}
+        {wo.outMileage != null && <div><p className="text-xs text-muted-foreground">Пробіг (вихід)</p><p className="text-foreground">{wo.outMileage.toLocaleString('uk-UA')} км</p></div>}
+        {wo.plannedAt && <div><p className="text-xs text-muted-foreground">Заплановано</p><p className="text-foreground">{new Date(wo.plannedAt).toLocaleString('uk-UA')}</p></div>}
+        {wo.description && <div className="col-span-2"><p className="text-xs text-muted-foreground">Опис</p><p className="text-foreground">{wo.description}</p></div>}
       </div>
 
       {/* FSM Buttons */}
       {allowedTransitions.length > 0 && (
         <div className="flex gap-2 flex-wrap">
           {allowedTransitions.map(s => (
-            <button key={s} onClick={() => transition(s)} disabled={transitioning}
-              className={`px-4 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-60 ${TRANSITION_COLORS[s] ?? 'bg-gray-500 hover:bg-gray-600'}`}>
+            <Button
+              key={s}
+              variant={TRANSITION_VARIANTS[s] ?? 'outline'}
+              onClick={() => transition(s)}
+              disabled={transitioning}
+              loading={transitioning}
+            >
               {TRANSITION_LABELS[s] ?? s}
-            </button>
+            </Button>
           ))}
         </div>
       )}
 
       {/* Totals */}
-      <div className="bg-white rounded-xl border p-5 grid grid-cols-3 gap-4 text-sm">
-        <div><p className="text-xs text-gray-400">Роботи</p><p className="text-lg font-semibold text-gray-900">{wo.totalLabor.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p></div>
-        <div><p className="text-xs text-gray-400">Запчастини</p><p className="text-lg font-semibold text-gray-900">{wo.totalParts.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p></div>
-        <div><p className="text-xs text-gray-400">Оплачено</p><p className={`text-lg font-semibold ${wo.paidAmount >= wo.totalAmount ? 'text-green-600' : 'text-gray-900'}`}>{wo.paidAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p></div>
+      <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-3 gap-4 text-sm">
+        <div><p className="text-xs text-muted-foreground">Роботи</p><p className="text-lg font-semibold text-foreground">{wo.totalLabor.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p></div>
+        <div><p className="text-xs text-muted-foreground">Запчастини</p><p className="text-lg font-semibold text-foreground">{wo.totalParts.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p></div>
+        <div><p className="text-xs text-muted-foreground">Оплачено</p><p className={cn('text-lg font-semibold', wo.paidAmount >= wo.totalAmount ? 'text-success' : 'text-foreground')}>{wo.paidAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p></div>
       </div>
 
       {/* Lines */}
-      <div className="bg-white rounded-xl border p-5">
+      <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-gray-900">Роботи</h2>
-          {canEdit && <button onClick={() => { setError(''); setLineModal(true); }} className="text-sm text-blue-600 hover:underline">+ Робота</button>}
+          <h2 className="font-semibold text-foreground">Роботи</h2>
+          {canEdit && <button onClick={() => { setError(''); setLineModal(true); }} className="text-sm text-(--color-primary) hover:underline">+ Робота</button>}
         </div>
         {wo.lines.length === 0
-          ? <p className="text-sm text-gray-400">Роботи не додані</p>
+          ? <p className="text-sm text-muted-foreground">Роботи не додані</p>
           : (
-            <div className="divide-y border rounded-lg overflow-hidden">
+            <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
               {wo.lines.map(l => (
                 <div key={l.id} className="flex items-center justify-between px-4 py-3">
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{l.workName}</p>
-                    <p className="text-xs text-gray-400">{l.employeeName} · {l.normoHours} год</p>
-                    {l.notes && <p className="text-xs text-gray-400 mt-0.5">{l.notes}</p>}
+                    <p className="text-sm font-medium text-foreground">{l.workName}</p>
+                    <p className="text-xs text-muted-foreground">{l.employeeName} · {l.normoHours} год</p>
+                    {l.notes && <p className="text-xs text-muted-foreground mt-0.5">{l.notes}</p>}
                   </div>
                   <div className="text-right mr-3">
-                    <p className="text-sm font-medium text-gray-900">{l.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
-                    <p className="text-xs text-gray-400">{l.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} × {l.normoHours}</p>
+                    <p className="text-sm font-medium text-foreground">{l.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+                    <p className="text-xs text-muted-foreground">{l.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} × {l.normoHours}</p>
                   </div>
-                  {canEdit && <button onClick={() => removeLine(l.id)} className="text-xs text-red-400 hover:text-red-600 px-1">×</button>}
+                  {canEdit && <button onClick={() => removeLine(l.id)} className="text-xs text-destructive/60 hover:text-destructive px-1">×</button>}
                 </div>
               ))}
             </div>
@@ -288,25 +289,25 @@ export default function WorkOrderCardPage() {
       </div>
 
       {/* Parts */}
-      <div className="bg-white rounded-xl border p-5">
+      <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-gray-900">Запчастини та матеріали</h2>
-          {canEdit && <button onClick={() => { setError(''); setPartModal(true); }} className="text-sm text-blue-600 hover:underline">+ Запчастина</button>}
+          <h2 className="font-semibold text-foreground">Запчастини та матеріали</h2>
+          {canEdit && <button onClick={() => { setError(''); setPartModal(true); }} className="text-sm text-(--color-primary) hover:underline">+ Запчастина</button>}
         </div>
         {wo.parts.length === 0
-          ? <p className="text-sm text-gray-400">Запчастини не додані</p>
+          ? <p className="text-sm text-muted-foreground">Запчастини не додані</p>
           : (
-            <div className="divide-y border rounded-lg overflow-hidden">
+            <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
               {wo.parts.map(p => (
                 <div key={p.id} className="flex items-center justify-between px-4 py-3">
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{p.goodName}</p>
-                    <p className="text-xs text-gray-400">{p.quantity} шт × {p.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+                    <p className="text-sm font-medium text-foreground">{p.goodName}</p>
+                    <p className="text-xs text-muted-foreground">{p.quantity} шт × {p.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
                   </div>
                   <div className="text-right mr-3">
-                    <p className="text-sm font-medium text-gray-900">{p.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+                    <p className="text-sm font-medium text-foreground">{p.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
                   </div>
-                  {canEdit && <button onClick={() => removePart(p.id)} className="text-xs text-red-400 hover:text-red-600 px-1">×</button>}
+                  {canEdit && <button onClick={() => removePart(p.id)} className="text-xs text-destructive/60 hover:text-destructive px-1">×</button>}
                 </div>
               ))}
             </div>
@@ -314,87 +315,76 @@ export default function WorkOrderCardPage() {
       </div>
 
       {/* Add Line Modal */}
-      {lineModal && (
-        <Modal title="Додати роботу" onClose={() => setLineModal(false)}>
-          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Робота *</label>
-            <select value={lineForm.workId} onChange={e => selectWork(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <Modal open={lineModal} onClose={() => setLineModal(false)} title="Додати роботу">
+        <div className="space-y-3">
+          {error && <p className="text-[13px] text-[hsl(0_84%_42%)]">{error}</p>}
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Робота <span className="text-red-500">*</span></label>
+            <Select value={lineForm.workId} onChange={e => selectWork(e.target.value)}>
               <option value="">— Оберіть —</option>
               {works.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
+            </Select>
           </div>
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Виконавець *</label>
-            <select value={lineForm.employeeId} onChange={e => setLineForm(f => ({ ...f, employeeId: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Виконавець <span className="text-red-500">*</span></label>
+            <Select value={lineForm.employeeId} onChange={e => setLineForm(f => ({ ...f, employeeId: e.target.value }))}>
               <option value="">— Оберіть —</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.lastName} {e.firstName}</option>)}
-            </select>
+            </Select>
           </div>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Нормо-год</label>
-              <input type="number" value={lineForm.normoHours} onChange={e => setLineForm(f => ({ ...f, normoHours: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Нормо-год</label>
+              <Input type="number" value={lineForm.normoHours} onChange={e => setLineForm(f => ({ ...f, normoHours: e.target.value }))} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Ціна, ₴</label>
-              <input type="number" value={lineForm.price} onChange={e => setLineForm(f => ({ ...f, price: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Ціна, ₴</label>
+              <Input type="number" value={lineForm.price} onChange={e => setLineForm(f => ({ ...f, price: e.target.value }))} />
             </div>
           </div>
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Нотатки</label>
-            <input value={lineForm.notes} onChange={e => setLineForm(f => ({ ...f, notes: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Нотатки</label>
+            <Input value={lineForm.notes} onChange={e => setLineForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
-          <button onClick={addLine} disabled={saving || !lineForm.workId || !lineForm.employeeId}
-            className="w-full py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-            {saving ? '...' : 'Додати'}
-          </button>
-        </Modal>
-      )}
+          <Button onClick={addLine} loading={saving} disabled={!lineForm.workId || !lineForm.employeeId} className="w-full">
+            Додати
+          </Button>
+        </div>
+      </Modal>
 
       {/* Add Part Modal */}
-      {partModal && (
-        <Modal title="Додати запчастину" onClose={() => setPartModal(false)}>
-          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Товар *</label>
-            <select value={partForm.goodId} onChange={e => selectGood(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <Modal open={partModal} onClose={() => setPartModal(false)} title="Додати запчастину">
+        <div className="space-y-3">
+          {error && <p className="text-[13px] text-[hsl(0_84%_42%)]">{error}</p>}
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Товар <span className="text-red-500">*</span></label>
+            <Select value={partForm.goodId} onChange={e => selectGood(e.target.value)}>
               <option value="">— Оберіть —</option>
               {goods.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
+            </Select>
           </div>
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Склад *</label>
-            <select value={partForm.warehouseId} onChange={e => setPartForm(f => ({ ...f, warehouseId: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Склад <span className="text-red-500">*</span></label>
+            <Select value={partForm.warehouseId} onChange={e => setPartForm(f => ({ ...f, warehouseId: e.target.value }))}>
               <option value="">— Оберіть —</option>
               {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
+            </Select>
           </div>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Кількість *</label>
-              <input type="number" value={partForm.quantity} onChange={e => setPartForm(f => ({ ...f, quantity: e.target.value }))} min="0.001" step="0.001"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Кількість <span className="text-red-500">*</span></label>
+              <Input type="number" value={partForm.quantity} onChange={e => setPartForm(f => ({ ...f, quantity: e.target.value }))} min="0.001" step="0.001" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Ціна, ₴</label>
-              <input type="number" value={partForm.price} onChange={e => setPartForm(f => ({ ...f, price: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Ціна, ₴</label>
+              <Input type="number" value={partForm.price} onChange={e => setPartForm(f => ({ ...f, price: e.target.value }))} />
             </div>
           </div>
-          <button onClick={addPart} disabled={saving || !partForm.goodId || !partForm.warehouseId || !partForm.quantity}
-            className="w-full py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-            {saving ? '...' : 'Додати'}
-          </button>
-        </Modal>
-      )}
+          <Button onClick={addPart} loading={saving} disabled={!partForm.goodId || !partForm.warehouseId || !partForm.quantity} className="w-full">
+            Додати
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

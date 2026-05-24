@@ -70,17 +70,17 @@ export default function SyncPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Cloud Sync</h1>
-      <p className="text-sm text-gray-500 mb-6">
+    <div className="page-container max-w-2xl">
+      <h1 className="page-title mb-2">Cloud Sync</h1>
+      <p className="text-sm text-muted-foreground mb-6">
         Синхронізація між філіями та хмарний резервний бекап. Опціональна функція — система повністю працює без неї.
       </p>
 
       {msg && (
-        <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">{msg}</div>
+        <div className="mb-4 text-sm text-success bg-success-subtle border border-success/20 rounded-lg p-3">{msg}</div>
       )}
       {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>
+        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg p-3">{error}</div>
       )}
 
       {loading ? (
@@ -88,40 +88,40 @@ export default function SyncPage() {
           <Spinner size="lg" />
         </div>
       ) : !status ? (
-        <div className="text-center py-12 text-gray-400">Не вдалося завантажити статус синхронізації.</div>
+        <div className="text-center py-12 text-muted-foreground">Не вдалося завантажити статус синхронізації.</div>
       ) : (
         <>
           {/* Status cards */}
           <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className={cn('bg-white rounded-xl border p-4', status.failedJobs > 0 ? 'border-red-200' : 'border-gray-200')}>
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Помилки</div>
-              <div className={cn('text-2xl font-bold', status.failedJobs > 0 ? 'text-red-600' : 'text-gray-500')}>
+            <div className={cn('bg-surface rounded-xl border p-4', status.failedJobs > 0 ? 'border-destructive/30' : 'border-border')}>
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Помилки</div>
+              <div className={cn('text-2xl font-bold', status.failedJobs > 0 ? 'text-destructive' : 'text-muted-foreground')}>
                 {status.failedJobs}
               </div>
             </div>
-            <div className={cn('bg-white rounded-xl border p-4', status.pendingJobs > 0 ? 'border-amber-200' : 'border-gray-200')}>
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Очікують</div>
-              <div className={cn('text-2xl font-bold', status.pendingJobs > 0 ? 'text-amber-600' : 'text-gray-500')}>
+            <div className={cn('bg-surface rounded-xl border p-4', status.pendingJobs > 0 ? 'border-warning/30' : 'border-border')}>
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Очікують</div>
+              <div className={cn('text-2xl font-bold', status.pendingJobs > 0 ? 'text-warning' : 'text-muted-foreground')}>
                 {status.pendingJobs}
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-3">
+          <div className="bg-surface rounded-xl border border-border p-5 mb-6 space-y-3">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Остання синхронізація</span>
-              <span className="font-medium text-gray-900">{fmtDate(status.lastSyncAt)}</span>
+              <span className="text-muted-foreground">Остання синхронізація</span>
+              <span className="font-medium text-foreground">{fmtDate(status.lastSyncAt)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Поточна версія (syncVersion)</span>
-              <span className="font-medium text-gray-900 font-mono">{status.maxSyncVersion}</span>
+              <span className="text-muted-foreground">Поточна версія (syncVersion)</span>
+              <span className="font-medium text-foreground font-mono">{status.maxSyncVersion}</span>
             </div>
             <div className="flex items-center gap-2 pt-1">
               <div className={cn(
                 'w-2 h-2 rounded-full',
-                status.failedJobs > 0 ? 'bg-red-500' : status.pendingJobs > 0 ? 'bg-amber-500' : 'bg-green-500',
+                status.failedJobs > 0 ? 'bg-destructive' : status.pendingJobs > 0 ? 'bg-warning' : 'bg-success',
               )} />
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-muted-foreground">
                 {status.failedJobs > 0
                   ? 'Є помилки синхронізації — перевірте журнал'
                   : status.pendingJobs > 0
@@ -135,8 +135,8 @@ export default function SyncPage() {
             ↻ Синхронізувати зараз
           </Button>
 
-          <p className="mt-3 text-xs text-gray-400 text-center">
-            Автоматична синхронізація відбувається при наявності інтернет-з'єднання
+          <p className="mt-3 text-xs text-muted-foreground text-center">
+            Автоматична синхронізація відбувається при наявності інтернет-з&apos;єднання
           </p>
         </>
       )}

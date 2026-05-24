@@ -72,7 +72,7 @@ export default function VehicleCardPage() {
   if (!vehicle) return (
     <div className="flex items-center justify-center min-h-screen flex-col gap-4">
       {loadError
-        ? <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{loadError}</p>
+        ? <p className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{loadError}</p>
         : <Spinner size="lg" />}
     </div>
   );
@@ -83,20 +83,20 @@ export default function VehicleCardPage() {
   }, {});
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="page-container max-w-3xl space-y-6">
       {loadError && (
-        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{loadError}</div>
+        <div className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{loadError}</div>
       )}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4" />
           Назад
         </Button>
-        <h1 className="text-2xl font-bold text-gray-900">{vehicle.make} {vehicle.model}</h1>
+        <h1 className="text-2xl font-bold text-foreground">{vehicle.make} {vehicle.model}</h1>
       </div>
 
       {/* Vehicle info */}
-      <div className="bg-white rounded-xl border p-5 grid grid-cols-2 gap-3 text-sm">
+      <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-2 gap-3 text-sm">
         {vehicle.licensePlate && <Info label="Держ. номер" value={vehicle.licensePlate} />}
         {vehicle.vin && <Info label="VIN" value={vehicle.vin} />}
         {vehicle.year && <Info label="Рік" value={String(vehicle.year)} />}
@@ -108,9 +108,9 @@ export default function VehicleCardPage() {
       </div>
 
       {/* Nodes */}
-      <div className="bg-white rounded-xl border p-5">
+      <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-gray-900">Вузли автомобіля</h2>
+          <h2 className="font-semibold text-foreground">Вузли автомобіля</h2>
           <Button variant="ghost" size="sm" onClick={() => setShowAddNode(v => !v)}>
             <Plus className="h-4 w-4" />
             Вузол
@@ -118,10 +118,10 @@ export default function VehicleCardPage() {
         </div>
 
         {showAddNode && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-lg space-y-2">
+          <div className="mb-4 p-3 bg-(--color-secondary) rounded-lg space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Категорія</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Категорія</label>
                 <Select
                   value={nodeForm.category}
                   onChange={e => setNodeForm(f => ({ ...f, category: e.target.value }))}
@@ -131,7 +131,7 @@ export default function VehicleCardPage() {
                 </Select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Назва *</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Назва <span className="text-red-500">*</span></label>
                 <Input
                   value={nodeForm.name}
                   onChange={e => setNodeForm(f => ({ ...f, name: e.target.value }))}
@@ -162,29 +162,29 @@ export default function VehicleCardPage() {
         )}
 
         {Object.keys(grouped).length === 0 && !showAddNode && (
-          <p className="text-sm text-gray-400">Вузли не додані</p>
+          <p className="text-sm text-muted-foreground">Вузли не додані</p>
         )}
 
         {Object.entries(grouped).map(([cat, catNodes]) => (
           <div key={cat} className="mb-3">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
               {NODE_CATEGORY_LABELS[cat] ?? cat}
             </p>
-            <div className="divide-y border rounded-lg overflow-hidden">
+            <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
               {catNodes.map(n => (
                 <div key={n.id} className="flex items-center justify-between px-3 py-2.5">
                   <div>
-                    <p className="text-sm text-gray-900">{n.name}</p>
+                    <p className="text-sm text-foreground">{n.name}</p>
                     {n.mileageAtInstall != null && (
-                      <p className="text-xs text-gray-400">Встановлено при {n.mileageAtInstall.toLocaleString('uk-UA')} км</p>
+                      <p className="text-xs text-muted-foreground">Встановлено при {n.mileageAtInstall.toLocaleString('uk-UA')} км</p>
                     )}
-                    {n.notes && <p className="text-xs text-gray-400">{n.notes}</p>}
+                    {n.notes && <p className="text-xs text-muted-foreground">{n.notes}</p>}
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => removeNode(n.id)}
-                    className="text-red-400 hover:text-red-600"
+                    className="text-destructive/60 hover:text-destructive"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -201,8 +201,8 @@ export default function VehicleCardPage() {
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs text-gray-400">{label}</p>
-      <p className="text-gray-900">{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-foreground">{value}</p>
     </div>
   );
 }

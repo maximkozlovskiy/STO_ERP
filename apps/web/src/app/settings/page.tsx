@@ -134,11 +134,11 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Налаштування</h1>
+    <div className="page-container max-w-3xl">
+      <h1 className="page-title mb-6">Налаштування</h1>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b mb-6">
+      <div className="flex gap-1 border-b border-border mb-6">
         {(['org', 'payments', 'sms', 'theme'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -146,8 +146,8 @@ export default function SettingsPage() {
             className={cn(
               'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
               tab === t
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700',
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {t === 'org' ? 'Організація' : t === 'payments' ? 'Методи оплати' : t === 'sms' ? 'SMS-сповіщення' : 'Оформлення'}
@@ -156,21 +156,21 @@ export default function SettingsPage() {
       </div>
 
       {msg && (
-        <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+        <div className="mb-4 text-sm text-success bg-success-subtle border border-success/20 rounded-lg p-3">
           {msg}
         </div>
       )}
       {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg p-3">
           {error}
         </div>
       )}
 
       {/* Org settings */}
       {tab === 'org' && orgSettings && (
-        <div className="bg-white rounded-xl border p-6 space-y-5">
+        <div className="bg-surface rounded-xl border border-border p-6 space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Режим ПДВ</label>
+            <label className="block text-sm font-medium text-foreground mb-1">Режим ПДВ</label>
             <Select
               value={orgSettings.vatMode}
               onChange={(e) => setOrgSettings({ ...orgSettings, vatMode: e.target.value })}
@@ -226,25 +226,25 @@ export default function SettingsPage() {
       {/* SMS templates */}
       {tab === 'sms' && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             Використовуйте змінні у подвійних дужках: {'{{workOrderNumber}}'}, {'{{clientName}}'}, {'{{amount}}'}
           </p>
           {templates.length === 0 && (
-            <p className="text-gray-400 text-sm">Шаблони не знайдено</p>
+            <p className="text-muted-foreground text-sm">Шаблони не знайдено</p>
           )}
           {templates.map(t => (
-            <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-4">
+            <div key={t.id} className="bg-surface rounded-xl border border-border p-4">
               {editingTemplate?.id === t.id ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-900">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
-                    <span className="text-xs text-gray-400">{t.channel}</span>
+                    <span className="text-sm font-medium text-foreground">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
+                    <span className="text-xs text-muted-foreground">{t.channel}</span>
                   </div>
                   <textarea
                     value={editingTemplate.body}
                     onChange={e => setEditingTemplate(et => et ? { ...et, body: e.target.value } : et)}
                     rows={3}
-                    className="w-full px-3 py-2 border rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary bg-surface text-foreground"
                   />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={saveTemplate} loading={saving}>
@@ -259,16 +259,16 @@ export default function SettingsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-gray-900">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
-                      <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">{t.channel}</span>
+                      <span className="text-sm font-medium text-foreground">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
+                      <span className="text-xs px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">{t.channel}</span>
                       <span className={cn(
                         'text-xs px-1.5 py-0.5 rounded',
-                        t.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400',
+                        t.isActive ? 'bg-success-subtle text-success' : 'bg-secondary text-muted-foreground',
                       )}>
                         {t.isActive ? 'Активний' : 'Вимкнено'}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 font-mono bg-gray-50 rounded p-2">{t.body}</p>
+                    <p className="text-xs text-muted-foreground font-mono bg-secondary rounded p-2">{t.body}</p>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => setEditingTemplate(t)}>
                     Редагувати
@@ -282,17 +282,17 @@ export default function SettingsPage() {
 
       {/* Theme */}
       {tab === 'theme' && orgSettings && (
-        <div className="bg-white rounded-xl border p-6">
-          <p className="text-sm text-gray-500 mb-4">Оберіть кольорову палітру інтерфейсу</p>
+        <div className="bg-surface rounded-xl border border-border p-6">
+          <p className="text-sm text-muted-foreground mb-4">Оберіть кольорову палітру інтерфейсу</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
             {(Object.entries(THEMES) as [ThemeName, typeof THEMES[ThemeName]][]).map(([key, theme]) => (
               <button key={key} onClick={() => { setOrgSettings({ ...orgSettings, brandTheme: key }); applyTheme(key); }}
                 className={cn(
                   'flex items-center gap-3 p-3 rounded-xl border-2 transition-all',
-                  orgSettings.brandTheme === key ? 'border-gray-900 shadow-sm' : 'border-gray-200 hover:border-gray-300',
+                  orgSettings.brandTheme === key ? 'border-foreground shadow-sm' : 'border-border hover:border-foreground/40',
                 )}>
                 <span className="w-8 h-8 rounded-full shrink-0" style={{ background: theme.primary }} />
-                <span className="text-sm font-medium text-gray-700">{theme.label}</span>
+                <span className="text-sm font-medium text-foreground">{theme.label}</span>
               </button>
             ))}
           </div>
@@ -304,15 +304,15 @@ export default function SettingsPage() {
 
       {/* Payment methods */}
       {tab === 'payments' && (
-        <div className="bg-white rounded-xl border divide-y">
+        <div className="bg-surface rounded-xl border border-border divide-y divide-border">
           {payments.length === 0 && (
-            <p className="p-6 text-sm text-gray-500">Методи оплати не знайдено</p>
+            <p className="p-6 text-sm text-muted-foreground">Методи оплати не знайдено</p>
           )}
           {payments.map((pm) => (
             <div key={pm.id} className="flex items-center justify-between px-5 py-4">
               <div>
-                <p className="text-sm font-medium text-gray-900">{pm.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-sm font-medium text-foreground">{pm.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {pm.code}
                   {pm.requiresFiscal ? ' · фіскальний' : ''}
                 </p>
@@ -321,12 +321,12 @@ export default function SettingsPage() {
                 onClick={() => togglePayment(pm)}
                 className={cn(
                   'relative inline-flex h-5 w-9 rounded-full transition-colors',
-                  pm.isActive ? 'bg-blue-600' : 'bg-gray-300',
+                  pm.isActive ? 'bg-primary' : 'bg-border',
                 )}
               >
                 <span
                   className={cn(
-                    'inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform mt-0.5',
+                    'inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5',
                     pm.isActive ? 'translate-x-4' : 'translate-x-0.5',
                   )}
                 />
@@ -354,7 +354,7 @@ function NumberField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-foreground mb-1">{label}</label>
       <Input
         type="number"
         value={value}
@@ -378,17 +378,17 @@ function Toggle({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-gray-700">{label}</span>
+      <span className="text-sm text-foreground">{label}</span>
       <button
         onClick={() => onChange(!checked)}
         className={cn(
           'relative inline-flex h-5 w-9 rounded-full transition-colors',
-          checked ? 'bg-blue-600' : 'bg-gray-300',
+          checked ? 'bg-primary' : 'bg-border',
         )}
       >
         <span
           className={cn(
-            'inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform mt-0.5',
+            'inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5',
             checked ? 'translate-x-4' : 'translate-x-0.5',
           )}
         />

@@ -108,10 +108,10 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="page-container">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Календар</h1>
+      <div className="page-header mb-6">
+        <h1 className="page-title">Календар</h1>
         <Button onClick={() => setShowAdd(v => !v)}>
           <Plus className="h-4 w-4" />
           Слот
@@ -119,7 +119,7 @@ export default function CalendarPage() {
       </div>
 
       {error && !showAdd && (
-        <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</div>
+        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
       )}
 
       {/* Date nav */}
@@ -135,7 +135,7 @@ export default function CalendarPage() {
             onChange={e => setDate(e.target.value)}
             className="w-auto"
           />
-          <span className="text-sm text-gray-500 capitalize">{formatDate(date)}</span>
+          <span className="text-sm text-muted-foreground capitalize">{formatDate(date)}</span>
         </div>
         <Button variant="outline" size="sm" onClick={nextDay}>
           Наступний
@@ -148,12 +148,12 @@ export default function CalendarPage() {
 
       {/* Add slot form */}
       {showAdd && (
-        <div className="bg-white border rounded-xl p-5 mb-6 space-y-3">
-          <h3 className="font-semibold text-gray-900 text-sm">Новий слот на {date}</h3>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="bg-surface border border-border rounded-xl p-5 mb-6 space-y-3">
+          <h3 className="font-semibold text-foreground text-sm">Новий слот на {date}</h3>
+          {error && <p className="text-[13px] text-[hsl(0_84%_42%)]">{error}</p>}
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Підйомник</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Підйомник</label>
               <Select
                 value={form.liftId}
                 onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
@@ -163,7 +163,7 @@ export default function CalendarPage() {
               </Select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Початок</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Початок</label>
               <Input
                 type="time"
                 value={form.startAt}
@@ -171,7 +171,7 @@ export default function CalendarPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Кінець</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Кінець</label>
               <Input
                 type="time"
                 value={form.endAt}
@@ -181,7 +181,7 @@ export default function CalendarPage() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Номер наряду (ID)</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Номер наряду (ID)</label>
               <Input
                 value={form.workOrderId}
                 onChange={e => setForm(f => ({ ...f, workOrderId: e.target.value }))}
@@ -189,7 +189,7 @@ export default function CalendarPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Нотатки</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Нотатки</label>
               <Input
                 value={form.notes}
                 onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
@@ -214,17 +214,17 @@ export default function CalendarPage() {
         </div>
       )}
       {!loading && lifts.length === 0 && (
-        <div className="bg-white border rounded-xl p-8 text-center text-sm text-gray-400">
-          Немає підйомників. Додайте їх у розділі <a href="/infrastructure" className="text-blue-600 hover:underline">Інфраструктура</a>.
+        <div className="bg-surface border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
+          Немає підйомників. Додайте їх у розділі <a href="/infrastructure" className="text-(--color-primary) hover:underline">Інфраструктура</a>.
         </div>
       )}
       {!loading && lifts.length > 0 && (
-        <div className="bg-white border rounded-xl overflow-hidden">
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
           {/* Hour headers */}
-          <div className="grid border-b" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
-            <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 border-r">Підйомник</div>
+          <div className="grid border-b border-border" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
+            <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-(--color-secondary) border-r border-border">Підйомник</div>
             {HOURS.map(h => (
-              <div key={h} className="px-1 py-2 text-xs text-center text-gray-400 bg-gray-50 border-r last:border-r-0">
+              <div key={h} className="px-1 py-2 text-xs text-center text-muted-foreground bg-(--color-secondary) border-r border-border last:border-r-0">
                 {pad(h)}:00
               </div>
             ))}
@@ -234,14 +234,14 @@ export default function CalendarPage() {
           {lifts.map(lift => {
             const liftSlots = slotsForLift(lift.id);
             return (
-              <div key={lift.id} className="grid border-b last:border-b-0" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
-                <div className="px-3 py-3 text-sm font-medium text-gray-700 bg-gray-50 border-r flex items-center">
+              <div key={lift.id} className="grid border-b border-border last:border-b-0" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
+                <div className="px-3 py-3 text-sm font-medium text-foreground bg-(--color-secondary) border-r border-border flex items-center">
                   {lift.name}
                 </div>
-                <div className="col-span-12 relative min-h-[48px]" style={{ gridColumn: `2 / span ${HOURS.length}` }}>
+                <div className="col-span-12 relative min-h-12" style={{ gridColumn: `2 / span ${HOURS.length}` }}>
                   <div className="flex h-full">
                     {HOURS.map(h => (
-                      <div key={h} className="flex-1 border-r last:border-r-0 border-gray-100 min-h-[48px]" />
+                      <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-12" />
                     ))}
                   </div>
                   {liftSlots.map(s => {
@@ -252,7 +252,7 @@ export default function CalendarPage() {
                     return (
                       <div
                         key={s.id}
-                        className="absolute top-1 bottom-1 bg-blue-500 rounded text-white text-xs flex items-center px-1.5 overflow-hidden cursor-pointer hover:bg-blue-600 group"
+                        className="absolute top-1 bottom-1 bg-(--color-primary) rounded text-white text-xs flex items-center px-1.5 overflow-hidden cursor-pointer hover:opacity-90 group"
                         style={{ left: `${left}%`, width: `${width}%` }}
                         title={s.workOrderNumber ? `Наряд ${s.workOrderNumber}` : s.notes ?? ''}
                       >
@@ -273,18 +273,18 @@ export default function CalendarPage() {
 
       {/* Unassigned slots */}
       {unassignedSlots.length > 0 && (
-        <div className="mt-6 bg-white border rounded-xl p-5">
-          <h3 className="font-semibold text-gray-900 mb-3 text-sm">Без підйомника</h3>
+        <div className="mt-6 bg-surface border border-border rounded-xl p-5">
+          <h3 className="font-semibold text-foreground mb-3 text-sm">Без підйомника</h3>
           <div className="space-y-2">
             {unassignedSlots.map(s => (
-              <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg">
+              <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-(--color-secondary) rounded-lg">
                 <div>
-                  <span className="text-sm text-gray-900">{fmtTime(s.startAt)} – {fmtTime(s.endAt)}</span>
-                  {s.workOrderNumber && <span className="ml-2 text-xs text-blue-600">Наряд {s.workOrderNumber}</span>}
-                  {s.notes && <span className="ml-2 text-xs text-gray-400">{s.notes}</span>}
+                  <span className="text-sm text-foreground">{fmtTime(s.startAt)} – {fmtTime(s.endAt)}</span>
+                  {s.workOrderNumber && <span className="ml-2 text-xs text-(--color-primary)">Наряд {s.workOrderNumber}</span>}
+                  {s.notes && <span className="ml-2 text-xs text-muted-foreground">{s.notes}</span>}
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => removeSlot(s.id)}>
-                  <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
                 </Button>
               </div>
             ))}

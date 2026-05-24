@@ -26,8 +26,8 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   if (!value) return null;
   return (
     <div>
-      <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-      <p className="text-sm text-gray-900">{value}</p>
+      <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
+      <p className="text-sm text-foreground">{value}</p>
     </div>
   );
 }
@@ -83,15 +83,15 @@ export default function CounterpartyCardPage() {
   if (!cp) return (
     <div className="flex items-center justify-center min-h-screen flex-col gap-4">
       {loadError
-        ? <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{loadError}</p>
+        ? <p className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{loadError}</p>
         : <Spinner size="lg" />}
     </div>
   );
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+    <div className="page-container max-w-4xl space-y-6">
       {loadError && (
-        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{loadError}</div>
+        <div className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{loadError}</div>
       )}
 
       {/* Header */}
@@ -101,7 +101,7 @@ export default function CounterpartyCardPage() {
           Назад
         </Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">{displayName(cp)}</h1>
+          <h1 className="text-2xl font-bold text-foreground">{displayName(cp)}</h1>
           <div className="flex items-center gap-2 mt-1">
             <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
               {TYPE_LABELS[cp.type] ?? cp.type}
@@ -111,15 +111,15 @@ export default function CounterpartyCardPage() {
         </div>
         <div className={cn(
           'text-lg font-semibold',
-          cp.balance < 0 ? 'text-red-600' : cp.balance > 0 ? 'text-green-600' : 'text-gray-600'
+          cp.balance < 0 ? 'text-destructive' : cp.balance > 0 ? 'text-success' : 'text-muted-foreground'
         )}>
           {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-          <p className="text-xs font-normal text-gray-400 text-right">баланс</p>
+          <p className="text-xs font-normal text-muted-foreground text-right">баланс</p>
         </div>
       </div>
 
       {/* Info */}
-      <div className="bg-white rounded-xl border p-5 grid grid-cols-2 gap-4">
+      <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-2 gap-4">
         <Field label="Телефон" value={cp.phone} />
         <Field label="Email" value={cp.email} />
         <Field label="ЄДРПОУ" value={cp.edrpou} />
@@ -127,9 +127,9 @@ export default function CounterpartyCardPage() {
       </div>
 
       {/* Garages + Vehicles */}
-      <div className="bg-white rounded-xl border p-5">
+      <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-gray-900">Гаражі та автомобілі</h2>
+          <h2 className="font-semibold text-foreground">Гаражі та автомобілі</h2>
           <Button variant="ghost" size="sm" onClick={() => setShowAddGarage(v => !v)}>
             <Plus className="h-4 w-4" />
             Гараж
@@ -137,7 +137,7 @@ export default function CounterpartyCardPage() {
         </div>
 
         {showAddGarage && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-lg space-y-2">
+          <div className="mb-4 p-3 bg-(--color-secondary) rounded-lg space-y-2">
             <Input
               value={garageName}
               onChange={e => setGarageName(e.target.value)}
@@ -160,7 +160,7 @@ export default function CounterpartyCardPage() {
         )}
 
         {garages.length === 0 && !showAddGarage && (
-          <p className="text-sm text-gray-400">Немає гаражів</p>
+          <p className="text-sm text-muted-foreground">Немає гаражів</p>
         )}
 
         {garages.length > 0 && (
@@ -172,8 +172,8 @@ export default function CounterpartyCardPage() {
                 className={cn(
                   'px-3 py-1.5 rounded-lg text-sm border transition-colors',
                   selectedGarage === g.id
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'border-gray-300 text-gray-600 hover:bg-gray-50',
+                    ? 'bg-(--color-primary) text-white border-(--color-primary)'
+                    : 'border-border text-muted-foreground hover:bg-(--color-secondary)',
                 )}
               >
                 {g.name}
@@ -186,27 +186,27 @@ export default function CounterpartyCardPage() {
         {selectedGarage && (
           <>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-gray-700">Автомобілі</p>
+              <p className="text-sm font-medium text-foreground">Автомобілі</p>
               <Button variant="ghost" size="sm" onClick={() => router.push(`/vehicles/new?garageId=${selectedGarage}`)}>
                 <Plus className="h-4 w-4" />
                 Авто
               </Button>
             </div>
             {vehicles.length === 0
-              ? <p className="text-sm text-gray-400">Немає автомобілів</p>
+              ? <p className="text-sm text-muted-foreground">Немає автомобілів</p>
               : (
-                <div className="divide-y border rounded-lg overflow-hidden">
+                <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
                   {vehicles.map(v => (
                     <button
                       key={v.id}
                       onClick={() => router.push(`/vehicles/${v.id}`)}
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left"
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-(--color-secondary) text-left transition-colors"
                     >
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{v.make} {v.model}</p>
-                        <p className="text-xs text-gray-400">{[v.licensePlate, v.year, v.currentMileage ? `${v.currentMileage.toLocaleString()} км` : null].filter(Boolean).join(' · ')}</p>
+                        <p className="text-sm font-medium text-foreground">{v.make} {v.model}</p>
+                        <p className="text-xs text-muted-foreground">{[v.licensePlate, v.year, v.currentMileage ? `${v.currentMileage.toLocaleString()} км` : null].filter(Boolean).join(' · ')}</p>
                       </div>
-                      <span className="text-gray-300 text-sm">→</span>
+                      <span className="text-muted-foreground text-sm">→</span>
                     </button>
                   ))}
                 </div>
