@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-8cbbcb3 fix(review): add take limits on list/report queries + canonical shadow-xs
+4910014 docs(skills): add useState(new Date()) hydration trap + missing tsconfig check
 ```
 
 Дата: 2026-05-24
@@ -350,6 +350,11 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `4910014` | docs(skills): hydration trap useState(new Date()) + missing tsconfig check |
+| `183f20d` | fix(review): hydration mismatches + process.env in service + missing tsconfigs |
+| `a11580d` | fix(api): take:1000 safety guard on FK-bounded findMany |
+| `00cb288` | chore(claude): simplify settings.local.json — wildcard bash permissions |
+| `be1be58` | docs(memory): update MemoryManual after review pass |
 | `8cbbcb3` | fix(review): take limits on list/report queries + canonical shadow-xs |
 | `6bbcb58` | feat(workflow): continuous skill self-improvement after every review/test |
 | `2d34e4d` | feat(skills): overhaul sto-review — 11 sections: memory leaks, security, perf |
