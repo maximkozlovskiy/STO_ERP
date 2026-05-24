@@ -504,6 +504,75 @@
 - [ ] `[sto-web]` `TopShell.tsx`: зчитує `sto_nav_mode`, рендерить відповідний `NAV_GROUPS`.
 - [ ] `[sto-web]` `NAV_GROUPS_FUNCTIONS` — плоска структура без секцій (Дашборд, Наряди, Календар, CRM, Склад, Замовлення, Документи складу, Рахунки, Розрахунки, Звіти, Каталог, Персонал, Підрозділи, Налаштування, Cloud Sync).
 
+### 16.10 — Темна та світла теми (color scheme)
+
+> **Поведінка за замовчуванням:** використовується тема операційної системи (`prefers-color-scheme`). Користувач може примусово встановити світлу або темну тему в налаштуваннях.
+
+**Архітектурне рішення:**
+- `localStorage` ключ `sto_color_mode`: `'system'` | `'light'` | `'dark'`; дефолт — `'system'`
+- При `'system'` → `window.matchMedia('(prefers-color-scheme: dark)')` + підписка на зміни
+- Застосування: додавати/знімати клас `dark` на `<html>` елементі
+- Стратегія: inline `<script>` в `<head>` (до React hydration) щоб уникнути flash of wrong theme
+
+**CSS — темна тема (Tailwind 4 `.dark` variant):**
+- Всі поверхні інвертуються через `@media (prefers-color-scheme: dark)` + `.dark` клас
+- Ключові dark-значення:
+  ```
+  --color-background:       hsl(222 47% 8%)    /* темно-синій фон */
+  --color-surface:          hsl(222 47% 11%)
+  --color-surface-raised:   hsl(222 47% 14%)
+  --color-foreground:       hsl(213 31% 91%)
+  --color-foreground-muted: hsl(215 20% 60%)
+  --color-foreground-faint: hsl(215 20% 45%)
+  --color-border:           hsl(222 35% 20%)
+  --color-border-hover:     hsl(222 35% 30%)
+  --color-secondary:        hsl(222 35% 16%)
+  --color-muted:            hsl(222 35% 16%)
+  --color-card:             hsl(222 47% 11%)
+  /* Sidebar — залишається темним, зміна мінімальна */
+  --color-sidebar-bg:       hsl(224 44% 9%)
+  --color-sidebar-border:   hsl(222 35% 14%)
+  /* Semantic кольори — трохи приглушені в dark */
+  --color-destructive-subtle: hsl(0 40% 14%)
+  --color-success-subtle:     hsl(142 40% 12%)
+  --color-warning-subtle:     hsl(38 40% 13%)
+  --color-info-subtle:        hsl(199 40% 13%)
+  /* Scrollbar */
+  scrollbar: hsl(222 35% 25%)
+  ```
+
+**Реалізація:**
+
+- [ ] `[sto-web]` `apps/web/src/lib/color-mode.ts` — утиліти: `getColorMode()`, `setColorMode(mode)`, `applyColorMode()`, `watchSystemColorMode()`.
+- [ ] `[sto-web]` `apps/web/src/app/layout.tsx` — додати inline `<script>` в `<head>` що читає `sto_color_mode` з localStorage і виставляє клас `dark` на `<html>` до hydration (анти-flash).
+- [ ] `[sto-web]` `apps/web/src/app/globals.css` — додати `.dark { ... }` блок з перевизначенням CSS-змінних (не `@media`, щоб примусова тема перебивала системну). Системна: `@media (prefers-color-scheme: dark) { :root:not([data-color-mode="light"]) { ... } }`.
+- [ ] `[sto-web]` `apps/web/src/components/ColorModeProvider.tsx` — `'use client'` компонент, викликає `applyColorMode()` при mount + підписується на `matchMedia` при mode=`'system'`. Додати в `layout.tsx` після inline script.
+- [ ] `[sto-web]` `/settings` вкладка "Оформлення" — перемикач **"Тема"**: три кнопки-іконки:
+  - ☀️ Світла (`'light'`)
+  - 🌙 Темна (`'dark'`)  
+  - 💻 Системна (`'system'`) — **активна за замовчуванням**
+- [ ] `[sto-web]` Skeleton/shimmer анімація в `globals.css` — варіант для темної теми.
+- [ ] `[sto-web]` KPI-картки, таблиці, модалки, sidebar — перевірити що `bg-surface`, `border-border`, `text-foreground` та інші canonical Tailwind токени коректно підхоплюють dark CSS-змінні.
+
+**Технічні деталі — анти-flash script:**
+```html
+<!-- вставляється як перший дочірній елемент <head>, до будь-якого CSS -->
+<script>
+  (function() {
+    var mode = localStorage.getItem('sto_color_mode') || 'system';
+    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var isDark = mode === 'dark' || (mode === 'system' && prefersDark);
+    document.documentElement.setAttribute('data-color-mode', mode);
+    if (isDark) document.documentElement.classList.add('dark');
+  })();
+</script>
+```
+
+**Інтеграція з брендовою темою:**
+- Поточна система brand-тем (`blue`, `green`, `purple`, `orange`, `gray`) незалежна від color mode
+- `applyTheme()` оновлює тільки `--color-primary*` — не чіпає surface/background токени
+- В темному режимі primary-кольори трохи освітлюються автоматично завдяки CSS змінним
+
 ---
 
 ## Фаза 17 — Installer та Production
