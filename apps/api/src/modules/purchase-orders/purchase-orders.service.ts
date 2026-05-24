@@ -155,7 +155,7 @@ export class PurchaseOrdersService {
       throw new BadRequestException('Прийом можливий лише для замовлень зі статусом ORDERED або PARTIAL');
     }
 
-    let chargeAmount = 0;
+    let receivedAmount = 0;
 
     await this.prisma.$transaction(async (tx) => {
       for (const recv of dto.lines) {
@@ -179,15 +179,15 @@ export class PurchaseOrdersService {
           data: { receivedQty: { increment: recv.receivedQty } },
         });
 
-        chargeAmount += recv.receivedQty * Number(line.price);
+        receivedAmount += recv.receivedQty * Number(line.price);
       }
 
-      // Charge supplier only for goods received in this batch
-      if (chargeAmount > 0) {
+      // Record payable to supplier for goods received in this batch
+      if (receivedAmount > 0) {
         await this.settlements.createTransaction(orgId, {
           counterpartyId: po.supplierId,
-          type: 'CHARGE',
-          amount: chargeAmount,
+          type: 'PAYMENT',
+          amount: receivedAmount,
           documentType: 'PurchaseOrder',
           documentId: id,
           createdBy: userId,

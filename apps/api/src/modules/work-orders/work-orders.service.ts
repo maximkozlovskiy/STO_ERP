@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -7,7 +7,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrderStatus } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
-import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
+import { WORK_ORDER_TRANSITIONS, CLOSED_STATUSES, DELETABLE_STATUSES, RESERVATION_ACTIVE_STATUSES } from './work-orders.fsm';
 import {
   CreateWorkOrderDto, UpdateWorkOrderDto, WorkOrderQueryDto,
   WorkOrderResponseDto, WorkOrderDetailDto, PaginatedWorkOrdersDto,
@@ -17,6 +17,8 @@ import {
 
 @Injectable()
 export class WorkOrdersService {
+  private readonly logger = new Logger(WorkOrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
@@ -30,7 +32,7 @@ export class WorkOrdersService {
   async findAll(orgId: string, query: WorkOrderQueryDto): Promise<PaginatedWorkOrdersDto> {
     const where: {
       orgId: string; deletedAt: null;
-      status?: string; branchId?: string; counterpartyId?: string; vehicleId?: string;
+      status?: WorkOrderStatus; branchId?: string; counterpartyId?: string; vehicleId?: string;
     } = { orgId, deletedAt: null };
     if (query.status) where.status = query.status;
     if (query.branchId) where.branchId = query.branchId;
@@ -121,7 +123,7 @@ export class WorkOrdersService {
   async update(orgId: string, id: string, dto: UpdateWorkOrderDto): Promise<WorkOrderResponseDto> {
     const wo = await this.prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    if (['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED', 'CANCELLED'].includes(wo.status)) {
+    if (CLOSED_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Не можна редагувати закритий наряд');
     }
 
@@ -146,7 +148,7 @@ export class WorkOrdersService {
   async remove(orgId: string, id: string): Promise<void> {
     const wo = await this.prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    if (!['DRAFT', 'CANCELLED'].includes(wo.status)) {
+    if (!DELETABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Можна видалити лише наряд у статусі Чернетка або Скасовано');
     }
     await this.prisma.workOrder.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
@@ -179,7 +181,7 @@ export class WorkOrdersService {
         await this.writeOffPartsAndCharge(orgId, wo, userId, tx);
       }
 
-      if (newStatus === 'CANCELLED' && ['IN_PROGRESS', 'ON_HOLD'].includes(wo.status)) {
+      if (newStatus === 'CANCELLED' && RESERVATION_ACTIVE_STATUSES.includes(wo.status)) {
         await this.releasePartReservations(orgId, id, userId, tx);
       }
 
@@ -201,7 +203,7 @@ export class WorkOrdersService {
         phone: updated.counterparty.phone,
         workOrderNumber: updated.number,
         clientName: formatPersonName(updated.counterparty.lastName, updated.counterparty.firstName, updated.counterparty.companyName),
-      }).catch(() => {/* non-critical */});
+      }).catch((e: unknown) => this.logger.warn(`Помилка сповіщення WO_COMPLETED: ${e instanceof Error ? e.message : e}`));
     }
 
     return this.toDto(updated);

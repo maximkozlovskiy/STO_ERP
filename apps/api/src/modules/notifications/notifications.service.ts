@@ -17,7 +17,7 @@ export class NotificationsService {
 
   async send(orgId: string, event: NotificationEvent, payload: Record<string, unknown>): Promise<void> {
     // Load branch settings for SMS config
-    const branchId = payload.branchId;
+    const branchId = typeof payload.branchId === 'string' ? payload.branchId : undefined;
     const branchSettings = branchId
       ? await this.prisma.branchSettings.findFirst({ where: { branchId, orgId } })
       : await this.prisma.branchSettings.findFirst({ where: { orgId } });
@@ -37,7 +37,7 @@ export class NotificationsService {
       return;
     }
 
-    const phone = payload.phone;
+    const phone = typeof payload.phone === 'string' ? payload.phone : undefined;
     if (!phone) return;
 
     const message = this.renderTemplate(template.body, payload);

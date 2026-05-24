@@ -55,21 +55,31 @@ export class CalendarService {
       if (!workOrder) throw new NotFoundException('Наряд не знайдено');
     }
 
+    const slot = await this.prisma.$transaction(async (tx) => {
     if (dto.liftId) {
-      const conflict = await this.prisma.calendarSlot.findFirst({
+      const conflict = await tx.calendarSlot.findFirst({
         where: {
           orgId,
           liftId: dto.liftId,
           deletedAt: null,
-          OR: [
-            { startAt: { lt: endAt }, endAt: { gt: startAt } },
-          ],
+          OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
         },
       });
       if (conflict) throw new BadRequestException('Підйомник вже зайнятий на цей час');
     }
+    if (dto.employeeId) {
+      const empConflict = await tx.calendarSlot.findFirst({
+        where: {
+          orgId,
+          employeeId: dto.employeeId,
+          deletedAt: null,
+          OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+        },
+      });
+      if (empConflict) throw new BadRequestException('Співробітник вже зайнятий на цей час');
+    }
 
-    const slot = await this.prisma.calendarSlot.create({
+    return tx.calendarSlot.create({
       data: {
         orgId,
         liftId: dto.liftId ?? null,
@@ -80,6 +90,7 @@ export class CalendarService {
         notes: dto.notes ?? null,
       },
       include: { workOrder: { select: { number: true } } },
+    });
     });
 
     return this.toDto(slot);

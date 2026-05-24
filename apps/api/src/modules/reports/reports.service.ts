@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName } from '@sto/shared';
 
@@ -6,6 +6,7 @@ function normalizeDateRange(from: string, to: string) {
   const fromDate = new Date(from);
   const toDate = new Date(to);
   toDate.setHours(23, 59, 59, 999);
+  if (fromDate > toDate) throw new BadRequestException('Дата початку має бути не пізніше дати закінчення');
   return { fromDate, toDate };
 }
 
@@ -70,7 +71,7 @@ export class ReportsService {
 
     const lineWhere: {
       orgId: string; deletedAt: null;
-      workOrder: { deletedAt: null; createdAt: { gte: Date; lte: Date } };
+      workOrder: { orgId: string; deletedAt: null; createdAt: { gte: Date; lte: Date } };
       employeeId?: string;
     } = {
       orgId,
