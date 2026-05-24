@@ -45,3 +45,8 @@ installer/output/
 
 # pnpm
 .pnpm-store/
+
+# Playwright
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/.playwright/
