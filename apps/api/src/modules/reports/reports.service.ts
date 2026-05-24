@@ -45,6 +45,7 @@ export class ReportsService {
       where,
       select: { completedAt: true, totalAmount: true, totalLabor: true, totalParts: true },
       orderBy: { completedAt: 'asc' },
+      take: 10000,
     });
 
     const kyivDate = (d: Date) =>
@@ -93,6 +94,7 @@ export class ReportsService {
         employee: { select: { firstName: true, lastName: true } },
         workOrder: { select: { number: true, status: true } },
       },
+      take: 10000,
     });
 
     // Aggregate by employee
@@ -137,6 +139,7 @@ export class ReportsService {
         warehouse: { select: { name: true } },
       },
       orderBy: [{ warehouse: { name: 'asc' } }, { good: { name: 'asc' } }],
+      take: 5000,
     });
 
     const movWhere: { orgId: string; warehouseId?: string; createdAt?: { gte?: Date; lte?: Date } } = { orgId };
@@ -190,6 +193,7 @@ export class ReportsService {
         counterparty: { select: { firstName: true, lastName: true, companyName: true, type: true } },
       },
       orderBy: { balance: 'desc' },
+      take: 5000,
     });
 
     const rows = accounts.map(a => ({
@@ -224,6 +228,7 @@ export class ReportsService {
       include: {
         lift: { select: { name: true, zone: { select: { name: true } } } },
       },
+      take: 5000,
     });
 
     // Aggregate by lift

@@ -10,6 +10,7 @@ export class WorkCategoriesService {
     const all = await this.prisma.workCategory.findMany({
       where: { orgId, deletedAt: null },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      take: 500,
     });
     return this.buildTree(all, null);
   }

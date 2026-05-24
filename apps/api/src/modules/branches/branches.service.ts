@@ -10,6 +10,7 @@ export class BranchesService {
     const items = await this.prisma.garageBranch.findMany({
       where: { orgId, deletedAt: null },
       orderBy: { name: 'asc' },
+      take: 100,
     });
     return items.map(item => this.toDto(item));
   }

@@ -20,8 +20,26 @@ model: claude-opus-4-7
 3. Крок 3 (авто-фікс) — виправляй від CRITICAL до LOW без зупинки
 4. Крок 4 (верифікація) — tsc + tests мають бути зеленими
 5. Крок 5 — фінальний звіт
+6. Оновити MemoryManual.md — Останній commit + стан тестів (БЕЗ запиту)
 
-> Не питай дозволу на виправлення. Якщо fix потребує міграції БД або змін у shared — зафіксуй як CRITICAL і повідом після завершення.
+> Не питай дозволу на виправлення, коміт і оновлення MemoryManual.md — все виконується автоматично.
+> Якщо fix потребує міграції БД або змін у shared — зафіксуй як CRITICAL і повідом після завершення.
+
+### Як оновлювати MemoryManual.md (крок 6)
+
+Після фінального коміту — одразу (без запиту) оновити в `MemoryManual.md`:
+
+```markdown
+## Останній commit
+<hash> <commit message>
+Дата: YYYY-MM-DD
+
+## Поточний стан проєкту
+TypeScript: ✅ 0 errors  (або ❌ N errors)
+Тести:      ✅ N/N passed (або ❌ N failed)
+```
+
+Якщо під час тестування виявились нові gotchas — дописати у відповідний розділ `MemoryManual.md` без запиту.
 
 ## Мета
 
@@ -109,6 +127,24 @@ pnpm --filter @sto/api test --run 2>&1 | tail -30
 - [ ] Empty стан є — `<EmptyState />` коли список порожній
 - [ ] Error стан є — `<EmptyState />` з повідомленням при помилці fetch
 
+#### API/Frontend type contract
+- [ ] Для кожного `interface` у page.tsx — перевір відповідний `toResponseDto()` або `toDto()` у сервісі. Кожне **обов'язкове** поле у фронтенд-типі повинно реально повертатись API.
+  ```bash
+  # Знайти всі interface у page.tsx файлах — звірити з toResponseDto у сервісах
+  grep -rn "^interface " apps/web/src/app/ --include="*.tsx"
+  ```
+- [ ] Якщо API навмисно опускає поле (security, роль) — тип у frontend має бути `field?: Type` (optional), не обов'язковим. Приклад: `rateScheme` omitted in `findAll` → `rateScheme?: {...}` у Employee interface.
+- [ ] Всі звернення до optional полів захищені guard-ом: `emp.rateScheme?.type`, або умовним рендером `{emp.rateScheme && ...}`.
+
+#### Hydration (SSR/CSR mismatch)
+- [ ] Якщо є hydration помилка — першим кроком видаляй `.next` кеш (`rm -rf apps/web/.next`). Stale chunks є #1 причиною "клієнт рендерить щось зовсім інше".
+- [ ] `new Date()`, `localStorage`, `window.*`, `document.*` — тільки в `useEffect` або `'use client'` компонентах з `mounted` guard.
+- [ ] `createPortal` — обов'язково перевірити наявність `mounted` state (`useEffect(() => setMounted(true), [])`).
+- [ ] Сторінки з `(auth)` або іншими folder groups в Next.js App Router — перевірити окремий `layout.tsx` без `AuthProvider` (щоб уникнути circular redirect при SSR).
+  ```bash
+  grep -rn "new Date()\|localStorage\|window\.\|document\." apps/web/src/app/ --include="*.tsx" | grep -v "useEffect"
+  ```
+
 #### Компоненти
 - [ ] `Button variant="default"` існує у `Variant` union
 - [ ] `Select placeholder` — рендериться як `<option value="" disabled>`
@@ -190,7 +226,10 @@ pnpm --filter @sto/api test --run 2>&1 | tail -30
   3. Після фіксу: pnpm --filter <package> exec tsc --noEmit
   4. Якщо тест покриття відсутнє → додай тест-кейс у .spec.ts
   5. Відмітити [x] у BUG_REPORT.md
-  6. git add <змінені файли> && git commit -m "fix(tester): Bug #N — <заголовок>"
+  6. git add <змінені файли> && git commit -m "fix(tester): Bug #N — <заголовок>"  ← БЕЗ запиту
+
+Після останнього Bug:
+  7. Оновити MemoryManual.md (Останній commit + TypeScript + Тести) ← БЕЗ запиту
 ```
 
 **Правила фіксу:**

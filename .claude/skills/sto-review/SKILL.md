@@ -15,12 +15,27 @@ model: claude-opus-4-7
 1. git diff HEAD --name-only          → список змінених файлів
 2. Пройди по КОЖНІЙ секції нижче     → фіксуй знайдені проблеми
 3. Кожну проблему виправляй одразу   → Edit/Write → tsc --noEmit
-4. git commit -m "fix(review): ..."  → після всіх правок
-5. Оновити MemoryManual.md           → Останній commit + Changelog
+4. git commit -m "fix(review): ..."  → після всіх правок (БЕЗ запиту)
+5. Оновити MemoryManual.md           → Останній commit + Changelog (БЕЗ запиту)
 ```
 
-> Не питай дозволу на виправлення.
+> Не питай дозволу на виправлення, коміт і оновлення MemoryManual.md — все виконується автоматично.
 > Якщо fix потребує міграції БД або зміни публічного API — зафіксуй як CRITICAL і повідом після завершення всіх інших правок.
+
+### Як оновлювати MemoryManual.md (крок 5)
+
+Після коміту — одразу (без запиту) оновити два поля в `MemoryManual.md`:
+
+```markdown
+## Останній commit
+<hash> <commit message>
+Дата: YYYY-MM-DD
+
+## Поточний стан проєкту
+TypeScript: ✅ 0 errors  (або ❌ N errors)
+```
+
+Якщо під час review виявились нові gotchas або змінилась архітектура — дописати у відповідний розділ `MemoryManual.md` без запиту.
 
 ---
 
@@ -321,6 +336,10 @@ grep -rn "findMany(" apps/api/src/ --include="*.ts" | grep -v "take:" | grep -v 
 
 - [ ] Немає N+1 запитів — `include` або окремий `findMany` з `in` замість циклу
 - [ ] `findMany` завжди має `take` ліміт
+- [ ] **Виключення з вимоги `take`** (допустимі без ліміту):
+  - FK-валідація: `where: { id: { in: dtoArray.map(...) } }` — ліміт задає DTO довжина
+  - Запит за конкретним батьком (1:N з обмеженою кардинальністю): `where: { workOrderId }`, `where: { purchaseOrderId }`, `where: { parentId }`, `where: { counterpartyId, ... }` коли FK гарантує ≤ 200 записів
+  - Звіти за період з агрегацією: оцінити розмір — для активного клієнта за рік може бути 10k+, тоді все одно `take: 10000` як safety guard
 - [ ] `prisma.$transaction` при зміні ≥ 2 таблиць
 - [ ] Indexes для FK і частих фільтрів (`orgId`, `status`, `deletedAt`)
 - [ ] `@unique` де бізнес вимагає (StockItem: `orgId + goodId + warehouseId`)

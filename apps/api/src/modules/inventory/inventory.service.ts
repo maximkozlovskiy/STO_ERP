@@ -107,6 +107,7 @@ export class InventoryService {
         warehouse: { select: { id: true, name: true } },
       },
       orderBy: [{ warehouse: { name: 'asc' } }, { good: { name: 'asc' } }],
+      take: 500,
     });
 
     return items.map(i => ({

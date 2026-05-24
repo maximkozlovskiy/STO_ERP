@@ -11,6 +11,7 @@ export class WarehousesService {
     const items = await this.prisma.warehouse.findMany({
       where: { orgId, deletedAt: null, ...(branchId ? { branchId } : {}) },
       orderBy: { name: 'asc' },
+      take: 100,
     });
     return items.map(item => this.toDto(item));
   }

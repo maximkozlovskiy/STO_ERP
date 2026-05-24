@@ -18,6 +18,7 @@ export class PaymentMethodsService {
     const items = await this.prisma.paymentMethodConfig.findMany({
       where: { orgId, deletedAt: null },
       orderBy: { sortOrder: 'asc' },
+      take: 100,
     });
     return items.map(item => this.toDto(item));
   }

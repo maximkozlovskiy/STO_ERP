@@ -97,6 +97,7 @@ export class SettlementsAccountService {
         createdAt: { gte: from, lte: to },
       },
       orderBy: { createdAt: 'asc' },
+      take: 5000,
     });
 
     // Opening balance derived from current snapshot balance minus in-period delta
@@ -144,6 +145,7 @@ export class SettlementsAccountService {
     const acts = await this.prisma.reconciliationAct.findMany({
       where: { orgId, counterpartyId },
       orderBy: { createdAt: 'desc' },
+      take: 200,
     });
 
     return acts.map(a => ({

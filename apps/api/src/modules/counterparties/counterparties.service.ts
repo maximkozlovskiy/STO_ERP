@@ -90,6 +90,7 @@ export class CounterpartiesService {
     const items = await this.prisma.customerGarage.findMany({
       where: { counterpartyId, orgId, deletedAt: null },
       orderBy: { name: 'asc' },
+      take: 50,
     });
     return items.map(item => this.toGarageDto(item));
   }

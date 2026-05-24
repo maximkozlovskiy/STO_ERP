@@ -20,7 +20,7 @@ import {
 interface Employee {
   id: string; firstName: string; lastName: string;
   role: string; phone: string | null;
-  rateScheme: { type: string; params: Record<string, number> };
+  rateScheme?: { type: string; params: Record<string, number> };
   zoneIds: string[]; liftIds: string[]; workCategoryIds: string[];
 }
 interface Zone { id: string; name: string; type: string; }
@@ -224,8 +224,9 @@ export default function EmployeesPage() {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type}
-                  {emp.rateScheme.type === 'percent_normo' && ` ${emp.rateScheme.params.percent}%`}
+                  {emp.rateScheme
+                    ? (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) + (emp.rateScheme.type === 'percent_normo' ? ` ${emp.rateScheme.params.percent}%` : '')
+                    : <span className="text-foreground-faint">—</span>}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {emp.zoneIds.length > 0
@@ -341,7 +342,7 @@ export default function EmployeesPage() {
         )}
         {selected && (
           <div className="space-y-3">
-            <p className="text-[13px] text-muted-foreground mb-4">{ROLE_LABELS[selected.role]} · {RATE_LABELS[selected.rateScheme.type]}</p>
+            <p className="text-[13px] text-muted-foreground mb-4">{ROLE_LABELS[selected.role]}{selected.rateScheme ? ` · ${RATE_LABELS[selected.rateScheme.type] ?? selected.rateScheme.type}` : ''}</p>
             <CheckboxList label="Зони" items={zones} selected={assignedZones} onChange={setAssignedZones} />
             <CheckboxList label="Підйомники" items={lifts} selected={assignedLifts} onChange={setAssignedLifts} />
             <CheckboxList label="Категорії робіт" items={flatCats} selected={assignedCats} onChange={setAssignedCats} />
