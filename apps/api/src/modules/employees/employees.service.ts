@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   AssignLiftsDto, AssignWorkCategoriesDto, AssignZonesDto,
   CreateEmployeeDto, EmployeeResponseDto, UpdateEmployeeDto,
-  rateSchemeSchema, RateScheme,
+  rateSchemeSchema,
 } from './employees.dto';
 
 @Injectable()
@@ -175,12 +175,4 @@ export class EmployeesService {
     };
   }
 
-  async findOneDetail(orgId: string, id: string): Promise<EmployeeResponseDto & { rateScheme: RateScheme }> {
-    const item = await this.prisma.employee.findFirst({
-      where: { id, orgId, deletedAt: null },
-      include: { employeeZones: true, employeeLifts: true, employeeWorkCategories: true },
-    });
-    if (!item) throw new NotFoundException('Співробітника не знайдено');
-    return { ...this.toDto(item), rateScheme: item.rateScheme as RateScheme };
-  }
 }

@@ -29,13 +29,21 @@
       "Bash(docker *)",
       "Bash(docker-compose *)",
       "Bash(netstat *)",
-      "PowerShell(*)"
+      "PowerShell(*)",
+      "Bash(bash -c ' *)"
     ],
     "additionalDirectories": [
+      "e:\\Git\\STO ERP\\.claude",
       "e:\\Git\\STO ERP\\.claude\\skills",
+      "e:\\Git\\STO ERP\\.claude\\skills\\sto-review",
+      "e:\\Git\\STO ERP\\.claude\\skills\\sto-tester",
+      "e:\\Git\\STO ERP\\.claude\\skills\\sto-dev",
+      "e:\\Git\\STO ERP\\.claude\\skills\\sto-web",
+      "e:\\Git\\STO ERP\\.claude\\skills\\sto-backend",
+      "e:\\Git\\STO ERP\\.claude\\skills\\sto-context",
+      "e:\\Git\\STO ERP\\.claude\\memory",
       "e:\\Git\\STO ERP\\apps\\web\\src\\app\\crm",
       "E:\\Git\\STO ERP\\apps\\web\\src\\app\\crm\\[id]",
-      "e:\\Git\\STO ERP\\.claude",
       "e:\\Git\\STO ERP\\apps\\web\\.next"
     ]
   }

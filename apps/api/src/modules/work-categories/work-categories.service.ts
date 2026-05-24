@@ -57,13 +57,28 @@ export class WorkCategoriesService {
   }
 
   private async getDescendantIds(orgId: string, parentId: string): Promise<string[]> {
-    const children = await this.prisma.workCategory.findMany({
-      where: { parentId, orgId, deletedAt: null },
-      select: { id: true },
+    // Load all org categories once, then walk in memory — avoids N+1 recursion
+    const all = await this.prisma.workCategory.findMany({
+      where: { orgId, deletedAt: null },
+      select: { id: true, parentId: true },
+      take: 1000,
     });
-    const childIds = children.map((c) => c.id);
-    const nested = await Promise.all(childIds.map((id) => this.getDescendantIds(orgId, id)));
-    return [...childIds, ...nested.flat()];
+    const childrenByParent = new Map<string, string[]>();
+    for (const c of all) {
+      if (!c.parentId) continue;
+      const arr = childrenByParent.get(c.parentId) ?? [];
+      arr.push(c.id);
+      childrenByParent.set(c.parentId, arr);
+    }
+    const result: string[] = [];
+    const stack = [parentId];
+    while (stack.length) {
+      const id = stack.pop()!;
+      const children = childrenByParent.get(id) ?? [];
+      result.push(...children);
+      stack.push(...children);
+    }
+    return result;
   }
 
   private buildTree(
