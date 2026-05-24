@@ -818,6 +818,7 @@ model OrganisationSettings {
   requireClientApproval Boolean  @default(true)
   allowPartialPayment   Boolean  @default(true)
   brandTheme            String   @default("blue")
+  syncVersion           BigInt   @default(0)
   updatedAt             DateTime @updatedAt
 
   org Organisation @relation(fields: [orgId], references: [id])
@@ -841,6 +842,7 @@ model BranchSettings {
   smsProvider            String?
   smsApiKey              String?
   smsSenderName          String?
+  syncVersion            BigInt   @default(0)
   updatedAt              DateTime @updatedAt
 
   branch GarageBranch @relation(fields: [branchId], references: [id])
@@ -849,14 +851,15 @@ model BranchSettings {
 }
 
 model NotificationTemplate {
-  id        String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId     String                @db.Uuid
-  eventType NotificationEventType
-  channel   NotificationChannel
-  subject   String?
-  body      String
-  isActive  Boolean               @default(true)
-  updatedAt DateTime              @updatedAt
+  id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String                @db.Uuid
+  eventType   NotificationEventType
+  channel     NotificationChannel
+  subject     String?
+  body        String
+  isActive    Boolean               @default(true)
+  syncVersion BigInt                @default(0)
+  updatedAt   DateTime              @updatedAt
 
   org Organisation @relation(fields: [orgId], references: [id])
 
@@ -866,13 +869,14 @@ model NotificationTemplate {
 }
 
 model TaxRate {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId     String   @db.Uuid
-  name      String
-  rate      Decimal  @db.Decimal(5, 2)
-  isDefault Boolean  @default(false)
-  isActive  Boolean  @default(true)
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String   @db.Uuid
+  name        String
+  rate        Decimal  @db.Decimal(5, 2)
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  syncVersion BigInt   @default(0)
+  updatedAt   DateTime @updatedAt
 
   org Organisation @relation(fields: [orgId], references: [id])
 
@@ -889,6 +893,7 @@ model PaymentMethodConfig {
   isActive       Boolean   @default(true)
   sortOrder      Int       @default(0)
   requiresFiscal Boolean   @default(false)
+  syncVersion    BigInt    @default(0)
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
@@ -952,6 +957,7 @@ model SettlementAccount {
   orgId          String   @db.Uuid
   counterpartyId String   @unique @db.Uuid
   balance        Decimal  @default(0) @db.Decimal(12, 2)
+  syncVersion    BigInt   @default(0)
   updatedAt      DateTime @updatedAt
 
   counterparty Counterparty            @relation(fields: [counterpartyId], references: [id])
