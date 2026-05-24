@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-ec6acac fix(web): fix hydration mismatch on root page spinner
+f2c8a9c fix(review): apply sto-review auto-fix pass — 11 bugs resolved
 ```
 
 Дата: 2026-05-24
@@ -311,6 +311,11 @@ syncVersion BigInt   @default(0)
 | 9 | `postcss.config.mjs` — критичний файл | Без нього Tailwind 4 не генерує CSS у Next.js |
 | 10 | `Select placeholder` — НЕ нативний HTML атрибут | Рендериться як `<option value="" disabled>` |
 | 11 | Hydration mismatch: `border-primary` у spinner на root page | SSR резолвить у `border-blue-600`, клієнт лишає `border-primary` → різні рядки. Фікс: `border-(--color-primary)` — CSS var-синтаксис identity-stable на обох сторонах |
+| 12 | `new Date().toLocaleDateString(...)` у render path | SSR рендерить у UTC, клієнт у Europe/Kyiv → mismatch. Фікс: `useEffect(() => setState(...), [])` |
+| 13 | `createPortal(…, document.body)` без SSR-гарду | `document` відсутній під час prerender. Фікс: `const [mounted, setMounted] = useState(false); useEffect(() => setMounted(true), [])` |
+| 14 | Глобальний `saving` стан у списку | Всі рядки таблиці потрапляють у loading. Фікс: `savingId: string | null` — по одному рядку |
+| 15 | `transition()` без `$transaction` | Між findFirst і update може змінитись статус (race condition). Фікс: загорнути обидва у `prisma.$transaction` |
+| 16 | `RESERVATION_RELEASE` без перевірки `reserved >= qty` | Від'ємний резерв у StockItem. Фікс: перевірити `Math.abs(dto.quantity) > reserved` |
 
 ---
 
@@ -343,6 +348,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `f2c8a9c` | fix(review): apply sto-review auto-fix pass — 11 bugs resolved |
 | `ec6acac` | fix(web): fix hydration mismatch on root page spinner |
 | `394156d` | feat(workflow): hourly loop + auto QA after every task |
 | `d9ebecd` | docs(memory): add MemoryManual.md + wire into session flow |
