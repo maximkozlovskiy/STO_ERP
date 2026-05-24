@@ -41,13 +41,14 @@ sto-erp/
 /sto-web        ← для Next.js UI
 /sto-mobile     ← для Expo додатку
 /sto-review     ← для code review
+/sto-tester     ← для тестування: знаходить баги, фіксує, виправляє
 /sto-installer  ← для Windows installer
 /sto-git        ← для git: commit, branch, changelog, статус
 ```
 
 ## Типовий workflow нової фічі
 ```
-/sto-context → /sto-analyst → /sto-feature → /sto-database → /sto-backend → /sto-web → /sto-review
+/sto-context → /sto-analyst → /sto-feature → /sto-database → /sto-backend → /sto-web → /sto-review → /sto-tester
 ```
 
 ## Критичні правила (ОБОВ'ЯЗКОВО)
