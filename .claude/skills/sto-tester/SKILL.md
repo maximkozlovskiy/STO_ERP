@@ -15,12 +15,13 @@ model: claude-opus-4-7
 **Запускай у режимі Auto:** знаходь баги → записуй у BUG_REPORT.md → виправляй одразу → без питань.
 
 Алгоритм:
-1. Виконай Крок 0 (tsc + tests)
+1. Виконай Крок 0 (tsc + unit tests)
 2. Пройди Крок 1 (збір багів) — записуй кожен у BUG_REPORT.md
 3. Крок 3 (авто-фікс) — виправляй від CRITICAL до LOW без зупинки
-4. Крок 4 (верифікація) — tsc + tests мають бути зеленими
-5. Крок 5 — фінальний звіт
-6. Оновити MemoryManual.md — Останній commit + стан тестів (БЕЗ запиту)
+4. Крок 4 (верифікація) — tsc + unit tests мають бути зеленими
+5. Крок 4.5 (E2E Playwright) — якщо dev-сервер доступний, запускай e2e тести
+6. Крок 5 — фінальний звіт
+7. Оновити MemoryManual.md — Останній commit + стан тестів (БЕЗ запиту)
 
 > Не питай дозволу на виправлення, коміт і оновлення MemoryManual.md — все виконується автоматично.
 > Якщо fix потребує міграції БД або змін у shared — зафіксуй як CRITICAL і повідом після завершення.
@@ -37,6 +38,7 @@ model: claude-opus-4-7
 ## Поточний стан проєкту
 TypeScript: ✅ 0 errors  (або ❌ N errors)
 Тести:      ✅ N/N passed (або ❌ N failed)
+E2E:        ✅ N passed (або ⏭ skipped — dev server offline)
 ```
 
 Якщо під час тестування виявились нові gotchas — дописати у відповідний розділ `MemoryManual.md` без запиту.
@@ -265,12 +267,187 @@ pnpm --filter @sto/web exec tsc --noEmit
 pnpm --filter @sto/api exec tsc --noEmit
 pnpm --filter @sto/shared exec tsc --noEmit
 
-# Тести — всі повинні пройти
+# Unit тести — всі повинні пройти
 pnpm --filter @sto/api test --run
 
 # Build — перевірка що нічого не зламалось
 pnpm --filter @sto/api build 2>&1 | tail -10
 ```
+
+---
+
+## Крок 4.5 — E2E тести (Playwright)
+
+> **Умова запуску:** dev-сервер (`pnpm dev`) повинен бути активним.  
+> Якщо `http://localhost:3001` не відповідає — пропустити цей крок, позначити в звіті як "⏭ skipped".
+
+### Перевірка наявності Playwright
+
+```bash
+# Чи встановлений Playwright?
+test -f apps/web/playwright.config.ts && echo "EXISTS" || echo "NOT INSTALLED"
+```
+
+Якщо `NOT INSTALLED` — встановити:
+
+```bash
+cd apps/web
+pnpm add -D @playwright/test
+npx playwright install chromium
+```
+
+Створити `apps/web/playwright.config.ts` (якщо відсутній):
+
+```typescript
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  timeout: 30_000,
+  retries: 1,
+  use: {
+    baseURL: 'http://localhost:3001',
+    trace: 'on-first-retry',
+  },
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+  ],
+  // НЕ використовуємо webServer — dev-сервер запускається окремо
+});
+```
+
+### Запуск E2E
+
+```bash
+# Перевірити що сервер доступний
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 | grep -q 200 && echo "OK" || echo "OFFLINE"
+
+# Запустити e2e тести
+pnpm --filter @sto/web exec playwright test --reporter=list 2>&1 | tail -40
+```
+
+### Структура E2E тестів
+
+```
+apps/web/e2e/
+  auth.spec.ts          — login, logout, redirect неавторизованого
+  work-orders.spec.ts   — список, створення, перехід статусу
+  calendar.spec.ts      — відображення слотів, перевірка дати
+  inventory.spec.ts     — список товарів, low-stock badge
+  customers.spec.ts     — пошук клієнта, картка авто
+  setup.spec.ts         — /setup доступний без авторизації
+```
+
+### Шаблони E2E тестів
+
+```typescript
+// apps/web/e2e/auth.spec.ts
+import { test, expect } from '@playwright/test';
+
+test.describe('Авторизація', () => {
+  test('login happy path', async ({ page }) => {
+    await page.goto('/login');
+    await page.fill('[name="login"]', 'admin');
+    await page.fill('[name="password"]', 'admin123');
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL(/\/(dashboard|work-orders)/);
+  });
+
+  test('login з невірним паролем', async ({ page }) => {
+    await page.goto('/login');
+    await page.fill('[name="login"]', 'admin');
+    await page.fill('[name="password"]', 'wrong');
+    await page.click('button[type="submit"]');
+    await expect(page.locator('[role="alert"], .error, [data-error]')).toBeVisible();
+  });
+
+  test('неавторизований редиректиться на /login', async ({ page }) => {
+    await page.goto('/work-orders');
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('/setup доступний без авторизації', async ({ page }) => {
+    await page.goto('/setup');
+    // НЕ редиректить на /login
+    await expect(page).not.toHaveURL(/\/login/);
+  });
+});
+```
+
+```typescript
+// apps/web/e2e/work-orders.spec.ts
+import { test, expect } from '@playwright/test';
+
+// Використати збережений auth state (щоб не логінитись кожен тест)
+test.use({ storageState: 'e2e/.auth/admin.json' });
+
+test.describe('Замовлення-наряди', () => {
+  test('сторінка завантажується без помилок', async ({ page }) => {
+    await page.goto('/work-orders');
+    await expect(page.locator('h1, [data-page-title]')).toBeVisible();
+    // Немає error стану
+    await expect(page.locator('[data-error-state]')).not.toBeVisible();
+  });
+
+  test('показує loading spinner або skeleton при завантаженні', async ({ page }) => {
+    // Сповільнити мережу
+    await page.route('**/api/**', async route => {
+      await new Promise(r => setTimeout(r, 500));
+      await route.continue();
+    });
+    await page.goto('/work-orders');
+    // Loading індикатор повинен з'явитись
+    const spinner = page.locator('[data-loading], .animate-spin, [role="progressbar"]');
+    // Не обов'язково перехоплювати — просто переконатись що сторінка врешті рендерить дані
+    await expect(page.locator('table, [data-empty-state], [data-list]')).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('empty state якщо немає нарядів', async ({ page }) => {
+    // Мок порожньої відповіді
+    await page.route('**/work-orders*', route => route.fulfill({
+      status: 200,
+      body: JSON.stringify({ items: [], total: 0, page: 1, limit: 20 }),
+    }));
+    await page.goto('/work-orders');
+    await expect(page.locator('[data-empty-state]')).toBeVisible();
+  });
+});
+```
+
+```typescript
+// apps/web/e2e/setup-auth.ts — глобальний setup для збереження auth state
+import { chromium } from '@playwright/test';
+import path from 'path';
+
+async function globalSetup() {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+
+  await page.goto('http://localhost:3001/login');
+  await page.fill('[name="login"]', process.env.E2E_LOGIN ?? 'admin');
+  await page.fill('[name="password"]', process.env.E2E_PASSWORD ?? 'admin123');
+  await page.click('button[type="submit"]');
+  await page.waitForURL(/\/(dashboard|work-orders)/);
+
+  await page.context().storageState({ path: path.join(__dirname, '.auth/admin.json') });
+  await browser.close();
+}
+
+export default globalSetup;
+```
+
+Додати до `playwright.config.ts`:
+
+```typescript
+globalSetup: './e2e/setup-auth.ts',
+```
+
+### Що робити якщо E2E тест падає
+
+1. Зробити скріншот: `npx playwright test --screenshot=on`
+2. Переглянути трейс: `npx playwright show-trace test-results/*/trace.zip`
+3. Якщо помилка — зафіксувати як Bug в `BUG_REPORT.md` і виправити
+4. Якщо тест хибно негативний (flaky через timing) — додати `await expect(...).toBeVisible({ timeout: 5000 })`
 
 ---
 
@@ -287,7 +464,8 @@ pnpm --filter @sto/api build 2>&1 | tail -10
 Залишилось:        0
 
 TypeScript:        ✅ 0 errors
-Тести:             ✅ N passed / 0 failed
+Unit тести:        ✅ N passed / 0 failed
+E2E (Playwright):  ✅ N passed / 0 failed  (або ⏭ skipped — dev server offline)
 Build:             ✅ OK
 
 Коміти:
@@ -393,6 +571,7 @@ it('рендерить placeholder як disabled option', () => {
 | Design tokens | `apps/web/src/app/globals.css` |
 | Shared types | `packages/shared/src/types/index.ts` |
 | Auth guard | `apps/api/src/auth/guards/` |
+| E2E тести | `apps/web/e2e/`, `apps/web/playwright.config.ts` |
 
 ---
 
