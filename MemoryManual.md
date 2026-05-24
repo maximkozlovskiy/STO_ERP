@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-394156d feat(workflow): hourly loop + auto QA after every task
+ec6acac fix(web): fix hydration mismatch on root page spinner
 ```
 
 Дата: 2026-05-24
@@ -310,6 +310,7 @@ syncVersion BigInt   @default(0)
 | 8 | Пряме `prisma.settlementAccount.update` — заборонено | Тільки `SettlementsService.createTransaction()` |
 | 9 | `postcss.config.mjs` — критичний файл | Без нього Tailwind 4 не генерує CSS у Next.js |
 | 10 | `Select placeholder` — НЕ нативний HTML атрибут | Рендериться як `<option value="" disabled>` |
+| 11 | Hydration mismatch: `border-primary` у spinner на root page | SSR резолвить у `border-blue-600`, клієнт лишає `border-primary` → різні рядки. Фікс: `border-(--color-primary)` — CSS var-синтаксис identity-stable на обох сторонах |
 
 ---
 
@@ -342,6 +343,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `ec6acac` | fix(web): fix hydration mismatch on root page spinner |
 | `394156d` | feat(workflow): hourly loop + auto QA after every task |
 | `d9ebecd` | docs(memory): add MemoryManual.md + wire into session flow |
 | `11b468b` | feat(skills): add /sto-tester skill |
