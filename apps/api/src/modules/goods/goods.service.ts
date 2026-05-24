@@ -26,7 +26,7 @@ export class GoodsService {
       this.prisma.good.count({ where }),
     ]);
 
-    return { items: items.map(this.toDto), total, page: query.page, limit: query.limit };
+    return { items: items.map(item => this.toDto(item)), total, page: query.page, limit: query.limit };
   }
 
   async findOne(orgId: string, id: string): Promise<GoodResponseDto> {

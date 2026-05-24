@@ -105,13 +105,13 @@ export default function InfrastructurePage() {
     setError('');
     try {
       if (modal === 'branch') {
-        await apiFetch('/branches', { method: 'POST', body: JSON.stringify({ name: form.name, address: form.address }) });
+        await apiFetch<Branch>('/branches', { method: 'POST', body: JSON.stringify({ name: form.name, address: form.address }) });
       } else if (modal === 'zone') {
-        await apiFetch('/zones', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
+        await apiFetch<Zone>('/zones', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
       } else if (modal === 'lift') {
-        await apiFetch('/lifts', { method: 'POST', body: JSON.stringify({ zoneId: form.zoneId, name: form.name, type: form.type, maxWeightKg: form.maxWeightKg ? Number(form.maxWeightKg) : undefined }) });
+        await apiFetch<Lift>('/lifts', { method: 'POST', body: JSON.stringify({ zoneId: form.zoneId, name: form.name, type: form.type, maxWeightKg: form.maxWeightKg ? Number(form.maxWeightKg) : undefined }) });
       } else if (modal === 'warehouse') {
-        await apiFetch('/warehouses', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
+        await apiFetch<Warehouse>('/warehouses', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
       }
       closeModal();
       loadAll();
@@ -125,7 +125,7 @@ export default function InfrastructurePage() {
   const remove = async (endpoint: string, id: string) => {
     if (!confirm('Видалити запис?')) return;
     try {
-      await apiFetch(`${endpoint}/${id}`, { method: 'DELETE' });
+      await apiFetch<void>(`${endpoint}/${id}`, { method: 'DELETE' });
       loadAll();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка видалення');

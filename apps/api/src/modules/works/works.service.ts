@@ -24,7 +24,7 @@ export class WorksService {
       this.prisma.work.count({ where }),
     ]);
 
-    return { items: items.map(this.toDto), total, page: query.page, limit: query.limit };
+    return { items: items.map(item => this.toDto(item)), total, page: query.page, limit: query.limit };
   }
 
   async findOne(orgId: string, id: string): Promise<WorkResponseDto> {
@@ -72,7 +72,7 @@ export class WorksService {
 
   private toDto(item: {
     id: string; orgId: string; categoryId: string; name: string; normoHours: number;
-    price: object; description: string | null; createdAt: Date; updatedAt: Date;
+    price: import('@prisma/client').Prisma.Decimal; description: string | null; createdAt: Date; updatedAt: Date;
     category: { name: string };
   }): WorkResponseDto {
     return {

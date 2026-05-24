@@ -19,7 +19,7 @@ export class PaymentMethodsService {
       where: { orgId },
       orderBy: { sortOrder: 'asc' },
     });
-    return items.map(this.toDto);
+    return items.map(item => this.toDto(item));
   }
 
   async findOne(orgId: string, id: string): Promise<PaymentMethodResponseDto> {

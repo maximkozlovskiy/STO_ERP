@@ -65,7 +65,7 @@ export default function CalendarPage() {
   const addSlot = async () => {
     setSaving(true); setError('');
     try {
-      await apiFetch('/calendar/slots', {
+      await apiFetch<CalendarSlot>('/calendar/slots', {
         method: 'POST',
         body: JSON.stringify({
           liftId: form.liftId || undefined,
@@ -85,7 +85,7 @@ export default function CalendarPage() {
 
   const removeSlot = async (id: string) => {
     if (!confirm('Видалити слот?')) return;
-    try { await apiFetch(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    try { await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
   };
 
   const slotsForLift = (liftId: string) => slots.filter(s => s.liftId === liftId);

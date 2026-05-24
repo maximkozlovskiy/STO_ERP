@@ -100,7 +100,7 @@ export default function InvoicesPage() {
   const handleCreate = async () => {
     setSaving(true);
     try {
-      await apiFetch('/invoices', {
+      await apiFetch<Invoice>('/invoices', {
         method: 'POST',
         body: JSON.stringify({
           counterpartyId: form.counterpartyId,
@@ -133,7 +133,7 @@ export default function InvoicesPage() {
     if (!showPayment) return;
     setSaving(true);
     try {
-      await apiFetch('/payments', {
+      await apiFetch<{ id: string }>('/payments', {
         method: 'POST',
         body: JSON.stringify({
           counterpartyId: showPayment.counterpartyId,

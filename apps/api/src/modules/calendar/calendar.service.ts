@@ -32,7 +32,7 @@ export class CalendarService {
       include: { workOrder: { select: { number: true } } },
     });
 
-    return slots.map(this.toDto);
+    return slots.map(item => this.toDto(item));
   }
 
   async createSlot(orgId: string, dto: CreateCalendarSlotDto): Promise<CalendarSlotResponseDto> {

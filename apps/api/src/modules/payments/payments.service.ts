@@ -38,7 +38,7 @@ export class PaymentsService {
       this.prisma.payment.count({ where }),
     ]);
 
-    return { items: items.map(this.toDto), total, page, limit };
+    return { items: items.map(item => this.toDto(item)), total, page, limit };
   }
 
   async create(orgId: string, dto: CreatePaymentDto, userId?: string): Promise<PaymentResponseDto> {

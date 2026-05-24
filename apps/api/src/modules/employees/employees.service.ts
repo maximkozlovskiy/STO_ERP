@@ -21,7 +21,7 @@ export class EmployeesService {
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });
-    return items.map(this.toDto);
+    return items.map(item => this.toDto(item));
   }
 
   async findOne(orgId: string, id: string): Promise<EmployeeResponseDto> {

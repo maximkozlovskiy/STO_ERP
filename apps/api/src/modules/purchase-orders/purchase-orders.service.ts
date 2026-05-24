@@ -47,7 +47,7 @@ export class PurchaseOrdersService {
       this.prisma.purchaseOrder.count({ where }),
     ]);
 
-    return { items: items.map(this.toDto), total, page, limit };
+    return { items: items.map(item => this.toDto(item)), total, page, limit };
   }
 
   async findOne(orgId: string, id: string): Promise<PurchaseOrderResponseDto> {
@@ -213,11 +213,11 @@ export class PurchaseOrdersService {
 
   private toDto(po: {
     id: string; orgId: string; number: string; status: string;
-    supplierId: string; warehouseId: string; totalAmount: object; notes: string | null;
+    supplierId: string; warehouseId: string; totalAmount: import('@prisma/client').Prisma.Decimal; notes: string | null;
     createdAt: Date; updatedAt: Date;
     supplier: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
     warehouse: { name: string } | null;
-    lines: Array<{ id: string; goodId: string; quantity: number; price: object; receivedQty: number; good: { name: string; sku: string | null; unit: string } | null }>;
+    lines: Array<{ id: string; goodId: string; quantity: number; price: import('@prisma/client').Prisma.Decimal; receivedQty: number; good: { name: string; sku: string | null; unit: string } | null }>;
   }): PurchaseOrderResponseDto {
     const sup = po.supplier;
     const supplierName = formatPersonName(sup?.lastName, sup?.firstName, sup?.companyName) || undefined;

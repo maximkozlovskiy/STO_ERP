@@ -57,7 +57,7 @@ export default function CounterpartyCardPage() {
   const addGarage = async () => {
     if (!garageName.trim()) return;
     try {
-      await apiFetch(`/counterparties/${id}/garages`, {
+      await apiFetch<Garage>(`/counterparties/${id}/garages`, {
         method: 'POST', body: JSON.stringify({ name: garageName, address: garageAddress || undefined }),
       });
       setGarageName(''); setGarageAddress(''); setShowAddGarage(false);

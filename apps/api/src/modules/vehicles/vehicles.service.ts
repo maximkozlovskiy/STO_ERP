@@ -14,7 +14,7 @@ export class VehiclesService {
       where: { orgId, deletedAt: null, ...(customerGarageId ? { customerGarageId } : {}) },
       orderBy: [{ make: 'asc' }, { model: 'asc' }],
     });
-    return items.map(this.toDto);
+    return items.map(item => this.toDto(item));
   }
 
   async findOne(orgId: string, id: string): Promise<VehicleResponseDto> {
@@ -53,7 +53,7 @@ export class VehiclesService {
       where: { vehicleId, orgId, deletedAt: null },
       orderBy: { category: 'asc' },
     });
-    return items.map(this.toNodeDto);
+    return items.map(item => this.toNodeDto(item));
   }
 
   async createNode(orgId: string, vehicleId: string, dto: CreateVehicleNodeDto): Promise<VehicleNodeResponseDto> {

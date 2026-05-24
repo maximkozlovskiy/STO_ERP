@@ -61,7 +61,7 @@ export default function SettlementsPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    apiFetch('/counterparties?limit=200').then(d => setCounterparties(d.items ?? d))
+    apiFetch<{ items: Counterparty[] } | Counterparty[]>('/counterparties?limit=200').then(d => setCounterparties(Array.isArray(d) ? d : d.items))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження контрагентів'));
   }, []);
 
@@ -73,9 +73,9 @@ export default function SettlementsPage() {
     setLoading(true);
     try {
       const [bal, txs, actsData] = await Promise.all([
-        apiFetch(`/counterparties/${cp.id}/balance`),
-        apiFetch(`/counterparties/${cp.id}/transactions?page=1&limit=50`),
-        apiFetch(`/counterparties/${cp.id}/reconciliation-acts`),
+        apiFetch<{ balance: number }>(`/counterparties/${cp.id}/balance`),
+        apiFetch<{ items: Transaction[]; total: number }>(`/counterparties/${cp.id}/transactions?page=1&limit=50`),
+        apiFetch<RecAct[]>(`/counterparties/${cp.id}/reconciliation-acts`),
       ]);
       setBalance(bal.balance);
       setTransactions(txs.items);
@@ -90,7 +90,7 @@ export default function SettlementsPage() {
     if (!selected) return;
     setSaving(true);
     try {
-      const result = await apiFetch(`/counterparties/${selected.id}/reconciliation-acts`, {
+      const result = await apiFetch<RecAct & { transactions: Transaction[] }>(`/counterparties/${selected.id}/reconciliation-acts`, {
         method: 'POST',
         body: JSON.stringify({ periodFrom: actForm.periodFrom, periodTo: actForm.periodTo }),
       });

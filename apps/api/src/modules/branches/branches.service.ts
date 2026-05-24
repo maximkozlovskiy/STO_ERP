@@ -11,7 +11,7 @@ export class BranchesService {
       where: { orgId, deletedAt: null },
       orderBy: { name: 'asc' },
     });
-    return items.map(this.toDto);
+    return items.map(item => this.toDto(item));
   }
 
   async findOne(orgId: string, id: string): Promise<BranchResponseDto> {

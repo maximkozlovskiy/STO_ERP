@@ -53,7 +53,7 @@ export class WorkOrdersService {
       this.prisma.workOrder.count({ where }),
     ]);
 
-    return { items: items.map(this.toDto), total, page: query.page, limit: query.limit };
+    return { items: items.map(item => this.toDto(item)), total, page: query.page, limit: query.limit };
   }
 
   async findOne(orgId: string, id: string): Promise<WorkOrderDetailDto> {
@@ -82,8 +82,8 @@ export class WorkOrdersService {
 
     return {
       ...this.toDto(wo),
-      lines: wo.lines.map(this.toLineDto),
-      parts: wo.parts.map(this.toPartDto),
+      lines: wo.lines.map(l => this.toLineDto(l)),
+      parts: wo.parts.map(p => this.toPartDto(p)),
     };
   }
 

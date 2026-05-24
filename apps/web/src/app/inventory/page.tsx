@@ -45,8 +45,8 @@ export default function InventoryPage() {
 
   const loadWarehouses = useCallback(async () => {
     try {
-      const data = await apiFetch('/warehouses');
-      setWarehouses(data.items ?? data);
+      const data = await apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses');
+      setWarehouses(Array.isArray(data) ? data : data.items);
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження складів'); }
   }, []);
 
@@ -56,7 +56,7 @@ export default function InventoryPage() {
       const params = new URLSearchParams();
       if (warehouseId) params.set('warehouseId', warehouseId);
       if (q) params.set('q', q);
-      const data = await apiFetch(`/stock-items?${params}`);
+      const data = await apiFetch<StockItem[]>(`/stock-items?${params}`);
       setItems(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка завантаження');
@@ -67,7 +67,7 @@ export default function InventoryPage() {
 
   const loadLow = useCallback(async () => {
     try {
-      const data = await apiFetch('/stock-items/low');
+      const data = await apiFetch<StockItem[]>('/stock-items/low');
       setLowItems(data);
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження'); }
   }, []);

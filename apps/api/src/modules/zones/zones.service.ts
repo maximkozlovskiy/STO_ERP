@@ -17,7 +17,7 @@ export class ZonesService {
       where: { orgId, deletedAt: null, ...(branchId ? { branchId } : {}) },
       orderBy: { name: 'asc' },
     });
-    return items.map(this.toZoneDto);
+    return items.map(item => this.toZoneDto(item));
   }
 
   async findOneZone(orgId: string, id: string): Promise<ZoneResponseDto> {
@@ -53,7 +53,7 @@ export class ZonesService {
       where: { orgId, deletedAt: null, ...(zoneId ? { zoneId } : {}) },
       orderBy: { name: 'asc' },
     });
-    return items.map(this.toLiftDto);
+    return items.map(item => this.toLiftDto(item));
   }
 
   async findOneLift(orgId: string, id: string): Promise<LiftResponseDto> {

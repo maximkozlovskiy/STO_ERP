@@ -40,7 +40,7 @@ export class InvoicesService {
       this.prisma.invoice.count({ where }),
     ]);
 
-    return { items: items.map(this.toDto), total, page, limit };
+    return { items: items.map(item => this.toDto(item)), total, page, limit };
   }
 
   async findOne(orgId: string, id: string): Promise<InvoiceResponseDto> {
@@ -150,7 +150,7 @@ export class InvoicesService {
 
   private toDto(inv: {
     id: string; orgId: string; number: string; status: string;
-    counterpartyId: string; workOrderId: string | null; amount: object;
+    counterpartyId: string; workOrderId: string | null; amount: import('@prisma/client').Prisma.Decimal;
     dueDate: Date | null; createdAt: Date; updatedAt: Date;
     counterparty: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
     workOrder: { number: string } | null;

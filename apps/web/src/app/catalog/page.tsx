@@ -78,7 +78,7 @@ function WorksTab() {
   const create = async () => {
     setSaving(true); setError('');
     try {
-      await apiFetch('/works', {
+      await apiFetch<Work>('/works', {
         method: 'POST',
         body: JSON.stringify({
           categoryId: form.categoryId,
@@ -97,7 +97,7 @@ function WorksTab() {
 
   const remove = async (id: string) => {
     if (!confirm('Видалити роботу?')) return;
-    try { await apiFetch(`/works/${id}`, { method: 'DELETE' }); load(); }
+    try { await apiFetch<void>(`/works/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
   };
 
@@ -212,7 +212,7 @@ function GoodsTab() {
   const create = async () => {
     setSaving(true); setError('');
     try {
-      await apiFetch('/goods', {
+      await apiFetch<Good>('/goods', {
         method: 'POST',
         body: JSON.stringify({
           sku: form.sku || undefined,
@@ -234,7 +234,7 @@ function GoodsTab() {
 
   const remove = async (id: string) => {
     if (!confirm('Видалити товар?')) return;
-    try { await apiFetch(`/goods/${id}`, { method: 'DELETE' }); load(); }
+    try { await apiFetch<void>(`/goods/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
   };
 
@@ -346,7 +346,7 @@ function ServicesTab() {
   const create = async () => {
     setSaving(true); setError('');
     try {
-      await apiFetch('/services', {
+      await apiFetch<Service>('/services', {
         method: 'POST',
         body: JSON.stringify({
           name: form.name,
@@ -363,7 +363,7 @@ function ServicesTab() {
 
   const remove = async (id: string) => {
     if (!confirm('Видалити послугу?')) return;
-    try { await apiFetch(`/services/${id}`, { method: 'DELETE' }); load(); }
+    try { await apiFetch<void>(`/services/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
   };
 

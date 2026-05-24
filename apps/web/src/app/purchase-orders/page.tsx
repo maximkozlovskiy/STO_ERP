@@ -93,7 +93,7 @@ export default function PurchaseOrdersPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (status) params.set('status', status);
-      const data: Paginated = await apiFetch(`/purchase-orders?${params}`);
+      const data = await apiFetch<Paginated>(`/purchase-orders?${params}`);
       setOrders(data.items);
       setTotal(data.total);
     } catch (e: unknown) {
@@ -108,13 +108,13 @@ export default function PurchaseOrdersPage() {
   useEffect(() => {
     if (showCreate) {
       Promise.all([
-        apiFetch('/counterparties?type=SUPPLIER&limit=100'),
-        apiFetch('/warehouses'),
-        apiFetch('/goods?limit=200'),
+        apiFetch<{ items: Supplier[] } | Supplier[]>('/counterparties?type=SUPPLIER&limit=100'),
+        apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses'),
+        apiFetch<{ items: Good[] } | Good[]>('/goods?limit=200'),
       ]).then(([s, w, g]) => {
-        setSuppliers(s.items ?? s);
-        setWarehouses(w.items ?? w);
-        setGoods(g.items ?? g);
+        setSuppliers(Array.isArray(s) ? s : s.items);
+        setWarehouses(Array.isArray(w) ? w : w.items);
+        setGoods(Array.isArray(g) ? g : g.items);
       }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
     }
   }, [showCreate]);
@@ -122,7 +122,7 @@ export default function PurchaseOrdersPage() {
   const handleCreate = async () => {
     setSaving(true);
     try {
-      await apiFetch('/purchase-orders', {
+      await apiFetch<PurchaseOrder>('/purchase-orders', {
         method: 'POST',
         body: JSON.stringify({
           supplierId: form.supplierId, warehouseId: form.warehouseId, notes: form.notes || undefined,
@@ -142,13 +142,15 @@ export default function PurchaseOrdersPage() {
 
   const handleTransition = async (po: PurchaseOrder, newStatus: string) => {
     if (!confirm(`Перевести замовлення ${po.number} → ${STATUS_LABELS[newStatus]}?`)) return;
+    setSaving(true); setError('');
     try {
-      await apiFetch(`/purchase-orders/${po.id}/transition`, {
+      await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}/transition`, {
         method: 'POST', body: JSON.stringify({ status: newStatus }),
       });
       setShowDetail(null);
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка переходу статусу'); }
+    finally { setSaving(false); }
   };
 
   const openReceive = (po: PurchaseOrder) => {
@@ -164,7 +166,7 @@ export default function PurchaseOrdersPage() {
     if (!lines.length) { setError('Вкажіть кількість для хоча б однієї позиції'); return; }
     setSaving(true); setError('');
     try {
-      await apiFetch(`/purchase-orders/${showReceive.id}/receive`, {
+      await apiFetch<PurchaseOrder>(`/purchase-orders/${showReceive.id}/receive`, {
         method: 'POST', body: JSON.stringify({ lines }),
       });
       setShowReceive(null);

@@ -12,7 +12,7 @@ export class WarehousesService {
       where: { orgId, deletedAt: null, ...(branchId ? { branchId } : {}) },
       orderBy: { name: 'asc' },
     });
-    return items.map(this.toDto);
+    return items.map(item => this.toDto(item));
   }
 
   async findOne(orgId: string, id: string): Promise<WarehouseResponseDto> {

@@ -23,7 +23,7 @@ export class ServicesService {
       this.prisma.service.count({ where }),
     ]);
 
-    return { items: items.map(this.toDto), total, page, limit };
+    return { items: items.map(item => this.toDto(item)), total, page, limit };
   }
 
   async findOne(orgId: string, id: string): Promise<ServiceResponseDto> {
@@ -120,10 +120,10 @@ export class ServicesService {
   }
 
   private toDto(item: {
-    id: string; orgId: string; name: string; description: string | null; price: object | null;
+    id: string; orgId: string; name: string; description: string | null; price: import('@prisma/client').Prisma.Decimal | null;
     createdAt: Date; updatedAt: Date;
-    serviceWorks: Array<{ workId: string; quantity: number; work: { name: string; normoHours: number; price: object } }>;
-    serviceGoods: Array<{ goodId: string; quantity: number; good: { name: string; unit: string; salePrice: object } }>;
+    serviceWorks: Array<{ workId: string; quantity: number; work: { name: string; normoHours: number; price: import('@prisma/client').Prisma.Decimal } }>;
+    serviceGoods: Array<{ goodId: string; quantity: number; good: { name: string; unit: string; salePrice: import('@prisma/client').Prisma.Decimal } }>;
   }): ServiceResponseDto {
     return {
       id: item.id,
