@@ -43,6 +43,38 @@ description: >
 - [ ] Enums from Prisma used (not magic strings)
 - [ ] All async functions have proper error handling or propagate HttpExceptions
 
+### Problems Panel (run after every change)
+
+After every batch of changes, run TypeScript checks and fix ALL errors before committing:
+
+```bash
+# Web app
+pnpm --filter @sto/web exec tsc --noEmit
+
+# API
+pnpm --filter @sto/api exec tsc --noEmit
+
+# All packages
+pnpm --filter @sto/shared exec tsc --noEmit
+pnpm --filter @sto/ui exec tsc --noEmit
+```
+
+**Fix automatically — do not skip errors:**
+
+| Error pattern | Fix |
+|---|---|
+| `Type '"default"' is not assignable to type 'Variant'` | Add `'default'` to the `Variant` union in `button.tsx` (alias for `'outline'`) |
+| `Property 'placeholder' does not exist on type '...SelectProps'` | Add `placeholder?: string` to `SelectProps`; render as `<option value="" disabled>{placeholder}</option>` |
+| `Type 'unknown'` on Prisma dynamic select result | Cast: `(result as { field: type }).field` |
+| `Property 'X' does not exist on type 'IntrinsicAttributes'` | Add the missing prop to the component's interface |
+| `is not assignable to type 'never'` | Check for exhaustive switch/union — add missing branches or cast |
+| `Object is possibly 'null' or 'undefined'` | Add null-check guard or non-null assertion if impossible at runtime |
+
+**Component prop parity rules (keep in sync):**
+- `Button` `Variant`: `'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link' | 'default'`
+- `Select` props: `label`, `errorMessage`, `hint`, `placeholder` — all optional
+- `Input` props: `label`, `errorMessage`, `hint`, `leftElement`, `rightElement` — all optional
+
 ### Web Frontend
 - [ ] No direct `fetch`/`axios` calls in components — all through TanStack Query hooks
 - [ ] Forms use React Hook Form + Zod schema from `@sto/shared`

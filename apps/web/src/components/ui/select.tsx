@@ -8,10 +8,11 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   errorMessage?: string;
   hint?: string;
+  placeholder?: string;
 }
 
 const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, label, errorMessage, hint, id, children, ...props }, ref) => {
+  ({ className, label, errorMessage, hint, placeholder, id, children, ...props }, ref) => {
     const selectId = id ?? label?.toLowerCase().replace(/\s+/g, '-');
     const hasError = !!errorMessage;
 
@@ -44,6 +45,11 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
             aria-describedby={hasError ? `${selectId}-error` : hint ? `${selectId}-hint` : undefined}
             {...props}
           >
+            {placeholder && (
+              <option value="" disabled>
+                {placeholder}
+              </option>
+            )}
             {children}
           </select>
           <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

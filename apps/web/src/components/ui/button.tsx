@@ -3,7 +3,7 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
-type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link';
+type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link' | 'default';
 type Size    = 'xs' | 'sm' | 'md' | 'lg' | 'icon-xs' | 'icon-sm' | 'icon';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -21,6 +21,9 @@ const base =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ring)]';
 
 const variants: Record<Variant, string> = {
+  default:
+    'border border-[var(--color-border)] bg-white text-[var(--color-foreground)] ' +
+    'hover:bg-[var(--color-secondary)] hover:border-[var(--color-border-hover)] active:scale-[0.98]',
   primary:
     'bg-[var(--color-primary)] text-white shadow-[0_1px_2px_rgb(0_0_0/0.12)] ' +
     'hover:bg-[var(--color-primary-hover)] active:scale-[0.98]',
