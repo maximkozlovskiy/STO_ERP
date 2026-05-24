@@ -2,7 +2,11 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { Wrench } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -27,58 +31,80 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-md p-8">
-        <div className="mb-8 text-center">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-sm">
+        {/* Brand block */}
+        <div className="mb-6 text-center">
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 shadow-lg mb-4">
+            <Wrench className="h-7 w-7 text-white" />
+          </div>
           <h1 className="text-2xl font-bold text-gray-900">STO ERP</h1>
           <p className="text-sm text-gray-500 mt-1">Система управління автосервісом</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@sto.local"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Вхід до системи</CardTitle>
+            <CardDescription>Введіть ваші облікові дані</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700 mb-1.5"
+                >
+                  Email
+                </label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@sto.local"
+                />
+              </div>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              Пароль
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-gray-700 mb-1.5"
+                >
+                  Пароль
+                </label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </div>
 
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
-          )}
+              {error && (
+                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {error}
+                </div>
+              )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg py-2 text-sm transition-colors"
-          >
-            {loading ? 'Вхід...' : 'Увійти'}
-          </button>
-        </form>
+              <Button
+                type="submit"
+                loading={loading}
+                className="w-full"
+              >
+                Увійти
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <p className="mt-4 text-center text-xs text-gray-400">
+          Офлайн-система — не потребує інтернету
+        </p>
       </div>
     </div>
   );
