@@ -63,11 +63,12 @@ export default function InventoryPage() {
     }
   }, [warehouseId, q]);
 
-  const loadLow = useCallback(async () => {
+  const loadLow = useCallback(async (): Promise<boolean> => {
     try {
       const data = await apiFetch<StockItem[]>('/stock-items/low');
       setLowItems(data);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження'); }
+      return true;
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження'); return false; }
   }, []);
 
   useEffect(() => { loadWarehouses(); }, [loadWarehouses]);
@@ -87,7 +88,7 @@ export default function InventoryPage() {
         </div>
         <Button
           variant="outline"
-          onClick={() => { loadLow(); setShowLowModal(true); }}
+          onClick={async () => { if (await loadLow()) setShowLowModal(true); }}
           className="text-amber-700 border-amber-200 bg-amber-50 hover:bg-amber-100"
         >
           <AlertTriangle className="h-4 w-4" />

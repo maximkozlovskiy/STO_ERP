@@ -98,6 +98,11 @@ export default function WorkOrdersPage() {
     cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ') ?? '';
 
   const create = async () => {
+    const mileage = form.inMileage ? Number(form.inMileage) : undefined;
+    if (mileage !== undefined && (!Number.isFinite(mileage) || mileage < 0)) {
+      setError('Пробіг повинен бути невід\'ємним числом');
+      return;
+    }
     setSaving(true); setError('');
     try {
       const wo = await apiFetch<WorkOrder>('/work-orders', {
@@ -107,7 +112,7 @@ export default function WorkOrdersPage() {
           vehicleId: form.vehicleId,
           counterpartyId: form.counterpartyId,
           description: form.description || undefined,
-          inMileage: form.inMileage ? Number(form.inMileage) : undefined,
+          inMileage: mileage,
           plannedAt: form.plannedAt || undefined,
         }),
       });

@@ -53,6 +53,15 @@ export default function CrmPage() {
   useEffect(() => { load(); }, [load]);
 
   const create = async () => {
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      setError('Некоректний email'); return;
+    }
+    if (form.edrpou && !/^\d{8}$/.test(form.edrpou)) {
+      setError('ЄДРПОУ повинен містити рівно 8 цифр'); return;
+    }
+    if (form.phone && !/^\+?[\d\s\-()+]{7,20}$/.test(form.phone)) {
+      setError('Некоректний номер телефону'); return;
+    }
     setSaving(true); setError('');
     try {
       await apiFetch<Counterparty>('/counterparties', {

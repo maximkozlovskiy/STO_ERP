@@ -68,6 +68,9 @@ export default function CalendarPage() {
   const nextDay = () => { const d = new Date(date); d.setDate(d.getDate() + 1); setDate(toDateString(d)); };
 
   const addSlot = async () => {
+    if (form.startAt && form.endAt && form.endAt <= form.startAt) {
+      setError('Час завершення повинен бути після часу початку'); return;
+    }
     setSaving(true); setError('');
     try {
       await apiFetch<CalendarSlot>('/calendar/slots', {
