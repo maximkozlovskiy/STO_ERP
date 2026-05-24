@@ -53,7 +53,7 @@ export class CounterpartiesService {
 
   async create(orgId: string, dto: CreateCounterpartyDto): Promise<CounterpartyResponseDto> {
     const item = await this.prisma.$transaction(async (tx) => {
-      const cp = await tx.counterparty.create({ data: { orgId, ...dto } });
+      const cp = await tx.counterparty.create({ data: { ...dto, orgId } });
       // Auto-create settlement account
       await tx.settlementAccount.create({
         data: { orgId, counterpartyId: cp.id, balance: 0 },

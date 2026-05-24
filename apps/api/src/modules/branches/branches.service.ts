@@ -24,7 +24,7 @@ export class BranchesService {
 
   async create(orgId: string, dto: CreateBranchDto): Promise<BranchResponseDto> {
     const item = await this.prisma.garageBranch.create({
-      data: { orgId, ...dto },
+      data: { ...dto, orgId },
     });
     return this.toDto(item);
   }

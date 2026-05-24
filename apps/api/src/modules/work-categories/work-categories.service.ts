@@ -29,7 +29,7 @@ export class WorkCategoriesService {
       });
       if (!parent) throw new NotFoundException('Батьківську категорію не знайдено');
     }
-    const item = await this.prisma.workCategory.create({ data: { orgId, ...dto } });
+    const item = await this.prisma.workCategory.create({ data: { ...dto, orgId } });
     return { ...this.toDto(item), children: [] };
   }
 

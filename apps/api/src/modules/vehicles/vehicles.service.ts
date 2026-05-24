@@ -28,7 +28,7 @@ export class VehiclesService {
       where: { id: dto.customerGarageId, orgId, deletedAt: null },
     });
     if (!garage) throw new NotFoundException('Гараж не знайдено');
-    const item = await this.prisma.vehicle.create({ data: { orgId, ...dto } });
+    const item = await this.prisma.vehicle.create({ data: { ...dto, orgId } });
     return this.toDto(item);
   }
 
@@ -58,7 +58,7 @@ export class VehiclesService {
 
   async createNode(orgId: string, vehicleId: string, dto: CreateVehicleNodeDto): Promise<VehicleNodeResponseDto> {
     await this.findOne(orgId, vehicleId);
-    const item = await this.prisma.vehicleNode.create({ data: { orgId, vehicleId, ...dto } });
+    const item = await this.prisma.vehicleNode.create({ data: { ...dto, orgId, vehicleId } });
     return this.toNodeDto(item);
   }
 

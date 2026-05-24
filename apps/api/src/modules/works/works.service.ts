@@ -43,7 +43,7 @@ export class WorksService {
     if (!category) throw new NotFoundException('Категорію не знайдено');
 
     const item = await this.prisma.work.create({
-      data: { orgId, ...dto, price: dto.price },
+      data: { ...dto, orgId, price: dto.price },
       include: { category: { select: { name: true } } },
     });
     return this.toDto(item);

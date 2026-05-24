@@ -44,7 +44,7 @@ export class PaymentMethodsService {
     }
 
     const item = await this.prisma.paymentMethodConfig.create({
-      data: { orgId, ...dto },
+      data: { ...dto, orgId },
     });
     return this.toDto(item);
   }

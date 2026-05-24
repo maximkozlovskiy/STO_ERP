@@ -26,7 +26,7 @@ export class WarehousesService {
       where: { id: dto.branchId, orgId, deletedAt: null },
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
-    const item = await this.prisma.warehouse.create({ data: { orgId, ...dto } });
+    const item = await this.prisma.warehouse.create({ data: { ...dto, orgId } });
     return this.toDto(item);
   }
 

@@ -31,7 +31,7 @@ export class ZonesService {
       where: { id: dto.branchId, orgId, deletedAt: null },
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
-    const item = await this.prisma.zone.create({ data: { orgId, ...dto } });
+    const item = await this.prisma.zone.create({ data: { ...dto, orgId } });
     return this.toZoneDto(item);
   }
 
@@ -67,7 +67,7 @@ export class ZonesService {
       where: { id: dto.zoneId, orgId, deletedAt: null },
     });
     if (!zone) throw new NotFoundException('Зону не знайдено');
-    const item = await this.prisma.lift.create({ data: { orgId, ...dto } });
+    const item = await this.prisma.lift.create({ data: { ...dto, orgId } });
     return this.toLiftDto(item);
   }
 

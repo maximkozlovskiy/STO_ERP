@@ -266,10 +266,12 @@ export class WorkOrdersService {
         createdBy: userId,
       }, db);
     }
+    const chargeAmount = Number(wo.totalAmount ?? 0);
+    if (chargeAmount <= 0) throw new BadRequestException('Загальна сума наряду дорівнює нулю — завершення неможливе');
     await this.settlements.createTransaction(orgId, {
       counterpartyId: wo.counterpartyId,
       type: 'CHARGE',
-      amount: Number(wo.totalAmount ?? 0),
+      amount: chargeAmount,
       documentType: 'WorkOrder',
       documentId: wo.id,
       createdBy: userId,

@@ -41,7 +41,7 @@ export class GoodsService {
       if (existing) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     }
     const item = await this.prisma.good.create({
-      data: { orgId, ...dto, unit: dto.unit ?? 'шт' },
+      data: { ...dto, orgId, unit: dto.unit ?? 'шт' },
     });
     return this.toDto(item);
   }
