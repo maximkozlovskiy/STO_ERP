@@ -34,6 +34,7 @@ export default function CounterpartyCardPage() {
   const [selectedGarage, setSelectedGarage] = useState<string | null>(null);
   const [showAddGarage, setShowAddGarage] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [garageName, setGarageName] = useState('');
   const [garageAddress, setGarageAddress] = useState('');
 
@@ -56,6 +57,7 @@ export default function CounterpartyCardPage() {
 
   const addGarage = async () => {
     if (!garageName.trim()) return;
+    setSaving(true);
     try {
       await apiFetch<Garage>(`/counterparties/${id}/garages`, {
         method: 'POST', body: JSON.stringify({ name: garageName, address: garageAddress || undefined }),
@@ -63,6 +65,7 @@ export default function CounterpartyCardPage() {
       setGarageName(''); setGarageAddress(''); setShowAddGarage(false);
       load();
     } catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка збереження'); }
+    finally { setSaving(false); }
   };
 
   const displayName = (c: Counterparty) =>
@@ -119,7 +122,7 @@ export default function CounterpartyCardPage() {
             <input value={garageAddress} onChange={e => setGarageAddress(e.target.value)} placeholder="Адреса (необов'язково)"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             <div className="flex gap-2">
-              <button onClick={addGarage} className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Зберегти</button>
+              <button onClick={addGarage} disabled={saving || !garageName.trim()} className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-60">{saving ? '...' : 'Зберегти'}</button>
               <button onClick={() => setShowAddGarage(false)} className="px-4 py-1.5 text-gray-500 text-sm hover:text-gray-700">Скасувати</button>
             </div>
           </div>
