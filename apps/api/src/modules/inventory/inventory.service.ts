@@ -151,6 +151,7 @@ export class InventoryService {
         AND si.min_stock IS NOT NULL
         AND si.quantity <= si.min_stock
       ORDER BY w.name, g.name
+      LIMIT 500
     `;
 
     return rows.map(r => ({

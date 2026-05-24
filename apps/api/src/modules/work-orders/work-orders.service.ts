@@ -159,7 +159,7 @@ export class WorkOrdersService {
   async transition(orgId: string, id: string, newStatus: WorkOrderStatus, userId?: string): Promise<WorkOrderResponseDto> {
     const wo = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { parts: { where: { deletedAt: null } } },
+      include: { parts: { where: { deletedAt: null }, take: 1000 } },
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
 

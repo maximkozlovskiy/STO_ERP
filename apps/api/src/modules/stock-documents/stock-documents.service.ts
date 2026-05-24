@@ -43,7 +43,7 @@ export class StockDocumentsService {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
           targetWarehouse: { select: { name: true } },
-          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       }),
       this.prisma.stockDocument.count({ where }),
@@ -59,7 +59,7 @@ export class StockDocumentsService {
         branch: { select: { name: true } },
         warehouse: { select: { name: true } },
         targetWarehouse: { select: { name: true } },
-        lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
+        lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
       },
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');
@@ -116,7 +116,7 @@ export class StockDocumentsService {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
           targetWarehouse: { select: { name: true } },
-          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
     });
@@ -151,7 +151,7 @@ export class StockDocumentsService {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
           targetWarehouse: { select: { name: true } },
-          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
     });
@@ -162,7 +162,7 @@ export class StockDocumentsService {
   async transition(orgId: string, id: string, newStatus: DocStatus, userId?: string): Promise<StockDocumentResponseDto> {
     const doc = await this.prisma.stockDocument.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { lines: { where: { deletedAt: null } } },
+      include: { lines: { where: { deletedAt: null }, take: 1000 } },
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');
 

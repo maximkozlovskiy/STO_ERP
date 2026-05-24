@@ -41,7 +41,7 @@ export class PurchaseOrdersService {
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
-          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       }),
       this.prisma.purchaseOrder.count({ where }),
@@ -90,7 +90,7 @@ export class PurchaseOrdersService {
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
-          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
     });
@@ -124,7 +124,7 @@ export class PurchaseOrdersService {
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
-          lines: { where: { deletedAt: null }, include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
     });
@@ -150,7 +150,7 @@ export class PurchaseOrdersService {
   async receive(orgId: string, id: string, dto: ReceivePurchaseOrderDto, userId?: string): Promise<PurchaseOrderResponseDto> {
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { lines: { where: { deletedAt: null } } },
+      include: { lines: { where: { deletedAt: null }, take: 1000 } },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
     if (!['ORDERED', 'PARTIAL'].includes(po.status)) {

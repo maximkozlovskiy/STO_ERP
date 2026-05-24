@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma, SettlementTransactionType } from '@prisma/client';
 
@@ -17,6 +17,9 @@ export class SettlementsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createTransaction(orgId: string, dto: CreateTransactionDto, tx?: Prisma.TransactionClient): Promise<void> {
+    if (!Number.isFinite(dto.amount) || dto.amount <= 0) {
+      throw new BadRequestException('Сума транзакції повинна бути більшою за нуль');
+    }
     const run = async (db: Prisma.TransactionClient | PrismaService) => {
       // SettlementAccount has no deletedAt — it's a singleton per counterparty, never soft-deleted
       const account = await db.settlementAccount.findFirst({
