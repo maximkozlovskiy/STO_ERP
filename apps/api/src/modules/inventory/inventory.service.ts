@@ -128,41 +128,42 @@ export class InventoryService {
   }
 
   async findLowStockItems(orgId: string) {
-    // Use raw query for cross-field comparison (quantity <= min_stock) — Prisma doesn't support it in where
+    // Use raw query for cross-field comparison (quantity <= minStock) — Prisma doesn't support it in where.
+    // Prisma schema uses camelCase without @map, so Postgres columns are camelCase and require double quotes.
     const rows = await this.prisma.$queryRaw<Array<{
-      good_id: string; good_name: string; good_sku: string | null; unit: string;
-      warehouse_name: string; quantity: number; min_stock: number;
+      goodId: string; goodName: string; goodSku: string | null; unit: string;
+      warehouseName: string; quantity: number; minStock: number;
     }>>`
       SELECT
-        si.good_id,
-        g.name AS good_name,
-        g.sku  AS good_sku,
-        g.unit,
-        w.name AS warehouse_name,
-        si.quantity,
-        si.min_stock
+        si."goodId"     AS "goodId",
+        g.name          AS "goodName",
+        g.sku           AS "goodSku",
+        g.unit          AS unit,
+        w.name          AS "warehouseName",
+        si.quantity     AS quantity,
+        si."minStock"   AS "minStock"
       FROM stock_items si
-      JOIN goods g ON g.id = si.good_id
-      JOIN warehouses w ON w.id = si.warehouse_id
-      WHERE si.org_id = ${orgId}::uuid
-        AND si.deleted_at IS NULL
-        AND g.deleted_at IS NULL
-        AND w.deleted_at IS NULL
-        AND si.min_stock IS NOT NULL
-        AND si.quantity <= si.min_stock
+      JOIN goods g ON g.id = si."goodId"
+      JOIN warehouses w ON w.id = si."warehouseId"
+      WHERE si."orgId" = ${orgId}::uuid
+        AND si."deletedAt" IS NULL
+        AND g."deletedAt" IS NULL
+        AND w."deletedAt" IS NULL
+        AND si."minStock" IS NOT NULL
+        AND si.quantity <= si."minStock"
       ORDER BY w.name, g.name
       LIMIT 500
     `;
 
     return rows.map(r => ({
-      goodId: r.good_id,
-      goodName: r.good_name,
-      goodSku: r.good_sku,
+      goodId: r.goodId,
+      goodName: r.goodName,
+      goodSku: r.goodSku,
       unit: r.unit,
-      warehouseName: r.warehouse_name,
+      warehouseName: r.warehouseName,
       quantity: r.quantity,
-      minStock: r.min_stock,
-      deficit: r.min_stock - r.quantity,
+      minStock: r.minStock,
+      deficit: r.minStock - r.quantity,
     }));
   }
 }
