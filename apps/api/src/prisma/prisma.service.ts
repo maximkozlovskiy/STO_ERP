@@ -4,14 +4,14 @@ import { PrismaClient } from '@prisma/client';
 // Models that carry syncVersion — auto-incremented on every write, set to 1 on create
 const SYNC_VERSION_MODELS = new Set([
   'Organisation', 'GarageBranch', 'Zone', 'Lift', 'Warehouse',
-  'Employee', 'Counterparty', 'CustomerGarage', 'Vehicle', 'VehicleNode',
+  'Employee', 'AuthAccount', 'Counterparty', 'CustomerGarage', 'Vehicle', 'VehicleNode',
   'WorkCategory', 'Work', 'Good', 'Service',
   'WorkOrder', 'WorkOrderLine', 'WorkOrderPart',
   'StockItem', 'PurchaseOrder', 'PurchaseOrderLine',
   'StockDocument', 'StockDocumentLine',
-  'Invoice', 'CalendarSlot',
+  'Invoice', 'CalendarSlot', 'ReconciliationAct',
   'OrganisationSettings', 'BranchSettings', 'DocumentNumberConfig',
-  'NotificationTemplate', 'TaxRate', 'PaymentMethodConfig',
+  'NotificationTemplate', 'TaxRate', 'PaymentMethodConfig', 'SettlementAccount',
 ]);
 
 // Prisma 5 requires $extends for query middleware — $use was removed in v5
