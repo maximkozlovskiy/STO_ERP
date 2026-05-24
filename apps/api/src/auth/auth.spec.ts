@@ -24,7 +24,7 @@ describe('AuthService', () => {
   const mockRes = {
     cookie: vi.fn(),
     clearCookie: vi.fn(),
-  } as any;
+  } as unknown as import('fastify').FastifyReply;
 
   beforeEach(async () => {
     mockRes.cookie.mockReset();
@@ -78,8 +78,8 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get(AuthService);
-    prisma = module.get(PrismaService) as any;
-    jwtService = module.get(JwtService) as any;
+    prisma = module.get(PrismaService) as unknown as typeof prisma;
+    jwtService = module.get(JwtService) as unknown as typeof jwtService;
   });
 
   describe('login', () => {
