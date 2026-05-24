@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -55,15 +55,18 @@ export default function ReportsPage() {
 
   const [tab, setTab] = useState<Tab>('revenue');
   const kyivDate = (d: Date) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
-  const now = new Date();
-  const [from, setFrom] = useState(() => {
-    const kyivNow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
-    return `${kyivNow.slice(0, 4)}-01-01`;
-  });
-  const [to, setTo] = useState(() => kyivDate(now));
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const now = new Date();
+    const kyivNow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+    setFrom(`${kyivNow.slice(0, 4)}-01-01`);
+    setTo(kyivDate(now));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);

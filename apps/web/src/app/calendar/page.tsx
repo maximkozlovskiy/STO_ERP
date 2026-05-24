@@ -44,7 +44,7 @@ const HOURS = Array.from({ length: 12 }, (_, i) => i + 8); // 08:00–19:00
 export default function CalendarPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
 
-  const [date, setDate] = useState(toDateString(new Date()));
+  const [date, setDate] = useState('');
   const [slots, setSlots] = useState<CalendarSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
@@ -53,11 +53,14 @@ export default function CalendarPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => { setDate(toDateString(new Date())); }, []);
+
   useEffect(() => {
     apiFetch<Lift[]>('/lifts').then(setLifts).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'));
   }, []);
 
   const load = useCallback(() => {
+    if (!date) return;
     setLoading(true);
     apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`).then(setSlots).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   }, [date]);
@@ -103,8 +106,9 @@ export default function CalendarPage() {
   const unassignedSlots = slots.filter(s => !s.liftId);
 
   const formatDate = (ds: string) => {
+    if (!ds) return '';
     const d = new Date(ds);
-    return d.toLocaleDateString('uk-UA', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    return d.toLocaleDateString('uk-UA', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: KYIV_TZ });
   };
 
   return (

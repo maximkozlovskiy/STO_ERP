@@ -139,7 +139,7 @@ export class AuthService {
   private setRefreshCookie(res: FastifyReply, token: string): void {
     res.cookie(REFRESH_COOKIE, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: this.config.get<string>('NODE_ENV') === 'production',
       sameSite: 'strict',
       path: '/api/auth',
       maxAge: REFRESH_COOKIE_MAX_AGE_MS,
