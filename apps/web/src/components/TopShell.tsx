@@ -136,7 +136,7 @@ export function TopShell({ children }: { children: ReactNode }) {
         return (
           <div key={gi} className={cn(gi > 0 && 'pt-3')}>
             {group.label && !collapsed && (
-              <p className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-(--color-sidebar-muted)">
+              <p className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted">
                 {group.label}
               </p>
             )}
@@ -152,11 +152,11 @@ export function TopShell({ children }: { children: ReactNode }) {
                     'flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',
                     collapsed ? 'justify-center px-0 py-2.5' : 'px-2.5 py-2',
                     active
-                      ? 'bg-(--color-sidebar-active) text-white'
-                      : 'text-(--color-sidebar-fg) hover:bg-(--color-sidebar-hover) hover:text-white',
+                      ? 'bg-sidebar-active text-white'
+                      : 'text-sidebar-fg hover:bg-sidebar-hover hover:text-white',
                   )}
                 >
-                  <Icon className="h-[15px] w-[15px] shrink-0" />
+                  <Icon className="h-3.75 w-3.75 shrink-0" />
                   {!collapsed && <span className="truncate leading-none">{item.label}</span>}
                 </Link>
               );
@@ -171,21 +171,21 @@ export function TopShell({ children }: { children: ReactNode }) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className={cn(
-        'flex items-center h-14 border-b border-(--color-sidebar-border) shrink-0 px-3',
+        'flex items-center h-14 border-b border-sidebar-border shrink-0 px-3',
         collapsed ? 'justify-center' : 'justify-between',
       )}>
         {collapsed ? (
-          <Link href="/dashboard" className="flex h-8 w-8 items-center justify-center rounded-lg bg-(--color-primary)">
+          <Link href="/dashboard" className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Wrench className="h-4 w-4 text-white" />
           </Link>
         ) : (
           <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-(--color-primary) shrink-0">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
               <Wrench className="h-4 w-4 text-white" />
             </div>
             <div className="flex flex-col min-w-0">
               <span className="text-[14px] font-bold text-white leading-none tracking-tight">STO ERP</span>
-              <span className="text-[10px] text-(--color-sidebar-muted) leading-none mt-0.5 truncate">Автосервіс</span>
+              <span className="text-[10px] text-sidebar-muted leading-none mt-0.5 truncate">Автосервіс</span>
             </div>
           </Link>
         )}
@@ -193,7 +193,7 @@ export function TopShell({ children }: { children: ReactNode }) {
           onClick={toggleCollapsed}
           className={cn(
             'hidden lg:flex h-7 w-7 items-center justify-center rounded-md transition-colors',
-            'text-(--color-sidebar-muted) hover:text-white hover:bg-(--color-sidebar-hover)',
+            'text-sidebar-muted hover:text-white hover:bg-sidebar-hover',
             collapsed && 'hidden',
           )}
           title={collapsed ? 'Розгорнути' : 'Згорнути'}
@@ -205,15 +205,15 @@ export function TopShell({ children }: { children: ReactNode }) {
       <SidebarNav />
 
       {/* User footer */}
-      <div className="border-t border-(--color-sidebar-border) px-2 py-2.5 shrink-0">
+      <div className="border-t border-sidebar-border px-2 py-2.5 shrink-0">
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-(--color-primary) text-white text-[11px] font-bold">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white text-[11px] font-bold">
               {initials}
             </div>
             <button
               onClick={handleLogout}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-(--color-sidebar-muted) hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
               title="Вийти"
             >
               <LogOut className="h-3.5 w-3.5" />
@@ -221,20 +221,20 @@ export function TopShell({ children }: { children: ReactNode }) {
           </div>
         ) : (
           <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-(--color-primary) text-white text-[11px] font-bold shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white text-[11px] font-bold shrink-0">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-[12px] font-semibold text-white leading-tight truncate">
                 {employee.firstName} {employee.lastName}
               </div>
-              <div className="text-[11px] text-(--color-sidebar-muted) leading-tight truncate">
+              <div className="text-[11px] text-sidebar-muted leading-tight truncate">
                 {ROLE_LABELS[role] ?? role}
               </div>
             </div>
             <button
               onClick={handleLogout}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-(--color-sidebar-muted) hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
               title="Вийти"
             >
               <LogOut className="h-3.5 w-3.5" />
@@ -246,17 +246,17 @@ export function TopShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-(--color-background)">
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop sidebar */}
       <aside className={cn(
-        'hidden lg:flex flex-col flex-shrink-0 bg-(--color-sidebar-bg) transition-[width] duration-200 ease-in-out',
-        collapsed ? 'w-[52px]' : 'w-[216px]',
+        'hidden lg:flex flex-col shrink-0 bg-sidebar-bg transition-[width] duration-200 ease-in-out',
+        collapsed ? 'w-13' : 'w-54',
       )}>
         <SidebarContent />
         {collapsed && (
           <button
             onClick={toggleCollapsed}
-            className="absolute top-[54px] left-[40px] hidden lg:flex h-5 w-5 items-center justify-center rounded-full bg-(--color-primary) text-white shadow-md z-10"
+            className="absolute top-13.5 left-10 hidden lg:flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white shadow-md z-10"
             title="Розгорнути"
           >
             <ChevronRight className="h-3 w-3" />
@@ -268,7 +268,7 @@ export function TopShell({ children }: { children: ReactNode }) {
       {mobileOpen && (
         <>
           <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
-          <aside className="fixed inset-y-0 left-0 w-[216px] flex flex-col bg-(--color-sidebar-bg) z-50 lg:hidden shadow-xl">
+          <aside className="fixed inset-y-0 left-0 w-54 flex flex-col bg-sidebar-bg z-50 lg:hidden shadow-xl">
             <SidebarContent />
           </aside>
         </>
@@ -277,16 +277,16 @@ export function TopShell({ children }: { children: ReactNode }) {
       {/* Main */}
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         {/* Mobile topbar */}
-        <header className="flex lg:hidden items-center gap-3 px-4 h-12 bg-white border-b border-(--color-border) shrink-0">
+        <header className="flex lg:hidden items-center gap-3 px-4 h-12 bg-white border-b border-border shrink-0">
           <button
             onClick={() => setMobileOpen(true)}
-            className="p-1.5 rounded-lg hover:bg-(--color-secondary) text-foreground-muted transition-colors"
+            className="p-1.5 rounded-lg hover:bg-secondary text-foreground-muted transition-colors"
             aria-label="Відкрити меню"
           >
             <Menu className="h-5 w-5" />
           </button>
           <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-(--color-primary)">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
               <Wrench className="h-3.5 w-3.5 text-white" />
             </div>
             <span className="text-[14px] font-bold text-foreground">STO ERP</span>

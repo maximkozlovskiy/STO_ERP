@@ -16,31 +16,31 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const base =
   'inline-flex items-center justify-center gap-2 font-medium select-none whitespace-nowrap ' +
-  'rounded-[var(--radius)] transition-all duration-150 ' +
+  'rounded transition-all duration-150 ' +
   'disabled:opacity-50 disabled:pointer-events-none ' +
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ring)]';
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
 
 const variants: Record<Variant, string> = {
   default:
-    'border border-[var(--color-border)] bg-white text-[var(--color-foreground)] ' +
-    'hover:bg-[var(--color-secondary)] hover:border-[var(--color-border-hover)] active:scale-[0.98]',
+    'border border-border bg-white text-foreground ' +
+    'hover:bg-secondary hover:border-border-hover active:scale-[0.98]',
   primary:
-    'bg-[var(--color-primary)] text-white shadow-[0_1px_2px_rgb(0_0_0/0.12)] ' +
-    'hover:bg-[var(--color-primary-hover)] active:scale-[0.98]',
+    'bg-primary text-white shadow-[0_1px_2px_rgb(0_0_0/0.12)] ' +
+    'hover:bg-primary-hover active:scale-[0.98]',
   secondary:
-    'bg-[var(--color-secondary)] text-[var(--color-secondary-foreground)] ' +
+    'bg-secondary text-secondary-foreground ' +
     'hover:bg-[hsl(210_40%_92%)] active:scale-[0.98]',
   outline:
-    'border border-[var(--color-border)] bg-white text-[var(--color-foreground)] ' +
-    'hover:bg-[var(--color-secondary)] hover:border-[var(--color-border-hover)] active:scale-[0.98]',
+    'border border-border bg-white text-foreground ' +
+    'hover:bg-secondary hover:border-border-hover active:scale-[0.98]',
   ghost:
-    'text-[var(--color-foreground-muted)] ' +
-    'hover:bg-[var(--color-secondary)] hover:text-[var(--color-foreground)] active:scale-[0.98]',
+    'text-foreground-muted ' +
+    'hover:bg-secondary hover:text-foreground active:scale-[0.98]',
   destructive:
-    'bg-[var(--color-destructive)] text-white shadow-[0_1px_2px_rgb(0_0_0/0.12)] ' +
+    'bg-destructive text-white shadow-[0_1px_2px_rgb(0_0_0/0.12)] ' +
     'hover:bg-[hsl(0_84%_52%)] active:scale-[0.98]',
   link:
-    'text-[var(--color-primary)] underline-offset-4 hover:underline p-0 h-auto',
+    'text-primary underline-offset-4 hover:underline p-0 h-auto',
 };
 
 const sizes: Record<Size, string> = {

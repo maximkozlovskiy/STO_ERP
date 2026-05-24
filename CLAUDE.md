@@ -30,17 +30,18 @@ sto-erp/
 └── CLAUDE.md
 ```
 
-## Скіли — завантажувати ��а початку сесії
+## Скіли — завантажувати на початку сесії
 ```
 /sto-context    <- ЗАВЖДИ ПЕРШИМ
 /sto-analyst    <- для вимог та бізнес-процесів
 /sto-feature    <- для планування фічей
 /sto-architect  <- для архітектурних рішень (ADR)
 /sto-database   <- для змін Prisma schema
-/sto-backend    <- для NestJS модулів
-/sto-web        <- для Next.js UI
+/sto-backend    <- для NestJS модулів (читай /sto-dev перед написанням)
+/sto-web        <- для Next.js UI (читай /sto-dev перед написанням)
 /sto-mobile     <- для Expo додатку
-/sto-review     <- для code review
+/sto-dev        <- стандарти написання коду: TS, NestJS, Next.js, Tailwind, Prisma
+/sto-review     <- для code review (перевіряє що /sto-dev дотриманий)
 /sto-tester     <- для тестування: знаходить баги, фіксує, виправляє
 /sto-installer  <- для Windows installer
 /sto-git        <- для git: commit, branch, changelog, статус
@@ -48,8 +49,11 @@ sto-erp/
 
 ## Типовий workflow нової фічі
 ```
-/sto-context -> /sto-analyst -> /sto-feature -> /sto-database -> /sto-backend -> /sto-web -> /sto-review -> /sto-tester
+/sto-context -> /sto-analyst -> /sto-feature -> /sto-database -> /sto-dev -> /sto-backend -> /sto-web -> /sto-review -> /sto-tester
 ```
+
+> `/sto-dev` читається **перед** `/sto-backend` і `/sto-web` — задає стандарти написання,  
+> щоб `/sto-review` знаходив 0 проблем.
 
 ## Автоматичне QA після кожного завдання (ОБОВ'ЯЗКОВО)
 
@@ -67,11 +71,11 @@ sto-erp/
 > "Цей баг/проблема були охоплені існуючим чеклістом?"
 
 Якщо **НІ** — одразу оновити відповідний скіл:
-- Новий патерн помилки → додати пункт у відповідну секцію
-- Новий grep для автоматичного виявлення → додати bash команду
-- Бізнес-логіка специфічна для STO ERP (FSM, інвентар, розрахунки) → секція Business Rules
-- Повторюваний anti-pattern → додати приклад ❌/✅
-- Commit: `docs(skills): add <pattern> check to sto-review` або `sto-tester`
+- Новий патерн помилки → додати до `/sto-dev` (❌/✅ приклад) + `/sto-review` (checklist item)
+- Новий grep для автоматичного виявлення → додати bash команду в `/sto-review`
+- Бізнес-логіка специфічна для STO ERP (FSM, інвентар, розрахунки) → `/sto-dev` Business Rules + `/sto-review`
+- Tailwind/TS/Prisma паттерн → тільки `/sto-dev` (одне місце правди)
+- Commit: `docs(skills): add <pattern> check to sto-dev/sto-review/sto-tester`
 
 Скіли мають відображати **реальні баги які траплялись** — не гіпотетичні.
 

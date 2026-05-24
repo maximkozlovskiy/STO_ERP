@@ -21,15 +21,15 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="text-[13px] font-medium text-[var(--color-foreground)] leading-none"
+            className="text-[13px] font-medium text-foreground leading-none"
           >
             {label}
-            {props.required && <span className="ml-0.5 text-[var(--color-destructive)]">*</span>}
+            {props.required && <span className="ml-0.5 text-destructive">*</span>}
           </label>
         )}
         <div className="relative flex items-center">
           {leftElement && (
-            <span className="pointer-events-none absolute left-3 flex items-center text-[var(--color-muted-foreground)] [&>svg]:h-4 [&>svg]:w-4">
+            <span className="pointer-events-none absolute left-3 flex items-center text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">
               {leftElement}
             </span>
           )}
@@ -37,14 +37,14 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             className={cn(
-              'h-9 w-full rounded-[var(--radius)] border text-[14px] text-[var(--color-foreground)]',
-              'bg-white placeholder:text-[var(--color-muted-foreground)]',
+              'h-9 w-full rounded border text-[14px] text-foreground',
+              'bg-white placeholder:text-muted-foreground',
               'px-3 py-2 outline-none transition-all duration-150',
-              'border-[var(--color-border)]',
-              'hover:border-[var(--color-border-hover)]',
-              'focus:border-[var(--color-primary)] focus:ring-3 focus:ring-[var(--color-brand-100)]',
-              'disabled:bg-[var(--color-secondary)] disabled:opacity-60 disabled:cursor-not-allowed',
-              hasError && 'border-[var(--color-destructive)] focus:ring-[hsl(0_86%_93%)]',
+              'border-border',
+              'hover:border-border-hover',
+              'focus:border-primary focus:ring-3 focus:ring-brand-100',
+              'disabled:bg-secondary disabled:opacity-60 disabled:cursor-not-allowed',
+              hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)',
               leftElement  && 'pl-9',
               rightElement && 'pr-9',
               className,
@@ -54,18 +54,18 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             {...props}
           />
           {rightElement && (
-            <span className="absolute right-3 flex items-center text-[var(--color-muted-foreground)] [&>svg]:h-4 [&>svg]:w-4">
+            <span className="absolute right-3 flex items-center text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">
               {rightElement}
             </span>
           )}
         </div>
         {hasError && (
-          <p id={`${inputId}-error`} className="text-[12px] text-[var(--color-destructive)] leading-tight">
+          <p id={`${inputId}-error`} className="text-[12px] text-destructive leading-tight">
             {errorMessage}
           </p>
         )}
         {!hasError && hint && (
-          <p id={`${inputId}-hint`} className="text-[12px] text-[var(--color-muted-foreground)] leading-tight">
+          <p id={`${inputId}-hint`} className="text-[12px] text-muted-foreground leading-tight">
             {hint}
           </p>
         )}

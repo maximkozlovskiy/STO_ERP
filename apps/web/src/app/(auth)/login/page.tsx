@@ -30,11 +30,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-(--color-background)">
+    <div className="min-h-screen flex bg-background">
       {/* Left panel — brand */}
-      <div className="hidden lg:flex lg:w-[420px] flex-col justify-between p-10 bg-(--color-sidebar-bg) text-white shrink-0">
+      <div className="hidden lg:flex lg:w-105 flex-col justify-between p-10 bg-sidebar-bg text-white shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-(--color-primary)">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
             <Wrench className="h-5 w-5 text-white" />
           </div>
           <span className="text-[16px] font-bold tracking-tight">STO ERP</span>
@@ -45,7 +45,7 @@ export default function LoginPage() {
             <h1 className="text-[32px] font-bold leading-tight tracking-tight">
               Система управління<br />автосервісом
             </h1>
-            <p className="text-[15px] text-(--color-sidebar-muted) leading-relaxed">
+            <p className="text-[15px] text-sidebar-muted leading-relaxed">
               Наряди, склад, фінанси, CRM — все в одному місці. Працює повністю офлайн.
             </p>
           </div>
@@ -57,15 +57,15 @@ export default function LoginPage() {
               'Фінанси та розрахунки',
               'CRM та клієнтська база',
             ].map(f => (
-              <div key={f} className="flex items-center gap-2.5 text-[13px] text-(--color-sidebar-fg)">
-                <div className="h-1.5 w-1.5 rounded-full bg-(--color-primary) shrink-0" />
+              <div key={f} className="flex items-center gap-2.5 text-[13px] text-sidebar-fg">
+                <div className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
                 {f}
               </div>
             ))}
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-[12px] text-(--color-sidebar-muted)">
+        <div className="flex items-center gap-2 text-[12px] text-sidebar-muted">
           <Wifi className="h-3.5 w-3.5" />
           Офлайн-система — не потребує інтернету
         </div>
@@ -73,10 +73,10 @@ export default function LoginPage() {
 
       {/* Right panel — form */}
       <div className="flex flex-1 items-center justify-center p-6">
-        <div className="w-full max-w-[360px]">
+        <div className="w-full max-w-90">
           {/* Mobile logo */}
           <div className="flex lg:hidden items-center gap-2.5 mb-8 justify-center">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-(--color-primary)">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
               <Wrench className="h-5 w-5 text-white" />
             </div>
             <span className="text-[18px] font-bold text-foreground">STO ERP</span>

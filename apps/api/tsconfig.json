@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "ignoreDeprecations": "5.0",
     "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
@@ -11,7 +12,6 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "outDir": "./dist",
-    "baseUrl": ".",
     "paths": {
       "@sto/shared": ["../../packages/shared/src"]
     }

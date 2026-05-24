@@ -13,24 +13,24 @@ interface BadgeProps {
 }
 
 const variants: Record<BadgeVariant, string> = {
-  default:     'bg-[var(--color-brand-100)] text-[var(--color-brand-800)] border-[var(--color-brand-200)]',
-  secondary:   'bg-[var(--color-secondary)] text-[var(--color-foreground-muted)] border-transparent',
-  outline:     'bg-transparent text-[var(--color-foreground-muted)] border-[var(--color-border)]',
-  success:     'bg-[var(--color-success-subtle)] text-[hsl(142_71%_30%)] border-[hsl(142_71%_78%)]',
-  warning:     'bg-[var(--color-warning-subtle)] text-[hsl(26_83%_30%)] border-[hsl(38_92%_72%)]',
-  destructive: 'bg-[var(--color-destructive-subtle)] text-[hsl(0_84%_42%)] border-[hsl(0_84%_80%)]',
-  info:        'bg-[var(--color-info-subtle)] text-[hsl(199_89%_30%)] border-[hsl(199_89%_72%)]',
+  default:     'bg-brand-100 text-brand-800 border-brand-200',
+  secondary:   'bg-secondary text-foreground-muted border-transparent',
+  outline:     'bg-transparent text-foreground-muted border-border',
+  success:     'bg-success-subtle text-[hsl(142_71%_30%)] border-[hsl(142_71%_78%)]',
+  warning:     'bg-warning-subtle text-[hsl(26_83%_30%)] border-[hsl(38_92%_72%)]',
+  destructive: 'bg-destructive-subtle text-[hsl(0_84%_42%)] border-[hsl(0_84%_80%)]',
+  info:        'bg-info-subtle text-[hsl(199_89%_30%)] border-[hsl(199_89%_72%)]',
   purple:      'bg-[hsl(270_100%_97%)] text-[hsl(262_83%_44%)] border-[hsl(270_88%_82%)]',
 };
 
 const dotColors: Record<BadgeVariant, string> = {
-  default:     'bg-[var(--color-brand-500)]',
-  secondary:   'bg-[var(--color-foreground-muted)]',
-  outline:     'bg-[var(--color-foreground-muted)]',
-  success:     'bg-[var(--color-success)]',
-  warning:     'bg-[var(--color-warning)]',
-  destructive: 'bg-[var(--color-destructive)]',
-  info:        'bg-[var(--color-info)]',
+  default:     'bg-brand-500',
+  secondary:   'bg-foreground-muted',
+  outline:     'bg-foreground-muted',
+  success:     'bg-success',
+  warning:     'bg-warning',
+  destructive: 'bg-destructive',
+  info:        'bg-info',
   purple:      'bg-[hsl(262_83%_58%)]',
 };
 
