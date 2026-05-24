@@ -132,7 +132,7 @@ export class PaymentsService {
 
   private toDto(p: {
     id: string; orgId: string; counterpartyId: string; workOrderId: string | null;
-    invoiceId: string | null; amount: { toString(): string }; method: string;
+    invoiceId: string | null; amount: import('@prisma/client').Prisma.Decimal; method: string;
     notes: string | null; fiscalReceiptId: string | null; createdAt: Date;
     counterparty: { companyName: string | null; lastName: string | null; firstName: string | null } | null;
   }): PaymentResponseDto {

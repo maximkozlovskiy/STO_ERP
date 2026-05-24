@@ -7,7 +7,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrderStatus } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
-import { WORK_ORDER_TRANSITIONS, CLOSED_STATUSES, DELETABLE_STATUSES, RESERVATION_ACTIVE_STATUSES } from './work-orders.fsm';
+import { WORK_ORDER_TRANSITIONS, CLOSED_STATUSES, DELETABLE_STATUSES, RESERVATION_ACTIVE_STATUSES, EDITABLE_STATUSES } from './work-orders.fsm';
 import {
   CreateWorkOrderDto, UpdateWorkOrderDto, WorkOrderQueryDto,
   WorkOrderResponseDto, WorkOrderDetailDto, PaginatedWorkOrdersDto,
@@ -241,7 +241,7 @@ export class WorkOrdersService {
     }
   }
 
-  private async writeOffPartsAndCharge(orgId: string, wo: { id: string; counterpartyId: string; totalAmount: { toString(): string } }, userId?: string, tx?: Prisma.TransactionClient): Promise<void> {
+  private async writeOffPartsAndCharge(orgId: string, wo: { id: string; counterpartyId: string; totalAmount: Prisma.Decimal | null }, userId?: string, tx?: Prisma.TransactionClient): Promise<void> {
     const db = tx ?? this.prisma;
     const parts = await db.workOrderPart.findMany({ where: { workOrderId: wo.id, deletedAt: null } });
     for (const part of parts) {
@@ -269,7 +269,7 @@ export class WorkOrdersService {
     await this.settlements.createTransaction(orgId, {
       counterpartyId: wo.counterpartyId,
       type: 'CHARGE',
-      amount: Number(wo.totalAmount),
+      amount: Number(wo.totalAmount ?? 0),
       documentType: 'WorkOrder',
       documentId: wo.id,
       createdBy: userId,
@@ -398,8 +398,7 @@ export class WorkOrdersService {
   private async getEditableWorkOrder(orgId: string, workOrderId: string) {
     const wo = await this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    const editableStatuses: WorkOrderStatus[] = ['DRAFT', 'ESTIMATE', 'APPROVED'];
-    if (!editableStatuses.includes(wo.status)) {
+    if (!EDITABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
     }
     return wo;
@@ -410,8 +409,8 @@ export class WorkOrdersService {
       tx.workOrderLine.findMany({ where: { workOrderId, orgId, deletedAt: null }, select: { amount: true } }),
       tx.workOrderPart.findMany({ where: { workOrderId, orgId, deletedAt: null }, select: { amount: true } }),
     ]);
-    const totalLabor = lines.reduce((s: number, l: { amount: object }) => s + Number(l.amount), 0);
-    const totalParts = parts.reduce((s: number, p: { amount: object }) => s + Number(p.amount), 0);
+    const totalLabor = lines.reduce((s: number, l: { amount: Prisma.Decimal }) => s + Number(l.amount), 0);
+    const totalParts = parts.reduce((s: number, p: { amount: Prisma.Decimal }) => s + Number(p.amount), 0);
     await tx.workOrder.update({
       where: { id: workOrderId, orgId },
       data: { totalLabor, totalParts, totalAmount: totalLabor + totalParts },
@@ -421,11 +420,11 @@ export class WorkOrdersService {
   // ─── Mappers ─────────────────────────────────────────────
 
   private toDto(wo: {
-    id: string; orgId: string; number: string; status: string;
+    id: string; orgId: string; number: string; status: WorkOrderStatus;
     branchId: string; vehicleId: string; counterpartyId: string;
     description: string | null; inMileage: number | null; outMileage: number | null;
     plannedAt: Date | null; completedAt: Date | null;
-    totalLabor: object; totalParts: object; totalAmount: object; paidAmount: object;
+    totalLabor: Prisma.Decimal; totalParts: Prisma.Decimal; totalAmount: Prisma.Decimal; paidAmount: Prisma.Decimal | null;
     createdAt: Date; updatedAt: Date;
     branch?: { name: string } | null;
     vehicle?: { make: string; model: string; licensePlate: string | null } | null;
@@ -443,14 +442,14 @@ export class WorkOrdersService {
       inMileage: wo.inMileage ?? null, outMileage: wo.outMileage ?? null,
       plannedAt: wo.plannedAt ?? null, completedAt: wo.completedAt ?? null,
       totalLabor: Number(wo.totalLabor), totalParts: Number(wo.totalParts),
-      totalAmount: Number(wo.totalAmount), paidAmount: Number(wo.paidAmount),
+      totalAmount: Number(wo.totalAmount), paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,
       createdAt: wo.createdAt, updatedAt: wo.updatedAt,
     };
   }
 
   private toLineDto(line: {
     id: string; workOrderId: string; workId: string; employeeId: string; liftId: string | null;
-    normoHours: number; price: object; amount: object; notes: string | null; createdAt: Date;
+    normoHours: number; price: Prisma.Decimal; amount: Prisma.Decimal; notes: string | null; createdAt: Date;
     work?: { name: string } | null;
     employee?: { firstName: string; lastName: string } | null;
   }): WorkOrderLineResponseDto {
@@ -467,7 +466,7 @@ export class WorkOrdersService {
 
   private toPartDto(part: {
     id: string; workOrderId: string; goodId: string; warehouseId: string;
-    quantity: number; price: object; amount: object; createdAt: Date;
+    quantity: number; price: Prisma.Decimal; amount: Prisma.Decimal; createdAt: Date;
     good?: { name: string } | null;
   }): WorkOrderPartResponseDto {
     return {

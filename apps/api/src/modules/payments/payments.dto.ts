@@ -1,4 +1,4 @@
-import { IsUUID, IsOptional, IsNumber, Min, IsString } from 'class-validator';
+import { IsUUID, IsOptional, IsNumber, Min, IsString, IsNotEmpty } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreatePaymentDto {
@@ -6,7 +6,7 @@ export class CreatePaymentDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() workOrderId?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() invoiceId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
-  @ApiProperty() @IsString() method!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() method!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 

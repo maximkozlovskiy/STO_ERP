@@ -110,7 +110,7 @@ export default function WorkOrderCardPage() {
   const load = useCallback(() => {
     apiFetch<WorkOrderDetail>(`/work-orders/${id}`)
       .then(setWo)
-      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження наряду'));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження наряду'));
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
@@ -154,8 +154,10 @@ export default function WorkOrderCardPage() {
 
   const removeLine = async (lineId: string) => {
     if (!confirm('Видалити роботу?')) return;
+    setSaving(true); setError('');
     try { await apiFetch(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setSaving(false); }
   };
 
   const addPart = async () => {
@@ -179,8 +181,10 @@ export default function WorkOrderCardPage() {
 
   const removePart = async (partId: string) => {
     if (!confirm('Видалити запчастину?')) return;
+    setSaving(true); setError('');
     try { await apiFetch(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setSaving(false); }
   };
 
   const transition = async (newStatus: string) => {

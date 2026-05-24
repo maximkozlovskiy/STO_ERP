@@ -16,6 +16,7 @@ export const WORK_ORDER_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> 
 export const CLOSED_STATUSES: WorkOrderStatus[] = ['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED', 'CANCELLED'];
 export const DELETABLE_STATUSES: WorkOrderStatus[] = ['DRAFT', 'CANCELLED'];
 export const RESERVATION_ACTIVE_STATUSES: WorkOrderStatus[] = ['IN_PROGRESS', 'ON_HOLD'];
+export const EDITABLE_STATUSES: WorkOrderStatus[] = ['DRAFT', 'ESTIMATE', 'APPROVED'];
 
 export const STATUS_LABELS: Record<WorkOrderStatus, string> = {
   DRAFT:       'Чернетка',

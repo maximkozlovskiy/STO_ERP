@@ -53,9 +53,13 @@ export default function DashboardPage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const today = new Date().toISOString().slice(0, 10);
-        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
-        const weekStart = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
+        const kyivDate = (d: Date) =>
+          new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
+        const today = kyivDate(new Date());
+        const now = new Date();
+        const kyivNow = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now));
+        const monthStart = kyivDate(new Date(kyivNow.getFullYear(), kyivNow.getMonth(), 1));
+        const weekStart = kyivDate(new Date(Date.now() - 6 * 86_400_000));
 
         const [orders, lowStock, invoices, revenueData] = await Promise.allSettled([
           apiFetch<PaginatedWorkOrders>('/work-orders?limit=200'),
@@ -103,7 +107,7 @@ export default function DashboardPage() {
   if (!employee) return null;
 
   const greeting = () => {
-    const h = new Date().getHours();
+    const h = parseInt(new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', hour: 'numeric', hour12: false }).format(new Date()), 10);
     if (h < 12) return 'Доброго ранку';
     if (h < 18) return 'Доброго дня';
     return 'Доброго вечора';

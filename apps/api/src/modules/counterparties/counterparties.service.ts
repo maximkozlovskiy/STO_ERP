@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CounterpartyType } from '@prisma/client';
+import { CounterpartyType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CounterpartyQueryDto, CounterpartyResponseDto, CreateCounterpartyDto,
@@ -37,7 +37,7 @@ export class CounterpartiesService {
     ]);
 
     return {
-      items: items.map(this.toDto),
+      items: items.map(item => this.toDto(item)),
       total, page: query.page, limit: query.limit,
     };
   }
@@ -59,7 +59,7 @@ export class CounterpartiesService {
         data: { orgId, counterpartyId: cp.id, balance: 0 },
       });
       return tx.counterparty.findFirstOrThrow({
-        where: { id: cp.id, deletedAt: null },
+        where: { id: cp.id, orgId, deletedAt: null },
         include: { settlementAccount: { select: { balance: true } } },
       });
     });
@@ -91,7 +91,7 @@ export class CounterpartiesService {
       where: { counterpartyId, orgId, deletedAt: null },
       orderBy: { name: 'asc' },
     });
-    return items.map(this.toGarageDto);
+    return items.map(item => this.toGarageDto(item));
   }
 
   async createGarage(orgId: string, counterpartyId: string, dto: CreateGarageDto): Promise<GarageResponseDto> {
@@ -115,7 +115,7 @@ export class CounterpartiesService {
     id: string; orgId: string; type: string; firstName: string | null; lastName: string | null;
     companyName: string | null; edrpou: string | null; vatPayer: boolean; phone: string | null;
     email: string | null; notes: string | null; createdAt: Date; updatedAt: Date;
-    settlementAccount: { balance: object } | null;
+    settlementAccount: { balance: Prisma.Decimal } | null;
   }, includeEdrpou = false): CounterpartyResponseDto {
     return {
       id: item.id, orgId: item.orgId, type: item.type as CounterpartyType,
