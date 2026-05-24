@@ -135,7 +135,7 @@ export default function WorkOrderCardPage() {
   const addLine = async () => {
     setSaving(true); setError('');
     try {
-      await apiFetch(`/work-orders/${id}/lines`, {
+      await apiFetch<WorkOrderLine>(`/work-orders/${id}/lines`, {
         method: 'POST',
         body: JSON.stringify({
           workId: lineForm.workId,
@@ -155,7 +155,7 @@ export default function WorkOrderCardPage() {
   const removeLine = async (lineId: string) => {
     if (!confirm('Видалити роботу?')) return;
     setSaving(true); setError('');
-    try { await apiFetch(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' }); load(); }
+    try { await apiFetch<void>(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
     finally { setSaving(false); }
   };
@@ -163,7 +163,7 @@ export default function WorkOrderCardPage() {
   const addPart = async () => {
     setSaving(true); setError('');
     try {
-      await apiFetch(`/work-orders/${id}/parts`, {
+      await apiFetch<WorkOrderPart>(`/work-orders/${id}/parts`, {
         method: 'POST',
         body: JSON.stringify({
           goodId: partForm.goodId,
@@ -182,7 +182,7 @@ export default function WorkOrderCardPage() {
   const removePart = async (partId: string) => {
     if (!confirm('Видалити запчастину?')) return;
     setSaving(true); setError('');
-    try { await apiFetch(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' }); load(); }
+    try { await apiFetch<void>(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
     finally { setSaving(false); }
   };
@@ -192,7 +192,7 @@ export default function WorkOrderCardPage() {
     if (!confirm(`Перевести наряд у статус "${label}"?`)) return;
     setTransitioning(true); setError('');
     try {
-      await apiFetch(`/work-orders/${id}/transition`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
+      await apiFetch<WorkOrderDetail>(`/work-orders/${id}/transition`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка переходу'); }
     finally { setTransitioning(false); }

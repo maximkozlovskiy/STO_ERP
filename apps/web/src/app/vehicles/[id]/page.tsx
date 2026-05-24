@@ -40,7 +40,7 @@ export default function VehicleCardPage() {
   const addNode = async () => {
     setSaving(true);
     try {
-      await apiFetch(`/vehicles/${id}/nodes`, {
+      await apiFetch<VehicleNode>(`/vehicles/${id}/nodes`, {
         method: 'POST',
         body: JSON.stringify({
           category: nodeForm.category,
@@ -58,7 +58,7 @@ export default function VehicleCardPage() {
 
   const removeNode = async (nodeId: string) => {
     if (!confirm('Видалити вузол?')) return;
-    try { await apiFetch(`/vehicles/${id}/nodes/${nodeId}`, { method: 'DELETE' }); load(); }
+    try { await apiFetch<void>(`/vehicles/${id}/nodes/${nodeId}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка видалення'); }
   };
 

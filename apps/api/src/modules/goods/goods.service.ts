@@ -65,7 +65,7 @@ export class GoodsService {
 
   private toDto(item: {
     id: string; orgId: string; sku: string | null; name: string; unit: string;
-    purchasePrice: object | null; salePrice: object; category: string | null;
+    purchasePrice: import('@prisma/client').Prisma.Decimal | null; salePrice: import('@prisma/client').Prisma.Decimal; category: string | null;
     barcode: string | null; notes: string | null; createdAt: Date; updatedAt: Date;
   }): GoodResponseDto {
     return {

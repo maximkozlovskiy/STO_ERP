@@ -86,7 +86,7 @@ export default function StockDocumentsPage() {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (typeFilter) params.set('type', typeFilter);
       if (statusFilter) params.set('status', statusFilter);
-      const data: Paginated = await apiFetch(`/stock-documents?${params}`);
+      const data = await apiFetch<Paginated>(`/stock-documents?${params}`);
       setDocs(data.items);
       setTotal(data.total);
     } catch (e: unknown) {
@@ -101,13 +101,13 @@ export default function StockDocumentsPage() {
   useEffect(() => {
     if (showCreate) {
       Promise.all([
-        apiFetch('/branches'),
-        apiFetch('/warehouses'),
-        apiFetch('/goods?limit=200'),
+        apiFetch<Branch[] | { items: Branch[] }>('/branches'),
+        apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses'),
+        apiFetch<{ items: Good[] } | Good[]>('/goods?limit=200'),
       ]).then(([b, w, g]) => {
-        setBranches(b.items ?? b);
-        setWarehouses(w.items ?? w);
-        setGoods(g.items ?? g);
+        setBranches(Array.isArray(b) ? b : b.items);
+        setWarehouses(Array.isArray(w) ? w : w.items);
+        setGoods(Array.isArray(g) ? g : g.items);
       }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
     }
   }, [showCreate]);
@@ -115,7 +115,7 @@ export default function StockDocumentsPage() {
   const handleCreate = async () => {
     setSaving(true);
     try {
-      await apiFetch('/stock-documents', {
+      await apiFetch<StockDoc>('/stock-documents', {
         method: 'POST',
         body: JSON.stringify({
           type: form.type,
@@ -145,7 +145,7 @@ export default function StockDocumentsPage() {
     setSaving(true);
     setError('');
     try {
-      await apiFetch(`/stock-documents/${doc.id}/transition`, {
+      await apiFetch<StockDoc>(`/stock-documents/${doc.id}/transition`, {
         method: 'POST', body: JSON.stringify({ status: newStatus }),
       });
       setShowDetail(null);
