@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, FileText } from 'lucide-react';
+import { Plus, FileText, Eye, EyeOff } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { DetailPanel } from '@/components/ui/detail-panel';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
@@ -31,6 +32,7 @@ interface StockDoc {
   notes: string | null; confirmedAt: string | null;
   lines: DocLine[];
   createdAt: string; updatedAt: string;
+  deletedAt?: string | null;
 }
 interface Paginated { items: StockDoc[]; total: number; page: number; limit: number; }
 
@@ -55,9 +57,11 @@ export default function StockDocumentsPage() {
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const [selectedDoc, setSelectedDoc] = useState<StockDoc | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
 
@@ -80,6 +84,7 @@ export default function StockDocumentsPage() {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (typeFilter) params.set('type', typeFilter);
       if (statusFilter) params.set('status', statusFilter);
+      if (showDeleted) params.set('showDeleted', 'true');
       const data = await apiFetch<Paginated>(`/stock-documents?${params}`);
       setDocs(data.items);
       setTotal(data.total);
@@ -88,7 +93,7 @@ export default function StockDocumentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, typeFilter, statusFilter]);
+  }, [page, typeFilter, statusFilter, showDeleted]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -178,6 +183,7 @@ export default function StockDocumentsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
+        {/* Type filters */}
         <div className="flex gap-1.5">
           {types.map(t => (
             <button
@@ -194,6 +200,7 @@ export default function StockDocumentsPage() {
             </button>
           ))}
         </div>
+        {/* Status filters */}
         <div className="flex gap-1.5">
           {statuses.map(s => (
             <button
@@ -210,65 +217,169 @@ export default function StockDocumentsPage() {
             </button>
           ))}
         </div>
+        {/* Show deleted */}
+        <button
+          onClick={() => { setShowDeleted(v => !v); setPage(1); }}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+            showDeleted
+              ? 'bg-destructive/10 text-destructive border-destructive/30'
+              : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
+          )}
+        >
+          {showDeleted ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          Показати видалені
+        </button>
       </div>
 
-      {/* Table */}
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Номер</TableHead>
-              <TableHead>Тип</TableHead>
-              <TableHead>Склад</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead className="text-right">Позицій</TableHead>
-              <TableHead>Дата</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
+      {/* Table + DetailPanel */}
+      <div className="flex gap-0">
+        <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
-                </TableCell>
+                <TableHead>Номер</TableHead>
+                <TableHead>Тип</TableHead>
+                <TableHead>Склад</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead className="text-right">Позицій</TableHead>
+                <TableHead>Дата</TableHead>
+                <TableHead />
               </TableRow>
-            )}
-            {!loading && docs.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="p-0">
-                  <EmptyState icon={FileText} title="Документів не знайдено" />
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && docs.map(doc => (
-              <TableRow key={doc.id}>
-                <TableCell className="font-mono font-medium text-foreground">{doc.number}</TableCell>
-                <TableCell>
-                  <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>
-                    {TYPE_LABELS[doc.type]}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-foreground-muted">
-                  {doc.warehouseName}
-                  {doc.targetWarehouseName && <span className="text-muted-foreground"> → {doc.targetWarehouseName}</span>}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>
-                    {STATUS_LABELS[doc.status]}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right text-muted-foreground">{doc.lines.length}</TableCell>
-                <TableCell className="text-foreground-faint text-xs">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="sm" onClick={() => setShowDetail(doc)}>
-                    Деталі
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && docs.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="p-0">
+                    <EmptyState icon={FileText} title="Документів не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && docs.map(doc => (
+                <TableRow
+                  key={doc.id}
+                  className={cn(
+                    'cursor-pointer',
+                    selectedDoc?.id === doc.id && 'bg-secondary',
+                    doc.deletedAt && 'opacity-60',
+                  )}
+                  onClick={() => setSelectedDoc(prev => prev?.id === doc.id ? null : doc)}
+                >
+                  <TableCell className="font-mono font-medium text-foreground">
+                    {doc.number}
+                    {doc.deletedAt && (
+                      <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>
+                      {TYPE_LABELS[doc.type]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-foreground-muted">
+                    {doc.warehouseName}
+                    {doc.targetWarehouseName && <span className="text-muted-foreground"> → {doc.targetWarehouseName}</span>}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>
+                      {STATUS_LABELS[doc.status]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">{doc.lines.length}</TableCell>
+                  <TableCell className="text-foreground-faint text-xs">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={e => { e.stopPropagation(); setShowDetail(doc); }}
+                    >
+                      Деталі
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Detail panel */}
+        <DetailPanel
+          open={!!selectedDoc}
+          onClose={() => setSelectedDoc(null)}
+          title={selectedDoc ? selectedDoc.number : ''}
+        >
+          {selectedDoc && (
+            <div className="space-y-4">
+              {/* Badges */}
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant={TYPE_BADGE[selectedDoc.type] ?? 'secondary'}>
+                  {TYPE_LABELS[selectedDoc.type]}
+                </Badge>
+                <Badge variant={STATUS_BADGE[selectedDoc.status] ?? 'secondary'}>
+                  {STATUS_LABELS[selectedDoc.status]}
+                </Badge>
+              </div>
+
+              {/* Meta */}
+              <div className="space-y-2 text-sm">
+                {selectedDoc.branchName && (
+                  <div>
+                    <span className="text-muted-foreground">Філія:</span>{' '}
+                    <span className="text-foreground">{selectedDoc.branchName}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-muted-foreground">Склад:</span>{' '}
+                  <span className="text-foreground">{selectedDoc.warehouseName}</span>
+                </div>
+                {selectedDoc.targetWarehouseName && (
+                  <div>
+                    <span className="text-muted-foreground">Склад призначення:</span>{' '}
+                    <span className="text-foreground">{selectedDoc.targetWarehouseName}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-muted-foreground">Створено:</span>{' '}
+                  <span className="text-foreground">{new Date(selectedDoc.createdAt).toLocaleDateString('uk-UA')}</span>
+                </div>
+                {selectedDoc.confirmedAt && (
+                  <div>
+                    <span className="text-muted-foreground">Підтверджено:</span>{' '}
+                    <span className="text-foreground">{new Date(selectedDoc.confirmedAt).toLocaleString('uk-UA')}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Lines */}
+              {selectedDoc.lines.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    Позиції ({selectedDoc.lines.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {selectedDoc.lines.map((l, i) => (
+                      <div key={i} className="text-xs bg-secondary rounded-lg px-3 py-2">
+                        <p className="font-medium text-foreground">{l.goodName ?? l.goodId}</p>
+                        <p className="text-muted-foreground mt-0.5">
+                          {l.quantity} {l.unit}
+                          {l.price != null && <span> · {l.price.toFixed(2)} ₴</span>}
+                        </p>
+                        {l.goodSku && <p className="text-muted-foreground font-mono">Арт: {l.goodSku}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DetailPanel>
       </div>
 
       {/* Pagination */}

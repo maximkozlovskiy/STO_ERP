@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { DetailPanel } from '@/components/ui/detail-panel';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
@@ -59,6 +60,7 @@ function WorksTab() {
   const [form, setForm] = useState({ categoryId: '', name: '', normoHours: '', price: '', description: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [selectedWork, setSelectedWork] = useState<Work | null>(null);
 
   useEffect(() => {
     apiFetch<Category[]>('/work-categories').then(setCategories).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження категорій'));
@@ -130,50 +132,92 @@ function WorksTab() {
         </Button>
       </div>
 
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Назва</TableHead>
-              <TableHead>Категорія</TableHead>
-              <TableHead>Нормо-год</TableHead>
-              <TableHead>Ціна, ₴</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
+      <div className="flex gap-0">
+        <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
-                </TableCell>
+                <TableHead>Назва</TableHead>
+                <TableHead>Категорія</TableHead>
+                <TableHead>Нормо-год</TableHead>
+                <TableHead>Ціна, ₴</TableHead>
+                <TableHead />
               </TableRow>
-            )}
-            {!loading && works?.items.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="p-0">
-                  <EmptyState icon={BookOpen} title="Нічого не знайдено" />
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && works?.items.map(w => (
-              <TableRow key={w.id}>
-                <TableCell>
-                  <p className="text-[13px] font-medium text-foreground">{w.name}</p>
-                  {w.description && <p className="text-[12px] text-muted-foreground mt-0.5">{w.description}</p>}
-                </TableCell>
-                <TableCell className="text-muted-foreground">{w.categoryName}</TableCell>
-                <TableCell className="text-muted-foreground">{w.normoHours}</TableCell>
-                <TableCell className="font-medium text-foreground">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="sm" onClick={() => remove(w.id)} className="text-destructive/60 hover:text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && works?.items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="p-0">
+                    <EmptyState icon={BookOpen} title="Нічого не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && works?.items.map(w => (
+                <TableRow
+                  key={w.id}
+                  className={`cursor-pointer ${selectedWork?.id === w.id ? 'bg-secondary' : ''}`}
+                  onClick={() => setSelectedWork(prev => prev?.id === w.id ? null : w)}
+                >
+                  <TableCell>
+                    <p className="text-[13px] font-medium text-foreground">{w.name}</p>
+                    {w.description && <p className="text-[12px] text-muted-foreground mt-0.5">{w.description}</p>}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{w.categoryName}</TableCell>
+                  <TableCell className="text-muted-foreground">{w.normoHours}</TableCell>
+                  <TableCell className="font-medium text-foreground">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={e => { e.stopPropagation(); remove(w.id); }}
+                      className="text-destructive/60 hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <DetailPanel
+          open={!!selectedWork}
+          onClose={() => setSelectedWork(null)}
+          title={selectedWork?.name ?? ''}
+        >
+          {selectedWork && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <span className="text-muted-foreground">Категорія:</span>{' '}
+                <span className="text-foreground">{selectedWork.categoryName}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Нормо-годин:</span>{' '}
+                <span className="text-foreground font-medium">{selectedWork.normoHours}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Ціна:</span>{' '}
+                <span className="text-foreground font-semibold">
+                  {selectedWork.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                </span>
+              </div>
+              {selectedWork.description && (
+                <div>
+                  <p className="text-muted-foreground mb-1">Опис:</p>
+                  <p className="text-foreground italic">{selectedWork.description}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DetailPanel>
       </div>
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
@@ -244,6 +288,8 @@ function GoodsTab() {
   const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', purchasePrice: '', salePrice: '', category: '', barcode: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [selectedGood, setSelectedGood] = useState<Good | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -283,10 +329,14 @@ function GoodsTab() {
     finally { setSaving(false); }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm('Видалити товар?')) return;
+  const markForDeletion = async (id: string) => {
     setSaving(true); setError('');
-    try { await apiFetch<void>(`/goods/${id}`, { method: 'DELETE' }); load(); }
+    try {
+      await apiFetch<void>(`/goods/${id}`, { method: 'DELETE' });
+      setConfirmDeleteId(null);
+      if (selectedGood?.id === id) setSelectedGood(null);
+      load();
+    }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
     finally { setSaving(false); }
   };
@@ -308,56 +358,152 @@ function GoodsTab() {
         </Button>
       </div>
 
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Назва / Артикул</TableHead>
-              <TableHead>Категорія</TableHead>
-              <TableHead>Од.</TableHead>
-              <TableHead>Закупка, ₴</TableHead>
-              <TableHead>Продаж, ₴</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
+      <div className="flex gap-0">
+        <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
-                </TableCell>
+                <TableHead>Назва / Артикул</TableHead>
+                <TableHead>Категорія</TableHead>
+                <TableHead>Од.</TableHead>
+                <TableHead>Закупка, ₴</TableHead>
+                <TableHead>Продаж, ₴</TableHead>
+                <TableHead />
               </TableRow>
-            )}
-            {!loading && goods?.items.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="p-0">
-                  <EmptyState icon={Package} title="Нічого не знайдено" />
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && goods?.items.map(g => (
-              <TableRow key={g.id}>
-                <TableCell>
-                  <p className="text-[13px] font-medium text-foreground">{g.name}</p>
-                  {g.sku && <p className="text-[12px] text-muted-foreground mt-0.5">Арт: {g.sku}</p>}
-                  {g.barcode && <p className="text-[12px] text-muted-foreground">Штрих: {g.barcode}</p>}
-                </TableCell>
-                <TableCell className="text-muted-foreground">{g.category ?? '—'}</TableCell>
-                <TableCell className="text-muted-foreground">{g.unit}</TableCell>
-                <TableCell className="text-muted-foreground">{g.purchasePrice != null ? g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}</TableCell>
-                <TableCell className="font-medium text-foreground">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="sm" onClick={() => remove(g.id)} className="text-destructive/60 hover:text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && goods?.items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState icon={Package} title="Нічого не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && goods?.items.map(g => (
+                <TableRow
+                  key={g.id}
+                  className={`cursor-pointer ${selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
+                  onClick={() => setSelectedGood(prev => prev?.id === g.id ? null : g)}
+                >
+                  <TableCell>
+                    <p className="text-[13px] font-medium text-foreground">{g.name}</p>
+                    {g.sku && <p className="text-[12px] text-muted-foreground mt-0.5">Арт: {g.sku}</p>}
+                    {g.barcode && <p className="text-[12px] text-muted-foreground">Штрих: {g.barcode}</p>}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{g.category ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{g.unit}</TableCell>
+                  <TableCell className="text-muted-foreground">{g.purchasePrice != null ? g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}</TableCell>
+                  <TableCell className="font-medium text-foreground">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={e => { e.stopPropagation(); setConfirmDeleteId(g.id); }}
+                      className="text-destructive/60 hover:text-destructive"
+                      title="Помітити на видалення"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <DetailPanel
+          open={!!selectedGood}
+          onClose={() => setSelectedGood(null)}
+          title={selectedGood?.name ?? ''}
+        >
+          {selectedGood && (
+            <div className="space-y-3 text-sm">
+              {selectedGood.sku && (
+                <div>
+                  <span className="text-muted-foreground">Артикул:</span>{' '}
+                  <span className="text-foreground font-mono">{selectedGood.sku}</span>
+                </div>
+              )}
+              <div>
+                <span className="text-muted-foreground">Одиниця:</span>{' '}
+                <span className="text-foreground">{selectedGood.unit}</span>
+              </div>
+              {selectedGood.purchasePrice != null && (
+                <div>
+                  <span className="text-muted-foreground">Ціна закупки:</span>{' '}
+                  <span className="text-foreground">
+                    {selectedGood.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                  </span>
+                </div>
+              )}
+              <div>
+                <span className="text-muted-foreground">Ціна продажу:</span>{' '}
+                <span className="text-foreground font-semibold">
+                  {selectedGood.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                </span>
+              </div>
+              {selectedGood.category && (
+                <div>
+                  <span className="text-muted-foreground">Категорія:</span>{' '}
+                  <span className="text-foreground">{selectedGood.category}</span>
+                </div>
+              )}
+              {selectedGood.barcode && (
+                <div>
+                  <span className="text-muted-foreground">Штрихкод:</span>{' '}
+                  <span className="text-foreground font-mono">{selectedGood.barcode}</span>
+                </div>
+              )}
+              {selectedGood.notes && (
+                <div>
+                  <p className="text-muted-foreground mb-1">Нотатки:</p>
+                  <p className="text-foreground italic">{selectedGood.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DetailPanel>
       </div>
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+
+      {/* Confirm mark-for-deletion dialog */}
+      <Modal
+        open={!!confirmDeleteId}
+        onClose={() => setConfirmDeleteId(null)}
+        title="Помітити товар на видалення"
+        footer={
+          <div className="flex gap-2 w-full">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteId(null)}
+              className="flex-1"
+            >
+              Скасувати
+            </Button>
+            <Button
+              variant="destructive"
+              loading={saving}
+              onClick={() => confirmDeleteId && markForDeletion(confirmDeleteId)}
+              className="flex-1"
+              leftIcon={<Trash2 className="h-4 w-4" />}
+            >
+              Помітити на видалення
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Товар буде позначено як видалений (soft delete). Він зникне зі списків, але залишиться в базі даних для архіву.
+        </p>
+      </Modal>
 
       <Modal open={modal} onClose={() => setModal(false)} title="Новий товар / запчастина"
         footer={
@@ -444,6 +590,7 @@ function ServicesTab() {
   const [form, setForm] = useState({ name: '', description: '', price: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -475,7 +622,11 @@ function ServicesTab() {
   const remove = async (id: string) => {
     if (!confirm('Видалити послугу?')) return;
     setSaving(true); setError('');
-    try { await apiFetch<void>(`/services/${id}`, { method: 'DELETE' }); load(); }
+    try {
+      await apiFetch<void>(`/services/${id}`, { method: 'DELETE' });
+      if (selectedService?.id === id) setSelectedService(null);
+      load();
+    }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
     finally { setSaving(false); }
   };
@@ -497,52 +648,123 @@ function ServicesTab() {
         </Button>
       </div>
 
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Назва</TableHead>
-              <TableHead>Роботи</TableHead>
-              <TableHead>Товари</TableHead>
-              <TableHead>Ціна, ₴</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
+      <div className="flex gap-0">
+        <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
-                </TableCell>
+                <TableHead>Назва</TableHead>
+                <TableHead>Роботи</TableHead>
+                <TableHead>Товари</TableHead>
+                <TableHead>Ціна, ₴</TableHead>
+                <TableHead />
               </TableRow>
-            )}
-            {!loading && services?.items.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="p-0">
-                  <EmptyState icon={Layers} title="Нічого не знайдено" />
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && services?.items.map(s => (
-              <TableRow key={s.id}>
-                <TableCell>
-                  <p className="text-[13px] font-medium text-foreground">{s.name}</p>
-                  {s.description && <p className="text-[12px] text-muted-foreground mt-0.5">{s.description}</p>}
-                </TableCell>
-                <TableCell className="text-muted-foreground">{s.works.length > 0 ? s.works.map(w => w.workName).join(', ') : '—'}</TableCell>
-                <TableCell className="text-muted-foreground">{s.goods.length > 0 ? s.goods.map(g => g.goodName).join(', ') : '—'}</TableCell>
-                <TableCell className="font-medium text-foreground">
-                  {s.price != null ? s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : 'авто'}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="sm" onClick={() => remove(s.id)} className="text-destructive/60 hover:text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && services?.items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="p-0">
+                    <EmptyState icon={Layers} title="Нічого не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && services?.items.map(s => (
+                <TableRow
+                  key={s.id}
+                  className={`cursor-pointer ${selectedService?.id === s.id ? 'bg-secondary' : ''}`}
+                  onClick={() => setSelectedService(prev => prev?.id === s.id ? null : s)}
+                >
+                  <TableCell>
+                    <p className="text-[13px] font-medium text-foreground">{s.name}</p>
+                    {s.description && <p className="text-[12px] text-muted-foreground mt-0.5">{s.description}</p>}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{s.works.length > 0 ? s.works.map(w => w.workName).join(', ') : '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.goods.length > 0 ? s.goods.map(g => g.goodName).join(', ') : '—'}</TableCell>
+                  <TableCell className="font-medium text-foreground">
+                    {s.price != null ? s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : 'авто'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={e => { e.stopPropagation(); remove(s.id); }}
+                      className="text-destructive/60 hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <DetailPanel
+          open={!!selectedService}
+          onClose={() => setSelectedService(null)}
+          title={selectedService?.name ?? ''}
+        >
+          {selectedService && (
+            <div className="space-y-4 text-sm">
+              {selectedService.price != null ? (
+                <div>
+                  <span className="text-muted-foreground">Ціна:</span>{' '}
+                  <span className="text-foreground font-semibold">
+                    {selectedService.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <span className="text-muted-foreground">Ціна:</span>{' '}
+                  <span className="text-foreground italic">авто (з позицій)</span>
+                </div>
+              )}
+
+              {selectedService.works.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    Роботи ({selectedService.works.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {selectedService.works.map((w, i) => (
+                      <div key={i} className="text-xs bg-secondary rounded-lg px-3 py-2">
+                        <p className="font-medium text-foreground">{w.workName}</p>
+                        <p className="text-muted-foreground mt-0.5">
+                          {w.quantity} × {w.normoHours} нормо-год · {w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedService.goods.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    Товари ({selectedService.goods.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {selectedService.goods.map((g, i) => (
+                      <div key={i} className="text-xs bg-secondary rounded-lg px-3 py-2">
+                        <p className="font-medium text-foreground">{g.goodName}</p>
+                        <p className="text-muted-foreground mt-0.5">
+                          {g.quantity} {g.unit} · {g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DetailPanel>
       </div>
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />

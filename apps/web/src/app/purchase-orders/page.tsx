@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, ShoppingCart } from 'lucide-react';
+import { Plus, ShoppingCart, Search, Eye, EyeOff } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { DetailPanel } from '@/components/ui/detail-panel';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
@@ -30,6 +31,7 @@ interface PurchaseOrder {
   totalAmount: number; notes: string | null;
   lines: POLine[];
   createdAt: string; updatedAt: string;
+  deletedAt?: string | null;
 }
 interface Paginated { items: PurchaseOrder[]; total: number; page: number; limit: number; }
 
@@ -61,9 +63,12 @@ export default function PurchaseOrdersPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
+  const [q, setQ] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<PurchaseOrder | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
@@ -85,6 +90,8 @@ export default function PurchaseOrdersPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (status) params.set('status', status);
+      if (q) params.set('q', q);
+      if (showDeleted) params.set('showDeleted', 'true');
       const data = await apiFetch<Paginated>(`/purchase-orders?${params}`);
       setOrders(data.items);
       setTotal(data.total);
@@ -93,7 +100,7 @@ export default function PurchaseOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, status]);
+  }, [page, status, q, showDeleted]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -197,6 +204,34 @@ export default function PurchaseOrdersPage() {
         </Button>
       </div>
 
+      {/* Filters row */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        {/* Search */}
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            value={q}
+            onChange={e => { setQ(e.target.value); setPage(1); }}
+            placeholder="Пошук за номером, постачальником..."
+            className="pl-9"
+          />
+        </div>
+
+        {/* Show deleted toggle */}
+        <button
+          onClick={() => { setShowDeleted(v => !v); setPage(1); }}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+            showDeleted
+              ? 'bg-destructive/10 text-destructive border-destructive/30'
+              : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
+          )}
+        >
+          {showDeleted ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          Показати видалені
+        </button>
+      </div>
+
       {/* Status filters */}
       <div className="flex flex-wrap gap-1.5 mb-5">
         {statuses.map(s => (
@@ -215,56 +250,134 @@ export default function PurchaseOrdersPage() {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Номер</TableHead>
-              <TableHead>Постачальник</TableHead>
-              <TableHead>Склад</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead className="text-right">Сума</TableHead>
-              <TableHead>Дата</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
+      {/* Table + DetailPanel */}
+      <div className="flex gap-0">
+        <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
-                </TableCell>
+                <TableHead>Номер</TableHead>
+                <TableHead>Постачальник</TableHead>
+                <TableHead>Склад</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead className="text-right">Сума</TableHead>
+                <TableHead>Дата</TableHead>
+                <TableHead />
               </TableRow>
-            )}
-            {!loading && orders.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="p-0">
-                  <EmptyState icon={ShoppingCart} title="Замовлень не знайдено" />
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && orders.map(po => (
-              <TableRow key={po.id}>
-                <TableCell className="font-mono font-medium text-foreground">{po.number}</TableCell>
-                <TableCell className="text-foreground-muted">{po.supplierName ?? '—'}</TableCell>
-                <TableCell className="text-muted-foreground">{po.warehouseName ?? '—'}</TableCell>
-                <TableCell>
-                  <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>
-                    {STATUS_LABELS[po.status]}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right font-medium">{fmt(po.totalAmount)}</TableCell>
-                <TableCell className="text-foreground-faint text-xs">{new Date(po.createdAt).toLocaleDateString('uk-UA')}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="sm" onClick={() => setShowDetail(po)}>
-                    Деталі
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && orders.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="p-0">
+                    <EmptyState icon={ShoppingCart} title="Замовлень не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && orders.map(po => (
+                <TableRow
+                  key={po.id}
+                  className={cn(
+                    'cursor-pointer',
+                    selectedPO?.id === po.id && 'bg-secondary',
+                    po.deletedAt && 'opacity-60',
+                  )}
+                  onClick={() => setSelectedPO(prev => prev?.id === po.id ? null : po)}
+                >
+                  <TableCell className="font-mono font-medium text-foreground">
+                    {po.number}
+                    {po.deletedAt && (
+                      <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-foreground-muted">{po.supplierName ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{po.warehouseName ?? '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>
+                      {STATUS_LABELS[po.status]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right font-medium">{fmt(po.totalAmount)}</TableCell>
+                  <TableCell className="text-foreground-faint text-xs">{new Date(po.createdAt).toLocaleDateString('uk-UA')}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={e => { e.stopPropagation(); setShowDetail(po); }}
+                    >
+                      Деталі
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Detail panel */}
+        <DetailPanel
+          open={!!selectedPO}
+          onClose={() => setSelectedPO(null)}
+          title={selectedPO ? selectedPO.number : ''}
+        >
+          {selectedPO && (
+            <div className="space-y-4">
+              {/* Status */}
+              <Badge variant={STATUS_BADGE[selectedPO.status] ?? 'secondary'}>
+                {STATUS_LABELS[selectedPO.status]}
+              </Badge>
+
+              {/* Meta */}
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Постачальник:</span>{' '}
+                  <span className="text-foreground font-medium">{selectedPO.supplierName ?? '—'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Склад:</span>{' '}
+                  <span className="text-foreground">{selectedPO.warehouseName ?? '—'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Сума:</span>{' '}
+                  <span className="text-foreground font-semibold">{fmt(selectedPO.totalAmount)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Дата:</span>{' '}
+                  <span className="text-foreground">{new Date(selectedPO.createdAt).toLocaleDateString('uk-UA')}</span>
+                </div>
+                {selectedPO.notes && (
+                  <div>
+                    <span className="text-muted-foreground">Примітки:</span>{' '}
+                    <span className="text-foreground italic">{selectedPO.notes}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Lines */}
+              {selectedPO.lines.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Позиції</p>
+                  <div className="space-y-1.5">
+                    {selectedPO.lines.map((l, i) => (
+                      <div key={i} className="text-xs bg-secondary rounded-lg px-3 py-2">
+                        <p className="font-medium text-foreground">{l.goodName ?? l.goodId}</p>
+                        <p className="text-muted-foreground mt-0.5">
+                          {l.quantity} {l.unit} × {fmt(l.price)} = {fmt(l.amount ?? l.quantity * l.price)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DetailPanel>
       </div>
 
       {/* Pagination */}
