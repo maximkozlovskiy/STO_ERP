@@ -325,6 +325,11 @@ create(@OrgContext() orgId: string, @Body() dto: CreateWorkOrderDto) {
 - [ ] Invoice cross-reference: `inv.workOrderId === dto.workOrderId` — запобігає підміні документів
 - [ ] Soft delete скрізь — `deletedAt: null` у всіх `where`
 - [ ] **Виключення без `deletedAt`**: `SettlementAccount`, `SettlementTransaction`, `StockMovement`, `Payment`, `WorkOrderLineEmployee`
+- [ ] `SettlementsService.createTransaction` — internal `amount > 0 && Number.isFinite(amount)` guard (defense-in-depth, окрім DTO `@Min`)
+- [ ] `URL.createObjectURL` на frontend — обов'язково `URL.revokeObjectURL(url)` через setTimeout після click
+  ```bash
+  grep -rn "URL.createObjectURL" apps/web/src --include="*.tsx"
+  ```
 
 ---
 
@@ -337,6 +342,13 @@ grep -rn "for.*of\|forEach\|map(" apps/api/src/modules/ --include="*.ts" | grep 
 
 # findMany без take — потенційно тягне всю таблицю
 grep -rn "findMany(" apps/api/src/ --include="*.ts" | grep -v "take:" | grep -v "spec"
+
+# include з relation що приймає take (lines/parts/movements/transactions) — без take
+grep -rnE "(lines|parts|movements|transactions): \{ where: \{ deletedAt: null \}, include:" apps/api/src --include="*.ts" | grep -v "take:"
+
+# $queryRaw / $executeRaw — повинні мати LIMIT N у SQL
+grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" | grep -v "spec\|plainto_tsquery"
+# Для кожного — Read файл і перевір що SQL завершується LIMIT N
 ```
 
 - [ ] Немає N+1 запитів — `include` або окремий `findMany` з `in` замість циклу

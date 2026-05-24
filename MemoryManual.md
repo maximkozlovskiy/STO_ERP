@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-9295d6e fix(review): remove N+1 in work-categories descendants + dead findOneDetail
+bef35b7 fix(tester): 6 bugs from /sto-tester auto pass + critical service tests
 ```
 
 Дата: 2026-05-24
@@ -23,7 +23,7 @@
 | Фаза | **Фаза 16 — Installer та Production** (всі попередні `[x]`) |
 | Наступна задача | `[sto-installer]` Inno Setup скрипт |
 | TypeScript | ✅ 0 errors (web + api + shared) |
-| Тести | ✅ 8/8 passed (`apps/api/src/auth/auth.spec.ts`) |
+| Тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
 | Dev сервер | Next.js на `http://localhost:3001` |
 | CSS | Tailwind 4 через `@tailwindcss/postcss` (postcss.config.mjs) |
 
@@ -350,6 +350,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `bef35b7` | fix(tester): 6 bugs (settlement validate, low-stock LIMIT, CSV revoke, take, +tests) |
 | `9295d6e` | fix(review): N+1 work-categories descendants + dead findOneDetail |
 | `4910014` | docs(skills): hydration trap useState(new Date()) + missing tsconfig check |
 | `183f20d` | fix(review): hydration mismatches + process.env in service + missing tsconfigs |

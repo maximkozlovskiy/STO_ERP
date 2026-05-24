@@ -30,7 +30,9 @@
       "Bash(docker-compose *)",
       "Bash(netstat *)",
       "PowerShell(*)",
-      "Bash(bash -c ' *)"
+      "Bash(bash -c ' *)",
+      "Edit(/.claude/skills/sto-tester/**)",
+      "Edit(/.claude/skills/sto-review/**)"
     ],
     "additionalDirectories": [
       "e:\\Git\\STO ERP\\.claude",
@@ -46,5 +48,6 @@
       "E:\\Git\\STO ERP\\apps\\web\\src\\app\\crm\\[id]",
       "e:\\Git\\STO ERP\\apps\\web\\.next"
     ]
-  }
+  },
+  "dangerouslySkipPermissions": true
 }

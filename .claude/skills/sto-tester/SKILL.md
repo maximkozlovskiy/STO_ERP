@@ -102,6 +102,15 @@ pnpm --filter @sto/api test --run 2>&1 | tail -30
 #### Append-only таблиці
 - [ ] `StockMovement`, `SettlementTransaction` — ніколи не оновлюються і не видаляються
 
+#### Захист на рівні сервісу (defense-in-depth)
+- [ ] `SettlementsService.createTransaction` — внутрішня перевірка `amount > 0` і `Number.isFinite(amount)` (не покладатись лише на DTO `@Min`)
+- [ ] `InventoryService.createMovement` — guards на `quantity=0`, `available < |qty|`, `RESERVATION_RELEASE > reserved`, `RESERVATION_RELEASE` з positive qty
+- [ ] Будь-який `$queryRaw`/`$executeRaw` має `LIMIT N` — Prisma `take:` не діє на raw queries
+  ```bash
+  grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" | grep -v spec
+  # Для кожного — перевір що SQL закінчується "LIMIT N"
+  ```
+
 #### Нумерація документів
 - [ ] Номери генеруються через `DocumentNumberService.next(orgId, type)` — не хардкодяться у форматі
 - [ ] `DocumentNumberConfig` читається по `orgId` — не по глобальному конфігу
@@ -135,6 +144,13 @@ pnpm --filter @sto/api test --run 2>&1 | tail -30
   ```
 - [ ] Якщо API навмисно опускає поле (security, роль) — тип у frontend має бути `field?: Type` (optional), не обов'язковим. Приклад: `rateScheme` omitted in `findAll` → `rateScheme?: {...}` у Employee interface.
 - [ ] Всі звернення до optional полів захищені guard-ом: `emp.rateScheme?.type`, або умовним рендером `{emp.rateScheme && ...}`.
+
+#### Blob URL / memory leaks
+- [ ] `URL.createObjectURL(blob)` — обов'язково `setTimeout(() => URL.revokeObjectURL(url), 100)` після `a.click()`
+  ```bash
+  grep -rn "URL.createObjectURL" apps/web/src --include="*.tsx"
+  # Для кожного — перевір що поруч є revokeObjectURL
+  ```
 
 #### Hydration (SSR/CSR mismatch)
 - [ ] Якщо є hydration помилка — першим кроком видаляй `.next` кеш (`rm -rf apps/web/.next`). Stale chunks є #1 причиною "клієнт рендерить щось зовсім інше".
