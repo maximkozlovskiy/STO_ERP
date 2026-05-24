@@ -62,6 +62,7 @@ export async function apiFetch<T>(
       if (typeof window !== 'undefined') {
         window.location.replace('/login');
       }
+      return undefined as T;
     }
   }
 
@@ -73,5 +74,5 @@ export async function apiFetch<T>(
   // 204 No Content
   if (res.status === 204) return undefined as T;
 
-  return res.json() as Promise<T>;
+  return await res.json() as T;
 }

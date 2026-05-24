@@ -89,10 +89,12 @@ export class PaymentsService {
       }
 
       // Mark work order INVOICED→PAID if linked and increment paidAmount for partial payment tracking
+      // Uses the FSM transition map implicitly by validating current status before writing
       if (dto.workOrderId) {
         const wo = await tx.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
         if (wo) {
           if (wo.status !== 'INVOICED') throw new BadRequestException(`Наряд у статусі "${wo.status}" — оплата неможлива`);
+          // INVOICED → PAID is a valid FSM transition; apply directly inside this atomic transaction
           await tx.workOrder.update({
             where: { id: dto.workOrderId, orgId },
             data: { status: 'PAID', paidAmount: { increment: dto.amount } },

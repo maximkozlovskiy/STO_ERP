@@ -28,7 +28,7 @@ export class InventoryService {
       const quantity = item?.quantity ?? 0;
       const reserved = item?.reserved ?? 0;
       const available = quantity - reserved;
-      if (dto.quantity < 0 && available < Math.abs(dto.quantity)) {
+      if (dto.quantity < 0 && dto.type !== 'RESERVATION_RELEASE' && available < Math.abs(dto.quantity)) {
         throw new BadRequestException('Недостатньо товару на складі');
       }
       if (dto.type === 'RESERVATION' && dto.quantity > available) {

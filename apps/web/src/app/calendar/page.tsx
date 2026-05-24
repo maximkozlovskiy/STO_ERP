@@ -16,11 +16,22 @@ interface CalendarSlot {
 }
 interface Lift { id: string; name: string; }
 
+const KYIV_TZ = 'Europe/Kyiv';
+
 function pad(n: number) { return String(n).padStart(2, '0'); }
 function toDateString(d: Date) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+
+function kyivHours(iso: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: KYIV_TZ, hour: 'numeric', minute: 'numeric', hour12: false,
+  }).formatToParts(new Date(iso));
+  const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+  const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+  return h + m / 60;
+}
+
 function fmtTime(iso: string) {
-  const d = new Date(iso);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return new Date(iso).toLocaleTimeString('uk-UA', { timeZone: KYIV_TZ, hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 8); // 08:00–19:00
@@ -58,6 +69,7 @@ export default function CalendarPage() {
         method: 'POST',
         body: JSON.stringify({
           liftId: form.liftId || undefined,
+          employeeId: form.employeeId || undefined,
           workOrderId: form.workOrderId || undefined,
           startAt: form.startAt ? new Date(`${date}T${form.startAt}:00`).toISOString() : undefined,
           endAt: form.endAt ? new Date(`${date}T${form.endAt}:00`).toISOString() : undefined,
@@ -190,10 +202,8 @@ export default function CalendarPage() {
                     ))}
                   </div>
                   {liftSlots.map(s => {
-                    const start = new Date(s.startAt);
-                    const end = new Date(s.endAt);
-                    const startH = start.getHours() + start.getMinutes() / 60;
-                    const endH = end.getHours() + end.getMinutes() / 60;
+                    const startH = kyivHours(s.startAt);
+                    const endH = kyivHours(s.endAt);
                     const left = ((startH - HOURS[0]) / HOURS.length) * 100;
                     const width = ((endH - startH) / HOURS.length) * 100;
                     return (

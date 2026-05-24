@@ -14,43 +14,60 @@ const SYNC_VERSION_MODELS = new Set([
   'NotificationTemplate', 'TaxRate', 'PaymentMethodConfig',
 ]);
 
+// Prisma 5 requires $extends for query middleware — $use was removed in v5
+function withSyncVersion(client: PrismaClient): PrismaClient {
+  return client.$extends({
+    query: {
+      $allModels: {
+        async $allOperations({ model, operation, args, query }: {
+          model?: string;
+          operation: string;
+          args: Record<string, unknown>;
+          query: (args: Record<string, unknown>) => Promise<unknown>;
+        }) {
+          if (model && SYNC_VERSION_MODELS.has(model)) {
+            if (operation === 'create') {
+              const data = (args.data ?? {}) as Record<string, unknown>;
+              if (data.syncVersion === undefined) data.syncVersion = 1;
+              args = { ...args, data };
+            } else if (operation === 'createMany') {
+              const rows = args.data as Record<string, unknown>[];
+              args = {
+                ...args,
+                data: rows.map(item => ({
+                  ...item,
+                  syncVersion: item.syncVersion ?? 1,
+                })),
+              };
+            } else if (operation === 'update') {
+              const data = (args.data ?? {}) as Record<string, unknown>;
+              data.syncVersion = { increment: 1 };
+              args = { ...args, data };
+            } else if (operation === 'updateMany') {
+              const data = (args.data ?? {}) as Record<string, unknown>;
+              data.syncVersion = { increment: 1 };
+              args = { ...args, data };
+            } else if (operation === 'upsert') {
+              const update = (args.update ?? {}) as Record<string, unknown>;
+              update.syncVersion = { increment: 1 };
+              const create = (args.create ?? {}) as Record<string, unknown>;
+              if (create.syncVersion === undefined) create.syncVersion = 1;
+              args = { ...args, update, create };
+            }
+          }
+          return query(args);
+        },
+      },
+    },
+  }) as unknown as PrismaClient;
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     await this.$connect();
-
-    // Prisma 5 uses $extends for query middleware (replaces deprecated $use)
-    // Auto-manage syncVersion: set to 1 on create, increment on every mutation
-    this.$use(async (params, next) => {
-      if (params.model && SYNC_VERSION_MODELS.has(params.model)) {
-        if (params.action === 'create' || params.action === 'createMany') {
-          // Set initial syncVersion = 1 so delta-sync clients with since=0 can retrieve it
-          if (params.action === 'create') {
-            params.args.data ??= {};
-            if (params.args.data.syncVersion === undefined) {
-              params.args.data.syncVersion = 1;
-            }
-          }
-          // createMany: items array — set syncVersion on each if not provided
-          if (params.action === 'createMany') {
-            params.args.data = (params.args.data as any[]).map((item: any) => ({
-              ...item,
-              syncVersion: item.syncVersion ?? 1,
-            }));
-          }
-        } else if (['update', 'upsert', 'updateMany'].includes(params.action)) {
-          if (params.action === 'updateMany') {
-            params.args.data ??= {};
-            params.args.data.syncVersion = { increment: 1 };
-          } else {
-            const dataKey = params.action === 'upsert' ? 'update' : 'data';
-            params.args[dataKey] ??= {};
-            params.args[dataKey].syncVersion = { increment: 1 };
-          }
-        }
-      }
-      return next(params);
-    });
+    // Apply syncVersion middleware via $extends (Prisma 5 — $use was removed)
+    Object.assign(this, withSyncVersion(this));
   }
 
   async onModuleDestroy() {

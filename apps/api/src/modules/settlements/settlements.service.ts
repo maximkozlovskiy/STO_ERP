@@ -37,13 +37,13 @@ export class SettlementsService {
       });
 
       // Positive types increase balance (client owes us), negative types decrease it
-      const balanceDelta =
-        dto.type === 'CHARGE' ? dto.amount :
-        dto.type === 'PAYMENT' ? -dto.amount :
-        dto.type === 'PREPAYMENT' ? -dto.amount :
-        dto.type === 'REFUND' ? -dto.amount :
-        dto.type === 'CREDIT_NOTE' ? -dto.amount :
-        0;
+      let balanceDelta: number;
+      if (dto.type === 'CHARGE') balanceDelta = dto.amount;
+      else if (dto.type === 'PAYMENT') balanceDelta = -dto.amount;
+      else if (dto.type === 'PREPAYMENT') balanceDelta = -dto.amount;
+      else if (dto.type === 'REFUND') balanceDelta = -dto.amount;
+      else if (dto.type === 'CREDIT_NOTE') balanceDelta = -dto.amount;
+      else throw new Error(`Unknown SettlementTransactionType: ${dto.type as string}`);
 
       await db.settlementAccount.update({
         where: { id: account.id, orgId },

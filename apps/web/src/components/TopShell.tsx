@@ -44,7 +44,9 @@ export function TopShell({ children }: { children: React.ReactNode }) {
     try {
       const saved = localStorage.getItem(QUICK_TABS_KEY);
       if (saved) setQuickTabs(JSON.parse(saved));
-    } catch {}
+    } catch {
+      localStorage.removeItem(QUICK_TABS_KEY);
+    }
   }, []);
 
   // Track navigation → update quick tabs
