@@ -32,11 +32,13 @@ interface WorkCategory { id: string; name: string; parentId: string | null; chil
 
 const ROLE_LABELS: Record<string, string> = {
   OWNER: 'Власник', ADMIN: 'Адміністратор', RECEPTIONIST: 'Приймальник',
-  MECHANIC: 'Механік', STOREKEEPER: 'Комірник', ACCOUNTANT: 'Бухгалтер', CLIENT: 'Клієнт',
+  MECHANIC: 'Механік', STOREKEEPER: 'Комірник', ACCOUNTANT: 'Бухгалтер',
+  CLIENT: 'Клієнт', XLSX_MANAGER: 'Менеджер імпорту',
 };
 const ROLE_BADGE: Record<string, BadgeVariant> = {
   OWNER: 'destructive', ADMIN: 'default', RECEPTIONIST: 'secondary',
-  MECHANIC: 'warning', STOREKEEPER: 'secondary', ACCOUNTANT: 'secondary', CLIENT: 'secondary',
+  MECHANIC: 'warning', STOREKEEPER: 'secondary', ACCOUNTANT: 'secondary',
+  CLIENT: 'secondary', XLSX_MANAGER: 'secondary',
 };
 const RATE_LABELS: Record<string, string> = {
   percent_normo: '% від норма-год', fixed_plus_bonus: 'Ставка + бонус',
@@ -50,6 +52,7 @@ const ROLE_FILTER_OPTIONS: [string, string][] = [
   ['MECHANIC', 'Механік'],
   ['STOREKEEPER', 'Комірник'],
   ['ACCOUNTANT', 'Бухгалтер'],
+  ['XLSX_MANAGER', 'Менеджер імпорту'],
 ];
 
 function CheckboxList({ label, items, selected, onChange }: {

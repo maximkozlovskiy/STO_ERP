@@ -78,17 +78,46 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-// Flat list of all nav items for bookmark lookup
-const ALL_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap(g => g.items);
+const NAV_GROUPS_FUNCTIONS: NavGroup[] = [{
+  items: [
+    { href: '/dashboard',       label: 'Дашборд',         icon: LayoutDashboard },
+    { href: '/work-orders',     label: 'Наряди',           icon: Wrench },
+    { href: '/calendar',        label: 'Календар',         icon: CalendarDays },
+    { href: '/crm',             label: 'Контрагенти',      icon: Users },
+    { href: '/inventory',       label: 'Склад',            icon: Package },
+    { href: '/purchase-orders', label: 'Замовлення',       icon: ShoppingCart },
+    { href: '/stock-documents', label: 'Документи складу', icon: FileText },
+    { href: '/invoices',        label: 'Рахунки',          icon: Receipt },
+    { href: '/settlements',     label: 'Розрахунки',       icon: Wallet },
+    { href: '/reports',         label: 'Звіти',            icon: BarChart2, roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'] },
+    { href: '/catalog',         label: 'Каталог',          icon: BookOpen, roles: ['OWNER', 'ADMIN'] },
+    { href: '/employees',       label: 'Персонал',         icon: UserCog, roles: ['OWNER', 'ADMIN'] },
+    { href: '/infrastructure',  label: 'Підрозділи',       icon: Building2, roles: ['OWNER', 'ADMIN'] },
+    { href: '/settings',        label: 'Налаштування',     icon: Settings, roles: ['OWNER', 'ADMIN'] },
+    { href: '/settings/sync',   label: 'Cloud Sync',       icon: CloudUpload, roles: ['OWNER', 'ADMIN'] },
+  ],
+}];
+
+const NAV_MODE_KEY = 'sto_nav_mode';
+type NavMode = 'sections' | 'functions';
+
+// Flat list of all nav items for bookmark lookup (deduplicated by href)
+const ALL_NAV_ITEMS: NavItem[] = (() => {
+  const seen = new Set<string>();
+  return [...NAV_GROUPS, ...NAV_GROUPS_FUNCTIONS]
+    .flatMap(g => g.items)
+    .filter(item => { if (seen.has(item.href)) return false; seen.add(item.href); return true; });
+})();
 
 const ROLE_LABELS: Record<string, string> = {
-  OWNER:        'Власник',
-  ADMIN:        'Адміністратор',
-  RECEPTIONIST: 'Адміністратор',
-  MECHANIC:     'Механік',
-  STOREKEEPER:  'Комірник',
-  ACCOUNTANT:   'Бухгалтер',
-  CLIENT:       'Клієнт',
+  OWNER:         'Власник',
+  ADMIN:         'Адміністратор',
+  RECEPTIONIST:  'Приймальник',
+  MECHANIC:      'Механік',
+  STOREKEEPER:   'Комірник',
+  ACCOUNTANT:    'Бухгалтер',
+  CLIENT:        'Клієнт',
+  XLSX_MANAGER:  'Менеджер імпорту',
 };
 
 const SIDEBAR_COLLAPSED_KEY = 'sto_sidebar_collapsed';
@@ -112,6 +141,7 @@ export function TopShell({ children }: { children: ReactNode }) {
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [navMode, setNavMode] = useState<NavMode>('sections');
   // Bookmarks: start empty to avoid SSR mismatch; hydrated via useEffect
   const [bookmarks, setBookmarks] = useState<string[]>([]);
 
@@ -127,6 +157,20 @@ export function TopShell({ children }: { children: ReactNode }) {
       const saved = localStorage.getItem(BOOKMARKS_KEY);
       if (saved) setBookmarks(JSON.parse(saved) as string[]);
     } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(NAV_MODE_KEY) as NavMode | null;
+      if (saved === 'sections' || saved === 'functions') setNavMode(saved);
+    } catch { /* ignore */ }
+    const handler = (e: Event) => {
+      const mode = (e as CustomEvent<NavMode>).detail;
+      setNavMode(mode);
+      try { localStorage.setItem(NAV_MODE_KEY, mode); } catch { /* ignore */ }
+    };
+    window.addEventListener('sto:nav-mode-change', handler);
+    return () => window.removeEventListener('sto:nav-mode-change', handler);
   }, []);
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
@@ -227,6 +271,7 @@ export function TopShell({ children }: { children: ReactNode }) {
       bookmarks.includes(item.href) &&
       (!item.roles || item.roles.includes(role)),
     );
+    const activeGroups = navMode === 'sections' ? NAV_GROUPS : NAV_GROUPS_FUNCTIONS;
 
     return (
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
@@ -245,7 +290,7 @@ export function TopShell({ children }: { children: ReactNode }) {
         )}
 
         {/* Regular nav groups */}
-        {NAV_GROUPS.map((group, gi) => {
+        {activeGroups.map((group, gi) => {
           const visible = group.items.filter(n => !n.roles || n.roles.includes(role));
           if (!visible.length) return null;
           return (

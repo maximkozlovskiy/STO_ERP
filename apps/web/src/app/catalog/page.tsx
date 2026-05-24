@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Search, Trash2, BookOpen, Package, Layers } from 'lucide-react';
+import { Plus, Search, Trash2, BookOpen, Package, Layers, Star, Barcode, Ruler } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel } from '@/components/ui/detail-panel';
+import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
@@ -21,14 +22,17 @@ interface Category { id: string; name: string; children: Category[]; }
 interface Work { id: string; categoryId: string; categoryName: string; name: string; normoHours: number; price: number; description: string | null; }
 interface PaginatedWorks { items: Work[]; total: number; page: number; limit: number; }
 interface Brand { id: string; name: string; }
-interface Good { id: string; sku: string | null; name: string; unit: string; purchasePrice: number | null; salePrice: number; category: string | null; barcode: string | null; brandId: string | null; notes: string | null; }
+interface Unit { id: string; name: string; shortName: string; isSystem: boolean; }
+interface Good { id: string; sku: string | null; name: string; unit: string; unitId: string | null; purchasePrice: number | null; salePrice: number; category: string | null; barcode: string | null; brandId: string | null; notes: string | null; }
 interface PaginatedGoods { items: Good[]; total: number; page: number; limit: number; }
 interface ServiceWork { workId: string; workName: string; normoHours: number; price: number; quantity: number; }
 interface ServiceGood { goodId: string; goodName: string; unit: string; salePrice: number; quantity: number; }
 interface Service { id: string; name: string; description: string | null; price: number | null; works: ServiceWork[]; goods: ServiceGood[]; }
 interface PaginatedServices { items: Service[]; total: number; page: number; limit: number; }
+interface GoodBarcode { id: string; barcode: string; type: string; isPrimary: boolean; }
 
-type Tab = 'works' | 'goods' | 'services';
+type Tab = 'works' | 'goods' | 'services' | 'units';
+type GoodDetailTab = 'info' | 'barcodes';
 
 function Pagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
   if (totalPages <= 1) return null;
@@ -119,8 +123,8 @@ function WorksTab() {
       {!modal && error && (
         <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
       )}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="relative flex-1">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук робіт..." className="pl-9" />
         </div>
@@ -128,6 +132,11 @@ function WorksTab() {
           <option value="">Всі категорії</option>
           {flat.map(c => <option key={c.id} value={c.id}>{' '.repeat(c.depth * 4)}{c.name}</option>)}
         </Select>
+        <XlsxImportButton
+          templateType="works"
+          importUrl="/xlsx/import/works"
+          onImportComplete={load}
+        />
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setForm({ categoryId: flat[0]?.id ?? '', name: '', normoHours: '', price: '', description: '' }); setError(''); setModal(true); }}>
           Робота
         </Button>
@@ -283,18 +292,26 @@ function WorksTab() {
 function GoodsTab() {
   const [goods, setGoods] = useState<PaginatedGoods | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '' });
+  const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [selectedGood, setSelectedGood] = useState<Good | null>(null);
+  const [goodDetailTab, setGoodDetailTab] = useState<GoodDetailTab>('info');
+  const [barcodes, setBarcodes] = useState<GoodBarcode[]>([]);
+  const [barcodesLoading, setBarcodesLoading] = useState(false);
+  const [newBarcode, setNewBarcode] = useState('');
+  const [newBarcodeType, setNewBarcodeType] = useState('EAN13');
+  const [addingBarcode, setAddingBarcode] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<Brand[]>('/brands').then(setBrands).catch((e: unknown) => console.error('Помилка завантаження брендів', e));
+    apiFetch<Brand[]>('/brands').catch(() => []).then(v => { if (Array.isArray(v)) setBrands(v); });
+    apiFetch<Unit[]>('/units').catch(() => []).then(v => { if (Array.isArray(v)) setUnits(v); });
   }, []);
 
   const load = useCallback(() => {
@@ -321,6 +338,7 @@ function GoodsTab() {
           sku: form.sku || undefined,
           name: form.name,
           unit: form.unit || 'шт',
+          unitId: form.unitId || undefined,
           purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : undefined,
           salePrice,
           category: form.category || undefined,
@@ -330,10 +348,40 @@ function GoodsTab() {
         }),
       });
       setModal(false);
-      setForm({ sku: '', name: '', unit: 'шт', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '' });
+      setForm({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '' });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
+  };
+
+  const loadBarcodes = useCallback((goodId: string) => {
+    setBarcodesLoading(true);
+    apiFetch<GoodBarcode[]>(`/goods/${goodId}/barcodes`)
+      .then(setBarcodes)
+      .catch(() => setBarcodes([]))
+      .finally(() => setBarcodesLoading(false));
+  }, []);
+
+  const addBarcode = async (goodId: string) => {
+    if (!newBarcode.trim()) return;
+    setAddingBarcode(true);
+    try {
+      await apiFetch<GoodBarcode>(`/goods/${goodId}/barcodes`, {
+        method: 'POST',
+        body: JSON.stringify({ barcode: newBarcode.trim(), type: newBarcodeType }),
+      });
+      setNewBarcode('');
+      loadBarcodes(goodId);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка додавання штрихкоду'); }
+    finally { setAddingBarcode(false); }
+  };
+
+  const deleteBarcode = async (goodId: string, barcodeId: string) => {
+    if (!confirm('Видалити штрихкод?')) return;
+    try {
+      await apiFetch<void>(`/goods/${goodId}/barcodes/${barcodeId}`, { method: 'DELETE' });
+      loadBarcodes(goodId);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення штрихкоду'); }
   };
 
   const markForDeletion = async (id: string) => {
@@ -348,6 +396,12 @@ function GoodsTab() {
     finally { setSaving(false); }
   };
 
+  const selectGood = (g: Good | null) => {
+    setSelectedGood(g);
+    setGoodDetailTab('info');
+    if (g) loadBarcodes(g.id);
+  };
+
   const totalPages = goods ? Math.ceil(goods.total / goods.limit) : 1;
 
   return (
@@ -355,11 +409,16 @@ function GoodsTab() {
       {!modal && error && (
         <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
       )}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="relative flex-1">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук за назвою, артикулом, штрихкодом..." className="pl-9" />
         </div>
+        <XlsxImportButton
+          templateType="goods"
+          importUrl="/xlsx/import/goods"
+          onImportComplete={load}
+        />
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setError(''); setModal(true); }}>
           Товар
         </Button>
@@ -397,7 +456,7 @@ function GoodsTab() {
                 <TableRow
                   key={g.id}
                   className={`cursor-pointer ${selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
-                  onClick={() => setSelectedGood(prev => prev?.id === g.id ? null : g)}
+                  onClick={() => selectGood(selectedGood?.id === g.id ? null : g)}
                 >
                   <TableCell>
                     <p className="text-[13px] font-medium text-foreground">{g.name}</p>
@@ -427,51 +486,134 @@ function GoodsTab() {
 
         <DetailPanel
           open={!!selectedGood}
-          onClose={() => setSelectedGood(null)}
+          onClose={() => selectGood(null)}
           title={selectedGood?.name ?? ''}
         >
           {selectedGood && (
             <div className="space-y-3 text-sm">
-              {selectedGood.sku && (
-                <div>
-                  <span className="text-muted-foreground">Артикул:</span>{' '}
-                  <span className="text-foreground font-mono">{selectedGood.sku}</span>
-                </div>
-              )}
-              <div>
-                <span className="text-muted-foreground">Одиниця:</span>{' '}
-                <span className="text-foreground">{selectedGood.unit}</span>
+              {/* Detail tabs */}
+              <div className="flex gap-1 bg-secondary rounded-lg p-0.5 mb-3">
+                {([
+                  { key: 'info' as const, label: 'Інформація', icon: Package },
+                  { key: 'barcodes' as const, label: 'Штрихкоди', icon: Barcode },
+                ] as const).map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setGoodDetailTab(key); if (key === 'barcodes') loadBarcodes(selectedGood.id); }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[12px] font-medium transition-colors ${goodDetailTab === key ? 'bg-surface text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <Icon className="h-3 w-3" />
+                    {label}
+                  </button>
+                ))}
               </div>
-              {selectedGood.purchasePrice != null && (
-                <div>
-                  <span className="text-muted-foreground">Ціна закупки:</span>{' '}
-                  <span className="text-foreground">
-                    {selectedGood.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                  </span>
+
+              {/* Info tab */}
+              {goodDetailTab === 'info' && (
+                <div className="space-y-3">
+                  {selectedGood.sku && (
+                    <div>
+                      <span className="text-muted-foreground">Артикул:</span>{' '}
+                      <span className="text-foreground font-mono">{selectedGood.sku}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">Одиниця:</span>{' '}
+                    <span className="text-foreground">{selectedGood.unit}</span>
+                  </div>
+                  {selectedGood.purchasePrice != null && (
+                    <div>
+                      <span className="text-muted-foreground">Ціна закупки:</span>{' '}
+                      <span className="text-foreground">
+                        {selectedGood.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                      </span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">Ціна продажу:</span>{' '}
+                    <span className="text-foreground font-semibold">
+                      {selectedGood.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                    </span>
+                  </div>
+                  {selectedGood.category && (
+                    <div>
+                      <span className="text-muted-foreground">Категорія:</span>{' '}
+                      <span className="text-foreground">{selectedGood.category}</span>
+                    </div>
+                  )}
+                  {selectedGood.barcode && (
+                    <div>
+                      <span className="text-muted-foreground">Штрихкод:</span>{' '}
+                      <span className="text-foreground font-mono">{selectedGood.barcode}</span>
+                    </div>
+                  )}
+                  {selectedGood.notes && (
+                    <div>
+                      <p className="text-muted-foreground mb-1">Нотатки:</p>
+                      <p className="text-foreground italic">{selectedGood.notes}</p>
+                    </div>
+                  )}
                 </div>
               )}
-              <div>
-                <span className="text-muted-foreground">Ціна продажу:</span>{' '}
-                <span className="text-foreground font-semibold">
-                  {selectedGood.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                </span>
-              </div>
-              {selectedGood.category && (
-                <div>
-                  <span className="text-muted-foreground">Категорія:</span>{' '}
-                  <span className="text-foreground">{selectedGood.category}</span>
-                </div>
-              )}
-              {selectedGood.barcode && (
-                <div>
-                  <span className="text-muted-foreground">Штрихкод:</span>{' '}
-                  <span className="text-foreground font-mono">{selectedGood.barcode}</span>
-                </div>
-              )}
-              {selectedGood.notes && (
-                <div>
-                  <p className="text-muted-foreground mb-1">Нотатки:</p>
-                  <p className="text-foreground italic">{selectedGood.notes}</p>
+
+              {/* Barcodes tab */}
+              {goodDetailTab === 'barcodes' && (
+                <div className="space-y-3">
+                  {barcodesLoading ? (
+                    <div className="flex justify-center py-4"><Spinner size="sm" /></div>
+                  ) : (
+                    <>
+                      {barcodes.length === 0 && (
+                        <p className="text-[12px] text-muted-foreground text-center py-3">Штрихкоди відсутні</p>
+                      )}
+                      {barcodes.map(bc => (
+                        <div key={bc.id} className="flex items-center justify-between gap-2 bg-secondary rounded-lg px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] font-mono text-foreground truncate">{bc.barcode}</p>
+                            <p className="text-[11px] text-muted-foreground">{bc.type}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {bc.isPrimary && (
+                              <span title="Основний">
+                                <Star className="h-3.5 w-3.5 text-amber-400 fill-current" />
+                              </span>
+                            )}
+                            <button
+                              onClick={() => deleteBarcode(selectedGood.id, bc.id)}
+                              className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive transition-colors"
+                              title="Видалити"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Add barcode form */}
+                  <div className="border-t border-border pt-3 space-y-2">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Додати штрихкод</p>
+                    <Input
+                      placeholder="Штрихкод"
+                      value={newBarcode}
+                      onChange={e => setNewBarcode(e.target.value)}
+                    />
+                    <Select value={newBarcodeType} onChange={e => setNewBarcodeType(e.target.value)}>
+                      {['EAN13', 'UPC', 'QR', 'CODE128'].map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </Select>
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      disabled={!newBarcode.trim() || addingBarcode}
+                      loading={addingBarcode}
+                      onClick={() => addBarcode(selectedGood.id)}
+                    >
+                      Додати
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -537,13 +679,35 @@ function GoodsTab() {
               onChange={e => setForm(f => ({ ...f, sku: e.target.value }))}
               placeholder="OIL-5W40"
             />
+            {units.length > 0 ? (
+              <Select
+                label="Одиниця виміру"
+                value={form.unitId}
+                onChange={e => {
+                  const unit = units.find(u => u.id === e.target.value);
+                  setForm(f => ({ ...f, unitId: e.target.value, unit: unit?.shortName ?? f.unit }));
+                }}
+              >
+                <option value="">— вписати вручну</option>
+                {units.map(u => <option key={u.id} value={u.id}>{u.shortName} ({u.name})</option>)}
+              </Select>
+            ) : (
+              <Input
+                label="Одиниця"
+                value={form.unit}
+                onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
+                placeholder="шт"
+              />
+            )}
+          </div>
+          {units.length > 0 && !form.unitId && (
             <Input
-              label="Одиниця"
+              label="Одиниця (вручну)"
               value={form.unit}
               onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
               placeholder="шт"
             />
-          </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Ціна закупки, ₴"
@@ -821,12 +985,151 @@ function ServicesTab() {
   );
 }
 
+// ─── Units Tab ────────────────────────────────────────────────────────────────
+
+function UnitsTab() {
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ name: '', shortName: '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    apiFetch<Unit[]>('/units')
+      .then(setUnits)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const create = async () => {
+    if (!form.name.trim() || !form.shortName.trim()) { setError('Усі поля є обов\'язковими'); return; }
+    setSaving(true); setError('');
+    try {
+      await apiFetch<Unit>('/units', {
+        method: 'POST',
+        body: JSON.stringify({ name: form.name.trim(), shortName: form.shortName.trim() }),
+      });
+      setModal(false);
+      setForm({ name: '', shortName: '' });
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSaving(false); }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm('Видалити одиницю виміру?')) return;
+    try {
+      await apiFetch<void>(`/units/${id}`, { method: 'DELETE' });
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+  };
+
+  return (
+    <div>
+      {!modal && error && (
+        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
+      )}
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <p className="text-[13px] text-muted-foreground">Одиниці виміру, що використовуються в каталозі товарів</p>
+        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setError(''); setModal(true); }}>
+          Одиниця
+        </Button>
+      </div>
+
+      <div className="border border-border rounded-xl bg-surface overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Скорочення</TableHead>
+              <TableHead>Назва</TableHead>
+              <TableHead>Тип</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading && (
+              <TableRow>
+                <TableCell colSpan={4} className="py-10 text-center">
+                  <div className="flex justify-center"><Spinner size="md" /></div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && units.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={4} className="p-0">
+                  <EmptyState icon={Ruler} title="Одиниці відсутні" />
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && units.map(u => (
+              <TableRow key={u.id}>
+                <TableCell className="font-medium text-foreground">{u.shortName}</TableCell>
+                <TableCell className="text-muted-foreground">{u.name}</TableCell>
+                <TableCell>
+                  {u.isSystem
+                    ? <span className="text-[11px] px-1.5 py-0.5 bg-info-subtle text-info rounded">системна</span>
+                    : <span className="text-[11px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">власна</span>}
+                </TableCell>
+                <TableCell className="text-right">
+                  {!u.isSystem && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(u.id)}
+                      className="text-destructive/60 hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <Modal open={modal} onClose={() => setModal(false)} title="Нова одиниця виміру"
+        footer={
+          <Button onClick={create} loading={saving} disabled={!form.name || !form.shortName} className="w-full">
+            Зберегти
+          </Button>
+        }
+      >
+        {error && (
+          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
+        )}
+        <div className="space-y-4">
+          <Input
+            label="Скорочення"
+            required
+            value={form.shortName}
+            onChange={e => setForm(f => ({ ...f, shortName: e.target.value }))}
+            placeholder="шт"
+          />
+          <Input
+            label="Повна назва"
+            required
+            value={form.name}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="штука"
+          />
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'works', label: 'Роботи' },
   { key: 'goods', label: 'Товари та запчастини' },
   { key: 'services', label: 'Комплексні послуги' },
+  { key: 'units', label: 'Одиниці виміру' },
 ];
 
 export default function CatalogPage() {
@@ -852,6 +1155,7 @@ export default function CatalogPage() {
       {tab === 'works' && <WorksTab />}
       {tab === 'goods' && <GoodsTab />}
       {tab === 'services' && <ServicesTab />}
+      {tab === 'units' && <UnitsTab />}
     </div>
   );
 }

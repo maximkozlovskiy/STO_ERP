@@ -283,3 +283,47 @@ button, a, input, select, textarea {
   background: var(--color-border);
   margin: var(--spacing-section) 0;
 }
+
+/* ── Dark mode overrides ──────────────────────────────── */
+.dark {
+  --color-background:         hsl(222 47% 8%);
+  --color-surface:            hsl(222 47% 11%);
+  --color-surface-raised:     hsl(222 47% 14%);
+  --color-foreground:         hsl(213 31% 91%);
+  --color-foreground-muted:   hsl(215 20% 60%);
+  --color-foreground-faint:   hsl(215 20% 45%);
+  --color-border:             hsl(222 35% 20%);
+  --color-border-hover:       hsl(222 35% 30%);
+  --color-secondary:          hsl(222 35% 16%);
+  --color-muted:              hsl(222 35% 16%);
+  --color-card:               hsl(222 47% 11%);
+  --color-sidebar-bg:         hsl(224 44% 9%);
+  --color-sidebar-border:     hsl(222 35% 14%);
+  --color-destructive-subtle: hsl(0 40% 14%);
+  --color-success-subtle:     hsl(142 40% 12%);
+  --color-warning-subtle:     hsl(38 40% 13%);
+  --color-info-subtle:        hsl(199 40% 13%);
+}
+
+/* System preference (before hydration / no forced class) */
+@media (prefers-color-scheme: dark) {
+  :root:not(.dark):not([data-color-mode="light"]) {
+    --color-background:         hsl(222 47% 8%);
+    --color-surface:            hsl(222 47% 11%);
+    --color-surface-raised:     hsl(222 47% 14%);
+    --color-foreground:         hsl(213 31% 91%);
+    --color-foreground-muted:   hsl(215 20% 60%);
+    --color-foreground-faint:   hsl(215 20% 45%);
+    --color-border:             hsl(222 35% 20%);
+    --color-border-hover:       hsl(222 35% 30%);
+    --color-secondary:          hsl(222 35% 16%);
+    --color-muted:              hsl(222 35% 16%);
+    --color-card:               hsl(222 47% 11%);
+    --color-sidebar-bg:         hsl(224 44% 9%);
+    --color-sidebar-border:     hsl(222 35% 14%);
+    --color-destructive-subtle: hsl(0 40% 14%);
+    --color-success-subtle:     hsl(142 40% 12%);
+    --color-warning-subtle:     hsl(38 40% 13%);
+    --color-info-subtle:        hsl(199 40% 13%);
+  }
+}

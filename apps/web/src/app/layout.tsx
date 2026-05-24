@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth';
 import { TopShell } from '@/components/TopShell';
 import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
+import { ColorModeProvider } from '@/components/ColorModeProvider';
 import './globals.css';
 
 const geistSans = Geist({
@@ -33,11 +34,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="uk">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var m=localStorage.getItem('sto_color_mode')||'system';if(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();` }} />
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ServiceWorkerRegistrar />
-        <AuthProvider>
-          <TopShell>{children}</TopShell>
-        </AuthProvider>
+        <ColorModeProvider>
+          <AuthProvider>
+            <TopShell>{children}</TopShell>
+          </AuthProvider>
+        </ColorModeProvider>
       </body>
     </html>
   );
