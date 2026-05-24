@@ -19,7 +19,7 @@ interface Lift { id: string; name: string; }
 const KYIV_TZ = 'Europe/Kyiv';
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
-function toDateString(d: Date) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function toDateString(d: Date) { return new Intl.DateTimeFormat('sv-SE', { timeZone: KYIV_TZ }).format(d); }
 
 function kyivHours(iso: string): number {
   const parts = new Intl.DateTimeFormat('en-US', {
