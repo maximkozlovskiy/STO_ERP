@@ -9,11 +9,11 @@
 ## Останній commit
 
 ```
-f506ae6 fix(review): replace React.MouseEvent with typed import in TopShell
-b22d375 docs(memory): document UI changes — nav sections, bookmarks, DetailPanel, soft-delete UI
-f919de8 feat(web): DetailPanel + filters + mark-for-deletion in purchase-orders, stock-documents, catalog
-866ca90 feat(web): DetailPanel + filters in work-orders, invoices, inventory
-32b9185 feat(web): mark-for-deletion UI + DetailPanel + filters in employees and CRM
+78ed50c docs(phase16): update PHASES.md — mark 16.1-16.7 partial completion
+140c89a feat(phase16): 16.7 — CRM default garage auto-creation
+5ea46db feat(phase16): 16.5 — XlsxModule for catalog import
+4d53c80 feat(phase16): 16.2-16.4 — Barcodes, Units, XLSX_MANAGER role
+9f9cb8d feat(phase16): 16.1 — Brand model + BrandModule + UI integration
 ```
 
 Дата: 2026-05-25
@@ -24,8 +24,8 @@ f919de8 feat(web): DetailPanel + filters + mark-for-deletion in purchase-orders,
 
 | Параметр | Значення |
 |---|---|
-| Фаза | **Фаза 16 — Installer та Production** (всі попередні `[x]`) |
-| Наступна задача | `[sto-installer]` Inno Setup скрипт |
+| Фаза | **Фаза 16 — Каталог v2 + CRM + XLSX-імпорт** (7/27 done) |
+| Прогрес | 16.1✅ 16.2✅(BE) 16.3✅(BE) 16.4✅(BE) 16.5✅(BE) 16.6⏳ 16.7✅(BE) |
 | TypeScript | ✅ 0 errors (web + api + shared) — verified 2026-05-25 |
 | Unit тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
 | Contract тести | ✅ 15/15 passed (auth: 9, work-orders: 6) |
@@ -197,7 +197,42 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
 
 ---
 
-## Майбутні зміни — Фаза 16 (специфікація, 2026-05-25)
+## Фаза 16 прогрес (поточна сесія, 2026-05-25)
+
+### Завершено (backend)
+- **16.1** — Brand model (CRUD /brands) + Good.brandId FK + UI Select у формі товару
+  - Files: `packages/database/prisma/schema.prisma`, `apps/api/src/modules/brands/`
+  - Migration: `20260524221751_add_brand_model`
+  - UI: GoodsTab form з Brand Select
+- **16.2** — GoodBarcode model + endpoints (GET/POST/DELETE /goods/:goodId/barcodes)
+  - Migration: `20260524221943_add_good_barcodes`
+  - Service: getBarcodes, createBarcode, deleteBarcode
+- **16.3** — UnitOfMeasure model + UnitsModule (CRUD /units-of-measure)
+  - Migration: `20260524222044_add_units_of_measure`
+  - Good.unitId FK для зворотної сумісності
+- **16.4** — XLSX_MANAGER role додана до UserRole enum
+  - Migration: `20260524222133_add_xlsx_manager_role`
+- **16.5** — XlsxModule (/xlsx) з exceljs
+  - Templates: goods, works, brands, units, po-lines, sd-lines, wo-parts
+  - Parse методи: parseGoods, parseWorks, parseBrands, parseUnits, parsePOLines
+  - Import endpoints: POST /xlsx/import/goods, brands, units
+  - Результат: {created, updated, errors[]}
+- **16.7** — CRM default garage auto-creation
+  - CounterpartiesService.create() → auto-create CustomerGarage(name='Основний', isDefault=true)
+  - Migration: `20260524222539_add_customer_garage_is_default`
+
+### TODO (UI + інші)
+- **16.2** — Barcodes tab у CartDetail товару
+- **16.3** — Units select у GoodsTab form + UI tab у /settings або /catalog
+- **16.4** — XLSX_MANAGER у ROLE_LABELS + employee form
+- **16.5** — XlsxImportButton компонент + UI інтеграція в /catalog
+- **16.6** — XLSX import для PO/SD/WO лінійок
+- **16.7** — UI: основний гараж в картці контрагента
+- **16.8** — CRM card 4-tab реорганізація (загальна інф + гаражи+авто + розрахунки + наряди)
+- **16.9** — Nav mode toggle (sections vs functions) у /settings
+- **16.10** — Dark/Light theme (color-mode.ts + globals.css .dark + ColorModeProvider + UI toggle)
+
+## Архітектура змін Фаза 16
 
 ### 16.1 Довідник брендів + розширення Good
 - Нова модель `Brand` (orgId, name unique per org)
