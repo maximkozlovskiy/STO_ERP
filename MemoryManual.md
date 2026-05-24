@@ -9,11 +9,10 @@
 ## Останній commit
 
 ```
-fix(review): cycle 2 — drop unused import + clarify 403 test name in contract specs
-79a23cb docs(memory): update MemoryManual with cycle 2 test counts and gotchas
-81765cb docs(tester): mark Bugs #10-#13 fixed in BUG_REPORT.md
-b191792 fix(tester): Bug #13 — add E2E tests for API error resilience and inventory
-04958b5 fix(tester): Bug #12 — add Testing Library component tests for UI primitives
+f919de8 feat(web): DetailPanel + filters + mark-for-deletion in purchase-orders, stock-documents, catalog
+866ca90 feat(web): DetailPanel + filters in work-orders, invoices, inventory
+32b9185 feat(web): mark-for-deletion UI + DetailPanel + filters in employees and CRM
+291ccb0 feat(web): restructure nav sections + bookmarks + DetailPanel
 ```
 
 Дата: 2026-05-25
@@ -103,7 +102,7 @@ apps/
         settings/          ← налаштування + sync/
         403/               ← сторінка помилки доступу
       components/
-        TopShell.tsx       ← sidebar (згортається) + nav-групи + avatar
+        TopShell.tsx       ← sidebar (3 секції: Документи/Звіти/Довідники) + bookmarks + avatar
         ui/
           button.tsx       ← Variant: primary|secondary|outline|ghost|destructive|link|default
           input.tsx        ← props: label, errorMessage, hint, leftElement, rightElement
@@ -114,6 +113,7 @@ apps/
           table.tsx        ← Table, Thead, Tbody, Tr, Th, Td
           spinner.tsx      ← розміри: xs|sm|md|lg + PageSpinner + InlineSpinner
           empty-state.tsx  ← розміри: sm|md|lg
+          detail-panel.tsx ← inline flex panel w-80/w-0, slide transition, title + X close
       lib/
         api-client.ts      ← apiFetch<T>() з auto-refresh токена
         auth.ts            ← TOKEN_KEY, useAuth(), AuthProvider
@@ -193,6 +193,61 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
 ### Tenant isolation
 - Кожен `findFirst`/`findMany` — завжди `where: { orgId, ... }`
 - `create` — `{ ...dto, orgId }` де `orgId` ОСТАННІЙ (щоб перезаписати forged field)
+
+---
+
+## UI Patterns (2026-05-25)
+
+### Navigation структура TopShell
+```
+Секція "Документи":  /work-orders, /invoices, /purchase-orders, /stock-documents
+Секція "Звіти":      /calendar, /settlements, /reports (OWNER/ADMIN/ACCOUNTANT)
+Секція "Довідники":  /crm, /inventory, /catalog, /employees, /infrastructure, /settings, /settings/sync
+```
+- `ALL_NAV_ITEMS` — flat array для bookmark lookup
+- `BOOKMARKS_KEY = 'sto_bookmarks'` — localStorage, SSR-safe (useState([]) → useEffect hydrate)
+- Star button: `opacity-0 group-hover:opacity-100`, `fill-current` коли активна
+
+### DetailPanel — патерн використання
+```tsx
+import { DetailPanel } from '@/components/ui/detail-panel';
+
+// State
+const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+
+// Layout (після таблиці або навколо)
+<div className="flex gap-0">
+  <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl">
+    <Table>
+      <TableBody>
+        {items.map(item => (
+          <TableRow key={item.id} onClick={() => setSelectedItem(s => s?.id === item.id ? null : item)}>
+            ...
+            <TableCell>
+              <Button onClick={e => { e.stopPropagation(); /* action */ }}>...</Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  </div>
+  <DetailPanel
+    open={!!selectedItem}
+    onClose={() => setSelectedItem(null)}
+    title={selectedItem?.name ?? ''}
+  >
+    {/* detail content */}
+  </DetailPanel>
+</div>
+```
+
+### Soft Delete UI — патерн
+- **Немає кнопки "Видалити"** — лише "Помітити на видалення"
+- Кнопка: `variant="ghost"` + `Trash2` icon + `text-muted-foreground hover:text-destructive hover:bg-destructive/10`
+- Confirm: `'Помітити X на видалення?'` (не "Видалити X?")
+- Toggle "Показати видалені": Eye/EyeOff icon, `?showDeleted=true` у API params
+- Видалені рядки: `opacity-60` + Badge variant="secondary" "видалено"
+- Виняток: `StockItem`, `StockMovement`, `SettlementTransaction`, `Payment`, `WorkOrderLineEmployee` — не мають `deletedAt`
 
 ---
 

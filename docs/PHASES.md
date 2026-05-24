@@ -349,10 +349,17 @@
 
 - [x] `[sto-web]` `TopShell` компонент: TopBar + MegaMenu + QuickTabsBar (з localStorage)
     > `apps/web/src/components/TopShell.tsx`. Sticky TopBar + hamburger MegaMenu (slide-out) + quick tabs (localStorage, max 6, shows 5). Role-filtered NAV, user badge, logout button.
+    > **Оновлення 2026-05-25:** Меню поділено на 3 секції: **Документи** (наряди, рахунки, замовлення, документи складу), **Звіти** (календар, розрахунки, звіти), **Довідники** (контрагенти, склад, каталог, персонал, підрозділи, налаштування). Додано систему закладок (star-pin на hover, localStorage `sto_bookmarks`, секція "Закладки" вгорі sidebar).
 - [x] `[sto-web]` `Dashboard` — KPI картки (наряди, виручка, залишки), графік активності, сповіщення
     > `apps/web/src/app/dashboard/page.tsx`. 8 KPI cards (Promise.allSettled), recharts BarChart revenue 7д, quick actions. TopShell wired in layout.tsx.
 - [x] `[sto-web]` `ViewToggle` — перемикач Дашборд / Робоча область (стан в URL)
     > `apps/web/src/components/TopShell.tsx`. Pill toggle (Дашборд / last visited section) in TopBar, resolves from quickTabs[0].
+- [x] `[sto-web]` `DetailPanel` + м'яке видалення + фільтри у всіх списках
+    > `apps/web/src/components/ui/detail-panel.tsx`. Inline flex-панель w-80 (slide transition) що відкривається при кліку на рядок таблиці.
+    > Додано у: work-orders, invoices, inventory, crm, employees, purchase-orders, stock-documents, catalog (works/goods/services tabs).
+    > Усюди: кнопки "Видалити" → "Помітити на видалення" (ghost+Trash2, confirm dialog). Toggle "Показати видалені" (Eye/EyeOff, `?showDeleted=true`). Видалені рядки: `opacity-60` + "видалено" badge.
+    > Додаткові фільтри: search Input (q), role select (employees), type select (де є).
+    > Виняток: inventory — без showDeleted (StockItem не має deletedAt).
 - [x] `[sto-web]` Теми оформлення: 5 палітр, зберігається в `OrganisationSettings.brandTheme`
     > `apps/web/src/lib/theme.ts`, `apps/web/src/app/settings/page.tsx` (tab "Оформлення"). CSS vars --color-primary/light/dark. Schema: brandTheme String @default("blue"), migration 20260523041555_add_brand_theme.
 - [x] `[sto-web]` PWA manifest + service worker (offline fallback сторінка)
