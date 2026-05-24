@@ -170,7 +170,7 @@ export class SyncService {
     }
 
     // last-write-wins by syncVersion — also validate FKs on update to prevent cross-tenant FK injection
-    if (BigInt(rec.syncVersion) > existing.syncVersion) {
+    if (BigInt(rec.syncVersion) > BigInt((existing as { syncVersion: bigint | number | string }).syncVersion ?? 0)) {
       await this.validateForeignKeys(orgId, rec.table, safePayload);
       await model.update({ where: { id: rec.id, orgId }, data: safePayload });
     }
