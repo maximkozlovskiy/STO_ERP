@@ -9,7 +9,11 @@
 ## Останній commit
 
 ```
-bef35b7 fix(tester): 6 bugs from /sto-tester auto pass + critical service tests
+5a09f23 chore(git): ignore Playwright test-results and reports
+c22e41f fix(tester): Bug #6 — TopShell render-blocking auth guard prevents UI leak
+79546cf fix(tester): Bug #5 — take: 1000 on services serviceWorks/serviceGoods
+41f94f4 fix(tester): Bug #4 — take: 1000 on PO findOne lines relation include
+88f76c1 fix(tester): cycle 1 — remove dup numbering service, take guards on FK findMany
 ```
 
 Дата: 2026-05-24
@@ -23,8 +27,9 @@ bef35b7 fix(tester): 6 bugs from /sto-tester auto pass + critical service tests
 | Фаза | **Фаза 16 — Installer та Production** (всі попередні `[x]`) |
 | Наступна задача | `[sto-installer]` Inno Setup скрипт |
 | TypeScript | ✅ 0 errors (web + api + shared) |
-| Тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
-| Dev сервер | Next.js на `http://localhost:3001` |
+| Unit тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
+| E2E тести | ⚠ Playwright встановлений, 3/4 smoke passed; 1 blocked by dev server cache (потребує перезапуску `pnpm dev`) |
+| Dev сервер | Next.js на `http://localhost:3001` (потребує перезапуску після `rm .next`) |
 | CSS | Tailwind 4 через `@tailwindcss/postcss` (postcss.config.mjs) |
 
 ---
