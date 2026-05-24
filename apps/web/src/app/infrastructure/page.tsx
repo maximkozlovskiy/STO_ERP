@@ -124,11 +124,14 @@ export default function InfrastructurePage() {
 
   const remove = async (endpoint: string, id: string) => {
     if (!confirm('Видалити запис?')) return;
+    setSaving(true); setError('');
     try {
       await apiFetch<void>(`${endpoint}/${id}`, { method: 'DELETE' });
       loadAll();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка видалення');
+    } finally {
+      setSaving(false);
     }
   };
 

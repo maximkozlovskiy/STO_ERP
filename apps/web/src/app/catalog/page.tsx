@@ -97,8 +97,10 @@ function WorksTab() {
 
   const remove = async (id: string) => {
     if (!confirm('Видалити роботу?')) return;
+    setSaving(true); setError('');
     try { await apiFetch<void>(`/works/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setSaving(false); }
   };
 
   const flat = flatCategories(categories);
@@ -234,8 +236,10 @@ function GoodsTab() {
 
   const remove = async (id: string) => {
     if (!confirm('Видалити товар?')) return;
+    setSaving(true); setError('');
     try { await apiFetch<void>(`/goods/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setSaving(false); }
   };
 
   const totalPages = goods ? Math.ceil(goods.total / goods.limit) : 1;
@@ -363,8 +367,10 @@ function ServicesTab() {
 
   const remove = async (id: string) => {
     if (!confirm('Видалити послугу?')) return;
+    setSaving(true); setError('');
     try { await apiFetch<void>(`/services/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setSaving(false); }
   };
 
   const totalPages = services ? Math.ceil(services.total / services.limit) : 1;

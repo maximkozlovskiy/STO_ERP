@@ -58,8 +58,10 @@ export default function VehicleCardPage() {
 
   const removeNode = async (nodeId: string) => {
     if (!confirm('Видалити вузол?')) return;
+    setSaving(true);
     try { await apiFetch<void>(`/vehicles/${id}/nodes/${nodeId}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setSaving(false); }
   };
 
   if (!vehicle) return (
