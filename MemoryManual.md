@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-4910014 docs(skills): add useState(new Date()) hydration trap + missing tsconfig check
+9295d6e fix(review): remove N+1 in work-categories descendants + dead findOneDetail
 ```
 
 Дата: 2026-05-24
@@ -350,6 +350,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `9295d6e` | fix(review): N+1 work-categories descendants + dead findOneDetail |
 | `4910014` | docs(skills): hydration trap useState(new Date()) + missing tsconfig check |
 | `183f20d` | fix(review): hydration mismatches + process.env in service + missing tsconfigs |
 | `a11580d` | fix(api): take:1000 safety guard on FK-bounded findMany |

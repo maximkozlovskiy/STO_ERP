@@ -364,6 +364,38 @@ const orders = await this.prisma.workOrder.findMany({
 });
 ```
 
+```typescript
+// ❌ BAD — рекурсивний findMany по дереву (N+1, без take)
+private async getDescendantIds(orgId: string, parentId: string): Promise<string[]> {
+  const children = await this.prisma.workCategory.findMany({
+    where: { parentId, orgId, deletedAt: null },
+    select: { id: true },
+  });
+  const nested = await Promise.all(children.map(c => this.getDescendantIds(orgId, c.id)));
+  return [...children.map(c => c.id), ...nested.flat()];
+}
+
+// ✅ GOOD — один запит + in-memory walk
+private async getDescendantIds(orgId: string, parentId: string): Promise<string[]> {
+  const all = await this.prisma.workCategory.findMany({
+    where: { orgId, deletedAt: null },
+    select: { id: true, parentId: true },
+    take: 1000,
+  });
+  const childrenByParent = new Map<string, string[]>();
+  for (const c of all) {
+    if (!c.parentId) continue;
+    (childrenByParent.get(c.parentId) ?? childrenByParent.set(c.parentId, []).get(c.parentId)!).push(c.id);
+  }
+  const result: string[] = []; const stack = [parentId];
+  while (stack.length) {
+    const children = childrenByParent.get(stack.pop()!) ?? [];
+    result.push(...children); stack.push(...children);
+  }
+  return result;
+}
+```
+
 ---
 
 ## 7. Performance
