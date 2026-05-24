@@ -474,9 +474,26 @@ model Work {
   @@map("works")
 }
 
+model Brand {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  goods       Good[]
+
+  @@unique([orgId, name])
+  @@index([orgId, deletedAt])
+  @@map("brands")
+}
+
 model Good {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId         String    @db.Uuid
+  brandId       String?   @db.Uuid
   sku           String?
   name          String
   unit          String    @default("шт")
@@ -490,6 +507,7 @@ model Good {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  brand              Brand?             @relation(fields: [brandId], references: [id])
   stockItems         StockItem[]
   movements          StockMovement[]
   serviceGoods       ServiceGood[]

@@ -20,7 +20,8 @@ import {
 interface Category { id: string; name: string; children: Category[]; }
 interface Work { id: string; categoryId: string; categoryName: string; name: string; normoHours: number; price: number; description: string | null; }
 interface PaginatedWorks { items: Work[]; total: number; page: number; limit: number; }
-interface Good { id: string; sku: string | null; name: string; unit: string; purchasePrice: number | null; salePrice: number; category: string | null; barcode: string | null; notes: string | null; }
+interface Brand { id: string; name: string; }
+interface Good { id: string; sku: string | null; name: string; unit: string; purchasePrice: number | null; salePrice: number; category: string | null; barcode: string | null; brandId: string | null; notes: string | null; }
 interface PaginatedGoods { items: Good[]; total: number; page: number; limit: number; }
 interface ServiceWork { workId: string; workName: string; normoHours: number; price: number; quantity: number; }
 interface ServiceGood { goodId: string; goodName: string; unit: string; salePrice: number; quantity: number; }
@@ -281,15 +282,20 @@ function WorksTab() {
 
 function GoodsTab() {
   const [goods, setGoods] = useState<PaginatedGoods | null>(null);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', purchasePrice: '', salePrice: '', category: '', barcode: '', notes: '' });
+  const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [selectedGood, setSelectedGood] = useState<Good | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch<Brand[]>('/brands').then(setBrands).catch((e: unknown) => console.error('Помилка завантаження брендів', e));
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -318,12 +324,13 @@ function GoodsTab() {
           purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : undefined,
           salePrice,
           category: form.category || undefined,
+          brandId: form.brandId || undefined,
           barcode: form.barcode || undefined,
           notes: form.notes || undefined,
         }),
       });
       setModal(false);
-      setForm({ sku: '', name: '', unit: 'шт', purchasePrice: '', salePrice: '', category: '', barcode: '', notes: '' });
+      setForm({ sku: '', name: '', unit: 'шт', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '' });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
@@ -555,19 +562,27 @@ function GoodsTab() {
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Бренд"
+              value={form.brandId}
+              onChange={e => setForm(f => ({ ...f, brandId: e.target.value }))}
+            >
+              <option value="">—</option>
+              {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
             <Input
               label="Категорія"
               value={form.category}
               onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
               placeholder="Мастила"
             />
-            <Input
-              label="Штрихкод"
-              value={form.barcode}
-              onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))}
-              placeholder="4820000000000"
-            />
           </div>
+          <Input
+            label="Штрихкод"
+            value={form.barcode}
+            onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))}
+            placeholder="4820000000000"
+          />
           <Input
             label="Нотатки"
             value={form.notes}

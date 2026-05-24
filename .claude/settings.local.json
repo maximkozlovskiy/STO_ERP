@@ -32,7 +32,15 @@
       "PowerShell(*)",
       "Bash(bash -c ' *)",
       "Edit(/.claude/skills/sto-tester/**)",
-      "Edit(/.claude/skills/sto-review/**)"
+      "Edit(/.claude/skills/sto-review/**)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); deps={**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}; [print\\(k,v\\) for k,v in deps.items\\(\\) if any\\(x in k for x in ['test','vitest','jest','testing']\\)]\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); deps={**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}; [print\\(k,v\\) for k,v in deps.items\\(\\) if any\\(x in k for x in ['test','vitest','jest','fast-check','property']\\)]\")",
+      "Bash(./node_modules/.bin/tsc --noEmit --incremental false)",
+      "Bash(PGPASSWORD=sto_dev_secret psql -h localhost -U sto -d sto_erp -c \"SELECT column_name FROM information_schema.columns WHERE table_name='document_number_configs'\")",
+      "Edit(/.claude/skills/sto-dev/**)",
+      "Bash(node_modules/.bin/vitest run *)",
+      "Read(//c/Users/m.kozlovskiy/.claude/**)",
+      "Read(//c/Users/m.kozlovskiy/.claude\" 2>/dev/**)"
     ],
     "additionalDirectories": [
       "e:\\Git\\STO ERP\\.claude",
