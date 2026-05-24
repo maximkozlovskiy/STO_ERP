@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Users } from 'lucide-react';
+import { Plus, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -14,12 +14,15 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { DetailPanel } from '@/components/ui/detail-panel';
+import { cn } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────
 
 interface Employee {
   id: string; firstName: string; lastName: string;
   role: string; phone: string | null;
+  deletedAt: string | null;
   rateScheme?: { type: string; params: Record<string, number> };
   zoneIds: string[]; liftIds: string[]; workCategoryIds: string[];
 }
@@ -38,6 +41,16 @@ const ROLE_BADGE: Record<string, BadgeVariant> = {
 const RATE_LABELS: Record<string, string> = {
   percent_normo: '% від норма-год', fixed_plus_bonus: 'Ставка + бонус',
 };
+
+const ROLE_FILTER_OPTIONS: [string, string][] = [
+  ['', 'Всі посади'],
+  ['OWNER', 'Власник'],
+  ['ADMIN', 'Адміністратор'],
+  ['RECEPTIONIST', 'Приймальник'],
+  ['MECHANIC', 'Механік'],
+  ['STOREKEEPER', 'Комірник'],
+  ['ACCOUNTANT', 'Бухгалтер'],
+];
 
 function CheckboxList({ label, items, selected, onChange }: {
   label: string; items: { id: string; name: string }[];
@@ -78,8 +91,15 @@ export default function EmployeesPage() {
 
   const [modal, setModal] = useState<'create' | 'card' | null>(null);
   const [selected, setSelected] = useState<Employee | null>(null);
+  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [markingId, setMarkingId] = useState<string | null>(null);
+
+  // Filters
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const [form, setForm] = useState({ firstName: '', lastName: '', role: 'MECHANIC', phone: '', rateType: 'percent_normo', percent: '40', fixedMonthly: '0', bonusPercent: '10' });
 
@@ -87,16 +107,29 @@ export default function EmployeesPage() {
   const [assignedLifts, setAssignedLifts] = useState<string[]>([]);
   const [assignedCats, setAssignedCats] = useState<string[]>([]);
 
-  const load = () => {
+  const load = (opts?: { search?: string; role?: string; showDeleted?: boolean }) => {
     setLoading(true);
+    const params = new URLSearchParams();
+    const q = opts?.search ?? search;
+    const role = opts?.role ?? roleFilter;
+    const deleted = opts?.showDeleted ?? showDeleted;
+    if (q) params.set('q', q);
+    if (role) params.set('role', role);
+    if (deleted) params.set('showDeleted', 'true');
+    const qs = params.toString();
     Promise.all([
-      apiFetch<Employee[]>('/employees').then(setEmployees),
+      apiFetch<Employee[]>(`/employees${qs ? `?${qs}` : ''}`).then(setEmployees),
       apiFetch<Zone[]>('/zones').then(setZones),
       apiFetch<Lift[]>('/lifts').then(setLifts),
       apiFetch<WorkCategory[]>('/work-categories').then(setWorkCategories),
     ]).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-load when filters change
+  useEffect(() => {
+    load({ search, role: roleFilter, showDeleted });
+  }, [search, roleFilter, showDeleted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openCard = (emp: Employee) => {
     setSelected(emp);
@@ -156,12 +189,16 @@ export default function EmployeesPage() {
     finally { setSaving(false); }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm('Видалити співробітника?')) return;
-    setSaving(true); setError('');
-    try { await apiFetch<void>(`/employees/${id}`, { method: 'DELETE' }); load(); }
-    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
-    finally { setSaving(false); }
+  const markForDeletion = async (id: string) => {
+    if (!confirm('Помітити співробітника на видалення?')) return;
+    setMarkingId(id);
+    setError('');
+    try {
+      await apiFetch<void>(`/employees/${id}`, { method: 'DELETE' });
+      if (selectedEmp?.id === id) setSelectedEmp(null);
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setMarkingId(null); }
   };
 
   const flatCats = flattenTree(workCategories);
@@ -182,71 +219,197 @@ export default function EmployeesPage() {
         <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
       )}
 
-      {/* Table */}
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>ПІБ</TableHead>
-              <TableHead>Посада</TableHead>
-              <TableHead>Схема нарахування</TableHead>
-              <TableHead>Зони</TableHead>
-              <TableHead>Підйомники</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
+      {/* Filters */}
+      <div className="flex gap-3 mb-5 flex-wrap">
+        <Input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Пошук за ім'ям..."
+          leftElement={<Search />}
+          className="flex-1 min-w-48"
+        />
+        <Select
+          value={roleFilter}
+          onChange={e => setRoleFilter(e.target.value)}
+          className="w-48"
+        >
+          {ROLE_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </Select>
+        <Button
+          variant="outline"
+          size="md"
+          leftIcon={showDeleted ? <Eye /> : <EyeOff />}
+          onClick={() => setShowDeleted(d => !d)}
+          className={showDeleted ? 'border-primary text-primary' : ''}
+        >
+          {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+        </Button>
+      </div>
+
+      {/* Table + DetailPanel */}
+      <div className="flex gap-0 flex-1 min-h-0 bg-surface rounded-xl border border-border overflow-hidden">
+        <div className="flex-1 min-w-0 overflow-auto">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
-                </TableCell>
+                <TableHead>ПІБ</TableHead>
+                <TableHead>Посада</TableHead>
+                <TableHead>Схема нарахування</TableHead>
+                <TableHead>Зони</TableHead>
+                <TableHead>Підйомники</TableHead>
+                <TableHead />
               </TableRow>
-            )}
-            {!loading && employees.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="p-0">
-                  <EmptyState icon={Users} title="Немає співробітників" description="Додайте першого співробітника" />
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && employees.map(emp => (
-              <TableRow key={emp.id}>
-                <TableCell>
-                  <button onClick={() => openCard(emp)} className="text-[13px] font-medium text-primary hover:underline text-left">
-                    {emp.lastName} {emp.firstName}
-                  </button>
-                  {emp.phone && <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
-                    {ROLE_LABELS[emp.role] ?? emp.role}
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && employees.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState icon={Users} title="Немає співробітників" description="Додайте першого співробітника" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && employees.map(emp => {
+                const isDeleted = !!emp.deletedAt;
+                const isMarking = markingId === emp.id;
+                return (
+                  <TableRow
+                    key={emp.id}
+                    className={cn(
+                      'cursor-pointer',
+                      isDeleted && 'opacity-60',
+                      selectedEmp?.id === emp.id && 'bg-secondary',
+                    )}
+                    onClick={() => setSelectedEmp(prev => prev?.id === emp.id ? null : emp)}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-foreground">
+                          {emp.lastName} {emp.firstName}
+                        </span>
+                        {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                      </div>
+                      {emp.phone && <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
+                        {ROLE_LABELS[emp.role] ?? emp.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {emp.rateScheme
+                        ? (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) + (emp.rateScheme.type === 'percent_normo' ? ` ${emp.rateScheme.params.percent}%` : '')
+                        : <span className="text-foreground-faint">—</span>}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {emp.zoneIds.length > 0
+                        ? emp.zoneIds.map(id => zones.find(z => z.id === id)?.name ?? id).join(', ')
+                        : <span className="text-foreground-faint">—</span>}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {emp.liftIds.length > 0
+                        ? emp.liftIds.map(id => lifts.find(l => l.id === id)?.name ?? id).join(', ')
+                        : <span className="text-foreground-faint">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        title="Помітити на видалення"
+                        disabled={isMarking || !!markingId || isDeleted}
+                        onClick={() => markForDeletion(emp.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+
+        <DetailPanel
+          open={!!selectedEmp}
+          onClose={() => setSelectedEmp(null)}
+          title={selectedEmp ? `${selectedEmp.lastName} ${selectedEmp.firstName}` : ''}
+        >
+          {selectedEmp && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant={ROLE_BADGE[selectedEmp.role] ?? 'secondary'}>
+                    {ROLE_LABELS[selectedEmp.role] ?? selectedEmp.role}
                   </Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {emp.rateScheme
-                    ? (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) + (emp.rateScheme.type === 'percent_normo' ? ` ${emp.rateScheme.params.percent}%` : '')
-                    : <span className="text-foreground-faint">—</span>}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {emp.zoneIds.length > 0
-                    ? emp.zoneIds.map(id => zones.find(z => z.id === id)?.name ?? id).join(', ')
-                    : <span className="text-foreground-faint">—</span>}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {emp.liftIds.length > 0
-                    ? emp.liftIds.map(id => lifts.find(l => l.id === id)?.name ?? id).join(', ')
-                    : <span className="text-foreground-faint">—</span>}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button variant="destructive" size="sm" onClick={() => remove(emp.id)}>
-                    Видалити
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                  {selectedEmp.deletedAt && <Badge variant="secondary">видалено</Badge>}
+                </div>
+                {selectedEmp.rateScheme && (
+                  <p className="text-[13px] text-muted-foreground">
+                    {RATE_LABELS[selectedEmp.rateScheme.type] ?? selectedEmp.rateScheme.type}
+                    {selectedEmp.rateScheme.type === 'percent_normo' ? ` ${selectedEmp.rateScheme.params.percent}%` : ''}
+                  </p>
+                )}
+                {selectedEmp.phone && (
+                  <p className="text-[13px] text-muted-foreground">{selectedEmp.phone}</p>
+                )}
+              </div>
+
+              {selectedEmp.zoneIds.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Зони</p>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedEmp.zoneIds.map(id => {
+                      const z = zones.find(z => z.id === id);
+                      return <Badge key={id} variant="secondary">{z?.name ?? id}</Badge>;
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {selectedEmp.liftIds.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Підйомники</p>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedEmp.liftIds.map(id => {
+                      const l = lifts.find(l => l.id === id);
+                      return <Badge key={id} variant="secondary">{l?.name ?? id}</Badge>;
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {selectedEmp.workCategoryIds.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Категорії робіт</p>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedEmp.workCategoryIds.map(id => {
+                      const c = flatCats.find(c => c.id === id);
+                      return <Badge key={id} variant="secondary">{c?.name ?? id}</Badge>;
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-border">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => openCard(selectedEmp)}
+                >
+                  Редагувати прив'язки
+                </Button>
+              </div>
+            </div>
+          )}
+        </DetailPanel>
       </div>
 
       {/* Create modal */}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Users } from 'lucide-react';
+import { Plus, Search, Users, Eye, EyeOff } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { DetailPanel } from '@/components/ui/detail-panel';
 import { cn } from '@/lib/utils';
 
 interface Counterparty {
@@ -22,6 +23,7 @@ interface Counterparty {
   firstName: string | null; lastName: string | null; companyName: string | null;
   phone: string | null; email: string | null; edrpou: string | null;
   vatPayer: boolean; balance: number; createdAt: string;
+  deletedAt: string | null;
 }
 interface Paginated { items: Counterparty[]; total: number; page: number; limit: number; }
 
@@ -37,9 +39,11 @@ export default function CrmPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
   const [form, setForm] = useState({
     type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '',
   });
@@ -49,11 +53,12 @@ export default function CrmPage() {
     const params = new URLSearchParams({ page: String(page), limit: '20' });
     if (search) params.set('q', search);
     if (typeFilter) params.set('type', typeFilter);
+    if (showDeleted) params.set('showDeleted', 'true');
     apiFetch<Paginated>(`/counterparties?${params}`)
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
       .finally(() => setLoading(false));
-  }, [page, search, typeFilter]);
+  }, [page, search, typeFilter, showDeleted]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -119,13 +124,13 @@ export default function CrmPage() {
       )}
 
       {/* Filters */}
-      <div className="flex gap-3 mb-5">
+      <div className="flex gap-3 mb-5 flex-wrap">
         <Input
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }}
           placeholder="Пошук за ім'ям, телефоном, ЄДРПОУ..."
           leftElement={<Search />}
-          className="flex-1"
+          className="flex-1 min-w-48"
         />
         <Select
           value={typeFilter}
@@ -134,81 +139,166 @@ export default function CrmPage() {
         >
           {TYPE_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </Select>
+        <Button
+          variant="outline"
+          size="md"
+          leftIcon={showDeleted ? <Eye /> : <EyeOff />}
+          onClick={() => { setShowDeleted(d => !d); setPage(1); }}
+          className={showDeleted ? 'border-primary text-primary' : ''}
+        >
+          {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+        </Button>
       </div>
 
-      {/* Table */}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Контрагент</TableHead>
-            <TableHead>Тип</TableHead>
-            <TableHead>Телефон</TableHead>
-            <TableHead>ЄДРПОУ</TableHead>
-            <TableHead>Баланс, ₴</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {loading && (
-            <TableRow>
-              <TableCell colSpan={6} className="py-12 text-center">
-                <div className="flex justify-center"><Spinner size="md" /></div>
-              </TableCell>
-            </TableRow>
-          )}
-          {!loading && data?.items.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={6} className="p-0">
-                <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" size="sm" />
-              </TableCell>
-            </TableRow>
-          )}
-          {!loading && data?.items.map(cp => (
-            <TableRow key={cp.id} onClick={() => router.push(`/crm/${cp.id}`)}>
-              <TableCell>
-                <p className="text-[13px] font-medium text-primary">{displayName(cp)}</p>
-                {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
-              </TableCell>
-              <TableCell>
-                <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
-                  {TYPE_LABELS[cp.type]}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground text-[13px]">{cp.phone ?? '—'}</TableCell>
-              <TableCell className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>
-              <TableCell className={cn(
-                'font-semibold tabular-nums text-[13px]',
-                cp.balance < 0 ? 'text-[hsl(0_84%_42%)]' : cp.balance > 0 ? 'text-[hsl(142_71%_30%)]' : 'text-muted-foreground',
-              )}>
-                {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-              </TableCell>
-              <TableCell className="text-right">
-                <Button variant="ghost" size="sm">Картка →</Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-1.5 mt-4">
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-            <button
-              key={p}
-              onClick={() => setPage(p)}
-              className={cn(
-                'h-8 w-8 rounded-lg text-[13px] font-medium border transition-colors',
-                p === page
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
+      {/* Table + DetailPanel */}
+      <div className="flex gap-0 flex-1 min-h-0">
+        <div className="flex-1 min-w-0 overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Контрагент</TableHead>
+                <TableHead>Тип</TableHead>
+                <TableHead>Телефон</TableHead>
+                <TableHead>ЄДРПОУ</TableHead>
+                <TableHead>Баланс, ₴</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-12 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
               )}
-            >
-              {p}
-            </button>
-          ))}
+              {!loading && data?.items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="p-0">
+                    <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" size="sm" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && data?.items.map(cp => {
+                const isDeleted = !!cp.deletedAt;
+                return (
+                  <TableRow
+                    key={cp.id}
+                    className={cn(
+                      'cursor-pointer',
+                      isDeleted && 'opacity-60',
+                      selectedCp?.id === cp.id && 'bg-secondary',
+                    )}
+                    onClick={() => setSelectedCp(prev => prev?.id === cp.id ? null : cp)}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-[13px] font-medium text-primary">{displayName(cp)}</p>
+                        {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                      </div>
+                      {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
+                        {TYPE_LABELS[cp.type]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-[13px]">{cp.phone ?? '—'}</TableCell>
+                    <TableCell className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>
+                    <TableCell className={cn(
+                      'font-semibold tabular-nums text-[13px]',
+                      cp.balance < 0 ? 'text-[hsl(0_84%_42%)]' : cp.balance > 0 ? 'text-[hsl(142_71%_30%)]' : 'text-muted-foreground',
+                    )}>
+                      {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex justify-center gap-1.5 mt-4 pb-4">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={cn(
+                    'h-8 w-8 rounded-lg text-[13px] font-medium border transition-colors',
+                    p === page
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
+                  )}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+        <DetailPanel
+          open={!!selectedCp}
+          onClose={() => setSelectedCp(null)}
+          title={selectedCp ? displayName(selectedCp) : ''}
+        >
+          {selectedCp && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant={TYPE_BADGE[selectedCp.type] ?? 'secondary'}>
+                    {TYPE_LABELS[selectedCp.type]}
+                  </Badge>
+                  {selectedCp.vatPayer && <Badge variant="warning">ПДВ</Badge>}
+                  {selectedCp.deletedAt && <Badge variant="secondary">видалено</Badge>}
+                </div>
+
+                {selectedCp.phone && (
+                  <div>
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Телефон</p>
+                    <p className="text-[13px] text-foreground">{selectedCp.phone}</p>
+                  </div>
+                )}
+
+                {selectedCp.email && (
+                  <div>
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Email</p>
+                    <p className="text-[13px] text-foreground">{selectedCp.email}</p>
+                  </div>
+                )}
+
+                {selectedCp.edrpou && (
+                  <div>
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">ЄДРПОУ</p>
+                    <p className="text-[13px] text-foreground">{selectedCp.edrpou}</p>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Баланс</p>
+                  <p className={cn(
+                    'text-[14px] font-semibold tabular-nums',
+                    selectedCp.balance < 0 ? 'text-[hsl(0_84%_42%)]' : selectedCp.balance > 0 ? 'text-[hsl(142_71%_30%)]' : 'text-muted-foreground',
+                  )}>
+                    {selectedCp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-border">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => router.push(`/crm/${selectedCp.id}`)}
+                >
+                  Відкрити картку
+                </Button>
+              </div>
+            </div>
+          )}
+        </DetailPanel>
+      </div>
 
       {/* Create modal */}
       <Modal
