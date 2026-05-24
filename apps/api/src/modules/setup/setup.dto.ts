@@ -25,6 +25,7 @@ export class SetupInitDto {
 
   @ApiProperty({ example: 'secret', minLength: 6 })
   @IsString()
+  @IsNotEmpty({ message: 'Пароль не може бути порожнім' })
   @MinLength(6, { message: 'Пароль має бути не менше 6 символів' })
   ownerPassword!: string;
 

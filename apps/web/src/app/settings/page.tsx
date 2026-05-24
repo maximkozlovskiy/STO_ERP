@@ -115,6 +115,7 @@ export default function SettingsPage() {
   };
 
   const togglePayment = async (pm: PaymentMethod) => {
+    setSaving(true);
     try {
       const updated = await apiFetch<PaymentMethod>(`/payment-methods/${pm.id}`, {
         method: 'PATCH',
@@ -123,6 +124,8 @@ export default function SettingsPage() {
       setPayments((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setSaving(false);
     }
   };
 

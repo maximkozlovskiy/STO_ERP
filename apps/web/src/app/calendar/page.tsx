@@ -85,7 +85,10 @@ export default function CalendarPage() {
 
   const removeSlot = async (id: string) => {
     if (!confirm('Видалити слот?')) return;
-    try { await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    setSaving(true); setError('');
+    try { await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); }
+    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setSaving(false); }
   };
 
   const slotsForLift = (liftId: string) => slots.filter(s => s.liftId === liftId);
