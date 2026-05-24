@@ -14,6 +14,25 @@ model: claude-sonnet-4-6
 
 ## TypeScript
 
+### tsconfig.json — валідні значення
+
+```json
+// ❌ "ignoreDeprecations": "6.0" — TS 5.9 дає TS5103 "Invalid value"
+// ❌ "baseUrl": "."             — deprecated, видалити (paths працює без нього у TS 5+)
+// ❌ "rootDir": "src" + paths поза src — конфлікт "common source directory"
+
+// ✅ TS 5.x
+{
+  "ignoreDeprecations": "5.0",  // тільки "5.0" валідне до TS 6.0
+  "moduleResolution": "node",   // для NestJS (commonjs)
+  "module": "commonjs",         // NestJS не сумісний з node16 module
+  // НЕМАЄ baseUrl — paths відносні до tsconfig.json
+  "paths": { "@sto/shared": ["../../packages/shared/src"] }
+}
+```
+
+> **Чому "6.0" не працює:** значення `ignoreDeprecations` має бути ≤ поточної TS major. На TS 5.9 валідне тільки `"5.0"`. `"6.0"` стане валідним коли вийде TS 6.
+
 ### Заборонені патерни
 
 ```typescript
