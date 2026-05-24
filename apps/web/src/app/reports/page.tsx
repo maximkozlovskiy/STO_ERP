@@ -40,10 +40,10 @@ function fmtNum(n: number, dec = 1) {
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <div className="text-sm text-gray-500">{label}</div>
-      <div className="text-2xl font-bold text-gray-900 mt-1">{value}</div>
-      {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+    <div className="bg-surface rounded-xl border border-border p-5">
+      <div className="text-[13px] text-muted-foreground">{label}</div>
+      <div className="text-2xl font-bold text-foreground mt-1">{value}</div>
+      {sub && <div className="text-[12px] text-muted-foreground mt-1">{sub}</div>}
     </div>
   );
 }
@@ -89,21 +89,21 @@ export default function ReportsPage() {
   const needsDates = ['revenue', 'work-orders', 'load'].includes(tab);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
       )}
-      <h1 className="text-xl font-bold text-gray-900 mb-6">Звіти</h1>
+      <h1 className="page-title mb-6">Звіти</h1>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b mb-6">
+      <div className="flex gap-1 border-b border-border mb-6">
         {tabs.map(t => (
           <button
             key={t.id}
             onClick={() => { setTab(t.id); setData(null); }}
             className={cn(
-              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-              tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700',
+              'px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
+              tab === t.id ? 'border-(--color-primary) text-(--color-primary)' : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {t.label}
@@ -116,11 +116,11 @@ export default function ReportsPage() {
         {needsDates && (
           <>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">З</label>
+              <label className="block text-[12px] text-muted-foreground mb-1">З</label>
               <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">По</label>
+              <label className="block text-[12px] text-muted-foreground mb-1">По</label>
               <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40" />
             </div>
           </>
@@ -144,7 +144,7 @@ export default function ReportsPage() {
       </div>
 
       {!data && !loading && (
-        <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+        <div className="flex items-center justify-center h-64 text-muted-foreground text-[13px]">
           Оберіть параметри і натисніть «Сформувати»
         </div>
       )}
@@ -163,8 +163,8 @@ export default function ReportsPage() {
             <StatCard label="Кількість нарядів" value={String(data.totalOrders)} />
             <StatCard label="Середній чек" value={data.totalOrders > 0 ? fmt(data.totalRevenue / data.totalOrders) : '—'} />
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="font-medium text-gray-900 mb-4">Виручка по днях</h3>
+          <div className="bg-surface rounded-xl border border-border p-5">
+            <h3 className="font-medium text-foreground mb-4">Виручка по днях</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={data.rows}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -175,8 +175,8 @@ export default function ReportsPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="font-medium text-gray-900 mb-4">Роботи vs Запчастини</h3>
+          <div className="bg-surface rounded-xl border border-border p-5">
+            <h3 className="font-medium text-foreground mb-4">Роботи vs Запчастини</h3>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={data.rows}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -200,7 +200,7 @@ export default function ReportsPage() {
             <StatCard label="Сума робіт" value={fmt(data.totalAmount)} />
             <StatCard label="Механіків" value={String(data.rows.length)} />
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -213,9 +213,9 @@ export default function ReportsPage() {
               <TableBody>
                 {data.rows.map((r) => (
                   <TableRow key={r.employeeId}>
-                    <TableCell className="font-medium text-gray-900">{r.employeeName}</TableCell>
+                    <TableCell className="font-medium text-foreground">{r.employeeName}</TableCell>
                     <TableCell className="text-right">{fmtNum(r.totalNormoHours)}</TableCell>
-                    <TableCell className="text-right text-gray-500">{r.linesCount}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{r.linesCount}</TableCell>
                     <TableCell className="text-right font-semibold">{fmt(r.totalAmount)}</TableCell>
                   </TableRow>
                 ))}
@@ -232,7 +232,7 @@ export default function ReportsPage() {
             <StatCard label="Позицій на складах" value={String(data.stockItems.length)} />
             <StatCard label="Загальна вартість" value={fmt(data.totalValue)} />
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -247,12 +247,12 @@ export default function ReportsPage() {
                 {data.stockItems.map((i, idx) => (
                   <TableRow key={idx}>
                     <TableCell>
-                      <div className="font-medium text-gray-900">{i.goodName}</div>
-                      <div className="text-xs text-gray-400 font-mono">{i.goodSku ?? '—'}</div>
+                      <div className="font-medium text-foreground">{i.goodName}</div>
+                      <div className="text-xs text-foreground-faint font-mono">{i.goodSku ?? '—'}</div>
                     </TableCell>
-                    <TableCell className="text-gray-500">{i.warehouseName}</TableCell>
+                    <TableCell className="text-muted-foreground">{i.warehouseName}</TableCell>
                     <TableCell className="text-right">{fmtNum(i.quantity)} {i.unit}</TableCell>
-                    <TableCell className={cn('text-right font-medium', i.available <= 0 ? 'text-red-600' : 'text-green-700')}>
+                    <TableCell className={cn('text-right font-medium', i.available <= 0 ? 'text-destructive' : 'text-success')}>
                       {fmtNum(i.available)}
                     </TableCell>
                     <TableCell className="text-right">{fmt(i.value)}</TableCell>
@@ -272,8 +272,8 @@ export default function ReportsPage() {
             <StatCard label="Кредиторська заборгованість" value={fmt(data.totalCredit)} sub="Ми постачальникам" />
           </div>
           <div className="grid grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl border p-5">
-              <h3 className="font-medium text-gray-900 mb-4">Структура</h3>
+            <div className="bg-surface rounded-xl border border-border p-5">
+              <h3 className="font-medium text-foreground mb-4">Структура</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
                   <Pie data={[
@@ -288,7 +288,7 @@ export default function ReportsPage() {
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -299,8 +299,8 @@ export default function ReportsPage() {
                 <TableBody>
                   {data.rows.filter((r) => r.balance !== 0).map((r) => (
                     <TableRow key={r.counterpartyId}>
-                      <TableCell className="text-gray-900">{r.counterpartyName}</TableCell>
-                      <TableCell className={cn('text-right font-semibold', r.balance > 0 ? 'text-red-600' : 'text-green-600')}>
+                      <TableCell className="text-foreground">{r.counterpartyName}</TableCell>
+                      <TableCell className={cn('text-right font-semibold', r.balance > 0 ? 'text-destructive' : 'text-success')}>
                         {r.balance > 0 ? '+' : ''}{fmt(r.balance)}
                       </TableCell>
                     </TableRow>
@@ -315,8 +315,8 @@ export default function ReportsPage() {
       {/* Load report */}
       {data && data._tab === 'load' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="font-medium text-gray-900 mb-4">Завантаженість підйомників (%)</h3>
+          <div className="bg-surface rounded-xl border border-border p-5">
+            <h3 className="font-medium text-foreground mb-4">Завантаженість підйомників (%)</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={data.rows} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
@@ -331,7 +331,7 @@ export default function ReportsPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -345,16 +345,16 @@ export default function ReportsPage() {
               <TableBody>
                 {data.rows.map((r) => (
                   <TableRow key={r.liftId}>
-                    <TableCell className="font-medium text-gray-900">{r.liftName}</TableCell>
-                    <TableCell className="text-gray-500">{r.zoneName}</TableCell>
+                    <TableCell className="font-medium text-foreground">{r.liftName}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.zoneName}</TableCell>
                     <TableCell className="text-right">{r.totalSlots}</TableCell>
                     <TableCell className="text-right">{fmtNum(r.totalHours)}г</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <div className="w-24 bg-gray-100 rounded-full h-2">
-                          <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(r.loadPercent, 100)}%` }} />
+                        <div className="w-24 bg-(--color-secondary) rounded-full h-2">
+                          <div className="bg-(--color-primary) h-2 rounded-full" style={{ width: `${Math.min(r.loadPercent, 100)}%` }} />
                         </div>
-                        <span className={cn('text-xs font-medium', r.loadPercent >= 80 ? 'text-red-600' : r.loadPercent >= 50 ? 'text-amber-600' : 'text-green-600')}>
+                        <span className={cn('text-xs font-medium', r.loadPercent >= 80 ? 'text-destructive' : r.loadPercent >= 50 ? 'text-warning' : 'text-success')}>
                           {r.loadPercent}%
                         </span>
                       </div>

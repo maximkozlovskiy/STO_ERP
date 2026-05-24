@@ -26,8 +26,8 @@ const TX_LABELS: Record<string, string> = {
   REFUND: 'Повернення', CREDIT_NOTE: 'Кредит-нота',
 };
 const TX_COLORS: Record<string, string> = {
-  CHARGE: 'text-red-600', PAYMENT: 'text-green-600',
-  PREPAYMENT: 'text-green-500', REFUND: 'text-amber-600', CREDIT_NOTE: 'text-gray-500',
+  CHARGE: 'text-destructive', PAYMENT: 'text-success',
+  PREPAYMENT: 'text-success', REFUND: 'text-warning', CREDIT_NOTE: 'text-muted-foreground',
 };
 
 function fmt(n: number) {
@@ -103,19 +103,19 @@ export default function SettlementsPage() {
   );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
       )}
-      <h1 className="text-xl font-bold text-gray-900 mb-6">Взаєморозрахунки</h1>
+      <h1 className="page-title mb-6">Взаєморозрахунки</h1>
 
       <div className="grid grid-cols-12 gap-6">
         {/* Left: counterparty list */}
         <div className="col-span-4">
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <div className="p-3 border-b">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
                   value={q}
                   onChange={e => setQ(e.target.value)}
@@ -126,17 +126,17 @@ export default function SettlementsPage() {
             </div>
             <div className="overflow-y-auto max-h-[calc(100vh-250px)]">
               {filtered.length === 0 ? (
-                <div className="p-4 text-center text-gray-400 text-sm">Не знайдено</div>
+                <div className="p-4 text-center text-muted-foreground text-[13px]">Не знайдено</div>
               ) : filtered.map(cp => (
                 <button
                   key={cp.id}
                   onClick={() => loadCounterparty(cp)}
                   className={cn(
-                    'w-full text-left px-4 py-3 text-sm border-b border-gray-50 hover:bg-gray-50 transition-colors',
-                    selected?.id === cp.id && 'bg-blue-50 border-l-2 border-l-blue-500',
+                    'w-full text-left px-4 py-3 text-sm border-b border-border hover:bg-(--color-secondary) transition-colors',
+                    selected?.id === cp.id && 'bg-(--color-primary-subtle) border-l-2 border-l-(--color-primary)',
                   )}
                 >
-                  <div className="font-medium text-gray-900">{cpName(cp)}</div>
+                  <div className="font-medium text-foreground">{cpName(cp)}</div>
                 </button>
               ))}
             </div>
@@ -146,7 +146,7 @@ export default function SettlementsPage() {
         {/* Right: details */}
         <div className="col-span-8">
           {!selected ? (
-            <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+            <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
               Оберіть контрагента зі списку
             </div>
           ) : loading ? (
@@ -156,17 +156,17 @@ export default function SettlementsPage() {
           ) : (
             <div className="space-y-5">
               {/* Balance card */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="bg-surface rounded-xl border border-border p-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm text-gray-500">Поточний баланс</div>
+                    <div className="text-[13px] text-muted-foreground">Поточний баланс</div>
                     <div className={cn(
                       'text-2xl font-bold mt-1',
-                      (balance ?? 0) > 0 ? 'text-red-600' : (balance ?? 0) < 0 ? 'text-green-600' : 'text-gray-900'
+                      (balance ?? 0) > 0 ? 'text-destructive' : (balance ?? 0) < 0 ? 'text-success' : 'text-foreground'
                     )}>
                       {balance != null ? fmt(balance) : '—'}
                     </div>
-                    <div className="text-xs text-gray-400 mt-1">
+                    <div className="text-[12px] text-muted-foreground mt-1">
                       {(balance ?? 0) > 0 ? 'Заборгованість клієнта' : (balance ?? 0) < 0 ? 'Переплата клієнта' : 'Немає заборгованостей'}
                     </div>
                   </div>
@@ -181,23 +181,23 @@ export default function SettlementsPage() {
               </div>
 
               {/* Transactions */}
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-5 py-3 border-b bg-gray-50">
-                  <h3 className="font-medium text-gray-900 text-sm">Транзакції ({txTotal})</h3>
+              <div className="bg-surface rounded-xl border border-border overflow-hidden">
+                <div className="px-5 py-3 border-b border-border bg-(--color-secondary)">
+                  <h3 className="font-medium text-foreground text-sm">Транзакції ({txTotal})</h3>
                 </div>
-                <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
+                <div className="divide-y divide-border max-h-80 overflow-y-auto">
                   {transactions.length === 0 ? (
-                    <div className="p-4 text-center text-gray-400 text-sm">Транзакцій немає</div>
+                    <div className="p-4 text-center text-muted-foreground text-[13px]">Транзакцій немає</div>
                   ) : transactions.map(tx => (
                     <div key={tx.id} className="px-5 py-3 flex items-center justify-between">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{TX_LABELS[tx.type] ?? tx.type}</div>
-                        <div className="text-xs text-gray-400">
+                        <div className="text-[13px] font-medium text-foreground">{TX_LABELS[tx.type] ?? tx.type}</div>
+                        <div className="text-[12px] text-muted-foreground">
                           {tx.documentType && <span>{tx.documentType} · </span>}
                           {new Date(tx.createdAt).toLocaleDateString('uk-UA')}
                         </div>
                       </div>
-                      <div className={cn('text-sm font-semibold', TX_COLORS[tx.type] ?? 'text-gray-700')}>
+                      <div className={cn('text-sm font-semibold', TX_COLORS[tx.type] ?? 'text-foreground-muted')}>
                         {tx.type === 'CHARGE' ? '+' : '−'}{fmt(tx.amount)}
                       </div>
                     </div>
@@ -207,25 +207,25 @@ export default function SettlementsPage() {
 
               {/* Reconciliation acts */}
               {acts.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                  <div className="px-5 py-3 border-b bg-gray-50">
-                    <h3 className="font-medium text-gray-900 text-sm">Акти звірки</h3>
+                <div className="bg-surface rounded-xl border border-border overflow-hidden">
+                  <div className="px-5 py-3 border-b border-border bg-(--color-secondary)">
+                    <h3 className="font-medium text-foreground text-sm">Акти звірки</h3>
                   </div>
-                  <div className="divide-y divide-gray-50">
+                  <div className="divide-y divide-border">
                     {acts.map(act => (
                       <div key={act.id} className="px-5 py-3 flex items-center justify-between text-sm">
                         <div>
-                          <div className="font-medium text-gray-900">
+                          <div className="font-medium text-foreground">
                             {new Date(act.periodFrom).toLocaleDateString('uk-UA')} –{' '}
                             {new Date(act.periodTo).toLocaleDateString('uk-UA')}
                           </div>
-                          <div className="text-xs text-gray-400">{new Date(act.createdAt).toLocaleDateString('uk-UA')}</div>
+                          <div className="text-[12px] text-muted-foreground">{new Date(act.createdAt).toLocaleDateString('uk-UA')}</div>
                         </div>
                         <div className="text-right">
-                          <div className="text-xs text-gray-400">Відкриття: {fmt(act.openingBalance)}</div>
+                          <div className="text-[12px] text-muted-foreground">Відкриття: {fmt(act.openingBalance)}</div>
                           <div className={cn(
                             'font-semibold',
-                            act.closingBalance > 0 ? 'text-red-600' : act.closingBalance < 0 ? 'text-green-600' : 'text-gray-700'
+                            act.closingBalance > 0 ? 'text-destructive' : act.closingBalance < 0 ? 'text-success' : 'text-foreground-muted'
                           )}>
                             Закриття: {fmt(act.closingBalance)}
                           </div>
@@ -244,9 +244,9 @@ export default function SettlementsPage() {
       <Modal open={showActModal} onClose={() => setShowActModal(false)} title="Акт звірки">
         {actResult ? (
           <div className="space-y-4">
-            <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-              <div className="text-sm font-medium text-green-800 mb-2">Акт звірки сформовано</div>
-              <div className="text-xs text-gray-600 space-y-1">
+            <div className="p-4 bg-success-subtle rounded-lg border border-success/20">
+              <div className="text-[13px] font-medium text-success mb-2">Акт звірки сформовано</div>
+              <div className="text-[12px] text-foreground-muted space-y-1">
                 <div>Відкриваючий залишок: {fmt(actResult.openingBalance)}</div>
                 <div>Закриваючий залишок: {fmt(actResult.closingBalance)}</div>
                 <div>Транзакцій: {actResult.transactions.length}</div>
@@ -259,7 +259,7 @@ export default function SettlementsPage() {
         ) : (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Початок періоду <span className="text-red-500">*</span></label>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Початок періоду <span className="text-red-500">*</span></label>
               <Input
                 type="date"
                 value={actForm.periodFrom}
@@ -267,7 +267,7 @@ export default function SettlementsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Кінець періоду <span className="text-red-500">*</span></label>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Кінець періоду <span className="text-red-500">*</span></label>
               <Input
                 type="date"
                 value={actForm.periodTo}
