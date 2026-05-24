@@ -367,6 +367,7 @@ model CustomerGarage {
   name           String
   address        String?
   notes          String?
+  isDefault      Boolean   @default(false)
   syncVersion    BigInt    @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

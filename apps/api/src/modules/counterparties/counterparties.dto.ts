@@ -76,5 +76,6 @@ export class GarageResponseDto {
   @ApiProperty() name!: string;
   @ApiPropertyOptional() address?: string | null;
   @ApiPropertyOptional() notes?: string | null;
+  @ApiProperty() isDefault!: boolean;
   @ApiProperty() createdAt!: Date;
 }

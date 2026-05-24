@@ -58,6 +58,17 @@ export class CounterpartiesService {
       await tx.settlementAccount.create({
         data: { orgId, counterpartyId: cp.id, balance: 0 },
       });
+      // Auto-create default garage for clients
+      if (dto.type === 'CLIENT' || dto.type === 'BOTH') {
+        await tx.customerGarage.create({
+          data: {
+            orgId,
+            counterpartyId: cp.id,
+            name: 'Основний',
+            isDefault: true,
+          },
+        });
+      }
       return tx.counterparty.findFirstOrThrow({
         where: { id: cp.id, orgId, deletedAt: null },
         include: { settlementAccount: { select: { balance: true } } },
@@ -130,7 +141,7 @@ export class CounterpartiesService {
     };
   }
 
-  private toGarageDto(g: { id: string; counterpartyId: string; name: string; address: string | null; notes: string | null; createdAt: Date }): GarageResponseDto {
-    return { id: g.id, counterpartyId: g.counterpartyId, name: g.name, address: g.address, notes: g.notes, createdAt: g.createdAt };
+  private toGarageDto(g: { id: string; counterpartyId: string; name: string; address: string | null; notes: string | null; isDefault: boolean; createdAt: Date }): GarageResponseDto {
+    return { id: g.id, counterpartyId: g.counterpartyId, name: g.name, address: g.address, notes: g.notes, isDefault: g.isDefault, createdAt: g.createdAt };
   }
 }
