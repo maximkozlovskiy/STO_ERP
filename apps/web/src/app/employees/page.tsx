@@ -51,7 +51,7 @@ function CheckboxList({ label, items, selected, onChange }: {
       <div className="border border-border rounded-lg max-h-36 overflow-y-auto divide-y divide-border">
         {items.length === 0 && <p className="px-3 py-2 text-[12px] text-muted-foreground">Немає записів</p>}
         {items.map(item => (
-          <label key={item.id} className="flex items-center gap-2 px-3 py-2 hover:bg-(--color-secondary) cursor-pointer">
+          <label key={item.id} className="flex items-center gap-2 px-3 py-2 hover:bg-secondary cursor-pointer">
             <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)}
               className="rounded border-border" />
             <span className="text-[13px] text-foreground">{item.name}</span>
@@ -125,11 +125,11 @@ export default function EmployeesPage() {
   const create = async () => {
     if (form.rateType === 'percent_normo') {
       const pct = Number(form.percent);
-      if (isNaN(pct) || pct <= 0 || pct > 100) { setError('Відсоток має бути від 1 до 100'); return; }
+      if (!Number.isFinite(pct) || pct <= 0 || pct > 100) { setError('Відсоток має бути від 1 до 100'); return; }
     } else {
       const fixed = Number(form.fixedMonthly); const bonus = Number(form.bonusPercent);
-      if (isNaN(fixed) || fixed < 0) { setError('Фіксована ставка повинна бути невід\'ємним числом'); return; }
-      if (isNaN(bonus) || bonus < 0 || bonus > 100) { setError('Бонус має бути від 0 до 100'); return; }
+      if (!Number.isFinite(fixed) || fixed < 0) { setError('Фіксована ставка повинна бути невід\'ємним числом'); return; }
+      if (!Number.isFinite(bonus) || bonus < 0 || bonus > 100) { setError('Бонус має бути від 0 до 100'); return; }
     }
     setSaving(true); setError('');
     try {
@@ -213,7 +213,7 @@ export default function EmployeesPage() {
             {!loading && employees.map(emp => (
               <TableRow key={emp.id}>
                 <TableCell>
-                  <button onClick={() => openCard(emp)} className="text-[13px] font-medium text-(--color-primary) hover:underline text-left">
+                  <button onClick={() => openCard(emp)} className="text-[13px] font-medium text-primary hover:underline text-left">
                     {emp.lastName} {emp.firstName}
                   </button>
                   {emp.phone && <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>}
@@ -249,58 +249,79 @@ export default function EmployeesPage() {
       </div>
 
       {/* Create modal */}
-      <Modal open={modal === 'create'} onClose={closeModal} title="Новий співробітник">
+      <Modal open={modal === 'create'} onClose={closeModal} title="Новий співробітник"
+        footer={
+          <Button onClick={create} loading={saving} disabled={!form.firstName || !form.lastName} className="w-full">
+            Зберегти
+          </Button>
+        }
+      >
         {error && (
           <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
         )}
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Ім'я <span className="text-red-500">*</span></label>
-              <Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} placeholder="Іван" />
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Прізвище <span className="text-red-500">*</span></label>
-              <Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} placeholder="Коваль" />
-            </div>
+            <Input
+              label="Ім'я"
+              required
+              value={form.firstName}
+              onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
+              placeholder="Іван"
+            />
+            <Input
+              label="Прізвище"
+              required
+              value={form.lastName}
+              onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
+              placeholder="Коваль"
+            />
           </div>
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Посада <span className="text-red-500">*</span></label>
-            <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-              {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Телефон</label>
-            <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+38 (067) 123-45-67" />
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Схема нарахування <span className="text-red-500">*</span></label>
-            <Select value={form.rateType} onChange={e => setForm(f => ({ ...f, rateType: e.target.value }))}>
-              {Object.entries(RATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-          </div>
+          <Select
+            label="Посада"
+            required
+            value={form.role}
+            onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+          >
+            {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+          <Input
+            label="Телефон"
+            value={form.phone}
+            onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+            placeholder="+38 (067) 123-45-67"
+          />
+          <Select
+            label="Схема нарахування"
+            required
+            value={form.rateType}
+            onChange={e => setForm(f => ({ ...f, rateType: e.target.value }))}
+          >
+            {Object.entries(RATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
           {form.rateType === 'percent_normo' && (
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Відсоток, %</label>
-              <Input type="number" value={form.percent} onChange={e => setForm(f => ({ ...f, percent: e.target.value }))} />
-            </div>
+            <Input
+              label="Відсоток, %"
+              type="number"
+              value={form.percent}
+              onChange={e => setForm(f => ({ ...f, percent: e.target.value }))}
+            />
           )}
           {form.rateType === 'fixed_plus_bonus' && (
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[13px] font-medium text-foreground mb-1.5">Ставка, грн/міс</label>
-                <Input type="number" value={form.fixedMonthly} onChange={e => setForm(f => ({ ...f, fixedMonthly: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block text-[13px] font-medium text-foreground mb-1.5">Бонус, %</label>
-                <Input type="number" value={form.bonusPercent} onChange={e => setForm(f => ({ ...f, bonusPercent: e.target.value }))} />
-              </div>
+              <Input
+                label="Ставка, грн/міс"
+                type="number"
+                value={form.fixedMonthly}
+                onChange={e => setForm(f => ({ ...f, fixedMonthly: e.target.value }))}
+              />
+              <Input
+                label="Бонус, %"
+                type="number"
+                value={form.bonusPercent}
+                onChange={e => setForm(f => ({ ...f, bonusPercent: e.target.value }))}
+              />
             </div>
           )}
-          <Button onClick={create} loading={saving} disabled={!form.firstName || !form.lastName} className="w-full">
-            Зберегти
-          </Button>
         </div>
       </Modal>
 
@@ -309,6 +330,11 @@ export default function EmployeesPage() {
         open={modal === 'card' && !!selected}
         onClose={closeModal}
         title={selected ? `${selected.lastName} ${selected.firstName}` : ''}
+        footer={
+          <Button onClick={saveAssignments} loading={saving} className="w-full">
+            Зберегти прив'язки
+          </Button>
+        }
       >
         {error && (
           <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
@@ -319,9 +345,6 @@ export default function EmployeesPage() {
             <CheckboxList label="Зони" items={zones} selected={assignedZones} onChange={setAssignedZones} />
             <CheckboxList label="Підйомники" items={lifts} selected={assignedLifts} onChange={setAssignedLifts} />
             <CheckboxList label="Категорії робіт" items={flatCats} selected={assignedCats} onChange={setAssignedCats} />
-            <Button onClick={saveAssignments} loading={saving} className="w-full">
-              Зберегти прив'язки
-            </Button>
           </div>
         )}
       </Modal>

@@ -132,8 +132,8 @@ export default function SettlementsPage() {
                   key={cp.id}
                   onClick={() => loadCounterparty(cp)}
                   className={cn(
-                    'w-full text-left px-4 py-3 text-sm border-b border-border hover:bg-(--color-secondary) transition-colors',
-                    selected?.id === cp.id && 'bg-(--color-primary-subtle) border-l-2 border-l-(--color-primary)',
+                    'w-full text-left px-4 py-3 text-sm border-b border-border hover:bg-secondary transition-colors',
+                    selected?.id === cp.id && 'bg-primary-subtle border-l-2 border-l-primary',
                   )}
                 >
                   <div className="font-medium text-foreground">{cpName(cp)}</div>
@@ -182,7 +182,7 @@ export default function SettlementsPage() {
 
               {/* Transactions */}
               <div className="bg-surface rounded-xl border border-border overflow-hidden">
-                <div className="px-5 py-3 border-b border-border bg-(--color-secondary)">
+                <div className="px-5 py-3 border-b border-border bg-secondary">
                   <h3 className="font-medium text-foreground text-sm">Транзакції ({txTotal})</h3>
                 </div>
                 <div className="divide-y divide-border max-h-80 overflow-y-auto">
@@ -208,7 +208,7 @@ export default function SettlementsPage() {
               {/* Reconciliation acts */}
               {acts.length > 0 && (
                 <div className="bg-surface rounded-xl border border-border overflow-hidden">
-                  <div className="px-5 py-3 border-b border-border bg-(--color-secondary)">
+                  <div className="px-5 py-3 border-b border-border bg-secondary">
                     <h3 className="font-medium text-foreground text-sm">Акти звірки</h3>
                   </div>
                   <div className="divide-y divide-border">
@@ -258,22 +258,20 @@ export default function SettlementsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Початок періоду <span className="text-red-500">*</span></label>
-              <Input
-                type="date"
-                value={actForm.periodFrom}
-                onChange={e => setActForm(f => ({ ...f, periodFrom: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Кінець періоду <span className="text-red-500">*</span></label>
-              <Input
-                type="date"
-                value={actForm.periodTo}
-                onChange={e => setActForm(f => ({ ...f, periodTo: e.target.value }))}
-              />
-            </div>
+            <Input
+              label="Початок періоду"
+              required
+              type="date"
+              value={actForm.periodFrom}
+              onChange={e => setActForm(f => ({ ...f, periodFrom: e.target.value }))}
+            />
+            <Input
+              label="Кінець періоду"
+              required
+              type="date"
+              value={actForm.periodTo}
+              onChange={e => setActForm(f => ({ ...f, periodTo: e.target.value }))}
+            />
             <Button
               onClick={handleCreateAct}
               loading={saving}

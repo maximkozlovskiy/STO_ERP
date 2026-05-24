@@ -103,7 +103,7 @@ export default function ReportsPage() {
             onClick={() => { setTab(t.id); setData(null); }}
             className={cn(
               'px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
-              tab === t.id ? 'border-(--color-primary) text-(--color-primary)' : 'border-transparent text-muted-foreground hover:text-foreground',
+              tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {t.label}
@@ -351,8 +351,8 @@ export default function ReportsPage() {
                     <TableCell className="text-right">{fmtNum(r.totalHours)}г</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <div className="w-24 bg-(--color-secondary) rounded-full h-2">
-                          <div className="bg-(--color-primary) h-2 rounded-full" style={{ width: `${Math.min(r.loadPercent, 100)}%` }} />
+                        <div className="w-24 bg-secondary rounded-full h-2">
+                          <div className="bg-primary h-2 rounded-full" style={{ width: `${Math.min(r.loadPercent, 100)}%` }} />
                         </div>
                         <span className={cn('text-xs font-medium', r.loadPercent >= 80 ? 'text-destructive' : r.loadPercent >= 50 ? 'text-warning' : 'text-success')}>
                           {r.loadPercent}%

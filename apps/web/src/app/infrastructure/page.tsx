@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
-// ─── Types ───────────────────────────────────────────────
+// ─── Types ────────────────���──────────────────────────────
 
 interface Branch { id: string; name: string; address: string; timezone: string; }
 interface Zone { id: string; branchId: string; name: string; type: string; }
@@ -35,7 +35,7 @@ const WAREHOUSE_TYPE_LABELS: Record<string, string> = {
   MAIN: 'Основний', WORKSHOP: 'Цеховий', TIRE_HOTEL: 'Шиновий готель', MOBILE: 'Мобільний',
 };
 
-// ─── Main Page ───────────────────────────────────────────
+// ─── Main Page ──────────���────────────────────────────────
 
 export default function InfrastructurePage() {
   useRequireAuth(['OWNER', 'ADMIN']);
@@ -74,7 +74,7 @@ export default function InfrastructurePage() {
   const save = async () => {
     if (modal === 'lift' && form.maxWeightKg) {
       const w = Number(form.maxWeightKg);
-      if (isNaN(w) || w <= 0) { setError('Вантажність має бути додатнім числом'); return; }
+      if (!Number.isFinite(w) || w <= 0) { setError('Вантажність має бути додатнім числом'); return; }
     }
     setSaving(true);
     setError('');
@@ -119,11 +119,13 @@ export default function InfrastructurePage() {
   ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-xl font-bold text-gray-900 mb-6">Інфраструктура</h1>
+    <div className="page-container">
+      <div className="page-header">
+        <h1 className="page-title">Інфраструктура</h1>
+      </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b mb-6">
+      <div className="flex gap-1 border-b border-border mb-6">
         {TABS.map(t => (
           <button
             key={t.key}
@@ -131,8 +133,8 @@ export default function InfrastructurePage() {
             className={cn(
               'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
               tab === t.key
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700',
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {t.label}
@@ -144,13 +146,13 @@ export default function InfrastructurePage() {
         <div className="flex justify-center py-8"><Spinner size="lg" /></div>
       )}
       {!loading && error && !modal && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">{error}</div>
       )}
 
       {/* BRANCHES */}
       {!loading && tab === 'branches' && (
         <Section title="Філії" onAdd={() => openModal('branch', { name: '', address: '' })}>
-          <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -163,11 +165,11 @@ export default function InfrastructurePage() {
               <TableBody>
                 {branches.map(b => (
                   <TableRow key={b.id}>
-                    <TableCell className="font-medium text-gray-900">{b.name}</TableCell>
-                    <TableCell className="text-gray-500">{b.address}</TableCell>
-                    <TableCell className="text-gray-500">{b.timezone}</TableCell>
+                    <TableCell className="font-medium text-foreground">{b.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{b.address}</TableCell>
+                    <TableCell className="text-muted-foreground">{b.timezone}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => remove('/branches', b.id)} className="text-red-500 hover:text-red-700">
+                      <Button variant="ghost" size="sm" onClick={() => remove('/branches', b.id)} className="text-destructive/60 hover:text-destructive">
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
@@ -182,7 +184,7 @@ export default function InfrastructurePage() {
       {/* ZONES */}
       {!loading && tab === 'zones' && (
         <Section title="Зони" onAdd={() => openModal('zone', { branchId: branches[0]?.id ?? '', name: '', type: 'MECHANICAL' })}>
-          <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -195,11 +197,11 @@ export default function InfrastructurePage() {
               <TableBody>
                 {zones.map(z => (
                   <TableRow key={z.id}>
-                    <TableCell className="font-medium text-gray-900">{z.name}</TableCell>
-                    <TableCell className="text-gray-500">{ZONE_TYPE_LABELS[z.type] ?? z.type}</TableCell>
-                    <TableCell className="text-gray-500">{branches.find(b => b.id === z.branchId)?.name ?? '—'}</TableCell>
+                    <TableCell className="font-medium text-foreground">{z.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{ZONE_TYPE_LABELS[z.type] ?? z.type}</TableCell>
+                    <TableCell className="text-muted-foreground">{branches.find(b => b.id === z.branchId)?.name ?? '—'}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => remove('/zones', z.id)} className="text-red-500 hover:text-red-700">
+                      <Button variant="ghost" size="sm" onClick={() => remove('/zones', z.id)} className="text-destructive/60 hover:text-destructive">
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
@@ -214,7 +216,7 @@ export default function InfrastructurePage() {
       {/* LIFTS */}
       {!loading && tab === 'lifts' && (
         <Section title="Підйомники" onAdd={() => openModal('lift', { zoneId: zones[0]?.id ?? '', name: '', type: 'TWO_POST', maxWeightKg: '' })}>
-          <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -228,12 +230,12 @@ export default function InfrastructurePage() {
               <TableBody>
                 {lifts.map(l => (
                   <TableRow key={l.id}>
-                    <TableCell className="font-medium text-gray-900">{l.name}</TableCell>
-                    <TableCell className="text-gray-500">{LIFT_TYPE_LABELS[l.type] ?? l.type}</TableCell>
-                    <TableCell className="text-gray-500">{l.maxWeightKg ?? '—'}</TableCell>
-                    <TableCell className="text-gray-500">{zones.find(z => z.id === l.zoneId)?.name ?? '—'}</TableCell>
+                    <TableCell className="font-medium text-foreground">{l.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{LIFT_TYPE_LABELS[l.type] ?? l.type}</TableCell>
+                    <TableCell className="text-muted-foreground">{l.maxWeightKg ?? '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{zones.find(z => z.id === l.zoneId)?.name ?? '—'}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => remove('/lifts', l.id)} className="text-red-500 hover:text-red-700">
+                      <Button variant="ghost" size="sm" onClick={() => remove('/lifts', l.id)} className="text-destructive/60 hover:text-destructive">
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
@@ -248,7 +250,7 @@ export default function InfrastructurePage() {
       {/* WAREHOUSES */}
       {!loading && tab === 'warehouses' && (
         <Section title="Склади" onAdd={() => openModal('warehouse', { branchId: branches[0]?.id ?? '', name: '', type: 'MAIN' })}>
-          <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -261,11 +263,11 @@ export default function InfrastructurePage() {
               <TableBody>
                 {warehouses.map(w => (
                   <TableRow key={w.id}>
-                    <TableCell className="font-medium text-gray-900">{w.name}</TableCell>
-                    <TableCell className="text-gray-500">{WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}</TableCell>
-                    <TableCell className="text-gray-500">{branches.find(b => b.id === w.branchId)?.name ?? '—'}</TableCell>
+                    <TableCell className="font-medium text-foreground">{w.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}</TableCell>
+                    <TableCell className="text-muted-foreground">{branches.find(b => b.id === w.branchId)?.name ?? '—'}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => remove('/warehouses', w.id)} className="text-red-500 hover:text-red-700">
+                      <Button variant="ghost" size="sm" onClick={() => remove('/warehouses', w.id)} className="text-destructive/60 hover:text-destructive">
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
@@ -278,94 +280,74 @@ export default function InfrastructurePage() {
       )}
 
       {/* Branch modal */}
-      <Modal open={modal === 'branch'} onClose={closeModal} title="Нова філія">
-        {error && <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+      <Modal
+        open={modal === 'branch'}
+        onClose={closeModal}
+        title="Нова філія"
+        footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.address} className="w-full">Зберегти</Button>}
+      >
+        {error && <div className="mb-3 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Назва <span className="text-red-500">*</span></label>
-            <Input value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Головна філія" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Адреса <span className="text-red-500">*</span></label>
-            <Input value={form.address ?? ''} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="вул. Гагаріна 12, Київ" />
-          </div>
-          <Button onClick={save} loading={saving} disabled={!form.name || !form.address} className="w-full">Зберегти</Button>
+          <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Головна філія" />
+          <Input label="Адреса" required value={form.address ?? ''} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="вул. Гагаріна 12, Київ" />
         </div>
       </Modal>
 
       {/* Zone modal */}
-      <Modal open={modal === 'zone'} onClose={closeModal} title="Нова зона">
-        {error && <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+      <Modal
+        open={modal === 'zone'}
+        onClose={closeModal}
+        title="Нова зона"
+        footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.branchId} className="w-full">Зберегти</Button>}
+      >
+        {error && <div className="mb-3 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Філія <span className="text-red-500">*</span></label>
-            <Select value={form.branchId ?? ''} onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}>
-              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Назва <span className="text-red-500">*</span></label>
-            <Input value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Механічна зона А" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Тип <span className="text-red-500">*</span></label>
-            <Select value={form.type ?? 'MECHANICAL'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-              {Object.entries(ZONE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-          </div>
-          <Button onClick={save} loading={saving} disabled={!form.name || !form.branchId} className="w-full">Зберегти</Button>
+          <Select label="Філія" required value={form.branchId ?? ''} onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}>
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+          <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Механічна зона А" />
+          <Select label="Тип" required value={form.type ?? 'MECHANICAL'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+            {Object.entries(ZONE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
         </div>
       </Modal>
 
       {/* Lift modal */}
-      <Modal open={modal === 'lift'} onClose={closeModal} title="Новий підйомник">
-        {error && <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+      <Modal
+        open={modal === 'lift'}
+        onClose={closeModal}
+        title="Новий підйомник"
+        footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.zoneId} className="w-full">Зберегти</Button>}
+      >
+        {error && <div className="mb-3 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Зона <span className="text-red-500">*</span></label>
-            <Select value={form.zoneId ?? ''} onChange={e => setForm(f => ({ ...f, zoneId: e.target.value }))}>
-              {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Назва <span className="text-red-500">*</span></label>
-            <Input value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Підйомник №1" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Тип <span className="text-red-500">*</span></label>
-            <Select value={form.type ?? 'TWO_POST'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-              {Object.entries(LIFT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Вантажність, кг</label>
-            <Input type="number" value={form.maxWeightKg ?? ''} onChange={e => setForm(f => ({ ...f, maxWeightKg: e.target.value }))} placeholder="3500" />
-          </div>
-          <Button onClick={save} loading={saving} disabled={!form.name || !form.zoneId} className="w-full">Зберегти</Button>
+          <Select label="Зона" required value={form.zoneId ?? ''} onChange={e => setForm(f => ({ ...f, zoneId: e.target.value }))}>
+            {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+          </Select>
+          <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Підйомник №1" />
+          <Select label="Тип" required value={form.type ?? 'TWO_POST'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+            {Object.entries(LIFT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+          <Input label="Вантажність, кг" type="number" value={form.maxWeightKg ?? ''} onChange={e => setForm(f => ({ ...f, maxWeightKg: e.target.value }))} placeholder="3500" />
         </div>
       </Modal>
 
       {/* Warehouse modal */}
-      <Modal open={modal === 'warehouse'} onClose={closeModal} title="Новий склад">
-        {error && <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+      <Modal
+        open={modal === 'warehouse'}
+        onClose={closeModal}
+        title="Новий склад"
+        footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.branchId} className="w-full">Зберегти</Button>}
+      >
+        {error && <div className="mb-3 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Філія <span className="text-red-500">*</span></label>
-            <Select value={form.branchId ?? ''} onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}>
-              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Назва <span className="text-red-500">*</span></label>
-            <Input value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Основний склад" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Тип <span className="text-red-500">*</span></label>
-            <Select value={form.type ?? 'MAIN'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-              {Object.entries(WAREHOUSE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-          </div>
-          <Button onClick={save} loading={saving} disabled={!form.name || !form.branchId} className="w-full">Зберегти</Button>
+          <Select label="Філія" required value={form.branchId ?? ''} onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}>
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+          <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Основний склад" />
+          <Select label="Тип" required value={form.type ?? 'MAIN'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+            {Object.entries(WAREHOUSE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
         </div>
       </Modal>
     </div>
@@ -378,9 +360,8 @@ function Section({ title, onAdd, children }: { title: string; onAdd: () => void;
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-semibold text-gray-800">{title}</h2>
-        <Button size="sm" onClick={onAdd}>
-          <Plus className="h-4 w-4" />
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        <Button size="sm" onClick={onAdd} leftIcon={<Plus className="h-4 w-4" />}>
           Додати
         </Button>
       </div>
