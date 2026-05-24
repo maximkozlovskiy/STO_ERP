@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-f317ae5 fix(web): remove React namespace — explicit type imports + skill auto-mode + model hints
+2d34e4d feat(skills): overhaul sto-review — 11 sections: memory leaks, security, perf
 ```
 
 Дата: 2026-05-24
@@ -350,6 +350,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `2d34e4d` | feat(skills): overhaul sto-review — 11 sections: memory leaks, security, perf |
 | `f317ae5` | fix(web): remove React namespace (56 VSCode errors) + skill auto-mode + models |
 | `f2c8a9c` | fix(review): apply sto-review auto-fix pass — 11 bugs resolved |
 | `ec6acac` | fix(web): fix hydration mismatch on root page spinner |
