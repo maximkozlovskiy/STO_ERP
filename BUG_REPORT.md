@@ -66,6 +66,25 @@
 
 ---
 
+## Bug #5 — [LOW] services.service.ts serviceWorks/serviceGoods relation includes без take
+
+**Файл:** `apps/api/src/modules/services/services.service.ts:19,20,33,34,70,71,120,121`
+**Severity:** LOW
+**Категорія:** performance / database
+
+**Опис:**
+8 relation includes для `serviceWorks` і `serviceGoods` без `take: 1000` safety guard. Хоча сервіс зазвичай має небагато робіт/товарів, policy вимагає додавати ліміт.
+
+**Очікувана поведінка:**
+Додати `take: 1000` до всіх 8 relation includes.
+
+**Фактична поведінка:**
+Без `take`.
+
+**Статус:** [x] виправлено
+
+---
+
 ## Bug #4 — [LOW] purchase-orders.service.ts findOne lines relation include без take
 
 **Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:59`

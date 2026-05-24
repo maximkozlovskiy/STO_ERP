@@ -16,8 +16,8 @@ export class ServicesService {
       this.prisma.service.findMany({
         where, orderBy: { name: 'asc' }, skip, take: limit,
         include: {
-          serviceWorks: { include: { work: { select: { name: true, normoHours: true, price: true } } } },
-          serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } } },
+          serviceWorks: { include: { work: { select: { name: true, normoHours: true, price: true } } }, take: 1000 },
+          serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } }, take: 1000 },
         },
       }),
       this.prisma.service.count({ where }),
@@ -30,8 +30,8 @@ export class ServicesService {
     const item = await this.prisma.service.findFirst({
       where: { id, orgId, deletedAt: null },
       include: {
-        serviceWorks: { include: { work: { select: { name: true, normoHours: true, price: true } } } },
-        serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } } },
+        serviceWorks: { include: { work: { select: { name: true, normoHours: true, price: true } } }, take: 1000 },
+        serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } }, take: 1000 },
       },
     });
     if (!item) throw new NotFoundException('Послугу не знайдено');
@@ -67,8 +67,8 @@ export class ServicesService {
       return tx.service.findFirstOrThrow({
         where: { id: svc.id, orgId, deletedAt: null },
         include: {
-          serviceWorks: { include: { work: { select: { name: true, normoHours: true, price: true } } } },
-          serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } } },
+          serviceWorks: { include: { work: { select: { name: true, normoHours: true, price: true } } }, take: 1000 },
+          serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } }, take: 1000 },
         },
       });
     });
@@ -117,8 +117,8 @@ export class ServicesService {
       return tx.service.findFirstOrThrow({
         where: { id, orgId, deletedAt: null },
         include: {
-          serviceWorks: { include: { work: { select: { name: true, normoHours: true, price: true } } } },
-          serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } } },
+          serviceWorks: { include: { work: { select: { name: true, normoHours: true, price: true } } }, take: 1000 },
+          serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } }, take: 1000 },
         },
       });
     });
