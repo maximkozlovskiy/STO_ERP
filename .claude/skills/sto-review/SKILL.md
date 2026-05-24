@@ -84,6 +84,11 @@ grep -rn "flex-shrink-0" apps/web/src/ --include="*.tsx"
 
 # tsconfig валідація ignoreDeprecations
 grep -rn "ignoreDeprecations.*6\.0" apps/ packages/ --include="tsconfig*.json"
+
+# Пакети без tsconfig.json — type-check мовчки ламається (tsc показує --help)
+for f in packages/*/package.json apps/*/package.json; do
+  dir=$(dirname "$f"); [ -f "$dir/tsconfig.json" ] || echo "MISSING tsconfig: $dir"
+done
 ```
 
 **Таблиця авто-фіксів:**
@@ -435,6 +440,15 @@ grep -rn "new Date()\|localStorage\|sessionStorage\|window\.\|document\." \
 
 - [ ] `localStorage` / `sessionStorage` / `window.*` / `document.*` — тільки всередині `useEffect` або у `'use client'` компонентах
 - [ ] `new Date()` у render → `useEffect` + `useState('')`
+- [ ] **`useState(new Date())` або `useState(() => new Date()...)` теж заборонено** — lazy initializer виконується І на server, І на client з різним часом → hydration mismatch. Шаблон: `useState('')` + `useEffect(() => { setX(new Date()...) }, [])`
+  ```typescript
+  // ❌ BAD — server: 2026-05-24 (UTC), client: 2026-05-25 (Kyiv)
+  const [date, setDate] = useState(toDateString(new Date()));
+
+  // ✅ GOOD
+  const [date, setDate] = useState('');
+  useEffect(() => { setDate(toDateString(new Date())); }, []);
+  ```
 - [ ] `createPortal` → `mounted` guard
 
 ### 8.4 Routing & Auth
