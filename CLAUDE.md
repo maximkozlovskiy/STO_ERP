@@ -55,14 +55,35 @@ sto-erp/
 > `/sto-dev` читається **перед** `/sto-backend` і `/sto-web` — задає стандарти написання,  
 > щоб `/sto-review` знаходив 0 проблем.
 
+## Агенти (project-level, запускати через Agent tool)
+
+`.claude/agents/` містить готових агентів з власними системними промптами:
+
+```
+sto-review-agent   ← code review + авто-фікс (завжди через Agent tool)
+sto-tester-agent   ← bug hunt + авто-фікс (завжди через Agent tool)
+```
+
+**ПРАВИЛО:** `/sto-review` і `/sto-tester` ЗАВЖДИ запускати через `Agent(subagent_type="sto-review-agent")` і `Agent(subagent_type="sto-tester-agent")` — НЕ як inline скіли. Це захищає основний контекст від переповнення і дозволяє паралельний запуск.
+
+```python
+# Послідовно (review → tester)
+Agent(subagent_type="sto-review-agent", description="code review cycle N")
+# після завершення:
+Agent(subagent_type="sto-tester-agent", description="bug hunt cycle N")
+
+# Паралельно (якщо review і tester незалежні):
+# Надіслати обидва Agent() виклики в одному повідомленні
+```
+
 ## Автоматичне QA після кожного завдання (ОБОВ'ЯЗКОВО)
 
 Після завершення **будь-якого** завдання і git commit — **завжди автоматично**:
-1. `/sto-review` (auto) — code review, виправити всі знайдені проблеми
-2. `/sto-tester` (auto) — тести, BUG_REPORT.md, виправити всі баги
+1. `Agent(subagent_type="sto-review-agent")` — code review, виправити всі знайдені проблеми
+2. `Agent(subagent_type="sto-tester-agent")` — тести, BUG_REPORT.md, виправити всі баги
 3. Оновити `MemoryManual.md` якщо з'явились нові gotchas або зміни архітектури
 
-> Виняток: якщо сам запит був `/sto-review` або `/sto-tester` — не запускати рекурсивно.
+> Виняток: якщо сам запит був review або tester агент — не запускати рекурсивно.
 
 ## Безперервне вдосконалення скілів (ОБОВ'ЯЗКОВО)
 
