@@ -9,11 +9,11 @@
 ## Останній commit
 
 ```
+f506ae6 fix(review): replace React.MouseEvent with typed import in TopShell
 b22d375 docs(memory): document UI changes — nav sections, bookmarks, DetailPanel, soft-delete UI
 f919de8 feat(web): DetailPanel + filters + mark-for-deletion in purchase-orders, stock-documents, catalog
 866ca90 feat(web): DetailPanel + filters in work-orders, invoices, inventory
 32b9185 feat(web): mark-for-deletion UI + DetailPanel + filters in employees and CRM
-291ccb0 feat(web): restructure nav sections + bookmarks + DetailPanel
 ```
 
 Дата: 2026-05-25
@@ -26,7 +26,7 @@ f919de8 feat(web): DetailPanel + filters + mark-for-deletion in purchase-orders,
 |---|---|
 | Фаза | **Фаза 16 — Installer та Production** (всі попередні `[x]`) |
 | Наступна задача | `[sto-installer]` Inno Setup скрипт |
-| TypeScript | ✅ 0 errors (web + api + shared) |
+| TypeScript | ✅ 0 errors (web + api + shared) — verified 2026-05-25 |
 | Unit тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
 | Contract тести | ✅ 15/15 passed (auth: 9, work-orders: 6) |
 | Property-based | ✅ 26/26 passed (fsm: 11, inventory: 7, settlements: 8) |

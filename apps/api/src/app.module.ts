@@ -19,6 +19,7 @@ import { WorksModule } from './modules/works/works.module';
 import { GoodsModule } from './modules/goods/goods.module';
 import { ServicesModule } from './modules/services/services.module';
 import { BrandsModule } from './modules/brands/brands.module';
+import { UnitsModule } from './modules/units/units.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { SettlementsModule } from './modules/settlements/settlements.module';
 import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
@@ -63,6 +64,7 @@ import { DocumentNumberModule } from './modules/document-number/document-number.
     GoodsModule,
     ServicesModule,
     BrandsModule,
+    UnitsModule,
     InventoryModule,
     SettlementsModule,
     WorkOrdersModule,

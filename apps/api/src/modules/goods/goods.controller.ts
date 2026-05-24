@@ -6,6 +6,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { GoodsService } from './goods.service';
 import { CreateGoodDto, UpdateGoodDto, GoodQueryDto } from './goods.dto';
+import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 
 @ApiTags('Goods')
 @Controller('goods')
@@ -48,5 +49,37 @@ export class GoodsController {
   @ApiOperation({ summary: 'Видалити товар' })
   remove(@OrgContext() orgId: string, @Param('id') id: string) {
     return this.service.remove(orgId, id);
+  }
+
+  // ─── Barcodes Sub-resource ───────────────────────────────────────────────────
+
+  @Get(':goodId/barcodes')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC')
+  @ApiOperation({ summary: 'Штрихкоди товару' })
+  getBarcodes(@OrgContext() orgId: string, @Param('goodId') goodId: string) {
+    return this.service.getBarcodes(orgId, goodId);
+  }
+
+  @Post(':goodId/barcodes')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Додати штрихкод' })
+  createBarcode(
+    @OrgContext() orgId: string,
+    @Param('goodId') goodId: string,
+    @Body() dto: CreateGoodBarcodeDto,
+  ): Promise<GoodBarcodeResponseDto> {
+    return this.service.createBarcode(orgId, goodId, dto);
+  }
+
+  @Delete(':goodId/barcodes/:barcodeId')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Видалити штрихкод' })
+  deleteBarcode(
+    @OrgContext() orgId: string,
+    @Param('goodId') goodId: string,
+    @Param('barcodeId') barcodeId: string,
+  ) {
+    return this.service.deleteBarcode(orgId, goodId, barcodeId);
   }
 }

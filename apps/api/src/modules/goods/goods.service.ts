@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateGoodDto, UpdateGoodDto, GoodQueryDto, GoodResponseDto, PaginatedGoodsDto } from './goods.dto';
+import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 
 @Injectable()
 export class GoodsService {
@@ -61,6 +62,67 @@ export class GoodsService {
   async remove(orgId: string, id: string): Promise<void> {
     await this.findOne(orgId, id);
     await this.prisma.good.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+  }
+
+  // ─── Barcodes ────────────────────────────────────────────────────────────────
+
+  async getBarcodes(orgId: string, goodId: string): Promise<GoodBarcodeResponseDto[]> {
+    await this.findOne(orgId, goodId);
+    const barcodes = await this.prisma.goodBarcode.findMany({
+      where: { orgId, goodId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return barcodes.map(b => this.toBarcodeDto(b));
+  }
+
+  async createBarcode(orgId: string, goodId: string, dto: CreateGoodBarcodeDto): Promise<GoodBarcodeResponseDto> {
+    await this.findOne(orgId, goodId);
+
+    if (!dto.barcode || !dto.barcode.trim()) {
+      throw new BadRequestException('Штрихкод не може бути порожнім');
+    }
+
+    const existing = await this.prisma.goodBarcode.findFirst({
+      where: { orgId, barcode: dto.barcode },
+    });
+    if (existing) {
+      throw new ConflictException('Штрихкод уже використовується');
+    }
+
+    const barcode = await this.prisma.goodBarcode.create({
+      data: {
+        orgId,
+        goodId,
+        barcode: dto.barcode.trim(),
+        type: dto.type ?? 'EAN13',
+        isPrimary: dto.isPrimary ?? false,
+      },
+    });
+    return this.toBarcodeDto(barcode);
+  }
+
+  async deleteBarcode(orgId: string, goodId: string, barcodeId: string): Promise<void> {
+    const barcode = await this.prisma.goodBarcode.findFirst({
+      where: { id: barcodeId, orgId, goodId },
+    });
+    if (!barcode) throw new NotFoundException('Штрихкод не знайдено');
+
+    await this.prisma.goodBarcode.delete({ where: { id: barcodeId } });
+  }
+
+  private toBarcodeDto(b: {
+    id: string; orgId: string; goodId: string; barcode: string; type: string; isPrimary: boolean; createdAt: Date;
+  }): GoodBarcodeResponseDto {
+    return {
+      id: b.id,
+      orgId: b.orgId,
+      goodId: b.goodId,
+      barcode: b.barcode,
+      type: b.type,
+      isPrimary: b.isPrimary,
+      createdAt: b.createdAt,
+    };
   }
 
   private toDto(item: {

@@ -16,6 +16,7 @@ enum UserRole {
   MECHANIC
   STOREKEEPER
   ACCOUNTANT
+  XLSX_MANAGER
   CLIENT
 }
 
@@ -494,6 +495,7 @@ model Good {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId         String    @db.Uuid
   brandId       String?   @db.Uuid
+  unitId        String?   @db.Uuid
   sku           String?
   name          String
   unit          String    @default("шт")
@@ -508,6 +510,8 @@ model Good {
   deletedAt     DateTime?
 
   brand              Brand?             @relation(fields: [brandId], references: [id])
+  unitOfMeasure      UnitOfMeasure?     @relation(fields: [unitId], references: [id])
+  barcodes           GoodBarcode[]
   stockItems         StockItem[]
   movements          StockMovement[]
   serviceGoods       ServiceGood[]
@@ -519,6 +523,40 @@ model Good {
   @@index([orgId, sku])
   @@index([orgId, syncVersion])
   @@map("goods")
+}
+
+model GoodBarcode {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId     String   @db.Uuid
+  goodId    String   @db.Uuid
+  barcode   String
+  type      String   @default("EAN13")
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  good      Good     @relation(fields: [goodId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, barcode])
+  @@index([orgId, goodId])
+  @@map("good_barcodes")
+}
+
+model UnitOfMeasure {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  shortName   String
+  isSystem    Boolean   @default(false)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  goods       Good[]
+
+  @@unique([orgId, shortName])
+  @@index([orgId, deletedAt])
+  @@map("units_of_measure")
 }
 
 model Service {
