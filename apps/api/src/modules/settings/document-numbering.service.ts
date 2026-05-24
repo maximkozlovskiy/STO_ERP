@@ -72,15 +72,21 @@ export class DocumentNumberingService {
     });
   }
 
+  private kyivParts(date: Date): { year: number; month: number; day: number } {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Kyiv',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    });
+    const [year, month, day] = fmt.format(date).split('-').map(Number);
+    return { year, month, day };
+  }
+
   private shouldResetSequence(period: string, lastUpdated: Date, now: Date): boolean {
-    if (period === 'YEARLY') {
-      return lastUpdated.getFullYear() < now.getFullYear();
-    }
+    const last = this.kyivParts(lastUpdated);
+    const cur = this.kyivParts(now);
+    if (period === 'YEARLY') return last.year < cur.year;
     if (period === 'MONTHLY') {
-      return (
-        lastUpdated.getFullYear() < now.getFullYear() ||
-        lastUpdated.getMonth() < now.getMonth()
-      );
+      return last.year < cur.year || (last.year === cur.year && last.month < cur.month);
     }
     return false;
   }
@@ -108,14 +114,14 @@ export class DocumentNumberingService {
   }
 
   private formatDate(format: string, date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
+    const { year: y, month, day } = this.kyivParts(date);
+    const m = String(month).padStart(2, '0');
+    const d = String(day).padStart(2, '0');
 
     return format
+      .replace('YYYYMMDD', `${y}${m}${d}`)
       .replace('YYYY', String(y))
       .replace('MM', m)
-      .replace('DD', d)
-      .replace('YYYYMMDD', `${y}${m}${d}`);
+      .replace('DD', d);
   }
 }
