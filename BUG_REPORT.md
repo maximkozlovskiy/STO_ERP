@@ -1,123 +1,66 @@
 # BUG_REPORT.md — STO ERP
 
 Дата: 2026-05-24
-Сесія: /sto-tester auto pass після /sto-review циклу
+Сесія: /sto-tester цикл після додавання Playwright секції в SKILL.md
 
 ---
 
-## Bug #1 — [MEDIUM] SettlementsService.createTransaction не валідує amount
+## Bug #1 — [MEDIUM] Дубль сервісу нумерації документів
 
-**Файл:** `apps/api/src/modules/settlements/settlements.service.ts:19`
+**Файл:** `apps/api/src/modules/settings/document-numbering.service.ts`
 **Severity:** MEDIUM
-**Категорія:** business-logic
+**Категорія:** business-logic / dead-code
 
 **Опис:**
-`createTransaction()` приймає `amount: number` без internal валідації. Якщо викликати з `amount <= 0` (наприклад, з нового місця в коді що забуло DTO `@Min(0.01)`), створиться transaction з нульовим/від'ємним балансом → корупція даних. Defense-in-depth відсутнє.
+У проєкті існує **два** окремих сервіси нумерації документів:
+- `apps/api/src/modules/document-number/document-number.service.ts` — `DocumentNumberService` (вживається у `work-orders`, `invoices`, `purchase-orders`, `stock-documents`)
+- `apps/api/src/modules/settings/document-numbering.service.ts` — `DocumentNumberingService` (зареєстрований в `settings.module.ts`, але нікуди не імпортується)
+
+Обидва читають одну й ту саму таблицю `document_number_configs`, але алгоритми reset/формат відрізняються (різні стратегії reset, різний date_format). Якщо колись `DocumentNumberingService` випадково підключать — отримаємо неконсистентну нумерацію між модулями. Це потенційна корупція даних (дублікати номерів між WO і Invoice неможливі через окремі `document_type`, але неоднакові правила reset порушать audit trail).
 
 **Очікувана поведінка:**
-Кидати `BadRequestException('Сума транзакції повинна бути більшою за нуль')` при `amount <= 0`.
+Один сервіс нумерації — `DocumentNumberService` у `modules/document-number`. Видалити `DocumentNumberingService` з `settings` модуля разом з реєстрацією в `settings.module.ts`.
 
 **Фактична поведінка:**
-Запис створюється з будь-яким числом; баланс декрементується/інкрементується некоректним значенням.
+Дві паралельні реалізації, тільки одна активно вживається.
 
 **Статус:** [x] виправлено
 
 ---
 
-## Bug #2 — [MEDIUM] InventoryService.findLowStockItems raw SQL без LIMIT
+## Bug #2 — [LOW] services.service.ts FK-валідація findMany без take safety guard
 
-**Файл:** `apps/api/src/modules/inventory/inventory.service.ts:132`
-**Severity:** MEDIUM
-**Категорія:** performance / memory-leak
-
-**Опис:**
-`$queryRaw` SELECT тягне всі `stock_items` що мають `min_stock` IS NOT NULL і `quantity <= min_stock`. При корумпованому seed або багатотисячному каталозі — OOM. Сторінка дашборду викликає цей endpoint.
-
-**Очікувана поведінка:**
-Додати `LIMIT 500` у raw query — це safety guard, узгоджується з нашим правилом `take: 500` для list endpoints.
-
-**Фактична поведінка:**
-Запит без обмеження.
-
-**Статус:** [x] виправлено
-
----
-
-## Bug #3 — [LOW] Reports CSV export leaks blob URL
-
-**Файл:** `apps/web/src/app/reports/page.tsx:141`
-**Severity:** LOW
-**Категорія:** memory-leak / frontend
-
-**Опис:**
-Після `URL.createObjectURL(blob)` немає виклику `URL.revokeObjectURL(url)`. Кожен експорт CSV додає blob URL що тримається в пам'яті браузера до перезавантаження сторінки.
-
-**Очікувана поведінка:**
-Після `a.click()` викликати `setTimeout(() => URL.revokeObjectURL(url), 100)` (timeout щоб дочекатись початку завантаження).
-
-**Фактична поведінка:**
-Blob URL ніколи не звільняється.
-
-**Статус:** [x] виправлено
-
----
-
-## Bug #4 — [LOW] Stock-documents / purchase-orders relation includes без take
-
-**Файл:** `apps/api/src/modules/stock-documents/stock-documents.service.ts:46`, `purchase-orders.service.ts:44,59,93,127,153`
+**Файл:** `apps/api/src/modules/services/services.service.ts:53,60,94,106`
 **Severity:** LOW
 **Категорія:** performance / database
 
 **Опис:**
-`include: { lines: { where: { deletedAt: null } } }` — Prisma підтримує `take` на relation queries, але його немає. Per наш policy (`take: 1000` навіть на FK-bounded запитах як safety guard) — потрібно додати.
+`tx.work.findMany({ where: { id: { in: dto.works.map(w => w.workId) }, orgId, deletedAt: null } })` і аналогічно для `tx.good.findMany`. DTO задає теоретичний ліміт, але per skill policy потрібен `take: 1000` як safety guard від корумпованих DTO.
 
 **Очікувана поведінка:**
-`include: { lines: { where: ..., take: 1000 } }`
+`take: 1000` додано до всіх 4 викликів.
 
 **Фактична поведінка:**
-Без ліміту.
+Без `take`.
 
 **Статус:** [x] виправлено
 
 ---
 
-## Bug #5 — [MEDIUM] Відсутні unit-тести для InventoryService
+## Bug #3 — [LOW] employees.service.ts FK-валідація findMany без take safety guard
 
-**Файл:** `apps/api/src/modules/inventory/inventory.service.spec.ts` (відсутній)
-**Severity:** MEDIUM
-**Категорія:** test-coverage
-
-**Опис:**
-`InventoryService` — центральний компонент для всіх рухів запасів, з кількома critical guards: `quantity=0`, `available < qty`, `RESERVATION_RELEASE > reserved`, `RESERVATION_RELEASE з positive qty`. Жоден з цих guards не покритий тестом. Регресія тут = фінансова катастрофа.
-
-**Очікувана поведінка:**
-Створити `inventory.service.spec.ts` з тестами для кожного guard.
-
-**Фактична поведінка:**
-Тестів немає.
-
-**Статус:** [x] виправлено
-
----
-
-## Bug #6 — [MEDIUM] Відсутні unit-тести для SettlementsService
-
-**Файл:** `apps/api/src/modules/settlements/settlements.service.spec.ts` (відсутній)
-**Severity:** MEDIUM
-**Категорія:** test-coverage
+**Файл:** `apps/api/src/modules/employees/employees.service.ts:86,106,129`
+**Severity:** LOW
+**Категорія:** performance / database
 
 **Опис:**
-`SettlementsService.createTransaction` керує балансами рахунків — критична фінансова логіка. Логіка signed balance (CHARGE+, PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE−) без тестів.
+`this.prisma.zone.findMany({ where: { id: { in: dto.zoneIds }, orgId, deletedAt: null } })` (і аналогічно для lift, workCategory) — без `take: 1000` safety guard.
 
 **Очікувана поведінка:**
-Створити `settlements.service.spec.ts` з тестами на:
-- CHARGE інкрементує balance
-- PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE декрементують balance
-- немає account → NotFoundException
-- amount <= 0 → BadRequestException (після Bug #1 фіксу)
+`take: 1000` додано до всіх 3 викликів.
 
 **Фактична поведінка:**
-Тестів немає.
+Без `take`.
 
 **Статус:** [x] виправлено
 

@@ -85,6 +85,7 @@ export class EmployeesService {
     if (dto.zoneIds.length > 0) {
       const zones = await this.prisma.zone.findMany({
         where: { id: { in: dto.zoneIds }, orgId, deletedAt: null },
+        take: 1000,
       });
       if (zones.length !== dto.zoneIds.length) {
         throw new NotFoundException('Одну або кілька зон не знайдено');
@@ -105,6 +106,7 @@ export class EmployeesService {
     if (dto.liftIds.length > 0) {
       const lifts = await this.prisma.lift.findMany({
         where: { id: { in: dto.liftIds }, orgId, deletedAt: null },
+        take: 1000,
       });
       if (lifts.length !== dto.liftIds.length) {
         throw new NotFoundException('Один або кілька підйомників не знайдено');
@@ -128,6 +130,7 @@ export class EmployeesService {
     if (dto.workCategoryIds.length > 0) {
       const cats = await this.prisma.workCategory.findMany({
         where: { id: { in: dto.workCategoryIds }, orgId, deletedAt: null },
+        take: 1000,
       });
       if (cats.length !== dto.workCategoryIds.length) {
         throw new NotFoundException('Одну або кілька категорій не знайдено');
