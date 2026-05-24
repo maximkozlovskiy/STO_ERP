@@ -181,7 +181,7 @@ export class ReportsService {
   }
 
   async settlements(orgId: string, counterpartyId?: string) {
-    const where: { orgId: string; counterpartyId?: string; deletedAt: null } = { orgId, deletedAt: null };
+    const where: { orgId: string; counterpartyId?: string } = { orgId };
     if (counterpartyId) where.counterpartyId = counterpartyId;
 
     const accounts = await this.prisma.settlementAccount.findMany({

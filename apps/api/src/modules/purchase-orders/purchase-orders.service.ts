@@ -195,7 +195,7 @@ export class PurchaseOrdersService {
       }
 
       // Determine and apply new status inside the same transaction
-      const updatedLines = await tx.purchaseOrderLine.findMany({ where: { purchaseOrderId: id, deletedAt: null } });
+      const updatedLines = await tx.purchaseOrderLine.findMany({ where: { purchaseOrderId: id, orgId, deletedAt: null } });
       const allReceived = updatedLines.every(l => l.receivedQty >= l.quantity);
       const anyReceived = updatedLines.some(l => l.receivedQty > 0);
       const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL' : po.status;
