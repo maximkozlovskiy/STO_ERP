@@ -9,14 +9,14 @@
 ## Останній commit
 
 ```
+a120647 docs(tester): record bugs #7-#13 from /sto-tester full-auto session
+755368f fix(tester): Bug #8 — InventoryService.findLowStockItems uses camelCase columns
+08ed92a fix(tester): Bug #7+#9 — DocumentNumberService raw SQL uses camelCase columns + LIMIT 1
 5a09f23 chore(git): ignore Playwright test-results and reports
 c22e41f fix(tester): Bug #6 — TopShell render-blocking auth guard prevents UI leak
-79546cf fix(tester): Bug #5 — take: 1000 on services serviceWorks/serviceGoods
-41f94f4 fix(tester): Bug #4 — take: 1000 on PO findOne lines relation include
-88f76c1 fix(tester): cycle 1 — remove dup numbering service, take guards on FK findMany
 ```
 
-Дата: 2026-05-24
+Дата: 2026-05-25
 
 ---
 
@@ -28,9 +28,23 @@ c22e41f fix(tester): Bug #6 — TopShell render-blocking auth guard prevents UI 
 | Наступна задача | `[sto-installer]` Inno Setup скрипт |
 | TypeScript | ✅ 0 errors (web + api + shared) |
 | Unit тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
-| E2E тести | ⚠ Playwright встановлений, 3/4 smoke passed; 1 blocked by dev server cache (потребує перезапуску `pnpm dev`) |
-| Dev сервер | Next.js на `http://localhost:3001` (потребує перезапуску після `rm .next`) |
+| Contract тести | ⏭ немає .contract.spec.ts (Bug #10) |
+| Property-based | ⏭ fast-check не встановлений (Bug #11) |
+| Component тести | ⏭ @testing-library не встановлений (Bug #12) |
+| E2E тести | ✅ 4/4 Playwright smoke passed |
+| Build | ✅ API build OK (webpack 9.3s) |
+| Dev сервер | Next.js на `http://localhost:3001`, API на `http://localhost:3000` |
 | CSS | Tailwind 4 через `@tailwindcss/postcss` (postcss.config.mjs) |
+
+### Critical bugs fixed this session
+- **Bug #7** — `DocumentNumberService.next()` використовував snake_case у raw SQL → ламав створення WO/Invoice/PO/StockDocument. Виправлено: camelCase з лапками + `LIMIT 1`.
+- **Bug #8** — `InventoryService.findLowStockItems()` використовував snake_case → `GET /stock-items/low` 500. Виправлено: camelCase з лапками.
+
+### Gotcha — Raw SQL camelCase identifiers
+Prisma schema **без `@map`** → Postgres колонки double-quoted camelCase (`"orgId"`, `"goodId"`, `"deletedAt"`, `"minStock"`, тощо). Будь-який `$queryRaw` / `$executeRaw` повинен:
+- Використовувати **camelCase з лапками**: `WHERE "orgId" = ${orgId}::uuid`
+- Не покладатись на Postgres lowering (`org_id` → не знайде `"orgId"`)
+- Перевірити проти `information_schema.columns` перед написанням
 
 ---
 

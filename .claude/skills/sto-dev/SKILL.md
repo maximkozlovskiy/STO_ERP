@@ -443,6 +443,20 @@ await this.prisma.$queryRaw(`SELECT * FROM users WHERE name = '${name}'`);
 // ✅ Параметризований
 await this.prisma.$queryRaw`SELECT * FROM users WHERE name = ${name}`;
 
+// ❌ Raw SQL зі snake_case — Postgres folds unquoted identifiers до lowercase
+// і НЕ знайде колонок Prisma (які створені double-quoted camelCase, бо schema без @map)
+await this.prisma.$queryRaw`
+  SELECT * FROM stock_items
+  WHERE org_id = ${orgId}::uuid AND deleted_at IS NULL
+`;  // ← throws: column "org_id" does not exist
+
+// ✅ Raw SQL з camelCase у подвійних лапках
+await this.prisma.$queryRaw`
+  SELECT * FROM stock_items
+  WHERE "orgId" = ${orgId}::uuid AND "deletedAt" IS NULL
+  LIMIT 500
+`;
+
 // ❌ Чутливі поля в response DTO
 return { id, phone, edrpou, rateScheme, passwordHash };  // ← ніколи!
 

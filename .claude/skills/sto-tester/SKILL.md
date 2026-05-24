@@ -125,6 +125,26 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
   grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" | grep -v spec
   # Для кожного — перевір що SQL закінчується "LIMIT N"
   ```
+- [ ] **Raw SQL identifier casing** — Prisma schema без `@map` створює Postgres колонки **double-quoted camelCase** (`"orgId"`, `"goodId"`, `"deletedAt"`, `"minStock"`). Snake_case (`org_id`, `good_id`) **НЕ ПРАЦЮЄ**. Постгрес folds unquoted identifiers to lowercase і не знаходить `"orgId"`.
+  ```bash
+  # Знайти всі raw SQL і перевірити що ідентифікатори у camelCase з лапками
+  grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" -A 30 | grep -E "org_id|deleted_at|created_at|updated_at|good_id|warehouse_id|min_stock|current_seq|reset_period|last_reset|include_date|document_type"
+  # Якщо щось знаходить — це CRITICAL bug: SQL крашиться з "column does not exist"
+  ```
+  Перевірка реальних колонок:
+  ```bash
+  docker exec stoerp-postgres-1 psql -U sto -d sto_erp \
+    -c "SELECT column_name FROM information_schema.columns WHERE table_name='<table>'"
+  ```
+  Приклад правильного raw SQL:
+  ```sql
+  SELECT id, "orgId", "currentSeq", "lastResetYear"
+  FROM document_number_configs
+  WHERE "orgId" = ${orgId}::uuid
+    AND "documentType" = ${documentType}::"DocumentType"
+  FOR UPDATE
+  LIMIT 1
+  ```
 
 #### Нумерація документів
 - [ ] Номери генеруються через `DocumentNumberService.next(orgId, type)` — не хардкодяться у форматі

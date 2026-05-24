@@ -427,6 +427,14 @@ grep -rnE "(lines|parts|movements|transactions): \{ where: \{ deletedAt: null \}
 # $queryRaw / $executeRaw — повинні мати LIMIT N у SQL
 grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" | grep -v "spec\|plainto_tsquery"
 # Для кожного — Read файл і перевір що SQL завершується LIMIT N
+
+# КРИТИЧНО: Raw SQL identifier casing — Prisma schema без @map → camelCase з лапками.
+# Snake_case identifiers НЕ ПРАЦЮЮТЬ: Postgres folds unquoted до lowercase,
+# не знайде "orgId" коли пишеш org_id. Endpoint крашиться з HTTP 500.
+grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" -A 30 \
+  | grep -E "org_id|deleted_at|created_at|updated_at|good_id|warehouse_id|min_stock|current_seq|reset_period|last_reset|include_date|document_type"
+# Якщо знаходить snake_case у raw SQL — це CRITICAL bug.
+# Перевір реальні колонки: docker exec stoerp-postgres-1 psql -U sto -d sto_erp -c "\d <table>"
 ```
 
 - [ ] Немає N+1 запитів — `include` або окремий `findMany` з `in` замість циклу
