@@ -9,11 +9,11 @@
 ## Останній commit
 
 ```
-a120647 docs(tester): record bugs #7-#13 from /sto-tester full-auto session
-755368f fix(tester): Bug #8 — InventoryService.findLowStockItems uses camelCase columns
-08ed92a fix(tester): Bug #7+#9 — DocumentNumberService raw SQL uses camelCase columns + LIMIT 1
-5a09f23 chore(git): ignore Playwright test-results and reports
-c22e41f fix(tester): Bug #6 — TopShell render-blocking auth guard prevents UI leak
+81765cb docs(tester): mark Bugs #10-#13 fixed in BUG_REPORT.md
+b191792 fix(tester): Bug #13 — add E2E tests for API error resilience and inventory
+04958b5 fix(tester): Bug #12 — add Testing Library component tests for UI primitives
+ca08381 fix(tester): Bug #10 — add HTTP contract tests for auth and work-orders
+a55b9fb fix(tester): Bug #11 — add fast-check property-based invariants tests
 ```
 
 Дата: 2026-05-25
@@ -28,13 +28,29 @@ c22e41f fix(tester): Bug #6 — TopShell render-blocking auth guard prevents UI 
 | Наступна задача | `[sto-installer]` Inno Setup скрипт |
 | TypeScript | ✅ 0 errors (web + api + shared) |
 | Unit тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
-| Contract тести | ⏭ немає .contract.spec.ts (Bug #10) |
-| Property-based | ⏭ fast-check не встановлений (Bug #11) |
-| Component тести | ⏭ @testing-library не встановлений (Bug #12) |
-| E2E тести | ✅ 4/4 Playwright smoke passed |
+| Contract тести | ✅ 15/15 passed (auth: 9, work-orders: 6) |
+| Property-based | ✅ 26/26 passed (fsm: 11, inventory: 7, settlements: 8) |
+| Component тести | ✅ 42/42 passed (button: 12, select: 9, modal: 11, empty-state: 10) |
+| E2E тести | ✅ 16/16 Playwright passed (smoke: 4, inventory: 5, api-errors: 8 — minus 1 dedup) |
 | Build | ✅ API build OK (webpack 9.3s) |
 | Dev сервер | Next.js на `http://localhost:3001`, API на `http://localhost:3000` |
 | CSS | Tailwind 4 через `@tailwindcss/postcss` (postcss.config.mjs) |
+
+### Test coverage closed this cycle (Bugs #10-#13)
+- **Bug #10** — добавлено supertest + 15 contract тестів (auth + work-orders) використовуючи Fastify `app.inject()`
+- **Bug #11** — встановлено fast-check@4 + 26 property-based тестів (FSM, inventory, settlements). Грошові суми зберігаються в integer cents щоб уникнути 32-bit float обмежень fast-check.
+- **Bug #12** — встановлено @testing-library/react + @vitejs/plugin-react@4 (v6 несумісний з vitest 2.1 через Vite 6). Vitest config в `vitest.config.mts` (ESM). 42 component тести.
+- **Bug #13** — додано `api-errors.spec.ts` + `inventory.spec.ts` (13 E2E тестів, error resilience + auth guard).
+
+### Gotcha — @vitejs/plugin-react version pinning
+- vitest@2.1 (uses Vite 5) **несумісний** з @vitejs/plugin-react@6 (requires Vite 6) — кидає `ERR_PACKAGE_PATH_NOT_EXPORTED` для `vite/internal`
+- Рішення: pin @vitejs/plugin-react@^4.3.0
+- Config file має бути `.mts` (не `.ts`) щоб подружитися з ESM-only плагіном
+
+### Gotcha — fast-check float constraints
+- `fc.float({ min: 0.01, max: 100_000 })` кидає "constraints.min must be a 32-bit float"
+- Для грошових сум використовуй `fc.integer({ min: 1, max: 10_000_000 })` (центи)
+- Це додатково усуває помилки округлення IEEE 754 у тестах
 
 ### Critical bugs fixed this session
 - **Bug #7** — `DocumentNumberService.next()` використовував snake_case у raw SQL → ламав створення WO/Invoice/PO/StockDocument. Виправлено: camelCase з лапками + `LIMIT 1`.
