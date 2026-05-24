@@ -6,9 +6,13 @@ import { apiFetch } from '@/lib/api-client';
 import Link from 'next/link';
 import {
   Wrench, Clock, TrendingUp, AlertTriangle, FileX, BarChart2,
+  Plus, Users, ShoppingCart, Receipt,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { PageSpinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface KPI {
   openOrders: number;
@@ -32,37 +36,12 @@ function fmt(n: number) {
   return n.toLocaleString('uk-UA', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₴';
 }
 
-interface KpiCardProps {
-  label: string;
-  value: string | number;
-  sub?: string;
-  valueClass?: string;
-  href?: string;
-  icon: React.ElementType;
-  iconClass?: string;
-}
-
-function KpiCard({ label, value, sub, valueClass, href, icon: Icon, iconClass }: KpiCardProps) {
-  const inner = (
-    <Card hoverable={!!href}>
-      <CardContent className="pt-5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-            <p className={['text-2xl font-bold mt-1 tabular-nums', valueClass ?? 'text-gray-900'].join(' ')}>
-              {value}
-            </p>
-            {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
-          </div>
-          <div className={['flex h-9 w-9 items-center justify-center rounded-lg shrink-0', iconClass ?? 'bg-gray-100'].join(' ')}>
-            <Icon className="h-4 w-4" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-  return href ? <Link href={href}>{inner}</Link> : inner;
-}
+const QUICK_ACTIONS = [
+  { href: '/work-orders', label: 'Новий наряд',             icon: Wrench },
+  { href: '/crm',         label: 'Новий клієнт',            icon: Users },
+  { href: '/purchase-orders', label: 'Замовлення',          icon: ShoppingCart },
+  { href: '/invoices',    label: 'Рахунок',                  icon: Receipt },
+];
 
 export default function DashboardPage() {
   const { employee } = useRequireAuth();
@@ -99,12 +78,8 @@ export default function DashboardPage() {
         const revData = revenueData.status === 'fulfilled' ? revenueData.value : { rows: [], totalRevenue: 0 };
 
         const allOrders: WorkOrderSummary[] = ordersData.items ?? [];
-        const todayOrders = allOrders.filter(o =>
-          o.completedAt && o.completedAt.slice(0, 10) === today);
-
+        const todayOrders = allOrders.filter(o => o.completedAt && o.completedAt.slice(0, 10) === today);
         const allInvoices: InvoiceSummary[] = invoicesData.items ?? [];
-        const unpaidAmount = allInvoices.reduce((s, i) => s + i.amount, 0);
-
         const monthRevenue = (revData.rows as RevenueDay[])
           .filter(r => r.date >= monthStart)
           .reduce((s, r) => s + r.revenue, 0);
@@ -117,7 +92,7 @@ export default function DashboardPage() {
           revenueMonth: monthRevenue,
           lowStockCount: Array.isArray(lowStockData) ? lowStockData.length : 0,
           unpaidInvoices: allInvoices.length,
-          unpaidAmount,
+          unpaidAmount: allInvoices.reduce((s, i) => s + i.amount, 0),
         });
 
         setRevenue(revData.rows ?? []);
@@ -131,138 +106,138 @@ export default function DashboardPage() {
 
   if (!employee) return null;
 
-  const greeting = () => {
-    const h = parseInt(
-      new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', hour: 'numeric', hour12: false }).format(new Date()),
-      10,
-    );
-    if (h < 12) return 'Доброго ранку';
-    if (h < 18) return 'Доброго дня';
-    return 'Доброго вечора';
-  };
+  const hour = parseInt(
+    new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', hour: 'numeric', hour12: false }).format(new Date()), 10,
+  );
+  const greeting = hour < 12 ? 'Доброго ранку' : hour < 18 ? 'Доброго дня' : 'Доброго вечора';
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-(--color-destructive-subtle) border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">
           {error}
         </div>
       )}
 
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">
-          {greeting()}, {employee.firstName}!
-        </h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {new Date().toLocaleDateString('uk-UA', {
-            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-          })}
-        </p>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">{greeting}, {employee.firstName}!</h1>
+          <p className="page-subtitle">
+            {new Date().toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
       </div>
 
       {loading ? (
-        <div className="text-center py-20 text-gray-400 text-sm">Завантаження даних...</div>
-      ) : kpi && (
+        <PageSpinner />
+      ) : !kpi ? (
+        <EmptyState title="Немає даних" description="Не вдалося завантажити показники" />
+      ) : (
         <>
-          {/* KPI grid — row 1 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <KpiCard
-              label="В роботі"
-              value={kpi.inProgressOrders}
-              sub="нарядів зараз"
-              valueClass="text-blue-600"
-              href="/work-orders"
-              icon={Wrench}
-              iconClass="bg-blue-100 text-blue-600"
-            />
-            <KpiCard
-              label="Очікують"
-              value={kpi.openOrders}
-              sub="нарядів на прийом"
-              valueClass="text-amber-600"
-              href="/work-orders"
-              icon={Clock}
-              iconClass="bg-amber-100 text-amber-600"
-            />
-            <KpiCard
-              label="Виручка сьогодні"
-              value={fmt(kpi.revenueToday)}
-              sub={`${kpi.completedToday} нарядів завершено`}
-              valueClass="text-green-700"
-              href="/reports"
-              icon={TrendingUp}
-              iconClass="bg-green-100 text-green-700"
-            />
-            <KpiCard
-              label="Виручка за місяць"
-              value={fmt(kpi.revenueMonth)}
-              href="/reports"
-              icon={BarChart2}
-              iconClass="bg-gray-100 text-gray-600"
-            />
+          {/* KPI row 1 */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <Link href="/work-orders">
+              <KpiCard
+                label="В роботі"
+                value={kpi.inProgressOrders}
+                icon={<Wrench />}
+                colorClass="kpi-card-blue"
+                trend={{ value: `${kpi.completedToday} завершено сьогодні`, up: kpi.completedToday > 0 }}
+              />
+            </Link>
+            <Link href="/work-orders">
+              <KpiCard
+                label="Очікують"
+                value={kpi.openOrders}
+                icon={<Clock />}
+                colorClass="kpi-card-amber"
+              />
+            </Link>
+            <Link href="/reports">
+              <KpiCard
+                label="Виручка сьогодні"
+                value={fmt(kpi.revenueToday)}
+                icon={<TrendingUp />}
+                colorClass="kpi-card-green"
+              />
+            </Link>
+            <Link href="/reports">
+              <KpiCard
+                label="Виручка за місяць"
+                value={fmt(kpi.revenueMonth)}
+                icon={<BarChart2 />}
+                colorClass="kpi-card-violet"
+              />
+            </Link>
           </div>
 
-          {/* KPI grid — row 2 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <KpiCard
-              label="Несплачені рахунки"
-              value={kpi.unpaidInvoices}
-              sub={kpi.unpaidAmount > 0 ? fmt(kpi.unpaidAmount) : undefined}
-              valueClass={kpi.unpaidInvoices > 0 ? 'text-red-600' : 'text-gray-500'}
-              href="/invoices"
-              icon={FileX}
-              iconClass={kpi.unpaidInvoices > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'}
-            />
-            <KpiCard
-              label="Низький залишок"
-              value={kpi.lowStockCount}
-              sub="позицій на складі"
-              valueClass={kpi.lowStockCount > 0 ? 'text-amber-600' : 'text-gray-500'}
-              href="/inventory"
-              icon={AlertTriangle}
-              iconClass={kpi.lowStockCount > 0 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}
-            />
+          {/* KPI row 2 */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <Link href="/invoices">
+              <KpiCard
+                label="Несплачені рахунки"
+                value={kpi.unpaidInvoices}
+                icon={<FileX />}
+                colorClass={kpi.unpaidInvoices > 0 ? 'kpi-card-red' : 'kpi-card-blue'}
+                trend={kpi.unpaidAmount > 0 ? { value: fmt(kpi.unpaidAmount), up: false } : undefined}
+              />
+            </Link>
+            <Link href="/inventory">
+              <KpiCard
+                label="Низький залишок"
+                value={kpi.lowStockCount}
+                icon={<AlertTriangle />}
+                colorClass={kpi.lowStockCount > 0 ? 'kpi-card-amber' : 'kpi-card-teal'}
+              />
+            </Link>
           </div>
 
           {/* Revenue chart */}
-          {revenue.length > 0 && (
+          {revenue.length > 0 ? (
             <Card className="mb-6">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Виручка за 7 днів</CardTitle>
-                  <Link href="/reports" className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                  <Link href="/reports" className="text-[12px] text-(--color-primary) hover:underline font-medium">
                     Всі звіти →
                   </Link>
                 </div>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={revenue}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <BarChart data={revenue} margin={{ left: -10 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(214 32% 91%)" />
                     <XAxis
                       dataKey="date"
-                      tick={{ fontSize: 11 }}
+                      tick={{ fontSize: 11, fill: 'hsl(215 16% 55%)' }}
+                      axisLine={false}
+                      tickLine={false}
                       tickFormatter={d =>
-                        new Date(d + 'T00:00').toLocaleDateString('uk-UA', {
-                          day: 'numeric', month: 'short',
-                        })
+                        new Date(d + 'T00:00').toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })
                       }
                     />
                     <YAxis
-                      tick={{ fontSize: 11 }}
+                      tick={{ fontSize: 11, fill: 'hsl(215 16% 55%)' }}
+                      axisLine={false}
+                      tickLine={false}
                       tickFormatter={v => (v / 1000).toFixed(0) + 'к'}
                     />
                     <Tooltip
+                      cursor={{ fill: 'hsl(214 95% 97%)' }}
+                      contentStyle={{
+                        borderRadius: 8, border: '1px solid hsl(214 32% 91%)',
+                        fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                      }}
                       formatter={(v) => [fmt(Number(v ?? 0)), 'Виручка']}
                       labelFormatter={d => new Date(d + 'T00:00').toLocaleDateString('uk-UA')}
                     />
-                    <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="revenue" fill="hsl(221 83% 53%)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
-          )}
+          ) : null}
 
           {/* Quick actions */}
           <Card>
@@ -270,31 +245,17 @@ export default function DashboardPage() {
               <CardTitle>Швидкі дії</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-3">
-                <Link
-                  href="/work-orders"
-                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  + Новий наряд
-                </Link>
-                <Link
-                  href="/crm"
-                  className="px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  + Новий клієнт
-                </Link>
-                <Link
-                  href="/purchase-orders"
-                  className="px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  + Замовлення постачальнику
-                </Link>
-                <Link
-                  href="/invoices"
-                  className="px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  + Рахунок
-                </Link>
+              <div className="flex flex-wrap gap-2.5">
+                {QUICK_ACTIONS.map(({ href, label, icon: Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium rounded-(--radius) border border-(--color-border) bg-white text-foreground hover:bg-(--color-secondary) hover:border-border-hover transition-all duration-150"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {label}
+                  </Link>
+                ))}
               </div>
             </CardContent>
           </Card>

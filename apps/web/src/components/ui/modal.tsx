@@ -1,106 +1,102 @@
 'use client';
 
-import * as React from 'react';
+import { useEffect, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
+type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
 
-export interface ModalProps {
+interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
   description?: string;
+  children: ReactNode;
+  footer?: ReactNode;
   size?: ModalSize;
-  children: React.ReactNode;
   className?: string;
-  /** Prevent closing when clicking backdrop */
-  disableBackdropClose?: boolean;
+  hideClose?: boolean;
 }
 
-const sizeClasses: Record<ModalSize, string> = {
+const sizes: Record<ModalSize, string> = {
   sm:   'max-w-sm',
   md:   'max-w-lg',
   lg:   'max-w-2xl',
   xl:   'max-w-4xl',
-  full: 'max-w-[calc(100vw-2rem)]',
+  full: 'max-w-[95vw]',
 };
 
 export function Modal({
-  open,
-  onClose,
-  title,
-  description,
-  size = 'md',
-  children,
-  className,
-  disableBackdropClose = false,
+  open, onClose, title, description, children, footer, size = 'md', className, hideClose,
 }: ModalProps) {
-  // Close on Escape key
-  React.useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [open, onClose]);
+  const handleKey = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onClose();
+  }, [onClose]);
 
-  // Prevent body scroll
-  React.useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener('keydown', handleKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKey);
       document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
+    };
+  }, [open, handleKey]);
 
   if (!open) return null;
 
-  const content = (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-labelledby={title ? 'modal-title' : undefined}
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-in fade-in-0 duration-150"
-        onClick={disableBackdropClose ? undefined : onClose}
-        aria-hidden="true"
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-150"
+        onClick={onClose}
       />
 
       {/* Panel */}
       <div
         className={cn(
-          'relative z-10 w-full bg-white rounded-2xl shadow-xl',
-          'max-h-[90vh] flex flex-col',
-          'animate-in fade-in-0 zoom-in-95 duration-150',
-          sizeClasses[size],
+          'relative z-10 w-full rounded-xl bg-white',
+          'shadow-(--shadow-xl) border border-(--color-border)',
+          'flex flex-col max-h-[90vh]',
+          'animate-in fade-in zoom-in-95 duration-200',
+          sizes[size],
           className,
         )}
       >
         {/* Header */}
-        {(title || description) && (
-          <div className="flex items-start justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
-            <div>
+        {(title || !hideClose) && (
+          <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-(--color-border) shrink-0">
+            <div className="flex flex-col gap-1">
               {title && (
-                <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+                <h2 id="modal-title" className="text-[16px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
+                  {title}
+                </h2>
               )}
               {description && (
-                <p className="text-sm text-gray-500 mt-0.5">{description}</p>
+                <p className="text-[13px] text-muted-foreground">{description}</p>
               )}
             </div>
-            <button
-              onClick={onClose}
-              className="rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors shrink-0"
-              aria-label="Закрити"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            {!hideClose && (
+              <button
+                onClick={onClose}
+                className={cn(
+                  'shrink-0 rounded-(--radius) p-1.5 -mr-1 -mt-0.5',
+                  'text-muted-foreground',
+                  'hover:bg-(--color-secondary) hover:text-foreground',
+                  'transition-colors duration-150',
+                )}
+                aria-label="Закрити"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
         )}
 
@@ -108,21 +104,19 @@ export function Modal({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {children}
         </div>
-      </div>
-    </div>
-  );
 
-  return createPortal(content, document.body);
+        {/* Footer */}
+        {footer && (
+          <div className="shrink-0 flex items-center justify-end gap-2 px-6 py-4 border-t border-(--color-border) bg-(--color-secondary) rounded-b-xl">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
-export function ModalFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn(
-        'flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 shrink-0',
-        className,
-      )}
-      {...props}
-    />
-  );
+export function ModalFooter({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('flex items-center justify-end gap-2 w-full', className)}>{children}</div>;
 }

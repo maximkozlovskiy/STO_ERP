@@ -2,11 +2,10 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Wrench } from 'lucide-react';
+import { Wrench, Wifi } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -31,80 +30,97 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm">
-        {/* Brand block */}
-        <div className="mb-6 text-center">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 shadow-lg mb-4">
-            <Wrench className="h-7 w-7 text-white" />
+    <div className="min-h-screen flex bg-(--color-background)">
+      {/* Left panel — brand */}
+      <div className="hidden lg:flex lg:w-[420px] flex-col justify-between p-10 bg-(--color-sidebar-bg) text-white shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-(--color-primary)">
+            <Wrench className="h-5 w-5 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">STO ERP</h1>
-          <p className="text-sm text-gray-500 mt-1">Система управління автосервісом</p>
+          <span className="text-[16px] font-bold tracking-tight">STO ERP</span>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Вхід до системи</CardTitle>
-            <CardDescription>Введіть ваші облікові дані</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-gray-700 mb-1.5"
-                >
-                  Email
-                </label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@sto.local"
-                />
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-[32px] font-bold leading-tight tracking-tight">
+              Система управління<br />автосервісом
+            </h1>
+            <p className="text-[15px] text-(--color-sidebar-muted) leading-relaxed">
+              Наряди, склад, фінанси, CRM — все в одному місці. Працює повністю офлайн.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              'Наряди та облік робіт',
+              'Склад та запчастини',
+              'Фінанси та розрахунки',
+              'CRM та клієнтська база',
+            ].map(f => (
+              <div key={f} className="flex items-center gap-2.5 text-[13px] text-(--color-sidebar-fg)">
+                <div className="h-1.5 w-1.5 rounded-full bg-(--color-primary) shrink-0" />
+                {f}
               </div>
+            ))}
+          </div>
+        </div>
 
-              <div>
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-gray-700 mb-1.5"
-                >
-                  Пароль
-                </label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </div>
-
-              {error && (
-                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {error}
-                </div>
-              )}
-
-              <Button
-                type="submit"
-                loading={loading}
-                className="w-full"
-              >
-                Увійти
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        <p className="mt-4 text-center text-xs text-gray-400">
+        <div className="flex items-center gap-2 text-[12px] text-(--color-sidebar-muted)">
+          <Wifi className="h-3.5 w-3.5" />
           Офлайн-система — не потребує інтернету
-        </p>
+        </div>
+      </div>
+
+      {/* Right panel — form */}
+      <div className="flex flex-1 items-center justify-center p-6">
+        <div className="w-full max-w-[360px]">
+          {/* Mobile logo */}
+          <div className="flex lg:hidden items-center gap-2.5 mb-8 justify-center">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-(--color-primary)">
+              <Wrench className="h-5 w-5 text-white" />
+            </div>
+            <span className="text-[18px] font-bold text-foreground">STO ERP</span>
+          </div>
+
+          <div className="mb-7">
+            <h2 className="text-[22px] font-bold text-foreground tracking-tight">Вхід до системи</h2>
+            <p className="text-[14px] text-muted-foreground mt-1">Введіть ваші облікові дані</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              label="Email"
+              id="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="admin@sto.local"
+            />
+
+            <Input
+              label="Пароль"
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+
+            {error && (
+              <div className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2.5">
+                {error}
+              </div>
+            )}
+
+            <Button type="submit" loading={loading} className="w-full mt-2">
+              Увійти
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   );

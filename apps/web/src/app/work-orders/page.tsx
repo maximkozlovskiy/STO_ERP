@@ -15,12 +15,12 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 interface WorkOrder {
   id: string; number: string; status: string;
   vehicleSummary?: string; counterpartyName?: string; branchName?: string;
-  totalAmount: number; plannedAt?: string | null;
-  createdAt: string;
+  totalAmount: number; plannedAt?: string | null; createdAt: string;
 }
 interface Paginated { items: WorkOrder[]; total: number; page: number; limit: number; }
 interface Branch { id: string; name: string; }
@@ -38,6 +38,20 @@ const STATUS_BADGE: Record<string, BadgeVariant> = {
   IN_PROGRESS: 'default', ON_HOLD: 'warning', COMPLETED: 'success',
   INVOICED: 'default', PAID: 'success', ARCHIVED: 'secondary', CANCELLED: 'destructive',
 };
+
+const STATUS_TABS: Array<[string, string]> = [
+  ['', 'Всі'],
+  ['IN_PROGRESS', 'В роботі'],
+  ['APPROVED', 'Затверджено'],
+  ['ESTIMATE', 'Кошторис'],
+  ['DRAFT', 'Чернетка'],
+  ['COMPLETED', 'Виконано'],
+  ['INVOICED', 'Виставлено'],
+  ['PAID', 'Оплачено'],
+  ['ON_HOLD', 'Призупинено'],
+  ['CANCELLED', 'Скасовано'],
+  ['ARCHIVED', 'Архів'],
+];
 
 export default function WorkOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
@@ -125,40 +139,37 @@ export default function WorkOrdersPage() {
   const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="page-container">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Наряди</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="page-title">Наряди</h1>
+          <p className="page-subtitle">
             {data ? `${data.total} записів` : 'Завантаження...'}
           </p>
         </div>
-        <Button onClick={() => { setError(''); setModal(true); }}>
-          <Plus className="h-4 w-4" />
+        <Button onClick={() => { setError(''); setModal(true); }} leftIcon={<Plus />}>
           Новий наряд
         </Button>
       </div>
 
-      {/* Error banner */}
       {!modal && error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">
           {error}
         </div>
       )}
 
-      {/* Status filter tabs */}
-      <div className="flex gap-1.5 mb-4 flex-wrap">
-        {([['', 'Всі'], ...Object.entries(STATUS_LABELS)] as [string, string][]).map(([v, l]) => (
+      {/* Status filter pills */}
+      <div className="flex gap-1.5 mb-5 flex-wrap">
+        {STATUS_TABS.map(([v, l]) => (
           <button
             key={v}
             onClick={() => { setStatusFilter(v); setPage(1); }}
-            className={[
-              'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+            className={cn(
+              'px-3 py-1 rounded-full text-[12px] font-medium border transition-all duration-100',
               statusFilter === v
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50',
-            ].join(' ')}
+                ? 'bg-(--color-primary) text-white border-(--color-primary) shadow-sm'
+                : 'border-(--color-border) text-foreground-muted bg-white hover:bg-(--color-secondary) hover:text-foreground',
+            )}
           >
             {l}
           </button>
@@ -166,85 +177,70 @@ export default function WorkOrdersPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <Table>
-          <TableHeader>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Номер</TableHead>
+            <TableHead>Клієнт / Авто</TableHead>
+            <TableHead>Статус</TableHead>
+            <TableHead>Сума, ₴</TableHead>
+            <TableHead>Заплановано</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {loading && (
             <TableRow>
-              <TableHead>Номер</TableHead>
-              <TableHead>Клієнт / Авто</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead>Сума, ₴</TableHead>
-              <TableHead>Заплановано</TableHead>
-              <TableHead />
+              <TableCell colSpan={6} className="py-12 text-center">
+                <div className="flex justify-center"><Spinner size="md" /></div>
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center">
-                  <div className="flex justify-center">
-                    <Spinner size="md" />
-                  </div>
-                </TableCell>
-              </TableRow>
-            )}
+          )}
 
-            {!loading && data?.items.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="p-0">
-                  <EmptyState
-                    icon={ClipboardList}
-                    title="Нарядів не знайдено"
-                    description={statusFilter ? 'Спробуйте змінити фільтр статусу' : 'Створіть перший наряд, натиснувши кнопку вище'}
-                  />
-                </TableCell>
-              </TableRow>
-            )}
+          {!loading && data?.items.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6} className="p-0">
+                <EmptyState
+                  icon={ClipboardList}
+                  title="Нарядів не знайдено"
+                  description={statusFilter ? 'Спробуйте змінити фільтр статусу' : 'Створіть перший наряд, натиснувши кнопку вище'}
+                  size="sm"
+                />
+              </TableCell>
+            </TableRow>
+          )}
 
-            {!loading && data?.items.map(wo => (
-              <TableRow key={wo.id}>
-                <TableCell>
-                  <button
-                    onClick={() => router.push(`/work-orders/${wo.id}`)}
-                    className="text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
-                  >
-                    {wo.number}
-                  </button>
-                </TableCell>
-                <TableCell>
-                  <p className="font-medium text-gray-900">{wo.counterpartyName ?? '—'}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{wo.vehicleSummary ?? '—'}</p>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'}>
-                    {STATUS_LABELS[wo.status] ?? wo.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="font-medium text-gray-900">
-                  {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
-                </TableCell>
-                <TableCell className="text-gray-500">
-                  {wo.plannedAt
-                    ? new Date(wo.plannedAt).toLocaleString('uk-UA', {
-                        day: '2-digit', month: '2-digit',
-                        hour: '2-digit', minute: '2-digit',
-                      })
-                    : '—'}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => router.push(`/work-orders/${wo.id}`)}
-                  >
-                    Картка →
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+          {!loading && data?.items.map(wo => (
+            <TableRow key={wo.id} onClick={() => router.push(`/work-orders/${wo.id}`)}>
+              <TableCell>
+                <span className="text-[13px] font-semibold text-(--color-primary)">{wo.number}</span>
+              </TableCell>
+              <TableCell>
+                <p className="text-[13px] font-medium text-foreground">{wo.counterpartyName ?? '—'}</p>
+                <p className="text-[12px] text-muted-foreground mt-0.5">{wo.vehicleSummary ?? '—'}</p>
+              </TableCell>
+              <TableCell>
+                <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>
+                  {STATUS_LABELS[wo.status] ?? wo.status}
+                </Badge>
+              </TableCell>
+              <TableCell className="font-medium text-foreground tabular-nums">
+                {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
+              </TableCell>
+              <TableCell className="text-muted-foreground text-[12px]">
+                {wo.plannedAt
+                  ? new Date(wo.plannedAt).toLocaleString('uk-UA', {
+                      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                    })
+                  : '—'}
+              </TableCell>
+              <TableCell className="text-right">
+                <Button variant="ghost" size="sm">Відкрити →</Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -253,12 +249,12 @@ export default function WorkOrdersPage() {
             <button
               key={p}
               onClick={() => setPage(p)}
-              className={[
-                'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+              className={cn(
+                'h-8 w-8 rounded-lg text-[13px] font-medium border transition-colors',
                 p === page
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50',
-              ].join(' ')}
+                  ? 'bg-(--color-primary) text-white border-(--color-primary)'
+                  : 'border-(--color-border) text-foreground-muted bg-white hover:bg-(--color-secondary)',
+              )}
             >
               {p}
             </button>
@@ -272,104 +268,88 @@ export default function WorkOrdersPage() {
         onClose={() => setModal(false)}
         title="Новий наряд"
         description="Заповніть дані для створення наряду"
+        footer={
+          <Button
+            onClick={create}
+            loading={saving}
+            disabled={!form.branchId || !form.vehicleId || !form.counterpartyId}
+            className="w-full sm:w-auto"
+          >
+            Створити наряд
+          </Button>
+        }
       >
         {error && (
-          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">
             {error}
           </div>
         )}
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Клієнт <span className="text-red-500">*</span>
-            </label>
-            <Select
-              value={form.counterpartyId}
-              onChange={e => {
-                setForm(f => ({ ...f, counterpartyId: e.target.value, vehicleId: '' }));
-                loadVehicles(e.target.value);
-              }}
-              placeholder="— Оберіть —"
-            >
-              {counterparties.map(c => (
-                <option key={c.id} value={c.id}>{cpName(c)}</option>
-              ))}
-            </Select>
-          </div>
+          <Select
+            label="Клієнт"
+            required
+            value={form.counterpartyId}
+            onChange={e => {
+              setForm(f => ({ ...f, counterpartyId: e.target.value, vehicleId: '' }));
+              loadVehicles(e.target.value);
+            }}
+          >
+            <option value="">— Оберіть —</option>
+            {counterparties.map(c => (
+              <option key={c.id} value={c.id}>{cpName(c)}</option>
+            ))}
+          </Select>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Автомобіль <span className="text-red-500">*</span>
-            </label>
-            <Select
-              value={form.vehicleId}
-              onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-              disabled={!form.counterpartyId}
-              placeholder="— Оберіть —"
-            >
-              {vehicles.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.make} {v.model}{v.licensePlate ? ` (${v.licensePlate})` : ''}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <Select
+            label="Автомобіль"
+            required
+            value={form.vehicleId}
+            onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+            disabled={!form.counterpartyId}
+          >
+            <option value="">— Оберіть —</option>
+            {vehicles.map(v => (
+              <option key={v.id} value={v.id}>
+                {v.make} {v.model}{v.licensePlate ? ` (${v.licensePlate})` : ''}
+              </option>
+            ))}
+          </Select>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Філія <span className="text-red-500">*</span>
-            </label>
-            <Select
-              value={form.branchId}
-              onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-              placeholder="— Оберіть —"
-            >
-              {branches.map(b => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </Select>
-          </div>
+          <Select
+            label="Філія"
+            required
+            value={form.branchId}
+            onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+          >
+            <option value="">— Оберіть —</option>
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </Select>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Опис</label>
-            <Input
-              value={form.description}
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              placeholder="Заміна масла, колодок..."
-            />
-          </div>
+          <Input
+            label="Опис"
+            value={form.description}
+            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            placeholder="Заміна масла, колодок..."
+          />
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Пробіг (вхід), км
-              </label>
-              <Input
-                type="number"
-                value={form.inMileage}
-                onChange={e => setForm(f => ({ ...f, inMileage: e.target.value }))}
-                placeholder="50000"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Заплановано</label>
-              <Input
-                type="datetime-local"
-                value={form.plannedAt}
-                onChange={e => setForm(f => ({ ...f, plannedAt: e.target.value }))}
-              />
-            </div>
+            <Input
+              label="Пробіг (вхід), км"
+              type="number"
+              value={form.inMileage}
+              onChange={e => setForm(f => ({ ...f, inMileage: e.target.value }))}
+              placeholder="50000"
+            />
+            <Input
+              label="Заплановано"
+              type="datetime-local"
+              value={form.plannedAt}
+              onChange={e => setForm(f => ({ ...f, plannedAt: e.target.value }))}
+            />
           </div>
-
-          <Button
-            onClick={create}
-            loading={saving}
-            disabled={!form.branchId || !form.vehicleId || !form.counterpartyId}
-            className="w-full mt-2"
-          >
-            Створити наряд
-          </Button>
         </div>
       </Modal>
     </div>

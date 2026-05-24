@@ -40,14 +40,19 @@ export default function CrmPage() {
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '' });
+  const [form, setForm] = useState({
+    type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '',
+  });
 
   const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: '20' });
     if (search) params.set('q', search);
     if (typeFilter) params.set('type', typeFilter);
-    apiFetch<Paginated>(`/counterparties?${params}`).then(setData).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
+    apiFetch<Paginated>(`/counterparties?${params}`)
+      .then(setData)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .finally(() => setLoading(false));
   }, [page, search, typeFilter]);
 
   useEffect(() => { load(); }, [load]);
@@ -88,108 +93,102 @@ export default function CrmPage() {
   const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="page-container">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Контрагенти</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="page-title">Контрагенти</h1>
+          <p className="page-subtitle">
             {data ? `${data.total} записів` : 'Завантаження...'}
           </p>
         </div>
-        <Button onClick={() => { setForm({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '' }); setError(''); setModal(true); }}>
-          <Plus className="h-4 w-4" />
+        <Button
+          leftIcon={<Plus />}
+          onClick={() => {
+            setForm({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '' });
+            setError(''); setModal(true);
+          }}
+        >
           Додати
         </Button>
       </div>
 
       {!modal && error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">
           {error}
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex gap-3 mb-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-          <Input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Пошук за ім'ям, телефоном, ЄДРПОУ..."
-            className="pl-9"
-          />
-        </div>
+      <div className="flex gap-3 mb-5">
+        <Input
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }}
+          placeholder="Пошук за ім'ям, телефоном, ЄДРПОУ..."
+          leftElement={<Search />}
+          className="flex-1"
+        />
         <Select
           value={typeFilter}
           onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
+          className="w-44"
         >
           {TYPE_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </Select>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <Table>
-          <TableHeader>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Контрагент</TableHead>
+            <TableHead>Тип</TableHead>
+            <TableHead>Телефон</TableHead>
+            <TableHead>ЄДРПОУ</TableHead>
+            <TableHead>Баланс, ₴</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {loading && (
             <TableRow>
-              <TableHead>Контрагент</TableHead>
-              <TableHead>Тип</TableHead>
-              <TableHead>Телефон</TableHead>
-              <TableHead>ЄДРПОУ</TableHead>
-              <TableHead>Баланс, ₴</TableHead>
-              <TableHead />
+              <TableCell colSpan={6} className="py-12 text-center">
+                <div className="flex justify-center"><Spinner size="md" /></div>
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && data?.items.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="p-0">
-                  <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" />
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && data?.items.map(cp => (
-              <TableRow key={cp.id}>
-                <TableCell>
-                  <button
-                    onClick={() => router.push(`/crm/${cp.id}`)}
-                    className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
-                  >
-                    {displayName(cp)}
-                  </button>
-                  {cp.email && <p className="text-xs text-gray-400 mt-0.5">{cp.email}</p>}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
-                    {TYPE_LABELS[cp.type]}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-gray-500">{cp.phone ?? '—'}</TableCell>
-                <TableCell className="text-gray-500">{cp.edrpou ?? '—'}</TableCell>
-                <TableCell className={cn(
-                  'font-medium',
-                  cp.balance < 0 ? 'text-red-600' : cp.balance > 0 ? 'text-green-600' : 'text-gray-500'
-                )}>
-                  {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="sm" onClick={() => router.push(`/crm/${cp.id}`)}>
-                    Картка →
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+          )}
+          {!loading && data?.items.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6} className="p-0">
+                <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" size="sm" />
+              </TableCell>
+            </TableRow>
+          )}
+          {!loading && data?.items.map(cp => (
+            <TableRow key={cp.id} onClick={() => router.push(`/crm/${cp.id}`)}>
+              <TableCell>
+                <p className="text-[13px] font-medium text-(--color-primary)">{displayName(cp)}</p>
+                {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
+              </TableCell>
+              <TableCell>
+                <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
+                  {TYPE_LABELS[cp.type]}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-muted-foreground text-[13px]">{cp.phone ?? '—'}</TableCell>
+              <TableCell className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>
+              <TableCell className={cn(
+                'font-semibold tabular-nums text-[13px]',
+                cp.balance < 0 ? 'text-[hsl(0_84%_42%)]' : cp.balance > 0 ? 'text-[hsl(142_71%_30%)]' : 'text-muted-foreground',
+              )}>
+                {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+              </TableCell>
+              <TableCell className="text-right">
+                <Button variant="ghost" size="sm">Картка →</Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -199,10 +198,10 @@ export default function CrmPage() {
               key={p}
               onClick={() => setPage(p)}
               className={cn(
-                'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                'h-8 w-8 rounded-lg text-[13px] font-medium border transition-colors',
                 p === page
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50',
+                  ? 'bg-(--color-primary) text-white border-(--color-primary)'
+                  : 'border-(--color-border) text-foreground-muted bg-white hover:bg-(--color-secondary)',
               )}
             >
               {p}
@@ -216,48 +215,69 @@ export default function CrmPage() {
         open={modal}
         onClose={() => setModal(false)}
         title="Новий контрагент"
+        footer={
+          <Button onClick={create} loading={saving}>Зберегти</Button>
+        }
       >
         {error && (
-          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">
+            {error}
+          </div>
         )}
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Тип <span className="text-red-500">*</span></label>
-            <Select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-              {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-          </div>
+          <Select
+            label="Тип"
+            required
+            value={form.type}
+            onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+          >
+            {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+
           {form.type !== 'SUPPLIER' && (
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Ім'я</label>
-                <Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} placeholder="Іван" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Прізвище</label>
-                <Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} placeholder="Коваль" />
-              </div>
+              <Input
+                label="Ім'я"
+                value={form.firstName}
+                onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
+                placeholder="Іван"
+              />
+              <Input
+                label="Прізвище"
+                value={form.lastName}
+                onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
+                placeholder="Коваль"
+              />
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Назва компанії</label>
-            <Input value={form.companyName} onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))} placeholder="ТОВ «Авто»" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Телефон</label>
-            <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+38 (067) 123-45-67" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-            <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">ЄДРПОУ</label>
-            <Input value={form.edrpou} onChange={e => setForm(f => ({ ...f, edrpou: e.target.value }))} placeholder="12345678" />
-          </div>
-          <Button onClick={create} loading={saving} className="w-full mt-2">
-            Зберегти
-          </Button>
+
+          <Input
+            label="Назва компанії"
+            value={form.companyName}
+            onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))}
+            placeholder="ТОВ «Авто»"
+          />
+
+          <Input
+            label="Телефон"
+            value={form.phone}
+            onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+            placeholder="+38 (067) 123-45-67"
+          />
+
+          <Input
+            label="Email"
+            type="email"
+            value={form.email}
+            onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+          />
+
+          <Input
+            label="ЄДРПОУ"
+            value={form.edrpou}
+            onChange={e => setForm(f => ({ ...f, edrpou: e.target.value }))}
+            placeholder="12345678"
+          />
         </div>
       </Modal>
     </div>

@@ -1,39 +1,56 @@
-import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 export type BadgeVariant =
-  | 'default'
-  | 'secondary'
-  | 'destructive'
-  | 'outline'
-  | 'success'
-  | 'warning';
+  | 'default' | 'secondary' | 'outline'
+  | 'success' | 'warning' | 'destructive' | 'info' | 'purple';
 
-export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+interface BadgeProps {
   variant?: BadgeVariant;
+  className?: string;
+  children: React.ReactNode;
+  dot?: boolean;
 }
 
-const variantClasses: Record<BadgeVariant, string> = {
-  default:     'bg-blue-100 text-blue-700 border-transparent',
-  secondary:   'bg-gray-100 text-gray-700 border-transparent',
-  destructive: 'bg-red-100 text-red-700 border-transparent',
-  outline:     'bg-transparent text-gray-700 border-gray-300',
-  success:     'bg-green-100 text-green-700 border-transparent',
-  warning:     'bg-amber-100 text-amber-700 border-transparent',
+const variants: Record<BadgeVariant, string> = {
+  default:     'bg-[var(--color-brand-100)] text-[var(--color-brand-800)] border-[var(--color-brand-200)]',
+  secondary:   'bg-[var(--color-secondary)] text-[var(--color-foreground-muted)] border-transparent',
+  outline:     'bg-transparent text-[var(--color-foreground-muted)] border-[var(--color-border)]',
+  success:     'bg-[var(--color-success-subtle)] text-[hsl(142_71%_30%)] border-[hsl(142_71%_78%)]',
+  warning:     'bg-[var(--color-warning-subtle)] text-[hsl(26_83%_30%)] border-[hsl(38_92%_72%)]',
+  destructive: 'bg-[var(--color-destructive-subtle)] text-[hsl(0_84%_42%)] border-[hsl(0_84%_80%)]',
+  info:        'bg-[var(--color-info-subtle)] text-[hsl(199_89%_30%)] border-[hsl(199_89%_72%)]',
+  purple:      'bg-[hsl(270_100%_97%)] text-[hsl(262_83%_44%)] border-[hsl(270_88%_82%)]',
 };
 
-export function Badge({ className, variant = 'default', children, ...props }: BadgeProps) {
+const dotColors: Record<BadgeVariant, string> = {
+  default:     'bg-[var(--color-brand-500)]',
+  secondary:   'bg-[var(--color-foreground-muted)]',
+  outline:     'bg-[var(--color-foreground-muted)]',
+  success:     'bg-[var(--color-success)]',
+  warning:     'bg-[var(--color-warning)]',
+  destructive: 'bg-[var(--color-destructive)]',
+  info:        'bg-[var(--color-info)]',
+  purple:      'bg-[hsl(262_83%_58%)]',
+};
+
+function Badge({ variant = 'default', className, children, dot }: BadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium',
-        'transition-colors',
-        variantClasses[variant],
+        'inline-flex items-center gap-1.5 rounded-full',
+        'px-2.5 py-0.5 text-[11px] font-medium border',
+        'whitespace-nowrap leading-tight',
+        variants[variant],
         className,
       )}
-      {...props}
     >
+      {dot && (
+        <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', dotColors[variant])} />
+      )}
       {children}
     </span>
   );
 }
+
+export { Badge };
+export type { BadgeProps };
