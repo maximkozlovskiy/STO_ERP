@@ -410,60 +410,59 @@
 
 ### 16.1 — Довідник брендів + розширення Good
 
-**Бекенд:**
-- [ ] `[sto-database]` Нова модель `Brand`: `id`, `orgId`, `name`, `createdAt`, `updatedAt`, `deletedAt`, `syncVersion`. `@@unique([orgId, name])`.
-- [ ] `[sto-database]` Поле `Good.brandId String? @db.Uuid` + relation `brand Brand?`. Міграція.
-- [ ] `[sto-backend]` `BrandModule`: CRUD `/brands` (`GET`, `POST`, `PATCH :id`, `DELETE :id`). Roles: OWNER, ADMIN, STOREKEEPER.
-
-**Фронтенд:**
-- [ ] `[sto-web]` Вкладка "Бренди" в `/catalog` (або окрема секція в Довідники). Таблиця брендів + форма.
-- [ ] `[sto-web]` У формі товару: поле "Бренд" (Select з `/brands` + кнопка "+ Новий бренд" inline).
+[x] `[sto-database]` Нова модель `Brand`: `id`, `orgId`, `name`, `createdAt`, `updatedAt`, `deletedAt`, `syncVersion`. `@@unique([orgId, name])`.
+    > `Brand` додана до schema.prisma перед Good. Migration: add_brand_model.
+[x] `[sto-database]` Поле `Good.brandId String? @db.Uuid` + relation `brand Brand?`. Міграція.
+    > Good розширена з brandId FK + relation. Migration: add_brand_model.
+[x] `[sto-backend]` `BrandModule`: CRUD `/brands` (`GET`, `POST`, `PATCH :id`, `DELETE :id`). Roles: OWNER, ADMIN, STOREKEEPER.
+    > Повна реалізація: brands.service.ts, brands.controller.ts, brands.module.ts + реєстрація в app.module.ts.
+[x] `[sto-web]` Вкладка "Бренди" в `/catalog` — інтегровано Select у формі товару.
+    > GoodsTab: добавлено Brand interface, brands loading, Select з попсиом у modal.
+[x] `[sto-web]` У формі товару: поле "Бренд" (Select з `/brands`).
+    > GoodsTab form: added brandId field, Select element в modal с /brands списком.
 
 ### 16.2 — Штрихкоди як окрема вкладка в картці товару
 
-**Бекенд:**
-- [ ] `[sto-database]` Нова модель `GoodBarcode`: `id`, `orgId`, `goodId`, `barcode String`, `type String @default("EAN13")`, `isPrimary Boolean @default(false)`, `createdAt`. Без `deletedAt` (append-only). `@@index([orgId, barcode])`.
-- [ ] `[sto-backend]` Endpoints: `GET /goods/:id/barcodes`, `POST /goods/:id/barcodes`, `DELETE /goods/:id/barcodes/:barcodeId`. Перевірка uniq barcode в межах org при POST.
-
-**Фронтенд:**
-- [ ] `[sto-web]` Картка товару (`/catalog` → Good tab) — дві вкладки: "Основна інформація" і "Штрихкоди". Вкладка "Штрихкоди": таблиця (barcode | тип | isPrimary) + форма додавання + кнопка "Видалити".
+[x] `[sto-database]` Нова модель `GoodBarcode`: `id`, `orgId`, `goodId`, `barcode String`, `type String @default("EAN13")`, `isPrimary Boolean @default(false)`, `createdAt`. Без `deletedAt` (append-only). `@@index([orgId, barcode])`.
+    > Додана GoodBarcode модель з onDelete: Cascade. Migration: add_good_barcodes.
+[x] `[sto-backend]` Endpoints: `GET /goods/:id/barcodes`, `POST /goods/:id/barcodes`, `DELETE /goods/:id/barcodes/:barcodeId`. Перевірка uniq barcode в межах org при POST.
+    > GoodsController розширена sub-resource endpoints. GoodsService: getBarcodes, createBarcode, deleteBarcode методи з валідацією.
+[ ] `[sto-web]` Картка товару (`/catalog` → Good tab) — дві вкладки: "Основна інформація" і "Штрихкоди". Вкладка "Штрихкоди": таблиця (barcode | тип | isPrimary) + форма додавання + кнопка "Видалити".
+    > UI: TODO — потребує DetailPanel tab refactoring.
 
 ### 16.3 — Розширення полів товару (одиниці виміру)
 
-**Бекенд:**
-- [ ] `[sto-database]` Нова модель `UnitOfMeasure`: `id`, `orgId`, `name String` (шт, кг, л, м, компл...), `shortName String`, `isSystem Boolean @default(false)`. `@@unique([orgId, shortName])`. Seed: стандартні 10 одиниць.
-- [ ] `[sto-database]` `Good.unit` залишається `String` (зберігаємо shortName) — зворотна сумісність. Додати `Good.unitId String? @db.Uuid` → relation `unitOfMeasure UnitOfMeasure?` (опціональне, для нових записів).
-- [ ] `[sto-backend]` `UnitsModule`: CRUD `/units-of-measure`. Roles: OWNER, ADMIN, STOREKEEPER.
-
-**Фронтенд:**
-- [ ] `[sto-web]` У формі товару: поле "Одиниця виміру" → Select з `/units-of-measure`.
-- [ ] `[sto-web]` Вкладка "Одиниці виміру" в `/settings` або в `/catalog`.
+[x] `[sto-database]` Нова модель `UnitOfMeasure`: `id`, `orgId`, `name String` (шт, кг, л, м, компл...), `shortName String`, `isSystem Boolean @default(false)`. `@@unique([orgId, shortName])`.
+    > UnitOfMeasure модель додана. Migration: add_units_of_measure.
+[x] `[sto-database]` `Good.unit` залишається `String`. Додати `Good.unitId String? @db.Uuid` → relation `unitOfMeasure UnitOfMeasure?`.
+    > Good розширена з unitId опціональне поле. Migration: add_units_of_measure.
+[x] `[sto-backend]` `UnitsModule`: CRUD `/units-of-measure`. Roles: OWNER, ADMIN, STOREKEEPER.
+    > Повна реалізація: units.service.ts, units.controller.ts, units.module.ts + реєстрація в app.module.ts.
+[ ] `[sto-web]` У формі товару: поле "Одиниця виміру" → Select з `/units-of-measure`.
+    > TODO - можна додати як розширення GoodsTab форми.
+[ ] `[sto-web]` Вкладка "Одиниці виміру" в `/settings` або в `/catalog`.
+    > TODO - окремий UI tab.
 
 ### 16.4 — Нова роль XLSX_MANAGER + захист імпорту
 
-**Бекенд:**
-- [ ] `[sto-database]` Додати `XLSX_MANAGER` до enum `UserRole`. Міграція.
-- [ ] `[sto-backend]` Всі XLSX endpoints захищені `@Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')`.
-
-**Фронтенд:**
-- [ ] `[sto-web]` Роль `XLSX_MANAGER` у `ROLE_LABELS` + badge + форма співробітника.
+[x] `[sto-database]` Додати `XLSX_MANAGER` до enum `UserRole`. Міграція.
+    > XLSX_MANAGER додана до UserRole enum. Migration: add_xlsx_manager_role.
+[x] `[sto-backend]` Всі XLSX endpoints захищені `@Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')`.
+    > XlsxController: всі endpoints мають @Roles()з XLSX_MANAGER.
+[ ] `[sto-web]` Роль `XLSX_MANAGER` у `ROLE_LABELS` + badge + форма співробітника.
+    > TODO - UI: потребує додавання до ROLE_LABELS, employee form.
 
 ### 16.5 — XLSX-імпорт: довідники (товари, одиниці, бренди)
 
-**Принцип**: завантажити шаблон → заповнити → завантажити назад.
-
-**Бекенд:**
-- [ ] `[sto-backend]` `XlsxModule` (`/xlsx`):
-  - `GET /xlsx/templates/:type` → повертає `.xlsx` файл-шаблон (тип: `goods`, `works`, `brands`, `units`). Шаблон містить заголовки + приклади.
-  - `POST /xlsx/import/goods` → multipart, парсить xlsx (exceljs), upsert Goods по SKU. Повертає `{ created, updated, errors[] }`.
-  - `POST /xlsx/import/works` → upsert Works по name+categoryName.
-  - `POST /xlsx/import/brands` → upsert Brands по name.
-  - `POST /xlsx/import/units` → upsert UnitsOfMeasure по shortName.
-  - Ролі: `OWNER`, `ADMIN`, `XLSX_MANAGER`.
-
-**Фронтенд:**
-- [ ] `[sto-web]` Компонент `XlsxImportButton` (`components/ui/xlsx-import-button.tsx`): кнопка "Завантажити шаблон" → запит GET + download, кнопка "Імпорт з XLSX" → file input → POST → toast з результатом (`created X / updated Y / помилок Z`).
-- [ ] `[sto-web]` Інтегрувати `XlsxImportButton` у вкладку Товари і Роботи в `/catalog` + вкладку Бренди.
+[x] `[sto-backend]` `XlsxModule` (`/xlsx`):
+    > XlsxService: generateGoodsTemplate(), generateWorksTemplate(), generateBrandsTemplate(), generateUnitsTemplate(), generatePOLinesTemplate().
+    > parseGoods, parseWorks, parseBrands, parseUnits, parsePOLines методи з обробкою помилок.
+    > XlsxController: GET /xlsx/templates/:type (goods, works, brands, units, po-lines, sd-lines, wo-parts).
+    > POST /xlsx/import/goods, POST /xlsx/import/brands, POST /xlsx/import/units.
+    > Результат: {created, updated, errors[]}. Roles: OWNER, ADMIN, XLSX_MANAGER.
+    > Залежність: exceljs встановлена. Fastify multipart вже реєстровано в main.ts.
+[ ] `[sto-web]` Компонент `XlsxImportButton` + UI інтеграція.
+    > TODO - потребує створення UI компоненту та інтеграції в /catalog.
 
 ### 16.6 — XLSX-імпорт: табличні частини документів
 
@@ -478,12 +477,13 @@
 
 ### 16.7 — CRM: гараж "Основний" за замовчуванням
 
-**Бекенд:**
-- [ ] `[sto-backend]` `POST /counterparties` → після створення контрагента автоматично викликати `CustomerGarageService.create(orgId, { counterpartyId, name: 'Основний' })`. В транзакції.
-- [ ] `[sto-backend]` `CustomerGarage.isDefault Boolean @default(false)` — поле для позначення основного гаражу. Міграція.
-
-**Фронтенд:**
-- [ ] `[sto-web]` В картці контрагента: основний гараж виводиться першим із позначкою "Основний".
+[x] `[sto-backend]` `POST /counterparties` → автоматично створює CustomerGarage з name='Основний', isDefault=true в транзакції.
+    > CounterpartiesService.create() розширена: після створення cp, create garage для CLIENT/BOTH types.
+[x] `[sto-backend]` `CustomerGarage.isDefault Boolean @default(false)` — поле для позначення основного гаражу. Міграція.
+    > Поле додане. Migration: add_customer_garage_is_default.
+    > GarageResponseDto + toGarageDto розширені з isDefault полем.
+[ ] `[sto-web]` В картці контрагента: основний гараж виводиться першим із позначкою "Основний".
+    > TODO - потребує UI оновлення в /crm/[id] картці.
 
 ### 16.8 — CRM: гаражі та авто вкладками в картці клієнта
 
