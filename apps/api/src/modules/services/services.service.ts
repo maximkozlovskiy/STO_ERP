@@ -50,11 +50,15 @@ export class ServicesService {
       });
 
       if (dto.works?.length) {
+        const works = await tx.work.findMany({ where: { id: { in: dto.works.map(w => w.workId) }, orgId, deletedAt: null } });
+        if (works.length !== dto.works.length) throw new NotFoundException('Одну або кілька робіт не знайдено');
         await tx.serviceWork.createMany({
           data: dto.works.map((w) => ({ serviceId: svc.id, workId: w.workId, quantity: w.quantity ?? 1 })),
         });
       }
       if (dto.goods?.length) {
+        const goods = await tx.good.findMany({ where: { id: { in: dto.goods.map(g => g.goodId) }, orgId, deletedAt: null } });
+        if (goods.length !== dto.goods.length) throw new NotFoundException('Один або кілька товарів не знайдено');
         await tx.serviceGood.createMany({
           data: dto.goods.map((g) => ({ serviceId: svc.id, goodId: g.goodId, quantity: g.quantity ?? 1 })),
         });
@@ -86,6 +90,10 @@ export class ServicesService {
       });
 
       if (dto.works !== undefined) {
+        if (dto.works.length) {
+          const works = await tx.work.findMany({ where: { id: { in: dto.works.map(w => w.workId) }, orgId, deletedAt: null } });
+          if (works.length !== dto.works.length) throw new NotFoundException('Одну або кілька робіт не знайдено');
+        }
         await tx.serviceWork.deleteMany({ where: { serviceId: id } });
         if (dto.works.length) {
           await tx.serviceWork.createMany({
@@ -94,6 +102,10 @@ export class ServicesService {
         }
       }
       if (dto.goods !== undefined) {
+        if (dto.goods.length) {
+          const goods = await tx.good.findMany({ where: { id: { in: dto.goods.map(g => g.goodId) }, orgId, deletedAt: null } });
+          if (goods.length !== dto.goods.length) throw new NotFoundException('Один або кілька товарів не знайдено');
+        }
         await tx.serviceGood.deleteMany({ where: { serviceId: id } });
         if (dto.goods.length) {
           await tx.serviceGood.createMany({
