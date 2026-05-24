@@ -85,6 +85,36 @@
 
 ---
 
+## Bug #6 — [HIGH] TopShell не блокує рендер дочірніх сторінок для неавторизованих
+
+**Файл:** `apps/web/src/components/TopShell.tsx`
+**Severity:** HIGH
+**Категорія:** security / frontend
+
+**Опис:**
+Виявлено через Playwright E2E. Коли неавторизований відвідувач відкриває захищену сторінку (`/work-orders`), TopShell виконував `if (!employee) return <>{children}</>` — тобто **рендерив дочірню сторінку без shell, але саму сторінку показував повністю**. Заголовок "Наряди", фільтри по статусах, таблиця, кнопки — все видно. Лише запит даних висне в loading (бо API повертає 401).
+
+Хоча реальних даних з API немає (захист сервера працює), UI скелетон витікає неавторизованому користувачу, оголюючи:
+- Назви та структуру функціоналу системи
+- Опції фільтрації, кнопки дій
+- Layout та можливі ролі/permissions
+- На певних сторінках — назви рядків таблиць (статуси, ярлики)
+
+**Очікувана поведінка:**
+Для неавторизованого користувача на не-публічному роуті TopShell повинен:
+1. Показувати спінер доки `isLoading=true`
+2. Робити `router.replace('/login')` при `!employee && !isLoading`
+3. Не рендерити дочірню сторінку взагалі
+
+**Фактична поведінка:**
+Дочірня сторінка рендериться без auth guard — useRequireAuth в useEffect редиректить тільки **після** першого рендеру.
+
+**Статус:** [x] виправлено — додано `PUBLIC_ROUTES` whitelist у TopShell + render-blocking guard + явний redirect через useEffect
+
+**Виявлено через:** Playwright smoke test `e2e/smoke.spec.ts` — захищена сторінка без токена врешті redirect на /login
+
+---
+
 ## Bug #4 — [LOW] purchase-orders.service.ts findOne lines relation include без take
 
 **Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:59`

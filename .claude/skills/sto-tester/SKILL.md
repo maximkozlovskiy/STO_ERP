@@ -178,6 +178,16 @@ pnpm --filter @sto/api test --run 2>&1 | tail -30
 #### Роутинг
 - [ ] Захищені сторінки мають redirect якщо не авторизований
 - [ ] `/setup` доступний без авторизації (перший запуск)
+- [ ] **`useRequireAuth` НЕ блокує рендер** — тільки запускає useEffect. Layout/Shell (`TopShell`) повинен мати **render-blocking guard** для не-публічних роутів: якщо `!employee && !isLoading` → return spinner + `router.replace('/login')`. Інакше дочірня сторінка показує власний UI скелетон неавторизованому користувачу (витік структури функціоналу).
+  ```typescript
+  // ✅ TopShell guard
+  const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403'];
+  const isPublic = PUBLIC_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
+  useEffect(() => {
+    if (!isPublic && !isLoading && !employee) router.replace('/login');
+  }, [isPublic, isLoading, employee, router]);
+  if (!isPublic && (isLoading || !employee)) return <Spinner />;
+  ```
 
 ### 1.4 — Тести Backend
 

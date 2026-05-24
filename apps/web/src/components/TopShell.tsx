@@ -94,8 +94,14 @@ function isActive(pathname: string, href: string): boolean {
   return pathname.startsWith(href);
 }
 
+const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403'];
+
+function isPublicRoute(pathname: string): boolean {
+  return PUBLIC_ROUTES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 export function TopShell({ children }: { children: ReactNode }) {
-  const { employee, logout } = useAuth();
+  const { employee, isLoading, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -110,6 +116,24 @@ export function TopShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  // Render-blocking auth guard for non-public routes — prevents UI skeleton leak
+  // before the per-page useRequireAuth useEffect fires its redirect.
+  const isPublic = isPublicRoute(pathname);
+
+  useEffect(() => {
+    if (!isPublic && !isLoading && !employee) {
+      router.replace('/login');
+    }
+  }, [isPublic, isLoading, employee, router]);
+
+  if (!isPublic && (isLoading || !employee)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!employee) return <>{children}</>;
 
