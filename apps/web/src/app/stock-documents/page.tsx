@@ -110,7 +110,7 @@ export default function StockDocumentsPage() {
     const validLines = lines.filter(l => l.goodId);
     for (const l of validLines) {
       const qty = parseFloat(l.quantity);
-      if (isNaN(qty) || qty <= 0) { setError('Вкажіть коректну кількість для всіх позицій'); return; }
+      if (!Number.isFinite(qty) || qty <= 0) { setError('Вкажіть коректну кількість для всіх позицій'); return; }
     }
     setSaving(true);
     try {
@@ -162,17 +162,16 @@ export default function StockDocumentsPage() {
   const statuses = ['', 'DRAFT', 'CONFIRMED', 'CANCELLED'];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">{error}</div>
       )}
-      <div className="flex items-center justify-between mb-6">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Складські документи</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} документів</p>
+          <h1 className="page-title">Складські документи</h1>
+          <p className="page-subtitle">{total} документів</p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" />
+        <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
           Новий документ
         </Button>
       </div>
@@ -185,10 +184,10 @@ export default function StockDocumentsPage() {
               key={t}
               onClick={() => { setTypeFilter(t); setPage(1); }}
               className={cn(
-                'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
                 typeFilter === t
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50',
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
               )}
             >
               {t ? TYPE_LABELS[t] : 'Всі типи'}
@@ -201,10 +200,10 @@ export default function StockDocumentsPage() {
               key={s}
               onClick={() => { setStatusFilter(s); setPage(1); }}
               className={cn(
-                'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
                 statusFilter === s
-                  ? 'bg-gray-700 text-white border-gray-700'
-                  : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50',
+                  ? 'bg-foreground text-primary-foreground border-foreground'
+                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
               )}
             >
               {s ? STATUS_LABELS[s] : 'Всі статуси'}
@@ -214,7 +213,7 @@ export default function StockDocumentsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -244,23 +243,23 @@ export default function StockDocumentsPage() {
             )}
             {!loading && docs.map(doc => (
               <TableRow key={doc.id}>
-                <TableCell className="font-mono font-medium text-gray-900">{doc.number}</TableCell>
+                <TableCell className="font-mono font-medium text-foreground">{doc.number}</TableCell>
                 <TableCell>
                   <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>
                     {TYPE_LABELS[doc.type]}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-gray-600">
+                <TableCell className="text-foreground-muted">
                   {doc.warehouseName}
-                  {doc.targetWarehouseName && <span className="text-gray-400"> → {doc.targetWarehouseName}</span>}
+                  {doc.targetWarehouseName && <span className="text-muted-foreground"> → {doc.targetWarehouseName}</span>}
                 </TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>
                     {STATUS_LABELS[doc.status]}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right text-gray-500">{doc.lines.length}</TableCell>
-                <TableCell className="text-gray-400 text-xs">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</TableCell>
+                <TableCell className="text-right text-muted-foreground">{doc.lines.length}</TableCell>
+                <TableCell className="text-foreground-faint text-xs">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</TableCell>
                 <TableCell>
                   <Button variant="ghost" size="sm" onClick={() => setShowDetail(doc)}>
                     Деталі
@@ -276,7 +275,7 @@ export default function StockDocumentsPage() {
       {total > limit && (
         <div className="flex justify-center gap-1.5 mt-4">
           <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Назад</Button>
-          <span className="px-3 py-1.5 text-sm text-gray-500">Стор. {page}</span>
+          <span className="h-8 w-8 flex items-center justify-center text-sm text-muted-foreground">{page}</span>
           <Button variant="outline" size="sm" disabled={page * limit >= total} onClick={() => setPage(p => p + 1)}>Вперед →</Button>
         </div>
       )}
@@ -287,52 +286,68 @@ export default function StockDocumentsPage() {
         onClose={() => setShowCreate(false)}
         title="Новий складський документ"
         size="lg"
+        footer={
+          <Button
+            onClick={handleCreate}
+            loading={saving}
+            disabled={!form.branchId || !form.warehouseId}
+            className="w-full"
+          >
+            Створити документ
+          </Button>
+        }
       >
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Тип документа <span className="text-red-500">*</span></label>
-            <Select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-              <option value="WRITEOFF">Списання</option>
-              <option value="TRANSFER">Переміщення між складами</option>
-              <option value="OPENING_BALANCE">Початкові залишки</option>
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Філія <span className="text-red-500">*</span></label>
-            <Select value={form.branchId} onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))} placeholder="Оберіть філію">
-              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              {form.type === 'TRANSFER' ? 'Склад (джерело)' : 'Склад'} <span className="text-red-500">*</span>
-            </label>
-            <Select value={form.warehouseId} onChange={e => setForm(f => ({ ...f, warehouseId: e.target.value }))} placeholder="Оберіть склад">
-              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </Select>
-          </div>
+          <Select
+            label="Тип документа"
+            required
+            value={form.type}
+            onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+          >
+            <option value="WRITEOFF">Списання</option>
+            <option value="TRANSFER">Переміщення між складами</option>
+            <option value="OPENING_BALANCE">Початкові залишки</option>
+          </Select>
+          <Select
+            label="Філія"
+            required
+            value={form.branchId}
+            onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+            placeholder="Оберіть філію"
+          >
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+          <Select
+            label={form.type === 'TRANSFER' ? 'Склад (джерело)' : 'Склад'}
+            required
+            value={form.warehouseId}
+            onChange={e => setForm(f => ({ ...f, warehouseId: e.target.value }))}
+            placeholder="Оберіть склад"
+          >
+            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </Select>
           {form.type === 'TRANSFER' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Склад призначення <span className="text-red-500">*</span></label>
-              <Select value={form.targetWarehouseId} onChange={e => setForm(f => ({ ...f, targetWarehouseId: e.target.value }))} placeholder="Оберіть склад">
-                {warehouses.filter(w => w.id !== form.warehouseId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </Select>
-            </div>
+            <Select
+              label="Склад призначення"
+              required
+              value={form.targetWarehouseId}
+              onChange={e => setForm(f => ({ ...f, targetWarehouseId: e.target.value }))}
+              placeholder="Оберіть склад"
+            >
+              {warehouses.filter(w => w.id !== form.warehouseId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </Select>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Примітки</label>
-            <textarea
-              value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
-          </div>
+          <Input
+            label="Примітки"
+            value={form.notes}
+            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            placeholder="Необов'язково"
+          />
 
           {/* Lines */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-gray-700">Позиції</label>
+              <span className="text-sm font-medium text-foreground">Позиції</span>
               <Button variant="ghost" size="sm" onClick={addLine}>+ Додати</Button>
             </div>
             <div className="space-y-2">
@@ -341,7 +356,7 @@ export default function StockDocumentsPage() {
                   <select
                     value={l.goodId}
                     onChange={e => updateLine(i, 'goodId', e.target.value)}
-                    className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs"
+                    className="flex-1 px-2 py-1.5 border border-border rounded text-xs bg-surface text-foreground"
                   >
                     <option value="">Товар</option>
                     {goods.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
@@ -364,20 +379,11 @@ export default function StockDocumentsPage() {
                     step="0.01"
                     className="w-24 text-xs"
                   />
-                  <button onClick={() => removeLine(i)} className="text-red-400 hover:text-red-600 text-sm px-1">×</button>
+                  <button onClick={() => removeLine(i)} className="text-destructive/60 hover:text-destructive text-sm px-1">×</button>
                 </div>
               ))}
             </div>
           </div>
-
-          <Button
-            onClick={handleCreate}
-            loading={saving}
-            disabled={!form.branchId || !form.warehouseId}
-            className="w-full"
-          >
-            Створити документ
-          </Button>
         </div>
       </Modal>
 
@@ -387,33 +393,53 @@ export default function StockDocumentsPage() {
         onClose={() => setShowDetail(null)}
         title={showDetail ? `${TYPE_LABELS[showDetail.type]} ${showDetail.number}` : ''}
         size="lg"
+        footer={
+          showDetail?.status === 'DRAFT' ? (
+            <div className="flex gap-2 w-full">
+              <Button
+                onClick={() => handleTransition(showDetail, 'CONFIRMED')}
+                loading={saving}
+                className="flex-1"
+              >
+                Підтвердити документ
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleTransition(showDetail, 'CANCELLED')}
+                loading={saving}
+              >
+                Скасувати
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {showDetail && (
           <div className="space-y-4">
             <div className="flex items-center gap-3 flex-wrap">
               <Badge variant={TYPE_BADGE[showDetail.type] ?? 'secondary'}>{TYPE_LABELS[showDetail.type]}</Badge>
               <Badge variant={STATUS_BADGE[showDetail.status] ?? 'secondary'}>{STATUS_LABELS[showDetail.status]}</Badge>
-              <span className="text-gray-500 text-sm">{showDetail.warehouseName}</span>
+              <span className="text-muted-foreground text-sm">{showDetail.warehouseName}</span>
               {showDetail.targetWarehouseName && (
-                <span className="text-gray-400 text-sm">→ {showDetail.targetWarehouseName}</span>
+                <span className="text-foreground-faint text-sm">→ {showDetail.targetWarehouseName}</span>
               )}
             </div>
 
-            <div className="overflow-hidden rounded-lg border border-gray-100">
+            <div className="overflow-hidden rounded-lg border border-border">
               <table className="w-full text-xs">
-                <thead className="bg-gray-50">
+                <thead className="bg-secondary">
                   <tr>
-                    <th className="text-left px-3 py-2 text-gray-500">Товар</th>
-                    <th className="text-left px-3 py-2 text-gray-500">Артикул</th>
-                    <th className="text-right px-3 py-2 text-gray-500">Кількість</th>
-                    <th className="text-right px-3 py-2 text-gray-500">Ціна</th>
+                    <th className="text-left px-3 py-2 text-muted-foreground">Товар</th>
+                    <th className="text-left px-3 py-2 text-muted-foreground">Артикул</th>
+                    <th className="text-right px-3 py-2 text-muted-foreground">Кількість</th>
+                    <th className="text-right px-3 py-2 text-muted-foreground">Ціна</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-border/50">
                   {showDetail.lines.map((l, i) => (
                     <tr key={i}>
-                      <td className="px-3 py-2 text-gray-900">{l.goodName}</td>
-                      <td className="px-3 py-2 text-gray-400 font-mono">{l.goodSku ?? '—'}</td>
+                      <td className="px-3 py-2 text-foreground">{l.goodName}</td>
+                      <td className="px-3 py-2 text-foreground-faint font-mono">{l.goodSku ?? '—'}</td>
                       <td className="px-3 py-2 text-right font-medium">{l.quantity} {l.unit}</td>
                       <td className="px-3 py-2 text-right">{l.price != null ? l.price.toFixed(2) + ' ₴' : '—'}</td>
                     </tr>
@@ -423,33 +449,13 @@ export default function StockDocumentsPage() {
             </div>
 
             {showDetail.notes && (
-              <p className="text-sm text-gray-500 italic">{showDetail.notes}</p>
+              <p className="text-sm text-muted-foreground italic">{showDetail.notes}</p>
             )}
 
             {showDetail.confirmedAt && (
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-foreground-faint">
                 Підтверджено: {new Date(showDetail.confirmedAt).toLocaleString('uk-UA')}
               </p>
-            )}
-
-            {/* FSM actions */}
-            {showDetail.status === 'DRAFT' && (
-              <div className="flex gap-2 pt-2 border-t">
-                <Button
-                  onClick={() => handleTransition(showDetail, 'CONFIRMED')}
-                  loading={saving}
-                  className="flex-1"
-                >
-                  Підтвердити документ
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => handleTransition(showDetail, 'CANCELLED')}
-                  loading={saving}
-                >
-                  Скасувати
-                </Button>
-              </div>
             )}
           </div>
         )}

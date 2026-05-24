@@ -47,14 +47,14 @@ function CheckboxList({ label, items, selected, onChange }: {
     onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
   return (
     <div className="mb-3">
-      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
-      <div className="border border-gray-200 rounded-lg max-h-36 overflow-y-auto divide-y">
-        {items.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">Немає записів</p>}
+      <label className="block text-[13px] font-medium text-foreground mb-2">{label}</label>
+      <div className="border border-border rounded-lg max-h-36 overflow-y-auto divide-y divide-border">
+        {items.length === 0 && <p className="px-3 py-2 text-[12px] text-muted-foreground">Немає записів</p>}
         {items.map(item => (
-          <label key={item.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+          <label key={item.id} className="flex items-center gap-2 px-3 py-2 hover:bg-(--color-secondary) cursor-pointer">
             <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)}
-              className="rounded border-gray-300" />
-            <span className="text-sm text-gray-700">{item.name}</span>
+              className="rounded border-border" />
+            <span className="text-[13px] text-foreground">{item.name}</span>
           </label>
         ))}
       </div>
@@ -167,24 +167,23 @@ export default function EmployeesPage() {
   const flatCats = flattenTree(workCategories);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="page-container">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Співробітники</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{employees.length} записів</p>
+          <h1 className="page-title">Співробітники</h1>
+          <p className="page-subtitle">{employees.length} записів</p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
+        <Button onClick={openCreate} leftIcon={<Plus />}>
           Додати
         </Button>
       </div>
 
       {!modal && error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-xl border overflow-hidden">
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -214,29 +213,29 @@ export default function EmployeesPage() {
             {!loading && employees.map(emp => (
               <TableRow key={emp.id}>
                 <TableCell>
-                  <button onClick={() => openCard(emp)} className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left">
+                  <button onClick={() => openCard(emp)} className="text-[13px] font-medium text-(--color-primary) hover:underline text-left">
                     {emp.lastName} {emp.firstName}
                   </button>
-                  {emp.phone && <p className="text-xs text-gray-400 mt-0.5">{emp.phone}</p>}
+                  {emp.phone && <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>}
                 </TableCell>
                 <TableCell>
                   <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
                     {ROLE_LABELS[emp.role] ?? emp.role}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-gray-500">
+                <TableCell className="text-muted-foreground">
                   {RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type}
                   {emp.rateScheme.type === 'percent_normo' && ` ${emp.rateScheme.params.percent}%`}
                 </TableCell>
-                <TableCell className="text-gray-500">
+                <TableCell className="text-muted-foreground">
                   {emp.zoneIds.length > 0
                     ? emp.zoneIds.map(id => zones.find(z => z.id === id)?.name ?? id).join(', ')
-                    : <span className="text-gray-300">—</span>}
+                    : <span className="text-foreground-faint">—</span>}
                 </TableCell>
-                <TableCell className="text-gray-500">
+                <TableCell className="text-muted-foreground">
                   {emp.liftIds.length > 0
                     ? emp.liftIds.map(id => lifts.find(l => l.id === id)?.name ?? id).join(', ')
-                    : <span className="text-gray-300">—</span>}
+                    : <span className="text-foreground-faint">—</span>}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button variant="destructive" size="sm" onClick={() => remove(emp.id)}>
@@ -252,49 +251,49 @@ export default function EmployeesPage() {
       {/* Create modal */}
       <Modal open={modal === 'create'} onClose={closeModal} title="Новий співробітник">
         {error && (
-          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
         )}
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Ім'я <span className="text-red-500">*</span></label>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Ім'я <span className="text-red-500">*</span></label>
               <Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} placeholder="Іван" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Прізвище <span className="text-red-500">*</span></label>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Прізвище <span className="text-red-500">*</span></label>
               <Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} placeholder="Коваль" />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Посада <span className="text-red-500">*</span></label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Посада <span className="text-red-500">*</span></label>
             <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
               {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Телефон</label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Телефон</label>
             <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+38 (067) 123-45-67" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Схема нарахування <span className="text-red-500">*</span></label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Схема нарахування <span className="text-red-500">*</span></label>
             <Select value={form.rateType} onChange={e => setForm(f => ({ ...f, rateType: e.target.value }))}>
               {Object.entries(RATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
           </div>
           {form.rateType === 'percent_normo' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Відсоток, %</label>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Відсоток, %</label>
               <Input type="number" value={form.percent} onChange={e => setForm(f => ({ ...f, percent: e.target.value }))} />
             </div>
           )}
           {form.rateType === 'fixed_plus_bonus' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Ставка, грн/міс</label>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Ставка, грн/міс</label>
                 <Input type="number" value={form.fixedMonthly} onChange={e => setForm(f => ({ ...f, fixedMonthly: e.target.value }))} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Бонус, %</label>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Бонус, %</label>
                 <Input type="number" value={form.bonusPercent} onChange={e => setForm(f => ({ ...f, bonusPercent: e.target.value }))} />
               </div>
             </div>
@@ -312,11 +311,11 @@ export default function EmployeesPage() {
         title={selected ? `${selected.lastName} ${selected.firstName}` : ''}
       >
         {error && (
-          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
         )}
         {selected && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-500 mb-4">{ROLE_LABELS[selected.role]} · {RATE_LABELS[selected.rateScheme.type]}</p>
+            <p className="text-[13px] text-muted-foreground mb-4">{ROLE_LABELS[selected.role]} · {RATE_LABELS[selected.rateScheme.type]}</p>
             <CheckboxList label="Зони" items={zones} selected={assignedZones} onChange={setAssignedZones} />
             <CheckboxList label="Підйомники" items={lifts} selected={assignedLifts} onChange={setAssignedLifts} />
             <CheckboxList label="Категорії робіт" items={flatCats} selected={assignedCats} onChange={setAssignedCats} />

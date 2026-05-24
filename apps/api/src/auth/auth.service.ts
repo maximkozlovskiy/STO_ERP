@@ -7,16 +7,12 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import type { FastifyReply } from 'fastify';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthResponseDto, JwtPayload, LoginDto } from './auth.dto';
 
 const REFRESH_COOKIE = 'sto_refresh';
 const REFRESH_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-
-interface CookieResponse {
-  cookie(name: string, value: string, options: Record<string, unknown>): void;
-  clearCookie(name: string, options?: Record<string, unknown>): void;
-}
 
 @Injectable()
 export class AuthService {
@@ -28,7 +24,7 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  async login(dto: LoginDto, res: CookieResponse): Promise<AuthResponseDto> {
+  async login(dto: LoginDto, res: FastifyReply): Promise<AuthResponseDto> {
     // Find by email first; then validate orgId matches the employee's org to prevent cross-tenant auth
     const authRecord = await this.prisma.authAccount.findFirst({
       where: { email: dto.email, deletedAt: null },
@@ -77,7 +73,7 @@ export class AuthService {
     };
   }
 
-  async refresh(refreshToken: string, res: CookieResponse): Promise<AuthResponseDto> {
+  async refresh(refreshToken: string, res: FastifyReply): Promise<AuthResponseDto> {
     let payload: JwtPayload;
     try {
       payload = this.jwt.verify<JwtPayload>(refreshToken, {
@@ -118,7 +114,7 @@ export class AuthService {
     };
   }
 
-  logout(res: CookieResponse): void {
+  logout(res: FastifyReply): void {
     res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
   }
 
@@ -140,7 +136,7 @@ export class AuthService {
     });
   }
 
-  private setRefreshCookie(res: CookieResponse, token: string): void {
+  private setRefreshCookie(res: FastifyReply, token: string): void {
     res.cookie(REFRESH_COOKIE, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

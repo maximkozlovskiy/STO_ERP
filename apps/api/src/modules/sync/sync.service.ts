@@ -3,6 +3,15 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SyncRecord } from '@sto/shared';
 
+// Minimal interface for the dynamic Prisma model operations used in sync
+interface DynamicPrismaModel {
+  findMany(args: { where: Record<string, unknown>; take?: number }): Promise<Record<string, unknown>[]>;
+  findFirst(args: { where: Record<string, unknown>; select?: Record<string, boolean> }): Promise<Record<string, unknown> | null>;
+  create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
+  update(args: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<Record<string, unknown>>;
+  aggregate(args: { where: Record<string, unknown>; _max: Record<string, boolean> }): Promise<{ _max: Record<string, unknown> }>;
+}
+
 export { SyncRecord };
 
 // Tables included in cloud sync pull (read-only from server perspective for most)
@@ -42,11 +51,16 @@ export class SyncService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private model(tableName: string): DynamicPrismaModel {
+    const camel = toCamel(tableName);
+    return (this.prisma as unknown as Record<string, DynamicPrismaModel>)[camel];
+  }
+
   async pull(orgId: string, since: bigint): Promise<SyncRecord[]> {
     const results = await Promise.all(
       PULL_TABLES.map(async (table) => {
         try {
-          const rows = await (this.prisma as any)[toCamel(table)].findMany({
+          const rows = await this.model(table).findMany({
             where: { orgId, syncVersion: { gt: since } },
             take: 500,
           });
@@ -118,7 +132,7 @@ export class SyncService {
   }
 
   private async applyRecord(orgId: string, rec: SyncRecord): Promise<void> {
-    const model = (this.prisma as any)[toCamel(rec.table)];
+    const model = this.model(rec.table);
     if (!model) throw new Error(`Unknown model for table: ${rec.table}`);
 
     const existing = await model.findFirst({
@@ -182,7 +196,7 @@ export class SyncService {
         .filter(({ field }) => payload[field])
         .map(async ({ field, model }) => {
           const id = payload[field] as string;
-          const record = await (this.prisma as any)[model].findFirst({ where: { id, orgId, deletedAt: null }, select: { id: true } });
+          const record = await this.model(model).findFirst({ where: { id, orgId, deletedAt: null }, select: { id: true } });
           if (!record) {
             throw new Error(`Поле ${field}=${id} не знайдено в межах організації`);
           }
@@ -201,7 +215,7 @@ export class SyncService {
       this.prisma.syncJob.count({ where: { orgId, status: 'FAILED' } }),
       // Query max syncVersion across all pull tables to give clients a correct since cursor
       ...PULL_TABLES.map(table =>
-        (this.prisma as any)[toCamel(table)].aggregate({
+        this.model(table).aggregate({
           where: { orgId },
           _max: { syncVersion: true },
         }).catch(() => ({ _max: { syncVersion: null } }))

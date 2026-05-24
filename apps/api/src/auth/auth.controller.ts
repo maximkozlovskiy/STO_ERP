@@ -34,7 +34,7 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<AuthResponseDto> {
-    return this.authService.login(dto, res as any);
+    return this.authService.login(dto, res);
   }
 
   @Post('refresh')
@@ -43,11 +43,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Оновити access token через refresh cookie' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
   refresh(
-    @Req() req: FastifyRequest,
+    @Req() req: FastifyRequest & { cookies?: Record<string, string> },
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<AuthResponseDto> {
-    const refreshToken = (req as any).cookies?.sto_refresh as string;
-    return this.authService.refresh(refreshToken, res as any);
+    const refreshToken = req.cookies?.sto_refresh ?? '';
+    return this.authService.refresh(refreshToken, res);
   }
 
   @Post('logout')
@@ -57,6 +57,6 @@ export class AuthController {
   @ApiOperation({ summary: 'Вийти з системи' })
   @ApiResponse({ status: 204 })
   logout(@Res({ passthrough: true }) res: FastifyReply): void {
-    this.authService.logout(res as any);
+    this.authService.logout(res);
   }
 }

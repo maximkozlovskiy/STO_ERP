@@ -94,7 +94,7 @@ export default function InvoicesPage() {
 
   const handleCreate = async () => {
     const amt = parseFloat(form.amount);
-    if (isNaN(amt) || amt <= 0) { setError('Введіть коректну суму'); return; }
+    if (!Number.isFinite(amt) || amt <= 0) { setError('Введіть коректну суму'); return; }
     setSaving(true);
     try {
       await apiFetch<Invoice>('/invoices', {
@@ -128,6 +128,8 @@ export default function InvoicesPage() {
 
   const handlePay = async () => {
     if (!showPayment) return;
+    const rawAmt = parseFloat(payForm.amount);
+    const amt = (!payForm.amount || !Number.isFinite(rawAmt)) ? showPayment.amount : rawAmt;
     setSaving(true);
     try {
       await apiFetch<{ id: string }>('/payments', {
@@ -135,7 +137,7 @@ export default function InvoicesPage() {
         body: JSON.stringify({
           counterpartyId: showPayment.counterpartyId,
           invoiceId: showPayment.id,
-          amount: (() => { const a = parseFloat(payForm.amount); return (!payForm.amount || isNaN(a)) ? showPayment.amount : a; })(),
+          amount: amt,
           method: payForm.method,
           notes: payForm.notes || undefined,
         }),
@@ -151,17 +153,16 @@ export default function InvoicesPage() {
   const statuses = ['', 'DRAFT', 'SENT', 'PAID', 'CANCELLED'];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">{error}</div>
       )}
-      <div className="flex items-center justify-between mb-6">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Рахунки</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} рахунків</p>
+          <h1 className="page-title">Рахунки</h1>
+          <p className="page-subtitle">{total} рахунків</p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" />
+        <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
           Новий рахунок
         </Button>
       </div>
@@ -173,10 +174,10 @@ export default function InvoicesPage() {
             key={s}
             onClick={() => { setStatus(s); setPage(1); }}
             className={cn(
-              'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+              'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
               status === s
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50',
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
             )}
           >
             {s ? STATUS_LABELS[s] : 'Всі'}
@@ -185,7 +186,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -215,16 +216,16 @@ export default function InvoicesPage() {
             )}
             {!loading && invoices.map(inv => (
               <TableRow key={inv.id}>
-                <TableCell className="font-mono font-medium text-gray-900">{inv.number}</TableCell>
-                <TableCell className="text-gray-700">{inv.counterpartyName ?? '—'}</TableCell>
-                <TableCell className="text-gray-500 text-xs font-mono">{inv.workOrderNumber ?? '—'}</TableCell>
+                <TableCell className="font-mono font-medium text-foreground">{inv.number}</TableCell>
+                <TableCell className="text-foreground-muted">{inv.counterpartyName ?? '—'}</TableCell>
+                <TableCell className="text-muted-foreground text-xs font-mono">{inv.workOrderNumber ?? '—'}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
                     {STATUS_LABELS[inv.status]}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right font-semibold">{fmt(inv.amount)}</TableCell>
-                <TableCell className="text-gray-400 text-xs">
+                <TableCell className="text-foreground-faint text-xs">
                   {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : '—'}
                 </TableCell>
                 <TableCell>
@@ -252,43 +253,17 @@ export default function InvoicesPage() {
       {total > limit && (
         <div className="flex justify-center gap-1.5 mt-4">
           <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Назад</Button>
-          <span className="px-3 py-1.5 text-sm text-gray-500">Стор. {page}</span>
+          <span className="h-8 w-8 flex items-center justify-center text-sm text-muted-foreground">{page}</span>
           <Button variant="outline" size="sm" disabled={page * limit >= total} onClick={() => setPage(p => p + 1)}>Вперед →</Button>
         </div>
       )}
 
       {/* Create modal */}
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Новий рахунок">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Контрагент <span className="text-red-500">*</span></label>
-            <Select value={form.counterpartyId} onChange={e => setForm(f => ({ ...f, counterpartyId: e.target.value }))} placeholder="Оберіть контрагента">
-              {counterparties.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ')}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Сума, ₴ <span className="text-red-500">*</span></label>
-            <Input
-              type="number"
-              value={form.amount}
-              onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-              min="0.01"
-              step="0.01"
-              placeholder="0.00"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Термін оплати</label>
-            <Input
-              type="date"
-              value={form.dueDate}
-              onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
-            />
-          </div>
+      <Modal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="Новий рахунок"
+        footer={
           <Button
             onClick={handleCreate}
             loading={saving}
@@ -297,6 +272,38 @@ export default function InvoicesPage() {
           >
             Створити рахунок
           </Button>
+        }
+      >
+        <div className="space-y-4">
+          <Select
+            label="Контрагент"
+            required
+            value={form.counterpartyId}
+            onChange={e => setForm(f => ({ ...f, counterpartyId: e.target.value }))}
+            placeholder="Оберіть контрагента"
+          >
+            {counterparties.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ')}
+              </option>
+            ))}
+          </Select>
+          <Input
+            label="Сума, ₴"
+            required
+            type="number"
+            value={form.amount}
+            onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+            min="0.01"
+            step="0.01"
+            placeholder="0.00"
+          />
+          <Input
+            label="Термін оплати"
+            type="date"
+            value={form.dueDate}
+            onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+          />
         </div>
       </Modal>
 
@@ -305,46 +312,46 @@ export default function InvoicesPage() {
         open={!!showPayment}
         onClose={() => setShowPayment(null)}
         title={showPayment ? `Реєстрація оплати по рахунку ${showPayment.number}` : ''}
+        footer={
+          <Button onClick={handlePay} loading={saving} className="w-full">
+            Підтвердити оплату
+          </Button>
+        }
       >
         {showPayment && (
           <div className="space-y-4">
-            <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
+            <div className="p-3 bg-info-subtle rounded-lg text-sm text-[hsl(199_89%_30%)]">
               Сума до оплати: <strong>{fmt(showPayment.amount)}</strong>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Метод оплати <span className="text-red-500">*</span></label>
-              <Select value={payForm.method} onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}>
-                {payMethods.length > 0
-                  ? payMethods.map(m => <option key={m.code} value={m.code}>{m.name}</option>)
-                  : <>
-                    <option value="cash">Готівка</option>
-                    <option value="card_terminal">Термінал</option>
-                    <option value="bank_transfer">Банківський переказ</option>
-                  </>
-                }
-              </Select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Сума, ₴</label>
-              <Input
-                type="number"
-                value={payForm.amount}
-                onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
-                placeholder={String(showPayment.amount)}
-                min="0.01"
-                step="0.01"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Примітки</label>
-              <Input
-                value={payForm.notes}
-                onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))}
-              />
-            </div>
-            <Button onClick={handlePay} loading={saving} className="w-full">
-              Підтвердити оплату
-            </Button>
+            <Select
+              label="Метод оплати"
+              required
+              value={payForm.method}
+              onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}
+            >
+              {payMethods.length > 0
+                ? payMethods.map(m => <option key={m.code} value={m.code}>{m.name}</option>)
+                : <>
+                  <option value="cash">Готівка</option>
+                  <option value="card_terminal">Термінал</option>
+                  <option value="bank_transfer">Банківський переказ</option>
+                </>
+              }
+            </Select>
+            <Input
+              label="Сума, ₴"
+              type="number"
+              value={payForm.amount}
+              onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder={String(showPayment.amount)}
+              min="0.01"
+              step="0.01"
+            />
+            <Input
+              label="Примітки"
+              value={payForm.notes}
+              onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))}
+            />
           </div>
         )}
       </Modal>

@@ -77,19 +77,19 @@ export default function InventoryPage() {
   const displayed = showLow ? items.filter(i => i.isLow) : items;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">{error}</div>
       )}
-      <div className="flex items-center justify-between mb-6">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Залишки на складах</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{items.length} позицій</p>
+          <h1 className="page-title">Залишки на складах</h1>
+          <p className="page-subtitle">{items.length} позицій</p>
         </div>
         <Button
           variant="outline"
           onClick={async () => { if (await loadLow()) setShowLowModal(true); }}
-          className="text-amber-700 border-amber-200 bg-amber-50 hover:bg-amber-100"
+          className="text-[hsl(38_92%_30%)] border-warning/30 bg-warning-subtle hover:bg-warning-subtle/80"
         >
           <AlertTriangle className="h-4 w-4" />
           Нижче мінімуму
@@ -99,7 +99,7 @@ export default function InventoryPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             value={q}
             onChange={e => setQ(e.target.value)}
@@ -114,7 +114,7 @@ export default function InventoryPage() {
           <option value="">Всі склади</option>
           {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
         </Select>
-        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
           <input
             type="checkbox"
             checked={showLow}
@@ -126,7 +126,7 @@ export default function InventoryPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -156,19 +156,19 @@ export default function InventoryPage() {
               </TableRow>
             )}
             {!loading && displayed.map(item => (
-              <TableRow key={item.id} className={cn(item.isLow && 'bg-amber-50/50')}>
-                <TableCell className="font-medium text-gray-900">
-                  {item.isLow && <AlertTriangle className="inline h-3.5 w-3.5 text-amber-500 mr-1" />}
+              <TableRow key={item.id} className={cn(item.isLow && 'bg-warning-subtle/40')}>
+                <TableCell className="font-medium text-foreground">
+                  {item.isLow && <AlertTriangle className="inline h-3.5 w-3.5 text-warning mr-1" />}
                   {item.goodName}
                 </TableCell>
-                <TableCell className="text-gray-500 font-mono text-xs">{item.goodSku ?? '—'}</TableCell>
-                <TableCell className="text-gray-600">{item.warehouseName}</TableCell>
+                <TableCell className="text-muted-foreground font-mono text-xs">{item.goodSku ?? '—'}</TableCell>
+                <TableCell className="text-foreground-muted">{item.warehouseName}</TableCell>
                 <TableCell className="text-right font-medium">{item.quantity} {item.unit}</TableCell>
-                <TableCell className="text-right text-orange-600">{item.reserved > 0 ? item.reserved : '—'}</TableCell>
-                <TableCell className={cn('text-right font-semibold', item.available <= 0 ? 'text-red-600' : 'text-green-700')}>
+                <TableCell className="text-right text-[hsl(25_95%_53%)]">{item.reserved > 0 ? item.reserved : '—'}</TableCell>
+                <TableCell className={cn('text-right font-semibold', item.available <= 0 ? 'text-destructive' : 'text-success')}>
                   {item.available} {item.unit}
                 </TableCell>
-                <TableCell className="text-right text-gray-700">{fmt(item.salePrice)}</TableCell>
+                <TableCell className="text-right text-foreground-muted">{fmt(item.salePrice)}</TableCell>
                 <TableCell>
                   {item.minStock != null ? (
                     <Badge variant={item.isLow ? 'warning' : 'secondary'}>
@@ -189,18 +189,18 @@ export default function InventoryPage() {
         title="Товари нижче мінімального залишку"
       >
         {lowItems.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">Все гаразд — критичних позицій немає</p>
+          <p className="text-muted-foreground text-center py-4">Все гаразд — критичних позицій немає</p>
         ) : (
           <div className="space-y-2">
             {lowItems.map((item, i) => (
-              <div key={i} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-100">
+              <div key={i} className="flex items-center justify-between p-3 bg-warning-subtle rounded-lg border border-warning/20">
                 <div>
-                  <div className="font-medium text-gray-900 text-sm">{item.goodName}</div>
-                  <div className="text-xs text-gray-500">{item.warehouseName}</div>
+                  <div className="font-medium text-foreground text-sm">{item.goodName}</div>
+                  <div className="text-xs text-muted-foreground">{item.warehouseName}</div>
                 </div>
                 <div className="text-right text-sm">
-                  <div className="font-semibold text-red-600">{item.quantity} {item.unit}</div>
-                  <div className="text-gray-400">мін: {item.minStock}</div>
+                  <div className="font-semibold text-destructive">{item.quantity} {item.unit}</div>
+                  <div className="text-foreground-faint">мін: {item.minStock}</div>
                 </div>
               </div>
             ))}
