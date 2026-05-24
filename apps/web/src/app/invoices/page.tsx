@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Receipt } from 'lucide-react';
+import { Plus, Receipt, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { DetailPanel } from '@/components/ui/detail-panel';
 import { cn } from '@/lib/utils';
 
 interface Counterparty { id: string; firstName?: string; lastName?: string; companyName?: string; }
@@ -47,8 +48,11 @@ export default function InvoicesPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const [selectedInv, setSelectedInv] = useState<Invoice | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
   const [showPayment, setShowPayment] = useState<Invoice | null>(null);
@@ -68,13 +72,14 @@ export default function InvoicesPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (status) params.set('status', status);
+      if (search) params.set('q', search);
       const data = await apiFetch<Paginated>(`/invoices?${params}`);
       setInvoices(data.items);
       setTotal(data.total);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка завантаження');
     } finally { setLoading(false); }
-  }, [page, status]);
+  }, [page, status, search]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -122,6 +127,10 @@ export default function InvoicesPage() {
       await apiFetch<void>(`/invoices/${inv.id}/transition`, {
         method: 'POST', body: JSON.stringify({ status: newStatus }),
       });
+      // Sync selectedInv if it matches
+      if (selectedInv?.id === inv.id) {
+        setSelectedInv(prev => prev ? { ...prev, status: newStatus } : null);
+      }
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка зміни статусу'); }
     finally { setSavingId(null); }
@@ -169,7 +178,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Status filters */}
-      <div className="flex flex-wrap gap-1.5 mb-5">
+      <div className="flex flex-wrap gap-1.5 mb-4">
         {statuses.map(s => (
           <button
             key={s}
@@ -186,68 +195,157 @@ export default function InvoicesPage() {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Номер</TableHead>
-              <TableHead>Контрагент</TableHead>
-              <TableHead>Наряд</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead className="text-right">Сума</TableHead>
-              <TableHead>Термін оплати</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
+      {/* Search */}
+      <div className="mb-5">
+        <div className="relative w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Пошук за номером або контрагентом..."
+            className="pl-9"
+          />
+        </div>
+      </div>
+
+      {/* Table + DetailPanel */}
+      <div className="flex gap-0 rounded-xl border border-border overflow-hidden">
+        <div className="flex-1 min-w-0 overflow-auto border-r border-border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
-                </TableCell>
+                <TableHead>Номер</TableHead>
+                <TableHead>Контрагент</TableHead>
+                <TableHead>Наряд</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead className="text-right">Сума</TableHead>
+                <TableHead>Термін оплати</TableHead>
+                <TableHead />
               </TableRow>
-            )}
-            {!loading && invoices.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="p-0">
-                  <EmptyState icon={Receipt} title="Рахунків не знайдено" />
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && invoices.map(inv => (
-              <TableRow key={inv.id}>
-                <TableCell className="font-mono font-medium text-foreground">{inv.number}</TableCell>
-                <TableCell className="text-foreground-muted">{inv.counterpartyName ?? '—'}</TableCell>
-                <TableCell className="text-muted-foreground text-xs font-mono">{inv.workOrderNumber ?? '—'}</TableCell>
-                <TableCell>
-                  <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
-                    {STATUS_LABELS[inv.status]}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right font-semibold">{fmt(inv.amount)}</TableCell>
-                <TableCell className="text-foreground-faint text-xs">
-                  {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : '—'}
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-1.5 justify-end">
-                    {STATUS_TRANSITIONS[inv.status]?.map(s => (
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && invoices.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="p-0">
+                    <EmptyState icon={Receipt} title="Рахунків не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && invoices.map(inv => (
+                <TableRow
+                  key={inv.id}
+                  onClick={() => setSelectedInv(inv)}
+                  className={cn(selectedInv?.id === inv.id && 'bg-primary/5')}
+                >
+                  <TableCell className="font-mono font-medium text-foreground">{inv.number}</TableCell>
+                  <TableCell className="text-foreground-muted">{inv.counterpartyName ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground text-xs font-mono">{inv.workOrderNumber ?? '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
+                      {STATUS_LABELS[inv.status]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right font-semibold">{fmt(inv.amount)}</TableCell>
+                  <TableCell className="text-foreground-faint text-xs">
+                    {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <div
+                      className="flex gap-1.5 justify-end"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {STATUS_TRANSITIONS[inv.status]?.map(s => (
+                        <Button
+                          key={s}
+                          variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s)}
+                          loading={savingId === inv.id}
+                        >
+                          {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
+                        </Button>
+                      ))}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <DetailPanel
+          open={!!selectedInv}
+          onClose={() => setSelectedInv(null)}
+          title={selectedInv?.number ?? ''}
+        >
+          {selectedInv && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Badge variant={STATUS_BADGE[selectedInv.status] ?? 'secondary'}>
+                  {STATUS_LABELS[selectedInv.status] ?? selectedInv.status}
+                </Badge>
+              </div>
+
+              <div className="space-y-2 text-[13px]">
+                <div>
+                  <span className="text-muted-foreground">Контрагент</span>
+                  <p className="font-medium text-foreground mt-0.5">{selectedInv.counterpartyName ?? '—'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Наряд</span>
+                  <p className="font-medium text-foreground mt-0.5 font-mono">{selectedInv.workOrderNumber ?? '—'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Сума</span>
+                  <p className="font-semibold text-foreground mt-0.5">{fmt(selectedInv.amount)}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Термін оплати</span>
+                  <p className="font-medium text-foreground mt-0.5">
+                    {selectedInv.dueDate ? new Date(selectedInv.dueDate).toLocaleDateString('uk-UA') : '—'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Створено</span>
+                  <p className="font-medium text-foreground mt-0.5">
+                    {new Date(selectedInv.createdAt).toLocaleString('uk-UA', {
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Action buttons in panel */}
+              {STATUS_TRANSITIONS[selectedInv.status]?.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-border">
+                  <p className="text-[12px] text-muted-foreground font-medium uppercase tracking-wide">Дії</p>
+                  <div className="flex flex-col gap-2">
+                    {STATUS_TRANSITIONS[selectedInv.status].map(s => (
                       <Button
                         key={s}
                         variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s)}
-                        loading={savingId === inv.id}
+                        className="w-full"
+                        onClick={() => s === 'PAID' ? setShowPayment(selectedInv) : handleTransition(selectedInv, s)}
+                        loading={savingId === selectedInv.id}
                       >
                         {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
                       </Button>
                     ))}
                   </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                </div>
+              )}
+            </div>
+          )}
+        </DetailPanel>
       </div>
 
       {/* Pagination */}

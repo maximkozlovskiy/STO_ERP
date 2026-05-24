@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, ClipboardList } from 'lucide-react';
+import { Plus, ClipboardList, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { DetailPanel } from '@/components/ui/detail-panel';
 import { cn } from '@/lib/utils';
 
 interface WorkOrder {
@@ -66,6 +67,10 @@ export default function WorkOrdersPage() {
   const [error, setError] = useState('');
   const [formError, setFormError] = useState('');
 
+  const [search, setSearch] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
+
   const [branches, setBranches] = useState<Branch[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
@@ -86,11 +91,13 @@ export default function WorkOrdersPage() {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '20' });
     if (statusFilter) p.set('status', statusFilter);
+    if (search) p.set('q', search);
+    if (showDeleted) p.set('showDeleted', 'true');
     apiFetch<Paginated>(`/work-orders?${p}`)
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
       .finally(() => setLoading(false));
-  }, [page, statusFilter]);
+  }, [page, statusFilter, search, showDeleted]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -160,7 +167,7 @@ export default function WorkOrdersPage() {
       )}
 
       {/* Status filter pills */}
-      <div className="flex gap-1.5 mb-5 flex-wrap">
+      <div className="flex gap-1.5 mb-4 flex-wrap">
         {STATUS_TABS.map(([v, l]) => (
           <button
             key={v}
@@ -177,71 +184,168 @@ export default function WorkOrdersPage() {
         ))}
       </div>
 
-      {/* Table */}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Номер</TableHead>
-            <TableHead>Клієнт / Авто</TableHead>
-            <TableHead>Статус</TableHead>
-            <TableHead>Сума, ₴</TableHead>
-            <TableHead>Заплановано</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {loading && (
-            <TableRow>
-              <TableCell colSpan={6} className="py-12 text-center">
-                <div className="flex justify-center"><Spinner size="md" /></div>
-              </TableCell>
-            </TableRow>
-          )}
+      {/* Search + showDeleted controls */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className="relative w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Пошук за номером або клієнтом..."
+            className="pl-9"
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => { setShowDeleted(v => !v); setPage(1); }}
+          className={cn(showDeleted && 'border-primary text-primary bg-primary/5')}
+        >
+          {showDeleted ? <EyeOff className="h-4 w-4 mr-1.5" /> : <Eye className="h-4 w-4 mr-1.5" />}
+          {showDeleted ? 'Приховати видалені' : 'Показати видалені'}
+        </Button>
+      </div>
 
-          {!loading && data?.items.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={6} className="p-0">
-                <EmptyState
-                  icon={ClipboardList}
-                  title="Нарядів не знайдено"
-                  description={statusFilter ? 'Спробуйте змінити фільтр статусу' : 'Створіть перший наряд, натиснувши кнопку вище'}
-                  size="sm"
-                />
-              </TableCell>
-            </TableRow>
-          )}
+      {/* Table + DetailPanel */}
+      <div className="flex gap-0 rounded-xl border border-border overflow-hidden">
+        <div className="flex-1 min-w-0 overflow-auto border-r border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Номер</TableHead>
+                <TableHead>Клієнт / Авто</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead>Сума, ₴</TableHead>
+                <TableHead>Заплановано</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-12 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
 
-          {!loading && data?.items.map(wo => (
-            <TableRow key={wo.id} onClick={() => router.push(`/work-orders/${wo.id}`)}>
-              <TableCell>
-                <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
-              </TableCell>
-              <TableCell>
-                <p className="text-[13px] font-medium text-foreground">{wo.counterpartyName ?? '—'}</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">{wo.vehicleSummary ?? '—'}</p>
-              </TableCell>
-              <TableCell>
-                <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>
-                  {STATUS_LABELS[wo.status] ?? wo.status}
+              {!loading && data?.items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState
+                      icon={ClipboardList}
+                      title="Нарядів не знайдено"
+                      description={statusFilter ? 'Спробуйте змінити фільтр статусу' : 'Створіть перший наряд, натиснувши кнопку вище'}
+                      size="sm"
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {!loading && data?.items.map(wo => (
+                <TableRow
+                  key={wo.id}
+                  onClick={() => setSelectedWO(wo)}
+                  className={cn(selectedWO?.id === wo.id && 'bg-primary/5')}
+                >
+                  <TableCell>
+                    <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
+                  </TableCell>
+                  <TableCell>
+                    <p className="text-[13px] font-medium text-foreground">{wo.counterpartyName ?? '—'}</p>
+                    <p className="text-[12px] text-muted-foreground mt-0.5">{wo.vehicleSummary ?? '—'}</p>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>
+                      {STATUS_LABELS[wo.status] ?? wo.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-medium text-foreground tabular-nums">
+                    {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-[12px]">
+                    {wo.plannedAt
+                      ? new Date(wo.plannedAt).toLocaleString('uk-UA', {
+                          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                        })
+                      : '—'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={e => { e.stopPropagation(); router.push(`/work-orders/${wo.id}`); }}
+                    >
+                      Відкрити →
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <DetailPanel
+          open={!!selectedWO}
+          onClose={() => setSelectedWO(null)}
+          title={selectedWO?.number ?? ''}
+        >
+          {selectedWO && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Badge variant={STATUS_BADGE[selectedWO.status] ?? 'secondary'} dot>
+                  {STATUS_LABELS[selectedWO.status] ?? selectedWO.status}
                 </Badge>
-              </TableCell>
-              <TableCell className="font-medium text-foreground tabular-nums">
-                {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
-              </TableCell>
-              <TableCell className="text-muted-foreground text-[12px]">
-                {wo.plannedAt
-                  ? new Date(wo.plannedAt).toLocaleString('uk-UA', {
-                      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                    })
-                  : '—'}
-              </TableCell>
-              <TableCell className="text-right">
-                <Button variant="ghost" size="sm">Відкрити →</Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+              </div>
+
+              <div className="space-y-2 text-[13px]">
+                <div>
+                  <span className="text-muted-foreground">Клієнт</span>
+                  <p className="font-medium text-foreground mt-0.5">{selectedWO.counterpartyName ?? '—'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Автомобіль</span>
+                  <p className="font-medium text-foreground mt-0.5">{selectedWO.vehicleSummary ?? '—'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Сума</span>
+                  <p className="font-semibold text-foreground mt-0.5 tabular-nums">
+                    {selectedWO.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                  </p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Заплановано</span>
+                  <p className="font-medium text-foreground mt-0.5">
+                    {selectedWO.plannedAt
+                      ? new Date(selectedWO.plannedAt).toLocaleString('uk-UA', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })
+                      : '—'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Створено</span>
+                  <p className="font-medium text-foreground mt-0.5">
+                    {new Date(selectedWO.createdAt).toLocaleString('uk-UA', {
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                size="sm"
+                onClick={() => router.push(`/work-orders/${selectedWO.id}`)}
+              >
+                Відкрити наряд
+              </Button>
+            </div>
+          )}
+        </DetailPanel>
+      </div>
 
       {/* Pagination */}
       {totalPages > 1 && (

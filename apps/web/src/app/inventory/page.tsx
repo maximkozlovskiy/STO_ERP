@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { DetailPanel } from '@/components/ui/detail-panel';
 import { cn } from '@/lib/utils';
 
 interface Warehouse { id: string; name: string; }
@@ -40,6 +41,8 @@ export default function InventoryPage() {
   const [lowItems, setLowItems] = useState<StockItem[]>([]);
   const [showLowModal, setShowLowModal] = useState(false);
   const [error, setError] = useState('');
+
+  const [selectedItem, setSelectedItem] = useState<StockItem | null>(null);
 
   const loadWarehouses = useCallback(async () => {
     try {
@@ -125,61 +128,144 @@ export default function InventoryPage() {
         </label>
       </div>
 
-      {/* Table */}
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Товар</TableHead>
-              <TableHead>Артикул</TableHead>
-              <TableHead>Склад</TableHead>
-              <TableHead className="text-right">Кількість</TableHead>
-              <TableHead className="text-right">Резерв</TableHead>
-              <TableHead className="text-right">Доступно</TableHead>
-              <TableHead className="text-right">Ціна продажу</TableHead>
-              <TableHead>Мін. залишок</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
+      {/* Table + DetailPanel */}
+      <div className="flex gap-0 rounded-xl border border-border overflow-hidden">
+        <div className="flex-1 min-w-0 overflow-auto border-r border-border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={8} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
-                </TableCell>
+                <TableHead>Товар</TableHead>
+                <TableHead>Артикул</TableHead>
+                <TableHead>Склад</TableHead>
+                <TableHead className="text-right">Кількість</TableHead>
+                <TableHead className="text-right">Резерв</TableHead>
+                <TableHead className="text-right">Доступно</TableHead>
+                <TableHead className="text-right">Ціна продажу</TableHead>
+                <TableHead>Мін. залишок</TableHead>
               </TableRow>
-            )}
-            {!loading && displayed.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={8} className="p-0">
-                  <EmptyState icon={Package} title="Позицій не знайдено" />
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && displayed.map(item => (
-              <TableRow key={item.id} className={cn(item.isLow && 'bg-warning-subtle/40')}>
-                <TableCell className="font-medium text-foreground">
-                  {item.isLow && <AlertTriangle className="inline h-3.5 w-3.5 text-warning mr-1" />}
-                  {item.goodName}
-                </TableCell>
-                <TableCell className="text-muted-foreground font-mono text-xs">{item.goodSku ?? '—'}</TableCell>
-                <TableCell className="text-foreground-muted">{item.warehouseName}</TableCell>
-                <TableCell className="text-right font-medium">{item.quantity} {item.unit}</TableCell>
-                <TableCell className="text-right text-[hsl(25_95%_53%)]">{item.reserved > 0 ? item.reserved : '—'}</TableCell>
-                <TableCell className={cn('text-right font-semibold', item.available <= 0 ? 'text-destructive' : 'text-success')}>
-                  {item.available} {item.unit}
-                </TableCell>
-                <TableCell className="text-right text-foreground-muted">{fmt(item.salePrice)}</TableCell>
-                <TableCell>
-                  {item.minStock != null ? (
-                    <Badge variant={item.isLow ? 'warning' : 'secondary'}>
-                      ≥ {item.minStock} {item.unit}
-                    </Badge>
-                  ) : '—'}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && displayed.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="p-0">
+                    <EmptyState icon={Package} title="Позицій не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && displayed.map(item => (
+                <TableRow
+                  key={item.id}
+                  onClick={() => setSelectedItem(item)}
+                  className={cn(
+                    item.isLow && 'bg-warning-subtle/40',
+                    selectedItem?.id === item.id && 'bg-primary/5',
+                  )}
+                >
+                  <TableCell className="font-medium text-foreground">
+                    {item.isLow && <AlertTriangle className="inline h-3.5 w-3.5 text-warning mr-1" />}
+                    {item.goodName}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground font-mono text-xs">{item.goodSku ?? '—'}</TableCell>
+                  <TableCell className="text-foreground-muted">{item.warehouseName}</TableCell>
+                  <TableCell className="text-right font-medium">{item.quantity} {item.unit}</TableCell>
+                  <TableCell className="text-right text-[hsl(25_95%_53%)]">{item.reserved > 0 ? item.reserved : '—'}</TableCell>
+                  <TableCell className={cn('text-right font-semibold', item.available <= 0 ? 'text-destructive' : 'text-success')}>
+                    {item.available} {item.unit}
+                  </TableCell>
+                  <TableCell className="text-right text-foreground-muted">{fmt(item.salePrice)}</TableCell>
+                  <TableCell>
+                    {item.minStock != null ? (
+                      <Badge variant={item.isLow ? 'warning' : 'secondary'}>
+                        ≥ {item.minStock} {item.unit}
+                      </Badge>
+                    ) : '—'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <DetailPanel
+          open={!!selectedItem}
+          onClose={() => setSelectedItem(null)}
+          title={selectedItem?.goodName ?? ''}
+        >
+          {selectedItem && (
+            <div className="space-y-4">
+              {/* Low stock warning */}
+              {selectedItem.isLow && (
+                <div className="flex items-center gap-2 p-2.5 bg-warning-subtle border border-warning/20 rounded-lg text-[13px] text-[hsl(38_92%_30%)]">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>Залишок нижче мінімального</span>
+                </div>
+              )}
+
+              <div className="space-y-2 text-[13px]">
+                <div>
+                  <span className="text-muted-foreground">Артикул (SKU)</span>
+                  <p className="font-mono font-medium text-foreground mt-0.5">{selectedItem.goodSku ?? '—'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Склад</span>
+                  <p className="font-medium text-foreground mt-0.5">{selectedItem.warehouseName}</p>
+                </div>
+              </div>
+
+              {/* Stock quantities */}
+              <div className="rounded-lg border border-border divide-y divide-border">
+                <div className="flex items-center justify-between px-3 py-2 text-[13px]">
+                  <span className="text-muted-foreground">Кількість</span>
+                  <span className="font-medium text-foreground tabular-nums">
+                    {selectedItem.quantity} {selectedItem.unit}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 text-[13px]">
+                  <span className="text-muted-foreground">Резерв</span>
+                  <span className={cn(
+                    'font-medium tabular-nums',
+                    selectedItem.reserved > 0 ? 'text-[hsl(25_95%_53%)]' : 'text-muted-foreground',
+                  )}>
+                    {selectedItem.reserved > 0 ? `${selectedItem.reserved} ${selectedItem.unit}` : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 text-[13px]">
+                  <span className="text-muted-foreground">Доступно</span>
+                  <span className={cn(
+                    'font-semibold tabular-nums',
+                    selectedItem.available <= 0 ? 'text-destructive' : 'text-success',
+                  )}>
+                    {selectedItem.available} {selectedItem.unit}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-[13px]">
+                <div>
+                  <span className="text-muted-foreground">Ціна продажу</span>
+                  <p className="font-semibold text-foreground mt-0.5">{fmt(selectedItem.salePrice)}</p>
+                </div>
+                {selectedItem.minStock != null && (
+                  <div>
+                    <span className="text-muted-foreground">Мінімальний залишок</span>
+                    <div className="mt-1">
+                      <Badge variant={selectedItem.isLow ? 'warning' : 'secondary'}>
+                        ≥ {selectedItem.minStock} {selectedItem.unit}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DetailPanel>
       </div>
 
       {/* Low stock modal */}
