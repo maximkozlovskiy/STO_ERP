@@ -1,4 +1,4 @@
-﻿import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -17,7 +17,7 @@ export class SettlementsController {
 
   @Get('balance')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: ‘Баланс контрагента’ })
+  @ApiOperation({ summary: 'Баланс контрагента' })
   getBalance(@OrgContext() orgId: string, @Param('counterpartyId') counterpartyId: string) {
     return this.service.getBalance(orgId, counterpartyId);
   }

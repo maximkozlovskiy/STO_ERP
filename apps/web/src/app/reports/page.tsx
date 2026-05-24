@@ -155,7 +155,7 @@ export default function ReportsPage() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v / 1000).toFixed(0) + 'к'} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
+                <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
                 <Bar dataKey="revenue" fill="#3b82f6" name="Виручка" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -167,7 +167,7 @@ export default function ReportsPage() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
+                <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
                 <Line type="monotone" dataKey="labor" stroke="#10b981" name="Роботи" dot={false} strokeWidth={2} />
                 <Line type="monotone" dataKey="parts" stroke="#f59e0b" name="Запчастини" dot={false} strokeWidth={2} />
                 <Legend />
@@ -268,7 +268,7 @@ export default function ReportsPage() {
                     <Cell fill="#3b82f6" />
                     <Cell fill="#ef4444" />
                   </Pie>
-                  <Tooltip formatter={(v: number) => fmt(v)} />
+                  <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
@@ -307,7 +307,7 @@ export default function ReportsPage() {
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" domain={[0, 100]} tickFormatter={v => v + '%'} tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="liftName" tick={{ fontSize: 11 }} width={120} />
-                <Tooltip formatter={(v: number) => v + '%'} />
+                <Tooltip formatter={(v) => Number(v ?? 0).toFixed(1) + '%'} />
                 <Bar dataKey="loadPercent" fill="#3b82f6" radius={[0, 4, 4, 0]} name="Завантаженість">
                   {data.rows.map((_, idx: number) => (
                     <Cell key={idx} fill={COLORS[idx % COLORS.length]} />

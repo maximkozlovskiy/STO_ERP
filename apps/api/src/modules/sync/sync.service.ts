@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SyncRecord } from '@sto/shared';
 
@@ -105,7 +106,7 @@ export class SyncService {
             recordId: rec.id,
             operation: rec.operation,
             syncVersion: BigInt(rec.syncVersion),
-            payload: rec.payload as Record<string, unknown>,
+            payload: rec.payload as Prisma.InputJsonValue,
             status: 'FAILED',
             lastError: err instanceof Error ? err.message : 'Конфлікт під час синхронізації',
           },

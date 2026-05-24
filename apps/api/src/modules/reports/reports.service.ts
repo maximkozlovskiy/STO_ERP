@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma, WorkOrderStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName } from '@sto/shared';
 
@@ -23,15 +24,10 @@ export class ReportsService {
       if (!branch) throw new NotFoundException('Філію не знайдено');
     }
 
-    const where: {
-      orgId: string; deletedAt: null;
-      status: { in: string[] };
-      completedAt: { gte: Date; lte: Date };
-      branchId?: string;
-    } = {
+    const where: Prisma.WorkOrderWhereInput = {
       orgId,
       deletedAt: null,
-      status: { in: ['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED'] },
+      status: { in: ['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED'] as WorkOrderStatus[] },
       completedAt: { gte: fromDate, lte: toDate },
     };
     if (branchId) where.branchId = branchId;

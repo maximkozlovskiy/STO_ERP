@@ -169,7 +169,7 @@ export default function DashboardPage() {
                     tickFormatter={d => new Date(d + 'T00:00').toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v / 1000).toFixed(0) + 'к'} />
                   <Tooltip
-                    formatter={(v: number) => [fmt(v), 'Виручка']}
+                    formatter={(v) => [fmt(Number(v ?? 0)), 'Виручка']}
                     labelFormatter={d => new Date(d + 'T00:00').toLocaleDateString('uk-UA')} />
                   <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 </BarChart>

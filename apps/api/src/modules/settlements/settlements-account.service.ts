@@ -8,7 +8,7 @@ export class SettlementsAccountService {
 
   async getBalance(orgId: string, counterpartyId: string) {
     const account = await this.prisma.settlementAccount.findFirst({
-      where: { orgId, counterpartyId, deletedAt: null },
+      where: { orgId, counterpartyId },
     });
     if (!account) return { balance: 0, counterpartyId };
     return { balance: Number(account.balance), counterpartyId };
@@ -16,7 +16,7 @@ export class SettlementsAccountService {
 
   async getTransactions(orgId: string, counterpartyId: string, page = 1, limit = 50) {
     const account = await this.prisma.settlementAccount.findFirst({
-      where: { orgId, counterpartyId, deletedAt: null },
+      where: { orgId, counterpartyId },
     });
     if (!account) return { items: [], total: 0, page, limit };
 
@@ -58,7 +58,7 @@ export class SettlementsAccountService {
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
     const account = await this.prisma.settlementAccount.findFirst({
-      where: { orgId, counterpartyId, deletedAt: null },
+      where: { orgId, counterpartyId },
     });
     if (!account) throw new NotFoundException('Розрахунковий рахунок не знайдено');
 

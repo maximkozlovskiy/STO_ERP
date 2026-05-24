@@ -19,7 +19,7 @@ export class SettlementsService {
   async createTransaction(orgId: string, dto: CreateTransactionDto, tx?: Prisma.TransactionClient): Promise<void> {
     const run = async (db: Prisma.TransactionClient | PrismaService) => {
       const account = await db.settlementAccount.findFirst({
-        where: { orgId, counterpartyId: dto.counterpartyId, deletedAt: null },
+        where: { orgId, counterpartyId: dto.counterpartyId },
       });
       if (!account) throw new NotFoundException('Розрахунковий рахунок контрагента не знайдено');
 
@@ -61,7 +61,7 @@ export class SettlementsService {
 
   async getBalance(orgId: string, counterpartyId: string): Promise<number> {
     const account = await this.prisma.settlementAccount.findFirst({
-      where: { orgId, counterpartyId, deletedAt: null },
+      where: { orgId, counterpartyId },
     });
     return account ? Number(account.balance) : 0;
   }
