@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export type BadgeVariant =
@@ -7,7 +8,7 @@ export type BadgeVariant =
 interface BadgeProps {
   variant?: BadgeVariant;
   className?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   dot?: boolean;
 }
 

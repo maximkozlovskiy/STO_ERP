@@ -2,6 +2,7 @@
 name: sto-mobile
 description: >
   Create Expo/React Native screens and features for STO ERP mechanic tablet app. Use when the user says "мобільний екран", "планшет механіка", "expo", "react native", or building the mobile layer. Produces Feature-Sliced Design structure with offline support via WatermelonDB, TanStack Query, and Expo Router.
+model: claude-sonnet-4-6
 ---
 
 # sto-mobile — Expo Mechanic App Skill

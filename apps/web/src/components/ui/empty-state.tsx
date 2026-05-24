@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { type LucideIcon, Inbox } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -5,7 +6,7 @@ interface EmptyStateProps {
   icon?: LucideIcon;
   title?: string;
   description?: string;
-  action?: React.ReactNode;
+  action?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 }

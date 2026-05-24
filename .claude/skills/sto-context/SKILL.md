@@ -2,6 +2,7 @@
 name: sto-context
 description: >
   STO ERP project context — master skill. Load at the start of every session or whenever you need the project architecture, conventions, domain model, monorepo structure, or tech stack. Use when the user mentions "STO ERP", "наш проект", "erp для сто", or works on any monorepo package. All other sto-* skills rely on this context.
+model: claude-haiku-4-5-20251001
 ---
 
 # STO ERP — Project Context

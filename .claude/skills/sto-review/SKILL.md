@@ -2,9 +2,23 @@
 name: sto-review
 description: >
   Perform a thorough code review of STO ERP changes. Use when the user says "зроби code review", "перевір код", "review PR", or after implementing a feature. Reviews cover: correctness, security, performance, TypeScript quality, NestJS/Next.js/Expo conventions, business rule compliance, sync-readiness.
+model: claude-opus-4-7
 ---
 
 # sto-review — Code Review Skill
+
+## Режим Auto (ОБОВ'ЯЗКОВО)
+
+**Запускай у режимі Auto:** знаходь усі проблеми → виправляй кожну одразу → без питань до користувача.
+
+Алгоритм:
+1. `git diff HEAD --name-only` — отримай список змінених файлів
+2. Пройди по кожному чеклисту нижче
+3. Кожну знайдену проблему **одразу виправляй** (Edit/Write), потім `tsc --noEmit`
+4. Після всіх правок — `git commit -m "fix(review): <опис>"`
+5. Оновити `MemoryManual.md` (Останній commit + Changelog)
+
+> Не питай дозволу на виправлення. Якщо fix потребує міграції БД — зафіксуй як CRITICAL і повідом.
 
 ## Review Checklist
 
@@ -45,11 +59,13 @@ description: >
 
 ### Problems Panel (run after every change)
 
+> **ВАЖЛИВО:** VSCode показує помилки через Next.js TS plugin (`"name": "next"` у tsconfig), який суворіший за plain `tsc`. `pnpm tsc --noEmit` може давати 0 errors, але VSCode — 56+. Перевіряй ОБИДВА способи.
+
 After every batch of changes, run TypeScript checks and fix ALL errors before committing:
 
 ```bash
-# Web app
-pnpm --filter @sto/web exec tsc --noEmit
+# Web app (incremental cache often hides errors — завжди з --incremental false)
+cd apps/web && node_modules/.bin/tsc --noEmit --incremental false
 
 # API
 pnpm --filter @sto/api exec tsc --noEmit
@@ -58,6 +74,25 @@ pnpm --filter @sto/api exec tsc --noEmit
 pnpm --filter @sto/shared exec tsc --noEmit
 pnpm --filter @sto/ui exec tsc --noEmit
 ```
+
+**КРИТИЧНА ПЕРЕВІРКА — React namespace без імпорту:**
+
+VSCode/Next.js TS plugin помічає `React.ReactNode`, `React.HTMLAttributes` і т.д. без `import React` як помилки, навіть якщо plain `tsc` мовчить.
+
+```bash
+# Знайти всі проблемні місця:
+grep -rn "React\." apps/web/src/ --include="*.tsx" --include="*.ts"
+```
+
+**Фікс:** замінити `React.ReactNode` → `import type { ReactNode } from 'react'` і використовувати `ReactNode` напряму. Аналогічно для всіх `React.*` типів.
+
+| React namespace | Правильний імпорт |
+|---|---|
+| `React.ReactNode` | `import type { ReactNode } from 'react'` |
+| `React.HTMLAttributes<T>` | `import type { HTMLAttributes } from 'react'` |
+| `React.SVGAttributes<T>` | `import type { SVGAttributes } from 'react'` |
+| `React.ThHTMLAttributes<T>` | `import type { ThHTMLAttributes } from 'react'` |
+| `React.TdHTMLAttributes<T>` | `import type { TdHTMLAttributes } from 'react'` |
 
 **Fix automatically — do not skip errors:**
 
@@ -69,6 +104,7 @@ pnpm --filter @sto/ui exec tsc --noEmit
 | `Property 'X' does not exist on type 'IntrinsicAttributes'` | Add the missing prop to the component's interface |
 | `is not assignable to type 'never'` | Check for exhaustive switch/union — add missing branches or cast |
 | `Object is possibly 'null' or 'undefined'` | Add null-check guard or non-null assertion if impossible at runtime |
+| `Cannot find namespace 'React'` | Add `import type { ReactNode } from 'react'` and replace `React.ReactNode` → `ReactNode` |
 
 **Component prop parity rules (keep in sync):**
 - `Button` `Variant`: `'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link' | 'default'`

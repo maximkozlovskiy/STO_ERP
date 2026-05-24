@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -356,7 +356,7 @@ export default function InfrastructurePage() {
 
 // ─── Small components ────────────────────────────────────
 
-function Section({ title, onAdd, children }: { title: string; onAdd: () => void; children: React.ReactNode }) {
+function Section({ title, onAdd, children }: { title: string; onAdd: () => void; children: ReactNode }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">

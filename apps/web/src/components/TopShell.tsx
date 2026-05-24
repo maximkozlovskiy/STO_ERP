@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -94,7 +94,7 @@ function isActive(pathname: string, href: string): boolean {
   return pathname.startsWith(href);
 }
 
-export function TopShell({ children }: { children: React.ReactNode }) {
+export function TopShell({ children }: { children: ReactNode }) {
   const { employee, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();

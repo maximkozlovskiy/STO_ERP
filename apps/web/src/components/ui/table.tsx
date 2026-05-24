@@ -1,6 +1,7 @@
+import type { HTMLAttributes, ThHTMLAttributes, TdHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
-function Table({ className, children, ...props }: React.HTMLAttributes<HTMLTableElement>) {
+function Table({ className, children, ...props }: HTMLAttributes<HTMLTableElement>) {
   return (
     <div className="w-full overflow-auto rounded-lg border border-(--color-border)">
       <table className={cn('w-full text-[13px] text-foreground border-collapse', className)} {...props}>
@@ -10,7 +11,7 @@ function Table({ className, children, ...props }: React.HTMLAttributes<HTMLTable
   );
 }
 
-function TableHeader({ className, children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
+function TableHeader({ className, children, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <thead className={cn('bg-[hsl(210_40%_98%)] border-b border-(--color-border)', className)} {...props}>
       {children}
@@ -18,7 +19,7 @@ function TableHeader({ className, children, ...props }: React.HTMLAttributes<HTM
   );
 }
 
-function TableBody({ className, children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
+function TableBody({ className, children, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <tbody className={cn('divide-y divide-(--color-border) bg-white', className)} {...props}>
       {children}
@@ -26,7 +27,7 @@ function TableBody({ className, children, ...props }: React.HTMLAttributes<HTMLT
   );
 }
 
-function TableRow({ className, children, onClick, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
+function TableRow({ className, children, onClick, ...props }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
       className={cn(
@@ -43,7 +44,7 @@ function TableRow({ className, children, onClick, ...props }: React.HTMLAttribut
   );
 }
 
-function TableHead({ className, children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
+function TableHead({ className, children, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
       className={cn(
@@ -58,7 +59,7 @@ function TableHead({ className, children, ...props }: React.ThHTMLAttributes<HTM
   );
 }
 
-function TableCell({ className, children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
+function TableCell({ className, children, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
   return (
     <td className={cn('px-4 py-3 align-middle', className)} {...props}>
       {children}
@@ -66,7 +67,7 @@ function TableCell({ className, children, ...props }: React.TdHTMLAttributes<HTM
   );
 }
 
-function TableCaption({ className, children, ...props }: React.HTMLAttributes<HTMLTableCaptionElement>) {
+function TableCaption({ className, children, ...props }: HTMLAttributes<HTMLTableCaptionElement>) {
   return (
     <caption className={cn('mt-2 text-[12px] text-muted-foreground', className)} {...props}>
       {children}

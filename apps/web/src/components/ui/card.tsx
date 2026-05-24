@@ -1,7 +1,8 @@
+import type { HTMLAttributes, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 /* ── Card ── */
-function Card({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+function Card({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
@@ -16,7 +17,7 @@ function Card({ className, children, ...props }: React.HTMLAttributes<HTMLDivEle
   );
 }
 
-function CardHeader({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+function CardHeader({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={cn('flex flex-col gap-1 px-5 pt-5 pb-4 border-b border-[var(--color-border)]', className)} {...props}>
       {children}
@@ -24,7 +25,7 @@ function CardHeader({ className, children, ...props }: React.HTMLAttributes<HTML
   );
 }
 
-function CardTitle({ className, children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
+function CardTitle({ className, children, ...props }: HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
       className={cn('text-[15px] font-semibold text-[var(--color-foreground)] leading-tight tracking-[-0.01em]', className)}
@@ -35,7 +36,7 @@ function CardTitle({ className, children, ...props }: React.HTMLAttributes<HTMLH
   );
 }
 
-function CardDescription({ className, children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
+function CardDescription({ className, children, ...props }: HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p className={cn('text-[13px] text-[var(--color-muted-foreground)]', className)} {...props}>
       {children}
@@ -43,7 +44,7 @@ function CardDescription({ className, children, ...props }: React.HTMLAttributes
   );
 }
 
-function CardContent({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+function CardContent({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={cn('px-5 py-4', className)} {...props}>
       {children}
@@ -51,7 +52,7 @@ function CardContent({ className, children, ...props }: React.HTMLAttributes<HTM
   );
 }
 
-function CardFooter({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+function CardFooter({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn('flex items-center px-5 py-3 border-t border-[var(--color-border)] bg-[var(--color-secondary)] rounded-b-[var(--radius-lg)]', className)}
@@ -66,7 +67,7 @@ function CardFooter({ className, children, ...props }: React.HTMLAttributes<HTML
 interface KpiCardProps {
   label: string;
   value: string | number;
-  icon: React.ReactNode;
+  icon: ReactNode;
   colorClass?: string; // e.g. 'kpi-card-blue'
   trend?: { value: string; up?: boolean };
   className?: string;

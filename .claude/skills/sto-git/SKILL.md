@@ -4,6 +4,7 @@ description: >
   Git workflow for STO ERP: commit with conventional messages, branch management, status overview,
   and changelog generation. Use when the user says "закомітити", "зроби commit", "покажи статус",
   "створи гілку", "що змінилось", "зроби changelog", "git", або будь-що пов'язане з git.
+model: claude-haiku-4-5-20251001
 ---
 
 # sto-git — Git Workflow Skill

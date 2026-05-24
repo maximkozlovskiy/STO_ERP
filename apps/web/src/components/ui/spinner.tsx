@@ -1,6 +1,7 @@
+import type { SVGAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
-interface SpinnerProps extends React.SVGAttributes<SVGSVGElement> {
+interface SpinnerProps extends SVGAttributes<SVGSVGElement> {
   size?: 'xs' | 'sm' | 'md' | 'lg';
 }
 
