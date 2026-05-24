@@ -82,6 +82,11 @@ export class InvoicesService {
     });
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
+    if (dto.workOrderId) {
+      const wo = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
+      if (!wo) throw new NotFoundException('Наряд не знайдено');
+    }
+
     const number = await this.docNumbers.next(orgId, 'INVOICE');
 
     const inv = await this.prisma.invoice.create({

@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -19,6 +20,8 @@ interface CookieResponse {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -28,7 +31,7 @@ export class AuthService {
   async login(dto: LoginDto, res: CookieResponse): Promise<AuthResponseDto> {
     // Find by email first; then validate orgId matches the employee's org to prevent cross-tenant auth
     const authRecord = await this.prisma.authAccount.findFirst({
-      where: { email: dto.email },
+      where: { email: dto.email, deletedAt: null },
       include: { employee: true },
     });
 
@@ -42,7 +45,7 @@ export class AuthService {
     }
 
     const emp = authRecord.employee;
-    if (!emp || emp.deletedAt) {
+    if (!emp || emp.deletedAt !== null) {
       throw new ForbiddenException('Обліковий запис заблоковано');
     }
 
@@ -80,7 +83,8 @@ export class AuthService {
       payload = this.jwt.verify<JwtPayload>(refreshToken, {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
       });
-    } catch (_err) {
+    } catch (e: unknown) {
+      this.logger.debug(`JWT refresh failed: ${e instanceof Error ? e.message : e}`);
       throw new UnauthorizedException('Сесія застаріла, увійдіть знову');
     }
 

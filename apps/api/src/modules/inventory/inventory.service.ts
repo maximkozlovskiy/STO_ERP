@@ -19,6 +19,10 @@ export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createMovement(orgId: string, dto: CreateMovementDto, tx?: Prisma.TransactionClient): Promise<void> {
+    if (dto.quantity === 0) throw new BadRequestException('Кількість не може бути нульовою');
+    if (dto.type === 'RESERVATION_RELEASE' && dto.quantity > 0) {
+      throw new BadRequestException('Зняття резерву: кількість повинна бути від\'ємною');
+    }
     const db = tx ?? this.prisma;
 
     if (dto.quantity < 0 || dto.type === 'RESERVATION' || dto.type === 'RESERVATION_RELEASE') {
@@ -136,6 +140,8 @@ export class InventoryService {
       JOIN warehouses w ON w.id = si.warehouse_id
       WHERE si.org_id = ${orgId}::uuid
         AND si.deleted_at IS NULL
+        AND g.deleted_at IS NULL
+        AND w.deleted_at IS NULL
         AND si.min_stock IS NOT NULL
         AND si.quantity <= si.min_stock
       ORDER BY w.name, g.name

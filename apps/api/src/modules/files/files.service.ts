@@ -1,6 +1,9 @@
-import { Injectable, InternalServerErrorException, OnModuleInit } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, OnModuleInit, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { PrismaService } from '../../prisma/prisma.service';
+
+const ALLOWED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'pdf']);
 
 interface UploadFile {
   buffer: Buffer;
@@ -19,7 +22,10 @@ export class FilesService implements OnModuleInit {
     putObject(bucket: string, object: string, stream: Buffer, size: number, meta: Record<string, string>): Promise<unknown>;
   } | null;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     const endpoint = config.getOrThrow<string>('MINIO_ENDPOINT');
     const port = parseInt(config.getOrThrow<string>('MINIO_PORT'), 10);
     const useSSL = config.get<string>('MINIO_USE_SSL') === 'true';
@@ -54,9 +60,19 @@ export class FilesService implements OnModuleInit {
   async upload(orgId: string, file: UploadFile, workOrderId?: string): Promise<{ fileId: string; url: string; filename: string }> {
     if (!this.client) throw new InternalServerErrorException('Сервіс файлів недоступний');
 
+    const ext = (file.originalname.split('.').pop() ?? '').toLowerCase();
+    if (!ALLOWED_EXTENSIONS.has(ext)) throw new BadRequestException('Недозволений формат файлу');
+
+    if (workOrderId) {
+      const wo = await this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!wo) throw new NotFoundException('Наряд не знайдено');
+    }
+
     const fileId = crypto.randomUUID();
-    const ext = file.originalname.split('.').pop() ?? 'jpg';
-    const folder = workOrderId ? `work-orders/${workOrderId}` : `org/${orgId}`;
+    const folder = workOrderId ? `org/${orgId}/work-orders/${workOrderId}` : `org/${orgId}`;
     const objectName = `${folder}/${fileId}.${ext}`;
 
     try {
