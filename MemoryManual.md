@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-f2c8a9c fix(review): apply sto-review auto-fix pass — 11 bugs resolved
+f317ae5 fix(web): remove React namespace — explicit type imports + skill auto-mode + model hints
 ```
 
 Дата: 2026-05-24
@@ -316,6 +316,8 @@ syncVersion BigInt   @default(0)
 | 14 | Глобальний `saving` стан у списку | Всі рядки таблиці потрапляють у loading. Фікс: `savingId: string | null` — по одному рядку |
 | 15 | `transition()` без `$transaction` | Між findFirst і update може змінитись статус (race condition). Фікс: загорнути обидва у `prisma.$transaction` |
 | 16 | `RESERVATION_RELEASE` без перевірки `reserved >= qty` | Від'ємний резерв у StockItem. Фікс: перевірити `Math.abs(dto.quantity) > reserved` |
+| 17 | `React.ReactNode` без імпорту → 56 VSCode помилок | Next.js TS plugin суворіший ніж plain `tsc`. Фікс: `import type { ReactNode } from 'react'` і `ReactNode` напряму. Grep: `grep -rn "React\." apps/web/src/ --include="*.tsx"` |
+| 18 | `tsc --noEmit` приховує помилки через `incremental` кеш | `Check time: 0.00s` — кеш пропускає перевірку. Фікс: `tsc --noEmit --incremental false` |
 
 ---
 
@@ -348,6 +350,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `f317ae5` | fix(web): remove React namespace (56 VSCode errors) + skill auto-mode + models |
 | `f2c8a9c` | fix(review): apply sto-review auto-fix pass — 11 bugs resolved |
 | `ec6acac` | fix(web): fix hydration mismatch on root page spinner |
 | `394156d` | feat(workflow): hourly loop + auto QA after every task |
