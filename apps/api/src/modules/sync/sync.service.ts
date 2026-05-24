@@ -26,8 +26,10 @@ const PULL_FIELD_BLACKLIST: Record<string, Set<string>> = {
 };
 
 // Per-table field whitelists for push — prevents clients from overwriting protected fields
+// Note: phone, email, edrpou are intentionally excluded from counterparties — they are blacklisted
+// from pull payloads and must only be writable through the authenticated web API with full validation.
 const PUSH_FIELD_WHITELIST: Record<string, Set<string>> = {
-  counterparties: new Set(['firstName', 'lastName', 'companyName', 'phone', 'email', 'notes', 'type', 'vatPayer', 'edrpou']),
+  counterparties: new Set(['firstName', 'lastName', 'companyName', 'notes', 'type', 'vatPayer']),
   vehicles: new Set(['licensePlate', 'make', 'model', 'year', 'vin', 'engineVolume', 'fuelType', 'currentMileage', 'color', 'notes', 'customerGarageId']),
   customer_garages: new Set(['name', 'address', 'notes']),
   calendar_slots: new Set(['liftId', 'employeeId', 'workOrderId', 'startAt', 'endAt', 'notes']),
@@ -49,16 +51,20 @@ export class SyncService {
           });
 
           const blacklist = PULL_FIELD_BLACKLIST[table];
-          return rows.map((row: any): SyncRecord => {
-            let payload = row;
-            if (blacklist) {
+          return rows.map((row: Record<string, unknown>): SyncRecord => {
+            const isDeleted = Boolean(row.deletedAt);
+            let payload: Record<string, unknown>;
+            if (isDeleted) {
+              // For deleted records, only send the id — no PII in tombstone payloads
+              payload = { id: row.id };
+            } else {
               payload = { ...row };
-              for (const field of blacklist) delete payload[field];
+              if (blacklist) for (const field of blacklist) delete payload[field];
             }
             return {
               table,
-              id: row.id,
-              operation: row.deletedAt ? 'DELETE' : 'UPDATE',
+              id: row.id as string,
+              operation: isDeleted ? 'DELETE' : 'UPDATE',
               syncVersion: Number(row.syncVersion),
               payload,
             };
@@ -99,9 +105,9 @@ export class SyncService {
             recordId: rec.id,
             operation: rec.operation,
             syncVersion: BigInt(rec.syncVersion),
-            payload: rec.payload as any,
+            payload: rec.payload as Record<string, unknown>,
             status: 'FAILED',
-            lastError: err instanceof Error ? err.message : 'Conflict during push',
+            lastError: err instanceof Error ? err.message : 'Конфлікт під час синхронізації',
           },
         });
       }
@@ -130,7 +136,11 @@ export class SyncService {
     }
 
     // Handle DELETE from client (soft delete)
+    // counterparties and vehicles must be deleted via dedicated API endpoints that enforce business rules
     if (rec.operation === 'DELETE') {
+      if (rec.table === 'counterparties' || rec.table === 'vehicles') {
+        throw new Error('Видалення контрагентів та автомобілів через синхронізацію заборонено');
+      }
       if (existing) {
         await model.update({ where: { id: rec.id, orgId }, data: { deletedAt: new Date() } });
       }
@@ -203,8 +213,9 @@ export class SyncService {
       select: { processedAt: true },
     });
 
-    const maxSyncVersion = maxVersionResults.reduce((max: number, res: any) => {
-      const v = Number(res?._max?.syncVersion ?? 0);
+    type AggResult = { _max: { syncVersion: bigint | null } };
+    const maxSyncVersion = (maxVersionResults as AggResult[]).reduce((max, res) => {
+      const v = Number(res?._max?.syncVersion ?? 0n);
       return v > max ? v : max;
     }, 0);
 

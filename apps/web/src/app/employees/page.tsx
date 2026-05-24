@@ -151,7 +151,7 @@ export default function EmployeesPage() {
   const create = async () => {
     setSaving(true); setError('');
     try {
-      await apiFetch('/employees', {
+      await apiFetch<Employee>('/employees', {
         method: 'POST',
         body: JSON.stringify({ firstName: form.firstName, lastName: form.lastName, role: form.role, phone: form.phone || undefined, rateScheme: buildRateScheme() }),
       });
@@ -165,9 +165,9 @@ export default function EmployeesPage() {
     setSaving(true); setError('');
     try {
       await Promise.all([
-        apiFetch(`/employees/${selected.id}/zones`, { method: 'POST', body: JSON.stringify({ zoneIds: assignedZones }) }),
-        apiFetch(`/employees/${selected.id}/lifts`, { method: 'POST', body: JSON.stringify({ liftIds: assignedLifts }) }),
-        apiFetch(`/employees/${selected.id}/work-categories`, { method: 'POST', body: JSON.stringify({ workCategoryIds: assignedCats }) }),
+        apiFetch<void>(`/employees/${selected.id}/zones`, { method: 'POST', body: JSON.stringify({ zoneIds: assignedZones }) }),
+        apiFetch<void>(`/employees/${selected.id}/lifts`, { method: 'POST', body: JSON.stringify({ liftIds: assignedLifts }) }),
+        apiFetch<void>(`/employees/${selected.id}/work-categories`, { method: 'POST', body: JSON.stringify({ workCategoryIds: assignedCats }) }),
       ]);
       closeModal(); load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
@@ -176,8 +176,10 @@ export default function EmployeesPage() {
 
   const remove = async (id: string) => {
     if (!confirm('Видалити співробітника?')) return;
-    try { await apiFetch(`/employees/${id}`, { method: 'DELETE' }); load(); }
+    setSaving(true); setError('');
+    try { await apiFetch<void>(`/employees/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setSaving(false); }
   };
 
   const flatCats = flattenTree(workCategories);

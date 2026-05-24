@@ -49,7 +49,7 @@ export class StockDocumentsService {
       this.prisma.stockDocument.count({ where }),
     ]);
 
-    return { items: items.map(this.toDto), total, page, limit };
+    return { items: items.map(d => this.toDto(d)), total, page, limit };
   }
 
   async findOne(orgId: string, id: string): Promise<StockDocumentResponseDto> {
@@ -132,7 +132,7 @@ export class StockDocumentsService {
     const updated = await this.prisma.$transaction(async (tx) => {
       if (dto.lines !== undefined) {
         await tx.stockDocumentLine.updateMany({
-          where: { stockDocumentId: id },
+          where: { stockDocumentId: id, orgId },
           data: { deletedAt: new Date() },
         });
         if (dto.lines.length) {
@@ -245,7 +245,7 @@ export class StockDocumentsService {
     branch: { name: string } | null;
     warehouse: { name: string } | null;
     targetWarehouse: { name: string } | null;
-    lines: Array<{ id: string; goodId: string; quantity: number; price: object | null; good: { name: string; sku: string | null; unit: string } | null }>;
+    lines: Array<{ id: string; goodId: string; quantity: number; price: Prisma.Decimal | null; good: { name: string; sku: string | null; unit: string } | null }>;
   }): StockDocumentResponseDto {
     return {
       id: doc.id, orgId: doc.orgId, number: doc.number,

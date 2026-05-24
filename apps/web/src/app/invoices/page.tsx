@@ -72,7 +72,7 @@ export default function InvoicesPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (status) params.set('status', status);
-      const data: Paginated = await apiFetch(`/invoices?${params}`);
+      const data = await apiFetch<Paginated>(`/invoices?${params}`);
       setInvoices(data.items);
       setTotal(data.total);
     } catch (e: unknown) {
@@ -91,8 +91,8 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     if (showPayment) {
-      apiFetch('/payment-methods')
-        .then((d: { code: string; name: string; isActive: boolean }[]) => setPayMethods(d.filter(m => m.isActive)))
+      apiFetch<{ code: string; name: string; isActive: boolean }[]>('/payment-methods')
+        .then(d => setPayMethods(d.filter(m => m.isActive)))
         .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження способів оплати'));
     }
   }, [showPayment]);
@@ -118,12 +118,15 @@ export default function InvoicesPage() {
 
   const handleTransition = async (inv: Invoice, newStatus: string) => {
     if (!confirm(`Перевести рахунок ${inv.number} → ${STATUS_LABELS[newStatus]}?`)) return;
+    setSaving(true);
+    setError('');
     try {
-      await apiFetch(`/invoices/${inv.id}/transition`, {
+      await apiFetch<void>(`/invoices/${inv.id}/transition`, {
         method: 'POST', body: JSON.stringify({ status: newStatus }),
       });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка зміни статусу'); }
+    finally { setSaving(false); }
   };
 
   const handlePay = async () => {

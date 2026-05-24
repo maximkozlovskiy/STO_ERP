@@ -61,13 +61,13 @@ export default function SettingsPage() {
   useEffect(() => {
     apiFetch<OrgSettings>('/settings/organisation')
       .then(s => { setOrgSettings(s); applyTheme(s.brandTheme); })
-      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'));
     apiFetch<PaymentMethod[]>('/payment-methods')
       .then(setPayments)
-      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження методів оплати'));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження методів оплати'));
     apiFetch<NotificationTemplate[]>('/notification-templates')
       .then(setTemplates)
-      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження шаблонів'));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження шаблонів'));
   }, []);
 
   const saveTemplate = async () => {

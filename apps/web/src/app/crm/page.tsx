@@ -66,7 +66,7 @@ export default function CrmPage() {
   const create = async () => {
     setSaving(true); setError('');
     try {
-      await apiFetch('/counterparties', {
+      await apiFetch<Counterparty>('/counterparties', {
         method: 'POST',
         body: JSON.stringify({
           type: form.type,
