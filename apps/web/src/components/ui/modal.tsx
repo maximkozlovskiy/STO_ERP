@@ -67,7 +67,7 @@ export function Modal({
       <div
         className={cn(
           'relative z-10 w-full rounded-xl bg-white',
-          'shadow-(--shadow-xl) border border-(--color-border)',
+          'shadow-xl border border-border',
           'flex flex-col max-h-[90vh]',
           'animate-in fade-in zoom-in-95 duration-200',
           sizes[size],
@@ -76,7 +76,7 @@ export function Modal({
       >
         {/* Header */}
         {(title || !hideClose) && (
-          <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-(--color-border) shrink-0">
+          <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-border shrink-0">
             <div className="flex flex-col gap-1">
               {title && (
                 <h2 id="modal-title" className="text-[16px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
@@ -91,9 +91,9 @@ export function Modal({
               <button
                 onClick={onClose}
                 className={cn(
-                  'shrink-0 rounded-(--radius) p-1.5 -mr-1 -mt-0.5',
+                  'shrink-0 rounded p-1.5 -mr-1 -mt-0.5',
                   'text-muted-foreground',
-                  'hover:bg-(--color-secondary) hover:text-foreground',
+                  'hover:bg-secondary hover:text-foreground',
                   'transition-colors duration-150',
                 )}
                 aria-label="Закрити"
@@ -111,7 +111,7 @@ export function Modal({
 
         {/* Footer */}
         {footer && (
-          <div className="shrink-0 flex items-center justify-end gap-2 px-6 py-4 border-t border-(--color-border) bg-(--color-secondary) rounded-b-xl">
+          <div className="shrink-0 flex items-center justify-end gap-2 px-6 py-4 border-t border-border bg-secondary rounded-b-xl">
             {footer}
           </div>
         )}

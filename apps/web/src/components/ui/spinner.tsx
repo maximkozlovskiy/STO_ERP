@@ -18,7 +18,7 @@ function Spinner({ size = 'md', className, ...props }: SpinnerProps) {
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
-      className={cn('animate-spin text-(--color-primary)', sizes[size], className)}
+      className={cn('animate-spin text-primary', sizes[size], className)}
       aria-label="Завантаження"
       role="status"
       {...props}

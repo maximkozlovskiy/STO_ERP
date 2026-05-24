@@ -30,7 +30,7 @@ function EmptyState({
     <div className={cn('flex flex-col items-center justify-center gap-3 px-6 text-center', s.wrap, className)}>
       <div className={cn(
         'flex items-center justify-center rounded-full',
-        'bg-(--color-secondary) border border-(--color-border)',
+        'bg-secondary border border-border',
         s.icon,
       )}>
         <Icon className={cn(s.iconInner, 'text-muted-foreground')} />

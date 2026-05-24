@@ -16,6 +16,7 @@ export class ZonesService {
     const items = await this.prisma.zone.findMany({
       where: { orgId, deletedAt: null, ...(branchId ? { branchId } : {}) },
       orderBy: { name: 'asc' },
+      take: 100,
     });
     return items.map(item => this.toZoneDto(item));
   }
@@ -52,6 +53,7 @@ export class ZonesService {
     const items = await this.prisma.lift.findMany({
       where: { orgId, deletedAt: null, ...(zoneId ? { zoneId } : {}) },
       orderBy: { name: 'asc' },
+      take: 100,
     });
     return items.map(item => this.toLiftDto(item));
   }

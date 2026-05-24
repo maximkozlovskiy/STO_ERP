@@ -63,6 +63,7 @@ export class NotificationsService {
     return this.prisma.notificationTemplate.findMany({
       where: { orgId },
       orderBy: [{ eventType: 'asc' }, { channel: 'asc' }],
+      take: 100,
     });
   }
 

@@ -13,6 +13,7 @@ export class VehiclesService {
     const items = await this.prisma.vehicle.findMany({
       where: { orgId, deletedAt: null, ...(customerGarageId ? { customerGarageId } : {}) },
       orderBy: [{ make: 'asc' }, { model: 'asc' }],
+      take: 200,
     });
     return items.map(item => this.toDto(item));
   }
@@ -52,6 +53,7 @@ export class VehiclesService {
     const items = await this.prisma.vehicleNode.findMany({
       where: { vehicleId, orgId, deletedAt: null },
       orderBy: { category: 'asc' },
+      take: 200,
     });
     return items.map(item => this.toNodeDto(item));
   }

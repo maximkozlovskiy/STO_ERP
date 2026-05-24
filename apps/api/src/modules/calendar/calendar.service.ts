@@ -30,6 +30,7 @@ export class CalendarService {
       where,
       orderBy: { startAt: 'asc' },
       include: { workOrder: { select: { number: true } } },
+      take: 500,
     });
 
     return slots.map(item => this.toDto(item));

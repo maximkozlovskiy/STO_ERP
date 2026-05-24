@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 
 function Table({ className, children, ...props }: HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="w-full overflow-auto rounded-lg border border-(--color-border)">
+    <div className="w-full overflow-auto rounded-lg border border-border">
       <table className={cn('w-full text-[13px] text-foreground border-collapse', className)} {...props}>
         {children}
       </table>
@@ -13,7 +13,7 @@ function Table({ className, children, ...props }: HTMLAttributes<HTMLTableElemen
 
 function TableHeader({ className, children, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <thead className={cn('bg-[hsl(210_40%_98%)] border-b border-(--color-border)', className)} {...props}>
+    <thead className={cn('bg-[hsl(210_40%_98%)] border-b border-border', className)} {...props}>
       {children}
     </thead>
   );
@@ -21,7 +21,7 @@ function TableHeader({ className, children, ...props }: HTMLAttributes<HTMLTable
 
 function TableBody({ className, children, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <tbody className={cn('divide-y divide-(--color-border) bg-white', className)} {...props}>
+    <tbody className={cn('divide-y divide-border bg-white', className)} {...props}>
       {children}
     </tbody>
   );
@@ -32,7 +32,7 @@ function TableRow({ className, children, onClick, ...props }: HTMLAttributes<HTM
     <tr
       className={cn(
         'transition-colors duration-100',
-        onClick && 'cursor-pointer hover:bg-(--color-brand-50) active:bg-brand-100',
+        onClick && 'cursor-pointer hover:bg-brand-50 active:bg-brand-100',
         !onClick && 'hover:bg-[hsl(210_40%_99%)]',
         className,
       )}

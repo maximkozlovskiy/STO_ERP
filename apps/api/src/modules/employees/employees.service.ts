@@ -20,6 +20,7 @@ export class EmployeesService {
         employeeWorkCategories: true,
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      take: 200,
     });
     return items.map(item => this.toDto(item));
   }
