@@ -13,14 +13,32 @@ model: claude-opus-4-7
 
 ```
 1. git diff HEAD --name-only          → список змінених файлів
-2. Пройди по КОЖНІЙ секції нижче     → фіксуй знайдені проблеми
-3. Кожну проблему виправляй одразу   → Edit/Write → tsc --noEmit
-4. git commit -m "fix(review): ..."  → після всіх правок (БЕЗ запиту)
-5. Оновити MemoryManual.md           → Останній commit + Changelog (БЕЗ запиту)
+2. Класифікуй файли по шарах:
+     api/   → §1 TS, §2 Security, §4 Architecture, §5 Business Rules, §6 DB, §7 Backend Perf, §9 Sync, §10 Offline
+     web/   → §1 TS, §3 Memory, §7 Frontend Perf, §8 Web Frontend, §12 a11y, §13 i18n
+     prisma → §6 DB, §9 Sync
+     *.dto  → §2.3 Validation, §2.4 Data Leaks, §13 API Contract
+3. Для кожного зміненого файлу — пройди тільки релевантні секції ГЛИБОКО
+   Для незмінених файлів — тільки grep-команди для cross-cutting concerns
+4. Кожну проблему виправляй одразу   → Edit/Write → tsc --noEmit
+5. git commit -m "fix(review): ..."  → після всіх правок (БЕЗ запиту)
+6. Оновити MemoryManual.md           → Останній commit + Changelog (БЕЗ запиту)
 ```
 
 > Не питай дозволу на виправлення, коміт і оновлення MemoryManual.md — все виконується автоматично.
 > Якщо fix потребує міграції БД або зміни публічного API — зафіксуй як CRITICAL і повідом після завершення всіх інших правок.
+
+### Пріоритет перевірок по типу змін
+
+| Тип зміни | Перевіряти В ПЕРШУ ЧЕРГУ |
+|---|---|
+| Новий `@Controller` | §2.1 Auth guards, §2.2 Tenant isolation, §13 API Contract |
+| Новий `*.service.ts` | §5 Business Rules, §6 DB (N+1, take), §4 Architecture |
+| Нова Prisma модель | §6 DB (indexes, unique), §9 Sync (syncVersion, PULL_TABLES) |
+| Зміна `toResponseDto` | §13 API Contract (фронт-тип синхронізований?) |
+| Нова `page.tsx` | §8.2 UI стани, §8.3 Hydration, §8.4 Auth, §12 a11y |
+| Новий `*.dto.ts` | §2.3 Validation, §2.4 Data Leaks, §11 Configuration |
+| Зміна BullMQ | §2.5 Queue Safety, §10 Offline |
 
 ### Як оновлювати MemoryManual.md (крок 5)
 
@@ -189,6 +207,9 @@ grep -rn "password\|hash" apps/api/src/modules/ --include="*.dto.ts" | grep "Api
 ```bash
 # Queue .add() без attempts/backoff
 grep -rn "\.add(" apps/api/src/ --include="*.ts" | grep -v "attempts"
+
+# Прямі HTTP до зовнішніх API поза чергою
+grep -rn "axios\|node-fetch\|https\.request\|http\.request" apps/api/src/modules/ --include="*.ts" | grep -v "spec\|queue\|processor"
 ```
 
 - [ ] **Кожен** `.add()` має `attempts ≥ 10` і `backoff: { type: 'exponential' }`
@@ -196,6 +217,35 @@ grep -rn "\.add(" apps/api/src/ --include="*.ts" | grep -v "attempts"
 - [ ] SMS черга: `attempts: 10`, `backoff: { delay: 60_000 }`
 - [ ] Процесори черги мають `try/catch` — помилки логуються і прокидаються далі (щоб BullMQ retry спрацював)
 - [ ] Ніяких прямих HTTP-викликів до зовнішніх API поза чергою (SMS, ПРРО, постачальники)
+
+### 2.6 JWT & Token Security
+
+```bash
+# Hardcoded секрети або дефолтні значення
+grep -rn "secret.*:.*['\"].*['\"]" apps/api/src/ --include="*.ts" | grep -v "spec\|config"
+grep -rn "JWT_SECRET\|ACCESS_SECRET\|REFRESH_SECRET" apps/api/src/ --include="*.ts" | grep -v "ConfigService\|config()"
+
+# refresh token зберігається в httpOnly cookie?
+grep -rn "refreshToken\|refresh_token" apps/api/src/ --include="*.ts" | grep -v "spec"
+```
+
+- [ ] JWT секрети читаються тільки через `ConfigService` — не `process.env` напряму
+- [ ] Access token короткоживучий (≤ 15хв у prod) — перевір `expiresIn` у конфіг-файлі
+- [ ] Refresh token зберігається в httpOnly cookie або у SecureStore (mobile), НЕ у localStorage
+- [ ] При logout — refresh token інвалідується (видаляється з whitelist або blacklist)
+- [ ] `@Public()` не застосований до endpoint що повертає чутливі дані
+
+### 2.7 Rate Limiting & DoS
+
+```bash
+# Endpoint без throttle guard
+grep -rn "@Controller" apps/api/src/ -l | xargs grep -L "Throttle\|SkipThrottle" 2>/dev/null | head -10
+```
+
+- [ ] `ThrottlerModule` налаштований у `app.module.ts`
+- [ ] Auth endpoints (`/auth/login`, `/auth/refresh`) мають суворіший throttle (≤ 5 req/хв)
+- [ ] Публічні endpoints (`/setup/*`) мають throttle
+- [ ] `@SkipThrottle()` використовується тільки для внутрішніх health-check endpoints
 
 ---
 
@@ -310,6 +360,34 @@ create(@OrgContext() orgId: string, @Body() dto: CreateWorkOrderDto) {
 }
 ```
 
+### 4.1 Circular DI та Event Loop
+
+```bash
+# Сервіси що інжектують один одного (circular DI)
+grep -rn "constructor(" apps/api/src/modules/ --include="*.service.ts" -A 10 | grep "Service"
+# Якщо A інжектує B, а B інжектує A — circular DI → NestJS кине помилку або зависне
+
+# EventEmitter listeners в request handlers (не в onModuleInit)
+grep -rn "this\.events\.on\|this\.eventEmitter\.on" apps/api/src/modules/ --include="*.service.ts" | grep -v "onModuleInit\|constructor"
+```
+
+- [ ] Немає circular DI — якщо треба двонаправлена залежність, використовуй `forwardRef(() => ServiceB)`
+- [ ] `EventEmitter2.on()` викликається тільки в `onModuleInit()` або `constructor` — не в request handler
+- [ ] `@OnEvent('...')` декоратор замість ручного `.on()` — NestJS прибирає listener автоматично
+- [ ] Сервіси не зберігають стан між запитами (`private data: X[]` що накопичується) — для стану між запитами Redis/DB
+
+### 4.2 Error Handling
+
+```bash
+# Необроблені Promise rejections у fire-and-forget
+grep -rn "\.emit(\|this\.events\.emit(" apps/api/src/modules/ --include="*.service.ts" | grep -v "await\|\.catch("
+```
+
+- [ ] `this.events.emit(...)` — якщо listener async, виняток не прокидається до caller. Критична логіка не йде через EventEmitter
+- [ ] Fire-and-forget задачі (`.add()` до черги) мають `.catch(this.logger.error)` якщо черга недоступна
+- [ ] `try/catch` у BullMQ processors — прокидає помилку далі (`throw err`), щоб BullMQ зробив retry
+- [ ] `HttpException` фільтр зареєстрований глобально — некеровані помилки не повертають stack trace клієнту
+
 ---
 
 ## 5. Business Rules
@@ -360,6 +438,40 @@ grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" | grep -v "spec\|p
 - [ ] Indexes для FK і частих фільтрів (`orgId`, `status`, `deletedAt`)
 - [ ] `@unique` де бізнес вимагає (StockItem: `orgId + goodId + warehouseId`)
 - [ ] Ніяких `prisma.X.delete()` на бізнес-сутностях
+
+### 6.1 select vs include — зайвий SELECT *
+
+```bash
+# include без select — тягне всі поля зв'язаної моделі
+grep -rn "include:" apps/api/src/modules/ --include="*.ts" | grep -v "select:\|spec\|take:" | head -20
+# Для кожного — перевір чи вся модель потрібна або можна додати select: { id, name, ... }
+```
+
+- [ ] `include: { vehicle: true }` → `include: { vehicle: { select: { make, model, licensePlate } } }` — не тягнути зайві поля
+- [ ] Список endpoints (`findAll`) — мінімальний `select`, деталі тільки у `findOne`
+- [ ] `include` вкладеного рівня (A → B → C) — завжди з `select` на кожному рівні
+
+```typescript
+// ❌ BAD — тягне всі поля Vehicle + всі поля CustomerGarage + Counterparty
+include: { vehicle: { include: { customerGarage: true } } }
+
+// ✅ GOOD
+include: {
+  vehicle: { select: { make: true, model: true, licensePlate: true, year: true } },
+}
+```
+
+### 6.2 Нові FK поля — перевірка індексів
+
+```bash
+# FK поля без @@index в schema
+grep -rn "@db.Uuid" packages/database/prisma/schema.prisma | grep -v "id\s" | grep -v "@@index\|@@unique"
+# Після grep — відкрий schema і перевір @@index для кожного нового FK поля
+```
+
+- [ ] Кожне нове FK поле (`xyzId String @db.Uuid`) має `@@index([orgId, xyzId])` або включене в існуючий індекс
+- [ ] `@@index([orgId, syncVersion])` присутній для кожної sync-ready таблиці (для delta-sync queries)
+- [ ] `@@index([orgId, deletedAt])` присутній для кожної таблиці з soft delete
 
 ```typescript
 // ❌ BAD — N+1
@@ -528,7 +640,48 @@ grep -rn "model " packages/database/prisma/schema.prisma | grep -v "//"
 
 ---
 
-## 11. Tests
+## 11. Configuration over Hardcode
+
+> **Правило:** якщо значення може змінитись між клієнтами або з часом — воно в БД, не в коді.
+
+```bash
+# Magic numbers у сервісах (крім технічних констант)
+grep -rn "= [0-9]\{2,\}" apps/api/src/modules/ --include="*.ts" | grep -v "spec\|take:\|skip:\|1000\|200\|100\|60_000\|300_000"
+# Перевір кожне знайдене число: чи це бізнес-параметр що має бути в БД?
+
+# Hardcoded рядки повідомлень (мають бути в NotificationTemplate)
+grep -rn "\"Шановний\|\"Ваш наряд\|\"Рахунок №\|'Дякуємо" apps/api/src/ --include="*.ts" | grep -v "spec"
+
+# Hardcoded терміни та ліміти
+grep -rn "invoiceDue\|autoArchive\|warranty\|slotDuration\|maxDiscount" apps/api/src/ --include="*.ts" | grep -v "SettingsService\|settings\.get\|spec"
+```
+
+- [ ] `invoiceDueDays`, `autoArchiveDays`, `warrantyDays` — читаються з `SettingsService.get(orgId)`, не захардкоджені
+- [ ] `slotDurationMinutes`, `maxConcurrentSlots` — з `BranchSettings`, не const у коді
+- [ ] Шаблони SMS/Viber/Email — тільки з `NotificationTemplate` моделі, не рядкові літерали
+- [ ] Способи оплати — з `PaymentMethodConfig`, не enum у коді
+- [ ] Ставки ПДВ — з `TaxRate` моделі, не захардкоджений `0.2`
+- [ ] ПРРО та SMS credentials — з `BranchSettings` (per branch), не тільки `.env`
+
+```typescript
+// ❌ BAD — hardcoded бізнес-параметр
+const dueDate = addDays(new Date(), 14); // звідки 14 днів?
+
+// ✅ GOOD
+const { invoiceDueDays } = await this.settings.get(orgId);
+const dueDate = addDays(new Date(), invoiceDueDays);
+
+// ❌ BAD — hardcoded шаблон повідомлення
+const text = `Шановний ${name}, ваш наряд №${number} готовий до видачі`;
+
+// ✅ GOOD
+const tpl = await this.notifications.getTemplate(orgId, 'WO_COMPLETED');
+const text = tpl.render({ name, number });
+```
+
+---
+
+## 12. Tests
 
 ```bash
 # Сервіси без spec файлів
@@ -543,6 +696,105 @@ done
 - [ ] Моки типізовані (не `as any`)
 - [ ] Тести не залежать від порядку виконання
 - [ ] `pnpm --filter @sto/api test --run` — всі проходять
+
+---
+
+## 13. API Contract (Frontend ↔ Backend)
+
+> **Ціль:** виявити розрив між `toResponseDto()` у сервісі та `interface` у `page.tsx` до того як це побачить користувач.
+
+```bash
+# Всі interface у page.tsx файлах (фронтенд-типи)
+grep -rn "^interface \|^type [A-Z]" apps/web/src/app/ --include="*.tsx" | grep -v "Props\b"
+
+# Всі toResponseDto / toDto у сервісах
+grep -rn "toResponseDto\|toDto\|toDetailDto" apps/api/src/modules/ --include="*.ts" | grep -v "spec"
+```
+
+**Алгоритм перевірки:**
+1. Для кожного `interface WorkOrder { ... }` у `page.tsx` — знайди відповідний `toResponseDto()` у сервісі
+2. Порівняй **обов'язкові** поля фронтенд-типу з тим що реально повертається
+3. Якщо поле обов'язкове у фронті але відсутнє або `undefined` в DTO — це **Critical**
+
+- [ ] Кожне обов'язкове поле фронтенд-`interface` повертається у відповідному `toResponseDto()`
+- [ ] Якщо API свідомо пропускає поле (security/роль) — у фронтенд-типі воно `field?: Type`, не обов'язкове
+- [ ] Optional поля захищені guard-ом: `data?.field` або `{data.field && ...}`
+- [ ] Числові поля з Prisma `Decimal` → `Number(x)` у `toResponseDto()` — не повертається як об'єкт
+- [ ] `createdAt`, `updatedAt` → передаються як `string` (JSON серіалізація) — фронтенд-тип має `string`, не `Date`
+
+```typescript
+// ❌ BAD — фронт очікує number, API повертає Decimal об'єкт
+interface WorkOrder { totalAmount: number }
+// toResponseDto: { totalAmount: wo.totalAmount }  ← Decimal об'єкт → фронт отримає "{}"
+
+// ✅ GOOD
+// toResponseDto: { totalAmount: Number(wo.totalAmount) }
+
+// ❌ BAD — createdAt: Date у фронтенд-типі (JSON дає string)
+interface WorkOrder { createdAt: Date }
+
+// ✅ GOOD
+interface WorkOrder { createdAt: string }
+```
+
+---
+
+## 14. Accessibility (a11y)
+
+> Стосується тільки змінених `*.tsx` файлів. Не перевіряй весь проект кожен раз.
+
+```bash
+# Кнопки-іконки без aria-label
+grep -rn "<button" apps/web/src/ --include="*.tsx" -A 2 | grep -B 1 "Icon\|icon\|svg" | grep "<button" | grep -v "aria-label"
+
+# img без alt
+grep -rn "<img " apps/web/src/ --include="*.tsx" | grep -v "alt="
+
+# onClick на не-інтерактивних елементах (без role)
+grep -rn "onClick" apps/web/src/ --include="*.tsx" | grep -E "<div |<span |<td " | grep -v "role=" | head -10
+```
+
+- [ ] `<button>` без видимого тексту має `aria-label` або `title`
+- [ ] `<img>` завжди має `alt=""` (декоративне) або `alt="опис"` (змістовне)
+- [ ] `onClick` на `<div>`/`<span>` → замінити на `<button>` або додати `role="button"` + `tabIndex={0}` + `onKeyDown`
+- [ ] Форми: кожен `<input>`/`<select>`/`<textarea>` має `<label>` або `aria-label`
+- [ ] Модальні вікна: `role="dialog"` + `aria-modal="true"` + `aria-labelledby` (вже у `Modal` компоненті — перевір що використовується `title` проп)
+- [ ] Статус-Badge не покладається лише на колір — є текстова мітка або `aria-label`
+
+```typescript
+// ❌ BAD — іконка-кнопка без доступного імені
+<button onClick={handleClose}>
+  <XIcon className="w-4 h-4" />
+</button>
+
+// ✅ GOOD
+<button onClick={handleClose} aria-label="Закрити">
+  <XIcon className="w-4 h-4" aria-hidden="true" />
+</button>
+```
+
+---
+
+## 15. i18n & Ukrainian UI Consistency
+
+```bash
+# Англійські рядки-кнопки та заголовки (не className/href/src)
+grep -rn ">[A-Z][a-z][a-z ]" apps/web/src/app/ --include="*.tsx" | grep -v "className=\|href=\|src=\|data-\|aria-\|//\|import\|export\|\.ts\b" | grep -v "[А-ЯҐЄІЇа-яґєії]" | head -20
+
+# Англійські повідомлення про помилки в API
+grep -rn "throw new.*Exception" apps/api/src/modules/ --include="*.ts" | grep -v "spec" | grep -E "['\"][A-Z][a-z ]{3,}" | grep -v "[А-ЯҐЄІЇа-яґєії]" | head -10
+
+# Дати виведені через toISOString або toString (не форматовані)
+grep -rn "\.toISOString()\b\|\.toString()" apps/web/src/app/ --include="*.tsx" | grep -v "useEffect\|spec\|JSON\|url\|id"
+```
+
+- [ ] Всі видимі рядки у JSX — кирилицею (uk-UA)
+- [ ] Повідомлення про помилки API — українською (`throw new NotFoundException('Запис не знайдено')`)
+- [ ] Дати у форматі `DD.MM.YYYY`, час `HH:mm` (24-год) — не ISO строки напряму в UI
+- [ ] Валюта: `1 250,00 ₴` (пробіл-роздільник тисяч, кома-десяткова)
+- [ ] Порожні стани (`<EmptyState>`) мають текст українською
+- [ ] Placeholder у полях — українська: `placeholder="Введіть назву..."`
+- [ ] Validation messages у Zod/class-validator — українські
 
 ---
 
@@ -584,10 +836,33 @@ done
 > "Цей баг був охоплений існуючим пунктом чекліста?"
 
 Якщо **НІ** — одразу оновити цей файл (`SKILL.md`):
-1. Додати новий checklist item у відповідну секцію (§1–§11)
+1. Додати новий checklist item у відповідну секцію (§1–§15)
 2. Якщо баг виявляється grep'ом — додати bash команду до секції
 3. Якщо це повторюваний anti-pattern — додати приклад `❌ BAD` / `✅ GOOD`
 4. Якщо специфічний для STO ERP (FSM, інвентар, sync) — у §5 Business Rules
-5. Commit: `docs(skills): add <назва патерну> check to sto-review`
+5. Якщо новий тип файлу → оновити таблицю "Пріоритет перевірок по типу змін"
+6. Commit: `docs(skills): add <назва патерну> check to sto-review`
 
 **Мета:** скіл має відображати реальні баги що траплялись у цьому проекті — не гіпотетичні.
+
+---
+
+## Карта секцій (quick reference)
+
+| # | Секція | Стосується |
+|---|---|---|
+| 1 | TypeScript / TS errors | api/, web/, packages/ |
+| 2 | Security | api/ — guards, tenant, injection, secrets, queues, JWT, throttle |
+| 3 | Memory Leaks | web/ — hooks, state; api/ — DB connections |
+| 4 | Architecture | api/ — DI, events, error handling |
+| 5 | Business Rules | api/ — FSM, inventory, settlements |
+| 6 | Database | prisma, api/ — N+1, take, indexes, select vs include |
+| 7 | Performance | api/ — parallel queries; web/ — hydration, useMemo |
+| 8 | Web Frontend | web/ — API calls, UI states, SSR, auth routing |
+| 9 | Sync Readiness | prisma, api/sync/ |
+| 10 | Offline-First | api/ — BullMQ, зовнішні API |
+| 11 | Configuration | api/ — magic numbers, hardcoded templates |
+| 12 | Tests | api/*.spec.ts coverage |
+| 13 | API Contract | web/page.tsx ↔ api/toResponseDto() |
+| 14 | Accessibility | web/*.tsx — aria, keyboard nav |
+| 15 | i18n / Ukrainian | web/*.tsx + api errors — кирилиця, формати |
