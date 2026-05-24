@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import type { SyncRecord } from '@sto/shared';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 
 interface SyncStatus {
   pendingJobs: number;
@@ -81,22 +84,24 @@ export default function SyncPage() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Завантаження...</div>
+        <div className="flex justify-center py-12">
+          <Spinner size="lg" />
+        </div>
       ) : !status ? (
         <div className="text-center py-12 text-gray-400">Не вдалося завантажити статус синхронізації.</div>
       ) : (
         <>
           {/* Status cards */}
           <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className={`bg-white rounded-xl border p-4 ${status.failedJobs > 0 ? 'border-red-200' : 'border-gray-200'}`}>
+            <div className={cn('bg-white rounded-xl border p-4', status.failedJobs > 0 ? 'border-red-200' : 'border-gray-200')}>
               <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Помилки</div>
-              <div className={`text-2xl font-bold ${status.failedJobs > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+              <div className={cn('text-2xl font-bold', status.failedJobs > 0 ? 'text-red-600' : 'text-gray-500')}>
                 {status.failedJobs}
               </div>
             </div>
-            <div className={`bg-white rounded-xl border p-4 ${status.pendingJobs > 0 ? 'border-amber-200' : 'border-gray-200'}`}>
+            <div className={cn('bg-white rounded-xl border p-4', status.pendingJobs > 0 ? 'border-amber-200' : 'border-gray-200')}>
               <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Очікують</div>
-              <div className={`text-2xl font-bold ${status.pendingJobs > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
+              <div className={cn('text-2xl font-bold', status.pendingJobs > 0 ? 'text-amber-600' : 'text-gray-500')}>
                 {status.pendingJobs}
               </div>
             </div>
@@ -112,7 +117,10 @@ export default function SyncPage() {
               <span className="font-medium text-gray-900 font-mono">{status.maxSyncVersion}</span>
             </div>
             <div className="flex items-center gap-2 pt-1">
-              <div className={`w-2 h-2 rounded-full ${status.failedJobs > 0 ? 'bg-red-500' : status.pendingJobs > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
+              <div className={cn(
+                'w-2 h-2 rounded-full',
+                status.failedJobs > 0 ? 'bg-red-500' : status.pendingJobs > 0 ? 'bg-amber-500' : 'bg-green-500',
+              )} />
               <span className="text-sm text-gray-600">
                 {status.failedJobs > 0
                   ? 'Є помилки синхронізації — перевірте журнал'
@@ -123,13 +131,9 @@ export default function SyncPage() {
             </div>
           </div>
 
-          <button
-            onClick={triggerSync}
-            disabled={syncing}
-            className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors"
-          >
-            {syncing ? 'Синхронізація...' : '↻ Синхронізувати зараз'}
-          </button>
+          <Button onClick={triggerSync} loading={syncing} className="w-full">
+            ↻ Синхронізувати зараз
+          </Button>
 
           <p className="mt-3 text-xs text-gray-400 text-center">
             Автоматична синхронізація відбувається при наявності інтернет-з'єднання

@@ -87,6 +87,8 @@ export class SettingsService {
       where: { branchId },
     });
 
+    if (settings && settings.orgId !== orgId) throw new NotFoundException('Філію не знайдено');
+
     if (!settings) {
       settings = await this.prisma.branchSettings.upsert({
         where: { branchId },

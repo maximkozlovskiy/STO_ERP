@@ -16,11 +16,13 @@ export class NotificationsService {
   ) {}
 
   async send(orgId: string, event: NotificationEvent, payload: Record<string, unknown>): Promise<void> {
-    // Load branch settings for SMS config
+    // Load branch settings for SMS config — branchId is required; skip without it
     const branchId = typeof payload.branchId === 'string' ? payload.branchId : undefined;
-    const branchSettings = branchId
-      ? await this.prisma.branchSettings.findFirst({ where: { branchId, orgId } })
-      : await this.prisma.branchSettings.findFirst({ where: { orgId } });
+    if (!branchId) {
+      this.logger.debug(`branchId не вказано для org=${orgId}, event=${event} — SMS пропущено`);
+      return;
+    }
+    const branchSettings = await this.prisma.branchSettings.findFirst({ where: { branchId, orgId } });
 
     if (!branchSettings?.smsEnabled || !branchSettings?.smsApiKey) {
       this.logger.debug(`SMS не налаштовано для org=${orgId}, event=${event}`);

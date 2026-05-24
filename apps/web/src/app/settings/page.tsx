@@ -4,6 +4,10 @@ import { useEffect, useState } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { THEMES, type ThemeName, applyTheme } from '@/lib/theme';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 interface OrgSettings {
   orgId: string;
@@ -139,11 +143,12 @@ export default function SettingsPage() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={cn(
+              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
               tab === t
                 ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
+                : 'border-transparent text-gray-500 hover:text-gray-700',
+            )}
           >
             {t === 'org' ? 'Організація' : t === 'payments' ? 'Методи оплати' : t === 'sms' ? 'SMS-сповіщення' : 'Оформлення'}
           </button>
@@ -166,15 +171,15 @@ export default function SettingsPage() {
         <div className="bg-white rounded-xl border p-6 space-y-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Режим ПДВ</label>
-            <select
+            <Select
               value={orgSettings.vatMode}
               onChange={(e) => setOrgSettings({ ...orgSettings, vatMode: e.target.value })}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-auto"
             >
               {Object.entries(VAT_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <NumberField
@@ -212,13 +217,9 @@ export default function SettingsPage() {
             />
           </div>
 
-          <button
-            onClick={saveOrgSettings}
-            disabled={saving}
-            className="w-full py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
-          >
-            {saving ? 'Збереження...' : 'Зберегти'}
-          </button>
+          <Button onClick={saveOrgSettings} loading={saving} className="w-full">
+            Зберегти
+          </Button>
         </div>
       )}
 
@@ -246,14 +247,12 @@ export default function SettingsPage() {
                     className="w-full px-3 py-2 border rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <div className="flex gap-2">
-                    <button onClick={saveTemplate} disabled={saving}
-                      className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                      {saving ? 'Збереження...' : 'Зберегти'}
-                    </button>
-                    <button onClick={() => setEditingTemplate(null)}
-                      className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200">
+                    <Button size="sm" onClick={saveTemplate} loading={saving}>
+                      Зберегти
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setEditingTemplate(null)}>
                       Скасувати
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : (
@@ -262,16 +261,18 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-sm font-medium text-gray-900">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
                       <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">{t.channel}</span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${t.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                      <span className={cn(
+                        'text-xs px-1.5 py-0.5 rounded',
+                        t.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400',
+                      )}>
                         {t.isActive ? 'Активний' : 'Вимкнено'}
                       </span>
                     </div>
                     <p className="text-xs text-gray-500 font-mono bg-gray-50 rounded p-2">{t.body}</p>
                   </div>
-                  <button onClick={() => setEditingTemplate(t)}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap">
+                  <Button variant="ghost" size="sm" onClick={() => setEditingTemplate(t)}>
                     Редагувати
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -286,18 +287,18 @@ export default function SettingsPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
             {(Object.entries(THEMES) as [ThemeName, typeof THEMES[ThemeName]][]).map(([key, theme]) => (
               <button key={key} onClick={() => { setOrgSettings({ ...orgSettings, brandTheme: key }); applyTheme(key); }}
-                className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
-                  orgSettings.brandTheme === key ? 'border-gray-900 shadow-sm' : 'border-gray-200 hover:border-gray-300'
-                }`}>
+                className={cn(
+                  'flex items-center gap-3 p-3 rounded-xl border-2 transition-all',
+                  orgSettings.brandTheme === key ? 'border-gray-900 shadow-sm' : 'border-gray-200 hover:border-gray-300',
+                )}>
                 <span className="w-8 h-8 rounded-full shrink-0" style={{ background: theme.primary }} />
                 <span className="text-sm font-medium text-gray-700">{theme.label}</span>
               </button>
             ))}
           </div>
-          <button onClick={saveOrgSettings} disabled={saving}
-            className="w-full py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-            {saving ? 'Збереження...' : 'Зберегти тему'}
-          </button>
+          <Button onClick={saveOrgSettings} loading={saving} className="w-full">
+            Зберегти тему
+          </Button>
         </div>
       )}
 
@@ -318,14 +319,16 @@ export default function SettingsPage() {
               </div>
               <button
                 onClick={() => togglePayment(pm)}
-                className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${
-                  pm.isActive ? 'bg-blue-600' : 'bg-gray-300'
-                }`}
+                className={cn(
+                  'relative inline-flex h-5 w-9 rounded-full transition-colors',
+                  pm.isActive ? 'bg-blue-600' : 'bg-gray-300',
+                )}
               >
                 <span
-                  className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform mt-0.5 ${
-                    pm.isActive ? 'translate-x-4' : 'translate-x-0.5'
-                  }`}
+                  className={cn(
+                    'inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform mt-0.5',
+                    pm.isActive ? 'translate-x-4' : 'translate-x-0.5',
+                  )}
                 />
               </button>
             </div>
@@ -352,13 +355,13 @@ function NumberField({
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <input
+      <Input
         type="number"
         value={value}
         min={min}
         max={max}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+        className="w-32"
       />
     </div>
   );
@@ -378,14 +381,16 @@ function Toggle({
       <span className="text-sm text-gray-700">{label}</span>
       <button
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${
-          checked ? 'bg-blue-600' : 'bg-gray-300'
-        }`}
+        className={cn(
+          'relative inline-flex h-5 w-9 rounded-full transition-colors',
+          checked ? 'bg-blue-600' : 'bg-gray-300',
+        )}
       >
         <span
-          className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform mt-0.5 ${
-            checked ? 'translate-x-4' : 'translate-x-0.5'
-          }`}
+          className={cn(
+            'inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform mt-0.5',
+            checked ? 'translate-x-4' : 'translate-x-0.5',
+          )}
         />
       </button>
     </div>

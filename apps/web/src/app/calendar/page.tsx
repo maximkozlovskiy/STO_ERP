@@ -1,8 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { Plus, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 
 interface CalendarSlot {
   id: string;
@@ -104,23 +109,38 @@ export default function CalendarPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Календар</h1>
-        <button onClick={() => setShowAdd(v => !v)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-          + Слот
-        </button>
+        <Button onClick={() => setShowAdd(v => !v)}>
+          <Plus className="h-4 w-4" />
+          Слот
+        </Button>
       </div>
 
-      {error && !showAdd && <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+      {error && !showAdd && (
+        <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</div>
+      )}
 
       {/* Date nav */}
       <div className="flex items-center gap-4 mb-6">
-        <button onClick={prevDay} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">← Попередній</button>
+        <Button variant="outline" size="sm" onClick={prevDay}>
+          <ChevronLeft className="h-4 w-4" />
+          Попередній
+        </Button>
         <div className="flex items-center gap-2">
-          <input type="date" value={date} onChange={e => setDate(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <Input
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="w-auto"
+          />
           <span className="text-sm text-gray-500 capitalize">{formatDate(date)}</span>
         </div>
-        <button onClick={nextDay} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Наступний →</button>
-        <button onClick={() => setDate(toDateString(new Date()))} className="px-3 py-1.5 text-sm text-blue-600 hover:underline">Сьогодні</button>
+        <Button variant="outline" size="sm" onClick={nextDay}>
+          Наступний
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setDate(toDateString(new Date()))}>
+          Сьогодні
+        </Button>
       </div>
 
       {/* Add slot form */}
@@ -131,48 +151,65 @@ export default function CalendarPage() {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Підйомник</label>
-              <select value={form.liftId} onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+              <Select
+                value={form.liftId}
+                onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+              >
                 <option value="">— будь-який —</option>
                 {lifts.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Початок</label>
-              <input type="time" value={form.startAt} onChange={e => setForm(f => ({ ...f, startAt: e.target.value }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+              <Input
+                type="time"
+                value={form.startAt}
+                onChange={e => setForm(f => ({ ...f, startAt: e.target.value }))}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Кінець</label>
-              <input type="time" value={form.endAt} onChange={e => setForm(f => ({ ...f, endAt: e.target.value }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+              <Input
+                type="time"
+                value={form.endAt}
+                onChange={e => setForm(f => ({ ...f, endAt: e.target.value }))}
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Номер наряду (ID)</label>
-              <input value={form.workOrderId} onChange={e => setForm(f => ({ ...f, workOrderId: e.target.value }))}
+              <Input
+                value={form.workOrderId}
+                onChange={e => setForm(f => ({ ...f, workOrderId: e.target.value }))}
                 placeholder="UUID наряду (необов'язково)"
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Нотатки</label>
-              <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+              <Input
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              />
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={addSlot} disabled={saving || !form.startAt || !form.endAt}
-              className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-60">
-              {saving ? '...' : 'Зберегти'}
-            </button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 text-gray-500 text-sm">Скасувати</button>
+            <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt}>
+              Зберегти
+            </Button>
+            <Button variant="outline" onClick={() => setShowAdd(false)}>
+              Скасувати
+            </Button>
           </div>
         </div>
       )}
 
       {/* Timeline grid */}
-      {loading && <p className="text-sm text-gray-400 text-center py-8">Завантаження...</p>}
+      {loading && (
+        <div className="flex justify-center py-8">
+          <Spinner size="md" />
+        </div>
+      )}
       {!loading && lifts.length === 0 && (
         <div className="bg-white border rounded-xl p-8 text-center text-sm text-gray-400">
           Немає підйомників. Додайте їх у розділі <a href="/infrastructure" className="text-blue-600 hover:underline">Інфраструктура</a>.
@@ -218,7 +255,9 @@ export default function CalendarPage() {
                       >
                         <span className="truncate">{fmtTime(s.startAt)}–{fmtTime(s.endAt)}{s.workOrderNumber ? ` · ${s.workOrderNumber}` : ''}</span>
                         <button onClick={() => removeSlot(s.id)}
-                          className="ml-auto opacity-0 group-hover:opacity-100 text-white/80 hover:text-white px-0.5">×</button>
+                          className="ml-auto opacity-0 group-hover:opacity-100 text-white/80 hover:text-white px-0.5">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
                       </div>
                     );
                   })}
@@ -241,7 +280,9 @@ export default function CalendarPage() {
                   {s.workOrderNumber && <span className="ml-2 text-xs text-blue-600">Наряд {s.workOrderNumber}</span>}
                   {s.notes && <span className="ml-2 text-xs text-gray-400">{s.notes}</span>}
                 </div>
-                <button onClick={() => removeSlot(s.id)} className="text-xs text-red-400 hover:text-red-600 px-2">×</button>
+                <Button variant="ghost" size="sm" onClick={() => removeSlot(s.id)}>
+                  <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                </Button>
               </div>
             ))}
           </div>
