@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsEnum, IsInt, IsOptional, IsString, Min, Max } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CounterpartyType } from '@prisma/client';
 
@@ -65,7 +65,7 @@ export class PaginatedCounterpartiesDto {
 // ─── CustomerGarage ──────────────────────────────────────
 
 export class CreateGarageDto {
-  @ApiProperty() @IsString() name!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() name!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() address?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }

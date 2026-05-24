@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { UserRole } from '@prisma/client';
 import { z } from 'zod';
@@ -23,11 +23,11 @@ export type RateScheme = z.infer<typeof rateSchemeSchema>;
 
 export class CreateEmployeeDto {
   @ApiProperty({ example: 'Іван' })
-  @IsString()
+  @IsString() @IsNotEmpty()
   firstName!: string;
 
   @ApiProperty({ example: 'Коваль' })
-  @IsString()
+  @IsString() @IsNotEmpty()
   lastName!: string;
 
   @ApiProperty({ enum: UserRole })

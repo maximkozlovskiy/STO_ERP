@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Min,
@@ -9,11 +10,11 @@ import {
 
 export class CreatePaymentMethodDto {
   @ApiProperty({ example: 'cash' })
-  @IsString()
+  @IsString() @IsNotEmpty()
   code!: string;
 
   @ApiProperty({ example: 'Готівка' })
-  @IsString()
+  @IsString() @IsNotEmpty()
   name!: string;
 
   @ApiPropertyOptional()
