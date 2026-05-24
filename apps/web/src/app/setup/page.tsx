@@ -109,22 +109,22 @@ export default function SetupPage() {
 
   if (step === 'checking') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-surface">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (step === 'done') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white rounded-2xl shadow p-10 max-w-md w-full text-center space-y-4">
+      <div className="min-h-screen flex items-center justify-center bg-surface">
+        <div className="bg-surface rounded-2xl shadow border border-border p-10 max-w-md w-full text-center space-y-4">
           <div className="text-5xl">✓</div>
-          <h1 className="text-2xl font-bold text-gray-900">Систему налаштовано!</h1>
-          <p className="text-gray-500">Ласкаво просимо до STO ERP</p>
+          <h1 className="text-2xl font-bold text-foreground">Систему налаштовано!</h1>
+          <p className="text-muted-foreground">Ласкаво просимо до STO ERP</p>
           <button
             onClick={() => router.replace('/dashboard')}
-            className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+            className="w-full py-2 px-4 bg-primary text-white rounded-lg font-medium hover:opacity-90"
           >
             Перейти до системи
           </button>
@@ -140,22 +140,22 @@ export default function SetupPage() {
     (step === 'branch' && (!data.branchName.trim() || !data.branchAddress.trim()));
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg w-full max-w-lg">
+    <div className="min-h-screen bg-surface flex items-center justify-center p-4">
+      <div className="bg-surface rounded-2xl shadow-lg border border-border w-full max-w-lg">
         {/* Header */}
-        <div className="p-6 border-b">
-          <h1 className="text-xl font-bold text-gray-900">Перший запуск STO ERP</h1>
+        <div className="p-6 border-b border-border">
+          <h1 className="text-xl font-bold text-foreground">Перший запуск STO ERP</h1>
           <div className="mt-3 flex gap-1">
             {STEPS.filter((s) => s !== 'done' && s !== 'checking').map((s, i) => (
               <div
                 key={s}
                 className={`h-1 flex-1 rounded-full ${
-                  i <= stepIndex ? 'bg-blue-600' : 'bg-gray-200'
+                  i <= stepIndex ? 'bg-primary' : 'bg-border'
                 }`}
               />
             ))}
           </div>
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm text-muted-foreground">
             Крок {stepIndex + 1} з {totalSteps}: {STEP_TITLES[step]}
           </p>
         </div>
@@ -163,7 +163,7 @@ export default function SetupPage() {
         {/* Body */}
         <div className="p-6 space-y-4">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">
+            <div className="bg-destructive-subtle border border-[hsl(0_84%_80%)] text-[hsl(0_84%_42%)] rounded-lg p-3 text-sm">
               {error}
             </div>
           )}
@@ -172,8 +172,8 @@ export default function SetupPage() {
             <>
               <Field label="Назва організації *" value={data.orgName} onChange={(v) => update('orgName', v)} placeholder="СТО Авто-Майстер" />
               <Field label="ЄДРПОУ" value={data.edrpou} onChange={(v) => update('edrpou', v)} placeholder="12345678" />
-              <div className="border-t pt-4 mt-2">
-                <p className="text-sm font-medium text-gray-700 mb-3">Обліковий запис власника</p>
+              <div className="border-t border-border pt-4 mt-2">
+                <p className="text-sm font-medium text-foreground mb-3">Обліковий запис власника</p>
                 <Field label="Email *" value={data.ownerEmail} onChange={(v) => update('ownerEmail', v)} placeholder="owner@sto.local" type="email" />
                 <Field label="Пароль *" value={data.ownerPassword} onChange={(v) => update('ownerPassword', v)} placeholder="мін. 6 символів" type="password" />
                 <div className="grid grid-cols-2 gap-3">
@@ -194,15 +194,15 @@ export default function SetupPage() {
           {step === 'warehouse' && (
             <>
               <Field label="Назва складу" value={data.warehouseName} onChange={(v) => update('warehouseName', v)} placeholder="Основний склад" />
-              <p className="text-sm text-gray-500">Основний склад запчастин вашого СТО.</p>
+              <p className="text-sm text-muted-foreground">Основний склад запчастин вашого СТО.</p>
             </>
           )}
 
           {step === 'fiscal' && (
             <div className="text-center py-4 space-y-3">
               <div className="text-4xl">🧾</div>
-              <h2 className="font-semibold text-gray-900">ПРРО (Checkbox)</h2>
-              <p className="text-sm text-gray-500">
+              <h2 className="font-semibold text-foreground">ПРРО (Checkbox)</h2>
+              <p className="text-sm text-muted-foreground">
                 Фіскальні налаштування можна додати пізніше в розділі{' '}
                 <strong>Налаштування → Філія</strong>.
               </p>
@@ -212,8 +212,8 @@ export default function SetupPage() {
           {step === 'sms' && (
             <div className="text-center py-4 space-y-3">
               <div className="text-4xl">💬</div>
-              <h2 className="font-semibold text-gray-900">SMS-сповіщення</h2>
-              <p className="text-sm text-gray-500">
+              <h2 className="font-semibold text-foreground">SMS-сповіщення</h2>
+              <p className="text-sm text-muted-foreground">
                 SMS через TurboSMS налаштовуються пізніше в розділі{' '}
                 <strong>Налаштування → Філія</strong>.
               </p>
@@ -222,11 +222,11 @@ export default function SetupPage() {
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t flex justify-between">
+        <div className="p-6 border-t border-border flex justify-between">
           <button
             disabled={stepIndex === 0}
             onClick={() => setStep(STEPS[stepIndex - 1])}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-40"
+            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground disabled:opacity-40"
           >
             ← Назад
           </button>
@@ -235,7 +235,7 @@ export default function SetupPage() {
             <button
               onClick={submit}
               disabled={loading}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
+              className="px-6 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-60"
             >
               {loading ? 'Зачекайте...' : 'Завершити налаштування'}
             </button>
@@ -243,7 +243,7 @@ export default function SetupPage() {
             <button
               onClick={next}
               disabled={isNextDisabled}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
+              className="px-6 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-60"
             >
               Далі →
             </button>
@@ -269,13 +269,13 @@ function Field({
 }) {
   return (
     <div className="mb-3">
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-foreground mb-1">{label}</label>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
       />
     </div>
   );
