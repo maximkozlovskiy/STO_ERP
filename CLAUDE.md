@@ -1,6 +1,6 @@
 # STO ERP — Claude Code Instructions
 
-## Проєкт
+## Проект
 STO ERP — гібридна ERP-система для автосервісів України.
 **Головна вимога: повна офлайн-незалежність.** Система працює без інтернету.
 Розгортання через Windows installer (.exe) на локальний ПК/сервер СТО.
@@ -8,7 +8,7 @@ STO ERP — гібридна ERP-система для автосервісів 
 ## Середовище розробки
 - **ОС:** Windows 10/11 + WSL2
 - **IDE:** VSCode + Git Bash terminal
-- **Мова інтерфейсу:** Українська (кирилиця)
+- **Мова інтерфейсу:** У��раїнська (кирилиця)
 - **Пакетний менеджер:** pnpm (workspaces + Turborepo)
 
 ## Monorepo структура
@@ -30,32 +30,64 @@ sto-erp/
 └── CLAUDE.md
 ```
 
-## Скіли — завантажувати на початку сесії
+## Скіли — завантажувати ��а початку сесії
 ```
-/sto-context    ← ЗАВЖДИ ПЕРШИМ
-/sto-analyst    ← для вимог та бізнес-процесів
-/sto-feature    ← для планування фічей
-/sto-architect  ← для архітектурних рішень (ADR)
-/sto-database   ← для змін Prisma schema
-/sto-backend    ← для NestJS модулів
-/sto-web        ← для Next.js UI
-/sto-mobile     ← для Expo додатку
-/sto-review     ← для code review
-/sto-tester     ← для тестування: знаходить баги, фіксує, виправляє
-/sto-installer  ← для Windows installer
-/sto-git        ← для git: commit, branch, changelog, статус
+/sto-context    <- ЗАВЖДИ ПЕРШИМ
+/sto-analyst    <- для вимог та бізнес-процесів
+/sto-feature    <- для планування фічей
+/sto-architect  <- для архітектурних рішень (ADR)
+/sto-database   <- для змін Prisma schema
+/sto-backend    <- для NestJS модулів
+/sto-web        <- для Next.js UI
+/sto-mobile     <- для Expo додатку
+/sto-review     <- для code review
+/sto-tester     <- для тестування: знаходить баги, фіксує, виправляє
+/sto-installer  <- для Windows installer
+/sto-git        <- для git: commit, branch, changelog, статус
 ```
 
 ## Типовий workflow нової фічі
 ```
-/sto-context → /sto-analyst → /sto-feature → /sto-database → /sto-backend → /sto-web → /sto-review → /sto-tester
+/sto-context -> /sto-analyst -> /sto-feature -> /sto-database -> /sto-backend -> /sto-web -> /sto-review -> /sto-tester
 ```
+
+## Автоматичне QA після кожного завдання (ОБОВ'ЯЗКОВО)
+
+Після завершення **будь-якого** завдання і git commit — **завжди автоматично**:
+1. `/sto-review` (auto) — code review, виправити всі знайдені проблеми
+2. `/sto-tester` (auto) — тести, BUG_REPORT.md, виправити всі баг��
+3. Оновити `MemoryManual.md` якщо з'явились нові gotchas або зміни архітектури
+
+> Виняток: якщо сам запит був `/sto-review` або `/sto-tester` — не запускати рекурсивно.
+
+## Відновлення після ліміту / нова сесія
+
+Після відновлення (rate limit, новий контекст, нова сесія):
+1. Прочитати `MemoryManual.md` — поточний стан коду
+2. Прочитати `docs/PHASES.md` — де зупинились
+3. Прочитати `.claude/memory/MEMORY.md` — preferences
+4. Продовжити з місця зупинки без питань
+5. Перезапустити щогодинний моніторинг: `/loop 1h` з промптом із `.claude/scheduled_tasks.json`
+
+## Щогодинний моніторинг (loop)
+
+Cron живе тільки в межах сесії. При ст��рті нової сесії — перезапустити через:
+```
+/loop 1h
+```
+Промпт дл�� loop знаходиться у `.claude/scheduled_tasks.json`.
+
+Що роби��ь loop кожну годину:
+- Читає `MemoryManual.md` + `PHASES.md` + `MEMORY.md`
+- Якщо є `[~]` задача — продовжує виконання
+- Якщо є незавершене QA — запус��ає `/sto-review` -> `/sto-tester` -> оновлює `MemoryManual.md`
+- Якщо все чисто — виводить статус і чекає наступного тіку
 
 ## Критичні правила (ОБОВ'ЯЗКОВО)
 
 ### Офлайн-незалежність
 1. **Зовнішні API** (SMS, ПРРО, прайси) — тільки через BullMQ чергу, ніколи прямий виклик
-2. **Черга з retry** — attempts ≥ 10, backoff exponential; для ПРРО attempts=288 (24 год)
+2. **Черга з retry** — attempts >= 10, backoff exponential; для ПРРО attempts=288 (24 год)
 3. **Система не зупиняється** при відсутності інтернету
 
 ### База даних
@@ -69,16 +101,16 @@ sto-erp/
 9. **FSM нарядів** — тільки через transition map у `WorkOrdersService.transition()`
 
 ### Конфігурованість (Configuration over Hardcode)
-10. **Налаштування в БД** — терміни, ліміти, шаблони, способи оплати → моделі `OrganisationSettings`, `BranchSettings`, `NotificationTemplate`, `PaymentMethodConfig`, `TaxRate`
-11. **ПРРО та SMS** → `BranchSettings` (per branch), НЕ тільки в `.env`
-12. **Нумерація документів** → `DocumentNumberConfig`, ніяких hardcoded форматів у коді
+10. **Налаштування в БД** — терміни, ліміти, шаблони, способи оплати -> моде��і `OrganisationSettings`, `BranchSettings`, `NotificationTemplate`, `PaymentMethodConfig`, `TaxRate`
+11. **ПРРО та SMS** -> `BranchSettings` (per branch), НЕ тільки в `.env`
+12. **Нумерація документів** -> `DocumentNumberConfig`, ніяких hardcoded форматів у коді
 13. **Ніяких magic numbers у коді** — `invoiceDueDays`, `autoArchiveDays`, `warrantyDays`, `slotDurationMinutes` читаються з БД через `SettingsService.get(orgId)`
 14. **Шаблони повідомлень** — текст SMS/Viber/Email тільки з `NotificationTemplate`, не рядкові літерали у сервісах
 
 ### UI
-10. **Весь UI** — українською мовою (кирилиця)
-11. **Валідація** (Zod) — повідомлення українською
-12. **API помилки** — українською
+15. **Весь UI** — українською мовою (кирилиця)
+16. **Валідація** (Zod) — повідомлення українською
+17. **API помилки** — українською
 
 ## ADR — прийняті архітектурні рішення
 | Файл | Рішення |
@@ -103,6 +135,6 @@ pnpm dev
 
 ## Локаль та форматування
 - Мова: `uk-UA` | Timezone: `Europe/Kyiv`
-- Валюта: `₴` (UAH), формат: `1 250,00 ₴`
+- Валюта: `UAH`, формат: `1 250,00 грн`
 - Дата: `DD.MM.YYYY` | Час: `HH:mm` (24-год)
 - Тиждень: починається з понеділка

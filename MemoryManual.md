@@ -242,6 +242,36 @@ syncVersion BigInt   @default(0)
 
 ---
 
+## Автоматичний QA флоу (після кожного завдання)
+
+```
+завдання виконано + git commit
+        │
+        ▼
+  /sto-review (auto)
+  — code review, фіксує всі знайдені проблеми
+        │
+        ▼
+  /sto-tester (auto)
+  — BUG_REPORT.md, фіксує всі баги
+        │
+        ▼
+  MemoryManual.md update
+  — нові gotchas / зміни архітектури
+        │
+        ▼
+  git commit "docs(memory): ..."
+```
+
+> Не запускається рекурсивно якщо запит сам по собі був `/sto-review` або `/sto-tester`.
+
+## Щогодинний моніторинг (loop)
+
+- **Cron**: кожну годину о :13 (налаштовано через CronCreate)
+- **Файл промпту**: `.claude/scheduled_tasks.json`
+- **Дія**: читає `MemoryManual.md` + `PHASES.md` + `MEMORY.md`, визначає стан, продовжує або запускає QA
+- **Обмеження**: cron живе тільки в рамках сесії. При старті нової сесії — `/loop 1h`
+
 ## Скіли Claude Code
 
 | Скіл | Коли використовувати |
