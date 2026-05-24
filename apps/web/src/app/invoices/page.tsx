@@ -84,7 +84,7 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     if (showCreate) {
-      apiFetch('/counterparties?limit=200').then(d => setCounterparties(d.items ?? d))
+      apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200').then(d => setCounterparties(d.items))
         .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження контрагентів'));
     }
   }, [showCreate]);

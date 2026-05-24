@@ -20,6 +20,9 @@ interface KPI {
 interface RevenueDay { date: string; revenue: number; count: number; }
 interface WorkOrderSummary { status: string; completedAt?: string | null; totalAmount: number; }
 interface InvoiceSummary { amount: number; }
+interface PaginatedWorkOrders { items: WorkOrderSummary[]; }
+interface PaginatedInvoices { items: InvoiceSummary[]; }
+interface RevenueReport { rows: RevenueDay[]; totalRevenue: number; }
 
 function KpiCard({ label, value, sub, color, href }: {
   label: string; value: string | number; sub?: string;
@@ -55,10 +58,10 @@ export default function DashboardPage() {
         const weekStart = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
 
         const [orders, lowStock, invoices, revenueData] = await Promise.allSettled([
-          apiFetch('/work-orders?limit=200'),
-          apiFetch('/stock-items/low'),
-          apiFetch('/invoices?status=SENT&limit=200'),
-          apiFetch(`/reports/revenue?from=${weekStart}&to=${today}`),
+          apiFetch<PaginatedWorkOrders>('/work-orders?limit=200'),
+          apiFetch<WorkOrderSummary[]>('/stock-items/low'),
+          apiFetch<PaginatedInvoices>('/invoices?status=SENT&limit=200'),
+          apiFetch<RevenueReport>(`/reports/revenue?from=${weekStart}&to=${today}`),
         ]);
 
         const ordersData = orders.status === 'fulfilled' ? orders.value : { items: [] };

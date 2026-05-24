@@ -68,7 +68,13 @@ export default function CounterpartyCardPage() {
   const displayName = (c: Counterparty) =>
     c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ') ?? '—';
 
-  if (!cp) return <div className="flex items-center justify-center min-h-screen"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>;
+  if (!cp) return (
+    <div className="flex items-center justify-center min-h-screen flex-col gap-4">
+      {loadError
+        ? <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{loadError}</p>
+        : <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />}
+    </div>
+  );
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">

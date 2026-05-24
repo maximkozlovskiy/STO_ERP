@@ -8,7 +8,7 @@ export class SettlementsAccountService {
 
   async getBalance(orgId: string, counterpartyId: string) {
     const account = await this.prisma.settlementAccount.findFirst({
-      where: { orgId, counterpartyId },
+      where: { orgId, counterpartyId, deletedAt: null },
     });
     if (!account) return { balance: 0, counterpartyId };
     return { balance: Number(account.balance), counterpartyId };
@@ -16,7 +16,7 @@ export class SettlementsAccountService {
 
   async getTransactions(orgId: string, counterpartyId: string, page = 1, limit = 50) {
     const account = await this.prisma.settlementAccount.findFirst({
-      where: { orgId, counterpartyId },
+      where: { orgId, counterpartyId, deletedAt: null },
     });
     if (!account) return { items: [], total: 0, page, limit };
 
@@ -58,7 +58,7 @@ export class SettlementsAccountService {
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
     const account = await this.prisma.settlementAccount.findFirst({
-      where: { orgId, counterpartyId },
+      where: { orgId, counterpartyId, deletedAt: null },
     });
     if (!account) throw new NotFoundException('Розрахунковий рахунок не знайдено');
 
@@ -76,28 +76,15 @@ export class SettlementsAccountService {
       orderBy: { createdAt: 'asc' },
     });
 
-    // Opening balance: balance before period start
-    const beforePeriod = await this.prisma.settlementTransaction.findMany({
-      where: {
-        settlementAccountId: account.id,
-        orgId,
-        createdAt: { lt: from },
-      },
-    });
-
-    const openingBalance = beforePeriod.reduce((sum, t) => {
-      const delta =
-        t.type === 'CHARGE' ? Number(t.amount) :
-        -Number(t.amount);
-      return sum + delta;
-    }, 0);
-
+    // Opening balance derived from current snapshot balance minus in-period delta
+    // This avoids a full table scan on the append-only transactions log
     const periodDelta = transactions.reduce((sum, t) => {
       const delta = t.type === 'CHARGE' ? Number(t.amount) : -Number(t.amount);
       return sum + delta;
     }, 0);
 
-    const closingBalance = openingBalance + periodDelta;
+    const closingBalance = Number(account.balance);
+    const openingBalance = closingBalance - periodDelta;
 
     const act = await this.prisma.reconciliationAct.create({
       data: {

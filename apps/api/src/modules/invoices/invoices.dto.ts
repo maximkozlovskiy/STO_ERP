@@ -14,10 +14,13 @@ export class UpdateInvoiceDto {
   @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
 }
 
+const INV_TRANSITION_STATUSES = ['SENT', 'PAID', 'CANCELLED'] as const;
+export type InvTransitionStatus = typeof INV_TRANSITION_STATUSES[number];
+
 export class TransitionInvoiceDto {
-  @ApiProperty({ enum: ['SENT', 'PAID', 'CANCELLED'] })
-  @IsEnum(['SENT', 'PAID', 'CANCELLED'])
-  status!: string;
+  @ApiProperty({ enum: INV_TRANSITION_STATUSES })
+  @IsEnum(INV_TRANSITION_STATUSES)
+  status!: InvTransitionStatus;
 }
 
 export class InvoiceResponseDto {

@@ -13,7 +13,11 @@ interface UploadFile {
 export class FilesService implements OnModuleInit {
   private readonly publicUrl: string;
   private readonly bucket = 'sto-erp';
-  private client: any;
+  private client: {
+    bucketExists(name: string): Promise<boolean>;
+    makeBucket(name: string, region: string): Promise<void>;
+    putObject(bucket: string, object: string, stream: Buffer, size: number, meta: Record<string, string>): Promise<unknown>;
+  } | null;
 
   constructor(private readonly config: ConfigService) {
     const endpoint = config.getOrThrow<string>('MINIO_ENDPOINT');

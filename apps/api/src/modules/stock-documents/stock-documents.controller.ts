@@ -10,7 +10,7 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { StockDocumentsService } from './stock-documents.service';
 import {
-  CreateStockDocumentDto, UpdateStockDocumentDto, TransitionStockDocumentDto,
+  CreateStockDocumentDto, UpdateStockDocumentDto, TransitionStockDocumentDto, DocTransitionStatus,
 } from './stock-documents.dto';
 
 @ApiTags('Stock Documents')
@@ -79,6 +79,6 @@ export class StockDocumentsController {
     @Body() dto: TransitionStockDocumentDto,
     @CurrentUser() user: { sub: string },
   ) {
-    return this.service.transition(orgId, id, dto.status as any, user?.sub);
+    return this.service.transition(orgId, id, dto.status as DocTransitionStatus, user?.sub);
   }
 }

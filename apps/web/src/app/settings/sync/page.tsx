@@ -82,7 +82,9 @@ export default function SyncPage() {
 
       {loading ? (
         <div className="text-center py-12 text-gray-400">Завантаження...</div>
-      ) : status && (
+      ) : !status ? (
+        <div className="text-center py-12 text-gray-400">Не вдалося завантажити статус синхронізації.</div>
+      ) : (
         <>
           {/* Status cards */}
           <div className="grid grid-cols-2 gap-4 mb-6">

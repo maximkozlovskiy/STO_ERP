@@ -9,7 +9,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { InvoicesService } from './invoices.service';
-import { CreateInvoiceDto, UpdateInvoiceDto, TransitionInvoiceDto } from './invoices.dto';
+import { CreateInvoiceDto, UpdateInvoiceDto, TransitionInvoiceDto, InvTransitionStatus } from './invoices.dto';
 
 @ApiTags('Invoices')
 @Controller('invoices')
@@ -81,7 +81,7 @@ export class InvoicesController {
     @Param('id') id: string,
     @Body() dto: TransitionInvoiceDto,
   ) {
-    return this.service.transition(orgId, id, dto.status as any);
+    return this.service.transition(orgId, id, dto.status as InvTransitionStatus);
   }
 
   @Delete(':id')

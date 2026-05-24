@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName } from '@sto/shared';
 
@@ -17,6 +17,11 @@ export class ReportsService {
 
   async revenue(orgId: string, from: string, to: string, branchId?: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
+
+    if (branchId) {
+      const branch = await this.prisma.garageBranch.findFirst({ where: { id: branchId, orgId, deletedAt: null } });
+      if (!branch) throw new NotFoundException('Філію не знайдено');
+    }
 
     const where: {
       orgId: string; deletedAt: null;
@@ -184,12 +189,17 @@ export class ReportsService {
   async load(orgId: string, from: string, to: string, branchId?: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
+    if (branchId) {
+      const branch = await this.prisma.garageBranch.findFirst({ where: { id: branchId, orgId, deletedAt: null } });
+      if (!branch) throw new NotFoundException('Філію не знайдено');
+    }
+
     const slots = await this.prisma.calendarSlot.findMany({
       where: {
         orgId,
         deletedAt: null,
         startAt: { gte: fromDate, lte: toDate },
-        ...(branchId ? { lift: { zone: { branchId } } } : {}),
+        ...(branchId ? { lift: { zone: { branchId, orgId } } } : {}),
       },
       include: {
         lift: { select: { name: true, zone: { select: { name: true } } } },

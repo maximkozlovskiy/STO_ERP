@@ -161,7 +161,7 @@ export default function PurchaseOrdersPage() {
     const lines = receiveLines
       .filter(l => parseFloat(l.receivedQty) > 0)
       .map(l => ({ lineId: l.lineId, receivedQty: parseFloat(l.receivedQty) }));
-    if (!lines.length) { alert('Вкажіть кількість для хоча б однієї позиції'); return; }
+    if (!lines.length) { setError('Вкажіть кількість для хоча б однієї позиції'); return; }
     try {
       await apiFetch(`/purchase-orders/${showReceive.id}/receive`, {
         method: 'POST', body: JSON.stringify({ lines }),

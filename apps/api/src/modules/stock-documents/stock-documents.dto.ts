@@ -44,10 +44,13 @@ export class UpdateStockDocumentDto {
   lines?: StockDocumentLineDto[];
 }
 
+const DOC_TRANSITION_STATUSES = ['CONFIRMED', 'CANCELLED'] as const;
+export type DocTransitionStatus = typeof DOC_TRANSITION_STATUSES[number];
+
 export class TransitionStockDocumentDto {
-  @ApiProperty({ enum: ['CONFIRMED', 'CANCELLED'] })
-  @IsEnum(['CONFIRMED', 'CANCELLED'])
-  status!: string;
+  @ApiProperty({ enum: DOC_TRANSITION_STATUSES })
+  @IsEnum(DOC_TRANSITION_STATUSES)
+  status!: DocTransitionStatus;
 }
 
 export class StockDocumentLineResponseDto {

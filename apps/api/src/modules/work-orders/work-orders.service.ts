@@ -179,7 +179,7 @@ export class WorkOrdersService {
         await this.writeOffPartsAndCharge(orgId, wo, userId, tx);
       }
 
-      if (newStatus === 'CANCELLED' && wo.status === 'IN_PROGRESS') {
+      if (newStatus === 'CANCELLED' && ['IN_PROGRESS', 'ON_HOLD'].includes(wo.status)) {
         await this.releasePartReservations(orgId, id, userId, tx);
       }
 
@@ -403,17 +403,15 @@ export class WorkOrdersService {
     return wo;
   }
 
-  private async recalcTotals(workOrderId: string, tx?: Prisma.TransactionClient, orgId?: string): Promise<void> {
-    const db = tx ?? this.prisma;
+  private async recalcTotals(workOrderId: string, tx: Prisma.TransactionClient, orgId: string): Promise<void> {
     const [lines, parts] = await Promise.all([
-      db.workOrderLine.findMany({ where: { workOrderId, deletedAt: null }, select: { amount: true } }),
-      db.workOrderPart.findMany({ where: { workOrderId, deletedAt: null }, select: { amount: true } }),
+      tx.workOrderLine.findMany({ where: { workOrderId, orgId, deletedAt: null }, select: { amount: true } }),
+      tx.workOrderPart.findMany({ where: { workOrderId, orgId, deletedAt: null }, select: { amount: true } }),
     ]);
     const totalLabor = lines.reduce((s: number, l: { amount: object }) => s + Number(l.amount), 0);
     const totalParts = parts.reduce((s: number, p: { amount: object }) => s + Number(p.amount), 0);
-    const where = orgId ? { id: workOrderId, orgId } : { id: workOrderId };
-    await db.workOrder.update({
-      where,
+    await tx.workOrder.update({
+      where: { id: workOrderId, orgId },
       data: { totalLabor, totalParts, totalAmount: totalLabor + totalParts },
     });
   }

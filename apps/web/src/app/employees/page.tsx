@@ -177,7 +177,7 @@ export default function EmployeesPage() {
   const remove = async (id: string) => {
     if (!confirm('Видалити співробітника?')) return;
     try { await apiFetch(`/employees/${id}`, { method: 'DELETE' }); load(); }
-    catch (e: unknown) { alert(e instanceof Error ? e.message : 'Помилка'); }
+    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
   };
 
   const flatCats = flattenTree(workCategories);

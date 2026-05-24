@@ -2,10 +2,13 @@ import { IsUUID, IsString, IsOptional, IsNumber, Min, IsArray, ValidateNested, I
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
+const PO_TRANSITION_STATUSES = ['ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED'] as const;
+export type POTransitionStatus = typeof PO_TRANSITION_STATUSES[number];
+
 export class TransitionPurchaseOrderDto {
-  @ApiProperty({ enum: ['ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED'] })
-  @IsEnum(['ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED'])
-  status!: string;
+  @ApiProperty({ enum: PO_TRANSITION_STATUSES })
+  @IsEnum(PO_TRANSITION_STATUSES)
+  status!: POTransitionStatus;
 }
 
 export class PurchaseOrderLineDto {
