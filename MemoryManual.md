@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-d9ebecd docs(memory): add MemoryManual.md + wire into session flow
+394156d feat(workflow): hourly loop + auto QA after every task
 ```
 
 Дата: 2026-05-24
@@ -342,6 +342,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `394156d` | feat(workflow): hourly loop + auto QA after every task |
 | `d9ebecd` | docs(memory): add MemoryManual.md + wire into session flow |
 | `11b468b` | feat(skills): add /sto-tester skill |
 | `900c24b` | fix(web): Button 'default' variant + Select placeholder prop |
