@@ -16,7 +16,7 @@ export class PaymentMethodsService {
 
   async findAll(orgId: string): Promise<PaymentMethodResponseDto[]> {
     const items = await this.prisma.paymentMethodConfig.findMany({
-      where: { orgId },
+      where: { orgId, deletedAt: null },
       orderBy: { sortOrder: 'asc' },
     });
     return items.map(item => this.toDto(item));
@@ -24,7 +24,7 @@ export class PaymentMethodsService {
 
   async findOne(orgId: string, id: string): Promise<PaymentMethodResponseDto> {
     const item = await this.prisma.paymentMethodConfig.findFirst({
-      where: { id, orgId },
+      where: { id, orgId, deletedAt: null },
     });
     if (!item) throw new NotFoundException('Метод оплати не знайдено');
     return this.toDto(item);
@@ -35,7 +35,7 @@ export class PaymentMethodsService {
     dto: CreatePaymentMethodDto,
   ): Promise<PaymentMethodResponseDto> {
     const existing = await this.prisma.paymentMethodConfig.findFirst({
-      where: { orgId, code: dto.code },
+      where: { orgId, code: dto.code, deletedAt: null },
     });
     if (existing) {
       throw new ConflictException(
@@ -55,7 +55,7 @@ export class PaymentMethodsService {
     dto: UpdatePaymentMethodDto,
   ): Promise<PaymentMethodResponseDto> {
     const existing = await this.prisma.paymentMethodConfig.findFirst({
-      where: { id, orgId },
+      where: { id, orgId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Метод оплати не знайдено');
 
@@ -68,12 +68,10 @@ export class PaymentMethodsService {
 
   async remove(orgId: string, id: string): Promise<void> {
     const existing = await this.prisma.paymentMethodConfig.findFirst({
-      where: { id, orgId },
+      where: { id, orgId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Метод оплати не знайдено');
-
-    // Hard delete — PaymentMethodConfig has no deletedAt (it's a config table)
-    await this.prisma.paymentMethodConfig.delete({ where: { id } });
+    await this.prisma.paymentMethodConfig.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(item: {

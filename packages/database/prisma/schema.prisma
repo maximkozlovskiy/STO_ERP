@@ -882,14 +882,15 @@ model TaxRate {
 }
 
 model PaymentMethodConfig {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId          String   @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
   code           String
   name           String
-  isActive       Boolean  @default(true)
-  sortOrder      Int      @default(0)
-  requiresFiscal Boolean  @default(false)
-  updatedAt      DateTime @updatedAt
+  isActive       Boolean   @default(true)
+  sortOrder      Int       @default(0)
+  requiresFiscal Boolean   @default(false)
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   org Organisation @relation(fields: [orgId], references: [id])
 
