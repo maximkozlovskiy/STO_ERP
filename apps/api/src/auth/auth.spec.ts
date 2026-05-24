@@ -63,6 +63,15 @@ describe('AuthService', () => {
               };
               return map[key];
             }),
+            getOrThrow: vi.fn((key: string) => {
+              const map: Record<string, string> = {
+                JWT_ACCESS_SECRET: 'access-secret',
+                JWT_REFRESH_SECRET: 'refresh-secret',
+              };
+              const val = map[key];
+              if (!val) throw new Error(`Config key "${key}" not found`);
+              return val;
+            }),
           },
         },
       ],
@@ -113,6 +122,7 @@ describe('AuthService', () => {
       prisma.authAccount.findFirst.mockResolvedValue({
         email: 'admin@sto.local',
         passwordHash: hash,
+        orgId: 'org-1',
         employee: { ...mockEmployee },
       });
 

@@ -443,7 +443,8 @@ export default function PurchaseOrdersPage() {
             </div>
             <button
               onClick={handleReceive}
-              className="w-full py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+              disabled={saving}
+              className="w-full py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-60 transition-colors"
             >
               Підтвердити прийом
             </button>

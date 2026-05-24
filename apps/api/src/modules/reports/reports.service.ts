@@ -3,9 +3,18 @@ import { Prisma, WorkOrderStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName } from '@sto/shared';
 
+function kyivOffsetMs(d: Date): number {
+  const utcStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(d);
+  const kyivHour = parseInt(utcStr, 10);
+  const utcHour = d.getUTCHours();
+  return ((kyivHour - utcHour + 24) % 24) * 3_600_000;
+}
+
 function normalizeDateRange(from: string, to: string) {
-  const fromDate = new Date(`${from}T00:00:00+03:00`);
-  const toDate = new Date(`${to}T23:59:59.999+03:00`);
+  const fromMidnight = new Date(`${from}T00:00:00Z`);
+  const toEndOfDay = new Date(`${to}T23:59:59.999Z`);
+  const fromDate = new Date(fromMidnight.getTime() - kyivOffsetMs(fromMidnight));
+  const toDate = new Date(toEndOfDay.getTime() - kyivOffsetMs(toEndOfDay));
   if (fromDate > toDate) throw new BadRequestException('Дата початку має бути не пізніше дати закінчення');
   return { fromDate, toDate };
 }
@@ -132,8 +141,14 @@ export class ReportsService {
 
     const movWhere: { orgId: string; warehouseId?: string; createdAt?: { gte?: Date; lte?: Date } } = { orgId };
     if (warehouseId) movWhere.warehouseId = warehouseId;
-    if (from) movWhere.createdAt = { gte: new Date(`${from}T00:00:00+03:00`) };
-    if (to) movWhere.createdAt = { ...movWhere.createdAt, lte: new Date(`${to}T23:59:59.999+03:00`) };
+    if (from) {
+      const d = new Date(`${from}T00:00:00Z`);
+      movWhere.createdAt = { gte: new Date(d.getTime() - kyivOffsetMs(d)) };
+    }
+    if (to) {
+      const d = new Date(`${to}T23:59:59.999Z`);
+      movWhere.createdAt = { ...movWhere.createdAt, lte: new Date(d.getTime() - kyivOffsetMs(d)) };
+    }
 
     const movements = await this.prisma.stockMovement.findMany({
       where: movWhere,

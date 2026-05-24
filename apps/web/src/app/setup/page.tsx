@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api-client';
-import { useAuth } from '@/lib/auth';
 
-type Step = 'org' | 'branch' | 'warehouse' | 'fiscal' | 'sms' | 'done';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+
+type Step = 'checking' | 'org' | 'branch' | 'warehouse' | 'fiscal' | 'sms' | 'done';
 
 interface WizardData {
   orgName: string;
@@ -21,6 +21,7 @@ interface WizardData {
 
 const STEPS: Step[] = ['org', 'branch', 'warehouse', 'fiscal', 'sms', 'done'];
 const STEP_TITLES: Record<Step, string> = {
+  checking: '',
   org: 'Організація',
   branch: 'Перша філія',
   warehouse: 'Склад',
@@ -31,8 +32,7 @@ const STEP_TITLES: Record<Step, string> = {
 
 export default function SetupPage() {
   const router = useRouter();
-  const auth = useAuth();
-  const [step, setStep] = useState<Step>('org');
+  const [step, setStep] = useState<Step>('checking');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<WizardData>({
@@ -47,6 +47,20 @@ export default function SetupPage() {
     warehouseName: 'Основний склад',
   });
 
+  // Check if already initialized — redirect if so
+  useEffect(() => {
+    fetch(`${API_URL}/api/setup/status`)
+      .then((r) => r.json())
+      .then((d: { initialized: boolean }) => {
+        if (d.initialized) {
+          router.replace('/login');
+        } else {
+          setStep('org');
+        }
+      })
+      .catch(() => setStep('org'));
+  }, [router]);
+
   const stepIndex = STEPS.indexOf(step);
   const totalSteps = STEPS.length - 1; // exclude 'done'
 
@@ -55,15 +69,16 @@ export default function SetupPage() {
 
   const next = () => {
     const idx = STEPS.indexOf(step);
-    if (idx < STEPS.length - 1) setStep(STEPS[idx + 1]);
+    if (idx >= 0 && idx < STEPS.length - 1) setStep(STEPS[idx + 1]);
   };
 
   const submit = async () => {
     setLoading(true);
     setError('');
     try {
-      const result = await apiFetch<{ accessToken: string }>('/setup/init', {
+      const res = await fetch(`${API_URL}/api/setup/init`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orgName: data.orgName,
           edrpou: data.edrpou || undefined,
@@ -76,6 +91,13 @@ export default function SetupPage() {
           warehouseName: data.warehouseName || undefined,
         }),
       });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Помилка ініціалізації' })) as { message: string };
+        throw new Error(err.message);
+      }
+
+      const result = await res.json() as { accessToken: string };
       sessionStorage.setItem('sto_access_token', result.accessToken);
       setStep('done');
     } catch (e: unknown) {
@@ -85,6 +107,14 @@ export default function SetupPage() {
     }
   };
 
+  if (step === 'checking') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   if (step === 'done') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -93,7 +123,7 @@ export default function SetupPage() {
           <h1 className="text-2xl font-bold text-gray-900">Систему налаштовано!</h1>
           <p className="text-gray-500">Ласкаво просимо до STO ERP</p>
           <button
-            onClick={() => { auth.refreshToken(); router.replace('/dashboard'); }}
+            onClick={() => router.replace('/dashboard')}
             className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
           >
             Перейти до системи
@@ -103,6 +133,12 @@ export default function SetupPage() {
     );
   }
 
+  const isNextDisabled =
+    (step === 'org' &&
+      (!data.orgName.trim() || !data.ownerEmail.trim() || !data.ownerPassword.trim() ||
+        !data.ownerFirstName.trim() || !data.ownerLastName.trim())) ||
+    (step === 'branch' && (!data.branchName.trim() || !data.branchAddress.trim()));
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-lg w-full max-w-lg">
@@ -110,7 +146,7 @@ export default function SetupPage() {
         <div className="p-6 border-b">
           <h1 className="text-xl font-bold text-gray-900">Перший запуск STO ERP</h1>
           <div className="mt-3 flex gap-1">
-            {STEPS.filter((s) => s !== 'done').map((s, i) => (
+            {STEPS.filter((s) => s !== 'done' && s !== 'checking').map((s, i) => (
               <div
                 key={s}
                 className={`h-1 flex-1 rounded-full ${
@@ -206,11 +242,7 @@ export default function SetupPage() {
           ) : (
             <button
               onClick={next}
-              disabled={
-                (step === 'org' &&
-                  (!data.orgName || !data.ownerEmail || !data.ownerPassword || !data.ownerFirstName || !data.ownerLastName)) ||
-                (step === 'branch' && (!data.branchName || !data.branchAddress))
-              }
+              disabled={isNextDisabled}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
             >
               Далі →

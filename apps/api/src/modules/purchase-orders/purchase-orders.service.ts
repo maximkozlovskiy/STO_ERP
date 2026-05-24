@@ -186,7 +186,7 @@ export class PurchaseOrdersService {
       if (receivedAmount > 0) {
         await this.settlements.createTransaction(orgId, {
           counterpartyId: po.supplierId,
-          type: 'PAYMENT',
+          type: 'CHARGE',
           amount: receivedAmount,
           documentType: 'PurchaseOrder',
           documentId: id,

@@ -140,6 +140,7 @@
     > `apps/api/src/modules/setup/`. `GET /setup/status` (перевірка ініціалізації). `POST /setup/init` — транзакція: org+settings+docConfigs+paymentMethods+taxRates+branch+branchSettings+warehouse+employee+authAccount. Повертає accessToken.
 - [x] `[sto-web]` Wizard першого запуску — 5 кроків: org → branch → warehouse → ПРРО (skip) → SMS (skip)
     > `apps/web/src/app/setup/page.tsx`. 5-крокова форма зі step-індикатором. POST /setup/init → зберігає accessToken. Сторінка `/` перевіряє `/setup/status` і редіректить на /setup якщо не ініціалізовано.
+    > **Bugfix (2026-05-24):** Кнопка "Далі →" була неактивна через конфлікт з `AuthProvider` в root layout. Виправлено: `apps/web/src/app/setup/layout.tsx` ізолює /setup від TopShell/AuthProvider. Видалено залежність від `useAuth`. Додано `checking` step — перевірка `/setup/status` при відкритті: якщо вже ініціалізовано → redirect на /login. `disabled` валідація тепер використовує `.trim()`.
 - [x] `[sto-web]` Сторінка налаштувань: Організація, Філії, Нумерація, Методи оплати
     > `apps/web/src/app/settings/page.tsx`. Таби: Організація (vatMode, invoiceDueDays, autoArchiveDays, warrantyDays, toggles) + Методи оплати (toggle isActive). useRequireAuth(['OWNER','ADMIN']).
 
@@ -434,3 +435,19 @@
 
 > Оновлюється автоматично після кожного завершеного завдання.  
 > Статус таблиці: ⬜ не розпочато / 🔄 в процесі / ✅ завершено
+
+---
+
+## Виправлення (Code Review 2026-05-24)
+
+Автоматичний /sto-review виявив і виправив наступні баги:
+
+| Файл | Тип | Проблема | Виправлення |
+|------|-----|---------|-------------|
+| `apps/api/src/modules/reports/reports.service.ts` | Critical | Hardcoded `+03:00` DST offset — неправильно взимку (+02:00) | Додано `kyivOffsetMs()` через `Intl.DateTimeFormat` |
+| `apps/api/src/modules/purchase-orders/purchase-orders.service.ts` | Critical | `receive()` створював `PAYMENT` settlement замість `CHARGE` — борг до постачальника не фіксувався | Змінено `type: 'PAYMENT'` → `type: 'CHARGE'` |
+| `apps/api/src/auth/auth.spec.ts` | Test | Тест логіну падав з ForbiddenException: mock `authAccount` не мав `orgId` | Додано `orgId: 'org-1'` в mock |
+| `apps/api/src/auth/auth.spec.ts` | Test | Тест refresh падав: ConfigService mock не мав `getOrThrow` | Додано `getOrThrow` в ConfigService mock |
+| `apps/web/src/app/purchase-orders/page.tsx` | UI | Кнопка "Підтвердити прийом" не блокувалась під час запиту | Додано `disabled={saving}` |
+| `apps/web/src/app/stock-documents/page.tsx` | UI | FSM-кнопки не блокувались під час запиту | Додано `disabled={saving}` на обидві кнопки |
+| `apps/web/src/app/setup/page.tsx` | Critical | Кнопка "Далі →" завжди неактивна через конфлікт з `AuthProvider` в root layout | Ізольовано в окремий layout, видалено `useAuth`, додано `checking` step |

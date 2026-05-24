@@ -406,13 +406,15 @@ export default function StockDocumentsPage() {
               <div className="flex gap-2 pt-2 border-t">
                 <button
                   onClick={() => handleTransition(showDetail, 'CONFIRMED')}
-                  className="flex-1 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                  disabled={saving}
+                  className="flex-1 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-60 transition-colors"
                 >
                   Підтвердити документ
                 </button>
                 <button
                   onClick={() => handleTransition(showDetail, 'CANCELLED')}
-                  className="px-4 py-2 bg-red-50 text-red-600 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors"
+                  disabled={saving}
+                  className="px-4 py-2 bg-red-50 text-red-600 text-sm font-medium rounded-lg hover:bg-red-100 disabled:opacity-60 transition-colors"
                 >
                   Скасувати
                 </button>
