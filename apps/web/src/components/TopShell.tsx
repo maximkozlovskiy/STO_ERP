@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  Star,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -43,39 +44,42 @@ interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   {
     items: [
-      { href: '/dashboard',       label: 'Дашборд',     icon: LayoutDashboard },
+      { href: '/dashboard', label: 'Дашборд', icon: LayoutDashboard },
     ],
   },
   {
-    label: 'Робота',
+    label: 'Документи',
     items: [
-      { href: '/work-orders',     label: 'Наряди',      icon: Wrench },
-      { href: '/calendar',        label: 'Календар',    icon: CalendarDays },
-      { href: '/crm',             label: 'CRM',         icon: Users },
+      { href: '/work-orders',     label: 'Наряди',          icon: Wrench },
+      { href: '/invoices',        label: 'Рахунки',         icon: Receipt },
+      { href: '/purchase-orders', label: 'Замовлення',      icon: ShoppingCart },
+      { href: '/stock-documents', label: 'Документи склад', icon: FileText },
     ],
   },
   {
-    label: 'Склад і фінанси',
+    label: 'Звіти',
     items: [
-      { href: '/inventory',       label: 'Склад',       icon: Package },
-      { href: '/purchase-orders', label: 'Замовлення',  icon: ShoppingCart },
-      { href: '/stock-documents', label: 'Документи',   icon: FileText },
-      { href: '/invoices',        label: 'Рахунки',     icon: Receipt },
-      { href: '/settlements',     label: 'Розрахунки',  icon: Wallet },
-      { href: '/reports',         label: 'Звіти',       icon: BarChart2, roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'] },
+      { href: '/calendar',    label: 'Календар',    icon: CalendarDays },
+      { href: '/settlements', label: 'Розрахунки',  icon: Wallet },
+      { href: '/reports',     label: 'Звіти',       icon: BarChart2, roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'] },
     ],
   },
   {
-    label: 'Адміністрування',
+    label: 'Довідники',
     items: [
-      { href: '/catalog',         label: 'Каталог',     icon: BookOpen,    roles: ['OWNER', 'ADMIN'] },
-      { href: '/employees',       label: 'Персонал',    icon: UserCog,     roles: ['OWNER', 'ADMIN'] },
-      { href: '/infrastructure',  label: 'Підрозділи',  icon: Building2,   roles: ['OWNER', 'ADMIN'] },
-      { href: '/settings',        label: 'Налаштування',icon: Settings,    roles: ['OWNER', 'ADMIN'] },
-      { href: '/settings/sync',   label: 'Cloud Sync',  icon: CloudUpload, roles: ['OWNER', 'ADMIN'] },
+      { href: '/crm',            label: 'Контрагенти',  icon: Users },
+      { href: '/inventory',      label: 'Склад',        icon: Package },
+      { href: '/catalog',        label: 'Каталог',      icon: BookOpen,    roles: ['OWNER', 'ADMIN'] },
+      { href: '/employees',      label: 'Персонал',     icon: UserCog,     roles: ['OWNER', 'ADMIN'] },
+      { href: '/infrastructure', label: 'Підрозділи',   icon: Building2,   roles: ['OWNER', 'ADMIN'] },
+      { href: '/settings',       label: 'Налаштування', icon: Settings,    roles: ['OWNER', 'ADMIN'] },
+      { href: '/settings/sync',  label: 'Cloud Sync',   icon: CloudUpload, roles: ['OWNER', 'ADMIN'] },
     ],
   },
 ];
+
+// Flat list of all nav items for bookmark lookup
+const ALL_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap(g => g.items);
 
 const ROLE_LABELS: Record<string, string> = {
   OWNER:        'Власник',
@@ -88,6 +92,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const SIDEBAR_COLLAPSED_KEY = 'sto_sidebar_collapsed';
+const BOOKMARKS_KEY = 'sto_bookmarks';
 
 function isActive(pathname: string, href: string): boolean {
   if (href === '/dashboard') return pathname === '/dashboard';
@@ -107,6 +112,8 @@ export function TopShell({ children }: { children: ReactNode }) {
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Bookmarks: start empty to avoid SSR mismatch; hydrated via useEffect
+  const [bookmarks, setBookmarks] = useState<string[]>([]);
 
   useEffect(() => {
     try {
@@ -115,7 +122,26 @@ export function TopShell({ children }: { children: ReactNode }) {
     } catch { /* ignore */ }
   }, []);
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(BOOKMARKS_KEY);
+      if (saved) setBookmarks(JSON.parse(saved) as string[]);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  const toggleBookmark = useCallback((href: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setBookmarks(prev => {
+      const next = prev.includes(href)
+        ? prev.filter(b => b !== href)
+        : [...prev, href];
+      try { localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   // Render-blocking auth guard for non-public routes — prevents UI skeleton leak
   // before the per-page useRequireAuth useEffect fires its redirect.
@@ -152,44 +178,92 @@ export function TopShell({ children }: { children: ReactNode }) {
     if (confirm('Вийти з системи?')) { logout(); router.push('/login'); }
   };
 
-  const SidebarNav = () => (
-    <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-      {NAV_GROUPS.map((group, gi) => {
-        const visible = group.items.filter(n => !n.roles || n.roles.includes(role));
-        if (!visible.length) return null;
-        return (
-          <div key={gi} className={cn(gi > 0 && 'pt-3')}>
-            {group.label && !collapsed && (
+  const NavLink = ({
+    item,
+    showStar = true,
+  }: {
+    item: NavItem;
+    showStar?: boolean;
+  }) => {
+    const active = isActive(pathname ?? '', item.href);
+    const Icon = item.icon;
+    const isBookmarked = bookmarks.includes(item.href);
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        title={collapsed ? item.label : undefined}
+        className={cn(
+          'group relative flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',
+          collapsed ? 'justify-center px-0 py-2.5' : 'px-2.5 py-2',
+          active
+            ? 'bg-sidebar-active text-white'
+            : 'text-sidebar-fg hover:bg-sidebar-hover hover:text-white',
+        )}
+      >
+        <Icon className="h-3.75 w-3.75 shrink-0" />
+        {!collapsed && <span className="truncate leading-none flex-1">{item.label}</span>}
+        {!collapsed && showStar && (
+          <button
+            onClick={(e) => toggleBookmark(item.href, e)}
+            className={cn(
+              'h-5 w-5 flex items-center justify-center rounded transition-opacity shrink-0',
+              isBookmarked
+                ? 'opacity-100 text-amber-400'
+                : 'opacity-0 group-hover:opacity-100 text-sidebar-muted hover:text-amber-400',
+            )}
+            title={isBookmarked ? 'Видалити закладку' : 'Додати закладку'}
+          >
+            <Star className={cn('h-3.5 w-3.5', isBookmarked && 'fill-current')} />
+          </button>
+        )}
+      </Link>
+    );
+  };
+
+  const SidebarNav = () => {
+    const bookmarkedItems = ALL_NAV_ITEMS.filter(item =>
+      bookmarks.includes(item.href) &&
+      (!item.roles || item.roles.includes(role)),
+    );
+
+    return (
+      <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+        {/* Bookmarks section — only when bookmarks exist */}
+        {bookmarkedItems.length > 0 && (
+          <div className="pb-1">
+            {!collapsed && (
               <p className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted">
-                {group.label}
+                Закладки
               </p>
             )}
-            {visible.map(item => {
-              const active = isActive(pathname ?? '', item.href);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={collapsed ? item.label : undefined}
-                  className={cn(
-                    'flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',
-                    collapsed ? 'justify-center px-0 py-2.5' : 'px-2.5 py-2',
-                    active
-                      ? 'bg-sidebar-active text-white'
-                      : 'text-sidebar-fg hover:bg-sidebar-hover hover:text-white',
-                  )}
-                >
-                  <Icon className="h-3.75 w-3.75 shrink-0" />
-                  {!collapsed && <span className="truncate leading-none">{item.label}</span>}
-                </Link>
-              );
-            })}
+            {bookmarkedItems.map(item => (
+              <NavLink key={`bookmark-${item.href}`} item={item} showStar={false} />
+            ))}
           </div>
-        );
-      })}
-    </nav>
-  );
+        )}
+
+        {/* Regular nav groups */}
+        {NAV_GROUPS.map((group, gi) => {
+          const visible = group.items.filter(n => !n.roles || n.roles.includes(role));
+          if (!visible.length) return null;
+          return (
+            <div key={gi} className={cn((gi > 0 || bookmarkedItems.length > 0) && 'pt-3')}>
+              {group.label && !collapsed && (
+                <p className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted">
+                  {group.label}
+                </p>
+              )}
+              {visible.map(item => (
+                <NavLink key={item.href} item={item} />
+              ))}
+            </div>
+          );
+        })}
+      </nav>
+    );
+  };
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
