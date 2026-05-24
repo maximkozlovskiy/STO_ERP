@@ -165,6 +165,7 @@ model AuthAccount {
   employeeId   String    @unique @db.Uuid
   email        String
   passwordHash String
+  syncVersion  BigInt    @default(0)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
@@ -173,6 +174,7 @@ model AuthAccount {
 
   @@unique([orgId, email])
   @@index([orgId, email])
+  @@index([orgId, syncVersion])
   @@map("auth_accounts")
 }
 
@@ -798,12 +800,14 @@ model DocumentNumberConfig {
   resetPeriod    ResetPeriod  @default(NEVER)
   lastResetYear  Int?
   lastResetMonth Int?
+  syncVersion    BigInt       @default(0)
   updatedAt      DateTime     @updatedAt
 
   org Organisation @relation(fields: [orgId], references: [id])
 
   @@unique([orgId, documentType])
   @@index([orgId])
+  @@index([orgId, syncVersion])
   @@map("document_number_configs")
 }
 
@@ -988,20 +992,22 @@ model SettlementTransaction {
 }
 
 model ReconciliationAct {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId          String   @db.Uuid
-  counterpartyId String   @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  counterpartyId String    @db.Uuid
   periodFrom     DateTime
   periodTo       DateTime
-  openingBalance Decimal  @db.Decimal(12, 2)
-  closingBalance Decimal  @db.Decimal(12, 2)
+  openingBalance Decimal   @db.Decimal(12, 2)
+  closingBalance Decimal   @db.Decimal(12, 2)
   snapshotJson   Json
-  createdAt      DateTime @default(now())
-  createdBy      String?  @db.Uuid
+  syncVersion    BigInt    @default(0)
+  createdAt      DateTime  @default(now())
+  createdBy      String?   @db.Uuid
 
   counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
 
   @@index([orgId, counterpartyId])
+  @@index([orgId, syncVersion])
   @@map("reconciliation_acts")
 }
 
