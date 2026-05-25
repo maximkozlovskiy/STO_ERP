@@ -9,22 +9,28 @@
 ## Останній commit
 
 ```
-dd1813c fix(tester): Bugs #33-#36 — Phase 19 cycle 6 sweep
+388b55c chore(web): add vitest.config.ts — enable component tests (42 tests)
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після Phase 19 tester cycle 6, 2026-05-25)
+## Поточний стан тестів (після /sto-web review + tester cycle 7, 2026-05-25)
 ```
-TypeScript:  ✅ 0 errors        (web + api + shared)
-Unit:        ✅ 111/111 passed  (12 files; 4 new bug fixes без регресій)
+TypeScript:  ✅ 0 errors        (web + api + shared, --incremental false)
+Unit:        ✅ 111/111 passed  (12 files)
 Contract:    ✅ 32/32 passed    (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
 E2E:         ✅ 16/16 passed    (smoke: 4, api-errors: 8, inventory: 4 — Chromium)
 Build:       ✅ API OK
-Цикли QA:    ✅ Phase 19 tester cycle 6 — 4 нових баги (1 HIGH, 2 MEDIUM, 1 LOW)
+Цикли QA:    review cycle 5 (Bugs #37-#40) + tester cycle 7 (Bug #37 + vitest.config.ts)
 ```
+
+### Gotcha — /sto-web review + tester cycle 7 (2026-05-25)
+- **setup/page.tsx** — публічна сторінка не повинна імпортувати axios-клієнт із auth-interceptors; вона використовує `apiFetch` напряму (без Bearer). Для public endpoints `/setup/*` `apiFetch` правильний вибір (Bug #37-part).
+- **mountedRef охоплення**: review cycle 3 підтвердив — після введення `mountedRef` в один файл треба відразу сканувати ВСІХ сусідів що завантажують дані при mount. Решта без guards: `work-orders/page.tsx`, `vehicles/[id]`, `employees/page.tsx`, `catalog/page.tsx` — заплановані на наступний цикл.
+- **LowStockItem ≠ StockItem**: `/stock-items/low` повертає агрегований SQL-результат без `id/reserved/available/salePrice`. Завжди мати окремий тип для кожного endpoint (Bug #37-frontend).
+- **vitest.config.ts для web**: без нього `pnpm --filter @sto/web test` не підхоплює `src/**/*.test.tsx` — 42 component тести мовчки пропускалися. Виправлено створенням конфігу.
 
 ### Gotcha — Phase 19 tester cycle 6 findings (2026-05-25)
 - **DTO enum-валідація для FK полів-енумів**: Якщо BD стовпець — `enum` (Postgres ENUM), а DTO приймає `@IsString()`, runtime каст `value as Enum` у Prisma where ламається з `invalid input value for enum`. Канон: завжди `@IsEnum(EnumType)` + типізація `field?: EnumType` у DTO (Bug #33: `PricingRule.goodType`).
