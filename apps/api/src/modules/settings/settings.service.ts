@@ -59,12 +59,14 @@ export class SettingsService {
     orgId: string,
     dto: UpdateOrganisationSettingsDto,
   ): Promise<OrganisationSettingsResponseDto> {
-    // Merge uiFeatures partially — don't overwrite unset keys
+    // Merge uiFeatures partially — don't overwrite unset keys.
+    // Whitelist allowed keys to prevent unbounded JSON growth via arbitrary payload.
     let updateData: Record<string, unknown> = { ...dto };
     if (dto.uiFeatures !== undefined) {
       const current = await this.prisma.organisationSettings.findUnique({ where: { orgId } });
       const currentFeatures = this.parseUiFeatures(current?.uiFeatures);
-      updateData = { ...dto, uiFeatures: { ...currentFeatures, ...dto.uiFeatures } };
+      const patch = this.pickUiFeatureKeys(dto.uiFeatures);
+      updateData = { ...dto, uiFeatures: { ...currentFeatures, ...patch } };
     }
 
     const settings = await this.prisma.organisationSettings.upsert({
@@ -155,9 +157,30 @@ export class SettingsService {
     }
   }
 
+  /**
+   * Returns full UiFeatures object — known boolean keys merged with defaults.
+   * Used for READ path (response, cache); guards against legacy junk in DB.
+   */
   private parseUiFeatures(raw: unknown): UiFeatures {
-    const stored = (typeof raw === 'object' && raw !== null ? raw : {}) as Partial<UiFeatures>;
-    return { ...UI_FEATURES_DEFAULTS, ...stored };
+    return { ...UI_FEATURES_DEFAULTS, ...this.pickUiFeatureKeys(raw) };
+  }
+
+  /**
+   * Returns only the whitelisted boolean keys actually present in `raw`.
+   * Used for WRITE path — caller merges with current DB state, so defaults
+   * MUST NOT be filled in (would overwrite unrelated keys not in user's PATCH).
+   */
+  private pickUiFeatureKeys(raw: unknown): Partial<UiFeatures> {
+    const stored = (typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {});
+    const allowedKeys = Object.keys(UI_FEATURES_DEFAULTS) as (keyof UiFeatures)[];
+    const sanitized: Partial<UiFeatures> = {};
+    for (const k of allowedKeys) {
+      const v = stored[k];
+      if (typeof v === 'boolean') sanitized[k] = v;
+    }
+    return sanitized;
   }
 
   private mapOrgSettings(s: {
