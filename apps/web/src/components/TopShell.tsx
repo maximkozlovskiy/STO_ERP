@@ -420,7 +420,7 @@ export function TopShell({ children }: { children: ReactNode }) {
       {/* Main */}
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         {/* Mobile topbar */}
-        <header className="flex lg:hidden items-center gap-3 px-4 h-12 bg-white border-b border-border shrink-0">
+        <header className="flex lg:hidden items-center gap-3 px-4 h-12 bg-surface border-b border-border shrink-0">
           <button
             onClick={() => setMobileOpen(true)}
             className="p-1.5 rounded-lg hover:bg-secondary text-foreground-muted transition-colors"

@@ -22,16 +22,16 @@ const base =
 
 const variants: Record<Variant, string> = {
   default:
-    'border border-border bg-white text-foreground ' +
+    'border border-border bg-surface text-foreground ' +
     'hover:bg-secondary hover:border-border-hover active:scale-[0.98]',
   primary:
     'bg-primary text-white shadow-[0_1px_2px_rgb(0_0_0/0.12)] ' +
     'hover:bg-primary-hover active:scale-[0.98]',
   secondary:
     'bg-secondary text-secondary-foreground ' +
-    'hover:bg-[hsl(210_40%_92%)] active:scale-[0.98]',
+    'hover:bg-muted active:scale-[0.98]',
   outline:
-    'border border-border bg-white text-foreground ' +
+    'border border-border bg-surface text-foreground ' +
     'hover:bg-secondary hover:border-border-hover active:scale-[0.98]',
   ghost:
     'text-foreground-muted ' +

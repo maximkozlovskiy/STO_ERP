@@ -6,7 +6,7 @@ function Card({ className, children, ...props }: HTMLAttributes<HTMLDivElement>)
   return (
     <div
       className={cn(
-        'rounded-lg border border-border bg-white',
+        'rounded-lg border border-border bg-surface',
         'shadow-xs',
         className,
       )}
@@ -99,7 +99,7 @@ function KpiCard({ label, value, icon, colorClass = 'kpi-card-blue', trend, clas
           </span>
         )}
       </div>
-      <span className="shrink-0 rounded-md p-2.5 text-(--kpi-icon) bg-white/60 [&>svg]:h-5 [&>svg]:w-5">
+      <span className="shrink-0 rounded-md p-2.5 text-(--kpi-icon) bg-white/20 [&>svg]:h-5 [&>svg]:w-5">
         {icon}
       </span>
     </div>

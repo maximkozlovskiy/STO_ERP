@@ -66,7 +66,7 @@ export function Modal({
       {/* Panel */}
       <div
         className={cn(
-          'relative z-10 w-full rounded-xl bg-white',
+          'relative z-10 w-full rounded-xl bg-surface',
           'shadow-xl border border-border',
           'flex flex-col max-h-[90vh]',
           'animate-in fade-in zoom-in-95 duration-200',

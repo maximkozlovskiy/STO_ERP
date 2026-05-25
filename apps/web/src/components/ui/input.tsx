@@ -38,7 +38,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             className={cn(
               'h-9 w-full rounded border text-[14px] text-foreground',
-              'bg-white placeholder:text-muted-foreground',
+              'bg-surface placeholder:text-muted-foreground',
               'px-3 py-2 outline-none transition-all duration-150',
               'border-border',
               'hover:border-border-hover',

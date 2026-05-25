@@ -13,7 +13,7 @@ function Table({ className, children, ...props }: HTMLAttributes<HTMLTableElemen
 
 function TableHeader({ className, children, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <thead className={cn('bg-[hsl(210_40%_98%)] border-b border-border', className)} {...props}>
+    <thead className={cn('bg-secondary border-b border-border', className)} {...props}>
       {children}
     </thead>
   );
@@ -21,7 +21,7 @@ function TableHeader({ className, children, ...props }: HTMLAttributes<HTMLTable
 
 function TableBody({ className, children, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <tbody className={cn('divide-y divide-border bg-white', className)} {...props}>
+    <tbody className={cn('divide-y divide-border bg-surface', className)} {...props}>
       {children}
     </tbody>
   );
@@ -32,8 +32,8 @@ function TableRow({ className, children, onClick, ...props }: HTMLAttributes<HTM
     <tr
       className={cn(
         'transition-colors duration-100',
-        onClick && 'cursor-pointer hover:bg-brand-50 active:bg-brand-100',
-        !onClick && 'hover:bg-[hsl(210_40%_99%)]',
+        onClick && 'cursor-pointer hover:bg-secondary active:bg-muted',
+        !onClick && 'hover:bg-secondary/50',
         className,
       )}
       onClick={onClick}

@@ -301,21 +301,68 @@ button, a, input, select, textarea {
   --color-foreground-muted:   hsl(215 20% 60%);
   --color-foreground-faint:   hsl(215 20% 45%);
   --color-border:             hsl(222 35% 20%);
-  --color-border-hover:       hsl(222 35% 30%);
+  --color-border-hover:       hsl(222 35% 32%);
+  --color-input:              hsl(222 35% 20%);
   --color-secondary:          hsl(222 35% 16%);
+  --color-secondary-foreground: hsl(213 31% 91%);
   --color-muted:              hsl(222 35% 16%);
+  --color-muted-foreground:   hsl(215 20% 60%);
   --color-card:               hsl(222 47% 11%);
+  --color-card-foreground:    hsl(213 31% 91%);
+  --color-ring:               var(--color-brand-400);
   --color-sidebar-bg:         hsl(224 44% 9%);
   --color-sidebar-border:     hsl(222 35% 14%);
   --color-destructive-subtle: hsl(0 40% 14%);
+  --color-destructive-border: hsl(0 50% 32%);
+  --color-destructive-text:   hsl(0 84% 72%);
   --color-success-subtle:     hsl(142 40% 12%);
+  --color-success-border:     hsl(142 50% 25%);
+  --color-success-text:       hsl(142 71% 60%);
   --color-warning-subtle:     hsl(38 40% 13%);
+  --color-warning-border:     hsl(38 60% 30%);
+  --color-warning-text:       hsl(38 92% 65%);
   --color-info-subtle:        hsl(199 40% 13%);
+  --color-info-border:        hsl(199 60% 28%);
+  --color-info-text:          hsl(199 89% 65%);
 }
 
-/* System preference (before hydration / no forced class) */
+/* Dark mode: inputs need slightly elevated background to be visible against dark card */
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark select,
+.dark textarea {
+  background-color: hsl(222 47% 14%) !important;
+  color: hsl(213 31% 91%);
+  border-color: hsl(222 35% 24%);
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]):hover,
+.dark select:hover,
+.dark textarea:hover {
+  border-color: hsl(222 35% 34%);
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]):focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: var(--color-brand-500);
+  box-shadow: 0 0 0 3px hsl(217 91% 60% / 0.18);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: hsl(215 20% 45%);
+}
+
+.dark input:disabled,
+.dark select:disabled,
+.dark textarea:disabled {
+  background-color: hsl(222 35% 16%) !important;
+  opacity: 0.55;
+}
+
+/* System preference — only applied when user explicitly chose 'system' mode */
 @media (prefers-color-scheme: dark) {
-  :root:not(.dark):not([data-color-mode="light"]) {
+  :root[data-color-mode="system"] {
     --color-background:         hsl(222 47% 8%);
     --color-surface:            hsl(222 47% 11%);
     --color-surface-raised:     hsl(222 47% 14%);

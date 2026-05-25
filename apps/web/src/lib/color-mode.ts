@@ -4,7 +4,7 @@ const KEY = 'sto_color_mode';
 
 export function getColorMode(): ColorMode {
   if (typeof window === 'undefined') return 'system';
-  return (localStorage.getItem(KEY) as ColorMode) ?? 'system';
+  return (localStorage.getItem(KEY) as ColorMode) ?? 'light';
 }
 
 export function setColorMode(mode: ColorMode): void {
@@ -20,6 +20,7 @@ export function applyColorMode(mode?: ColorMode): void {
     m === 'dark' ||
     (m === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.classList.toggle('dark', isDark);
+  document.documentElement.setAttribute('data-color-mode', m);
 }
 
 export function watchSystemColorMode(): () => void {

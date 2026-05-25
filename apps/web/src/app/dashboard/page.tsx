@@ -1,18 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import Link from 'next/link';
 import {
   Wrench, Clock, TrendingUp, AlertTriangle, FileX, BarChart2,
-  Plus, Users, ShoppingCart, Receipt, CalendarClock,
+  Plus, Users, ShoppingCart, Receipt, CalendarClock, Settings2, GripVertical, Check,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { cn } from '@/lib/utils';
 
 interface MaintenanceSchedule {
   id: string; vehicleId: string; vehicleLabel?: string;
@@ -45,12 +46,17 @@ function fmt(n: number) {
   return n.toLocaleString('uk-UA', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₴';
 }
 
-const QUICK_ACTIONS = [
-  { href: '/work-orders', label: 'Новий наряд',             icon: Wrench },
-  { href: '/crm',         label: 'Новий клієнт',            icon: Users },
-  { href: '/purchase-orders', label: 'Замовлення',          icon: ShoppingCart },
-  { href: '/invoices',    label: 'Рахунок',                  icon: Receipt },
+const ALL_QUICK_ACTIONS = [
+  { href: '/work-orders',     label: 'Новий наряд',      icon: Wrench },
+  { href: '/crm',             label: 'Новий клієнт',     icon: Users },
+  { href: '/purchase-orders', label: 'Замовлення',       icon: ShoppingCart },
+  { href: '/invoices',        label: 'Рахунок',          icon: Receipt },
+  { href: '/calendar',        label: 'Календар',         icon: CalendarClock },
+  { href: '/inventory',       label: 'Склад',            icon: BarChart2 },
 ];
+
+const DEFAULT_QUICK_ACTIONS = ['/work-orders', '/crm', '/purchase-orders', '/invoices'];
+const QA_STORAGE_KEY = 'sto_quick_actions';
 
 export default function DashboardPage() {
   const { employee } = useRequireAuth();
@@ -61,6 +67,8 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [todayStr, setTodayStr] = useState('');
   const [greeting, setGreeting] = useState('Вітаємо');
+  const [enabledQA, setEnabledQA] = useState<string[]>(DEFAULT_QUICK_ACTIONS);
+  const [qaConfigOpen, setQaConfigOpen] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -123,6 +131,18 @@ export default function DashboardPage() {
       new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', hour: 'numeric', hour12: false }).format(new Date()), 10,
     );
     setGreeting(h < 12 ? 'Доброго ранку' : h < 18 ? 'Доброго дня' : 'Доброго вечора');
+    try {
+      const saved = localStorage.getItem(QA_STORAGE_KEY);
+      if (saved) setEnabledQA(JSON.parse(saved) as string[]);
+    } catch { /* ignore */ }
+  }, []);
+
+  const toggleQA = useCallback((href: string) => {
+    setEnabledQA(prev => {
+      const next = prev.includes(href) ? prev.filter(h => h !== href) : [...prev, href];
+      try { localStorage.setItem(QA_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
   }, []);
 
   if (!employee) return null;
@@ -307,20 +327,62 @@ export default function DashboardPage() {
           {/* Quick actions */}
           <Card>
             <CardHeader>
-              <CardTitle>Швидкі дії</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>Швидкі дії</CardTitle>
+                <button
+                  onClick={() => setQaConfigOpen(o => !o)}
+                  className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                  title="Налаштувати"
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </CardHeader>
             <CardContent>
+              {qaConfigOpen && (
+                <div className="mb-4 p-3 bg-secondary rounded-lg border border-border">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Оберіть дії
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_QUICK_ACTIONS.map(({ href, label, icon: Icon }) => {
+                      const on = enabledQA.includes(href);
+                      return (
+                        <button
+                          key={href}
+                          onClick={() => toggleQA(href)}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 h-7 px-2.5 text-[12px] font-medium rounded-md border transition-all',
+                            on
+                              ? 'bg-primary border-primary text-white'
+                              : 'bg-surface border-border text-foreground hover:border-border-hover',
+                          )}
+                        >
+                          {on && <Check className="h-3 w-3" />}
+                          <Icon className="h-3 w-3" />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2.5">
-                {QUICK_ACTIONS.map(({ href, label, icon: Icon }) => (
+                {ALL_QUICK_ACTIONS.filter(a => enabledQA.includes(a.href)).map(({ href, label, icon: Icon }) => (
                   <Link
                     key={href}
                     href={href}
-                    className="inline-flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium rounded-lg border border-border bg-surface text-foreground hover:bg-secondary hover:border-border transition-all duration-150"
+                    className="inline-flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium rounded-lg border border-border bg-surface text-foreground hover:bg-secondary hover:border-border-hover transition-all duration-150"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     {label}
                   </Link>
                 ))}
+                {enabledQA.length === 0 && (
+                  <p className="text-[13px] text-muted-foreground">
+                    Немає активних дій — натисніть ⚙ щоб налаштувати
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
