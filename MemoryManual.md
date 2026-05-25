@@ -9,22 +9,26 @@
 ## Останній commit
 
 ```
-388b55c chore(web): add vitest.config.ts — enable component tests (42 tests)
+59e1694 fix(review): cycle 81534e0 — UI features endpoint accessible to all roles + cache failures
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після /sto-web review + tester cycle 7, 2026-05-25)
+## Поточний стан тестів (після /sto-review cycle 81534e0, 2026-05-25)
 ```
-TypeScript:  ✅ 0 errors        (web + api + shared, --incremental false)
-Unit:        ✅ 111/111 passed  (12 files)
-Contract:    ✅ 32/32 passed    (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4)
-Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
-Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
-E2E:         ✅ 16/16 passed    (smoke: 4, api-errors: 8, inventory: 4 — Chromium)
+TypeScript:  ✅ 0 errors        (web + api, --incremental false)
+Unit:        ✅ 111/111 passed  (12 files — previous cycle)
+Contract:    ✅ 32/32 passed    (previous cycle)
+Property:    ✅ 26/26 passed    (previous cycle)
+Components:  ✅ 42/42 passed    (previous cycle)
+E2E:         ✅ 16/16 passed    (previous cycle)
 Build:       ✅ API OK
-Цикли QA:    review cycle 5 (Bugs #37-#40) + tester cycle 7 (Bug #37 + vitest.config.ts)
+Цикли QA:    review cycle 81534e0 (toast/uiFeatures/stockIndicator) — 1 Important fix, 1 Suggestion left
 ```
+
+### Gotcha — /sto-review cycle 81534e0 (2026-05-25, Phase 19.2)
+- **Role-gated GET endpoint, що споживає всі ролі** — критичний анти-патерн. `useUiFeatures` хук викликається на `/work-orders/[id]` (доступна RECEPTIONIST/MECHANIC/ACCOUNTANT), але `/settings/organisation` має `@Roles('OWNER', 'ADMIN')`. Кожна навігація = 403 в network logs. Канон: для UI-feature-flags / branding / theme — окремий endpoint `/settings/ui-features` з `@Roles` для ВСІХ авторизованих ролей. Те саме стосується будь-яких "загально-читальних" даних, що mount-у завантажуються глобальними хуками.
+- **Module-level fetch cache MUST cache failures too** — інакше після першого 403/network-fail кожен mount компонента повторно стрілятиме у backend. Канон: на `.catch` зберігати DEFAULTS у `cache` з коротким TTL (наприклад, 60 сек), щоб recovery після зміни ролі/відновлення мережі залишився можливим.
 
 ### Gotcha — /sto-web review + tester cycle 7 (2026-05-25)
 - **setup/page.tsx** — публічна сторінка не повинна імпортувати axios-клієнт із auth-interceptors; вона використовує `apiFetch` напряму (без Bearer). Для public endpoints `/setup/*` `apiFetch` правильний вибір (Bug #37-part).
