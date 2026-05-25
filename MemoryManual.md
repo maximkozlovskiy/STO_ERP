@@ -9,21 +9,30 @@
 ## Останній commit
 
 ```
-aa88907 fix(review): Phase 19 cycle 3 — hydration safety, UUID validation, type imports
+fd0f597 docs(tester): record bugs #26-#31 from /sto-tester cycle 4 session
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після Phase 19 cycle 3 review, 2026-05-25)
+## Поточний стан тестів (після Phase 19 cycle 4 tester, 2026-05-25)
 ```
 TypeScript:  ✅ 0 errors        (web + api + shared)
-Unit:        ✅ 105/105 passed  (12 files)
-Contract:    ✅ 29/29 passed    (auth: 9, work-orders: 6, pricing-rules: 10, batches: 4)
+Unit:        ✅ 111/111 passed  (12 files; +6 нових для Bug #26/#27)
+Contract:    ✅ 32/32 passed    (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
 E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн)
-Цикли QA:    ✅ Phase 19 review cycle 3 — 4 findings виправлено (1 Important / 3 Suggestion)
+Цикли QA:    ✅ Phase 19 tester cycle 4 — знайдено + виправлено 6 багів (1 HIGH / 1 MEDIUM / 4 LOW)
 ```
+
+### Gotcha — Phase 19 tester cycle 4 findings (2026-05-25)
+- Hard `BadRequestException` на відсутньому `RECEIPT.price` блокує StockDocument TRANSFER/RECEIPT, бо `StockDocumentLine.price` — `Decimal?`. Канон: fallback на `good.purchasePrice ?? 0`, guard лише на `NaN`. Не повторювати "захист" що ламає сусідній модуль (Bug #26 = регресія від Bug #15).
+- При додаванні валідаторів у CreateDTO — **завжди дзеркалити** в UpdateDTO. PATCH без `@Min(0)`/`@Max(N)` зводить нанівець бізнес-інваріант (Bug #27: PATCH `percentValue: -50` → ціна вдвічі менша за собівартість).
+- Sub-resource list endpoints (`/goods/:id/batches`, `/goods/:id/price-history`) повинні: (a) перевіряти існування parent у org → 404, (b) повертати `{ items, total }` shape. Bare array + порожній 200 ховає неіснуючий goodId.
+- `.catch(() => {})` на fetch у `useEffect` — анти-патерн. Мінімум `console.warn`, щоб QA міг засікти API-failure. Не блокуй UI, але не мовчи.
+- `useEffect` для initial-fetch ТА `useCallback load` для refetch після CRUD — дублікація. Один `load` з `mountedRef.current` guard; `useEffect(() => { setLoading(true); load(); }, [load])` для initial.
+
+
 
 ### Gotcha — Phase 19 cycle 3 review findings (2026-05-25)
 - `new Date()` всередині IIFE `(() => { const now = new Date(); return list.map(...)})()` у render — все одно виконується на SSR pass (для 'use client' компонентів, які Next.js 15 pre-renders). Канонічний фікс: `const [nowMs, setNowMs] = useState(0); useEffect(() => setNowMs(Date.now()), []);` + guard `nowMs > 0` у render. Той самий патерн що у `work-orders/page.tsx`.
@@ -77,9 +86,9 @@ grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app
 |---|---|
 | Фаза | **Фаза 17 — Enums, enriched models, MaintenanceSchedule + CompletionAct** (завершено + QA) |
 | Прогрес | 17.1-17.3✅ backend + frontend + QA review |
-| TypeScript | ✅ 0 errors (web + api) — verified 2026-05-25 |
-| Unit тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
-| Contract тести | ✅ 15/15 passed (auth: 9, work-orders: 6) |
+| TypeScript | ✅ 0 errors (web + api + shared) — verified 2026-05-25 cycle 4 |
+| Unit тести | ✅ 111/111 passed (включно з contract і property у 12 файлах) |
+| Contract тести | ✅ 32/32 passed (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4) |
 | Property-based | ✅ 26/26 passed (fsm: 11, inventory: 7, settlements: 8) |
 | Component тести | ✅ 42/42 passed (button: 12, select: 9, modal: 11, empty-state: 10) |
 | E2E тести | ✅ 16/16 Playwright passed (smoke: 4, inventory: 5, api-errors: 8 — minus 1 dedup) |
