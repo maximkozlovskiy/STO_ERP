@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { LiftType, ZoneType } from '@prisma/client';
+import { LiftStatus, LiftType, ZoneType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateLiftDto, CreateZoneDto, LiftResponseDto,
@@ -75,7 +75,16 @@ export class ZonesService {
 
   async updateLift(orgId: string, id: string, dto: UpdateLiftDto): Promise<LiftResponseDto> {
     await this.findOneLift(orgId, id);
-    const item = await this.prisma.lift.update({ where: { id, orgId }, data: dto });
+    const { purchaseDate, warrantyUntil, lastMaintenanceDate, ...rest } = dto;
+    const item = await this.prisma.lift.update({
+      where: { id, orgId },
+      data: {
+        ...rest,
+        ...(purchaseDate !== undefined ? { purchaseDate: purchaseDate ? new Date(purchaseDate) : null } : {}),
+        ...(warrantyUntil !== undefined ? { warrantyUntil: warrantyUntil ? new Date(warrantyUntil) : null } : {}),
+        ...(lastMaintenanceDate !== undefined ? { lastMaintenanceDate: lastMaintenanceDate ? new Date(lastMaintenanceDate) : null } : {}),
+      },
+    });
     return this.toLiftDto(item);
   }
 
@@ -88,7 +97,18 @@ export class ZonesService {
     return { id: z.id, orgId: z.orgId, branchId: z.branchId, name: z.name, type: z.type as ZoneType, createdAt: z.createdAt, updatedAt: z.updatedAt };
   }
 
-  private toLiftDto(l: { id: string; orgId: string; zoneId: string; name: string; type: string; maxWeightKg: number | null; createdAt: Date; updatedAt: Date }): LiftResponseDto {
-    return { id: l.id, orgId: l.orgId, zoneId: l.zoneId, name: l.name, type: l.type as LiftType, maxWeightKg: l.maxWeightKg, createdAt: l.createdAt, updatedAt: l.updatedAt };
+  private toLiftDto(l: {
+    id: string; orgId: string; zoneId: string; name: string; type: string; maxWeightKg: number | null;
+    status: LiftStatus; serialNumber: string | null; purchaseDate: Date | null; warrantyUntil: Date | null;
+    maintenanceIntervalDays: number | null; lastMaintenanceDate: Date | null; nextMaintenanceDate: Date | null;
+    createdAt: Date; updatedAt: Date;
+  }): LiftResponseDto {
+    return {
+      id: l.id, orgId: l.orgId, zoneId: l.zoneId, name: l.name, type: l.type as LiftType, maxWeightKg: l.maxWeightKg,
+      status: l.status, serialNumber: l.serialNumber, purchaseDate: l.purchaseDate, warrantyUntil: l.warrantyUntil,
+      maintenanceIntervalDays: l.maintenanceIntervalDays, lastMaintenanceDate: l.lastMaintenanceDate,
+      nextMaintenanceDate: l.nextMaintenanceDate,
+      createdAt: l.createdAt, updatedAt: l.updatedAt,
+    };
   }
 }

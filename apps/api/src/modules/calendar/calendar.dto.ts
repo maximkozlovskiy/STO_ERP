@@ -1,5 +1,6 @@
-import { IsUUID, IsOptional, IsString, IsISO8601 } from 'class-validator';
+import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
 
 export class CreateCalendarSlotDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() liftId?: string;
@@ -8,6 +9,8 @@ export class CreateCalendarSlotDto {
   @ApiProperty() @IsISO8601() startAt!: string;
   @ApiProperty() @IsISO8601() endAt!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  @ApiPropertyOptional({ enum: CalendarSlotStatus }) @IsOptional() @IsEnum(CalendarSlotStatus) status?: CalendarSlotStatus;
+  @ApiPropertyOptional({ enum: CalendarSlotType }) @IsOptional() @IsEnum(CalendarSlotType) type?: CalendarSlotType;
 }
 
 export class CalendarSlotResponseDto {
@@ -19,4 +22,6 @@ export class CalendarSlotResponseDto {
   @ApiProperty() endAt!: Date;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() workOrderNumber?: string;
+  @ApiProperty({ enum: CalendarSlotStatus }) status!: CalendarSlotStatus;
+  @ApiProperty({ enum: CalendarSlotType }) type!: CalendarSlotType;
 }

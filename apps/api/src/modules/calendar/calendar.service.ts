@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCalendarSlotDto, CalendarSlotResponseDto } from './calendar.dto';
 
@@ -89,6 +90,8 @@ export class CalendarService {
         startAt,
         endAt,
         notes: dto.notes ?? null,
+        status: dto.status ?? CalendarSlotStatus.BOOKED,
+        type: dto.type ?? CalendarSlotType.WORK,
       },
       include: { workOrder: { select: { number: true } } },
     });
@@ -114,6 +117,7 @@ export class CalendarService {
   private toDto(slot: {
     id: string; liftId: string | null; employeeId: string | null; workOrderId: string | null;
     startAt: Date; endAt: Date; notes: string | null;
+    status: CalendarSlotStatus; type: CalendarSlotType;
     workOrder: { number: string } | null;
   }): CalendarSlotResponseDto {
     return {
@@ -124,6 +128,8 @@ export class CalendarService {
       startAt: slot.startAt,
       endAt: slot.endAt,
       notes: slot.notes ?? null,
+      status: slot.status,
+      type: slot.type,
       workOrderNumber: slot.workOrder?.number,
     };
   }

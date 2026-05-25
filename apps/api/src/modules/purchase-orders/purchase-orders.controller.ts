@@ -11,7 +11,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import {
   CreatePurchaseOrderDto, UpdatePurchaseOrderDto,
-  ReceivePurchaseOrderDto, TransitionPurchaseOrderDto, POTransitionStatus,
+  ReceivePurchaseOrderDto, TransitionPurchaseOrderDto,
 } from './purchase-orders.dto';
 
 @ApiTags('Purchase Orders')
@@ -77,7 +77,7 @@ export class PurchaseOrdersController {
     @Param('id') id: string,
     @Body() dto: TransitionPurchaseOrderDto,
   ) {
-    return this.service.transition(orgId, id, dto.status as POTransitionStatus);
+    return this.service.transition(orgId, id, dto.status);
   }
 
   @Post(':id/receive')

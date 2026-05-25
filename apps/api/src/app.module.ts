@@ -34,6 +34,8 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { FilesModule } from './modules/files/files.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { DocumentNumberModule } from './modules/document-number/document-number.module';
+import { MaintenanceSchedulesModule } from './modules/maintenance-schedules/maintenance-schedules.module';
+import { CompletionActsModule } from './modules/completion-acts/completion-acts.module';
 
 @Module({
   imports: [
@@ -80,6 +82,8 @@ import { DocumentNumberModule } from './modules/document-number/document-number.
     FilesModule,
     SyncModule,
     DocumentNumberModule,
+    MaintenanceSchedulesModule,
+    CompletionActsModule,
   ],
 })
 export class AppModule {}

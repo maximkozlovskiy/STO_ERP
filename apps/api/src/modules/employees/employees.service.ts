@@ -156,7 +156,10 @@ export class EmployeesService {
 
   private toDto(item: {
     id: string; orgId: string; userId: string | null; firstName: string; lastName: string;
-    role: string; rateScheme: unknown; phone?: string | null; createdAt: Date; updatedAt: Date;
+    role: string; status: string; rateScheme: unknown;
+    phone?: string | null; email?: string | null;
+    dateOfHire?: Date | null; dateOfFire?: Date | null;
+    createdAt: Date; updatedAt: Date;
     employeeZones: Array<{ zoneId: string }>;
     employeeLifts: Array<{ liftId: string }>;
     employeeWorkCategories: Array<{ workCategoryId: string }>;
@@ -168,8 +171,12 @@ export class EmployeesService {
       firstName: item.firstName,
       lastName: item.lastName,
       role: item.role as UserRole,
+      status: item.status as import('@prisma/client').EmployeeStatus,
       // rateScheme intentionally omitted — exposed only via OWNER/ADMIN-scoped endpoint
       phone: item.phone,
+      email: item.email,
+      dateOfHire: item.dateOfHire,
+      dateOfFire: item.dateOfFire,
       zoneIds: item.employeeZones.map((z) => z.zoneId),
       liftIds: item.employeeLifts.map((l) => l.liftId),
       workCategoryIds: item.employeeWorkCategories.map((c) => c.workCategoryId),

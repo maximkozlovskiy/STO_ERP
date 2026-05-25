@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { UserRole } from '@prisma/client';
+import { EmployeeStatus, UserRole } from '@prisma/client';
 import { z } from 'zod';
 
 // ─── rateScheme Zod validation ────────────────────────────
@@ -44,6 +44,26 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional({ enum: EmployeeStatus })
+  @IsOptional()
+  @IsEnum(EmployeeStatus)
+  status?: EmployeeStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  dateOfHire?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  dateOfFire?: string;
 }
 
 export class UpdateEmployeeDto {
@@ -70,6 +90,26 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional({ enum: EmployeeStatus })
+  @IsOptional()
+  @IsEnum(EmployeeStatus)
+  status?: EmployeeStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  dateOfHire?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  dateOfFire?: string;
 }
 
 export class AssignZonesDto {
@@ -97,7 +137,11 @@ export class EmployeeResponseDto {
   @ApiProperty() firstName!: string;
   @ApiProperty() lastName!: string;
   @ApiProperty({ enum: UserRole }) role!: UserRole;
+  @ApiProperty({ enum: EmployeeStatus }) status!: EmployeeStatus;
   @ApiPropertyOptional() phone?: string | null;
+  @ApiPropertyOptional() email?: string | null;
+  @ApiPropertyOptional() dateOfHire?: Date | null;
+  @ApiPropertyOptional() dateOfFire?: Date | null;
   @ApiProperty({ type: [String] }) zoneIds!: string[];
   @ApiProperty({ type: [String] }) liftIds!: string[];
   @ApiProperty({ type: [String] }) workCategoryIds!: string[];

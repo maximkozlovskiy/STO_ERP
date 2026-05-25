@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -10,13 +10,12 @@ import {
   ReceivePurchaseOrderDto, PurchaseOrderResponseDto, PaginatedPurchaseOrdersDto,
 } from './purchase-orders.dto';
 
-const PO_STATUSES = ['DRAFT', 'ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED'] as const;
-type POStatus = typeof PO_STATUSES[number];
+type POStatus = PurchaseOrderStatus;
 
 const PO_TRANSITIONS: Record<POStatus, POStatus[]> = {
-  DRAFT:     ['ORDERED', 'CANCELLED'],
-  ORDERED:   ['PARTIAL', 'RECEIVED', 'CANCELLED'],
-  PARTIAL:   ['RECEIVED', 'CANCELLED'],
+  DRAFT:     [PurchaseOrderStatus.ORDERED, PurchaseOrderStatus.CANCELLED],
+  ORDERED:   [PurchaseOrderStatus.PARTIAL, PurchaseOrderStatus.RECEIVED, PurchaseOrderStatus.CANCELLED],
+  PARTIAL:   [PurchaseOrderStatus.RECEIVED, PurchaseOrderStatus.CANCELLED],
   RECEIVED:  [],
   CANCELLED: [],
 };
@@ -101,7 +100,7 @@ export class PurchaseOrdersService {
   async update(orgId: string, id: string, dto: UpdatePurchaseOrderDto): Promise<PurchaseOrderResponseDto> {
     const po = await this.prisma.purchaseOrder.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
-    if (po.status !== 'DRAFT') throw new BadRequestException('Редагувати можна лише чернетку');
+    if (po.status !== PurchaseOrderStatus.DRAFT) throw new BadRequestException('Редагувати можна лише чернетку');
 
     const lines = dto.lines;
     const totalAmount = lines ? lines.reduce((s, l) => s + l.quantity * l.price, 0) : Number(po.totalAmount);
@@ -153,7 +152,7 @@ export class PurchaseOrdersService {
       include: { lines: { where: { deletedAt: null }, take: 1000 } },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
-    if (!['ORDERED', 'PARTIAL'].includes(po.status)) {
+    if (po.status !== PurchaseOrderStatus.ORDERED && po.status !== PurchaseOrderStatus.PARTIAL) {
       throw new BadRequestException('Прийом можливий лише для замовлень зі статусом ORDERED або PARTIAL');
     }
 
@@ -200,7 +199,7 @@ export class PurchaseOrdersService {
       const updatedLines = await tx.purchaseOrderLine.findMany({ where: { purchaseOrderId: id, orgId, deletedAt: null }, take: 1000 });
       const allReceived = updatedLines.every(l => l.receivedQty >= l.quantity);
       const anyReceived = updatedLines.some(l => l.receivedQty > 0);
-      const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL' : po.status;
+      const newStatus = allReceived ? PurchaseOrderStatus.RECEIVED : anyReceived ? PurchaseOrderStatus.PARTIAL : po.status;
       await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
     });
     return this.findOne(orgId, id);
@@ -209,12 +208,12 @@ export class PurchaseOrdersService {
   async remove(orgId: string, id: string): Promise<void> {
     const po = await this.prisma.purchaseOrder.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
-    if (po.status !== 'DRAFT') throw new BadRequestException('Видалити можна лише чернетку');
+    if (po.status !== PurchaseOrderStatus.DRAFT) throw new BadRequestException('Видалити можна лише чернетку');
     await this.prisma.purchaseOrder.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(po: {
-    id: string; orgId: string; number: string; status: string;
+    id: string; orgId: string; number: string; status: PurchaseOrderStatus;
     supplierId: string; warehouseId: string; totalAmount: import('@prisma/client').Prisma.Decimal; notes: string | null;
     createdAt: Date; updatedAt: Date;
     supplier: { firstName: string | null; lastName: string | null; companyName: string | null } | null;

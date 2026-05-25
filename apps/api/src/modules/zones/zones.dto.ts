@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
-import { ZoneType, LiftType } from '@prisma/client';
+import { IsBoolean, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
 
 // ─── Zone DTOs ───────────────────────────────────────────
 
@@ -74,6 +74,17 @@ export class UpdateLiftDto {
   @ApiPropertyOptional()
   @IsOptional()
   maxWeightKg?: number;
+
+  @ApiPropertyOptional({ enum: LiftStatus })
+  @IsOptional()
+  @IsEnum(LiftStatus)
+  status?: LiftStatus;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() serialNumber?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() purchaseDate?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() warrantyUntil?: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() maintenanceIntervalDays?: number;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() lastMaintenanceDate?: string;
 }
 
 export class LiftResponseDto {
@@ -83,6 +94,13 @@ export class LiftResponseDto {
   @ApiProperty() name!: string;
   @ApiProperty({ enum: LiftType }) type!: LiftType;
   @ApiPropertyOptional() maxWeightKg?: number | null;
+  @ApiProperty({ enum: LiftStatus }) status!: LiftStatus;
+  @ApiPropertyOptional() serialNumber?: string | null;
+  @ApiPropertyOptional() purchaseDate?: Date | null;
+  @ApiPropertyOptional() warrantyUntil?: Date | null;
+  @ApiPropertyOptional() maintenanceIntervalDays?: number | null;
+  @ApiPropertyOptional() lastMaintenanceDate?: Date | null;
+  @ApiPropertyOptional() nextMaintenanceDate?: Date | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }

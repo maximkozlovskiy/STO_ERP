@@ -1,0 +1,164 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import {
+  CreateMaintenanceScheduleDto, UpdateMaintenanceScheduleDto,
+  MaintenanceScheduleResponseDto,
+} from './maintenance-schedules.dto';
+
+@Injectable()
+export class MaintenanceSchedulesService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async findAll(orgId: string, vehicleId?: string): Promise<MaintenanceScheduleResponseDto[]> {
+    const items = await this.prisma.maintenanceSchedule.findMany({
+      where: { orgId, deletedAt: null, ...(vehicleId ? { vehicleId } : {}) },
+      include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
+      orderBy: { nextMaintenanceDate: 'asc' },
+      take: 200,
+    });
+    return items.map(item => this.toDto(item));
+  }
+
+  async findOne(orgId: string, id: string): Promise<MaintenanceScheduleResponseDto> {
+    const item = await this.prisma.maintenanceSchedule.findFirst({
+      where: { id, orgId, deletedAt: null },
+      include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
+    });
+    if (!item) throw new NotFoundException('Графік ТО не знайдено');
+    return this.toDto(item);
+  }
+
+  async findUpcoming(orgId: string, days: number): Promise<MaintenanceScheduleResponseDto[]> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + days);
+    const items = await this.prisma.maintenanceSchedule.findMany({
+      where: {
+        orgId, deletedAt: null, isActive: true,
+        nextMaintenanceDate: { lte: cutoff },
+      },
+      include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
+      orderBy: { nextMaintenanceDate: 'asc' },
+      take: 200,
+    });
+    return items.map(item => this.toDto(item));
+  }
+
+  async create(orgId: string, dto: CreateMaintenanceScheduleDto): Promise<MaintenanceScheduleResponseDto> {
+    const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId, orgId, deletedAt: null } });
+    if (!vehicle) throw new NotFoundException('Авто не знайдено');
+
+    const lastDate = dto.lastMaintenanceDate ? new Date(dto.lastMaintenanceDate) : null;
+    const nextDate = this.calcNextDate(lastDate, dto.intervalDays);
+    const nextMileage = this.calcNextMileage(dto.lastMaintenanceMileage, dto.intervalMileage);
+
+    const item = await this.prisma.maintenanceSchedule.create({
+      data: {
+        orgId, vehicleId: dto.vehicleId,
+        maintenanceType: dto.maintenanceType ?? 'REGULAR',
+        intervalDays: dto.intervalDays ?? null,
+        intervalMileage: dto.intervalMileage ?? null,
+        lastMaintenanceDate: lastDate,
+        lastMaintenanceMileage: dto.lastMaintenanceMileage ?? null,
+        nextMaintenanceDate: nextDate,
+        nextMaintenanceMileage: nextMileage ?? null,
+        notes: dto.notes ?? null,
+      },
+      include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
+    });
+    return this.toDto(item);
+  }
+
+  async update(orgId: string, id: string, dto: UpdateMaintenanceScheduleDto): Promise<MaintenanceScheduleResponseDto> {
+    const existing = await this.prisma.maintenanceSchedule.findFirst({ where: { id, orgId, deletedAt: null } });
+    if (!existing) throw new NotFoundException('Графік ТО не знайдено');
+
+    const lastDate = dto.lastMaintenanceDate !== undefined
+      ? (dto.lastMaintenanceDate ? new Date(dto.lastMaintenanceDate) : null)
+      : existing.lastMaintenanceDate;
+    const intervalDays = dto.intervalDays ?? existing.intervalDays;
+    const intervalMileage = dto.intervalMileage ?? existing.intervalMileage;
+    const lastMileage = dto.lastMaintenanceMileage !== undefined ? dto.lastMaintenanceMileage : existing.lastMaintenanceMileage;
+
+    const nextDate = this.calcNextDate(lastDate, intervalDays ?? undefined);
+    const nextMileage = dto.nextMaintenanceMileage ?? this.calcNextMileage(lastMileage ?? undefined, intervalMileage ?? undefined);
+
+    const item = await this.prisma.maintenanceSchedule.update({
+      where: { id, orgId },
+      data: {
+        maintenanceType: dto.maintenanceType,
+        intervalDays: dto.intervalDays,
+        intervalMileage: dto.intervalMileage,
+        lastMaintenanceDate: lastDate,
+        lastMaintenanceMileage: dto.lastMaintenanceMileage,
+        nextMaintenanceDate: nextDate,
+        nextMaintenanceMileage: nextMileage,
+        isActive: dto.isActive,
+        notes: dto.notes,
+      },
+      include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
+    });
+    return this.toDto(item);
+  }
+
+  async remove(orgId: string, id: string): Promise<void> {
+    const existing = await this.prisma.maintenanceSchedule.findFirst({ where: { id, orgId, deletedAt: null } });
+    if (!existing) throw new NotFoundException('Графік ТО не знайдено');
+    await this.prisma.maintenanceSchedule.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+  }
+
+  async updateAfterWorkOrder(orgId: string, vehicleId: string, completedDate: Date, mileage?: number): Promise<void> {
+    const schedules = await this.prisma.maintenanceSchedule.findMany({
+      where: { orgId, vehicleId, deletedAt: null, isActive: true },
+      take: 50,
+    });
+    for (const s of schedules) {
+      const nextDate = this.calcNextDate(completedDate, s.intervalDays ?? undefined);
+      const newMileage = mileage !== undefined ? mileage : (s.lastMaintenanceMileage ?? undefined);
+      const nextMileage = this.calcNextMileage(newMileage, s.intervalMileage ?? undefined);
+      await this.prisma.maintenanceSchedule.update({
+        where: { id: s.id, orgId },
+        data: {
+          lastMaintenanceDate: completedDate,
+          ...(mileage !== undefined ? { lastMaintenanceMileage: mileage } : {}),
+          nextMaintenanceDate: nextDate,
+          nextMaintenanceMileage: nextMileage ?? null,
+        },
+      });
+    }
+  }
+
+  private calcNextDate(lastDate: Date | null | undefined, intervalDays: number | null | undefined): Date | null {
+    if (!lastDate || !intervalDays) return null;
+    const d = new Date(lastDate);
+    d.setDate(d.getDate() + intervalDays);
+    return d;
+  }
+
+  private calcNextMileage(lastMileage: number | null | undefined, interval: number | null | undefined): number | null {
+    if (lastMileage == null || !interval) return null;
+    return lastMileage + interval;
+  }
+
+  private toDto(item: {
+    id: string; orgId: string; vehicleId: string;
+    maintenanceType: string; intervalDays: number | null; intervalMileage: number | null;
+    lastMaintenanceDate: Date | null; lastMaintenanceMileage: number | null;
+    nextMaintenanceDate: Date | null; nextMaintenanceMileage: number | null;
+    isActive: boolean; notes: string | null;
+    createdAt: Date; updatedAt: Date;
+    vehicle: { make: string; model: string; licensePlate: string | null } | null;
+  }): MaintenanceScheduleResponseDto {
+    return {
+      id: item.id, orgId: item.orgId, vehicleId: item.vehicleId,
+      vehicleLabel: item.vehicle
+        ? `${item.vehicle.make} ${item.vehicle.model}${item.vehicle.licensePlate ? ` (${item.vehicle.licensePlate})` : ''}`
+        : undefined,
+      maintenanceType: item.maintenanceType,
+      intervalDays: item.intervalDays, intervalMileage: item.intervalMileage,
+      lastMaintenanceDate: item.lastMaintenanceDate, lastMaintenanceMileage: item.lastMaintenanceMileage,
+      nextMaintenanceDate: item.nextMaintenanceDate, nextMaintenanceMileage: item.nextMaintenanceMileage,
+      isActive: item.isActive, notes: item.notes,
+      createdAt: item.createdAt, updatedAt: item.updatedAt,
+    };
+  }
+}

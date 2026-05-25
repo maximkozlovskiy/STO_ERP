@@ -1,0 +1,199 @@
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { CompletionActStatus } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { DocumentNumberService } from '../document-number/document-number.service';
+import { InvoicesService } from '../invoices/invoices.service';
+import { CompletionActResponseDto, CompletionActLineDto, SignCompletionActDto } from './completion-acts.dto';
+
+@Injectable()
+export class CompletionActsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly docNumbers: DocumentNumberService,
+    private readonly invoices: InvoicesService,
+  ) {}
+
+  async findAll(orgId: string, workOrderId?: string): Promise<CompletionActResponseDto[]> {
+    const items = await this.prisma.completionAct.findMany({
+      where: { orgId, deletedAt: null, ...(workOrderId ? { workOrderId } : {}) },
+      include: {
+        workOrder: {
+          select: {
+            number: true,
+            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+            vehicle: { select: { make: true, model: true, licensePlate: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return items.map(item => this.toDto(item, []));
+  }
+
+  async findOne(orgId: string, id: string): Promise<CompletionActResponseDto> {
+    const item = await this.prisma.completionAct.findFirst({
+      where: { id, orgId, deletedAt: null },
+      include: {
+        workOrder: {
+          select: {
+            number: true,
+            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+            vehicle: { select: { make: true, model: true, licensePlate: true } },
+            lines: {
+              include: { work: { select: { name: true } } },
+              take: 500,
+            },
+            parts: {
+              include: { good: { select: { name: true, unit: true } } },
+              take: 500,
+            },
+          },
+        },
+      },
+    });
+    if (!item) throw new NotFoundException('Акт не знайдено');
+    const lines = this.buildLines(item.workOrder);
+    return this.toDto(item, lines);
+  }
+
+  async createFromWorkOrder(orgId: string, workOrderId: string): Promise<CompletionActResponseDto> {
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id: workOrderId, orgId, deletedAt: null },
+      include: {
+        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+        vehicle: { select: { make: true, model: true, licensePlate: true } },
+        lines: { include: { work: { select: { name: true } } }, take: 500 },
+        parts: { include: { good: { select: { name: true, unit: true } } }, take: 500 },
+      },
+    });
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!['COMPLETED', 'INVOICED'].includes(wo.status)) {
+      throw new BadRequestException('Акт можна сформувати лише для завершеного наряду');
+    }
+
+    const existing = await this.prisma.completionAct.findFirst({
+      where: { orgId, workOrderId, deletedAt: null, status: { not: CompletionActStatus.CANCELLED } },
+    });
+    if (existing) throw new BadRequestException('Для цього наряду вже існує активний акт');
+
+    const number = await this.docNumbers.next(orgId, 'COMPLETION_ACT');
+
+    const act = await this.prisma.completionAct.create({
+      data: { orgId, workOrderId, number, status: CompletionActStatus.DRAFT },
+      include: {
+        workOrder: {
+          select: {
+            number: true,
+            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+            vehicle: { select: { make: true, model: true, licensePlate: true } },
+          },
+        },
+      },
+    });
+
+    const lines = this.buildLines(wo);
+    return this.toDto(act, lines);
+  }
+
+  async sign(orgId: string, id: string, dto: SignCompletionActDto): Promise<CompletionActResponseDto> {
+    const act = await this.prisma.completionAct.findFirst({
+      where: { id, orgId, deletedAt: null },
+      include: { workOrder: { select: { id: true, counterpartyId: true, status: true, totalAmount: true } } },
+    });
+    if (!act) throw new NotFoundException('Акт не знайдено');
+    if (act.status !== CompletionActStatus.DRAFT) {
+      throw new BadRequestException('Підписати можна лише чернетку акту');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.completionAct.update({
+        where: { id, orgId },
+        data: {
+          status: CompletionActStatus.SIGNED,
+          signedAt: new Date(),
+          signedBy: dto.signedBy ?? null,
+          clientPhone: dto.clientPhone ?? null,
+          notes: dto.notes ?? null,
+        },
+      });
+
+      if (act.workOrder && act.workOrder.status === 'COMPLETED') {
+        await tx.workOrder.update({
+          where: { id: act.workOrder.id, orgId },
+          data: { status: 'INVOICED' },
+        });
+      }
+    });
+
+    // Auto-generate invoice after sign
+    if (act.workOrder) {
+      try {
+        await this.invoices.createFromWorkOrder(orgId, act.workOrder.id);
+      } catch {
+        // Invoice may already exist — not a fatal error
+      }
+    }
+
+    return this.findOne(orgId, id);
+  }
+
+  async cancel(orgId: string, id: string): Promise<void> {
+    const act = await this.prisma.completionAct.findFirst({ where: { id, orgId, deletedAt: null } });
+    if (!act) throw new NotFoundException('Акт не знайдено');
+    if (act.status === CompletionActStatus.SIGNED) {
+      throw new BadRequestException('Підписаний акт не можна скасувати');
+    }
+    await this.prisma.completionAct.update({ where: { id, orgId }, data: { status: CompletionActStatus.CANCELLED } });
+  }
+
+  private buildLines(wo: {
+    lines: Array<{ normoHours: number; price: import('@prisma/client').Prisma.Decimal; amount: import('@prisma/client').Prisma.Decimal; workId: string; work: { name: string } | null }>;
+    parts: Array<{ quantity: number; price: import('@prisma/client').Prisma.Decimal; amount: import('@prisma/client').Prisma.Decimal; goodId: string; good: { name: string; unit: string } | null }>;
+  } | null | undefined): CompletionActLineDto[] {
+    if (!wo) return [];
+    const lines: CompletionActLineDto[] = [];
+    for (const l of wo.lines) {
+      lines.push({
+        description: l.work?.name ?? 'Робота',
+        quantity: l.normoHours,
+        unitPrice: Number(l.price),
+        amount: Number(l.amount),
+        workId: l.workId,
+      });
+    }
+    for (const p of wo.parts) {
+      lines.push({
+        description: p.good?.name ?? 'Запчастина',
+        quantity: p.quantity,
+        unitPrice: Number(p.price),
+        amount: Number(p.amount),
+        goodId: p.goodId,
+      });
+    }
+    return lines;
+  }
+
+  private toDto(act: {
+    id: string; orgId: string; workOrderId: string; number: string; status: CompletionActStatus;
+    signedAt: Date | null; signedBy: string | null; clientPhone: string | null; notes: string | null;
+    createdAt: Date; updatedAt: Date;
+    workOrder: {
+      number: string;
+      counterparty: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
+      vehicle: { make: string; model: string; licensePlate: string | null } | null;
+    } | null;
+  }, lines: CompletionActLineDto[]): CompletionActResponseDto {
+    const cp = act.workOrder?.counterparty;
+    const counterpartyName = (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || undefined;
+    const v = act.workOrder?.vehicle;
+    const vehicleLabel = v ? `${v.make} ${v.model}${v.licensePlate ? ` (${v.licensePlate})` : ''}` : undefined;
+    return {
+      id: act.id, orgId: act.orgId, workOrderId: act.workOrderId, number: act.number, status: act.status,
+      signedAt: act.signedAt, signedBy: act.signedBy, clientPhone: act.clientPhone, notes: act.notes,
+      workOrderNumber: act.workOrder?.number, counterpartyName, vehicleLabel,
+      lines,
+      createdAt: act.createdAt, updatedAt: act.updatedAt,
+    };
+  }
+}

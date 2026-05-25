@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CounterpartyType, Prisma } from '@prisma/client';
+import { CounterpartyType, LegalForm, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CounterpartyQueryDto, CounterpartyResponseDto, CreateCounterpartyDto,
@@ -126,7 +126,10 @@ export class CounterpartiesService {
   private toDto(item: {
     id: string; orgId: string; type: string; firstName: string | null; lastName: string | null;
     companyName: string | null; edrpou: string | null; vatPayer: boolean; phone: string | null;
-    email: string | null; notes: string | null; createdAt: Date; updatedAt: Date;
+    email: string | null; notes: string | null;
+    legalForm: LegalForm | null; legalAddress: string | null; actualAddress: string | null;
+    bankAccount: string | null; bankName: string | null; contactPerson: string | null; taxNumber: string | null;
+    createdAt: Date; updatedAt: Date;
     settlementAccount: { balance: Prisma.Decimal } | null;
   }, includeEdrpou = false): CounterpartyResponseDto {
     return {
@@ -136,6 +139,9 @@ export class CounterpartiesService {
       // edrpou exposed only on detail view — sensitive identifier
       edrpou: includeEdrpou ? item.edrpou : undefined,
       vatPayer: item.vatPayer, phone: item.phone, email: item.email, notes: item.notes,
+      legalForm: item.legalForm, legalAddress: item.legalAddress, actualAddress: item.actualAddress,
+      bankAccount: item.bankAccount, bankName: item.bankName,
+      contactPerson: item.contactPerson, taxNumber: item.taxNumber,
       balance: item.settlementAccount ? Number(item.settlementAccount.balance) : 0,
       createdAt: item.createdAt, updatedAt: item.updatedAt,
     };

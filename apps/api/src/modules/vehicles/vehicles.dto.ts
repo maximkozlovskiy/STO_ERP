@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsDateString, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 // ─── Vehicle ─────────────────────────────────────────────
 
@@ -15,6 +15,12 @@ export class CreateVehicleDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) currentMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() color?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() transmissionType?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() driveType?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() bodyType?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() engineCode?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() insuranceExpiry?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() inspectionExpiry?: string;
 }
 
 export class UpdateVehicleDto {
@@ -28,6 +34,12 @@ export class UpdateVehicleDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) currentMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() color?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() transmissionType?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() driveType?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() bodyType?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() engineCode?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() insuranceExpiry?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() inspectionExpiry?: string;
 }
 
 export class VehicleResponseDto {
@@ -44,6 +56,12 @@ export class VehicleResponseDto {
   @ApiPropertyOptional() currentMileage?: number | null;
   @ApiPropertyOptional() color?: string | null;
   @ApiPropertyOptional() notes?: string | null;
+  @ApiPropertyOptional() transmissionType?: string | null;
+  @ApiPropertyOptional() driveType?: string | null;
+  @ApiPropertyOptional() bodyType?: string | null;
+  @ApiPropertyOptional() engineCode?: string | null;
+  @ApiPropertyOptional() insuranceExpiry?: Date | null;
+  @ApiPropertyOptional() inspectionExpiry?: Date | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }

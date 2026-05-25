@@ -1,17 +1,20 @@
 import { IsUUID, IsOptional, IsNumber, Min, IsString, IsDateString, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { InvoiceStatus } from '@prisma/client';
 
 export class CreateInvoiceDto {
   @ApiProperty() @IsUUID() counterpartyId!: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() workOrderId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
   @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 
 export class UpdateInvoiceDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) amount?: number;
   @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 
 const INV_TRANSITION_STATUSES = ['SENT', 'PAID', 'CANCELLED'] as const;
@@ -23,17 +26,39 @@ export class TransitionInvoiceDto {
   status!: InvTransitionStatus;
 }
 
+export class InvoiceLineResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() invoiceId!: string;
+  @ApiPropertyOptional() goodId?: string | null;
+  @ApiPropertyOptional() workId?: string | null;
+  @ApiProperty() description!: string;
+  @ApiProperty() quantity!: number;
+  @ApiProperty() unitPrice!: number;
+  @ApiProperty() vatRate!: number;
+  @ApiProperty() priceWithoutVat!: number;
+  @ApiProperty() vatAmount!: number;
+  @ApiProperty() priceWithVat!: number;
+  @ApiProperty() sortOrder!: number;
+  @ApiProperty() createdAt!: Date;
+}
+
 export class InvoiceResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orgId!: string;
   @ApiProperty() number!: string;
-  @ApiProperty() status!: string;
+  @ApiProperty({ enum: InvoiceStatus }) status!: InvoiceStatus;
   @ApiProperty() counterpartyId!: string;
   @ApiPropertyOptional() counterpartyName?: string;
   @ApiPropertyOptional() workOrderId?: string | null;
   @ApiPropertyOptional() workOrderNumber?: string | null;
   @ApiProperty() amount!: number;
+  @ApiProperty() totalWithoutVat!: number;
+  @ApiProperty() totalVat!: number;
+  @ApiProperty() totalWithVat!: number;
+  @ApiPropertyOptional() invoiceType?: string;
+  @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() dueDate?: Date | null;
+  @ApiPropertyOptional({ type: [InvoiceLineResponseDto] }) lines?: InvoiceLineResponseDto[];
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }

@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CounterpartyType } from '@prisma/client';
+import { CounterpartyType, LegalForm } from '@prisma/client';
 
 // ─── Counterparty ────────────────────────────────────────
 
@@ -18,6 +18,13 @@ export class CreateCounterpartyDto {
   @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
   @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  @ApiPropertyOptional({ enum: LegalForm }) @IsOptional() @IsEnum(LegalForm) legalForm?: LegalForm;
+  @ApiPropertyOptional() @IsOptional() @IsString() legalAddress?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() actualAddress?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() bankAccount?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() bankName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() contactPerson?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() taxNumber?: string;
 }
 
 export class UpdateCounterpartyDto {
@@ -29,6 +36,13 @@ export class UpdateCounterpartyDto {
   @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
   @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  @ApiPropertyOptional({ enum: LegalForm }) @IsOptional() @IsEnum(LegalForm) legalForm?: LegalForm;
+  @ApiPropertyOptional() @IsOptional() @IsString() legalAddress?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() actualAddress?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() bankAccount?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() bankName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() contactPerson?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() taxNumber?: string;
 }
 
 export class CounterpartyQueryDto {
@@ -50,6 +64,13 @@ export class CounterpartyResponseDto {
   @ApiPropertyOptional() phone?: string | null;
   @ApiPropertyOptional() email?: string | null;
   @ApiPropertyOptional() notes?: string | null;
+  @ApiPropertyOptional({ enum: LegalForm }) legalForm?: LegalForm | null;
+  @ApiPropertyOptional() legalAddress?: string | null;
+  @ApiPropertyOptional() actualAddress?: string | null;
+  @ApiPropertyOptional() bankAccount?: string | null;
+  @ApiPropertyOptional() bankName?: string | null;
+  @ApiPropertyOptional() contactPerson?: string | null;
+  @ApiPropertyOptional() taxNumber?: string | null;
   @ApiPropertyOptional() balance?: number;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;

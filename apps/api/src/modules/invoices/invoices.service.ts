@@ -1,19 +1,19 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import {
   CreateInvoiceDto, UpdateInvoiceDto,
-  InvoiceResponseDto, PaginatedInvoicesDto,
+  InvoiceLineResponseDto, InvoiceResponseDto, PaginatedInvoicesDto,
 } from './invoices.dto';
 
-const INV_STATUSES = ['DRAFT', 'SENT', 'PAID', 'CANCELLED'] as const;
-type InvStatus = typeof INV_STATUSES[number];
+type InvStatus = InvoiceStatus;
 
 const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
-  DRAFT:     ['SENT', 'CANCELLED'],
-  SENT:      ['PAID', 'CANCELLED'],
+  DRAFT:     [InvoiceStatus.SENT, InvoiceStatus.CANCELLED],
+  SENT:      [InvoiceStatus.PAID, InvoiceStatus.CANCELLED],
   PAID:      [],
+  OVERDUE:   [InvoiceStatus.PAID, InvoiceStatus.CANCELLED],
   CANCELLED: [],
 };
 
@@ -49,10 +49,11 @@ export class InvoicesService {
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: { select: { number: true } },
+        lines: { orderBy: { sortOrder: 'asc' }, take: 500 },
       },
     });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
-    return this.toDto(inv);
+    return this.toDto(inv, true);
   }
 
   async createFromWorkOrder(orgId: string, workOrderId: string, userId?: string): Promise<InvoiceResponseDto> {
@@ -65,7 +66,7 @@ export class InvoicesService {
     }
 
     const existing = await this.prisma.invoice.findFirst({
-      where: { workOrderId, orgId, deletedAt: null, status: { not: 'CANCELLED' } },
+      where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
     });
     if (existing) throw new BadRequestException('Для цього наряду вже існує активний рахунок');
 
@@ -97,7 +98,8 @@ export class InvoicesService {
         number,
         amount: dto.amount,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        status: 'DRAFT',
+        notes: dto.notes ?? null,
+        status: InvoiceStatus.DRAFT,
       },
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
@@ -111,13 +113,14 @@ export class InvoicesService {
   async update(orgId: string, id: string, dto: UpdateInvoiceDto): Promise<InvoiceResponseDto> {
     const inv = await this.prisma.invoice.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
-    if (inv.status !== 'DRAFT') throw new BadRequestException('Редагувати можна лише чернетку');
+    if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Редагувати можна лише чернетку');
 
     const updated = await this.prisma.invoice.update({
       where: { id, orgId },
       data: {
         amount: dto.amount ?? undefined,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+        notes: dto.notes ?? undefined,
       },
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
@@ -144,17 +147,25 @@ export class InvoicesService {
   async remove(orgId: string, id: string): Promise<void> {
     const inv = await this.prisma.invoice.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
-    if (inv.status !== 'DRAFT') throw new BadRequestException('Видалити можна лише чернетку');
+    if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Видалити можна лише чернетку');
     await this.prisma.invoice.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
   private toDto(inv: {
-    id: string; orgId: string; number: string; status: string;
-    counterpartyId: string; workOrderId: string | null; amount: import('@prisma/client').Prisma.Decimal;
+    id: string; orgId: string; number: string; status: InvoiceStatus;
+    counterpartyId: string; workOrderId: string | null;
+    amount: Prisma.Decimal; totalWithoutVat: Prisma.Decimal; totalVat: Prisma.Decimal; totalWithVat: Prisma.Decimal;
+    invoiceType: string; notes: string | null;
     dueDate: Date | null; createdAt: Date; updatedAt: Date;
     counterparty: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
     workOrder: { number: string } | null;
-  }): InvoiceResponseDto {
+    lines?: Array<{
+      id: string; invoiceId: string; goodId: string | null; workId: string | null;
+      description: string; quantity: number; unitPrice: Prisma.Decimal; vatRate: Prisma.Decimal;
+      priceWithoutVat: Prisma.Decimal; vatAmount: Prisma.Decimal; priceWithVat: Prisma.Decimal;
+      sortOrder: number; createdAt: Date;
+    }>;
+  }, includeLines = false): InvoiceResponseDto {
     const cp = inv.counterparty;
     const counterpartyName = cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ');
     return {
@@ -163,8 +174,29 @@ export class InvoicesService {
       workOrderId: inv.workOrderId ?? null,
       workOrderNumber: inv.workOrder?.number ?? null,
       amount: Number(inv.amount),
+      totalWithoutVat: Number(inv.totalWithoutVat),
+      totalVat: Number(inv.totalVat),
+      totalWithVat: Number(inv.totalWithVat),
+      invoiceType: inv.invoiceType,
+      notes: inv.notes,
       dueDate: inv.dueDate ?? null,
+      ...(includeLines && inv.lines ? { lines: inv.lines.map(l => this.toLineDto(l)) } : {}),
       createdAt: inv.createdAt, updatedAt: inv.updatedAt,
+    };
+  }
+
+  private toLineDto(l: {
+    id: string; invoiceId: string; goodId: string | null; workId: string | null;
+    description: string; quantity: number; unitPrice: Prisma.Decimal; vatRate: Prisma.Decimal;
+    priceWithoutVat: Prisma.Decimal; vatAmount: Prisma.Decimal; priceWithVat: Prisma.Decimal;
+    sortOrder: number; createdAt: Date;
+  }): InvoiceLineResponseDto {
+    return {
+      id: l.id, invoiceId: l.invoiceId, goodId: l.goodId, workId: l.workId,
+      description: l.description, quantity: l.quantity,
+      unitPrice: Number(l.unitPrice), vatRate: Number(l.vatRate),
+      priceWithoutVat: Number(l.priceWithoutVat), vatAmount: Number(l.vatAmount),
+      priceWithVat: Number(l.priceWithVat), sortOrder: l.sortOrder, createdAt: l.createdAt,
     };
   }
 }

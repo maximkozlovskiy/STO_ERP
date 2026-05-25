@@ -1,7 +1,7 @@
-import { IsString, IsUUID, IsOptional, IsEnum, IsInt, IsNumber, Min, Max, IsISO8601 } from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsEnum, IsInt, IsNumber, Min, Max, IsISO8601, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { WorkOrderStatus } from '@prisma/client';
+import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
 
 // ─── Work Order ───────────────────────────────────────────
 
@@ -12,22 +12,37 @@ export class CreateWorkOrderDto {
 
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
+  @ApiPropertyOptional() @IsOptional() @IsEnum(WorkOrderPriority) priority?: WorkOrderPriority;
+  @ApiPropertyOptional() @IsOptional() @IsEnum(RepairCategory) repairCategory?: RepairCategory;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsISO8601()
   plannedAt?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsISO8601()
+  dueDate?: string;
 }
 
 export class UpdateWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) outMileage?: number;
+  @ApiPropertyOptional() @IsOptional() @IsEnum(WorkOrderPriority) priority?: WorkOrderPriority;
+  @ApiPropertyOptional() @IsOptional() @IsEnum(RepairCategory) repairCategory?: RepairCategory;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() clientApproval?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsISO8601()
   plannedAt?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsISO8601()
+  dueDate?: string;
 }
 
 export class TransitionWorkOrderDto {
@@ -37,6 +52,7 @@ export class TransitionWorkOrderDto {
 
 export class WorkOrderQueryDto {
   @ApiPropertyOptional({ enum: WorkOrderStatus }) @IsOptional() @IsEnum(WorkOrderStatus) status?: WorkOrderStatus;
+  @ApiPropertyOptional({ enum: WorkOrderPriority }) @IsOptional() @IsEnum(WorkOrderPriority) priority?: WorkOrderPriority;
   @ApiPropertyOptional() @IsOptional() @IsUUID() branchId?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() counterpartyId?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() vehicleId?: string;
@@ -62,6 +78,8 @@ export class WorkOrderResponseDto {
   @ApiProperty() orgId!: string;
   @ApiProperty() number!: string;
   @ApiProperty({ enum: WorkOrderStatus }) status!: WorkOrderStatus;
+  @ApiProperty({ enum: WorkOrderPriority }) priority!: WorkOrderPriority;
+  @ApiPropertyOptional({ enum: RepairCategory }) repairCategory?: RepairCategory | null;
   @ApiProperty() branchId!: string;
   @ApiPropertyOptional() branchName?: string;
   @ApiProperty() vehicleId!: string;
@@ -72,7 +90,9 @@ export class WorkOrderResponseDto {
   @ApiPropertyOptional() inMileage?: number | null;
   @ApiPropertyOptional() outMileage?: number | null;
   @ApiPropertyOptional() plannedAt?: Date | null;
+  @ApiPropertyOptional() dueDate?: Date | null;
   @ApiPropertyOptional() completedAt?: Date | null;
+  @ApiProperty() clientApproval!: boolean;
   @ApiProperty() totalLabor!: number;
   @ApiProperty() totalParts!: number;
   @ApiProperty() totalAmount!: number;
@@ -110,6 +130,7 @@ export class WorkOrderLineResponseDto {
   @ApiPropertyOptional() employeeName?: string;
   @ApiPropertyOptional() liftId?: string | null;
   @ApiProperty() normoHours!: number;
+  @ApiPropertyOptional() actualHours?: number | null;
   @ApiProperty() price!: number;
   @ApiProperty() amount!: number;
   @ApiPropertyOptional() notes?: string | null;

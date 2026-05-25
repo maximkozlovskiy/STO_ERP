@@ -4,7 +4,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { WorkOrderStatus } from '@prisma/client';
+import { MaintenanceSchedulesService } from '../maintenance-schedules/maintenance-schedules.service';
+import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { WORK_ORDER_TRANSITIONS, CLOSED_STATUSES, DELETABLE_STATUSES, RESERVATION_ACTIVE_STATUSES, EDITABLE_STATUSES } from './work-orders.fsm';
@@ -25,6 +26,7 @@ export class WorkOrdersService {
     private readonly settlements: SettlementsService,
     private readonly notifications: NotificationsService,
     private readonly docNumbers: DocumentNumberService,
+    private readonly maintenanceSchedules: MaintenanceSchedulesService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
@@ -32,9 +34,11 @@ export class WorkOrdersService {
   async findAll(orgId: string, query: WorkOrderQueryDto): Promise<PaginatedWorkOrdersDto> {
     const where: {
       orgId: string; deletedAt: null;
-      status?: WorkOrderStatus; branchId?: string; counterpartyId?: string; vehicleId?: string;
+      status?: WorkOrderStatus; priority?: WorkOrderPriority;
+      branchId?: string; counterpartyId?: string; vehicleId?: string;
     } = { orgId, deletedAt: null };
     if (query.status) where.status = query.status;
+    if (query.priority) where.priority = query.priority;
     if (query.branchId) where.branchId = query.branchId;
     if (query.counterpartyId) where.counterpartyId = query.counterpartyId;
     if (query.vehicleId) where.vehicleId = query.vehicleId;
@@ -108,7 +112,10 @@ export class WorkOrdersService {
         number,
         description: dto.description,
         inMileage: dto.inMileage,
+        priority: dto.priority ?? 'NORMAL',
+        repairCategory: dto.repairCategory ?? null,
         plannedAt: dto.plannedAt ? new Date(dto.plannedAt) : null,
+        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
       },
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
@@ -133,7 +140,11 @@ export class WorkOrdersService {
         description: dto.description,
         inMileage: dto.inMileage,
         outMileage: dto.outMileage,
+        priority: dto.priority,
+        repairCategory: dto.repairCategory,
+        clientApproval: dto.clientApproval,
         plannedAt: dto.plannedAt ? new Date(dto.plannedAt) : undefined,
+        dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
       },
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
@@ -195,6 +206,13 @@ export class WorkOrdersService {
         },
       });
     });
+
+    // Auto-update maintenance schedules when MAINTENANCE WO completes
+    if (newStatus === 'COMPLETED' && wo.repairCategory === RepairCategory.MAINTENANCE) {
+      this.maintenanceSchedules.updateAfterWorkOrder(
+        orgId, wo.vehicleId, updates.completedAt!, wo.outMileage ?? undefined,
+      ).catch((e: unknown) => this.logger.warn(`Помилка оновлення ТО: ${e instanceof Error ? e.message : e}`));
+    }
 
     // Send notifications (fire-and-forget via BullMQ queue — offline safe)
     if (newStatus === 'COMPLETED') {
@@ -423,9 +441,10 @@ export class WorkOrdersService {
 
   private toDto(wo: {
     id: string; orgId: string; number: string; status: WorkOrderStatus;
+    priority: WorkOrderPriority; repairCategory: RepairCategory | null;
     branchId: string; vehicleId: string; counterpartyId: string;
     description: string | null; inMileage: number | null; outMileage: number | null;
-    plannedAt: Date | null; completedAt: Date | null;
+    plannedAt: Date | null; dueDate: Date | null; completedAt: Date | null; clientApproval: boolean;
     totalLabor: Prisma.Decimal; totalParts: Prisma.Decimal; totalAmount: Prisma.Decimal; paidAmount: Prisma.Decimal | null;
     createdAt: Date; updatedAt: Date;
     branch?: { name: string } | null;
@@ -436,13 +455,15 @@ export class WorkOrdersService {
     const cpName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || undefined;
     return {
       id: wo.id, orgId: wo.orgId, number: wo.number, status: wo.status,
+      priority: wo.priority, repairCategory: wo.repairCategory ?? null,
       branchId: wo.branchId, branchName: wo.branch?.name,
       vehicleId: wo.vehicleId,
       vehicleSummary: wo.vehicle ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}` : undefined,
       counterpartyId: wo.counterpartyId, counterpartyName: cpName,
       description: wo.description ?? null,
       inMileage: wo.inMileage ?? null, outMileage: wo.outMileage ?? null,
-      plannedAt: wo.plannedAt ?? null, completedAt: wo.completedAt ?? null,
+      plannedAt: wo.plannedAt ?? null, dueDate: wo.dueDate ?? null, completedAt: wo.completedAt ?? null,
+      clientApproval: wo.clientApproval,
       totalLabor: Number(wo.totalLabor), totalParts: Number(wo.totalParts),
       totalAmount: Number(wo.totalAmount), paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,
       createdAt: wo.createdAt, updatedAt: wo.updatedAt,
@@ -451,7 +472,7 @@ export class WorkOrdersService {
 
   private toLineDto(line: {
     id: string; workOrderId: string; workId: string; employeeId: string; liftId: string | null;
-    normoHours: number; price: Prisma.Decimal; amount: Prisma.Decimal; notes: string | null; createdAt: Date;
+    normoHours: number; actualHours: number | null; price: Prisma.Decimal; amount: Prisma.Decimal; notes: string | null; createdAt: Date;
     work?: { name: string } | null;
     employee?: { firstName: string; lastName: string } | null;
   }): WorkOrderLineResponseDto {
@@ -461,7 +482,8 @@ export class WorkOrdersService {
       employeeId: line.employeeId,
       employeeName: line.employee ? `${line.employee.lastName} ${line.employee.firstName}` : undefined,
       liftId: line.liftId ?? null,
-      normoHours: line.normoHours, price: Number(line.price), amount: Number(line.amount),
+      normoHours: line.normoHours, actualHours: line.actualHours ?? null,
+      price: Number(line.price), amount: Number(line.amount),
       notes: line.notes ?? null, createdAt: line.createdAt,
     };
   }

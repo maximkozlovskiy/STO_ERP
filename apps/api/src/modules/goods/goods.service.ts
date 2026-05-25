@@ -22,8 +22,12 @@ export class GoodsService {
     if (query.category) where.category = { contains: query.category, mode: 'insensitive' };
 
     const skip = (query.page - 1) * query.limit;
+    const supplierSelect = { select: { firstName: true, lastName: true, companyName: true } } as const;
     const [items, total] = await this.prisma.$transaction([
-      this.prisma.good.findMany({ where, orderBy: { name: 'asc' }, skip, take: query.limit }),
+      this.prisma.good.findMany({
+        where, orderBy: { name: 'asc' }, skip, take: query.limit,
+        include: { preferredSupplier: supplierSelect },
+      }),
       this.prisma.good.count({ where }),
     ]);
 
@@ -31,7 +35,10 @@ export class GoodsService {
   }
 
   async findOne(orgId: string, id: string): Promise<GoodResponseDto> {
-    const item = await this.prisma.good.findFirst({ where: { id, orgId, deletedAt: null } });
+    const item = await this.prisma.good.findFirst({
+      where: { id, orgId, deletedAt: null },
+      include: { preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } } },
+    });
     if (!item) throw new NotFoundException('Товар не знайдено');
     return this.toDto(item);
   }
@@ -43,6 +50,7 @@ export class GoodsService {
     }
     const item = await this.prisma.good.create({
       data: { ...dto, orgId, unit: dto.unit ?? 'шт' },
+      include: { preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } } },
     });
     return this.toDto(item);
   }
@@ -55,7 +63,10 @@ export class GoodsService {
       });
       if (existing) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     }
-    const item = await this.prisma.good.update({ where: { id, orgId }, data: dto });
+    const item = await this.prisma.good.update({
+      where: { id, orgId }, data: dto,
+      include: { preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } } },
+    });
     return this.toDto(item);
   }
 
@@ -128,7 +139,11 @@ export class GoodsService {
   private toDto(item: {
     id: string; orgId: string; sku: string | null; name: string; unit: string;
     purchasePrice: import('@prisma/client').Prisma.Decimal | null; salePrice: import('@prisma/client').Prisma.Decimal; category: string | null;
-    barcode: string | null; notes: string | null; createdAt: Date; updatedAt: Date;
+    barcode: string | null; notes: string | null;
+    goodType: import('@prisma/client').GoodType | null;
+    preferredSupplierId: string | null;
+    preferredSupplier?: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
+    createdAt: Date; updatedAt: Date;
   }): GoodResponseDto {
     return {
       id: item.id,
@@ -141,6 +156,11 @@ export class GoodsService {
       category: item.category ?? null,
       barcode: item.barcode ?? null,
       notes: item.notes ?? null,
+      goodType: item.goodType ?? null,
+      preferredSupplierId: item.preferredSupplierId ?? null,
+      preferredSupplierName: item.preferredSupplier
+        ? (item.preferredSupplier.companyName ?? (`${item.preferredSupplier.lastName ?? ''} ${item.preferredSupplier.firstName ?? ''}`.trim() || null))
+        : null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

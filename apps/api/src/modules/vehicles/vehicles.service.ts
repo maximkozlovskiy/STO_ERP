@@ -77,13 +77,18 @@ export class VehiclesService {
     id: string; orgId: string; customerGarageId: string; make: string; model: string;
     vin: string | null; licensePlate: string | null; year: number | null;
     engineVolume: number | null; fuelType: string | null; currentMileage: number | null;
-    color: string | null; notes: string | null; createdAt: Date; updatedAt: Date;
+    color: string | null; notes: string | null;
+    transmissionType: string | null; driveType: string | null; bodyType: string | null;
+    engineCode: string | null; insuranceExpiry: Date | null; inspectionExpiry: Date | null;
+    createdAt: Date; updatedAt: Date;
   }): VehicleResponseDto {
     return {
       id: v.id, orgId: v.orgId, customerGarageId: v.customerGarageId,
       make: v.make, model: v.model, vin: v.vin, licensePlate: v.licensePlate,
       year: v.year, engineVolume: v.engineVolume, fuelType: v.fuelType,
       currentMileage: v.currentMileage, color: v.color, notes: v.notes,
+      transmissionType: v.transmissionType, driveType: v.driveType, bodyType: v.bodyType,
+      engineCode: v.engineCode, insuranceExpiry: v.insuranceExpiry, inspectionExpiry: v.inspectionExpiry,
       createdAt: v.createdAt, updatedAt: v.updatedAt,
     };
   }
