@@ -225,6 +225,22 @@ enum CompletionActStatus {
   CANCELLED
 }
 
+// ─── PHASE 19 ENUMS ──────────────────────────────────────
+
+enum BatchCostMethod {
+  FIFO
+  FEFO
+  LIFO
+  AVG_COST
+}
+
+enum PricingRuleType {
+  PERCENT
+  FIXED_AMOUNT
+  FIXED_PRICE
+  COMPETITOR_PLUS
+}
+
 // ─── INFRASTRUCTURE ──────────────────────────────────────
 
 model Organisation {
@@ -360,6 +376,7 @@ model Warehouse {
   purchaseOrders       PurchaseOrder[]
   stockDocumentsSource StockDocument[]     @relation("SourceWarehouse")
   stockDocumentsTarget StockDocument[]     @relation("TargetWarehouse")
+  stockBatches         StockBatch[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -642,6 +659,9 @@ model Good {
   purchaseOrderLines PurchaseOrderLine[]
   stockDocumentLines StockDocumentLine[]
   invoiceLines       InvoiceLine[]
+  stockBatches       StockBatch[]
+  pricingRules       PricingRule[]
+  priceHistory       PriceHistory[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, sku])
@@ -811,22 +831,25 @@ model WorkOrderLineEmployee {
 }
 
 model WorkOrderPart {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId       String    @db.Uuid
-  workOrderId String    @db.Uuid
-  goodId      String    @db.Uuid
-  warehouseId String    @db.Uuid
-  quantity    Float
-  price       Decimal   @db.Decimal(12, 2)
-  amount      Decimal   @db.Decimal(12, 2)
-  syncVersion BigInt    @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  workOrderId    String    @db.Uuid
+  goodId         String    @db.Uuid
+  warehouseId    String    @db.Uuid
+  quantity       Float
+  price          Decimal   @db.Decimal(12, 2)
+  amount         Decimal   @db.Decimal(12, 2)
+  batchId        String?   @db.Uuid
+  batchCostPrice Decimal?  @db.Decimal(12, 2)
+  syncVersion    BigInt    @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
-  workOrder WorkOrder @relation(fields: [workOrderId], references: [id])
-  good      Good      @relation(fields: [goodId], references: [id])
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  workOrder  WorkOrder   @relation(fields: [workOrderId], references: [id])
+  good       Good        @relation(fields: [goodId], references: [id])
+  warehouse  Warehouse   @relation(fields: [warehouseId], references: [id])
+  batch      StockBatch? @relation(fields: [batchId], references: [id])
 
   @@index([orgId, workOrderId, deletedAt])
   @@map("work_order_parts")
@@ -867,16 +890,120 @@ model StockMovement {
   price        Decimal?          @db.Decimal(12, 2)
   documentType String?
   documentId   String?           @db.Uuid
+  batchId      String?           @db.Uuid
   notes        String?
   createdAt    DateTime          @default(now())
   createdBy    String?           @db.Uuid
 
-  good      Good      @relation(fields: [goodId], references: [id])
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  good         Good        @relation(fields: [goodId], references: [id])
+  warehouse    Warehouse   @relation(fields: [warehouseId], references: [id])
+  batch        StockBatch? @relation("BatchMovements", fields: [batchId], references: [id])
+  sourceBatch  StockBatch? @relation("BatchSource")
 
   @@index([orgId, goodId, warehouseId])
   @@index([orgId, documentType, documentId])
   @@map("stock_movements")
+}
+
+// ─── BATCH / PRICING (Phase 19) ──────────────────────────
+
+model StockBatch {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId               String    @db.Uuid
+  goodId              String    @db.Uuid
+  warehouseId         String    @db.Uuid
+  purchaseOrderLineId String?   @db.Uuid
+  stockMovementId     String    @unique @db.Uuid
+  batchNumber         String?
+  expiryDate          DateTime?
+  receivedQty         Float
+  remainingQty        Float
+  costPrice           Decimal   @db.Decimal(12, 2)
+  salePrice           Decimal   @db.Decimal(12, 2)
+  isActive            Boolean   @default(true)
+  syncVersion         BigInt    @default(0)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  good              Good               @relation(fields: [goodId], references: [id])
+  warehouse         Warehouse          @relation(fields: [warehouseId], references: [id])
+  purchaseOrderLine PurchaseOrderLine? @relation(fields: [purchaseOrderLineId], references: [id])
+  sourceMovement    StockMovement      @relation("BatchSource", fields: [stockMovementId], references: [id])
+  consumptions      BatchConsumption[]
+  workOrderParts    WorkOrderPart[]
+  movements         StockMovement[]    @relation("BatchMovements")
+
+  @@index([orgId, goodId, warehouseId, isActive])
+  @@index([orgId, goodId, expiryDate])
+  @@map("stock_batches")
+}
+
+// Append-only — фіксує яка партія використана в документі
+model BatchConsumption {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  batchId        String   @db.Uuid
+  goodId         String   @db.Uuid
+  quantity       Float
+  documentType   String
+  documentId     String   @db.Uuid
+  documentLineId String?  @db.Uuid
+  createdAt      DateTime @default(now())
+  createdBy      String?  @db.Uuid
+
+  batch StockBatch @relation(fields: [batchId], references: [id])
+
+  @@index([orgId, batchId])
+  @@index([orgId, documentType, documentId])
+  @@map("batch_consumptions")
+}
+
+model PricingRule {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String          @db.Uuid
+  name         String
+  type         PricingRuleType
+  priority     Int             @default(10)
+  goodId       String?         @db.Uuid
+  goodCategory String?
+  goodType     String?
+  percentValue Decimal?        @db.Decimal(6, 2)
+  fixedAmount  Decimal?        @db.Decimal(12, 2)
+  fixedPrice   Decimal?        @db.Decimal(12, 2)
+  roundTo      Decimal?        @db.Decimal(6, 2)
+  isActive     Boolean         @default(true)
+  syncVersion  BigInt          @default(0)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
+
+  good         Good?         @relation(fields: [goodId], references: [id])
+  priceHistory PriceHistory[]
+
+  @@index([orgId, isActive, priority])
+  @@index([orgId, deletedAt])
+  @@map("pricing_rules")
+}
+
+// Append-only — лог усіх змін ціни продажу
+model PriceHistory {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId         String   @db.Uuid
+  goodId        String   @db.Uuid
+  oldPrice      Decimal? @db.Decimal(12, 2)
+  newPrice      Decimal  @db.Decimal(12, 2)
+  costPrice     Decimal? @db.Decimal(12, 2)
+  reason        String?
+  batchId       String?  @db.Uuid
+  pricingRuleId String?  @db.Uuid
+  createdAt     DateTime @default(now())
+  createdBy     String?  @db.Uuid
+
+  good        Good         @relation(fields: [goodId], references: [id])
+  pricingRule PricingRule? @relation(fields: [pricingRuleId], references: [id])
+
+  @@index([orgId, goodId, createdAt])
+  @@map("price_history")
 }
 
 model PurchaseOrder {
@@ -917,6 +1044,7 @@ model PurchaseOrderLine {
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   good          Good          @relation(fields: [goodId], references: [id])
+  stockBatches  StockBatch[]
 
   @@index([purchaseOrderId, deletedAt])
   @@index([orgId, syncVersion])
@@ -1005,11 +1133,12 @@ model OrganisationSettings {
   invoiceDueDays        Int      @default(7)
   autoArchiveDays       Int      @default(30)
   defaultWarrantyDays   Int      @default(30)
-  requireClientApproval Boolean  @default(true)
-  allowPartialPayment   Boolean  @default(true)
-  brandTheme            String   @default("blue")
-  syncVersion           BigInt   @default(0)
-  updatedAt             DateTime @updatedAt
+  requireClientApproval Boolean         @default(true)
+  allowPartialPayment   Boolean         @default(true)
+  brandTheme            String          @default("blue")
+  costMethod            BatchCostMethod @default(FIFO)
+  syncVersion           BigInt          @default(0)
+  updatedAt             DateTime        @updatedAt
 
   org Organisation @relation(fields: [orgId], references: [id])
 
