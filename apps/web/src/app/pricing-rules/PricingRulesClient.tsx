@@ -305,7 +305,9 @@ export default function PricingRulesClient() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ items: Good[] }>('/goods?limit=500')
+    // Bug #32: `/goods?limit=500` валиться на ValidationPipe (GoodQueryDto.@Max(200)).
+    // Узгоджуємо з рештою сторінок (dashboard, work-orders, invoices використовують limit=200).
+    apiFetch<{ items: Good[] }>('/goods?limit=200')
       .then(r => { if (!cancelled) setGoods(r.items); })
       .catch((e: unknown) => {
         // Bug #29: не ковтаємо помилку мовчки. Логуємо для діагностики,
