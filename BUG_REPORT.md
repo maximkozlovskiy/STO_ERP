@@ -466,3 +466,142 @@ if (!sale || !cost) return null;
 **Статус:** [x] виправлено — додано contract-тести.
 
 ---
+
+## Session 2026-05-25 — Phase 19 cycle 4 (BatchService + PricingService regression sweep)
+
+Зона аналізу: усі зміни після `afcb6f7` — `BatchService`, `PricingService`,
+`BatchesController`, `PricingRulesController`, `GoodsController` (нові sub-resources),
+інтеграція з `InventoryService`, `StockDocumentsService` як споживач `createMovement(RECEIPT)`.
+
+Baseline:
+- `tsc` web/api/shared — ✅ 0 errors
+- Unit/contract/property — ✅ 105/105 passed (12 файлів)
+
+---
+
+## Bug #26 — [HIGH] StockDocument RECEIPT/TRANSFER ламається коли `line.price` null
+
+**Файл:** `apps/api/src/modules/stock-documents/stock-documents.service.ts:190,201,214`
+**Severity:** HIGH
+**Категорія:** business-logic (регресія від Bug #15)
+
+**Опис:**
+Bug #15 (`InventoryService.createMovement`) тепер кидає `BadRequestException('Ціна оприбуткування обов'язкова для створення партії')`, якщо `dto.type === 'RECEIPT' && (dto.price === undefined || dto.price === null)`.
+
+Schema `StockDocumentLine.price` — `Decimal?` (nullable). Tак закладено, що документи переміщення/оприбуткування можуть створюватись без явної ціни (інвентаризація, внутрішнє переміщення).
+
+`stock-documents.service.ts` передає `price: line.price ? Number(line.price) : undefined`. Коли `line.price === null` (типове значення для TRANSFER або документу без ціни) — передається `undefined` → InventoryService кидає виключення → CONFIRMED-перехід стокового документа падає.
+
+**Очікувана поведінка:**
+RECEIPT з відсутньою ціною дозволений: батч створюється з `costPrice = good.purchasePrice ?? 0`. Це робить безкоштовні зразки і TRANSFER-документи без ціни робочими, але батч-tracking не зламаний (батч з відомою або нульовою собівартістю).
+
+**Фактична поведінка:**
+`stockDocument.transition('CONFIRMED')` падає з 400 для TRANSFER або RECEIPT-стокового документа без ціни на рядку.
+
+**Виправлення:** `InventoryService.createMovement` — якщо RECEIPT і price відсутня, fallback на `good.purchasePrice ?? 0`; залишити жорсткий guard лише на NaN.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #27 — [MEDIUM] `UpdatePricingRuleDto` без `@Min(0)` / `@Max(10000)` — PATCH bypass validation
+
+**Файл:** `apps/api/src/modules/inventory/pricing-rules.dto.ts:100-122`
+**Severity:** MEDIUM
+**Категорія:** security / validation
+
+**Опис:**
+`CreatePricingRuleDto` має `@Min(0)` на `percentValue`, `fixedAmount`, `fixedPrice`, `roundTo` і `@Max(10000)` на `percentValue`. `UpdatePricingRuleDto` НЕ має цих обмежень.
+
+Як наслідок: PATCH `/pricing-rules/:id` приймає від'ємне `percentValue` (наприклад, `-50` → `costPrice * (1 + -0.5) = costPrice * 0.5` → ціна вдвічі менша за собівартість), або `roundTo: -10`, або `fixedPrice: -100`.
+
+**Очікувана поведінка:**
+PATCH повинен мати ті самі межі, що й POST.
+
+**Фактична поведінка:**
+PATCH дозволяє від'ємні значення в payload — порушує бізнес-інваріант "ціна продажу ≥ 0".
+
+**Статус:** [x] виправлено — додано `@Min(0)` / `@Max(10000)` + 3 contract тести.
+
+---
+
+## Bug #28 — [LOW] `GET /goods/:id/batches` і `/price-history` повертають bare array
+
+**Файл:** `apps/api/src/modules/goods/goods.controller.ts:94-122`
+**Severity:** LOW
+**Категорія:** api-contract
+
+**Опис:**
+SKILL.md §1.1 "API Contract — list endpoints": "Кожен list endpoint повертає `{ items, total, page?, limit? }`". Нові sub-resource endpoints (`getBatches`, `getPriceHistory`) повертають голий масив. Frontend наразі споживає лише `/batches/lookup`, але невідповідність шейпу — джерело майбутніх багів.
+
+**Очікувана поведінка:**
+`{ items, total }` shape.
+
+**Фактична поведінка:**
+Bare array `[]` / `StockBatchDto[]`.
+
+**Статус:** [x] виправлено — обидва endpoint-и тепер повертають `{ items, total }`.
+
+---
+
+## Bug #29 — [LOW] `PricingRulesClient` мовчки ковтає помилку завантаження товарів
+
+**Файл:** `apps/web/src/app/pricing-rules/PricingRulesClient.tsx:313`
+**Severity:** LOW
+**Категорія:** frontend / error-handling
+
+**Опис:**
+```typescript
+apiFetch<{ items: Good[] }>('/goods?limit=500')
+  .then(r => { if (!cancelled) setGoods(r.items); })
+  .catch(() => {});  // ← ковтаємо все
+```
+Порушує §1.1: "Catch не ковтає всі помилки". При API-failure форма правил рендериться з порожнім списком товарів — користувач не знає чому.
+
+**Очікувана поведінка:**
+Логувати помилку у `console.warn` або встановлювати окремий `goodsError` стан.
+
+**Фактична поведінка:**
+Тихий empty state без сигналу.
+
+**Статус:** [x] виправлено — `console.warn` при failure (без блокування UI).
+
+---
+
+## Bug #30 — [LOW] `PricingRulesClient.load()` без cancellation flag — race на unmount
+
+**Файл:** `apps/web/src/app/pricing-rules/PricingRulesClient.tsx:282-292,294-307`
+**Severity:** LOW
+**Категорія:** frontend / state-management
+
+**Опис:**
+Існує дублювання: `load` (useCallback) для refetch після create/update/delete, плюс окремий inline useEffect для initial fetch (з cancelled-flag). Refetch через `load()` НЕ має cancelled-flag — якщо користувач unmount-нув сторінку між POST і refetch, setState на unmounted → React warning + потенційний витік пам'яті.
+
+**Очікувана поведінка:**
+Один shared loader з cancellation, або відмова від setState після unmount через ref.
+
+**Фактична поведінка:**
+Дві паралельні версії, refetch може setState на unmounted.
+
+**Статус:** [x] виправлено — додано `mountedRef`, `load` тепер єдина точка завантаження.
+
+---
+
+## Bug #31 — [LOW] `getBatches`/`getPriceHistory` без верифікації існування good
+
+**Файл:** `apps/api/src/modules/goods/goods.controller.ts:97-103,108-122`
+**Severity:** LOW
+**Категорія:** api-contract / ux
+
+**Опис:**
+Endpoint `GET /goods/:id/batches` повертає `[]` коли goodId не існує або належить іншій орг. Те ж для price-history. Має бути 404, інакше фронт показує "Немає партій" замість "Товар не знайдено".
+
+**Очікувана поведінка:**
+`prisma.good.findFirst({ where: { id, orgId, deletedAt: null } })` → якщо null, кинути `NotFoundException`.
+
+**Фактична поведінка:**
+200 + порожній масив.
+
+**Статус:** [x] виправлено — обидва endpoint-и перевіряють Good у org перед запитом.
+
+---
