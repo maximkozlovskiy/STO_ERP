@@ -72,14 +72,24 @@ export function useUiFeatures(): UiFeatures {
     return () => { cancelled = true; };
   }, []);
 
-  // Re-sync when settings are updated
+  // Re-sync when settings are updated; reset on logout to avoid cross-tenant leak.
   useEffect(() => {
-    const handler = () => {
+    let cancelled = false;
+    const refresh = () => {
       invalidateUiFeaturesCache();
-      loadFeatures().then(setFeatures);
+      loadFeatures().then(f => { if (!cancelled) setFeatures(f); });
     };
-    window.addEventListener('sto:ui-features-change', handler);
-    return () => window.removeEventListener('sto:ui-features-change', handler);
+    const onLogout = () => {
+      invalidateUiFeaturesCache();
+      if (!cancelled) setFeatures(DEFAULTS);
+    };
+    window.addEventListener('sto:ui-features-change', refresh);
+    window.addEventListener('sto:logout', onLogout);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('sto:ui-features-change', refresh);
+      window.removeEventListener('sto:logout', onLogout);
+    };
   }, []);
 
   return features;

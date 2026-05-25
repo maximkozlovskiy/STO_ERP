@@ -78,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!ok) {
           sessionStorage.removeItem(TOKEN_KEY);
           dispatch({ type: 'LOGOUT' });
+          if (typeof window !== 'undefined') window.dispatchEvent(new Event('sto:logout'));
         }
       });
     } else {
@@ -119,6 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       sessionStorage.removeItem(TOKEN_KEY);
       dispatch({ type: 'LOGOUT' });
+      // Notify per-tenant client-side caches (UI features, etc.) to invalidate.
+      // Prevents leak of previous user's settings into next session on shared kiosk.
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('sto:logout'));
     }
   }, [state.accessToken]);
 
