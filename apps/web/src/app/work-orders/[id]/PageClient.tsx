@@ -55,11 +55,11 @@ const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-secondary text-muted-foreground',
   ESTIMATE: 'bg-warning-subtle text-warning',
   APPROVED: 'bg-primary-subtle text-primary',
-  IN_PROGRESS: 'bg-purple-100 text-purple-700',
-  ON_HOLD: 'bg-orange-100 text-orange-700',
+  IN_PROGRESS: 'bg-info-subtle text-info-text',
+  ON_HOLD: 'bg-warning-subtle text-warning',
   COMPLETED: 'bg-success-subtle text-success',
-  INVOICED: 'bg-teal-100 text-teal-700',
-  PAID: 'bg-emerald-100 text-emerald-700',
+  INVOICED: 'bg-primary-subtle text-primary',
+  PAID: 'bg-success-subtle text-success',
   ARCHIVED: 'bg-secondary text-muted-foreground',
   CANCELLED: 'bg-destructive-subtle text-destructive',
 };
@@ -411,14 +411,14 @@ export default function WorkOrderCardPage() {
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Робота <span className="text-red-500">*</span></label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Робота <span className="text-destructive">*</span></label>
             <Select value={lineForm.workId} onChange={e => selectWork(e.target.value)}>
               <option value="">— Оберіть —</option>
               {works.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </Select>
           </div>
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Виконавець <span className="text-red-500">*</span></label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Виконавець <span className="text-destructive">*</span></label>
             <Select value={lineForm.employeeId} onChange={e => setLineForm(f => ({ ...f, employeeId: e.target.value }))}>
               <option value="">— Оберіть —</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.lastName} {e.firstName}</option>)}
@@ -449,14 +449,14 @@ export default function WorkOrderCardPage() {
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Товар <span className="text-red-500">*</span></label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Товар <span className="text-destructive">*</span></label>
             <Select value={partForm.goodId} onChange={e => selectGood(e.target.value)}>
               <option value="">— Оберіть —</option>
               {goods.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
             </Select>
           </div>
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Склад <span className="text-red-500">*</span></label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Склад <span className="text-destructive">*</span></label>
             <Select value={partForm.warehouseId} onChange={e => setPartForm(f => ({ ...f, warehouseId: e.target.value }))}>
               <option value="">— Оберіть —</option>
               {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -464,7 +464,7 @@ export default function WorkOrderCardPage() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Кількість <span className="text-red-500">*</span></label>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Кількість <span className="text-destructive">*</span></label>
               <Input type="number" value={partForm.quantity} onChange={e => setPartForm(f => ({ ...f, quantity: e.target.value }))} min="0.001" step="0.001" />
             </div>
             <div>

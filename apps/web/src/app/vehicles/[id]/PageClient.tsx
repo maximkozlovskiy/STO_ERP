@@ -268,7 +268,7 @@ export default function VehicleCardPage() {
                 </Select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Назва <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Назва <span className="text-destructive">*</span></label>
                 <Input
                   value={nodeForm.name}
                   onChange={e => setNodeForm(f => ({ ...f, name: e.target.value }))}
