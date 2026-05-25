@@ -1108,7 +1108,189 @@ ARIA combobox pattern (`role="combobox"` на input, `aria-controls` → listbox
 
 ---
 
-## Bug #46 — [LOW] CommandPalette: фокус не повертається до елемента-тригера після закриття
+## Session 2026-05-26 — Group 3 (Saved Filters + Inline Edit) tester sweep
+
+Базова перевірка:
+- `tsc` web/api/shared — ✅ 0 errors
+- Unit + contract + property API — ✅ 117/117 passed (13 файлів)
+- Web component tests — ✅ 55/55 passed (5 файлів)
+
+Аналіз зосереджений на нових файлах Group 3:
+- `apps/web/src/hooks/useSavedFilters.ts`
+- `apps/web/src/components/ui/saved-filters-bar.tsx`
+- `apps/web/src/components/ui/inline-edit-cell.tsx`
+- `apps/web/src/hooks/useInlineEdit.ts`
+- `apps/web/src/app/work-orders/page.tsx` (інтеграція)
+- `apps/api/src/modules/work-orders/work-orders.dto.ts` (nullable dueDate/plannedAt)
+- `apps/api/src/modules/work-orders/work-orders.service.ts` (explicit null vs undefined)
+
+Знайдено багів у cycle Group 3: 6
+
+---
+
+## Bug #47 — [HIGH] Validation messages з class-validator повертаються англійською (порушує UI правило)
+
+**Файл:** `apps/api/src/main.ts:25` (`ValidationPipe` без `exceptionFactory`); проявляється скрізь де є DTO з `class-validator`.
+**Severity:** HIGH
+**Категорія:** frontend / i18n / contract
+
+**Опис:**
+Глобальний `ValidationPipe` не має `exceptionFactory` що локалізує повідомлення. Тому всі помилки валідації з class-validator повертаються англійською:
+- `dueDate must be a valid ISO 8601 date string`
+- `vehicleId must be a UUID`
+- `quantity must be a number conforming to the specified constraints`
+
+Це порушує правило проекту: "API помилки — українською" (CLAUDE.md §16).
+Інлайн-редагування Group 3 особливо помітно показує цей баг: користувач пише "abc" у dueDate → бачить англійський тост.
+
+**Очікувана поведінка:**
+Кожне повідомлення валідації — українською зрозумілою мовою (e.g., `dueDate: дата має бути у форматі ISO 8601 (YYYY-MM-DD)`).
+
+**Фактична поведінка:**
+Англійський текст з class-validator потрапляє у toast користувача через `HttpExceptionFilter` без перекладу.
+
+**Виправлення:**
+Додати `exceptionFactory` у `ValidationPipe` що мапить імена помилок (constraint keys: `isUuid`, `isIso8601`, `isEnum`, `min`, `max`, `isNumber`, `isInt`, `isPositive`, `isString`, `isNotEmpty`, `isBoolean`, `isOptional`, `arrayMinSize` тощо) до укр. шаблонів за полем.
+
+**Статус:** [ ] відкритий
+
+---
+
+## Bug #48 — [MEDIUM] Unhandled Promise rejection на call-сайтах `inlineEdit.commitEdit()`
+
+**Файл:** `apps/web/src/app/work-orders/page.tsx:398`, `:436`
+**Severity:** MEDIUM
+**Категорія:** frontend / robustness
+
+**Опис:**
+`inlineEdit.commitEdit(value)` — асинхронна функція що `re-throws` помилку (для збереження edit state на retry). Виклики:
+
+```ts
+onChange={e => inlineEdit.commitEdit(e.target.value)}     // priority select
+onCommit={v => inlineEdit.commitEdit(v)}                  // InlineEditCell
+```
+
+Обидва ігнорують Promise. Коли `onSave` (всередині `useInlineEdit`) робить `throw e` після фейлу API, неперехоплений reject спливає у `unhandledrejection` event → червона помилка в console (Next.js dev overlay може показати).
+
+**Очікувана поведінка:**
+Promise rejection обробляється на call-site (мовчазно, бо помилка вже показана toast в `onSave`).
+
+**Фактична поведінка:**
+`Uncaught (in promise) Error: dueDate must be a valid ISO 8601 date string` у консолі браузера + потенційний error overlay.
+
+**Виправлення:**
+Додати `.catch(() => {})` (тост вже показаний в `onSave`):
+```ts
+onChange={e => { inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
+onCommit={v => { inlineEdit.commitEdit(v).catch(() => {}); }}
+```
+Також відобразити це у патерні `useInlineEdit` — повертати "void" з `commitEdit` (вже не Promise) і всередині ловити, але передавати помилку через callback. Простіший варіант — `.catch(noop)` на місці.
+
+**Статус:** [ ] відкритий
+
+---
+
+## Bug #49 — [MEDIUM] InlineEditCell не підтримує `type="date"` — dueDate редагується як plain text
+
+**Файл:** `apps/web/src/components/ui/inline-edit-cell.tsx:12`, використання у `apps/web/src/app/work-orders/page.tsx:438`
+**Severity:** MEDIUM
+**Категорія:** frontend / UX
+
+**Опис:**
+`InlineEditCell` приймає `type?: 'text' | 'number'`. dueDate (поле дати) редагується з `type="text"` — без native date picker.
+Користувач має вручну набирати `2026-05-25` без підказок. Будь-яке введення (наприклад `25/05/2026`, `tomorrow`, `abc`) проходить клієнт без перевірки і відхиляється сервером з англійським повідомленням (див. Bug #47).
+
+**Очікувана поведінка:**
+Для дати — native date picker (`<input type="date">`) з власним календарем браузера. Опціонально — `time-local` для plannedAt.
+
+**Фактична поведінка:**
+Text input, користувач має знати формат дати, помилки лише після server round-trip.
+
+**Виправлення:**
+Розширити union type: `type?: 'text' | 'number' | 'date' | 'datetime-local'`. Передавати у `<input type={type}>`. Тестами підтвердити що `date` рендериться без помилок і повертає ISO формат у `onChange`.
+
+**Статус:** [ ] відкритий
+
+---
+
+## Bug #50 — [LOW] InlineViewCell без `aria-label` — screen readers не знають що редагується
+
+**Файл:** `apps/web/src/components/ui/inline-edit-cell.tsx:96`
+**Severity:** LOW
+**Категорія:** accessibility
+
+**Опис:**
+```tsx
+<span role="button" tabIndex={0} title="Натисніть для редагування" ...>
+```
+Має `title` атрибут (показується як tooltip), але NVDA/JAWS можуть його НЕ озвучити. WAI-ARIA вимагає `aria-label` або текстовий контент для `role="button"`. Якщо `children` — це Badge без тексту або іконка, скрін-рідер прочитає лише "клацабельний елемент".
+
+**Очікувана поведінка:**
+`aria-label="Редагувати <field>: <value>"` або принаймні `aria-label={\`Редагувати: \${value}\`}`.
+
+**Фактична поведінка:**
+Без aria-label — невідомо що це поле редагування.
+
+**Виправлення:**
+Прийняти опціональний пропс `ariaLabel?: string` і застосувати до span. Default = "Натисніть для редагування".
+
+**Статус:** [ ] відкритий
+
+---
+
+## Bug #51 — [LOW] `useSavedFilters` не валідує тип збереженого значення (corruption defense)
+
+**Файл:** `apps/web/src/hooks/useSavedFilters.ts:27-33`
+**Severity:** LOW
+**Категорія:** robustness
+
+**Опис:**
+```ts
+const raw = localStorage.getItem(storageKey);
+return raw ? (JSON.parse(raw) as SavedFilter<T>[]) : [];
+```
+`JSON.parse` повертає що завгодно — `null`, `{...}`, `42`, "string". Якщо інший таб або користувач вставив у DevTools `localStorage.setItem('sto_filters_work-orders', '{}')` — `read()` поверне `{}` як `SavedFilter<T>[]`. Потім `SavedFiltersBar.saved.map(...)` крашиться (`.map is not a function`) і компонент рендерить error boundary.
+
+**Очікувана поведінка:**
+Якщо парс повертає не-масив → повернути `[]` (як при `catch`).
+
+**Фактична поведінка:**
+Можливий runtime crash при corrupted localStorage.
+
+**Виправлення:**
+```ts
+const parsed = JSON.parse(raw);
+return Array.isArray(parsed) ? (parsed as SavedFilter<T>[]) : [];
+```
+
+**Статус:** [ ] відкритий
+
+---
+
+## Bug #52 — [LOW] Відсутні тести для нових Group 3 компонентів (SavedFiltersBar, InlineEditCell, useInlineEdit, useSavedFilters)
+
+**Файл:** `apps/web/src/components/ui/__tests__/` (missing files)
+**Severity:** LOW
+**Категорія:** test-coverage
+
+**Опис:**
+Group 3 додав 4 нові примітиви UI без тестів. Існуючий патерн (`button.test.tsx`, `modal.test.tsx`, `command-palette.test.tsx`) показує що тести компонентів очікувані.
+
+**Очікувана поведінка:**
+- `saved-filters-bar.test.tsx` — empty state; рендер пресетів; клік Save → відкриває input; Enter зберігає; Esc закриває; Remove видаляє.
+- `inline-edit-cell.test.tsx` — рендер з value; Enter commit; Escape cancel; Check/X кнопки; aria-labels.
+- `useInlineEdit.test.tsx` — startEdit/commitEdit/cancelEdit; saving guard блокує double-commit; trimmed equal skips save.
+- `useSavedFilters.test.tsx` — SSR-safe (initial []); hydrate з localStorage у useEffect; save/remove/rename; corruption defense.
+
+**Фактична поведінка:**
+0 тестів для Group 3 файлів.
+
+**Виправлення:**
+Додати 4 файли тестів вище. Покриття ≥80% для кожного хука/компонента.
+
+**Статус:** [ ] відкритий
+
+---
 
 **Файл:** `apps/web/src/components/ui/command-palette.tsx:52-58`
 **Severity:** LOW
