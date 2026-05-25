@@ -9,21 +9,25 @@
 ## Останній commit
 
 ```
-492247d docs(tester): record bug #32 from /sto-tester cycle 5 session
+d5bfc39 fix(review): cycle 4 — consistent mountedRef guard across all CRUD actions
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після Phase 19 cycle 5 tester, 2026-05-25)
+## Поточний стан тестів (після Phase 19 review cycle 4, 2026-05-25)
 ```
 TypeScript:  ✅ 0 errors        (web + api + shared)
-Unit:        ✅ 111/111 passed  (12 files; no regressions from cycle 4)
+Unit:        ✅ 111/111 passed  (12 files; no regressions from cycle 4/5)
 Contract:    ✅ 32/32 passed    (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
 E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн)
-Цикли QA:    ✅ Phase 19 tester cycle 5 — знайдено + виправлено 1 баг (1 HIGH)
+Цикли QA:    ✅ Phase 19 review cycle 4 — 1 Important фікс (mountedRef consistency)
 ```
+
+### Gotcha — Phase 19 review cycle 4 findings (2026-05-25)
+- mountedRef guard pattern: коли вводиш `mountedRef.current` для одного async handler (`load`), застосовуй ТОЙ САМИЙ guard до УСІХ інших async setState handlers у тому ж компоненті (`deleteRule`, `applyAll`, `updateRule`). Інакше навігація під час in-flight операції викличе setState на unmounted (Bug #30 був неповним).
+- StockBatch — append-only без `deletedAt` (як StockMovement, SettlementTransaction). Додано до §5 виключень у SKILL.md.
 
 ### Gotcha — Phase 19 tester cycle 5 findings (2026-05-25)
 - DTO `@Max(N)` ліміти на pagination-параметрах — звіряти на ВСІХ сторінках frontend. Сторінка може використовувати `limit=N+M`, ValidationPipe відкине запит з 400, а soft error-handling (`console.warn` замість throw) сховає проблему від QA. Канон: усі сторінки використовують один і той самий `limit=200` (Bug #32 = пост-фікс Bug #29 розкрив дефект, який жив з самого Phase 19).

@@ -330,6 +330,7 @@ useEffect(() => {
 - [ ] `useEffect` з `apiFetch` при залежності від `id`/`page` — має AbortController або ignore-flag
 - [ ] `useEffect` з `apiFetch` і `[]` deps (mount-only) на сторінках з навігацією — **теж** потребує `let cancelled = false; ... if (!cancelled) setX(...); return () => { cancelled = true }` бо користувач може покинути сторінку до завершення Promise (dashboard, settings, list pages)
 - [ ] Стани не оновлюються після unmount (`isMounted` ref або AbortController)
+- [ ] **mountedRef consistency**: коли в компоненті є `mountedRef` guard на `load()` — застосовуй ТОЙ САМИЙ guard у ВСІХ async handlers (`createX`, `updateX`, `deleteX`, `applyX`). Часткове застосування (тільки в `load`) — анти-патерн: навігація під час in-flight CRUD усе одно викличе setState на unmounted. Шаблон: кожен `setX(...)` після `await apiFetch(...)` обгортати в `if (mountedRef.current) setX(...)`.
 - [ ] `useCallback` і `useMemo` не пропущені для функцій що передаються у дочірні компоненти з великим ре-рендером
 
 ### 3.2 Frontend — Стан і ре-рендери
@@ -442,7 +443,7 @@ grep -rn "\.emit(\|this\.events\.emit(" apps/api/src/modules/ --include="*.servi
 - [ ] `RESERVATION_RELEASE`: перевіряє `reserved >= Math.abs(qty)` — запобігає від'ємному резерву
 - [ ] Invoice cross-reference: `inv.workOrderId === dto.workOrderId` — запобігає підміні документів
 - [ ] Soft delete скрізь — `deletedAt: null` у всіх `where`
-- [ ] **Виключення без `deletedAt`**: `SettlementAccount`, `SettlementTransaction`, `StockMovement`, `Payment`, `WorkOrderLineEmployee`
+- [ ] **Виключення без `deletedAt`**: `SettlementAccount`, `SettlementTransaction`, `StockMovement`, `StockBatch`, `BatchConsumption`, `PriceHistory`, `Payment`, `WorkOrderLineEmployee`
 - [ ] `SettlementsService.createTransaction` — internal `amount > 0 && Number.isFinite(amount)` guard (defense-in-depth, окрім DTO `@Min`)
 - [ ] `URL.createObjectURL` на frontend — обов'язково `URL.revokeObjectURL(url)` через setTimeout після click
   ```bash
