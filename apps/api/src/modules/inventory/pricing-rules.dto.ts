@@ -97,28 +97,35 @@ export class UpdatePricingRuleDto {
   @IsString()
   goodType?: string;
 
+  // Bug #27: PATCH повинен мати ті самі валідатори, що й POST,
+  // інакше ціна продажу може стати від'ємною (`percentValue: -50` → costPrice * 0.5).
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
+  @Max(10000)
   percentValue?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   fixedAmount?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   fixedPrice?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   roundTo?: number;
 
   @ApiPropertyOptional()

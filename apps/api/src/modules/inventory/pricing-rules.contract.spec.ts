@@ -203,6 +203,36 @@ describe('PricingRules — HTTP Contract', () => {
     });
   });
 
+  describe('PATCH /pricing-rules/:id — Bug #27 validation', () => {
+    // ValidationPipe rejects payload before controller body runs — no findFirst mock needed.
+    it('повертає 400 при від\'ємному percentValue (PATCH тепер має @Min(0))', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
+        payload: { percentValue: -50 },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 при від\'ємному fixedPrice', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
+        payload: { fixedPrice: -100 },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 при percentValue > 10000', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
+        payload: { percentValue: 99999 },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
   describe('DELETE /pricing-rules/:id', () => {
     it('повертає 204 для успішного soft-delete', async () => {
       prismaMock.pricingRule.findFirst.mockResolvedValueOnce({ id: 'rule-uuid' });
