@@ -203,3 +203,266 @@ grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app
 ```
 
 ---
+
+## Session 2026-05-25 — Phase 19 (StockBatch/BatchConsumption + PricingRule + Batch viewer)
+
+Baseline:
+- `tsc` web/api/shared — ✅ 0 errors
+- API unit + contract + property: ✅ 88/88 passed (10 файлів)
+- Зона аналізу: `apps/api/src/modules/inventory/{batch,pricing,pricing-rules}*`, `apps/api/src/modules/goods/goods.controller.ts`, `apps/web/src/components/ui/batch-viewer-modal.tsx`, `apps/web/src/app/pricing-rules/PricingRulesClient.tsx`, `apps/web/src/app/catalog/page.tsx`, `apps/web/src/app/work-orders/[id]/PageClient.tsx`, schema `StockBatch/BatchConsumption/PricingRule/PriceHistory`.
+
+---
+
+## Bug #14 — [CRITICAL] `BatchService.createFromReceipt` затирає `Good.salePrice` нульовою ціною при безкоштовному прийомі
+
+**Файл:** `apps/api/src/modules/inventory/batch.service.ts:46-103`
+**Severity:** CRITICAL
+**Категорія:** business-logic
+
+**Опис:**
+Коли `createFromReceipt` викликається з `costPrice=0` (повернення товару, безкоштовний зразок, рекламний матеріал), `PricingService.calculateSalePrice` повертає `Math.max(0, costPrice * (1 + p/100)) = 0`. Далі код стрибає в гілку `if (Math.abs(salePrice - currentSalePrice) > 0.001)` і виконує `db.good.update({ data: { salePrice: 0 } })` — знищує існуючу ціну продажу товару.
+
+**Очікувана поведінка:**
+Якщо `costPrice <= 0` АБО розрахований `salePrice <= 0` — НЕ перезаписувати `Good.salePrice` (зберегти поточну ціну) і НЕ створювати запис у `PriceHistory`. Партія все одно створюється з `salePrice = Good.salePrice` поточним.
+
+**Фактична поведінка:**
+Безкоштовне оприбуткування скидає роздрібну ціну в 0 для всього магазину/складу. Наступний продаж пройде без націнки.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #15 — [HIGH] `InventoryService.createMovement` пропускає створення `StockBatch` при `RECEIPT` з `price=0` або `price=undefined`
+
+**Файл:** `apps/api/src/modules/inventory/inventory.service.ts:71-82`
+**Severity:** HIGH
+**Категорія:** business-logic
+
+**Опис:**
+```ts
+if (dto.type === 'RECEIPT' && dto.quantity > 0 && dto.price) {
+  await this.batchService.createFromReceipt(...);
+}
+```
+Якщо `price` не передано (undefined) або дорівнює 0 — batch НЕ створюється, але `StockMovement` і `StockItem.quantity` оновлюються. У результаті: фізично товар є на складі, але жодної партії не існує. Подальша `consumeBatch` з режимом FIFO/LIFO/FEFO кине `BadRequestException('Недостатньо партій для списання')` — UI заблокує продаж/списання, хоч кількість > 0.
+
+**Очікувана поведінка:**
+Або:
+1. **Reject** — кидати `BadRequestException('Ціна оприбуткування обов\'язкова')` при `RECEIPT` без price; або
+2. **Auto-batch** — створити партію з `costPrice = 0` (партію з нульовою собівартістю можна потім скорегувати); але не залишати quantity без партії.
+
+Обрано підхід (1): `RECEIPT` з `quantity > 0` обов'язково потребує `price` (можна 0). Якщо `price` undefined → throw.
+
+**Фактична поведінка:**
+RECEIPT без price → quantity++, але немає батча → consumeBatch ламається.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #16 — [HIGH] `BatchesController.lookup` повертає `avgCost=0` при відсутності `warehouseId`
+
+**Файл:** `apps/api/src/modules/inventory/batches.controller.ts:41`
+**Severity:** HIGH
+**Категорія:** business-logic
+
+**Опис:**
+```ts
+this.batchService.getAvgCost(orgId, goodId, warehouseId ?? '')
+```
+Коли `warehouseId` не передано (catalog page), у запит йде порожній рядок `''`. `prisma.stockBatch.findMany({ where: { warehouseId: '' } })` нічого не знайде → `avgCost = 0`. UI у `BatchViewerModal` показує "Сер. собівартість: 0,00 ₴" і ховає блок Маржі (бо `data.avgCostPrice > 0`), хоч у товару є партії в інших складах.
+
+**Очікувана поведінка:**
+`getAvgCost(orgId, goodId, warehouseId?)`: якщо `warehouseId === undefined` → агрегувати по всіх складах. Інакше — по конкретному складу.
+
+**Фактична поведінка:**
+Catalog → "Партії" завжди показує середню собівартість 0 ₴, нульову маржу.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #17 — [HIGH] `PricingService.calculateSalePrice` застосовує правило з видаленим `Good` (soft-deleted)
+
+**Файл:** `apps/api/src/modules/inventory/pricing.service.ts:16-30`
+**Severity:** HIGH
+**Категорія:** business-logic
+
+**Опис:**
+Правило `PricingRule { goodId: 'g-deleted', isActive: true, deletedAt: null }` залишається активним після soft-delete товару (`Good.deletedAt`). При повторному оприбуткуванні (resurrect товару через `InventoryService.createMovement` upsert із `deletedAt: null`) — старе правило застосовується, хоча менеджер його видалив разом з товаром.
+
+Більш поширений випадок: видалений Good не повертає `pricingRule.good` у `findAll` (relation повертає null), тому в UI правило виглядає "Весь асортимент" замість "Товар: <Назва>". Це вводить менеджера в оману.
+
+**Очікувана поведінка:**
+1. При soft-delete товару — автоматично soft-delete пов'язаних `PricingRule` (де `goodId` дорівнює видаленому товару).
+2. В `pricing-rules.controller.findAll` — фільтрувати `where: { OR: [{ goodId: null }, { good: { deletedAt: null } }] }`, щоб не показувати правила з видаленими товарами.
+3. В `calculateSalePrice` — додати `OR` фільтр `{ goodId: null } | { good: { deletedAt: null } }`.
+
+**Фактична поведінка:**
+Видалені товари створюють "примарні" правила, які продовжують впливати на ціни. Список правил показує правила без імені товару (relation null) як "Весь асортимент".
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #18 — [MEDIUM] `PricingRulesController.findAll` повертає голий масив (порушує API-контракт `{ items, total }`)
+
+**Файл:** `apps/api/src/modules/inventory/pricing-rules.controller.ts:32-40`
+**Severity:** MEDIUM
+**Категорія:** api-contract
+
+**Опис:**
+Інші list-endpoints у проекті повертають `{ items, total, page, limit }`. `findAll` для pricing-rules — голий масив. Це порушує контракт із §1.1 SKILL.md ("Кожен list endpoint повертає `{ items, total, page?, limit? }`"). Майбутні консумери (експорт, sync, мобільний) очікують paginated shape.
+
+**Очікувана поведінка:**
+Повертати `{ items: PricingRuleDto[], total: number, page: 1, limit: 200 }`. Фронт оновити на `apiFetch<{ items: PricingRule[] }>(...)`.
+
+**Фактична поведінка:**
+Голий масив. Якщо доступ через TanStack Query кешує по shape — зміна формату ламає cache.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #19 — [MEDIUM] `PricingService.applyRuleToGoods` — `goodType: rule.goodType as never` приховує тип
+
+**Файл:** `apps/api/src/modules/inventory/pricing.service.ts:81`
+**Severity:** MEDIUM
+**Категорія:** typescript
+
+**Опис:**
+```ts
+...(rule.goodType ? { goodType: rule.goodType as never } : {}),
+```
+`as never` — анти-патерн, який вимикає перевірку типів. `Good.goodType` у схемі: `GoodType?` enum. Правильне рішення — кастувати до `Prisma.EnumGoodTypeFilter` або до `GoodType` (з імпорту `@prisma/client`).
+
+**Очікувана поведінка:**
+```ts
+import { GoodType } from '@prisma/client';
+...(rule.goodType ? { goodType: rule.goodType as GoodType } : {}),
+```
+
+**Фактична поведінка:**
+`as never` маскує помилку: якщо `rule.goodType` міститиме нестандартне значення, Prisma кине runtime-помилку (P2009 invalid enum value), яка не вловиться TS.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #20 — [MEDIUM] `BatchService.consumeBatch` без `tx` параметра — non-atomic update + log
+
+**Файл:** `apps/api/src/modules/inventory/batch.service.ts:106-175`
+**Severity:** MEDIUM
+**Категорія:** business-logic
+
+**Опис:**
+`consumeBatch` приймає опціональний `tx`. Якщо викликати без транзакції — кожне `update(stockBatch)` і `create(batchConsumption)` — окремі транзакції. Якщо процес упаде між update і create → `remainingQty` знижений, але `BatchConsumption` лог відсутній → партія "з'їдена" без сліду.
+
+`returnToBatch` має той самий патерн. Обидва небезпечні без `tx`.
+
+**Очікувана поведінка:**
+Обернути цикл у `db.$transaction([...])` коли `tx` не передано. Або задокументувати в JSDoc "MUST be called within $transaction".
+
+**Фактична поведінка:**
+API дозволяє виклик без `tx`, що створює вікно неконсистентності.
+
+**Статус:** [x] виправлено — додано JSDoc вимогу + assertion у dev (warning у logger).
+
+---
+
+## Bug #21 — [LOW] `BatchesController.lookup` повертає `null` замість `404 NotFoundException`
+
+**Файл:** `apps/api/src/modules/inventory/batches.controller.ts:44`
+**Severity:** LOW
+**Категорія:** api-contract
+
+**Опис:**
+`if (!good) return null;` — інші endpoints використовують `throw new NotFoundException('Товар не знайдено')`. Зворотній 200 з `null` body змушує фронт перевіряти `data && data.good` замість стандартного error handling через `.catch`.
+
+**Очікувана поведінка:**
+`throw new NotFoundException('Товар не знайдено')`.
+
+**Фактична поведінка:**
+200 OK з body `null` — нестандартний контракт.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #22 — [LOW] `pricing-rules.dto.ts` — `CreatePricingRuleDto` не валідує що `goodId/goodCategory/goodType` взаємовиключні
+
+**Файл:** `apps/api/src/modules/inventory/pricing-rules.dto.ts:21-35`
+**Severity:** LOW
+**Категорія:** api-contract
+
+**Опис:**
+DTO дозволяє створити правило з усіма трьома: `{ goodId: 'g1', goodCategory: 'X', goodType: 'SPARE_PART' }`. Алгоритм у `pricing.service` фактично використовує лише найспецифічніший (goodId), ігноруючи інші → менеджер заплутаний "чому category/type не діють".
+
+**Очікувана поведінка:**
+DTO-валідатор: `@ValidateIf((o) => !o.goodId) goodCategory?` і т.д. Або сервіс-рівень: якщо вказано `goodId`, ігнорувати `goodCategory/goodType` і встановити їх у null автоматично.
+
+**Фактична поведінка:**
+Менеджер може зберегти суперечливі поля.
+
+**Статус:** [x] виправлено — backend нормалізує: `goodId` > `goodCategory` > `goodType`, нижчі рівні зануляються.
+
+---
+
+## Bug #23 — [LOW] `PricingRulesClient.tsx` — type `PercentValue=null` для FIXED_PRICE не закриває попередження
+
+**Файл:** `apps/web/src/app/pricing-rules/PricingRulesClient.tsx:317-356`
+**Severity:** LOW
+**Категорія:** frontend
+
+**Опис:**
+При зміні типу правила з PERCENT на FIXED_PRICE — попередня `percentValue` залишається в формі (бо `RuleForm` зберігає всі поля string). При сабміті, навіть якщо UI ховає поле percentValue, до бекенду йде `percentValue: Number(form.percentValue) || undefined` — якщо рядок не порожній, надсилається. Бекенд ігнорує (бо `type=FIXED_PRICE`), але record у БД має зайве percentValue. Майбутній звіт за правилами покаже "FIXED_PRICE з percentValue=35%".
+
+**Очікувана поведінка:**
+При сабміті FIXED_PRICE — `percentValue: undefined`, `fixedAmount: undefined`. Для FIXED_AMOUNT — `percentValue/fixedPrice: undefined`. Тобто очищати неактуальні поля по типу.
+
+**Фактична поведінка:**
+"Сміття" в полях правила, видиме при API-перегляді.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #24 — [LOW] `batch-viewer-modal.tsx` `margin()` ділить на `sale`, повертає NaN при sale=0
+
+**Файл:** `apps/web/src/components/ui/batch-viewer-modal.tsx:52-55`
+**Severity:** LOW
+**Категорія:** frontend
+
+**Опис:**
+```ts
+function margin(sale: number, cost: number) {
+  if (!cost) return null;
+  return ((sale - cost) / sale * 100).toFixed(1);
+}
+```
+Захищено від `cost=0`, але ділиться на `sale`. Якщо `sale=0` → `Infinity`/`NaN` → `"NaN%"` у UI.
+
+**Очікувана поведінка:**
+```ts
+if (!sale || !cost) return null;
+```
+
+**Фактична поведінка:**
+"NaN%" в маржі при некоректних даних.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #25 — [LOW] Відсутні contract тести для `pricing-rules` та `batches`
+
+**Файл:** `apps/api/src/modules/inventory/` (немає `pricing-rules.contract.spec.ts`, `batches.contract.spec.ts`)
+**Severity:** LOW
+**Категорія:** test-coverage
+
+**Опис:**
+Нові контролери Phase 19 не мають `.contract.spec.ts` — порушення §1.4 SKILL.md.
+
+**Статус:** [x] виправлено — додано contract-тести.
+
+---
