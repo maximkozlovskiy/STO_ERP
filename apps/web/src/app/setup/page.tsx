@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+import { apiFetch } from '@/lib/api-client';
 
 type Step = 'checking' | 'org' | 'branch' | 'warehouse' | 'fiscal' | 'sms' | 'done';
 
@@ -49,9 +48,8 @@ export default function SetupPage() {
 
   // Check if already initialized — redirect if so
   useEffect(() => {
-    fetch(`${API_URL}/api/setup/status`)
-      .then((r) => r.json())
-      .then((d: { initialized: boolean }) => {
+    apiFetch<{ initialized: boolean }>('/setup/status')
+      .then((d) => {
         if (d.initialized) {
           router.replace('/login');
         } else {
@@ -76,9 +74,8 @@ export default function SetupPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_URL}/api/setup/init`, {
+      const result = await apiFetch<{ accessToken: string }>('/setup/init', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orgName: data.orgName,
           edrpou: data.edrpou || undefined,
@@ -92,12 +89,6 @@ export default function SetupPage() {
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Помилка ініціалізації' })) as { message: string };
-        throw new Error(err.message);
-      }
-
-      const result = await res.json() as { accessToken: string };
       sessionStorage.setItem('sto_access_token', result.accessToken);
       setStep('done');
     } catch (e: unknown) {

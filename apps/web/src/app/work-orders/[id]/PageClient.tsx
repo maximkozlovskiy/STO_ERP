@@ -124,7 +124,7 @@ export default function WorkOrderCardPage() {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження наряду'));
     apiFetch<{ items: CompletionActSummary[] }>(`/completion-acts?workOrderId=${id}`)
       .then(data => { if (data.items.length > 0) setCompletionAct(data.items[0]); })
-      .catch(() => {});
+      .catch((e: unknown) => console.warn('[CompletionAct] load failed:', e));
   }, [id]);
 
   useEffect(() => { load(); }, [load]);

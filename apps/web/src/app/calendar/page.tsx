@@ -145,7 +145,10 @@ export default function CalendarPage() {
           Наступний
           <ChevronRight className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => setDate(toDateString(new Date()))}>
+        <Button variant="ghost" size="sm" onClick={() => {
+          const now = new Date();
+          setDate(toDateString(now));
+        }}>
           Сьогодні
         </Button>
       </div>
