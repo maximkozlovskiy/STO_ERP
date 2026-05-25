@@ -123,7 +123,7 @@ export default function CalendarPage() {
       </div>
 
       {error && !showAdd && (
-        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
 
       {/* Date nav */}
@@ -154,7 +154,7 @@ export default function CalendarPage() {
       {showAdd && (
         <div className="bg-surface border border-border rounded-xl p-5 mb-6 space-y-3">
           <h3 className="font-semibold text-foreground text-sm">Новий слот на {date}</h3>
-          {error && <p className="text-[13px] text-[hsl(0_84%_42%)]">{error}</p>}
+          {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Підйомник</label>

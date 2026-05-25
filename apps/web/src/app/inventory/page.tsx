@@ -82,7 +82,7 @@ export default function InventoryPage() {
   return (
     <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
       <div className="page-header">
         <div>
@@ -92,7 +92,7 @@ export default function InventoryPage() {
         <Button
           variant="outline"
           onClick={async () => { if (await loadLow()) setShowLowModal(true); }}
-          className="text-[hsl(38_92%_30%)] border-warning/30 bg-warning-subtle hover:bg-warning-subtle/80"
+          className="text-warning-text border-warning-border bg-warning-subtle hover:bg-warning-subtle/80"
         >
           <AlertTriangle className="h-4 w-4" />
           Нижче мінімуму
@@ -202,7 +202,7 @@ export default function InventoryPage() {
             <div className="space-y-4">
               {/* Low stock warning */}
               {selectedItem.isLow && (
-                <div className="flex items-center gap-2 p-2.5 bg-warning-subtle border border-warning/20 rounded-lg text-[13px] text-[hsl(38_92%_30%)]">
+                <div className="flex items-center gap-2 p-2.5 bg-warning-subtle border border-warning-border rounded-lg text-[13px] text-warning-text">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   <span>Залишок нижче мінімального</span>
                 </div>

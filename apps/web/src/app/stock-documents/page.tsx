@@ -169,7 +169,7 @@ export default function StockDocumentsPage() {
   return (
     <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
       <div className="page-header">
         <div>

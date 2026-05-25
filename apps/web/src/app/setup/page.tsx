@@ -163,7 +163,7 @@ export default function SetupPage() {
         {/* Body */}
         <div className="p-6 space-y-4">
           {error && (
-            <div className="bg-destructive-subtle border border-[hsl(0_84%_80%)] text-[hsl(0_84%_42%)] rounded-lg p-3 text-sm">
+            <div className="bg-destructive-subtle border border-destructive-border text-destructive-text rounded-lg p-3 text-sm">
               {error}
             </div>
           )}

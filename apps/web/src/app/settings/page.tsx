@@ -181,7 +181,7 @@ export default function SettingsPage() {
         </div>
       )}
       {error && (
-        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg p-3">
+        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">
           {error}
         </div>
       )}

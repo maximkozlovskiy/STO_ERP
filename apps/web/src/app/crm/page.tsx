@@ -118,7 +118,7 @@ export default function CrmPage() {
       </div>
 
       {!modal && error && (
-        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
         </div>
       )}
@@ -206,7 +206,7 @@ export default function CrmPage() {
                     <TableCell className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>
                     <TableCell className={cn(
                       'font-semibold tabular-nums text-[13px]',
-                      cp.balance < 0 ? 'text-[hsl(0_84%_42%)]' : cp.balance > 0 ? 'text-[hsl(142_71%_30%)]' : 'text-muted-foreground',
+                      cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground',
                     )}>
                       {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
                     </TableCell>
@@ -278,7 +278,7 @@ export default function CrmPage() {
                   <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Баланс</p>
                   <p className={cn(
                     'text-[14px] font-semibold tabular-nums',
-                    selectedCp.balance < 0 ? 'text-[hsl(0_84%_42%)]' : selectedCp.balance > 0 ? 'text-[hsl(142_71%_30%)]' : 'text-muted-foreground',
+                    selectedCp.balance < 0 ? 'text-destructive-text' : selectedCp.balance > 0 ? 'text-success-text' : 'text-muted-foreground',
                   )}>
                     {selectedCp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
                   </p>
@@ -310,7 +310,7 @@ export default function CrmPage() {
         }
       >
         {error && (
-          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
             {error}
           </div>
         )}

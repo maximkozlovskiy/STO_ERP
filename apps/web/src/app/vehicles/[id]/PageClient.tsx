@@ -72,7 +72,7 @@ export default function VehicleCardPage() {
   if (!vehicle) return (
     <div className="flex items-center justify-center min-h-screen flex-col gap-4">
       {loadError
-        ? <p className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{loadError}</p>
+        ? <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{loadError}</p>
         : <Spinner size="lg" />}
     </div>
   );
@@ -85,7 +85,7 @@ export default function VehicleCardPage() {
   return (
     <div className="page-container max-w-3xl space-y-6">
       {loadError && (
-        <div className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{loadError}</div>
+        <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{loadError}</div>
       )}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>

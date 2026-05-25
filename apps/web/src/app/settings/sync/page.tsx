@@ -80,7 +80,7 @@ export default function SyncPage() {
         <div className="mb-4 text-sm text-success bg-success-subtle border border-success/20 rounded-lg p-3">{msg}</div>
       )}
       {error && (
-        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg p-3">{error}</div>
+        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">{error}</div>
       )}
 
       {loading ? (
