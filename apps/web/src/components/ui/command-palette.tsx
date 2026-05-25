@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, ArrowRight, Navigation, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -29,7 +29,14 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const titleId = useRef(`cmd-palette-${Math.random().toString(36).slice(2, 9)}`).current;
+  // Stable IDs from React 18+ — replaces non-deterministic Math.random()
+  const reactId = useId();
+  const titleId    = `cmd-palette-title-${reactId}`;
+  const listboxId  = `cmd-palette-listbox-${reactId}`;
+  const optionId   = (idx: number) => `cmd-palette-option-${reactId}-${idx}`;
+
+  // Remember the focused element BEFORE the palette opened so we can restore it on close (a11y).
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   // Memoize commands per role to avoid re-creating array each render
   const allCommands = useMemo(() => getCommands(role), [role]);
@@ -44,17 +51,34 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
   // Flat list for keyboard navigation
   const flatList = useMemo(() => Object.values(groups).flat(), [groups]);
 
+  // O(1) lookup of command → flat index (replaces O(n) indexOf in render).
+  const flatIndex = useMemo(() => {
+    const map = new Map<Command, number>();
+    flatList.forEach((cmd, i) => map.set(cmd, i));
+    return map;
+  }, [flatList]);
+
   const runCommand = useCallback((cmd: Command) => {
     cmd.perform({ router, role });
     onClose();
   }, [router, role, onClose]);
 
   useEffect(() => {
-    if (!open) return;
-    setQuery('');
-    setActiveIndex(0);
-    const id = window.setTimeout(() => inputRef.current?.focus(), 50);
-    return () => window.clearTimeout(id);
+    if (open) {
+      // Save current focus so we can restore it when palette closes (WAI-ARIA dialog pattern).
+      previousFocusRef.current = (document.activeElement as HTMLElement | null) ?? null;
+      setQuery('');
+      setActiveIndex(0);
+      const id = window.setTimeout(() => inputRef.current?.focus(), 50);
+      return () => window.clearTimeout(id);
+    }
+    // Closing → restore focus to the trigger element (e.g. the "Пошук..." button in sidebar).
+    const prev = previousFocusRef.current;
+    if (prev && typeof prev.focus === 'function') {
+      // Defer one tick so the dialog unmount completes before focus moves.
+      const id = window.setTimeout(() => prev.focus(), 0);
+      return () => window.clearTimeout(id);
+    }
   }, [open]);
 
   useEffect(() => { setActiveIndex(0); }, [query]);
@@ -110,18 +134,28 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
 
   if (!open) return null;
 
+  const activeOptionId = flatList[activeIndex] ? optionId(activeIndex) : undefined;
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
       className="fixed inset-0 z-[300] flex items-start justify-center pt-[10vh] px-4"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <h2 id={titleId} className="sr-only">Командна палітра</h2>
 
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-hidden="true" />
+      {/* Backdrop — clicking it closes the palette. Must be on the backdrop itself
+          (not the outer flex container) because backdrop visually covers the whole
+          surface, so clicks outside the panel land here, not on the parent. */}
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        aria-hidden="true"
+        onMouseDown={(e) => {
+          // Only the backdrop itself should close — not bubbled clicks from the panel.
+          if (e.target === e.currentTarget) onClose();
+        }}
+      />
 
       {/* Panel */}
       <div className="relative w-full max-w-lg bg-surface rounded-2xl border border-border shadow-2xl overflow-hidden">
@@ -135,13 +169,24 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
             onChange={e => setQuery(e.target.value)}
             placeholder="Пошук команд і сторінок..."
             aria-label="Пошук команд"
+            role="combobox"
+            aria-expanded={flatList.length > 0}
+            aria-controls={listboxId}
+            aria-activedescendant={activeOptionId}
+            aria-autocomplete="list"
             className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground outline-none"
           />
           <kbd className="shrink-0 text-[11px] text-muted-foreground bg-secondary border border-border rounded px-1.5 py-0.5">Esc</kbd>
         </div>
 
         {/* Results */}
-        <div ref={listRef} className="max-h-[360px] overflow-y-auto py-1">
+        <div
+          ref={listRef}
+          id={listboxId}
+          role="listbox"
+          aria-label="Результати пошуку"
+          className="max-h-[360px] overflow-y-auto py-1"
+        >
           {filtered.length === 0 ? (
             <p className="py-8 text-center text-[13px] text-muted-foreground">Нічого не знайдено</p>
           ) : (
@@ -153,13 +198,19 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
                     {GROUP_LABELS[group] ?? group}
                   </p>
                   {cmds.map((cmd) => {
-                    const idx = flatList.indexOf(cmd);
+                    // O(1) lookup via Map — was O(n) with flatList.indexOf
+                    const idx = flatIndex.get(cmd) ?? -1;
                     const isActive = idx === activeIndex;
                     return (
                       <button
                         key={cmd.id}
+                        id={optionId(idx)}
+                        role="option"
+                        aria-selected={isActive}
                         data-index={idx}
-                        onMouseEnter={() => setActiveIndex(idx)}
+                        // Use mousemove (not mouseenter) so the keyboard-driven activeIndex
+                        // is NOT overridden when filtered list shifts under a stationary cursor.
+                        onMouseMove={() => { if (activeIndex !== idx) setActiveIndex(idx); }}
                         onClick={() => runCommand(cmd)}
                         className={cn(
                           'w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors',

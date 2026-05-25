@@ -968,3 +968,183 @@ Coverage = 0% у settings module.
 
 ---
 
+## Session 2026-05-25 — Command Palette + Keyboard Shortcuts (Group 2)
+
+Дата: 2026-05-25
+Сесія: tester sweep після review fixes (commit 5e74ffb) — `command-palette.tsx`, `commands.ts`, `useKeyboardShortcut.ts`, `useGlobalShortcuts.ts`, `TopShell.tsx`
+
+### Baseline
+- TypeScript web/api/shared — ✅ 0 errors
+- Unit + contract + property API — ✅ 117/117 passed (13 файлів)
+- Component (web vitest) — ✅ 42/42 passed (4 файли)
+
+### Знайдено: 5 bugs (1 MEDIUM, 4 LOW)
+
+---
+
+## Bug #42 — [MEDIUM] CommandPalette: клік по backdrop НЕ закриває палітру
+
+**Файл:** `apps/web/src/components/ui/command-palette.tsx:114-124`
+**Severity:** MEDIUM
+**Категорія:** frontend / UX
+
+**Опис:**
+Outer dialog `<div>` має `onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}`.
+Всередині нього два дочірні елементи: backdrop (`<div className="absolute inset-0 bg-black/40 ...">`)
+і panel (`<div className="relative ...">`). Backdrop `absolute inset-0` повністю покриває outer div візуально,
+тому будь-який клік "поза панеллю" приземляється на backdrop, а не на outer div.
+
+`e.target === e.currentTarget` буде `true` тільки якщо користувач клікнув по `pt-[10vh]` /
+`px-4` padding-у outer div — але цей padding знаходиться під backdrop-ом і недоступний для pointer events.
+
+**Очікувана поведінка:**
+Клік по будь-якому місцю backdrop-у (поза панеллю) закриває палітру.
+
+**Фактична поведінка:**
+Палітра не закривається ні за яких обставин кліком миші — тільки через Escape або повторний Ctrl+K.
+
+**Виправлення:**
+Перемістити `onMouseDown` з outer div на backdrop div (бо саме backdrop отримує клік).
+Або додати `onMouseDown` на сам backdrop:
+```tsx
+<div className="absolute inset-0 bg-black/40 ..." onMouseDown={onClose} aria-hidden="true" />
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #43 — [LOW] CommandPalette: миша поверх результатів перезатирає клавіатурне виділення
+
+**Файл:** `apps/web/src/components/ui/command-palette.tsx:162`
+**Severity:** LOW
+**Категорія:** frontend / UX
+
+**Опис:**
+Кожен результат має `onMouseEnter={() => setActiveIndex(idx)}`. Якщо курсор миші
+випадково знаходиться над одним з елементів (а не над пошуком, де користувач набирає),
+то після зміни запиту фільтрований список перебудовується і елементи зсуваються під курсор —
+вмикається mouseEnter і перебивається активний індекс, який користувач керував стрілками.
+
+Це класична UX-помилка: клавіатурна навігація має мати пріоритет над hover, поки користувач рухає мишею.
+
+**Очікувана поведінка:**
+`setActiveIndex` через `onMouseEnter` має спрацьовувати лише при **реальному русі миші**
+(а не коли список зсувається під нерухомий курсор).
+
+**Фактична поведінка:**
+Користувач набирає `на`, ArrowDown тричі — індекс 3. Список перебудовується,
+елемент 0 опиняється під курсором → індекс стрибає на 0.
+
+**Виправлення:**
+Замінити `onMouseEnter` на `onMouseMove` — браузер видає `mousemove` лише при реальному русі курсора:
+```tsx
+onMouseMove={() => { if (activeIndex !== idx) setActiveIndex(idx); }}
+```
+Перевірка `if (activeIndex !== idx)` уникає зайвих setState.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #44 — [LOW] CommandPalette: O(n²) рендер через `flatList.indexOf(cmd)` у кожній ітерації
+
+**Файл:** `apps/web/src/components/ui/command-palette.tsx:156`
+**Severity:** LOW
+**Категорія:** frontend / performance
+
+**Опис:**
+У map-у груп для кожного `cmd` виконується `flatList.indexOf(cmd)` — це лінійний пошук.
+Загальна складність рендеру: O(N²) де N — кількість команд у відфільтрованому списку.
+
+Зараз N=17 (15 nav + 2 action), тож проблема прихована, але якщо хтось додасть 50+ команд
+(глобальний пошук документів/контрагентів) — рендер стане помітно повільнішим.
+
+**Очікувана поведінка:**
+O(N) рендер: знайти індекс через `Map<Command, number>` або обчислити інкрементально під час map.
+
+**Виправлення:**
+Замість `flatList.indexOf(cmd)` побудувати `Map<Command, number>` перед рендером:
+```tsx
+const flatIndex = useMemo(() => {
+  const map = new Map<Command, number>();
+  flatList.forEach((cmd, i) => map.set(cmd, i));
+  return map;
+}, [flatList]);
+```
+Тоді `const idx = flatIndex.get(cmd)!;` — O(1).
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #45 — [LOW] CommandPalette: a11y — відсутні role=listbox/option, aria-selected, aria-activedescendant
+
+**Файл:** `apps/web/src/components/ui/command-palette.tsx:144-181`
+**Severity:** LOW
+**Категорія:** frontend / a11y
+
+**Опис:**
+Compose-палітра — це паттерн `combobox + listbox`. Поточна реалізація:
+- Список результатів — звичайний `<div>`, без `role="listbox"`.
+- Кнопки результатів — `<button>`, без `role="option"` і `aria-selected`.
+- Інпут — без `aria-activedescendant` що вказує на поточний обраний пункт.
+
+Screen readers (NVDA, JAWS, VoiceOver) не оголошують зміну активного пункту під час
+ArrowDown/ArrowUp у текстовому полі.
+
+**Очікувана поведінка:**
+ARIA combobox pattern (`role="combobox"` на input, `aria-controls` → listbox id,
+`aria-activedescendant` → id поточного option; кожен option має `role="option"`
+і `aria-selected={isActive}`).
+
+**Виправлення:**
+1. Додати `role="listbox"` + `id` на контейнер результатів.
+2. Кожна `<button>` отримує `role="option"`, `aria-selected={isActive}`, унікальний `id`.
+3. Інпут — `role="combobox"`, `aria-controls={listboxId}`,
+   `aria-activedescendant` що вказує на id активного option.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #46 — [LOW] CommandPalette: фокус не повертається до елемента-тригера після закриття
+
+**Файл:** `apps/web/src/components/ui/command-palette.tsx:52-58`
+**Severity:** LOW
+**Категорія:** frontend / a11y
+
+**Опис:**
+При відкритті палітри фокус переноситься на input. При закритті (Escape, клік mouse, навігація
+через Enter) фокус втрачається — переходить на `document.body`. Користувачі клавіатури і
+screen-reader-ів очікують, що фокус повернеться до останнього елемента, що мав фокус до відкриття
+(зазвичай це кнопка "Пошук..." у sidebar або у mobile header).
+
+WAI-ARIA Authoring Practices для modal dialog вимагає `restore focus to element that opened the dialog`.
+
+**Очікувана поведінка:**
+При закритті палітри фокус повертається до елемента, що його викликав.
+
+**Фактична поведінка:**
+Фокус потрапляє на `<body>` — користувач втрачає контекст.
+
+**Виправлення:**
+Зберегти `document.activeElement` у `useRef` при відкритті; при закритті — `.focus()` на нього.
+
+```tsx
+const previousFocusRef = useRef<HTMLElement | null>(null);
+useEffect(() => {
+  if (open) {
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const id = window.setTimeout(() => inputRef.current?.focus(), 50);
+    return () => window.clearTimeout(id);
+  } else {
+    previousFocusRef.current?.focus?.();
+  }
+}, [open]);
+```
+
+**Статус:** [x] виправлено
+
+---
+
