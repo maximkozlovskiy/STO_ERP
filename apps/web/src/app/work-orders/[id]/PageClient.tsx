@@ -348,8 +348,15 @@ export default function WorkOrderCardPage() {
                   <div className="flex-1">
                     <p className="text-sm font-medium text-foreground">{l.workName}</p>
                     <p className="text-xs text-muted-foreground">
-                      {l.employeeName} · {l.normoHours} н-год
-                      {l.actualHours != null && <span className="text-muted-foreground/70"> (факт: {l.actualHours} н-год)</span>}
+                      {l.employeeName} · <span>{l.normoHours} н/г норм.</span>
+                      {l.actualHours != null && (
+                        <span className={cn(
+                          'ml-1',
+                          l.actualHours > l.normoHours ? 'text-warning font-medium' : 'text-muted-foreground/70',
+                        )}>
+                          {l.actualHours} н/г факт.
+                        </span>
+                      )}
                     </p>
                     {l.notes && <p className="text-xs text-muted-foreground mt-0.5">{l.notes}</p>}
                   </div>

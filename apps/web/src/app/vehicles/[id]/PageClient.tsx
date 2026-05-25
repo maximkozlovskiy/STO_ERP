@@ -54,6 +54,11 @@ export default function VehicleCardPage() {
   const [nodeForm, setNodeForm] = useState({ category: 'engine', name: '', mileageAtInstall: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [today, setToday] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setToday(new Date());
+  }, []);
 
   const [showEdit, setShowEdit] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -206,8 +211,36 @@ export default function VehicleCardPage() {
         {vehicle.driveType && <Info label="Привід" value={DRIVE_TYPES.find(t => t.value === vehicle.driveType)?.label ?? vehicle.driveType} />}
         {vehicle.bodyType && <Info label="Кузов" value={BODY_TYPES.find(t => t.value === vehicle.bodyType)?.label ?? vehicle.bodyType} />}
         {vehicle.engineCode && <Info label="Код двигуна" value={vehicle.engineCode} mono />}
-        {vehicle.insuranceExpiry && <Info label="Страховка до" value={new Date(vehicle.insuranceExpiry).toLocaleDateString('uk-UA')} />}
-        {vehicle.inspectionExpiry && <Info label="Техогляд до" value={new Date(vehicle.inspectionExpiry).toLocaleDateString('uk-UA')} />}
+        {vehicle.insuranceExpiry && (
+          <div>
+            <p className="text-xs text-muted-foreground">Страховка до</p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-foreground">{new Date(vehicle.insuranceExpiry).toLocaleDateString('uk-UA')}</p>
+              {today && (() => {
+                const expiry = new Date(vehicle.insuranceExpiry!);
+                const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / 86_400_000);
+                if (diffDays < 0) return <span className="text-[11px] px-1.5 py-0.5 bg-destructive-subtle text-destructive rounded font-medium">Страховка прострочена</span>;
+                if (diffDays <= 30) return <span className="text-[11px] px-1.5 py-0.5 bg-warning-subtle text-warning rounded font-medium">Закінчується</span>;
+                return null;
+              })()}
+            </div>
+          </div>
+        )}
+        {vehicle.inspectionExpiry && (
+          <div>
+            <p className="text-xs text-muted-foreground">Техогляд до</p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-foreground">{new Date(vehicle.inspectionExpiry).toLocaleDateString('uk-UA')}</p>
+              {today && (() => {
+                const expiry = new Date(vehicle.inspectionExpiry!);
+                const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / 86_400_000);
+                if (diffDays < 0) return <span className="text-[11px] px-1.5 py-0.5 bg-destructive-subtle text-destructive rounded font-medium">Техогляд прострочений</span>;
+                if (diffDays <= 30) return <span className="text-[11px] px-1.5 py-0.5 bg-warning-subtle text-warning rounded font-medium">Закінчується</span>;
+                return null;
+              })()}
+            </div>
+          </div>
+        )}
         {vehicle.notes && <div className="col-span-2"><Info label="Нотатки" value={vehicle.notes} /></div>}
       </div>
 

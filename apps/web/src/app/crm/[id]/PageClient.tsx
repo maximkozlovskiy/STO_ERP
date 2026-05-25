@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
@@ -42,6 +43,9 @@ interface WorkOrder { id: string; number: string; status: string; vehicleMake: s
 type CrmTab = 'info' | 'garages' | 'settlements' | 'work-orders';
 
 const TYPE_LABELS: Record<string, string> = { CLIENT: 'Клієнт', SUPPLIER: 'Постачальник', BOTH: 'Клієнт / Постачальник' };
+const LEGAL_FORM_LABELS: Record<string, string> = {
+  INDIVIDUAL: 'Фіз. особа', FOP: 'ФОП', TOV: 'ТОВ', AT: 'АТ', PP: 'ПП', OTHER: 'Інше',
+};
 const TYPE_BADGE: Record<string, BadgeVariant> = { CLIENT: 'default', SUPPLIER: 'secondary', BOTH: 'warning' };
 
 const WO_STATUS_LABELS: Record<string, string> = {
@@ -96,14 +100,24 @@ export default function CounterpartyCardPage() {
 
   // Editing info
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ phone: '', email: '', notes: '' });
+  const [editForm, setEditForm] = useState({
+    phone: '', email: '', notes: '',
+    legalForm: '', legalAddress: '', actualAddress: '',
+    bankAccount: '', bankName: '', contactPerson: '', taxNumber: '',
+  });
   const [savingEdit, setSavingEdit] = useState(false);
 
   const loadCp = useCallback(() => {
     apiFetch<Counterparty>(`/counterparties/${id}`)
       .then(c => {
         setCp(c);
-        setEditForm({ phone: c.phone ?? '', email: c.email ?? '', notes: c.notes ?? '' });
+        setEditForm({
+          phone: c.phone ?? '', email: c.email ?? '', notes: c.notes ?? '',
+          legalForm: c.legalForm ?? '', legalAddress: c.legalAddress ?? '',
+          actualAddress: c.actualAddress ?? '', bankAccount: c.bankAccount ?? '',
+          bankName: c.bankName ?? '', contactPerson: c.contactPerson ?? '',
+          taxNumber: c.taxNumber ?? '',
+        });
       })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
   }, [id]);
@@ -191,6 +205,13 @@ export default function CounterpartyCardPage() {
           phone: editForm.phone || undefined,
           email: editForm.email || undefined,
           notes: editForm.notes || undefined,
+          legalForm: editForm.legalForm || undefined,
+          legalAddress: editForm.legalAddress || undefined,
+          actualAddress: editForm.actualAddress || undefined,
+          bankAccount: editForm.bankAccount || undefined,
+          bankName: editForm.bankName || undefined,
+          contactPerson: editForm.contactPerson || undefined,
+          taxNumber: editForm.taxNumber || undefined,
         }),
       });
       setCp(updated);
@@ -286,7 +307,7 @@ export default function CounterpartyCardPage() {
               </Button>
             ) : (
               <div className="flex gap-1.5">
-                <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setEditForm({ phone: cp.phone ?? '', email: cp.email ?? '', notes: cp.notes ?? '' }); }}>
+                <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setEditForm({ phone: cp.phone ?? '', email: cp.email ?? '', notes: cp.notes ?? '', legalForm: cp.legalForm ?? '', legalAddress: cp.legalAddress ?? '', actualAddress: cp.actualAddress ?? '', bankAccount: cp.bankAccount ?? '', bankName: cp.bankName ?? '', contactPerson: cp.contactPerson ?? '', taxNumber: cp.taxNumber ?? '' }); }}>
                   <X className="h-3.5 w-3.5" />
                 </Button>
                 <Button size="sm" loading={savingEdit} onClick={saveEdit}>
@@ -309,7 +330,7 @@ export default function CounterpartyCardPage() {
               {(cp.legalForm || cp.legalAddress || cp.actualAddress || cp.bankAccount || cp.bankName || cp.contactPerson || cp.taxNumber) && (
                 <div className="mt-4 pt-4 border-t border-border grid grid-cols-2 gap-x-6 gap-y-2">
                   {([
-                    ['Форма власності', cp.legalForm],
+                    ['Форма власності', cp.legalForm ? (LEGAL_FORM_LABELS[cp.legalForm] ?? cp.legalForm) : null],
                     ['Юр. адреса', cp.legalAddress],
                     ['Факт. адреса', cp.actualAddress],
                     ['IBAN', cp.bankAccount],
@@ -327,18 +348,68 @@ export default function CounterpartyCardPage() {
             </>
           ) : (
             <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Телефон"
+                  value={editForm.phone}
+                  onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="+38 (067) 000-00-00"
+                />
+                <Input
+                  label="Email"
+                  type="email"
+                  value={editForm.email}
+                  onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="email@example.com"
+                />
+              </div>
+              <Select
+                label="Форма власності"
+                value={editForm.legalForm}
+                onChange={e => setEditForm(f => ({ ...f, legalForm: e.target.value }))}
+              >
+                <option value="">— Не вказано —</option>
+                {Object.entries(LEGAL_FORM_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </Select>
               <Input
-                label="Телефон"
-                value={editForm.phone}
-                onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
-                placeholder="+38 (067) 000-00-00"
+                label="ІПН / ЄДРПОУ"
+                value={editForm.taxNumber}
+                onChange={e => setEditForm(f => ({ ...f, taxNumber: e.target.value }))}
+                placeholder="3456789012"
               />
               <Input
-                label="Email"
-                type="email"
-                value={editForm.email}
-                onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
-                placeholder="email@example.com"
+                label="Юридична адреса"
+                value={editForm.legalAddress}
+                onChange={e => setEditForm(f => ({ ...f, legalAddress: e.target.value }))}
+                placeholder="вул. Хрещатик 1, Київ"
+              />
+              <Input
+                label="Фактична адреса"
+                value={editForm.actualAddress}
+                onChange={e => setEditForm(f => ({ ...f, actualAddress: e.target.value }))}
+                placeholder="вул. Хрещатик 1, Київ"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="IBAN"
+                  value={editForm.bankAccount}
+                  onChange={e => setEditForm(f => ({ ...f, bankAccount: e.target.value }))}
+                  placeholder="UA12 3456 7890 1234 5678 9012 3456 7"
+                />
+                <Input
+                  label="Банк"
+                  value={editForm.bankName}
+                  onChange={e => setEditForm(f => ({ ...f, bankName: e.target.value }))}
+                  placeholder="АТ КБ «ПриватБанк»"
+                />
+              </div>
+              <Input
+                label="Контактна особа"
+                value={editForm.contactPerson}
+                onChange={e => setEditForm(f => ({ ...f, contactPerson: e.target.value }))}
+                placeholder="Іван Коваль"
               />
               <Input
                 label="Нотатки"

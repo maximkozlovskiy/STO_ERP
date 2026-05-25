@@ -115,7 +115,10 @@ export default function InfrastructurePage() {
             maxWeightKg: w,
             status: form.status || 'ACTIVE',
             serialNumber: form.serialNumber || undefined,
+            purchaseDate: form.purchaseDate || undefined,
+            warrantyUntil: form.warrantyUntil || undefined,
             maintenanceIntervalDays: interval,
+            lastMaintenanceDate: form.lastMaintenanceDate || undefined,
           }),
         });
       } else if (modal === 'warehouse') {
@@ -247,7 +250,7 @@ export default function InfrastructurePage() {
 
       {/* LIFTS */}
       {!loading && tab === 'lifts' && (
-        <Section title="Підйомники" onAdd={() => openModal('lift', { zoneId: zones[0]?.id ?? '', name: '', type: 'TWO_POST', maxWeightKg: '', status: 'ACTIVE', serialNumber: '', maintenanceIntervalDays: '' })}>
+        <Section title="Підйомники" onAdd={() => openModal('lift', { zoneId: zones[0]?.id ?? '', name: '', type: 'TWO_POST', maxWeightKg: '', status: 'ACTIVE', serialNumber: '', purchaseDate: '', warrantyUntil: '', maintenanceIntervalDays: '', lastMaintenanceDate: '' })}>
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
@@ -356,7 +359,14 @@ export default function InfrastructurePage() {
           </Select>
           <Input label="Вантажність, кг" type="number" value={form.maxWeightKg ?? ''} onChange={e => setForm(f => ({ ...f, maxWeightKg: e.target.value }))} placeholder="3500" />
           <Input label="Серійний номер" value={form.serialNumber ?? ''} onChange={e => setForm(f => ({ ...f, serialNumber: e.target.value }))} placeholder="SN-12345" />
-          <Input label="Інтервал ТО, днів" type="number" value={form.maintenanceIntervalDays ?? ''} onChange={e => setForm(f => ({ ...f, maintenanceIntervalDays: e.target.value }))} placeholder="180" />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Дата купівлі" type="date" value={form.purchaseDate ?? ''} onChange={e => setForm(f => ({ ...f, purchaseDate: e.target.value }))} />
+            <Input label="Гарантія до" type="date" value={form.warrantyUntil ?? ''} onChange={e => setForm(f => ({ ...f, warrantyUntil: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Інтервал ТО (днів)" type="number" value={form.maintenanceIntervalDays ?? ''} onChange={e => setForm(f => ({ ...f, maintenanceIntervalDays: e.target.value }))} placeholder="180" />
+            <Input label="Дата останнього ТО" type="date" value={form.lastMaintenanceDate ?? ''} onChange={e => setForm(f => ({ ...f, lastMaintenanceDate: e.target.value }))} />
+          </div>
         </div>
       </Modal>
 

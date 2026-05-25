@@ -114,7 +114,7 @@ export default function EmployeesPage() {
   const [roleFilter, setRoleFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
 
-  const [form, setForm] = useState({ firstName: '', lastName: '', role: 'MECHANIC', phone: '', rateType: 'percent_normo', percent: '40', fixedMonthly: '0', bonusPercent: '10' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', role: 'MECHANIC', phone: '', email: '', status: 'ACTIVE', dateOfHire: '', rateType: 'percent_normo', percent: '40', fixedMonthly: '0', bonusPercent: '10' });
 
   const [assignedZones, setAssignedZones] = useState<string[]>([]);
   const [assignedLifts, setAssignedLifts] = useState<string[]>([]);
@@ -154,7 +154,7 @@ export default function EmployeesPage() {
   };
 
   const openCreate = () => {
-    setForm({ firstName: '', lastName: '', role: 'MECHANIC', phone: '', rateType: 'percent_normo', percent: '40', fixedMonthly: '0', bonusPercent: '10' });
+    setForm({ firstName: '', lastName: '', role: 'MECHANIC', phone: '', email: '', status: 'ACTIVE', dateOfHire: '', rateType: 'percent_normo', percent: '40', fixedMonthly: '0', bonusPercent: '10' });
     setError('');
     setModal('create');
   };
@@ -181,7 +181,16 @@ export default function EmployeesPage() {
     try {
       await apiFetch<Employee>('/employees', {
         method: 'POST',
-        body: JSON.stringify({ firstName: form.firstName, lastName: form.lastName, role: form.role, phone: form.phone || undefined, rateScheme: buildRateScheme() }),
+        body: JSON.stringify({
+          firstName: form.firstName,
+          lastName: form.lastName,
+          role: form.role,
+          phone: form.phone || undefined,
+          email: form.email || undefined,
+          status: form.status || 'ACTIVE',
+          dateOfHire: form.dateOfHire || undefined,
+          rateScheme: buildRateScheme(),
+        }),
       });
       closeModal(); load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
@@ -555,12 +564,36 @@ export default function EmployeesPage() {
           >
             {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
-          <Input
-            label="Телефон"
-            value={form.phone}
-            onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-            placeholder="+38 (067) 123-45-67"
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Телефон"
+              value={form.phone}
+              onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+              placeholder="+38 (067) 123-45-67"
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={form.email}
+              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              placeholder="ivan@example.com"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Статус"
+              value={form.status}
+              onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+            >
+              {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+            <Input
+              label="Дата прийому"
+              type="date"
+              value={form.dateOfHire}
+              onChange={e => setForm(f => ({ ...f, dateOfHire: e.target.value }))}
+            />
+          </div>
           <Select
             label="Схема нарахування"
             required

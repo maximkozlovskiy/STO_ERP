@@ -113,6 +113,7 @@ export default function WorkOrdersPage() {
   const [form, setForm] = useState({
     branchId: '', vehicleId: '', counterpartyId: '',
     description: '', inMileage: '', plannedAt: '',
+    priority: 'NORMAL', repairCategory: '', dueDate: '',
   });
 
   useEffect(() => {
@@ -173,6 +174,9 @@ export default function WorkOrdersPage() {
           description: form.description || undefined,
           inMileage: mileage,
           plannedAt: form.plannedAt || undefined,
+          priority: form.priority || 'NORMAL',
+          repairCategory: form.repairCategory || undefined,
+          dueDate: form.dueDate || undefined,
         }),
       });
       setModal(false);
@@ -539,6 +543,28 @@ export default function WorkOrdersPage() {
           />
 
           <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Пріоритет"
+              value={form.priority}
+              onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
+            >
+              {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </Select>
+            <Select
+              label="Категорія ремонту"
+              value={form.repairCategory}
+              onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
+            >
+              <option value="">— Не вказано —</option>
+              {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <Input
               label="Пробіг (вхід), км"
               type="number"
@@ -553,6 +579,13 @@ export default function WorkOrdersPage() {
               onChange={e => setForm(f => ({ ...f, plannedAt: e.target.value }))}
             />
           </div>
+
+          <Input
+            label="Дедлайн"
+            type="date"
+            value={form.dueDate}
+            onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+          />
         </div>
       </Modal>
     </div>

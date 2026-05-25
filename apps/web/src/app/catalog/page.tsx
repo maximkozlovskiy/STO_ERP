@@ -25,6 +25,7 @@ interface PaginatedWorks { items: Work[]; total: number; page: number; limit: nu
 interface Brand { id: string; name: string; }
 interface Unit { id: string; name: string; shortName: string; isSystem: boolean; }
 interface Good { id: string; sku: string | null; name: string; unit: string; unitId: string | null; purchasePrice: number | null; salePrice: number; category: string | null; barcode: string | null; brandId: string | null; notes: string | null; goodType?: string | null; preferredSupplierId?: string | null; preferredSupplierName?: string | null; }
+interface Supplier { id: string; firstName: string | null; lastName: string | null; companyName: string | null; }
 interface PaginatedGoods { items: Good[]; total: number; page: number; limit: number; }
 interface ServiceWork { workId: string; workName: string; normoHours: number; price: number; quantity: number; }
 interface ServiceGood { goodId: string; goodName: string; unit: string; salePrice: number; quantity: number; }
@@ -398,7 +399,7 @@ function GoodsTab() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '', goodType: '' });
+  const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '', goodType: '', preferredSupplierId: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [selectedGood, setSelectedGood] = useState<Good | null>(null);
@@ -410,13 +411,17 @@ function GoodsTab() {
   const [addingBarcode, setAddingBarcode] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editGood, setEditGood] = useState<Good | null>(null);
-  const [editGoodForm, setEditGoodForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', notes: '', goodType: '' });
+  const [editGoodForm, setEditGoodForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', notes: '', goodType: '', preferredSupplierId: '' });
   const [editGoodSaving, setEditGoodSaving] = useState(false);
   const [editGoodError, setEditGoodError] = useState('');
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   useEffect(() => {
     apiFetch<Brand[]>('/brands').catch(() => []).then(v => { if (Array.isArray(v)) setBrands(v); });
     apiFetch<Unit[]>('/units').catch(() => []).then(v => { if (Array.isArray(v)) setUnits(v); });
+    apiFetch<{ items: Supplier[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200')
+      .catch(() => ({ items: [] }))
+      .then(r => { if (r && Array.isArray(r.items)) setSuppliers(r.items); });
   }, []);
 
   const load = useCallback(() => {
@@ -451,10 +456,11 @@ function GoodsTab() {
           barcode: form.barcode || undefined,
           notes: form.notes || undefined,
           goodType: form.goodType || undefined,
+          preferredSupplierId: form.preferredSupplierId || undefined,
         }),
       });
       setModal(false);
-      setForm({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '', goodType: '' });
+      setForm({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '', goodType: '', preferredSupplierId: '' });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
@@ -515,6 +521,7 @@ function GoodsTab() {
       purchasePrice: g.purchasePrice != null ? String(g.purchasePrice) : '',
       salePrice: String(g.salePrice), category: g.category ?? '',
       brandId: g.brandId ?? '', notes: g.notes ?? '', goodType: g.goodType ?? '',
+      preferredSupplierId: g.preferredSupplierId ?? '',
     });
     setEditGoodError('');
   };
@@ -538,6 +545,7 @@ function GoodsTab() {
           brandId: editGoodForm.brandId || undefined,
           notes: editGoodForm.notes || undefined,
           goodType: editGoodForm.goodType || undefined,
+          preferredSupplierId: editGoodForm.preferredSupplierId || undefined,
         }),
       });
       setEditGood(null);
@@ -873,6 +881,14 @@ function GoodsTab() {
             <option value="MATERIAL">Матеріал</option>
             <option value="TOOL">Інструмент</option>
           </Select>
+          <Select label="Основний постачальник" value={editGoodForm.preferredSupplierId} onChange={e => setEditGoodForm(f => ({ ...f, preferredSupplierId: e.target.value }))}>
+            <option value="">— Не вказано —</option>
+            {suppliers.map(s => (
+              <option key={s.id} value={s.id}>
+                {s.companyName ?? [s.lastName, s.firstName].filter(Boolean).join(' ')}
+              </option>
+            ))}
+          </Select>
           <Input label="Нотатки" value={editGoodForm.notes} onChange={e => setEditGoodForm(f => ({ ...f, notes: e.target.value }))} />
         </div>
       </Modal>
@@ -974,6 +990,18 @@ function GoodsTab() {
             <option value="CONSUMABLE">Витратний матеріал</option>
             <option value="MATERIAL">Матеріал</option>
             <option value="TOOL">Інструмент</option>
+          </Select>
+          <Select
+            label="Основний постачальник"
+            value={form.preferredSupplierId}
+            onChange={e => setForm(f => ({ ...f, preferredSupplierId: e.target.value }))}
+          >
+            <option value="">— Не вказано —</option>
+            {suppliers.map(s => (
+              <option key={s.id} value={s.id}>
+                {s.companyName ?? [s.lastName, s.firstName].filter(Boolean).join(' ')}
+              </option>
+            ))}
           </Select>
           <Input
             label="Штрихкод"
