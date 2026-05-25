@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-<pending> feat(phase16): 16.6 + 16.10 — XLSX document lines import + skeleton shimmer
+aa54ad3 feat(phase16): 16.6 + 16.10 — XLSX document lines import + skeleton shimmer
 6b3363e feat(phase16): 16.A-G — XlsxImport, Barcodes, Units, XLSX_MANAGER, CRM tabs, nav mode, dark theme
 7566b6d docs(memory): update Phase 16 progress summary
 78ed50c docs(phase16): update PHASES.md — mark 16.1-16.7 partial completion
