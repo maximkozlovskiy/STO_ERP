@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { toast } from '@/lib/toast';
+import { useUiFeatures, invalidateUiFeaturesCache, type UiFeatures } from '@/hooks/useUiFeatures';
 
 interface OrgSettings {
   orgId: string;
@@ -21,6 +23,7 @@ interface OrgSettings {
   requireClientApproval: boolean;
   allowPartialPayment: boolean;
   brandTheme: string;
+  uiFeatures?: UiFeatures;
   updatedAt: string;
 }
 
@@ -45,7 +48,7 @@ const EVENT_LABELS: Record<string, string> = {
   INVOICE_SENT: 'Рахунок надіслано', LOW_STOCK_ALERT: 'Низький залишок',
 };
 
-type Tab = 'org' | 'payments' | 'sms' | 'theme';
+type Tab = 'org' | 'payments' | 'sms' | 'theme' | 'ui';
 type NavMode = 'sections' | 'functions';
 const NAV_MODE_KEY = 'sto_nav_mode';
 
@@ -67,6 +70,8 @@ export default function SettingsPage() {
   const [error, setError] = useState('');
   const [navMode, setNavModeState] = useState<NavMode>('sections');
   const [colorMode, setColorModeState] = useState<ColorMode>('system');
+  const [uiFeatures, setUiFeatures] = useState<UiFeatures | null>(null);
+  const currentFeatures = useUiFeatures();
 
   useEffect(() => {
     try {
@@ -83,8 +88,13 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
+    if (!uiFeatures) setUiFeatures(currentFeatures);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFeatures]);
+
+  useEffect(() => {
     apiFetch<OrgSettings>('/settings/organisation')
-      .then(s => { setOrgSettings(s); applyTheme(s.brandTheme); })
+      .then(s => { setOrgSettings(s); applyTheme(s.brandTheme); if (s.uiFeatures) setUiFeatures(s.uiFeatures); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'));
     apiFetch<PaymentMethod[]>('/payment-methods')
       .then(setPayments)
@@ -105,8 +115,11 @@ export default function SettingsPage() {
       setTemplates(ts => ts.map(t => t.id === updated.id ? updated : t));
       setEditingTemplate(null);
       setMsg('Шаблон збережено');
+      if (currentFeatures.toastEnabled) toast.success('Шаблон збережено');
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження шаблону');
+      const msg = e instanceof Error ? e.message : 'Помилка збереження шаблону';
+      setError(msg);
+      if (currentFeatures.toastEnabled) toast.error(msg);
     } finally { setSaving(false); }
   };
 
@@ -131,11 +144,34 @@ export default function SettingsPage() {
       applyTheme(updated.brandTheme);
       setOrgSettings(updated);
       setMsg('Збережено');
+      if (currentFeatures.toastEnabled) toast.success('Налаштування збережено');
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      const errMsg = e instanceof Error ? e.message : 'Помилка збереження';
+      setError(errMsg);
+      if (currentFeatures.toastEnabled) toast.error(errMsg);
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveUiFeatures = async () => {
+    if (!uiFeatures) return;
+    setSaving(true);
+    setMsg(''); setError('');
+    try {
+      await apiFetch<OrgSettings>('/settings/organisation', {
+        method: 'PATCH',
+        body: JSON.stringify({ uiFeatures }),
+      });
+      invalidateUiFeaturesCache();
+      window.dispatchEvent(new CustomEvent('sto:ui-features-change'));
+      setMsg('Збережено');
+      toast.success('Налаштування інтерфейсу збережено');
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : 'Помилка збереження';
+      setError(errMsg);
+      toast.error(errMsg);
+    } finally { setSaving(false); }
   };
 
   const togglePayment = async (pm: PaymentMethod) => {
@@ -158,8 +194,8 @@ export default function SettingsPage() {
       <h1 className="page-title mb-6">Налаштування</h1>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border mb-6">
-        {(['org', 'payments', 'sms', 'theme'] as Tab[]).map((t) => (
+      <div className="flex gap-1 border-b border-border mb-6 flex-wrap">
+        {(['org', 'payments', 'sms', 'theme', 'ui'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -170,7 +206,7 @@ export default function SettingsPage() {
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {t === 'org' ? 'Організація' : t === 'payments' ? 'Методи оплати' : t === 'sms' ? 'SMS-сповіщення' : 'Оформлення'}
+            {t === 'org' ? 'Організація' : t === 'payments' ? 'Методи оплати' : t === 'sms' ? 'SMS-сповіщення' : t === 'theme' ? 'Оформлення' : 'Інтерфейс'}
           </button>
         ))}
       </div>
@@ -375,6 +411,42 @@ export default function SettingsPage() {
               Зберігається локально у браузері
             </p>
           </div>
+        </div>
+      )}
+
+      {/* UI Features */}
+      {tab === 'ui' && uiFeatures && (
+        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+          <p className="text-sm text-muted-foreground">Вмикайте або вимикайте функції інтерфейсу. Налаштування зберігаються для всієї організації.</p>
+          {(
+            [
+              { key: 'toastEnabled', label: 'Сповіщення (Toast)', description: 'Показувати спливаючі повідомлення про результат дій' },
+              { key: 'unsavedGuardEnabled', label: 'Захист незбережених змін', description: 'Попереджати при закритті форми з незбереженими даними' },
+              { key: 'stockIndicatorEnabled', label: 'Індикатор залишку', description: 'Показувати доступну кількість при додаванні запчастини' },
+              { key: 'commandPaletteEnabled', label: 'Командна палітра', description: 'Швидкий пошук та навігація через Ctrl+K' },
+              { key: 'keyboardShortcutsEnabled', label: 'Клавіатурні скорочення', description: 'Гарячі клавіші для частих дій' },
+              { key: 'savedFiltersEnabled', label: 'Збережені фільтри', description: 'Зберігати та відновлювати фільтри у списках' },
+              { key: 'inlineEditEnabled', label: 'Редагування в рядку', description: 'Редагувати поля прямо в таблицях без переходу на форму' },
+              { key: 'syncIndicatorEnabled', label: 'Індикатор синхронізації', description: 'Показувати статус синхронізації даних' },
+              { key: 'notificationCenterEnabled', label: 'Центр сповіщень', description: 'Панель з усіма сповіщеннями та подіями' },
+              { key: 'bulkActionsEnabled', label: 'Групові дії', description: 'Вибір кількох записів для масових операцій' },
+            ] as { key: keyof UiFeatures; label: string; description: string }[]
+          ).map(({ key, label, description }) => (
+            <div key={key} className="flex items-center justify-between gap-4 py-2 border-b border-border last:border-0">
+              <div>
+                <p className="text-sm font-medium text-foreground">{label}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+              </div>
+              <Toggle
+                label=""
+                checked={uiFeatures[key]}
+                onChange={(v) => setUiFeatures(f => f ? { ...f, [key]: v } : f)}
+              />
+            </div>
+          ))}
+          <Button onClick={saveUiFeatures} loading={saving} className="w-full mt-2">
+            Зберегти
+          </Button>
         </div>
       )}
 

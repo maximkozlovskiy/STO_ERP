@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -10,6 +11,32 @@ import {
   Min,
 } from 'class-validator';
 import { VatMode } from '@prisma/client';
+
+export interface UiFeatures {
+  toastEnabled: boolean;
+  unsavedGuardEnabled: boolean;
+  stockIndicatorEnabled: boolean;
+  commandPaletteEnabled: boolean;
+  keyboardShortcutsEnabled: boolean;
+  savedFiltersEnabled: boolean;
+  inlineEditEnabled: boolean;
+  syncIndicatorEnabled: boolean;
+  notificationCenterEnabled: boolean;
+  bulkActionsEnabled: boolean;
+}
+
+export const UI_FEATURES_DEFAULTS: UiFeatures = {
+  toastEnabled: true,
+  unsavedGuardEnabled: true,
+  stockIndicatorEnabled: true,
+  commandPaletteEnabled: true,
+  keyboardShortcutsEnabled: true,
+  savedFiltersEnabled: true,
+  inlineEditEnabled: true,
+  syncIndicatorEnabled: true,
+  notificationCenterEnabled: true,
+  bulkActionsEnabled: true,
+};
 
 export class UpdateOrganisationSettingsDto {
   @ApiPropertyOptional({ enum: VatMode })
@@ -57,6 +84,11 @@ export class UpdateOrganisationSettingsDto {
   @IsOptional()
   @IsString()
   brandTheme?: string;
+
+  @ApiPropertyOptional({ description: 'UI feature flags (partial update supported)' })
+  @IsOptional()
+  @IsObject()
+  uiFeatures?: Partial<UiFeatures>;
 }
 
 export class UpdateBranchSettingsDto {
@@ -134,6 +166,7 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty() requireClientApproval!: boolean;
   @ApiProperty() allowPartialPayment!: boolean;
   @ApiProperty() brandTheme!: string;
+  @ApiProperty({ description: 'UI feature flags' }) uiFeatures!: UiFeatures;
   @ApiProperty() updatedAt!: Date;
 }
 

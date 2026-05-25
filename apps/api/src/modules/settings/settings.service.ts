@@ -6,6 +6,8 @@ import { REDIS_CLIENT } from '../../redis/redis.module';
 import {
   BranchSettingsResponseDto,
   OrganisationSettingsResponseDto,
+  UiFeatures,
+  UI_FEATURES_DEFAULTS,
   UpdateBranchSettingsDto,
   UpdateOrganisationSettingsDto,
 } from './settings.dto';
@@ -57,10 +59,18 @@ export class SettingsService {
     orgId: string,
     dto: UpdateOrganisationSettingsDto,
   ): Promise<OrganisationSettingsResponseDto> {
+    // Merge uiFeatures partially — don't overwrite unset keys
+    let updateData: Record<string, unknown> = { ...dto };
+    if (dto.uiFeatures !== undefined) {
+      const current = await this.prisma.organisationSettings.findUnique({ where: { orgId } });
+      const currentFeatures = this.parseUiFeatures(current?.uiFeatures);
+      updateData = { ...dto, uiFeatures: { ...currentFeatures, ...dto.uiFeatures } };
+    }
+
     const settings = await this.prisma.organisationSettings.upsert({
       where: { orgId },
-      create: { orgId, ...dto },
-      update: dto,
+      create: { orgId, ...updateData },
+      update: updateData,
     });
 
     await this.invalidateOrgCache(orgId);
@@ -145,6 +155,11 @@ export class SettingsService {
     }
   }
 
+  private parseUiFeatures(raw: unknown): UiFeatures {
+    const stored = (typeof raw === 'object' && raw !== null ? raw : {}) as Partial<UiFeatures>;
+    return { ...UI_FEATURES_DEFAULTS, ...stored };
+  }
+
   private mapOrgSettings(s: {
     orgId: string;
     currency: string;
@@ -156,6 +171,7 @@ export class SettingsService {
     requireClientApproval: boolean;
     allowPartialPayment: boolean;
     brandTheme: string;
+    uiFeatures: unknown;
     updatedAt: Date;
   }): OrganisationSettingsResponseDto {
     return {
@@ -169,6 +185,7 @@ export class SettingsService {
       requireClientApproval: s.requireClientApproval,
       allowPartialPayment: s.allowPartialPayment,
       brandTheme: s.brandTheme,
+      uiFeatures: this.parseUiFeatures(s.uiFeatures),
       updatedAt: s.updatedAt,
     };
   }

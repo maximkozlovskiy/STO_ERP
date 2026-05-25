@@ -13,6 +13,8 @@ import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
 import { Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { toast } from '@/lib/toast';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -117,12 +119,33 @@ export default function WorkOrderCardPage() {
 
   const [lineForm, setLineForm] = useState({ workId: '', employeeId: '', normoHours: '', price: '', notes: '' });
   const [partForm, setPartForm] = useState({ goodId: '', warehouseId: '', quantity: '1', price: '' });
+  const [stockAvailable, setStockAvailable] = useState<number | null>(null);
+  const [stockLoading, setStockLoading] = useState(false);
+
+  const features = useUiFeatures();
 
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+
+  useEffect(() => {
+    if (!features.stockIndicatorEnabled || !partForm.goodId || !partForm.warehouseId) {
+      setStockAvailable(null);
+      return;
+    }
+    let cancelled = false;
+    setStockLoading(true);
+    apiFetch<{ items: { available: number }[] }>(`/stock-items?goodId=${partForm.goodId}&warehouseId=${partForm.warehouseId}&limit=1`)
+      .then(r => {
+        if (cancelled) return;
+        setStockAvailable(r.items[0]?.available ?? 0);
+      })
+      .catch(() => { if (!cancelled) setStockAvailable(null); })
+      .finally(() => { if (!cancelled) setStockLoading(false); });
+    return () => { cancelled = true; };
+  }, [features.stockIndicatorEnabled, partForm.goodId, partForm.warehouseId]);
 
   const load = useCallback(() => {
     apiFetch<WorkOrderDetail>(`/work-orders/${id}`)
@@ -178,16 +201,29 @@ export default function WorkOrderCardPage() {
       });
       setLineModal(false);
       setLineForm({ workId: '', employeeId: '', normoHours: '', price: '', notes: '' });
+      if (features.toastEnabled) toast.success('Роботу додано');
       load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка';
+      setError(msg);
+      if (features.toastEnabled) toast.error(msg);
+    }
     finally { setSaving(false); }
   };
 
   const removeLine = async (lineId: string) => {
     if (!confirm('Видалити роботу?')) return;
     setDeletingLineId(lineId); setError('');
-    try { await apiFetch<void>(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' }); load(); }
-    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    try {
+      await apiFetch<void>(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' });
+      if (features.toastEnabled) toast.success('Роботу видалено');
+      load();
+    }
+    catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      setError(msg);
+      if (features.toastEnabled) toast.error(msg);
+    }
     finally { setDeletingLineId(null); }
   };
 
@@ -205,16 +241,29 @@ export default function WorkOrderCardPage() {
       });
       setPartModal(false);
       setPartForm({ goodId: '', warehouseId: '', quantity: '1', price: '' });
+      if (features.toastEnabled) toast.success('Запчастину додано');
       load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка';
+      setError(msg);
+      if (features.toastEnabled) toast.error(msg);
+    }
     finally { setSaving(false); }
   };
 
   const removePart = async (partId: string) => {
     if (!confirm('Видалити запчастину?')) return;
     setDeletingPartId(partId); setError('');
-    try { await apiFetch<void>(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' }); load(); }
-    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    try {
+      await apiFetch<void>(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' });
+      if (features.toastEnabled) toast.success('Запчастину видалено');
+      load();
+    }
+    catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      setError(msg);
+      if (features.toastEnabled) toast.error(msg);
+    }
     finally { setDeletingPartId(null); }
   };
 
@@ -224,8 +273,13 @@ export default function WorkOrderCardPage() {
     setTransitioning(true); setError('');
     try {
       await apiFetch<WorkOrderDetail>(`/work-orders/${id}/transition`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
+      if (features.toastEnabled) toast.success(`Статус змінено: ${label}`);
       load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка переходу'); }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка переходу';
+      setError(msg);
+      if (features.toastEnabled) toast.error(msg);
+    }
     finally { setTransitioning(false); }
   };
 
@@ -503,6 +557,11 @@ export default function WorkOrderCardPage() {
               <option value="">— Оберіть —</option>
               {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </Select>
+            {features.stockIndicatorEnabled && partForm.goodId && partForm.warehouseId && (
+              <p className={cn('mt-1.5 text-[12px]', stockLoading ? 'text-muted-foreground' : stockAvailable === null ? 'text-muted-foreground' : stockAvailable > 0 ? 'text-success' : 'text-destructive')}>
+                {stockLoading ? 'Перевірка залишку...' : stockAvailable === null ? '' : stockAvailable > 0 ? `Доступно: ${stockAvailable} шт.` : 'Немає в наявності'}
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -514,7 +573,12 @@ export default function WorkOrderCardPage() {
               <Input type="number" value={partForm.price} onChange={e => setPartForm(f => ({ ...f, price: e.target.value }))} />
             </div>
           </div>
-          <Button onClick={addPart} loading={saving} disabled={!partForm.goodId || !partForm.warehouseId || !partForm.quantity} className="w-full">
+          <Button
+            onClick={addPart}
+            loading={saving}
+            disabled={!partForm.goodId || !partForm.warehouseId || !partForm.quantity || (features.stockIndicatorEnabled && stockAvailable !== null && stockAvailable < Number(partForm.quantity))}
+            className="w-full"
+          >
             Додати
           </Button>
         </div>

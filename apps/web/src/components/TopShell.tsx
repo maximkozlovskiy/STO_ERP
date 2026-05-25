@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { ToastContainer } from '@/components/ui/toast';
 
 interface NavItem {
   href: string;
@@ -394,6 +395,7 @@ export function TopShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      <ToastContainer />
       {/* Desktop sidebar */}
       <aside className={cn(
         'hidden lg:flex flex-col shrink-0 bg-sidebar-bg transition-[width] duration-200 ease-in-out',

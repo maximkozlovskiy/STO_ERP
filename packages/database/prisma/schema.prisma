@@ -1139,6 +1139,7 @@ model OrganisationSettings {
   allowPartialPayment   Boolean         @default(true)
   brandTheme            String          @default("blue")
   costMethod            BatchCostMethod @default(FIFO)
+  uiFeatures            Json            @default("{}")
   syncVersion           BigInt          @default(0)
   updatedAt             DateTime        @updatedAt
 
