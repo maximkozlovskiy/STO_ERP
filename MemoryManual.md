@@ -9,9 +9,9 @@
 ## Останній commit
 
 ```
-0d1ca46 fix(phase16): units route mismatch + missing import/works endpoint
-aa54ad3 feat(phase16): 16.6 + 16.10 — XLSX document lines import + skeleton shimmer
-6b3363e feat(phase16): 16.A-G — XlsxImport, Barcodes, Units, XLSX_MANAGER, CRM tabs, nav mode, dark theme
+8671770 fix(review): phase17 review fixes — canonical Tailwind tokens + maintenance schedules scope
+26856c6 feat(phase17): 17.1-17.3 frontend — new fields, priority badges, CompletionAct UI, maintenance widget
+1c132c9 feat(phase17): 17.1-17.3 backend — enums, enriched models, MaintenanceSchedule + CompletionAct modules
 ```
 
 Дата: 2026-05-25
@@ -22,8 +22,8 @@ aa54ad3 feat(phase16): 16.6 + 16.10 — XLSX document lines import + skeleton sh
 
 | Параметр | Значення |
 |---|---|
-| Фаза | **Фаза 16 — Каталог v2 + CRM + XLSX-імпорт** (всі задачі завершено) |
-| Прогрес | 16.1-16.10✅ всі задачі виконано |
+| Фаза | **Фаза 17 — Enums, enriched models, MaintenanceSchedule + CompletionAct** (завершено + QA) |
+| Прогрес | 17.1-17.3✅ backend + frontend + QA review |
 | TypeScript | ✅ 0 errors (web + api) — verified 2026-05-25 |
 | Unit тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
 | Contract тести | ✅ 15/15 passed (auth: 9, work-orders: 6) |
@@ -53,6 +53,24 @@ aa54ad3 feat(phase16): 16.6 + 16.10 — XLSX document lines import + skeleton sh
 ### Critical bugs fixed this session
 - **Bug #7** — `DocumentNumberService.next()` використовував snake_case у raw SQL → ламав створення WO/Invoice/PO/StockDocument. Виправлено: camelCase з лапками + `LIMIT 1`.
 - **Bug #8** — `InventoryService.findLowStockItems()` використовував snake_case → `GET /stock-items/low` 500. Виправлено: camelCase з лапками.
+
+### Gotcha — Canonical Tailwind tokens for semantic colors (Phase 17)
+`globals.css` defines `-text` and `-border` variants for all semantic colors for use on subtle backgrounds:
+- `text-destructive-text` / `border-destructive-border` — dark red on `bg-destructive-subtle`
+- `text-success-text` / `border-success-border` — dark green on `bg-success-subtle`
+- `text-warning-text` / `border-warning-border` — dark amber on `bg-warning-subtle`
+- `text-info-text` / `border-info-border` — dark teal on `bg-info-subtle`
+Never use raw `text-[hsl(0_84%_42%)]` etc. — use the token. `badge.tsx` already updated.
+
+### Gotcha — Recharts inline styles must use CSS var() not hsl()
+Recharts `stroke`, `fill`, `tick.fill`, `contentStyle.border` are JS style strings.
+Use `var(--color-border)` not `hsl(214 32% 91%)`, `var(--color-primary)` not `hsl(221 83% 53%)`,
+`var(--color-muted-foreground)` not `hsl(215 16% 55%)`, `var(--color-primary-subtle)` not `hsl(214 95% 97%)`.
+
+### Gotcha — MaintenanceSchedule API supports single vehicleId only
+`GET /maintenance-schedules?vehicleId=X` accepts one vehicleId at a time.
+To fetch schedules for multiple vehicles (e.g. CRM garage tab), fire parallel calls per vehicle
+and merge results client-side. Do NOT fetch all org schedules and filter client-side.
 
 ### Gotcha — Raw SQL camelCase identifiers
 Prisma schema **без `@map`** → Postgres колонки double-quoted camelCase (`"orgId"`, `"goodId"`, `"deletedAt"`, `"minStock"`, тощо). Будь-який `$queryRaw` / `$executeRaw` повинен:
