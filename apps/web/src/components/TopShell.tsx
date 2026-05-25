@@ -240,13 +240,13 @@ export function TopShell({ children }: { children: ReactNode }) {
         title={collapsed ? item.label : undefined}
         className={cn(
           'group relative flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',
-          collapsed ? 'justify-center px-0 py-2.5' : 'px-2.5 py-2',
+          collapsed ? 'justify-center px-0 py-2.5 mx-1.5' : 'px-2.5 py-2',
           active
             ? 'bg-sidebar-active text-white'
             : 'text-sidebar-fg hover:bg-sidebar-hover hover:text-white',
         )}
       >
-        <Icon className="h-3.75 w-3.75 shrink-0" />
+        <Icon className="h-5 w-5 shrink-0" />
         {!collapsed && <span className="truncate leading-none flex-1">{item.label}</span>}
         {!collapsed && showStar && (
           <button
@@ -314,35 +314,37 @@ export function TopShell({ children }: { children: ReactNode }) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className={cn(
-        'flex items-center h-14 border-b border-sidebar-border shrink-0 px-3',
-        collapsed ? 'justify-center' : 'justify-between',
+        'flex items-center h-14 border-b border-sidebar-border shrink-0',
+        collapsed ? 'justify-center px-0' : 'justify-between px-3',
       )}>
         {collapsed ? (
-          <Link href="/dashboard" className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <Wrench className="h-4 w-4 text-white" />
-          </Link>
+          <button
+            onClick={toggleCollapsed}
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary hover:bg-primary-hover transition-colors"
+            title="Розгорнути"
+          >
+            <Wrench className="h-5 w-5 text-white" />
+          </button>
         ) : (
-          <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
-              <Wrench className="h-4 w-4 text-white" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-[14px] font-bold text-white leading-none tracking-tight">STO ERP</span>
-              <span className="text-[10px] text-sidebar-muted leading-none mt-0.5 truncate">Автосервіс</span>
-            </div>
-          </Link>
+          <>
+            <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
+                <Wrench className="h-4 w-4 text-white" />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[14px] font-bold text-white leading-none tracking-tight">STO ERP</span>
+                <span className="text-[10px] text-sidebar-muted leading-none mt-0.5 truncate">Автосервіс</span>
+              </div>
+            </Link>
+            <button
+              onClick={toggleCollapsed}
+              className="hidden lg:flex h-7 w-7 items-center justify-center rounded-md transition-colors text-sidebar-muted hover:text-white hover:bg-sidebar-hover"
+              title="Згорнути"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </>
         )}
-        <button
-          onClick={toggleCollapsed}
-          className={cn(
-            'hidden lg:flex h-7 w-7 items-center justify-center rounded-md transition-colors',
-            'text-sidebar-muted hover:text-white hover:bg-sidebar-hover',
-            collapsed && 'hidden',
-          )}
-          title={collapsed ? 'Розгорнути' : 'Згорнути'}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
       </div>
 
       <SidebarNav />
@@ -393,18 +395,9 @@ export function TopShell({ children }: { children: ReactNode }) {
       {/* Desktop sidebar */}
       <aside className={cn(
         'hidden lg:flex flex-col shrink-0 bg-sidebar-bg transition-[width] duration-200 ease-in-out',
-        collapsed ? 'w-13' : 'w-54',
+        collapsed ? 'w-15' : 'w-54',
       )}>
         <SidebarContent />
-        {collapsed && (
-          <button
-            onClick={toggleCollapsed}
-            className="absolute top-13.5 left-10 hidden lg:flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white shadow-md z-10"
-            title="Розгорнути"
-          >
-            <ChevronRight className="h-3 w-3" />
-          </button>
-        )}
       </aside>
 
       {/* Mobile overlay */}
