@@ -9,11 +9,9 @@
 ## Останній commit
 
 ```
+0d1ca46 fix(phase16): units route mismatch + missing import/works endpoint
 aa54ad3 feat(phase16): 16.6 + 16.10 — XLSX document lines import + skeleton shimmer
 6b3363e feat(phase16): 16.A-G — XlsxImport, Barcodes, Units, XLSX_MANAGER, CRM tabs, nav mode, dark theme
-7566b6d docs(memory): update Phase 16 progress summary
-78ed50c docs(phase16): update PHASES.md — mark 16.1-16.7 partial completion
-140c89a feat(phase16): 16.7 — CRM default garage auto-creation
 ```
 
 Дата: 2026-05-25
