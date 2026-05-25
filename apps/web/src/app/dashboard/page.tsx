@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
@@ -71,6 +70,7 @@ export default function DashboardPage() {
   const [qaConfigOpen, setQaConfigOpen] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     const loadData = async () => {
       setLoading(true);
       try {
@@ -92,6 +92,8 @@ export default function DashboardPage() {
           apiFetch<RevenueReport>(`/reports/revenue?from=${weekStart}&to=${today}`),
           apiFetch<MaintenanceSchedule[]>('/maintenance-schedules/upcoming?days=30'),
         ]);
+
+        if (cancelled) return;
 
         const ordersData = orders.status === 'fulfilled' ? orders.value : { items: [] };
         const lowStockData = lowStock.status === 'fulfilled' ? lowStock.value : [];
@@ -119,8 +121,11 @@ export default function DashboardPage() {
 
         setRevenue(revData.rows ?? []);
       } catch (e: unknown) {
+        if (cancelled) return;
         setError(e instanceof Error ? e.message : 'Помилка завантаження дашборду');
-      } finally { setLoading(false); }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
 
     loadData();
@@ -135,6 +140,7 @@ export default function DashboardPage() {
       const saved = localStorage.getItem(QA_STORAGE_KEY);
       if (saved) setEnabledQA(JSON.parse(saved) as string[]);
     } catch { /* ignore */ }
+    return () => { cancelled = true; };
   }, []);
 
   const toggleQA = useCallback((href: string) => {

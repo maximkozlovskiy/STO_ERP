@@ -21,7 +21,6 @@ import {
   CloudUpload,
   LogOut,
   ChevronLeft,
-  ChevronRight,
   Menu,
   Star,
   type LucideIcon,
