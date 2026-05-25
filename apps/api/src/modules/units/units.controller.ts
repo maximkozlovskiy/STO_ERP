@@ -8,7 +8,7 @@ import { UnitResponseDto, CreateUnitDto, UpdateUnitDto } from './units.dto';
 import { UnitsService } from './units.service';
 
 @ApiTags('Одиниці виміру')
-@Controller('units-of-measure')
+@Controller('units')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class UnitsController {

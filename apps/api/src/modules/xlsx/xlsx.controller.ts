@@ -11,6 +11,7 @@ import { XlsxService, ImportResult } from './xlsx.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { UnitsService } from '../units/units.service';
+import { WorksService } from '../works/works.service';
 
 @ApiTags('XLSX Import')
 @Controller('xlsx')
@@ -22,6 +23,7 @@ export class XlsxController {
     private readonly goodsService: GoodsService,
     private readonly brandsService: BrandsService,
     private readonly unitsService: UnitsService,
+    private readonly worksService: WorksService,
   ) {}
 
   // ─── Templates ───────────────────────────────────────────────────────────────
@@ -170,6 +172,43 @@ export class XlsxController {
         } else {
           result.errors.push(`${row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
         }
+      }
+    }
+
+    return result;
+  }
+
+  @Post('import/works')
+  @Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Імпортувати роботи з XLSX' })
+  @ApiConsumes('multipart/form-data')
+  async importWorks(
+    @OrgContext() orgId: string,
+    @Request() req: FastifyRequest,
+  ): Promise<ImportResult> {
+    const file = await this.getUploadedFile(req);
+    const buffer = await file.toBuffer();
+    const rows = await this.xlsxService.parseWorks(buffer);
+
+    const result: ImportResult = { created: 0, updated: 0, errors: [] };
+
+    for (const row of rows) {
+      try {
+        const category = await this.worksService.findCategoryByName(orgId, row.categoryName);
+        if (!category) {
+          result.errors.push(`${row.name}: категорія "${row.categoryName}" не знайдена`);
+          continue;
+        }
+        await this.worksService.create(orgId, {
+          categoryId: category.id,
+          name: row.name,
+          normoHours: row.normoHours,
+          price: row.price,
+          description: row.description,
+        });
+        result.created++;
+      } catch (e: unknown) {
+        result.errors.push(`${row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
       }
     }
 

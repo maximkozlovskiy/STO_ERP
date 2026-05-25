@@ -65,6 +65,13 @@ export class WorksService {
     return this.toDto(item);
   }
 
+  async findCategoryByName(orgId: string, name: string): Promise<{ id: string } | null> {
+    return this.prisma.workCategory.findFirst({
+      where: { orgId, name: { equals: name, mode: 'insensitive' }, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
   async remove(orgId: string, id: string): Promise<void> {
     await this.findOne(orgId, id);
     await this.prisma.work.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
