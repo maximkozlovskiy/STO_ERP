@@ -106,6 +106,14 @@ grep -rnE "(focus|hover|active|bg|text|border|ring|shadow|rounded|w|h|p|m|gap)-\
 # Застарілі утиліти
 grep -rn "flex-shrink-0" apps/web/src/ --include="*.tsx"
 
+# Unused imports (dead code, не помилка TS бо noUnusedLocals=off, але засмічує)
+# Для кожного імпорту з lucide-react / @/components — перевір що символ є в JSX
+# Поширені винуватці після рефакторингу: ChevronRight, Button, GripVertical
+grep -rnE "^import \{[^}]+\} from" apps/web/src/ --include="*.tsx" --include="*.ts" \
+  | awk -F'[{},]' '{ for (i=2;i<NF;i++) if ($i ~ /^[ A-Z]/) print FILENAME":"NR":"$i }' \
+  | head -50
+# Альтернатива: ESLint з no-unused-vars (наразі немає в apps/web/eslint.config)
+
 # tsconfig валідація ignoreDeprecations
 grep -rn "ignoreDeprecations.*6\.0" apps/ packages/ --include="tsconfig*.json"
 
@@ -305,6 +313,7 @@ useEffect(() => {
 - [ ] Кожен `useEffect` з `addEventListener` має `return () => removeEventListener`
 - [ ] Кожен `useEffect` з `setInterval` має `return () => clearInterval`
 - [ ] `useEffect` з `apiFetch` при залежності від `id`/`page` — має AbortController або ignore-flag
+- [ ] `useEffect` з `apiFetch` і `[]` deps (mount-only) на сторінках з навігацією — **теж** потребує `let cancelled = false; ... if (!cancelled) setX(...); return () => { cancelled = true }` бо користувач може покинути сторінку до завершення Promise (dashboard, settings, list pages)
 - [ ] Стани не оновлюються після unmount (`isMounted` ref або AbortController)
 - [ ] `useCallback` і `useMemo` не пропущені для функцій що передаються у дочірні компоненти з великим ре-рендером
 
