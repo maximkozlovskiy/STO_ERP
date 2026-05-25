@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+08e1481 fix(review): post-theme QA — drop unused imports + cancel-guard for dashboard loadData
 23e10b6 fix(tester): post-theme/sidebar QA — 3 bugs (input ring bracket, blob revoke race, unused GripVertical)
 3b0af99 feat(web): keep full-size icons when sidebar is collapsed
 a41ba77 feat(web): fix theme hydration, dark mode palette, configurable quick actions
@@ -16,7 +17,7 @@ a41ba77 feat(web): fix theme hydration, dark mode palette, configurable quick ac
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (post-23e10b6)
+## Поточний стан тестів (post-08e1481)
 ```
 TypeScript:  ✅ 0 errors        (web + api + shared)
 Unit:        ✅ 67/67 passed    (8 files: auth, inventory, settlements, contract×2, invariants×3)
