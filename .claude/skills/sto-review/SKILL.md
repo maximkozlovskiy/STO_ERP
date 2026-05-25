@@ -167,12 +167,20 @@ done
 grep -rn "@Controller" apps/api/src/ -l | while read f; do
   grep -L "UseGuards\|@Public" "$f"
 done
+
+# Endpoints без @Roles — RolesGuard пропустить будь-якого авторизованого
+# (особливо критично для cost/price/financial data)
+grep -rln "@Get\|@Post\|@Patch\|@Delete\|@Put" apps/api/src/modules --include="*.controller.ts" \
+  | while read f; do
+    grep -A1 "@Get\|@Post\|@Patch\|@Delete\|@Put" "$f" | grep -L "@Roles\|@Public" >/dev/null && echo "$f"
+  done
 ```
 
 - [ ] Кожен `@Controller` має `@UseGuards(JwtAuthGuard, RolesGuard)` або явний `@Public()`
 - [ ] `@Public()` endpoints перелічені і обґрунтовані (тільки: `/auth/login`, `/auth/refresh`, `/setup/*`, `/health`)
 - [ ] `/setup/init` — перевіряє `isAlreadyInitialized()` перед виконанням (anti-replay)
-- [ ] `@Roles(...)` присутній на кожному методі або контролері — не покладатись тільки на JwtAuthGuard
+- [ ] `@Roles(...)` присутній на **кожному методі або контролері** — RolesGuard БЕЗ @Roles пропускає всіх авторизованих (включаючи MECHANIC до cost даних!)
+- [ ] Будь-який endpoint що повертає `costPrice`, `purchasePrice`, `salePrice`, `priceHistory`, `margin` має `@Roles('OWNER', 'ADMIN', 'STOREKEEPER'[, 'ACCOUNTANT'])` — НЕ давати MECHANIC доступу
 - [ ] `@CurrentUser()` декоратор повертає `{ sub: string; orgId: string; role: string }` — не `any`
 
 ### 2.2 Tenant Isolation (Multi-tenancy)
@@ -186,6 +194,7 @@ grep -rn "findUnique\|findFirst\|findMany\|update\|delete" apps/api/src/modules/
 - [ ] **Кожен** `findFirst` / `findMany` / `update` / `delete` на бізнес-сутностях містить `orgId` у `where`
 - [ ] Параметри з URL (`@Param('id')`) ніколи не використовуються без перевірки приналежності до `orgId`
 - [ ] FK у sync push (`customerGarageId`, `liftId`, `employeeId`, `workOrderId`) перевіряються через `validateForeignKeys(orgId, ...)`
+- [ ] **PATCH/UPDATE з body FK полем** (`goodId`, `vehicleId`, `customerId`, ...) — валідує що FK належить тому ж `orgId`. POST зазвичай валідує, але UPDATE часто пропускає → дозволяє cross-tenant attach. Шаблон: перед `update()` робити `findFirst({ id: dto.goodId, orgId })` і `throw NotFoundException`.
 - [ ] Пагінація: `page` і `limit` з query params мають верхні межі (limit ≤ 200, page ≥ 1)
 
 ### 2.3 Injection & Input Validation
@@ -523,6 +532,39 @@ const orders = await this.prisma.workOrder.findMany({
   include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
   take: 50,
 });
+```
+
+```typescript
+// ❌ BAD — bulk-recalc що викликає `calculateSalePrice` в loop (N+1 на rules)
+async applyRuleToGoods(orgId: string, ruleId: string): Promise<number> {
+  const goods = await this.prisma.good.findMany({ where: {...}, take: 5000 });
+  for (const good of goods) {
+    // Кожен виклик робить ще один findMany на pricingRule → 5000 × findMany
+    const newPrice = await this.calculateSalePrice(orgId, good.id, ...);
+    await this.prisma.good.update({ where: { id: good.id }, data: { salePrice: newPrice } });
+    await this.prisma.priceHistory.create({ data: {...} });
+  }
+}
+
+// ✅ GOOD — prefetch + in-memory compute + chunked $transaction
+async applyRuleToGoods(orgId: string, ruleId: string): Promise<number> {
+  const goods = await this.prisma.good.findMany({ where: {...}, take: 5000 });
+  const allRules = await this.prisma.pricingRule.findMany({
+    where: { orgId, isActive: true, deletedAt: null }, take: 200,
+  });
+  const updates = goods
+    .map(g => ({ goodId: g.id, newPrice: this.computeInMemory(allRules, g, ...) }))
+    .filter(u => priceChanged(u));
+  const CHUNK = 100;
+  for (let i = 0; i < updates.length; i += CHUNK) {
+    const chunk = updates.slice(i, i + CHUNK);
+    await this.prisma.$transaction([
+      ...chunk.map(u => this.prisma.good.update({ where: { id: u.goodId }, data: { salePrice: u.newPrice } })),
+      this.prisma.priceHistory.createMany({ data: chunk.map(u => ({...})) }),
+    ]);
+  }
+  return updates.length;
+}
 ```
 
 ```typescript
