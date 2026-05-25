@@ -9,21 +9,25 @@
 ## Останній commit
 
 ```
-fd0f597 docs(tester): record bugs #26-#31 from /sto-tester cycle 4 session
+492247d docs(tester): record bug #32 from /sto-tester cycle 5 session
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після Phase 19 cycle 4 tester, 2026-05-25)
+## Поточний стан тестів (після Phase 19 cycle 5 tester, 2026-05-25)
 ```
 TypeScript:  ✅ 0 errors        (web + api + shared)
-Unit:        ✅ 111/111 passed  (12 files; +6 нових для Bug #26/#27)
+Unit:        ✅ 111/111 passed  (12 files; no regressions from cycle 4)
 Contract:    ✅ 32/32 passed    (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
 E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн)
-Цикли QA:    ✅ Phase 19 tester cycle 4 — знайдено + виправлено 6 багів (1 HIGH / 1 MEDIUM / 4 LOW)
+Цикли QA:    ✅ Phase 19 tester cycle 5 — знайдено + виправлено 1 баг (1 HIGH)
 ```
+
+### Gotcha — Phase 19 tester cycle 5 findings (2026-05-25)
+- DTO `@Max(N)` ліміти на pagination-параметрах — звіряти на ВСІХ сторінках frontend. Сторінка може використовувати `limit=N+M`, ValidationPipe відкине запит з 400, а soft error-handling (`console.warn` замість throw) сховає проблему від QA. Канон: усі сторінки використовують один і той самий `limit=200` (Bug #32 = пост-фікс Bug #29 розкрив дефект, який жив з самого Phase 19).
+- Soft error-handling після fetch — палиця з двома кінцями: захищає UX від rare API-failure, але приховує детермінований bug у параметрах запиту. При додаванні `console.warn`-fallback одразу перевіряти, чи запит сам по собі валідний (curl + ValidationPipe rules).
 
 ### Gotcha — Phase 19 tester cycle 4 findings (2026-05-25)
 - Hard `BadRequestException` на відсутньому `RECEIPT.price` блокує StockDocument TRANSFER/RECEIPT, бо `StockDocumentLine.price` — `Decimal?`. Канон: fallback на `good.purchasePrice ?? 0`, guard лише на `NaN`. Не повторювати "захист" що ламає сусідній модуль (Bug #26 = регресія від Bug #15).
@@ -86,7 +90,7 @@ grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app
 |---|---|
 | Фаза | **Фаза 17 — Enums, enriched models, MaintenanceSchedule + CompletionAct** (завершено + QA) |
 | Прогрес | 17.1-17.3✅ backend + frontend + QA review |
-| TypeScript | ✅ 0 errors (web + api + shared) — verified 2026-05-25 cycle 4 |
+| TypeScript | ✅ 0 errors (web + api + shared) — verified 2026-05-25 cycle 5 |
 | Unit тести | ✅ 111/111 passed (включно з contract і property у 12 файлах) |
 | Contract тести | ✅ 32/32 passed (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4) |
 | Property-based | ✅ 26/26 passed (fsm: 11, inventory: 7, settlements: 8) |
