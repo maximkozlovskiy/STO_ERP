@@ -50,7 +50,8 @@ function fmtDate(s: string) {
 }
 
 function margin(sale: number, cost: number) {
-  if (!cost) return null;
+  // Bug #24: guard sale=0 to avoid NaN/Infinity in UI
+  if (!sale || !cost) return null;
   return ((sale - cost) / sale * 100).toFixed(1);
 }
 
