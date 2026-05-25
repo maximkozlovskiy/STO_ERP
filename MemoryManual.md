@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-8a57bdf docs(tester): record bugs #37-#41 from Phase 19.2 sweep
+aed69c3 fix(review): Command Palette + keyboard shortcuts — 7 issues
 ```
 
 Дата: 2026-05-25
@@ -25,6 +25,13 @@ E2E:         ✅ 16/16 passed    (dev server онлайн на момент Кр
 Build:       ✅ API OK
 Цикли QA:    tester Phase 19.2 — 5 багів (1 HIGH + 2 MEDIUM + 2 LOW), всі виправлені
 ```
+
+### Gotcha — /sto-review Command Palette (2026-05-25, commit aed69c3)
+- **Shift+/ vs '?'**: на US-розкладці `e.key` для Shift+/ → `'?'`, НЕ `'/'`. Hook що порівнює `e.key.toLowerCase() === mainKey` де `mainKey='/'` тихо не спрацьовує — ярлик `'?'` "є", але ніколи не фаєриться. Канон у `useKeyboardShortcut`: таблиця `SHIFT_ALIAS` (`'?':'/'`, `'!':'1'`, ...) + layout-independent fallback на `e.code` (`'Slash'`, `'KeyA'`, `'Digit1'`). Перевірити власноруч: Shift+/ показує help toast.
+- **Modal + global shortcuts**: коли відкритий модальник з власним `window.addEventListener('keydown')`, БЕЗ `{ capture: true }` глобальні Alt+W/D/C/I/N все одно фаєряться у фоні (router.push під модалкою — UI лишається відкритим зі stale state). Канон: модальник реєструє listener з `{ capture: true }` + `e.stopPropagation()` на Escape; додатково — disable глобальних шорткатів через `enabled: !modalOpen` у parent.
+- **useEffect deps з ре-обчислюваними масивами**: якщо у dep array є `flatList`/`filtered`/`groups`, що створюються через `.reduce`/`.map` у тілі компонента — listener видаляється/додається на КОЖНОМУ рендері. Канон: `useMemo` для всіх похідних колекцій + `useRef` для значень, які listener читає під час події (не пере-підписувати listener на кожному кадрі). Особливо болить для `addEventListener('keydown')` бо setState→render→re-subscribe створює гонку.
+- **setTimeout у useEffect завжди має cleanup**: `setTimeout(() => ref.current?.focus(), 50)` без `clearTimeout` ламається коли `open` фліпає швидко. Канон: `const id = window.setTimeout(...); return () => window.clearTimeout(id);` навіть якщо інтервал малий.
+- **Modal a11y baseline**: `role="dialog"` + `aria-modal="true"` + `aria-labelledby={titleId}` (sr-only `<h2>`) + `aria-hidden="true"` на декоративні іконки + Tab focus trap (preventDefault + .focus() назад на єдиний focusable). Без цього screen reader читає модалку як body content.
 
 ### Gotcha — Phase 19.2 tester sweep (2026-05-25, бaги #37-#41)
 - **Module-level cache vs auth lifecycle** (Bug #37): React-хуки з модульно-глобальним `cache` (типу `useUiFeatures`) повинні очищатись при logout. Інакше на shared kiosk наступний користувач бачить кешовані flag-и попереднього орг. Канон: dispatch `sto:logout` Event у `AuthProvider.logout()` + кожен per-tenant cache hook слухає його і робить `invalidate() + setFeatures(DEFAULTS)`. Те саме треба робити для будь-яких client-side кешів (savedFilters, notifications counter, etc.).
@@ -673,6 +680,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `aed69c3` | fix(review): Command Palette + keyboard shortcuts — 7 issues (shift+/, useMemo deps, focus trap, a11y) |
 | `bef35b7` | fix(tester): 6 bugs (settlement validate, low-stock LIMIT, CSV revoke, take, +tests) |
 | `9295d6e` | fix(review): N+1 work-categories descendants + dead findOneDetail |
 | `4910014` | docs(skills): hydration trap useState(new Date()) + missing tsconfig check |
