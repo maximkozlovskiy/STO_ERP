@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Bookmark, BookmarkPlus, X, ChevronDown } from 'lucide-react';
+import { Bookmark, BookmarkPlus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type SavedFilter } from '@/hooks/useSavedFilters';
 
@@ -27,7 +27,9 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (saveOpen) setTimeout(() => inputRef.current?.focus(), 30);
+    if (!saveOpen) return;
+    const id = setTimeout(() => inputRef.current?.focus(), 30);
+    return () => clearTimeout(id);
   }, [saveOpen]);
 
   const handleSave = () => {

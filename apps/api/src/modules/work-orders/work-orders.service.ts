@@ -152,8 +152,12 @@ export class WorkOrdersService {
         priority: dto.priority,
         repairCategory: dto.repairCategory,
         clientApproval: dto.clientApproval,
-        plannedAt: dto.plannedAt ? new Date(dto.plannedAt) : undefined,
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+        // Distinguish "field omitted" (undefined → skip) from "field cleared"
+        // (null → set NULL). `dto.plannedAt === null` writes NULL.
+        plannedAt:
+          dto.plannedAt === undefined ? undefined : dto.plannedAt === null ? null : new Date(dto.plannedAt),
+        dueDate:
+          dto.dueDate === undefined ? undefined : dto.dueDate === null ? null : new Date(dto.dueDate),
       },
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },

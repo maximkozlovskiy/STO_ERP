@@ -34,15 +34,16 @@ export class UpdateWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsEnum(RepairCategory) repairCategory?: RepairCategory;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() clientApproval?: boolean;
 
-  @ApiPropertyOptional()
+  // Nullable: passing `null` explicitly clears the field; omitting keeps it.
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @IsISO8601()
-  plannedAt?: string;
+  plannedAt?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @IsISO8601()
-  dueDate?: string;
+  dueDate?: string | null;
 }
 
 export class TransitionWorkOrderDto {

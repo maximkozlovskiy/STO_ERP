@@ -149,12 +149,19 @@ export default function WorkOrdersPage() {
   const inlineEdit = useInlineEdit({
     enabled: features.inlineEditEnabled,
     onSave: async (rowId, field, value) => {
-      await apiFetch(`/work-orders/${rowId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ [field]: value || null }),
-      });
-      if (features.toastEnabled) toast.success('Збережено');
-      load();
+      try {
+        await apiFetch(`/work-orders/${rowId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ [field]: value === '' ? null : value }),
+        });
+        if (features.toastEnabled) toast.success('Збережено');
+        load();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Помилка збереження';
+        if (features.toastEnabled) toast.error(msg);
+        else setError(msg);
+        throw e; // bubble so useInlineEdit keeps editing state for retry
+      }
     },
   });
   const [form, setForm] = useState({
@@ -384,12 +391,16 @@ export default function WorkOrdersPage() {
                   <TableCell onClick={e => e.stopPropagation()}>
                     {inlineEdit.isEditing(wo.id, 'priority') ? (
                       <select
-                        value={inlineEdit.editing?.value ?? wo.priority}
+                        // Uncontrolled (defaultValue) so the visual selection
+                        // follows the user pick during the in-flight save;
+                        // editing.value stores the original for comparison.
+                        defaultValue={inlineEdit.editing?.value ?? wo.priority}
                         onChange={e => inlineEdit.commitEdit(e.target.value)}
-                        onBlur={e => inlineEdit.commitEdit(e.target.value)}
+                        onBlur={() => inlineEdit.cancelEdit()}
                         onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancelEdit(); }}
+                        disabled={inlineEdit.saving}
                         autoFocus
-                        className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none"
+                        className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
                       >
                         {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
                           <option key={v} value={v}>{l}</option>

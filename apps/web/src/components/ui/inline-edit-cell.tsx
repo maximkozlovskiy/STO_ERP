@@ -45,22 +45,29 @@ export function InlineEditCell({
         className="flex-1 min-w-0 px-1.5 py-0.5 rounded border border-primary bg-surface text-[13px] text-foreground outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
       />
       {saving ? (
-        <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
+        <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" aria-label="Збереження" />
       ) : (
         <>
           <button
+            type="button"
+            // mousedown.preventDefault keeps input focused so no blur fires;
+            // onClick covers keyboard activation. Parent's useInlineEdit guards
+            // against double-commit via savingRef.
             onMouseDown={e => { e.preventDefault(); onCommit(value); }}
+            onClick={() => onCommit(value)}
             className="p-0.5 rounded text-success hover:bg-success-subtle transition-colors shrink-0"
             aria-label="Зберегти"
           >
-            <Check className="h-3.5 w-3.5" />
+            <Check className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
           <button
+            type="button"
             onMouseDown={e => { e.preventDefault(); onCancel(); }}
+            onClick={() => onCancel()}
             className="p-0.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive-subtle transition-colors shrink-0"
             aria-label="Скасувати"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </>
       )}
@@ -90,10 +97,16 @@ export function InlineViewCell({
       role="button"
       tabIndex={0}
       onClick={onClick}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
+      onKeyDown={e => {
+        // Space would otherwise scroll the page; prevent default and activate.
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       title="Натисніть для редагування"
       className={cn(
-        'group cursor-text rounded px-1 -mx-1 hover:bg-primary-subtle hover:outline hover:outline-1 hover:outline-primary/30 transition-colors',
+        'group cursor-text rounded px-1 -mx-1 hover:bg-primary-subtle hover:outline-1 hover:outline-primary/30 transition-colors',
         className,
       )}
     >

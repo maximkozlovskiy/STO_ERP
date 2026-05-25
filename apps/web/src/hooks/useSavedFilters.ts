@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 export interface SavedFilter<T extends Record<string, unknown>> {
   id: string;
@@ -16,21 +16,29 @@ export interface SavedFilter<T extends Record<string, unknown>> {
  *   const { saved, save, remove, apply } = useSavedFilters<MyFilters>('work-orders');
  *   // save({ name: 'В роботі', filters: { status: 'IN_PROGRESS' } })
  *   // apply(preset) → calls onApply with preset.filters
+ *
+ * SSR-safety: initial state is always `[]` to match server render; localStorage
+ * is read in an effect on mount to avoid hydration mismatch (server: empty,
+ * client lazy initializer would otherwise return persisted array → mismatch).
  */
 export function useSavedFilters<T extends Record<string, unknown>>(pageKey: string) {
   const storageKey = `sto_filters_${pageKey}`;
 
   const read = useCallback((): SavedFilter<T>[] => {
+    if (typeof window === 'undefined') return [];
     try {
       const raw = localStorage.getItem(storageKey);
       return raw ? (JSON.parse(raw) as SavedFilter<T>[]) : [];
     } catch { return []; }
   }, [storageKey]);
 
-  const [saved, setSaved] = useState<SavedFilter<T>[]>(() => {
-    if (typeof window === 'undefined') return [];
-    return read();
-  });
+  // Always start with [] on both server and first client render to avoid
+  // hydration mismatch; hydrate from localStorage in an effect post-mount.
+  const [saved, setSaved] = useState<SavedFilter<T>[]>([]);
+
+  useEffect(() => {
+    setSaved(read());
+  }, [read]);
 
   const save = useCallback((name: string, filters: T) => {
     const preset: SavedFilter<T> = {
