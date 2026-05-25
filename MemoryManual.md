@@ -9,22 +9,30 @@
 ## Останній commit
 
 ```
-a60d3d3 fix(review): Group 3 — SSR safety, a11y, nullable dueDate, select control fix
+803a5da docs(tester): record bugs #47-#52 from Group 3 tester session
 ```
 
-Дата: 2026-05-25
+Дата: 2026-05-26
 
-## Поточний стан тестів (після /sto-tester Group 2 sweep, 2026-05-25)
+## Поточний стан тестів (після /sto-tester Group 3 sweep, 2026-05-26)
 ```
 TypeScript:  ✅ 0 errors        (web + api + shared)
 Unit:        ✅ 117/117 passed  (13 files)
 Contract:    ✅ 38/38 passed
 Property:    ✅ 26/26 passed
-Components:  ✅ 55/55 passed    (was 42; +13 command-palette.test.tsx)
+Components:  ✅ 100/100 passed  (was 55; +45 для Group 3: inline-edit-cell 17 / saved-filters-bar 9 / useInlineEdit 10 / useSavedFilters 9)
 E2E:         ⏭ skipped          (dev server офлайн на момент Кроку 4.5)
 Build:       ✅ API OK
-Цикли QA:    tester Group 2 — 5 багів (1 MEDIUM + 4 LOW), всі виправлені
+Цикли QA:    tester Group 3 — 6 багів (1 HIGH + 2 MEDIUM + 3 LOW), всі виправлені
 ```
+
+### Gotcha — Group 3 tester sweep (2026-05-26, баги #47-#52)
+- **class-validator messages — повинні бути локалізовані глобальним `exceptionFactory`** (Bug #47): без нього кожне `@IsUUID`/`@IsISO8601`/`@IsEnum` повертає англійський текст у toast користувача, що порушує "UI українською" правило CLAUDE.md §16. Канон: створити `apps/api/src/common/pipes/validation-error.factory.ts` з мапою constraint-keys → укр. шаблонів і підключити у `main.ts:ValidationPipe({ exceptionFactory })`. Особливо помітно у inline-edit flows, де помилки валідації виходять прямо в toast.
+- **`async commitEdit` що re-throws — call-сайти повинні мовчки ловити reject** (Bug #48): pattern де hook re-throws для збереження edit state на retry, але показ toast вже у `onSave`. Якщо `<select onChange={e => hook.commitEdit(e.target.value)}>` без `.catch` → unhandled Promise rejection у консолі + Next.js dev error overlay. Канон: `onChange={e => { void hook.commitEdit(e.target.value).catch(() => {}); }}`. Те саме для `onCommit`/`onSubmit`/`onBlur`-обгорток async re-throw API.
+- **`<input type="text">` для дат — приховує помилку до server round-trip** (Bug #49): user типує "25/05/2026", "tomorrow", "abc" — все проходить frontend, бекенд кидає 400. Канон: для дат використовувати `<input type="date">` (native picker, YYYY-MM-DD enforced). Для inline-edit компонентів — приймати union `'text' | 'number' | 'date' | 'datetime-local'`. Додатково: `inputRef.current?.select()` кидає `InvalidStateError` для date/datetime-local → обгортати у try/catch.
+- **`role="button"` БЕЗ `aria-label` коли children — Badge/icon** (Bug #50): `title` атрибут НЕ озвучується надійно у NVDA/JAWS. Якщо інтерактивний span має тільки візуальний контент (іконка, бейдж без текстового імені), screen reader прочитає "клацабельний елемент" без контексту. Канон: завжди передавати `aria-label={\`Редагувати: \${value}\`}` (або еквівалент дії). Не покладатися на `title` для accessibility.
+- **localStorage corruption defense — Array.isArray на parsed payload** (Bug #51): `JSON.parse` повертає що завгодно (null, число, об'єкт). Якщо інший таб / devtools / стара версія додатку вставили `localStorage.setItem('sto_filters_x', '{}')` → наступний `.map()` у компоненті крашить error boundary. Канон: `Array.isArray(parsed) ? parsed : []`. Той самий захист для `boolean`/`number`/`string` cache — type guard перед використанням.
+- **Component coverage для нових UI примітивів — обов'язково в межах PR**: будь-який новий компонент у `apps/web/src/components/ui/` ПОВИНЕН мати `__tests__/xxx.test.tsx` у тому ж commit (Bug #52). Hook у `apps/web/src/hooks/` — поряд `xxx.test.tsx`. Min coverage: рендер з усіма пропс-комбінаціями, кожен callback (onClick/onChange/onCommit/onCancel), keyboard навігація (Enter/Escape/Space), aria-attributes, edge cases (порожній стан, disabled, error). vitest config вже сканує `src/**/*.test.{ts,tsx}` — додавати тести в той самий PR що додає компонент.
 
 ### Gotcha — Command Palette tester sweep (2026-05-25, баги #42-#46)
 - **Backdrop-click через `e.target === e.currentTarget`** — анти-патерн коли backdrop є дочірнім `absolute inset-0` сібінгом панелі: backdrop ВІЗУАЛЬНО покриває outer flex container, тож клік завжди приземляється на backdrop, а не на outer div → onClose ніколи не викликається. Канон: вішати `onMouseDown` НА САМ backdrop (`<div className="absolute inset-0 ..." onMouseDown={onClose} aria-hidden="true" />`), а не на outer dialog wrapper (Bug #42).
