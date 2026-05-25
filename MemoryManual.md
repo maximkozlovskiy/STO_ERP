@@ -9,12 +9,12 @@
 ## Останній commit
 
 ```
-4391309 fix(review): Phase 19 — RBAC, perf, sync, a11y, tests for batch/pricing
+f6c96c9 fix(review): Phase 19 cycle 2 — cross-tenant goodId guard, sync indexes, a11y
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після review Phase 19, 2026-05-25)
+## Поточний стан тестів (після review Phase 19 cycle 2, 2026-05-25)
 ```
 TypeScript:  ✅ 0 errors        (web + api, перевірено 2026-05-25)
 Unit:        ✅ 88/88 passed    (10 files: + pricing.service, batch.service)
@@ -22,8 +22,13 @@ Contract:    ✅ 15/15 passed    (auth: 9, work-orders: 6)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
 E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн)
-Цикли QA:    ✅ Phase 19 review — 9 виправлень (RBAC, N+1, a11y, tests, sync)
+Цикли QA:    ✅ Phase 19 review cycle 2 — 3 виправлення (tenant, sync index, a11y)
 ```
+
+### Gotcha — Phase 19 cycle 2 review findings (2026-05-25)
+- `PATCH /pricing-rules/:id` має валідувати `dto.goodId` (cross-tenant attack): POST вже валідує, але UPDATE може змінити goodId на чужий orgId. Якщо updateDTO дозволяє змінити FK поле — перевіряти приналежність до orgId.
+- Нова Prisma модель з `syncVersion` → додавати `@@index([orgId, syncVersion])` — без нього sync pull робить full-table scan на `where: { orgId, syncVersion: { gt: since } }`. Перевір кожну нову sync-ready таблицю.
+- Icon-only `<Button>` з `title="..."` — потребує також `aria-label` (title HTML attr не завжди читається screen readers як accessible name). Icon-svg всередині → `aria-hidden="true"`.
 
 ### Gotcha — Phase 19 batch/pricing review findings (2026-05-25)
 - `BatchesController.lookup` потребує `@Roles(...)` явно — без декоратора RolesGuard пропускає будь-кого авторизованого. Завжди додавати roles навіть на read-only endpoints де є cost/price дані.
