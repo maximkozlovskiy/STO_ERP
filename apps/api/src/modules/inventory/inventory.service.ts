@@ -32,6 +32,12 @@ export class InventoryService {
     if (dto.type === 'RESERVATION_RELEASE' && dto.quantity > 0) {
       throw new BadRequestException('Зняття резерву: кількість повинна бути від\'ємною');
     }
+    // Bug #15: RECEIPT з quantity > 0 завжди створює StockBatch. Якщо ціна відсутня —
+    // батч-tracking зламається, бо consumeBatch у режимі FIFO/LIFO/FEFO не знайде партії.
+    // Дозволяємо price=0 (безкоштовні зразки) — для них батч створиться з нульовою собівартістю.
+    if (dto.type === 'RECEIPT' && dto.quantity > 0 && (dto.price === undefined || dto.price === null)) {
+      throw new BadRequestException('Ціна оприбуткування обов\'язкова для створення партії');
+    }
     const db = tx ?? this.prisma;
 
     if (dto.quantity < 0 || dto.type === 'RESERVATION' || dto.type === 'RESERVATION_RELEASE') {
@@ -67,8 +73,8 @@ export class InventoryService {
       },
     });
 
-    // Create batch on RECEIPT
-    if (dto.type === 'RECEIPT' && dto.quantity > 0 && dto.price) {
+    // Create batch on RECEIPT (price can be 0 for free samples; undefined was rejected above)
+    if (dto.type === 'RECEIPT' && dto.quantity > 0) {
       await this.batchService.createFromReceipt(orgId, {
         goodId: dto.goodId,
         warehouseId: dto.warehouseId,
@@ -77,7 +83,7 @@ export class InventoryService {
         batchNumber: dto.batchNumber,
         expiryDate: dto.expiryDate,
         receivedQty: dto.quantity,
-        costPrice: dto.price,
+        costPrice: dto.price ?? 0,
       }, db as Prisma.TransactionClient);
     }
 

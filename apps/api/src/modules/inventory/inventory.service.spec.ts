@@ -66,7 +66,7 @@ describe('InventoryService.createMovement guards', () => {
   });
 
   it('RECEIPT збільшує quantity і не торкається reserved', async () => {
-    await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10 }));
+    await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10, price: 50 }));
     expect(prisma.stockMovement.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ type: 'RECEIPT', quantity: 10 }),
     });
@@ -76,6 +76,23 @@ describe('InventoryService.createMovement guards', () => {
         reserved: { increment: 0 },
       }),
     }));
+  });
+
+  it('Bug #15: RECEIPT без price кидає BadRequestException', async () => {
+    await expect(service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10 })))
+      .rejects.toThrow(BadRequestException);
+    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+    expect(batchService.createFromReceipt).not.toHaveBeenCalled();
+  });
+
+  it('Bug #15: RECEIPT з price=0 (безкоштовний зразок) створює партію з нульовою собівартістю', async () => {
+    await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 5, price: 0 }));
+    expect(prisma.stockMovement.create).toHaveBeenCalled();
+    expect(batchService.createFromReceipt).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ receivedQty: 5, costPrice: 0 }),
+      expect.anything(),
+    );
   });
 
   it('RESERVATION тільки інкрементує reserved, не quantity', async () => {

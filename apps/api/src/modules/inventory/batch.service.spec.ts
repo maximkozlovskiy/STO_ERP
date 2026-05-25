@@ -17,6 +17,7 @@ describe('BatchService', () => {
     };
     batchConsumption: { create: ReturnType<typeof vi.fn> };
     priceHistory: { create: ReturnType<typeof vi.fn> };
+    $transaction: ReturnType<typeof vi.fn>;
   };
   let pricing: { calculateSalePrice: ReturnType<typeof vi.fn> };
 
@@ -31,6 +32,13 @@ describe('BatchService', () => {
       },
       batchConsumption: { create: vi.fn().mockResolvedValue({}) },
       priceHistory: { create: vi.fn().mockResolvedValue({}) },
+      // Bug #20: consumeBatch/returnToBatch обертає в $transaction коли tx не передано.
+      $transaction: vi.fn().mockImplementation((arg: unknown) => {
+        if (typeof arg === 'function') {
+          return (arg as (tx: typeof prisma) => Promise<unknown>)(prisma);
+        }
+        return Promise.all(arg as Promise<unknown>[]);
+      }),
     };
     pricing = { calculateSalePrice: vi.fn().mockResolvedValue(150) };
 
@@ -74,6 +82,24 @@ describe('BatchService', () => {
       });
       expect(prisma.priceHistory.create).not.toHaveBeenCalled();
       expect(prisma.good.update).not.toHaveBeenCalled();
+    });
+
+    it('Bug #14: безкоштовний прийом (costPrice=0) НЕ змінює Good.salePrice', async () => {
+      prisma.good.findFirst.mockResolvedValue({ id: 'g1', category: null, goodType: null, salePrice: 250 });
+      pricing.calculateSalePrice.mockResolvedValue(0); // pricing service may return 0 from 0 cost
+      await service.createFromReceipt('org', {
+        goodId: 'g1', warehouseId: 'wh1', stockMovementId: 'm1',
+        receivedQty: 5, costPrice: 0,
+      });
+      // НЕ перезаписувати ціну продажу
+      expect(prisma.good.update).not.toHaveBeenCalled();
+      expect(prisma.priceHistory.create).not.toHaveBeenCalled();
+      // Партія створена з salePrice = поточна ціна товару (250), не 0
+      expect(prisma.stockBatch.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ costPrice: 0, salePrice: 250 }),
+        }),
+      );
     });
   });
 

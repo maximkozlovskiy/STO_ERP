@@ -56,13 +56,20 @@ export class BatchService {
     });
     if (!good) throw new BadRequestException('Товар не знайдено');
 
-    const salePrice = await this.pricing.calculateSalePrice(
+    const currentSalePriceForBatch = Number(good.salePrice);
+    const computedSalePrice = await this.pricing.calculateSalePrice(
       orgId,
       dto.goodId,
       good.category ?? undefined,
       good.goodType ?? undefined,
       dto.costPrice,
     );
+    // Bug #14: при безкоштовному прийомі (costPrice=0) використовуємо поточну ціну товару,
+    // щоб не записати партію з salePrice=0 і не зламати наступні продажі.
+    const salePrice =
+      dto.costPrice > 0 && computedSalePrice > 0
+        ? computedSalePrice
+        : currentSalePriceForBatch;
 
     const batch = await db.stockBatch.create({
       data: {
@@ -80,9 +87,14 @@ export class BatchService {
       },
     });
 
-    // Update Good.salePrice and log PriceHistory if price changed
+    // Update Good.salePrice and log PriceHistory if price changed.
+    // Bug #14: безкоштовний прийом (costPrice=0 → salePrice=0) НЕ повинен затирати поточну salePrice.
     const currentSalePrice = Number(good.salePrice);
-    if (Math.abs(salePrice - currentSalePrice) > 0.001) {
+    const canUpdateSalePrice =
+      dto.costPrice > 0 &&
+      salePrice > 0 &&
+      Math.abs(salePrice - currentSalePrice) > 0.001;
+    if (canUpdateSalePrice) {
       await db.good.update({
         where: { id: dto.goodId },
         data: { salePrice },
@@ -103,6 +115,13 @@ export class BatchService {
     return batch;
   }
 
+  /**
+   * Consume `qty` units of a good from active batches using the given cost method.
+   *
+   * Bug #20: Якщо `tx` не передано — обгортаємо роботу в `$transaction`, щоб
+   * `stockBatch.update` і `batchConsumption.create` були атомарними. Інакше
+   * краш між двома операціями залишить партію без consumption-логу.
+   */
   async consumeBatch(
     orgId: string,
     goodId: string,
@@ -114,7 +133,12 @@ export class BatchService {
     costMethod: BatchCostMethod,
     tx?: Prisma.TransactionClient,
   ): Promise<BatchConsumeResult[]> {
-    const db = tx ?? this.prisma;
+    if (!tx) {
+      return this.prisma.$transaction(innerTx =>
+        this.consumeBatch(orgId, goodId, warehouseId, qty, documentType, documentId, documentLineId, costMethod, innerTx),
+      );
+    }
+    const db = tx;
 
     if (costMethod === 'AVG_COST') {
       // AVG_COST — no batch tracking, just return avg cost for reference
@@ -174,9 +198,14 @@ export class BatchService {
     return results;
   }
 
-  async getAvgCost(orgId: string, goodId: string, warehouseId: string): Promise<number> {
+  async getAvgCost(orgId: string, goodId: string, warehouseId?: string): Promise<number> {
+    // Bug #16: warehouseId опціональний. Якщо не передано — агрегуємо по всіх складах.
+    // Порожній рядок раніше зі сторони контролера трактувався як склад "" → 0 партій.
+    const filter = warehouseId
+      ? { orgId, goodId, warehouseId, isActive: true, remainingQty: { gt: 0 } }
+      : { orgId, goodId, isActive: true, remainingQty: { gt: 0 } };
     const batches = await this.prisma.stockBatch.findMany({
-      where: { orgId, goodId, warehouseId, isActive: true, remainingQty: { gt: 0 } },
+      where: filter,
       select: { remainingQty: true, costPrice: true },
       take: 500,
     });
@@ -219,6 +248,12 @@ export class BatchService {
     }));
   }
 
+  /**
+   * Return `qty` units to an existing batch (e.g. WO cancellation).
+   *
+   * Bug #20: Якщо `tx` не передано — обгортаємо роботу в `$transaction`, щоб
+   * `stockBatch.update` і `batchConsumption.create` були атомарними.
+   */
   async returnToBatch(
     orgId: string,
     batchId: string,
@@ -227,7 +262,13 @@ export class BatchService {
     documentId: string,
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    const db = tx ?? this.prisma;
+    if (!tx) {
+      await this.prisma.$transaction(innerTx =>
+        this.returnToBatch(orgId, batchId, qty, documentType, documentId, innerTx),
+      );
+      return;
+    }
+    const db = tx;
     const batch = await db.stockBatch.findFirst({
       where: { id: batchId, orgId },
     });
