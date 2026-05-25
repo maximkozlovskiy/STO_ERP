@@ -9,20 +9,20 @@ import { toast } from '@/lib/toast';
  * Global keyboard shortcuts active across the whole app.
  *
  * Shortcuts:
- *   G then D   → /dashboard        (sequential, via local state)
- *   G then W   → /work-orders
- *   G then C   → /crm
- *   G then I   → /inventory
+ *   Alt+W      → /work-orders
+ *   Alt+D      → /dashboard
+ *   Alt+C      → /crm
+ *   Alt+I      → /inventory
+ *   N          → new record in current section
  *   ?          → show shortcuts help toast
+ *
+ * Note: when CommandPalette is open it registers its own keydown listener with
+ * { capture: true } and stops propagation for Escape — so global shortcuts here
+ * naturally do NOT fire while the palette is open.
  */
 export function useGlobalShortcuts(enabled: boolean) {
   const router = useRouter();
   const pathname = usePathname();
-
-  // G + D — go to dashboard
-  useKeyboardShortcut('g', useCallback(() => {
-    // handled via sequential G-then-letter logic below — placeholder to satisfy hook API
-  }, []), { enabled: false });
 
   // Navigation shortcuts: Alt+W, Alt+C, Alt+I, Alt+D for quick nav (no conflict with browser)
   useKeyboardShortcut('alt+w', useCallback((e) => {
@@ -54,7 +54,7 @@ export function useGlobalShortcuts(enabled: boolean) {
     }
   }, [router, pathname]), { enabled, allowInInput: false });
 
-  // ? — show keyboard shortcuts help
+  // ? — show keyboard shortcuts help (US layout: Shift+/ → '?')
   useKeyboardShortcut('shift+/', useCallback(() => {
     toast.info(
       'Ctrl+K — пошук · Alt+W — наряди · Alt+D — дашборд · Alt+C — CRM · Alt+I — склад · N — новий запис',

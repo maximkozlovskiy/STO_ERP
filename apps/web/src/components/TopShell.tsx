@@ -161,7 +161,8 @@ export function TopShell({ children }: { children: ReactNode }) {
     if (uiFeatures.commandPaletteEnabled && employee) setPaletteOpen(p => !p);
   }, [uiFeatures.commandPaletteEnabled, employee]), { enabled: true, allowInInput: true });
 
-  useGlobalShortcuts(!!employee && uiFeatures.keyboardShortcutsEnabled);
+  // Disable global shortcuts while palette is open so Alt+W/D/C/I/N don't navigate behind it
+  useGlobalShortcuts(!!employee && uiFeatures.keyboardShortcutsEnabled && !paletteOpen);
 
   useEffect(() => {
     try {
