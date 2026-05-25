@@ -9,22 +9,24 @@
 ## Останній commit
 
 ```
+ce81b93 chore(claude): update settings.local.json with new bash permissions
+85bbf91 fix(web): add @source directive so Tailwind 4 scans all TSX files
+96f29cb docs(skills): add tsconfig + Tailwind canonical patterns to sto-dev/sto-review
+0cd08e5 fix(review): canonical Tailwind classes + tsconfig deprecations + new sto-dev skill
 08e1481 fix(review): post-theme QA — drop unused imports + cancel-guard for dashboard loadData
-23e10b6 fix(tester): post-theme/sidebar QA — 3 bugs (input ring bracket, blob revoke race, unused GripVertical)
-3b0af99 feat(web): keep full-size icons when sidebar is collapsed
-a41ba77 feat(web): fix theme hydration, dark mode palette, configurable quick actions
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (post-08e1481)
+## Поточний стан тестів (tester cycle, post-ce81b93)
 ```
-TypeScript:  ✅ 0 errors        (web + api + shared)
+TypeScript:  ✅ 0 errors        (web + api + shared, перевірено 2026-05-25)
 Unit:        ✅ 67/67 passed    (8 files: auth, inventory, settlements, contract×2, invariants×3)
 Contract:    ✅ 15/15 passed    (auth: 9, work-orders: 6)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
-Components:  ⏭  skipped         (apps/web/vitest.config.mts not present in current tree)
-E2E:         ✅ 16/16 passed    (smoke: 4, inventory: 4, api-errors: 8)
+Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11) — vitest.config.mts є
+E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн на момент запуску)
+Bugs:        ✅ 0 new bugs found у tester cycle після review cycle 2
 ```
 
 ### Gotcha — Tailwind 4 arbitrary value must be fully closed

@@ -1,12 +1,37 @@
 # BUG_REPORT.md — STO ERP
 
 Дата: 2026-05-25
-Сесія: post-theme/hydration + sidebar collapse refactor (commits a41ba77, 3b0af99)
+Сесія: tester cycle після review cycle 2 (post 08e1481 + ce81b93)
+
+## Результат: 0 нових багів
+
+Baseline (повторно перевірений 2026-05-25):
+- `tsc` (web, api, shared) — ✅ 0 errors
+- Unit + contract + property API — ✅ 67/67 passed (8 файлів)
+- Component (web vitest) — ✅ 42/42 passed (4 файли)
+- E2E (Playwright) — ⏭ skipped (dev server `http://localhost:3001` офлайн)
+
+Перевірено статичним аналізом — все чисто:
+- Review cycle 2 правки на місці (`dashboard/page.tsx` cancelled guard, видалені `ChevronRight` у TopShell + `Button` у dashboard)
+- FSM нарядів через `WORK_ORDER_TRANSITIONS`, IN_PROGRESS/COMPLETED side-effects у `$transaction`
+- Inventory raw SQL використовує `"orgId"`, `"deletedAt"`, `"minStock"` у подвійних лапках (camelCase Postgres ідентифікатори)
+- DocumentNumberService raw SQL — те саме (`"currentSeq"`, `"resetPeriod"`, `"lastResetYear"`, `"updatedAt"`) + `LIMIT 1` + `FOR UPDATE`
+- `MaintenanceSchedule.findUpcoming` фільтрує `vehicle: { deletedAt: null }` — soft-deleted vehicles не з'являються в дашборді
+- `settlementAccount.update` лише у `SettlementsService.createTransaction` — інших викликів немає
+- Hard delete лише `goodBarcode.delete` (модель без `deletedAt` — legitimate)
+- Нема silent `.catch(() => {})` в API
+- TopShell має render-blocking auth guard для не-public роутів + `useEffect` redirect
+- Tailwind 4 — нема `border-(--color-...)` / `ring-(--color-...)` / `bg-(--color-...)`; всі inline `var(--color-...)` тільки у Recharts SVG props (третя сторона, не приймає Tailwind класи)
+- Blob URL revoke з `setTimeout(...100)` у `reports/page.tsx` + `xlsx-import-button.tsx`
+
+---
+
+## Попередня сесія (post-theme/hydration + sidebar collapse refactor, commits a41ba77, 3b0af99)
 
 Baseline:
 - `tsc` (web, api, shared) — 0 errors
 - Unit tests — 67/67 passed (включно з contract: auth, work-orders; property-based: fsm, inventory, settlements)
-- fast-check OK, @testing-library/react OK (але `apps/web/vitest.config.ts` відсутній — компонентні тести не запускаються), playwright OK
+- fast-check OK, @testing-library/react OK (`apps/web/vitest.config.mts` присутній — компонентні тести запускаються), playwright OK
 
 ---
 
