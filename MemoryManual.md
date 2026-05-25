@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-9adfb01 fix(tester): Bugs #42-#46 — CommandPalette backdrop close + a11y + perf
+a60d3d3 fix(review): Group 3 — SSR safety, a11y, nullable dueDate, select control fix
 ```
 
 Дата: 2026-05-25
@@ -124,6 +124,21 @@ grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app
 
 ### Gotcha — Blob URL revoke must defer past click()
 `URL.revokeObjectURL(url)` викликаний **синхронно** після `a.click()` зриває завантаження в Chromium (іноді). Завжди `setTimeout(() => URL.revokeObjectURL(url), 100)`. Патерн уже застосований у reports/page.tsx — використовуй як еталон.
+
+### Gotcha — useState(() => localStorage.getItem(...)) теж hydration mismatch (review 2026-05-25)
+Lazy initializer з `localStorage` має ТУ Ж проблему що `useState(new Date())`: SSR повертає `[]`, клієнт відразу читає збережене → перший рендер клієнта НЕ збігається з server HTML → hydration mismatch warning + DOM patch. Канон: `useState(initialEmpty)` + `useEffect(() => setX(read()), [])`. Виявлено у `useSavedFilters.ts` після початкового feat-комміту.
+
+### Gotcha — Inline edit Check/X button onMouseDown без onClick = no keyboard (review 2026-05-25)
+`onMouseDown={e => { e.preventDefault(); commit(); }}` тримає фокус на інпуті (mouse path), але keyboard користувач, який tab'ом дійшов до Check кнопки, активує її через `Enter`/`Space` що генерує `click`, а не `mousedown`. Без `onClick` кнопка мертва для клавіатури. Канон: `onMouseDown` (mouse) + `onClick` (keyboard) — обидва. `useInlineEdit.savingRef` запобігає double-commit.
+
+### Gotcha — Controlled select `value={editing.value}` зриває візуальний вибір при inline-edit (review 2026-05-25)
+Якщо select має `value={editing.value}` де `editing.value` НЕ оновлюється при `onChange` (бо ми коммітимо одразу), React насильно повертає select до старого значення під час in-flight save → користувач бачить як його вибір "відскакує". Канон: для inline-edit select використовуй `defaultValue` (uncontrolled) + `onChange` -> `commitEdit(e.target.value)` + `disabled={saving}`.
+
+### Gotcha — Prisma update з `dueDate ? new Date(dto.dueDate) : undefined` не дозволяє очистити поле (review 2026-05-25)
+Прийнятий шаблон у багатьох сервісах: `field: dto.field ? transform(dto.field) : undefined`. Це робить поле **не очищуваним**: і коли DTO не передає поле (undefined), і коли передає `null` — Prisma отримує `undefined` і ПРОПУСКАЄ оновлення. Inline-edit з кнопкою "очистити" не працює. Канон у Update методах для nullable полів: `field: dto.field === undefined ? undefined : dto.field === null ? null : transform(dto.field)`. DTO має бути типу `string | null`, з `@IsOptional() @IsISO8601()` (валідація скіпається на null).
+
+### Gotcha — onSave handler без try/catch ховає помилки від користувача (review 2026-05-25)
+Хук `useInlineEdit` ловить помилку з `onSave` тільки щоб скинути `savingRef`, але НЕ показує її. Якщо викликаюча сторона теж не loger'ує — користувач бачить що нічого не сталося (без toast про помилку, без `error` state). Канон: `onSave: async (...) => { try { await apiFetch(...); toast.success(...); load(); } catch (e) { toast.error(msg); throw e; } }` — throw зберігає editing state для повторного спробування.
 
 ---
 
@@ -688,6 +703,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `a60d3d3` | fix(review): Group 3 — SSR safety (useSavedFilters), a11y (Check/X onClick), nullable dueDate, uncontrolled priority select |
 | `aed69c3` | fix(review): Command Palette + keyboard shortcuts — 7 issues (shift+/, useMemo deps, focus trap, a11y) |
 | `bef35b7` | fix(tester): 6 bugs (settlement validate, low-stock LIMIT, CSV revoke, take, +tests) |
 | `9295d6e` | fix(review): N+1 work-categories descendants + dead findOneDetail |
