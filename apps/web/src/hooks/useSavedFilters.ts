@@ -28,7 +28,12 @@ export function useSavedFilters<T extends Record<string, unknown>>(pageKey: stri
     if (typeof window === 'undefined') return [];
     try {
       const raw = localStorage.getItem(storageKey);
-      return raw ? (JSON.parse(raw) as SavedFilter<T>[]) : [];
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      // Corruption defense: localStorage may have been overwritten by another
+      // tab, devtools, or older app version with a non-array value. Bail to []
+      // instead of crashing the page on .map().
+      return Array.isArray(parsed) ? (parsed as SavedFilter<T>[]) : [];
     } catch { return []; }
   }, [storageKey]);
 

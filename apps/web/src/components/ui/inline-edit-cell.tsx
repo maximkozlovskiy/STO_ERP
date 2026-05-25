@@ -9,7 +9,11 @@ interface InlineEditCellProps {
   saving?: boolean;
   onCommit: (value: string) => void;
   onCancel: () => void;
-  type?: 'text' | 'number';
+  /**
+   * HTML input type. `'date'` renders the native date picker (YYYY-MM-DD).
+   * `'datetime-local'` renders a date+time picker. Defaults to `'text'`.
+   */
+  type?: 'text' | 'number' | 'date' | 'datetime-local';
   className?: string;
 }
 
@@ -26,7 +30,9 @@ export function InlineEditCell({
 
   useEffect(() => {
     inputRef.current?.focus();
-    inputRef.current?.select();
+    // `select()` is unsupported on date/datetime-local inputs and throws
+    // InvalidStateError in some browsers — guard with try/catch.
+    try { inputRef.current?.select(); } catch { /* ignore */ }
   }, []);
 
   return (
@@ -81,6 +87,12 @@ interface InlineViewCellProps {
   onClick: () => void;
   className?: string;
   children?: React.ReactNode;
+  /**
+   * Override the default aria-label. When omitted, screen readers announce
+   * "Редагувати: <value>" — required because `title` alone is unreliable
+   * across NVDA/JAWS.
+   */
+  ariaLabel?: string;
 }
 
 export function InlineViewCell({
@@ -89,8 +101,11 @@ export function InlineViewCell({
   onClick,
   className,
   children,
+  ariaLabel,
 }: InlineViewCellProps) {
   if (!enabled) return <>{children ?? <span>{value}</span>}</>;
+
+  const label = ariaLabel ?? (value ? `Редагувати: ${value}` : 'Редагувати');
 
   return (
     <span
@@ -105,6 +120,7 @@ export function InlineViewCell({
         }
       }}
       title="Натисніть для редагування"
+      aria-label={label}
       className={cn(
         'group cursor-text rounded px-1 -mx-1 hover:bg-primary-subtle hover:outline-1 hover:outline-primary/30 transition-colors',
         className,

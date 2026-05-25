@@ -395,7 +395,9 @@ export default function WorkOrdersPage() {
                         // follows the user pick during the in-flight save;
                         // editing.value stores the original for comparison.
                         defaultValue={inlineEdit.editing?.value ?? wo.priority}
-                        onChange={e => inlineEdit.commitEdit(e.target.value)}
+                        // .catch(noop) — commitEdit re-throws after onSave shows toast,
+                        // so silencing the rejection prevents "Uncaught (in promise)".
+                        onChange={e => { void inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
                         onBlur={() => inlineEdit.cancelEdit()}
                         onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancelEdit(); }}
                         disabled={inlineEdit.saving}
@@ -433,10 +435,12 @@ export default function WorkOrdersPage() {
                       <InlineEditCell
                         value={wo.dueDate ? wo.dueDate.slice(0, 10) : ''}
                         saving={inlineEdit.saving}
-                        onCommit={v => inlineEdit.commitEdit(v)}
+                        // .catch(noop) — toast is already shown inside onSave;
+                        // re-throw from commitEdit keeps editing state for retry.
+                        onCommit={v => { void inlineEdit.commitEdit(v).catch(() => {}); }}
                         onCancel={inlineEdit.cancelEdit}
-                        type="text"
-                        className="w-32"
+                        type="date"
+                        className="w-36"
                       />
                     ) : (
                       <InlineViewCell
