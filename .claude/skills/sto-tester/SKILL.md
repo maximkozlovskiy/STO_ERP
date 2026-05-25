@@ -112,7 +112,20 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 #### Soft Delete
 - [ ] Всі `findFirst` / `findMany` містять `deletedAt: null`
 - [ ] **Виключення** (моделі без `deletedAt`): `SettlementAccount`, `SettlementTransaction`, `StockMovement`, `Payment`, `WorkOrderLineEmployee` — там `deletedAt` фільтр НЕ потрібен
+- [ ] **Relation-фільтри теж** — якщо `findMany` рендериться в UI з FK на іншу soft-deletable модель, додати `where: { relatedModel: { deletedAt: null } }`. Інакше видалені сутності з'являються у списках/widgets (наприклад: `MaintenanceSchedule.findUpcoming` має фільтрувати `vehicle: { deletedAt: null }`).
 - [ ] Жодного `prisma.X.delete()` на бізнес-сутностях
+
+#### API Contract — list endpoints
+- [ ] **Кожен list endpoint повертає `{ items, total, page?, limit? }`** — frontend всюди очікує `data.items.length`. Bare-array відповіді крашать з `TypeError: Cannot read properties of undefined`. Якщо `.catch(() => {})` ховає це — баг невидимий.
+  ```bash
+  # Знайти findAll що повертають голий масив
+  grep -rn "async findAll\|Promise<.*\[\]>" apps/api/src/modules/ --include="*.service.ts" | grep -v "Paginated\|Dto\[\]>\|spec"
+  ```
+
+#### Cross-service auto-side-effects
+- [ ] **Re-read entity всередині транзакції** перед auto-FSM-transition: `tx.X.update({ status: 'NEXT' })` після читання поза tx → race vікно + FSM bypass.
+- [ ] **Catch не ковтає всі помилки**: `.catch(() => {})` після `await someService.doX()` ховає реальні баги. Шаблон: `if (!msg.includes('очікувана_бізнес_помилка')) logger.warn(...)`.
+- [ ] **PATCH selective recalc**: `const next = dto.next ?? calc(...)` затирає `existing.next` якщо calc → null. Використовуй `shouldRecalc = INPUT_FIELDS.some(f => dto[f] !== undefined)`.
 
 #### Append-only таблиці
 - [ ] `StockMovement`, `SettlementTransaction` — ніколи не оновлюються і не видаляються

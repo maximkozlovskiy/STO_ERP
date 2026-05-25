@@ -344,7 +344,15 @@ grep -rn "include:.*include:" apps/api/src/ --include="*.ts" | grep -v "spec"
 - [ ] Service: вся бізнес-логіка + Prisma — ніякого `req`, `res`, HTTP-специфіки
 - [ ] `toResponseDto()` / `toDto()` присутній — жоден Prisma об'єкт не повертається напряму
 - [ ] Нові Prisma моделі мають всі sync-ready поля: `id` (UUID), `orgId`, `createdAt`, `updatedAt`, `deletedAt`, `syncVersion`
+- [ ] Нові sync-ready моделі додані у `sync.service.ts` `PULL_TABLES` (інакше mobile clients не отримають)
 - [ ] Модуль зареєстрований у `app.module.ts`
+- [ ] **List endpoint завжди повертає `{ items, total, page?, limit? }`** — не bare array. Frontend всюди очікує `data.items.length`; bare array крашне з `TypeError: Cannot read properties of undefined`. Якщо `take` фіксований (≤500) — все одно обгортай у `{ items, total }`. Перевірка:
+  ```bash
+  grep -rn "async findAll\|Promise<.*\[\]>" apps/api/src/modules/ --include="*.service.ts" | grep -v "ResponseDto\[\]\|Dto\[\]>" | head
+  # Кожен findAll має повертати Paginated*Dto, не голий масив
+  ```
+- [ ] **Cross-service auto-side-effects обробляються БЕЗ swallow-all**: `.catch(() => {})` ховає реальні баги (auto-invoice не створюється, schedule не оновлюється). Шаблон: `.catch(e => { if (!msg.includes('очікувана_бізнес_помилка')) logger.warn(...) })`
+- [ ] **Auto-FSM-transition у cross-service tx — re-read entity всередині tx + явна перевірка status**: ❌ `tx.workOrder.update({ status: 'INVOICED' })` після читання поза tx → race + FSM bypass. ✅ Read entity in tx → check `status === expected` → update.
 
 ```typescript
 // ❌ BAD — бізнес-логіка в контролері
