@@ -15,16 +15,19 @@ model: claude-opus-4-7
 **Запускай у режимі Auto:** знаходь баги → записуй у BUG_REPORT.md → виправляй одразу → без питань.
 
 Алгоритм:
-1. Виконай Крок 0 (tsc + unit tests)
-2. Пройди Крок 1 (збір багів) — записуй кожен у BUG_REPORT.md
-3. Крок 3 (авто-фікс) — виправляй від CRITICAL до LOW без зупинки
-4. Крок 4 (верифікація) — tsc + unit tests мають бути зеленими
-5. Крок 4.3 (Contract-тести Supertest) — перевір HTTP контракт нових/змінених endpoints
-6. Крок 4.4 (Property-based fast-check) — FSM і inventory/settlements інваріанти
-7. Крок 4.5 (E2E Playwright) — smoke + user flows якщо dev-сервер доступний
-8. Крок 4.6 (Component-тести Vitest) — ui/ компоненти якщо Testing Library встановлений
-9. Крок 5 — фінальний звіт
-10. Оновити MemoryManual.md — Останній commit + стан тестів (БЕЗ запиту)
+1.  Виконай Крок 0 (tsc + unit tests + dev-server start)
+2.  Пройди Крок 1 (збір багів) — записуй кожен у BUG_REPORT.md
+3.  Крок 3 (авто-фікс) — виправляй від CRITICAL до LOW без зупинки
+4.  Крок 4 (верифікація) — tsc + unit tests мають бути зеленими
+5.  Крок 4.3 (Contract-тести Supertest) — HTTP контракт нових/змінених endpoints
+6.  Крок 4.4 (Property-based fast-check) — FSM, inventory/settlements, алгоритмічні інваріанти
+7.  Крок 4.5 (E2E Playwright) — smoke + user flows (dev-сервер запущений з §0.1)
+8.  Крок 4.6 (Component-тести Vitest) — ui/ компоненти
+9.  Крок 4.7 (Функціональне тестування) — happy path для WO/Inventory/Finance/Auth
+10. Крок 4.8 (Негативне тестування) — DTO validation, бізнес-правила, auth/tenant
+11. Крок 4.9 (Нефункціональне тестування) — performance, security headers, queue resilience
+12. Крок 5 — фінальний звіт
+13. Оновити MemoryManual.md — Останній commit + стан тестів (БЕЗ запиту)
 
 > Не питай дозволу на виправлення, коміт і оновлення MemoryManual.md — все виконується автоматично.
 > Якщо fix потребує міграції БД або змін у shared — зафіксуй як CRITICAL і повідом після завершення.
@@ -39,12 +42,15 @@ model: claude-opus-4-7
 Дата: YYYY-MM-DD
 
 ## Поточний стан проєкту
-TypeScript:  ✅ 0 errors       (або ❌ N errors)
-Unit:        ✅ N/N passed     (або ❌ N failed)
-Contract:    ✅ N passed       (або ⏭ немає .contract.spec.ts)
-Property:    ✅ N passed       (або ⏭ fast-check не встановлений)
-Components:  ✅ N passed       (або ⏭ @testing-library не встановлений)
-E2E:         ✅ N passed       (або ⏭ skipped — dev server failed to start after 90s)
+TypeScript:      ✅ 0 errors       (або ❌ N errors)
+Unit:            ✅ N/N passed     (або ❌ N failed)
+Contract:        ✅ N passed       (або ⏭ немає .contract.spec.ts)
+Property:        ✅ N passed       (або ⏭ fast-check не встановлений)
+Components:      ✅ N passed       (або ⏭ @testing-library не встановлений)
+E2E:             ✅ N passed       (або ⏭ skipped — dev server failed to start after 90s)
+Functional:      ✅ N кейсів OK   (або ⚠ N пропущено)
+Negative:        ✅ N кейсів OK   (або ⚠ N відсутніх тестів)
+Non-functional:  ✅ perf/headers OK (або ⚠ N проблем)
 ```
 
 Якщо під час тестування виявились нові gotchas — дописати у відповідний розділ `MemoryManual.md` без запиту.
@@ -1530,6 +1536,468 @@ pnpm --filter @sto/web exec vitest run --reporter=verbose 2>&1 | tail -30
 
 ---
 
+## Крок 4.7 — Функціональне тестування (Functional)
+
+> **Мета:** перевірити що кожна бізнес-функція дає правильний результат при правильних вхідних даних.
+> Охоплює happy path + типові варіанти, але НЕ помилкові сценарії (вони в §4.8 негативне).
+
+### Алгоритм
+
+```
+1. Знайти git diff: які service-методи змінились
+2. Для кожного зміненого метода — пройти functional checklist нижче
+3. Написати/оновити .spec.ts тест якщо функціонального кейса немає
+4. Якщо живий API доступний (dev-server з §0.1) — дублювати через HTTP (Supertest або curl)
+```
+
+### 4.7.1 — Наряди (WorkOrders)
+
+| Функція | Тест-кейс | Очікуваний результат |
+|---|---|---|
+| Створення WO | `create({ vehicleId, counterpartyId, branchId })` | `status = DRAFT`, `number` сформований за шаблоном |
+| Перехід DRAFT → ESTIMATE | `transition(id, 'ESTIMATE')` | `status = ESTIMATE` |
+| Перехід ESTIMATE → APPROVED | `transition(id, 'APPROVED')` | `status = APPROVED` |
+| Перехід APPROVED → IN_PROGRESS | `transition(id, 'IN_PROGRESS')` | `status = IN_PROGRESS` + RESERVATION руху для кожної запчастини |
+| Перехід IN_PROGRESS → COMPLETED | `transition(id, 'COMPLETED')` | WRITEOFF + RESERVATION_RELEASE + CHARGE settlement в одній транзакції |
+| Додавання роботи | `addLine({ workOrderId, workId, normoHours, price })` | `line.amount = normoHours * price`; `totalLabor` перераховано |
+| Додавання запчастини | `addPart({ workOrderId, goodId, warehouseId, qty, price })` | `part.amount = qty * price`; `totalParts` перераховано |
+| Soft delete WO | `remove(id)` | `deletedAt` встановлено, не повертається у findAll |
+| recalcTotals | після зміни лінії | `totalAmount = totalLabor + totalParts` |
+
+```typescript
+// Шаблон функціонального тесту WorkOrder
+it('IN_PROGRESS резервує всі запчастини', async () => {
+  // Arrange
+  prisma.workOrderPart.findMany.mockResolvedValue([
+    { id: 'p1', goodId: 'g1', warehouseId: 'w1', quantity: 3, deletedAt: null },
+  ]);
+  prisma.stockItem.findFirst.mockResolvedValue({ id: 'si1', quantity: 10, reserved: 0, available: 10 });
+  prisma.$transaction.mockImplementation(cb => cb(prisma));
+
+  // Act
+  await service.transition(orgId, 'wo1', 'IN_PROGRESS');
+
+  // Assert — createMovement викликано з RESERVATION
+  expect(inventoryService.createMovement).toHaveBeenCalledWith(expect.objectContaining({
+    type: 'RESERVATION',
+    quantity: 3,
+    goodId: 'g1',
+  }));
+});
+```
+
+### 4.7.2 — Інвентар (Inventory)
+
+| Функція | Тест-кейс | Очікуваний результат |
+|---|---|---|
+| RECEIPT | `createMovement({ type: 'RECEIPT', qty: 10 })` | `stockItem.quantity += 10` |
+| RESERVATION | `createMovement({ type: 'RESERVATION', qty: 3 })` | `stockItem.reserved += 3`; `available -= 3` |
+| RESERVATION_RELEASE | `createMovement({ type: 'RESERVATION_RELEASE', qty: 3 })` | `stockItem.reserved -= 3` |
+| WRITEOFF | `createMovement({ type: 'WRITEOFF', qty: 2 })` | `stockItem.quantity -= 2` |
+| TRANSFER | `createMovement({ type: 'TRANSFER', qty: 5, toWarehouseId })` | WRITEOFF з source + RECEIPT на target |
+| Low stock | `findLowStock(orgId)` | повертає товари де `quantity < minStock` |
+| Batch FIFO | `consumeBatch(orgId, goodId, qty, 'FIFO')` | списує з найстарішого батча першим |
+| Pricing PERCENT | `calculateSalePrice(orgId, goodId, costPrice)` | `result = cost * (1 + pct/100)` |
+| applyRuleToGoods | `applyRuleToGoods(orgId, ruleId)` | PriceHistory записано тільки для товарів де ціна змінилась |
+
+### 4.7.3 — Фінанси (Settlements)
+
+| Функція | Тест-кейс | Очікуваний результат |
+|---|---|---|
+| CHARGE | `createTransaction({ type: 'CHARGE', amount: 1000 })` | `account.balance += 1000` |
+| PAYMENT | `createTransaction({ type: 'PAYMENT', amount: 500 })` | `account.balance -= 500` |
+| Нульовий баланс | CHARGE(100) + PAYMENT(100) | balance = 0 |
+| Автоматичний рахунок | WO → COMPLETED | Invoice created + CHARGE transaction |
+| Reconciliation | `createReconciliationAct(orgId, counterpartyId, period)` | `openingBalance + charges - payments = closingBalance` |
+
+```typescript
+// Шаблон: перевірка формули reconciliation
+it('reconciliation: openingBalance + charges - payments = closingBalance', async () => {
+  const txs = [
+    { type: 'CHARGE', amount: 1000 },
+    { type: 'CHARGE', amount: 500 },
+    { type: 'PAYMENT', amount: 300 },
+  ];
+  const opening = 200;
+  const closing = txs.reduce((b, t) =>
+    t.type === 'CHARGE' ? b + t.amount : b - t.amount, opening);
+  expect(closing).toBe(1400); // 200 + 1000 + 500 - 300
+});
+```
+
+### 4.7.4 — CRM
+
+| Функція | Тест-кейс | Очікуваний результат |
+|---|---|---|
+| Пошук контрагента | `findAll({ q: 'Петренко' })` | повертає тільки записи де name містить 'Петренко' |
+| Гараж клієнта | `addVehicle(counterpartyId, vehicleId)` | `CustomerGarage` запис створено |
+| Soft delete | `removeCounterparty(id)` | `deletedAt` встановлено; зв'язані WO не видалено |
+
+### 4.7.5 — Аутентифікація
+
+| Функція | Тест-кейс | Очікуваний результат |
+|---|---|---|
+| Login | `login({ login, password })` | повертає `{ accessToken, refreshToken, employee }` |
+| Refresh | `refresh(validRefreshToken)` | повертає новий `accessToken` |
+| Logout | `logout(refreshToken)` | токен інвалідований; повторний refresh → 401 |
+| Зміна паролю | `changePassword({ old, new })` | нові credentials працюють; старі → 401 |
+
+---
+
+## Крок 4.8 — Негативне тестування (Negative)
+
+> **Мета:** перевірити що система **відхиляє неправильні вхідні дані** з коректним HTTP-кодом
+> і зрозумілим українським повідомленням — і НЕ крашиться, НЕ зберігає некоректні дані.
+
+### Алгоритм
+
+```
+Для кожного нового/зміненого endpoint:
+  1. Перевірити DTO-валідацію (відсутні поля, неправильні типи, граничні значення)
+  2. Перевірити бізнес-правила (заборонені FSM-переходи, від'ємні залишки, cross-tenant)
+  3. Перевірити auth (без токена → 401; неправильна роль → 403; чужий orgId → 404/403)
+  4. Записати знайдений пропуск у BUG_REPORT.md як MEDIUM або HIGH
+```
+
+### 4.8.1 — Негативні кейси: DTO / Validation
+
+```typescript
+// Шаблон: негативні тести для кожного POST/PATCH endpoint
+describe('POST /work-orders — негативні кейси', () => {
+  it('400 при відсутньому vehicleId', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/work-orders')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ counterpartyId: 'c-uuid', branchId: 'b-uuid' }); // без vehicleId
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBeDefined(); // повідомлення про помилку присутнє
+  });
+
+  it('400 при некоректному UUID', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/work-orders')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ vehicleId: 'not-a-uuid', counterpartyId: 'c-uuid', branchId: 'b-uuid' });
+    expect(res.status).toBe(400);
+  });
+
+  it('400 при від\'ємній кількості запчастини', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/work-orders/wo-id/parts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ goodId: 'g-uuid', warehouseId: 'w-uuid', quantity: -5, price: 100 });
+    expect(res.status).toBe(400);
+  });
+});
+```
+
+| Endpoint | Негативний кейс | Очікуваний код |
+|---|---|---|
+| `POST /work-orders` | без `vehicleId` | 400 |
+| `POST /work-orders` | `vehicleId` — не UUID | 400 |
+| `POST /stock-movements` | `quantity = 0` | 400 |
+| `POST /stock-movements` | `quantity < 0` для RECEIPT | 400 |
+| `POST /settlements/transactions` | `amount = 0` | 400 |
+| `POST /settlements/transactions` | `amount < 0` | 400 |
+| `PATCH /work-orders/:id/status` | невалідний FSM-перехід | 400 |
+| `GET /work-orders/:id` | чужий orgId | 404 |
+| `DELETE /goods/:id` | товар у відкритому WO | 409 або 400 |
+| `POST /auth/login` | неправильний пароль | 401 |
+| `POST /auth/login` | видалений користувач | 401 |
+| `POST /auth/refresh` | протухлий токен | 401 |
+
+### 4.8.2 — Негативні кейси: Бізнес-правила
+
+```typescript
+describe('Inventory — негативні кейси', () => {
+  it('RESERVATION: 400 якщо available < qty', async () => {
+    // available = 2, запитуємо 5
+    stockItem.mockResolvedValue({ quantity: 5, reserved: 3, available: 2 });
+    await expect(
+      inventoryService.createMovement({ type: 'RESERVATION', quantity: 5, goodId: 'g1', warehouseId: 'w1', orgId }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('WRITEOFF: 400 якщо quantity < qty', async () => {
+    stockItem.mockResolvedValue({ quantity: 3, reserved: 0, available: 3 });
+    await expect(
+      inventoryService.createMovement({ type: 'WRITEOFF', quantity: 5, goodId: 'g1', warehouseId: 'w1', orgId }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('RESERVATION_RELEASE: 400 при qty > reserved', async () => {
+    stockItem.mockResolvedValue({ quantity: 10, reserved: 2, available: 8 });
+    await expect(
+      inventoryService.createMovement({ type: 'RESERVATION_RELEASE', quantity: 5, goodId: 'g1', warehouseId: 'w1', orgId }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('RESERVATION_RELEASE: 400 при позитивному qty (має бути від\'ємним або окремий тип)', async () => {
+    // залежить від реалізації — перевірити документацію сервісу
+  });
+});
+
+describe('WorkOrder FSM — негативні кейси', () => {
+  it('DRAFT → COMPLETED заборонено', async () => {
+    workOrder.mockResolvedValue({ status: 'DRAFT' });
+    await expect(service.transition(orgId, 'wo1', 'COMPLETED')).rejects.toThrow(BadRequestException);
+  });
+
+  it('ARCHIVED → будь-який статус заборонено', async () => {
+    workOrder.mockResolvedValue({ status: 'ARCHIVED' });
+    const allStatuses = ['DRAFT', 'ESTIMATE', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+    for (const status of allStatuses) {
+      await expect(service.transition(orgId, 'wo1', status as WorkOrderStatus))
+        .rejects.toThrow(BadRequestException);
+    }
+  });
+
+  it('CANCELLED → будь-який статус заборонено', async () => {
+    workOrder.mockResolvedValue({ status: 'CANCELLED' });
+    await expect(service.transition(orgId, 'wo1', 'DRAFT')).rejects.toThrow(BadRequestException);
+  });
+});
+```
+
+| Бізнес-правило | Сценарій | Очікувана поведінка |
+|---|---|---|
+| RESERVATION | `available < qty` | `BadRequestException('Недостатньо...')` |
+| WRITEOFF | `quantity < qty` | `BadRequestException` |
+| FSM ARCHIVED | перехід у будь-який стан | `BadRequestException` |
+| FSM DRAFT→COMPLETED | прямий перехід | `BadRequestException` |
+| SettlementAccount | відсутній для контрагента | `NotFoundException` |
+| Batch без залишку | `consumeBatch` коли всі batches = 0 | `BadRequestException` |
+| Pricing PERCENT | `percentValue = -200` (ціна < 0) | `Math.max(0, result) = 0`, не падає |
+
+### 4.8.3 — Негативні кейси: Auth / Tenant Isolation
+
+```typescript
+describe('Tenant isolation — негативні кейси', () => {
+  it('GET /work-orders/:id — 404 якщо WO належить іншому orgId', async () => {
+    // WO існує, але orgId відрізняється
+    prisma.workOrder.findFirst.mockResolvedValue(null); // де where: { id, orgId }
+    await expect(service.findOne('other-org', 'wo-id')).rejects.toThrow(NotFoundException);
+  });
+
+  it('PATCH /goods/:id — 404 якщо goodId з іншого org', async () => {
+    prisma.good.findFirst.mockResolvedValue(null);
+    await expect(service.update('org-a', 'good-belongs-to-org-b', {})).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('Auth — негативні кейси', () => {
+  it('401 без Authorization header', async () => {
+    const res = await request(app.getHttpServer()).get('/work-orders');
+    expect(res.status).toBe(401);
+  });
+
+  it('403 якщо MECHANIC звертається до /goods (потребує STOREKEEPER+)', async () => {
+    mockJwtGuard.canActivate.mockReturnValue(true); // valid JWT
+    // Симулюємо MECHANIC role через RolesGuard mock
+    mockRolesGuard.canActivate.mockReturnValue(false);
+    const res = await request(app.getHttpServer())
+      .get('/goods')
+      .set('Authorization', 'Bearer mechanic-token');
+    expect(res.status).toBe(403);
+  });
+
+  it('401 при протухлому access token', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/work-orders')
+      .set('Authorization', 'Bearer expired.jwt.token');
+    expect(res.status).toBe(401);
+  });
+});
+```
+
+### 4.8.4 — Checklist негативного тестування
+
+```bash
+# Grep: endpoints що можуть не мати захисту від від'ємних значень
+grep -rn "@IsNumber\|@IsInt\|@IsPositive\|@Min" apps/api/src/modules/ --include="*.dto.ts" | grep -v "@Min(1\|@Min(0\|@IsPositive"
+# Поля де відсутній @IsPositive або @Min(0) — потенційно приймають від'ємні значення
+
+# Grep: endpoints без ParseUUIDPipe для :id параметрів
+grep -rn "@Param('id')" apps/api/src/ --include="*.controller.ts" | grep -v "ParseUUIDPipe"
+# Без ParseUUIDPipe невалідний UUID → Prisma P2023 → HTTP 500 замість 400
+```
+
+- [ ] Кожен `POST`/`PATCH` повертає `400` при відсутньому обов'язковому полі
+- [ ] Кожен `:id` параметр має `ParseUUIDPipe` (або `new ParseUUIDPipe({ optional: true })`)
+- [ ] `quantity: 0` і `amount: 0` → 400 (захист на рівні DTO `@Min(1)` або `@IsPositive()`)
+- [ ] `quantity < 0` для RECEIPT/RESERVATION/WRITEOFF → 400
+- [ ] RESERVATION з `qty > available` → 400 (бізнес-правило)
+- [ ] Невалідний FSM-перехід → 400 з українським повідомленням
+- [ ] Без `Authorization` → 401 на всі захищені endpoints
+- [ ] Неправильна роль → 403 (MECHANIC не може CRUD goods/pricing)
+- [ ] Чужий `orgId` у :id → 404 (не 500, не 200 з чужими даними)
+- [ ] Протухлий токен → 401 (не 500)
+- [ ] `body: {}` (порожній) → 400 з описом відсутніх полів
+
+---
+
+## Крок 4.9 — Нефункціональне тестування (Non-Functional)
+
+> **Мета:** перевірити характеристики системи що **не пов'язані з бізнес-логікою**:
+> продуктивність, безпека заголовків, стійкість до навантаження, поведінка під помилками.
+
+### 4.9.1 — Продуктивність відповідей (Response Time)
+
+```bash
+# Виміряти час відповіді ключових endpoints (якщо dev-сервер запущений)
+curl -o /dev/null -s -w "\n%{time_total}s — GET /work-orders\n" \
+  -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/work-orders
+
+curl -o /dev/null -s -w "\n%{time_total}s — GET /stock-items\n" \
+  -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/stock-items
+
+curl -o /dev/null -s -w "\n%{time_total}s — GET /sync/pull\n" \
+  -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/sync/pull
+
+# Порогові значення (локальна БД з seed даними ~1000 записів):
+# List endpoints:  < 200ms
+# Sync pull:       < 500ms
+# Create/Update:   < 300ms
+# Якщо перевищено — MEDIUM bug (відсутній індекс або N+1)
+```
+
+- [ ] `GET /work-orders?page=1&limit=20` — `< 200ms` при 1000+ WO в БД
+- [ ] `GET /stock-items` — `< 200ms` при 500+ позицій
+- [ ] `GET /sync/pull?since=0` — `< 500ms` (повний initial sync)
+- [ ] `GET /sync/pull?since=<recent>` — `< 100ms` (delta sync, мало змін)
+- [ ] `POST /work-orders` + transition → IN_PROGRESS — `< 500ms` (включає RESERVATION рухи)
+
+```typescript
+// Перевірка через Supertest (таймаут як SLA)
+it('GET /work-orders відповідає за < 200ms', async () => {
+  const start = Date.now();
+  const res = await request(app.getHttpServer())
+    .get('/work-orders')
+    .query({ page: 1, limit: 20 })
+    .set('Authorization', `Bearer ${token}`);
+  const elapsed = Date.now() - start;
+
+  expect(res.status).toBe(200);
+  expect(elapsed).toBeLessThan(200);
+}, 5_000); // Jest/Vitest timeout окремо від SLA
+```
+
+### 4.9.2 — HTTP Security Headers
+
+```bash
+# Перевірити security headers якщо dev-сервер запущений
+curl -I http://localhost:3000/api/health 2>/dev/null | grep -iE "x-content-type|x-frame|strict-transport|content-security|x-xss"
+```
+
+- [ ] `X-Content-Type-Options: nosniff` — захист від MIME sniffing
+- [ ] `X-Frame-Options: DENY` або `SAMEORIGIN` — захист від clickjacking
+- [ ] `X-XSS-Protection: 1; mode=block` (застарілий але безпечний)
+- [ ] `Content-Security-Policy` присутній на web-фронті (не обов'язково на API)
+- [ ] `Cache-Control: no-store` на `/auth/token` та `/auth/refresh` — токени не кешуються
+
+```typescript
+// Supertest: перевірка security headers
+it('security headers присутні', async () => {
+  const res = await request(app.getHttpServer()).get('/health');
+  expect(res.headers['x-content-type-options']).toBe('nosniff');
+  expect(res.headers['x-frame-options']).toMatch(/DENY|SAMEORIGIN/);
+});
+```
+
+### 4.9.3 — Стійкість до помилок БД (Database Resilience)
+
+```bash
+# Статичний аналіз: знайти $transaction без timeout
+grep -rn "prisma.\$transaction" apps/api/src/ --include="*.ts" | grep -v "timeout:"
+# $transaction без явного timeout може зависнути при блокуванні → deadlock
+```
+
+- [ ] `prisma.$transaction([...], { timeout: 5000 })` — явний timeout для всіх транзакцій
+- [ ] Prisma `connectionLimit` налаштований у `datasource` або env (`DATABASE_URL?connection_limit=10`)
+- [ ] При `PrismaClientKnownRequestError` (P2002 UniqueConstraint, P2025 NotFound) — сервіс повертає `ConflictException` або `NotFoundException`, не `InternalServerError`
+
+```typescript
+// Тест: Prisma P2002 (unique constraint) → 409 Conflict
+it('409 при дублікаті унікального поля', async () => {
+  prisma.employee.create.mockRejectedValueOnce(
+    Object.assign(new Error(), { code: 'P2002', meta: { target: ['login'] } }),
+  );
+  const res = await request(app.getHttpServer())
+    .post('/employees')
+    .send({ login: 'existing-login', ... });
+  expect(res.status).toBe(409);
+});
+
+// Тест: Prisma P2025 (record not found) → 404
+it('404 при оновленні неіснуючого запису', async () => {
+  prisma.workOrder.update.mockRejectedValueOnce(
+    Object.assign(new Error(), { code: 'P2025' }),
+  );
+  await expect(service.update(orgId, 'non-existent-id', {})).rejects.toThrow(NotFoundException);
+});
+```
+
+### 4.9.4 — Стійкість черги BullMQ (Queue Resilience)
+
+```bash
+# Знайти processor без try/catch (помилка не прокинута → BullMQ не робить retry)
+grep -rn "process(" apps/api/src/ --include="*.processor.ts" -A 20 | grep -v "try {"
+```
+
+- [ ] Кожен `@Process()` метод обгорнутий у `try/catch` і **прокидає** помилку далі (`throw e`) — без цього BullMQ не буде retry
+- [ ] При Redis недоступності (тест: `REDIS_URL=redis://invalid`) — API стартує, але черга в `waiting` стані (не крашиться весь процес)
+- [ ] `attempts` і `backoff` є у кожному `.add()` виклику
+
+```typescript
+// Тест: processor прокидає помилку для retry
+it('processor re-throws error для BullMQ retry', async () => {
+  smsService.send.mockRejectedValueOnce(new Error('Network error'));
+
+  // Processor має throw, щоб BullMQ marked job як failed і retried
+  await expect(processor.handleSmsSend({ phone: '+380...', message: 'test' }))
+    .rejects.toThrow('Network error');
+});
+```
+
+### 4.9.5 — Пам'ять і ресурси
+
+```bash
+# Знайти потенційні витоки: findMany без take у list endpoints
+grep -rn "findMany(" apps/api/src/modules/ --include="*.service.ts" | grep -v "take:" | grep -v "spec"
+
+# Знайти великі include без select
+grep -rn "include:" apps/api/src/modules/ --include="*.service.ts" | grep -v "select:" | head -20
+```
+
+- [ ] Немає `findMany` без `take` (при N→∞ записів → OOM)
+- [ ] Файлові потоки (MinIO upload/download) закриваються після завершення
+- [ ] `Buffer.alloc` у циклах — звільняються (не накопичуються в heap)
+- [ ] `setInterval` / `setTimeout` у NestJS services — очищаються в `onModuleDestroy`
+
+### 4.9.6 — Checklist нефункціонального тестування
+
+```bash
+# Автоматичний збір: всі $transaction без timeout
+grep -rn "prisma.\$transaction" apps/api/src/ --include="*.ts" -B2 -A10 \
+  | grep -v "timeout:" | grep "transaction("
+
+# Перевірити processor retry pattern
+grep -rn "@Process\|@Processor" apps/api/src/ --include="*.ts" -l \
+  | while read f; do
+    grep -L "throw\|re-throw" "$f" && echo "  MISSING re-throw in: $f"
+  done
+```
+
+- [ ] Response time list endpoints < 200ms (локально з seed даними)
+- [ ] Security headers присутні (`X-Content-Type-Options`, `X-Frame-Options`)
+- [ ] `$transaction` з явним `timeout: 5000`
+- [ ] `PrismaClientKnownRequestError P2002` → `ConflictException` (не 500)
+- [ ] `PrismaClientKnownRequestError P2025` → `NotFoundException` (не 500)
+- [ ] BullMQ processors re-throw помилки
+- [ ] Усі `findMany` мають `take` ліміт
+
+---
+
 ## Крок 5 — Фінальний звіт
 
 Виведи підсумок:
@@ -1547,7 +2015,10 @@ Unit тести:        ✅ N passed / 0 failed
 Contract тести:    ✅ N passed  (або ⏭ немає .contract.spec.ts)
 Property-based:    ✅ N passed  (або ⏭ fast-check не встановлений)
 Component тести:   ✅ N passed  (або ⏭ @testing-library не встановлений)
-E2E (Playwright):  ✅ N passed / 0 failed  (або ⏭ dev server offline)
+E2E (Playwright):  ✅ N passed / 0 failed  (або ⏭ dev server failed to start after 90s)
+Функціональне:     ✅ N кейсів перевірено  (або ⚠ N пропущено)
+Негативне:         ✅ N кейсів перевірено  (або ⚠ N відсутніх негативних тестів)
+Нефункціональне:   ✅ response < 200ms, headers OK  (або ⚠ N проблем)
 Build:             ✅ OK
 
 Коміти:
