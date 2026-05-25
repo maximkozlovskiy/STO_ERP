@@ -417,7 +417,13 @@ export default function PricingRulesClient() {
       {applyResult && (
         <div className="mb-4 text-[13px] text-success bg-success-subtle border border-success/20 rounded-lg px-4 py-2.5 flex items-center justify-between">
           <span>{applyResult.message}</span>
-          <button onClick={() => setApplyResult(null)} className="text-muted-foreground hover:text-foreground ml-4">×</button>
+          <button
+            onClick={() => setApplyResult(null)}
+            aria-label="Закрити сповіщення"
+            className="text-muted-foreground hover:text-foreground ml-4"
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -489,16 +495,18 @@ export default function PricingRulesClient() {
                       disabled={applyingId === rule.id || !rule.isActive}
                       loading={applyingId === rule.id}
                       title="Застосувати до всіх товарів"
+                      aria-label="Застосувати правило до всіх товарів"
                     >
-                      <Zap className="h-3.5 w-3.5" />
+                      <Zap className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setEditRule(rule)}
                       title="Редагувати"
+                      aria-label="Редагувати правило"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -507,8 +515,9 @@ export default function PricingRulesClient() {
                       disabled={deletingId === rule.id}
                       className="text-destructive/60 hover:text-destructive"
                       title="Видалити"
+                      aria-label="Видалити правило"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 </TableCell>

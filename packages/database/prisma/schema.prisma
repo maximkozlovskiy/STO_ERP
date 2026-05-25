@@ -935,6 +935,7 @@ model StockBatch {
 
   @@index([orgId, goodId, warehouseId, isActive])
   @@index([orgId, goodId, expiryDate])
+  @@index([orgId, syncVersion])
   @@map("stock_batches")
 }
 
@@ -982,6 +983,7 @@ model PricingRule {
 
   @@index([orgId, isActive, priority])
   @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
   @@map("pricing_rules")
 }
 

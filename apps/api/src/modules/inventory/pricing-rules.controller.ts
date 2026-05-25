@@ -71,6 +71,16 @@ export class PricingRulesController {
     });
     if (!existing) throw new NotFoundException('Правило не знайдено');
 
+    // If goodId is being changed, verify the new value belongs to the same org
+    // (prevent cross-tenant rule attachment via update)
+    if (dto.goodId) {
+      const good = await this.prisma.good.findFirst({
+        where: { id: dto.goodId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!good) throw new NotFoundException('Товар не знайдено');
+    }
+
     const rule = await this.prisma.pricingRule.update({
       where: { id },
       data: dto,

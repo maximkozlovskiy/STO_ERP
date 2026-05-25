@@ -403,9 +403,10 @@ export default function WorkOrderCardPage() {
                       <button
                         onClick={e => { e.stopPropagation(); setBatchViewer({ goodId: p.goodId, warehouseId: p.warehouseId }); }}
                         title="Переглянути партії"
+                        aria-label={`Переглянути партії товару ${p.goodName}`}
                         className="p-0.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
                       >
-                        <Layers className="h-3.5 w-3.5" />
+                        <Layers className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     </div>
                     <p className="text-xs text-muted-foreground">{p.quantity} шт × {p.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
