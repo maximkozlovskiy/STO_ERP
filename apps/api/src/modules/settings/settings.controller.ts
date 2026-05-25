@@ -19,6 +19,7 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import {
   BranchSettingsResponseDto,
   OrganisationSettingsResponseDto,
+  UiFeatures,
   UpdateBranchSettingsDto,
   UpdateOrganisationSettingsDto,
 } from './settings.dto';
@@ -37,6 +38,18 @@ export class SettingsController {
   @ApiResponse({ status: 200, type: OrganisationSettingsResponseDto })
   getOrganisation(@OrgContext() orgId: string) {
     return this.service.getOrganisationSettings(orgId);
+  }
+
+  // UI feature flags must be readable by ALL authenticated roles
+  // (work-orders page is shown to RECEPTIONIST/MECHANIC/ACCOUNTANT and
+  // every such page mounts useUiFeatures). Restricting to OWNER/ADMIN
+  // would force a 403 on every navigation for non-admin staff.
+  @Get('ui-features')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'UI feature flags (доступно всім авторизованим)' })
+  async getUiFeatures(@OrgContext() orgId: string): Promise<UiFeatures> {
+    const settings = await this.service.getOrganisationSettings(orgId);
+    return settings.uiFeatures;
   }
 
   @Patch('organisation')
