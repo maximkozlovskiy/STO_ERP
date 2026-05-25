@@ -1,34 +1,43 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { CompletionActStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
-import { CompletionActResponseDto, CompletionActLineDto, SignCompletionActDto } from './completion-acts.dto';
+import {
+  CompletionActResponseDto, CompletionActLineDto, SignCompletionActDto,
+  PaginatedCompletionActsDto,
+} from './completion-acts.dto';
 
 @Injectable()
 export class CompletionActsService {
+  private readonly logger = new Logger(CompletionActsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly docNumbers: DocumentNumberService,
     private readonly invoices: InvoicesService,
   ) {}
 
-  async findAll(orgId: string, workOrderId?: string): Promise<CompletionActResponseDto[]> {
-    const items = await this.prisma.completionAct.findMany({
-      where: { orgId, deletedAt: null, ...(workOrderId ? { workOrderId } : {}) },
-      include: {
-        workOrder: {
-          select: {
-            number: true,
-            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-            vehicle: { select: { make: true, model: true, licensePlate: true } },
+  async findAll(orgId: string, workOrderId?: string): Promise<PaginatedCompletionActsDto> {
+    const where = { orgId, deletedAt: null, ...(workOrderId ? { workOrderId } : {}) };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.completionAct.findMany({
+        where,
+        include: {
+          workOrder: {
+            select: {
+              number: true,
+              counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+              vehicle: { select: { make: true, model: true, licensePlate: true } },
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-    return items.map(item => this.toDto(item, []));
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      this.prisma.completionAct.count({ where }),
+    ]);
+    return { items: items.map(item => this.toDto(item)), total };
   }
 
   async findOne(orgId: string, id: string): Promise<CompletionActResponseDto> {
@@ -41,10 +50,14 @@ export class CompletionActsService {
             counterparty: { select: { firstName: true, lastName: true, companyName: true } },
             vehicle: { select: { make: true, model: true, licensePlate: true } },
             lines: {
+              where: { deletedAt: null },
+              orderBy: { createdAt: 'asc' },
               include: { work: { select: { name: true } } },
               take: 500,
             },
             parts: {
+              where: { deletedAt: null },
+              orderBy: { createdAt: 'asc' },
               include: { good: { select: { name: true, unit: true } } },
               take: 500,
             },
@@ -63,8 +76,8 @@ export class CompletionActsService {
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         vehicle: { select: { make: true, model: true, licensePlate: true } },
-        lines: { include: { work: { select: { name: true } } }, take: 500 },
-        parts: { include: { good: { select: { name: true, unit: true } } }, take: 500 },
+        lines: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' }, include: { work: { select: { name: true } } }, take: 500 },
+        parts: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' }, include: { good: { select: { name: true, unit: true } } }, take: 500 },
       },
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
@@ -97,16 +110,18 @@ export class CompletionActsService {
   }
 
   async sign(orgId: string, id: string, dto: SignCompletionActDto): Promise<CompletionActResponseDto> {
-    const act = await this.prisma.completionAct.findFirst({
-      where: { id, orgId, deletedAt: null },
-      include: { workOrder: { select: { id: true, counterpartyId: true, status: true, totalAmount: true } } },
-    });
-    if (!act) throw new NotFoundException('Акт не знайдено');
-    if (act.status !== CompletionActStatus.DRAFT) {
-      throw new BadRequestException('Підписати можна лише чернетку акту');
-    }
+    let workOrderId: string | null = null;
 
     await this.prisma.$transaction(async (tx) => {
+      const act = await tx.completionAct.findFirst({
+        where: { id, orgId, deletedAt: null },
+        include: { workOrder: { select: { id: true, status: true } } },
+      });
+      if (!act) throw new NotFoundException('Акт не знайдено');
+      if (act.status !== CompletionActStatus.DRAFT) {
+        throw new BadRequestException('Підписати можна лише чернетку акту');
+      }
+
       await tx.completionAct.update({
         where: { id, orgId },
         data: {
@@ -118,20 +133,23 @@ export class CompletionActsService {
         },
       });
 
-      if (act.workOrder && act.workOrder.status === 'COMPLETED') {
+      if (act.workOrder?.status === 'COMPLETED') {
         await tx.workOrder.update({
           where: { id: act.workOrder.id, orgId },
           data: { status: 'INVOICED' },
         });
       }
+      workOrderId = act.workOrder?.id ?? null;
     });
 
-    // Auto-generate invoice after sign
-    if (act.workOrder) {
+    if (workOrderId) {
       try {
-        await this.invoices.createFromWorkOrder(orgId, act.workOrder.id);
-      } catch {
-        // Invoice may already exist — not a fatal error
+        await this.invoices.createFromWorkOrder(orgId, workOrderId);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!msg.includes('вже існує активний рахунок')) {
+          this.logger.warn(`Auto-invoice failed for act ${id}: ${msg}`);
+        }
       }
     }
 
@@ -183,7 +201,7 @@ export class CompletionActsService {
       counterparty: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
       vehicle: { make: string; model: string; licensePlate: string | null } | null;
     } | null;
-  }, lines: CompletionActLineDto[]): CompletionActResponseDto {
+  }, lines?: CompletionActLineDto[]): CompletionActResponseDto {
     const cp = act.workOrder?.counterparty;
     const counterpartyName = (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || undefined;
     const v = act.workOrder?.vehicle;
@@ -192,7 +210,7 @@ export class CompletionActsService {
       id: act.id, orgId: act.orgId, workOrderId: act.workOrderId, number: act.number, status: act.status,
       signedAt: act.signedAt, signedBy: act.signedBy, clientPhone: act.clientPhone, notes: act.notes,
       workOrderNumber: act.workOrder?.number, counterpartyName, vehicleLabel,
-      lines,
+      ...(lines !== undefined ? { lines } : {}),
       createdAt: act.createdAt, updatedAt: act.updatedAt,
     };
   }

@@ -11,7 +11,11 @@ export class MaintenanceSchedulesService {
 
   async findAll(orgId: string, vehicleId?: string): Promise<MaintenanceScheduleResponseDto[]> {
     const items = await this.prisma.maintenanceSchedule.findMany({
-      where: { orgId, deletedAt: null, ...(vehicleId ? { vehicleId } : {}) },
+      where: {
+        orgId, deletedAt: null,
+        vehicle: { deletedAt: null },
+        ...(vehicleId ? { vehicleId } : {}),
+      },
       include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
       orderBy: { nextMaintenanceDate: 'asc' },
       take: 200,
@@ -34,6 +38,7 @@ export class MaintenanceSchedulesService {
     const items = await this.prisma.maintenanceSchedule.findMany({
       where: {
         orgId, deletedAt: null, isActive: true,
+        vehicle: { deletedAt: null },
         nextMaintenanceDate: { lte: cutoff },
       },
       include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
@@ -72,15 +77,25 @@ export class MaintenanceSchedulesService {
     const existing = await this.prisma.maintenanceSchedule.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!existing) throw new NotFoundException('Графік ТО не знайдено');
 
+    // Recalculate next* only when an input that affects the calculation changes.
+    const recalcAffectingFields = ['lastMaintenanceDate', 'lastMaintenanceMileage', 'intervalDays', 'intervalMileage'] as const;
+    const shouldRecalc = recalcAffectingFields.some(f => dto[f] !== undefined);
+
     const lastDate = dto.lastMaintenanceDate !== undefined
       ? (dto.lastMaintenanceDate ? new Date(dto.lastMaintenanceDate) : null)
       : existing.lastMaintenanceDate;
-    const intervalDays = dto.intervalDays ?? existing.intervalDays;
-    const intervalMileage = dto.intervalMileage ?? existing.intervalMileage;
+    const intervalDays = dto.intervalDays !== undefined ? dto.intervalDays : existing.intervalDays;
+    const intervalMileage = dto.intervalMileage !== undefined ? dto.intervalMileage : existing.intervalMileage;
     const lastMileage = dto.lastMaintenanceMileage !== undefined ? dto.lastMaintenanceMileage : existing.lastMaintenanceMileage;
 
-    const nextDate = this.calcNextDate(lastDate, intervalDays ?? undefined);
-    const nextMileage = dto.nextMaintenanceMileage ?? this.calcNextMileage(lastMileage ?? undefined, intervalMileage ?? undefined);
+    const nextDate = shouldRecalc
+      ? this.calcNextDate(lastDate, intervalDays ?? undefined)
+      : existing.nextMaintenanceDate;
+    const nextMileage = dto.nextMaintenanceMileage !== undefined
+      ? dto.nextMaintenanceMileage
+      : shouldRecalc
+        ? this.calcNextMileage(lastMileage ?? undefined, intervalMileage ?? undefined)
+        : existing.nextMaintenanceMileage;
 
     const item = await this.prisma.maintenanceSchedule.update({
       where: { id, orgId },

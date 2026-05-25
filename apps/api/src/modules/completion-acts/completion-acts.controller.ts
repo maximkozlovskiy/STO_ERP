@@ -6,7 +6,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { UserRole } from '@prisma/client';
 import { CompletionActsService } from './completion-acts.service';
-import { CompletionActResponseDto, SignCompletionActDto } from './completion-acts.dto';
+import { CompletionActResponseDto, PaginatedCompletionActsDto, SignCompletionActDto } from './completion-acts.dto';
 
 @ApiTags('Completion Acts')
 @Controller('completion-acts')
@@ -17,7 +17,7 @@ export class CompletionActsController {
 
   @Get()
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER, UserRole.ACCOUNTANT)
-  @ApiResponse({ status: 200, type: [CompletionActResponseDto] })
+  @ApiResponse({ status: 200, type: PaginatedCompletionActsDto })
   findAll(@OrgContext() orgId: string, @Query('workOrderId') workOrderId?: string) {
     return this.service.findAll(orgId, workOrderId);
   }

@@ -22,6 +22,7 @@ const PULL_TABLES = [
   'stock_items',
   'invoices', 'payments',
   'calendar_slots',
+  'maintenance_schedules', 'completion_acts',
 ] as const;
 
 // Tables safe for push — excludes append-only logs and FSM-controlled models

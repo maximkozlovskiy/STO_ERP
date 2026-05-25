@@ -30,7 +30,12 @@ export class CompletionActResponseDto {
   @ApiPropertyOptional() workOrderNumber?: string;
   @ApiPropertyOptional() counterpartyName?: string;
   @ApiPropertyOptional() vehicleLabel?: string;
-  @ApiProperty({ type: [CompletionActLineDto] }) lines!: CompletionActLineDto[];
+  @ApiPropertyOptional({ type: [CompletionActLineDto] }) lines?: CompletionActLineDto[];
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+}
+
+export class PaginatedCompletionActsDto {
+  @ApiProperty({ type: [CompletionActResponseDto] }) items!: CompletionActResponseDto[];
+  @ApiProperty() total!: number;
 }

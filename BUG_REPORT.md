@@ -1,313 +1,176 @@
 # BUG_REPORT.md — STO ERP
 
-Дата: 2026-05-24
-Сесія: /sto-tester цикл після додавання Playwright секції в SKILL.md
+Дата: 2026-05-25
+Сесія: /sto-tester цикл після Phase 17 (Maintenance Schedules + Completion Acts + збагачення моделей)
+
+TypeScript baseline: ✅ 0 errors (api/web/shared)
+Unit tests baseline: ✅ 67/67 passed
 
 ---
 
-## Bug #1 — [MEDIUM] Дубль сервісу нумерації документів
+## Bug #1 — [CRITICAL] CompletionActsService.findAll повертає масив, frontend очікує `{ items }`
 
-**Файл:** `apps/api/src/modules/settings/document-numbering.service.ts`
-**Severity:** MEDIUM
-**Категорія:** business-logic / dead-code
+**Файл:** `apps/api/src/modules/completion-acts/completion-acts.service.ts:16`
+**Severity:** CRITICAL
+**Категорія:** business-logic / api-contract
 
 **Опис:**
-У проєкті існує **два** окремих сервіси нумерації документів:
-- `apps/api/src/modules/document-number/document-number.service.ts` — `DocumentNumberService` (вживається у `work-orders`, `invoices`, `purchase-orders`, `stock-documents`)
-- `apps/api/src/modules/settings/document-numbering.service.ts` — `DocumentNumberingService` (зареєстрований в `settings.module.ts`, але нікуди не імпортується)
-
-Обидва читають одну й ту саму таблицю `document_number_configs`, але алгоритми reset/формат відрізняються (різні стратегії reset, різний date_format). Якщо колись `DocumentNumberingService` випадково підключать — отримаємо неконсистентну нумерацію між модулями. Це потенційна корупція даних (дублікати номерів між WO і Invoice неможливі через окремі `document_type`, але неоднакові правила reset порушать audit trail).
+Сервіс повертає `Promise<CompletionActResponseDto[]>` — голий масив без обгортки.
+Frontend `apps/web/src/app/work-orders/[id]/PageClient.tsx:120` робить:
+```typescript
+apiFetch<{ items: CompletionActSummary[] }>(`/completion-acts?workOrderId=${id}`)
+  .then(data => { if (data.items.length > 0) setCompletionAct(data.items[0]); })
+```
+При виклику `data.items.length` отримуємо `TypeError: Cannot read properties of undefined (reading 'length')` — реальний масив не має `.items`. `.catch(() => {})` ковтає помилку, тому користувач бачить **порожній стан без жодної індикації** про існуючий акт. Кнопка "Сформувати акт" показується навіть якщо акт уже є → дублікат при кліку → `BadRequestException` через `existing` check у сервісі.
 
 **Очікувана поведінка:**
-Один сервіс нумерації — `DocumentNumberService` у `modules/document-number`. Видалити `DocumentNumberingService` з `settings` модуля разом з реєстрацією в `settings.module.ts`.
+Або сервіс повертає `{ items: [...] }`, або frontend бере `data` як масив. Інші endpoints у проєкті (`work-orders`, `invoices`, `purchase-orders`) використовують `{ items, total, page, limit }` — слід дотримуватись цього contract.
 
 **Фактична поведінка:**
-Дві паралельні реалізації, тільки одна активно вживається.
+Frontend ніколи не показує існуючий акт. Кнопка "Сформувати акт" → 400.
 
 **Статус:** [x] виправлено
 
 ---
 
-## Bug #2 — [LOW] services.service.ts FK-валідація findMany без take safety guard
+## Bug #2 — [HIGH] CompletionAct.sign: race condition при паралельному підписанні + втрата FSM-валідації
 
-**Файл:** `apps/api/src/modules/services/services.service.ts:53,60,94,106`
-**Severity:** LOW
-**Категорія:** performance / database
-
-**Опис:**
-`tx.work.findMany({ where: { id: { in: dto.works.map(w => w.workId) }, orgId, deletedAt: null } })` і аналогічно для `tx.good.findMany`. DTO задає теоретичний ліміт, але per skill policy потрібен `take: 1000` як safety guard від корумпованих DTO.
-
-**Очікувана поведінка:**
-`take: 1000` додано до всіх 4 викликів.
-
-**Фактична поведінка:**
-Без `take`.
-
-**Статус:** [x] виправлено
-
----
-
-## Bug #3 — [LOW] employees.service.ts FK-валідація findMany без take safety guard
-
-**Файл:** `apps/api/src/modules/employees/employees.service.ts:86,106,129`
-**Severity:** LOW
-**Категорія:** performance / database
-
-**Опис:**
-`this.prisma.zone.findMany({ where: { id: { in: dto.zoneIds }, orgId, deletedAt: null } })` (і аналогічно для lift, workCategory) — без `take: 1000` safety guard.
-
-**Очікувана поведінка:**
-`take: 1000` додано до всіх 3 викликів.
-
-**Фактична поведінка:**
-Без `take`.
-
-**Статус:** [x] виправлено
-
----
-
-## Bug #5 — [LOW] services.service.ts serviceWorks/serviceGoods relation includes без take
-
-**Файл:** `apps/api/src/modules/services/services.service.ts:19,20,33,34,70,71,120,121`
-**Severity:** LOW
-**Категорія:** performance / database
-
-**Опис:**
-8 relation includes для `serviceWorks` і `serviceGoods` без `take: 1000` safety guard. Хоча сервіс зазвичай має небагато робіт/товарів, policy вимагає додавати ліміт.
-
-**Очікувана поведінка:**
-Додати `take: 1000` до всіх 8 relation includes.
-
-**Фактична поведінка:**
-Без `take`.
-
-**Статус:** [x] виправлено
-
----
-
-## Bug #6 — [HIGH] TopShell не блокує рендер дочірніх сторінок для неавторизованих
-
-**Файл:** `apps/web/src/components/TopShell.tsx`
+**Файл:** `apps/api/src/modules/completion-acts/completion-acts.service.ts:99`
 **Severity:** HIGH
-**Категорія:** security / frontend
+**Категорія:** business-logic
 
 **Опис:**
-Виявлено через Playwright E2E. Коли неавторизований відвідувач відкриває захищену сторінку (`/work-orders`), TopShell виконував `if (!employee) return <>{children}</>` — тобто **рендерив дочірню сторінку без shell, але саму сторінку показував повністю**. Заголовок "Наряди", фільтри по статусах, таблиця, кнопки — все видно. Лише запит даних висне в loading (бо API повертає 401).
-
-Хоча реальних даних з API немає (захист сервера працює), UI скелетон витікає неавторизованому користувачу, оголюючи:
-- Назви та структуру функціоналу системи
-- Опції фільтрації, кнопки дій
-- Layout та можливі ролі/permissions
-- На певних сторінках — назви рядків таблиць (статуси, ярлики)
+1. `act` читається **поза транзакцією** (line 100), потім `tx.completionAct.update` всередині — між двома операціями інший процес може підписати/скасувати акт.
+2. Прямий `tx.workOrder.update({ data: { status: 'INVOICED' } })` (line 122-125) **обходить FSM** з `WORK_ORDER_TRANSITIONS`. Якщо WO у статусі `COMPLETED` (валідно) — все ОК. Але якщо хтось паралельно вже перевів WO у `INVOICED` через інший шлях — повторний `INVOICED → INVOICED` валиден на рівні DB, але порушує FSM-інваріант (тригер двічі: notification, settlement тощо вже могли спрацювати).
+3. **Після transaction** виклик `this.invoices.createFromWorkOrder` — повертається **новий контекст**. Якщо при цьому DB рестартується або сервіс падає — act підписаний, WO у INVOICED, але рахунку немає. Catch-all `catch {}` (line 133-135) приховує реальні помилки (наприклад, `BadRequestException` "Для цього наряду вже існує активний рахунок" — це валідно, але інші помилки, наприклад validation, теж проковтуються).
 
 **Очікувана поведінка:**
-Для неавторизованого користувача на не-публічному роуті TopShell повинен:
-1. Показувати спінер доки `isLoading=true`
-2. Робити `router.replace('/login')` при `!employee && !isLoading`
-3. Не рендерити дочірню сторінку взагалі
+- Читати `act` всередині транзакції з `FOR UPDATE`-семантикою (Prisma не має — але мінімум: re-read у транзакції).
+- Перевіряти `act.workOrder.status === 'COMPLETED'` явно перед update (не лише існування workOrder).
+- Логувати непередбачувані помилки створення рахунку, не лише ковтати.
 
 **Фактична поведінка:**
-Дочірня сторінка рендериться без auth guard — useRequireAuth в useEffect редиректить тільки **після** першого рендеру.
-
-**Статус:** [x] виправлено — додано `PUBLIC_ROUTES` whitelist у TopShell + render-blocking guard + явний redirect через useEffect
-
-**Виявлено через:** Playwright smoke test `e2e/smoke.spec.ts` — захищена сторінка без токена врешті redirect на /login
-
----
-
-## Bug #4 — [LOW] purchase-orders.service.ts findOne lines relation include без take
-
-**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:59`
-**Severity:** LOW
-**Категорія:** performance / database
-
-**Опис:**
-`lines: { where: { deletedAt: null }, include: { good: ... } }` — пропущений `take` на relation include. Минулий цикл `/sto-tester` (Bug #4 у попередній сесії) додав `take: 1000` до інших викликів, але цей пропустив.
-
-**Очікувана поведінка:**
-Додати `take: 1000` до relation include.
-
-**Фактична поведінка:**
-Без `take`.
+Дублювання подій можливе при concurrent signing; реальні помилки при auto-invoice мовчки приховуються.
 
 **Статус:** [x] виправлено
 
 ---
 
-# Сесія 2026-05-25 — /sto-tester (FULL AUTO)
+## Bug #3 — [HIGH] MaintenanceSchedule update: nextMaintenanceMileage не оновлюється коли передано null
 
-Сесія: статичний аналіз + перевірка raw SQL колонок проти реальної схеми БД.
-
----
-
-## Bug #7 — [CRITICAL] DocumentNumberService.next використовує snake_case колонки замість camelCase — всі генерації номерів зламані
-
-**Файл:** `apps/api/src/modules/document-number/document-number.service.ts:15-67`
-**Severity:** CRITICAL
-**Категорія:** business-logic / database
+**Файл:** `apps/api/src/modules/maintenance-schedules/maintenance-schedules.service.ts:83`
+**Severity:** HIGH
+**Категорія:** business-logic
 
 **Опис:**
-`DocumentNumberService.next()` використовує raw SQL з snake_case колонками (`org_id`, `current_seq`, `include_date`, `last_reset_year`, `last_reset_month`, `reset_period`):
-
-```sql
-SELECT id, prefix, include_date, separator, padding,
-       current_seq, reset_period, last_reset_year, last_reset_month, updated_at
-FROM document_number_configs
-WHERE org_id = ${orgId}::uuid
-  AND document_type = ${documentType}::"DocumentType"
-FOR UPDATE
+```typescript
+const nextMileage = dto.nextMaintenanceMileage ?? this.calcNextMileage(...)
 ```
+Якщо клієнт явно передасть `nextMaintenanceMileage: null` через PATCH (щоб очистити), валідатор `@IsInt() @Min(0) nextMaintenanceMileage?: number` не дозволить `null`, але `undefined` пройде. У будь-якому випадку, логіка не дозволяє **очистити** значення — а лише замінити на calculated. Якщо calc повертає null (немає interval) — будь-яке вже встановлене значення затирається на `null` при будь-якому PATCH (бо `nextMileage` тоді = `null`).
 
-Але фактичні колонки в БД — camelCase з лапками (`"orgId"`, `"currentSeq"`, `"includeDate"`, `"lastResetYear"`, `"lastResetMonth"`, `"resetPeriod"`, `"documentType"`). Перевірено через:
-```
-docker exec stoerp-postgres-1 psql -U sto -d sto_erp -c "SELECT column_name FROM information_schema.columns WHERE table_name='document_number_configs'"
--> orgId, documentType, prefix, includeDate, dateFormat, separator, padding, currentSeq, resetPeriod, updatedAt, lastResetMonth, lastResetYear, syncVersion
-```
+Реальний сценарій: користувач створив schedule з `lastMaintenanceMileage=10000, intervalMileage=15000` → next=25000. Потім робить PATCH `{ notes: "оновлено" }` → не передає інтервалів. Код виконає:
+- `intervalMileage = dto.intervalMileage ?? existing.intervalMileage` (=15000)
+- `lastMileage = dto.lastMaintenanceMileage !== undefined ? ... : existing.lastMaintenanceMileage` (=10000)
+- `nextMileage = dto.nextMaintenanceMileage ?? calcNextMileage(10000, 15000)` (=25000) ✅ OK
 
-Це означає що **кожен запит** до генерації номеру наряду / рахунку / закупки / складського документа кидає Postgres error `column "org_id" does not exist`. Створення нарядів / рахунків / закупок / складських документів **повністю зламано**.
-
-Чому unit тести зелені — вони мокають PrismaService.
+Але якщо `existing.intervalMileage = null`:
+- intervalMileage = `dto.intervalMileage ?? null` = null
+- nextMileage = calc(..., null) = null → перезаписує **існуюче** значення next на null.
 
 **Очікувана поведінка:**
-Raw SQL використовує camelCase з лапками: `"orgId"`, `"currentSeq"`, `"includeDate"`, `"resetPeriod"`, `"lastResetYear"`, `"lastResetMonth"`, `"documentType"`, `"updatedAt"`.
+Якщо PATCH не передає `nextMaintenanceMileage` явно і не змінює `intervalMileage`/`lastMaintenanceMileage` — `next` має залишитись. Тільки явні зміни input-полів мають перерахувати next.
 
 **Фактична поведінка:**
-SQL крашиться, всі сервіси що залежать від `DocumentNumberService.next()` (work-orders, invoices, purchase-orders, stock-documents) не можуть створити записи.
-
-**Виявлено через:** Cross-reference Prisma schema (camelCase без `@map`) проти SQL у `document-number.service.ts`. Підтверджено через `information_schema.columns` у Postgres.
+Будь-який PATCH (навіть тільки `notes`) перераховує і потенційно затирає `nextMaintenanceMileage`.
 
 **Статус:** [x] виправлено
 
 ---
 
-## Bug #8 — [CRITICAL] InventoryService.findLowStockItems використовує snake_case колонки — endpoint GET /stock-items/low повертає 500
+## Bug #4 — [MEDIUM] CompletionAct.findAll не повертає lines (документ виглядає порожнім)
 
-**Файл:** `apps/api/src/modules/inventory/inventory.service.ts:132-156`
-**Severity:** CRITICAL
-**Категорія:** business-logic / database
-
-**Опис:**
-`findLowStockItems()` використовує raw SQL з snake_case колонками (`si.good_id`, `si.org_id`, `si.deleted_at`, `si.min_stock`, `si.warehouse_id`, `g.deleted_at`, `w.deleted_at`):
-
-```sql
-FROM stock_items si
-JOIN goods g ON g.id = si.good_id
-JOIN warehouses w ON w.id = si.warehouse_id
-WHERE si.org_id = ${orgId}::uuid
-  AND si.deleted_at IS NULL
-  ...
-```
-
-Але реальні колонки в БД — camelCase (`"orgId"`, `"goodId"`, `"warehouseId"`, `"deletedAt"`, `"minStock"`). Перевірено для `stock_items`:
-```
-id, orgId, goodId, warehouseId, quantity, reserved, minStock, syncVersion, updatedAt, createdAt, deletedAt
-```
-
-**Підтверджено вживу:** запит `GET /api/stock-items/low` з валідним JWT повертає `{"statusCode":500,"message":"Internal server error"}`.
-
-**Очікувана поведінка:**
-Raw SQL використовує camelCase з лапками: `si."orgId"`, `si."goodId"`, `si."warehouseId"`, `si."deletedAt"`, `si."minStock"`, `g."deletedAt"`, `w."deletedAt"`.
-
-**Фактична поведінка:**
-HTTP 500. Алерти "товари нижче мінімального залишку" не працюють — критична функція для комірника.
-
-**Виявлено через:** Прямий виклик endpoint з валідним JWT.
-
-**Статус:** [x] виправлено
-
----
-
-## Bug #9 — [LOW] DocumentNumberService.next SELECT FOR UPDATE без LIMIT 1 (defensive)
-
-**Файл:** `apps/api/src/modules/document-number/document-number.service.ts:28-35`
-**Severity:** LOW
-**Категорія:** database / defense-in-depth
-
-**Опис:**
-Skill вимагає `LIMIT N` на всіх raw queries (Prisma `take:` не діє на raw). Хоча `(orgId, documentType)` має UNIQUE index і фактично завжди повертає 0 або 1 рядок, defensive LIMIT 1 потрібен.
-
-**Очікувана поведінка:**
-Додати `LIMIT 1` до SELECT FOR UPDATE.
-
-**Фактична поведінка:**
-Без LIMIT.
-
-**Статус:** [x] виправлено
-
----
-
-## Bug #10 — [MEDIUM] Тести покриття: відсутні contract-тести для будь-якого endpoint
-
-**Файл:** `apps/api/src/modules/*` (немає файлів `*.contract.spec.ts`)
+**Файл:** `apps/api/src/modules/completion-acts/completion-acts.service.ts:31`
 **Severity:** MEDIUM
-**Категорія:** test-coverage
+**Категорія:** api-contract
 
 **Опис:**
-Skill §1.4 вимагає `.contract.spec.ts` для work-orders, inventory, auth, settlements, sync. Жодного contract тесту немає — повна відсутність перевірки HTTP shape між API та фронтендом. Саме такі тести б виявили Bug #7 і #8 (через 500 від реальних endpoints).
+`findAll` повертає `this.toDto(item, [])` з порожнім `lines`, але DTO декларує `lines!: CompletionActLineDto[]` як обов'язкове поле. Якщо UI вирішить показати lines у списку — отримає порожнечу. Поточний фронтенд цього не показує, тому LOW для нього, але contract обіцяє інакше.
 
 **Очікувана поведінка:**
-Хоча б 1 contract тест на критичний endpoint (наприклад `GET /stock-items/low` що б упіймало Bug #8).
+Або повертати `lines: []` тільки коли свідомо опускаємо (документ це у swagger описі), або зробити `lines?` optional у списку.
 
 **Фактична поведінка:**
-0 contract тестів.
+DTO бреше: тип каже "масив рядків завжди є", а в списку завжди порожній.
 
-**Статус:** [x] виправлено — встановлено supertest + @types/supertest; додано contract тести для auth (9 тестів) та work-orders (6 тестів). Використано Fastify `app.inject()` замість supertest для NestFastifyApplication.
+**Статус:** [x] виправлено
 
 ---
 
-## Bug #11 — [MEDIUM] Тести покриття: fast-check не встановлений, немає property-based тестів
+## Bug #5 — [MEDIUM] MaintenanceSchedule sync — нові моделі не в PULL_TABLES
 
-**Файл:** `apps/api/package.json`
+**Файл:** `apps/api/src/modules/sync/sync.service.ts:19`
+**Severity:** MEDIUM (LOW поки мобільний клієнт у розробці)
+**Категорія:** sync-readiness
+
+**Опис:**
+`maintenance_schedules` і `completion_acts` додані у Prisma schema з `syncVersion`, `deletedAt`, `orgId` — готові до sync, але не зареєстровані у `PULL_TABLES`. Мобільні клієнти не побачать графіків ТО і актів виконаних робіт.
+
+**Очікувана поведінка:**
+Додати `'maintenance_schedules'`, `'completion_acts'` у PULL_TABLES (pull-only, без push — щоб уникнути race conditions з FSM).
+
+**Фактична поведінка:**
+Мобільний клієнт не синхронізує нові моделі.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #6 — [MEDIUM] MaintenanceSchedule.findUpcoming фільтрує без `vehicle.deletedAt`
+
+**Файл:** `apps/api/src/modules/maintenance-schedules/maintenance-schedules.service.ts:34`
 **Severity:** MEDIUM
-**Категорія:** test-coverage
+**Категорія:** business-logic / soft-delete
 
 **Опис:**
-`fast-check` не встановлений. Немає property-based тестів для FSM, inventory, settlements інваріантів.
+Запит фільтрує `MaintenanceSchedule.deletedAt: null`, але не перевіряє `vehicle.deletedAt`. Якщо авто видалено soft (`Vehicle.deletedAt != null`), його розклад ТО все одно з'явиться у віджеті dashboard "Наближається ТО" з мітками типу `vehicle.make vehicle.model`. Користувач кликає → 404 на vehicle сторінці.
 
 **Очікувана поведінка:**
-`fast-check` встановлений + хоча б 1 invariants spec.
+`where: { orgId, deletedAt: null, isActive: true, vehicle: { deletedAt: null }, ... }`
 
 **Фактична поведінка:**
-Відсутній.
+Видалені авто з'являються у "Наближається ТО".
 
-**Статус:** [x] виправлено — встановлено fast-check@4; додано `work-orders.fsm.invariants.spec.ts` (11 тестів), `inventory.invariants.spec.ts` (7 тестів), `settlements.invariants.spec.ts` (8 тестів). Грошові суми тестуються через int (центи) щоб уникнути 32-bit float обмежень fast-check.
+**Статус:** [x] виправлено
 
 ---
 
-## Bug #12 — [MEDIUM] Тести покриття: @testing-library/react не встановлений, немає component тестів
+## Bug #7 — [LOW] CompletionAct lines не сортовані — порядок робіт/запчастин непередбачуваний
 
-**Файл:** `apps/web/package.json`
-**Severity:** MEDIUM
-**Категорія:** test-coverage
-
-**Опис:**
-`@testing-library/react` не встановлений. Немає component тестів для Button/Select/Modal/Input/EmptyState.
-
-**Очікувана поведінка:**
-Залежність встановлена + хоча б 1 component тест.
-
-**Фактична поведінка:**
-Відсутній.
-
-**Статус:** [x] виправлено — встановлено @testing-library/react, user-event, jest-dom, jsdom, @vitejs/plugin-react@4. Створено `vitest.config.mts` (mts через ESM плагіни) + setup. Додано тести для Button (12), Select (9), Modal (11), EmptyState (10). Total: 42 component tests passing.
-
----
-
-## Bug #13 — [LOW] e2e/ містить тільки smoke.spec.ts, відсутні бізнес-flow тести
-
-**Файл:** `apps/web/e2e/`
+**Файл:** `apps/api/src/modules/completion-acts/completion-acts.service.ts:43-50`
 **Severity:** LOW
-**Категорія:** test-coverage
+**Категорія:** ux-consistency
 
 **Опис:**
-Skill §1.5 рекомендує `work-orders.spec.ts`, `work-order-flow.spec.ts`, `inventory.spec.ts`, `api-errors.spec.ts`. Тільки smoke є.
+`lines` і `parts` у `findOne` не мають `orderBy`. Prisma вільна повертати у будь-якому порядку. Для документу (акт виконаних робіт) порядок впливає на друк PDF і людське читання.
 
 **Очікувана поведінка:**
-Хоча б `inventory.spec.ts` і `api-errors.spec.ts` для перевірки error resilience.
+Додати `orderBy: { createdAt: 'asc' }` (як у `work-orders.service.ts:71-72,79-80`).
 
-**Фактична поведінка:**
-Тільки smoke.
+**Статус:** [x] виправлено
 
-**Статус:** [x] виправлено — додано `api-errors.spec.ts` (8 тестів: захищені + публічні сторінки під 500 від API) та `inventory.spec.ts` (5 тестів: auth guard + API mock states). Усі 16 E2E тестів зелені.
+---
+
+## Bug #8 — [LOW] CompletionAct.cancel не перевіряє чи був auto-сгенерований Invoice
+
+**Файл:** `apps/api/src/modules/completion-acts/completion-acts.service.ts:141`
+**Severity:** LOW
+**Категорія:** business-logic
+
+**Опис:**
+`cancel` блокує лише `SIGNED` (правильно), але якщо акт у `DRAFT` після failed-sign (рідкий edge case: act підписався → invoice створення впало → catch swallowed), `cancel` дозволить скасувати, не торкнувшись пов'язаних artifacts.
+
+Цей сценарій частково покривається Bug #2; виправлення Bug #2 (re-throw на не-business помилках) робить це непотрібним.
+
+**Статус:** [x] виправлено разом з Bug #2 (помилки auto-invoice тепер логуються, race vікно закрите re-read у транзакції)
 
 ---
