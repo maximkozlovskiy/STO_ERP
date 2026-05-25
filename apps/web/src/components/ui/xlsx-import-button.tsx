@@ -25,6 +25,48 @@ function getToken(): string | null {
   return sessionStorage.getItem(TOKEN_KEY);
 }
 
+function setToken(token: string): void {
+  sessionStorage.setItem(TOKEN_KEY, token);
+}
+
+function clearToken(): void {
+  sessionStorage.removeItem(TOKEN_KEY);
+}
+
+async function tryRefresh(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_URL}/api/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { accessToken: string };
+    setToken(data.accessToken);
+    return data.accessToken;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchWithAuth(input: string, init: RequestInit): Promise<Response> {
+  const token = getToken();
+  const headers = new Headers(init.headers as HeadersInit | undefined);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  const res = await fetch(input, { ...init, headers });
+  if (res.status !== 401) return res;
+
+  const newToken = await tryRefresh();
+  if (!newToken) {
+    clearToken();
+    window.location.href = '/login';
+    return res;
+  }
+
+  headers.set('Authorization', `Bearer ${newToken}`);
+  return fetch(input, { ...init, headers });
+}
+
 export function XlsxImportButton({
   templateType,
   importUrl,
@@ -41,10 +83,8 @@ export function XlsxImportButton({
     setDownloading(true);
     setError('');
     try {
-      const token = getToken();
-      const res = await fetch(`${API_URL}/api/xlsx/templates/${templateType}`, {
+      const res = await fetchWithAuth(`${API_URL}/api/xlsx/templates/${templateType}`, {
         credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: res.statusText })) as { message: string };
@@ -76,13 +116,11 @@ export function XlsxImportButton({
     setError('');
     setResult(null);
     try {
-      const token = getToken();
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetch(`${API_URL}/api${importUrl}`, {
+      const res = await fetchWithAuth(`${API_URL}/api${importUrl}`, {
         method: 'POST',
         credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
       if (!res.ok) {
