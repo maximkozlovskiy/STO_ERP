@@ -9,14 +9,14 @@
 ## Останній commit
 
 ```
-fix(review): phase17 DTO sync + TypeScript — useSearchParams Suspense + actualHours DTO
+323d8d9 fix(review): cycle 2 — per-row deletingId, new Date() in render, WorkOrderQueryDto search/filter
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після review+tester cycle 3, post-b23b606)
+## Поточний стан тестів (після review cycle 2, post-323d8d9)
 ```
-TypeScript:  ✅ 0 errors        (web + api + shared, перевірено 2026-05-25)
+TypeScript:  ✅ 0 errors        (web + api, перевірено 2026-05-25)
 Unit:        ✅ 67/67 passed    (8 files: auth, inventory, settlements, contract×2, invariants×3)
 Contract:    ✅ 15/15 passed    (auth: 9, work-orders: 6)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
