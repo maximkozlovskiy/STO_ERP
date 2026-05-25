@@ -781,3 +781,190 @@ TypeScript "довіряє" неправильному типу — JIT-поми
 
 ---
 
+## Session 2026-05-25 — Phase 19.2 tester sweep (Toast/UnsavedGuard/StockIndicator/UI features)
+
+### Baseline
+
+- `tsc` web/api/shared — ✅ 0 errors
+- Unit + contract + property API — ✅ 111/111 passed (12 файлів)
+- Component (web vitest) — ✅ 42/42 passed (4 файли)
+- E2E Playwright — ⏭ (dev server офлайн на момент Кроку 0.1)
+
+### Перевірені файли (Phase 19.2 deliverables)
+
+- `apps/web/src/lib/toast.ts` — singleton store + subscribe API
+- `apps/web/src/components/ui/toast.tsx` — ToastContainer (mounted у TopShell)
+- `apps/web/src/hooks/useUiFeatures.ts` — fetch + cache + invalidate
+- `apps/web/src/hooks/useDirtyForm.ts` — beforeunload + confirmClose
+- `apps/web/src/app/work-orders/[id]/PageClient.tsx` — stock indicator + toasts
+- `apps/web/src/app/settings/page.tsx` — `tab === 'ui'` з 10 togglе-ами
+- `apps/api/src/modules/settings/settings.{controller,service,dto}.ts`
+
+---
+
+## Bug #37 — [HIGH] `useUiFeatures` cache не очищається при logout (cross-session витік)
+
+**Файл:** `apps/web/src/lib/auth/context.tsx:110-123` (logout)
+**Severity:** HIGH
+**Категорія:** security / tenant-isolation
+
+**Опис:**
+Модульно-глобальний `cache` у `apps/web/src/hooks/useUiFeatures.ts:35` зберігається протягом усього life-cycle сторінки браузера. При logout одного користувача і login іншого (особливо інший org/role на кіоск-машині або тестовому стенді):
+
+1. User A (Org X, ADMIN) логіниться → cache наповнюється UI features Org X.
+2. User A робить logout → `cache` залишається в пам'яті, `cacheExpiresAt = Number.MAX_SAFE_INTEGER`.
+3. User B (Org Y, RECEPTIONIST) логіниться → `useUiFeatures` повертає cached Org X features.
+4. Тільки після подальшого `sto:ui-features-change` (явне натискання "Зберегти" у Налаштуваннях) кеш оновиться — або через TTL для failure-кейсу (60s), якщо `apiFetch` помилково 401.
+
+Це не лише cross-session UX-проблема (B бачить не свої flag-и), а й tenant isolation bug — Org X конфігурація leak у браузер Org Y.
+
+**Очікувана поведінка:**
+`logout()` у `auth/context.tsx` повинен викликати `invalidateUiFeaturesCache()` (та будь-які інші per-tenant client-side кеші) перед `dispatch({ type: 'LOGOUT' })`.
+
+**Фактична поведінка:**
+Cache живе доти, поки сторінка не перезавантажиться (F5).
+
+**Виправлення:**
+В `logout()` (і у failed-refresh shortcut на line 78-80) очищати cache UI features. Зробити це через імпорт `invalidateUiFeaturesCache` напряму, або (краще) через `window.dispatchEvent(new CustomEvent('sto:logout'))` + слухач у `useUiFeatures.ts`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #38 — [MEDIUM] `updateOrganisationSettings` не валідує ключі `uiFeatures` (можна записати довільний junk у JSON)
+
+**Файл:** `apps/api/src/modules/settings/settings.dto.ts:88-91` + `settings.service.ts:58-79`
+**Severity:** MEDIUM
+**Категорія:** security / input-validation / DoS
+
+**Опис:**
+DTO `UpdateOrganisationSettingsDto.uiFeatures` декларовано як `Partial<UiFeatures>` (TypeScript-only), але виключно з `@IsObject()` декоратором — class-validator не звіряє ключі/типи. PATCH запит з тілом `{ uiFeatures: { evilKey: '<величезний рядок>', anotherKey: { nested: '...' } } }` пройде валідацію, потрапить у `parseUiFeatures` (`{ ...UI_FEATURES_DEFAULTS, ...stored }`) і запишеться у Postgres JSON колонку. При наступних PATCH (`{ ...currentFeatures, ...dto.uiFeatures }`) накопичується — DoS-вектор з необмеженим розміром JSON. Крім того, через `mapOrgSettings → uiFeatures: this.parseUiFeatures(s.uiFeatures)` всі junk-ключі повертаються у GET-відповіді й leak-аться у браузерах усіх admin-ів org-а.
+
+**Очікувана поведінка:**
+DTO повинен:
+1. Білити список ключів (whitelist) — лише 10 boolean-ів з `UiFeatures`.
+2. Або у `settings.service.ts` явно `pick`-ати дозволені ключі перед merge.
+
+Validation помилка → 400.
+
+**Фактична поведінка:**
+Будь-яке тіло проходить, накопичується нескінченно, leak-ається на читання.
+
+**Виправлення (мінімальне):**
+У `settings.service.ts:64-68` замість `{ ...currentFeatures, ...dto.uiFeatures }` зробити whitelist pick через `UI_FEATURES_DEFAULTS` keys:
+```ts
+const allowedKeys = Object.keys(UI_FEATURES_DEFAULTS) as (keyof UiFeatures)[];
+const sanitized: Partial<UiFeatures> = {};
+for (const k of allowedKeys) {
+  const v = (dto.uiFeatures as Partial<UiFeatures>)[k];
+  if (typeof v === 'boolean') sanitized[k] = v;
+}
+updateData = { ...dto, uiFeatures: { ...currentFeatures, ...sanitized } };
+```
+
+Також ОНОВИТИ `parseUiFeatures` щоб whitelist-ати на read — захист від legacy junk у DB.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #39 — [MEDIUM] `useDirtyForm` хук створений, але не використовується у жодному компоненті
+
+**Файл:** `apps/web/src/hooks/useDirtyForm.ts` + (нема callers)
+**Severity:** MEDIUM
+**Категорія:** dead-code / incomplete-feature
+
+**Опис:**
+Phase 19.2 вводить feature flag `unsavedGuardEnabled` (default true) і `useDirtyForm({ enabled: features.unsavedGuardEnabled })` hook. Hook коректно реалізовано (markDirty/resetDirty/confirmClose + beforeunload listener). Однак `grep -rn useDirtyForm apps/web` повертає **тільки сам файл hook-у** — жодна форма (`work-orders/[id]/PageClient.tsx`, `settings/page.tsx`, CRM modal-и тощо) не імпортує його.
+
+Тобто toggle `unsavedGuardEnabled` у налаштуваннях фактично нічого не робить — користувач увімкне його і очікуватиме попередження про незбережені зміни, але система мовчить.
+
+**Очікувана поведінка:**
+Принаймні один modal/форма (типово LineModal / PartModal у WorkOrder PageClient, або templateEditor у Settings) має:
+1. Імпортувати `useDirtyForm({ enabled: features.unsavedGuardEnabled })`.
+2. Викликати `markDirty()` у onChange кожного поля.
+3. Викликати `confirmClose()` у onClose обгортці і `resetDirty()` після успішного save.
+
+**Фактична поведінка:**
+Hook існує як dead code; feature toggle обіцяє функціонал, який не реалізовано.
+
+**Виправлення:**
+Підключити `useDirtyForm` хоча б у `WorkOrderCardPage` Line/Part modal — це продемонструє інтеграцію і виправдає feature flag.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #40 — [LOW] `useUiFeatures` другий useEffect не скасовує промісу при unmount
+
+**Файл:** `apps/web/src/hooks/useUiFeatures.ts:76-83`
+**Severity:** LOW
+**Категорія:** react / memory-leak
+
+**Опис:**
+```ts
+useEffect(() => {
+  const handler = () => {
+    invalidateUiFeaturesCache();
+    loadFeatures().then(setFeatures);   // ← no cancelled guard
+  };
+  window.addEventListener('sto:ui-features-change', handler);
+  return () => window.removeEventListener('sto:ui-features-change', handler);
+}, []);
+```
+
+Якщо подія `sto:ui-features-change` спрацьовує, потім компонент unmount-иться до резолву `loadFeatures()` — `setFeatures` буде викликано на unmounted компоненті. React 18 не кидає помилку, але це індикатор leak-у і нелогічний state-update.
+
+Перший useEffect має `cancelled` flag — другий не має.
+
+**Очікувана поведінка:**
+Симетричний `cancelled` guard у handler-і.
+
+**Фактична поведінка:**
+Можливий setState після unmount при швидкій навігації.
+
+**Виправлення:**
+```ts
+useEffect(() => {
+  let cancelled = false;
+  const handler = () => {
+    invalidateUiFeaturesCache();
+    loadFeatures().then(f => { if (!cancelled) setFeatures(f); });
+  };
+  window.addEventListener('sto:ui-features-change', handler);
+  return () => { cancelled = true; window.removeEventListener('sto:ui-features-change', handler); };
+}, []);
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #41 — [LOW] Settings module не має жодного contract/spec тесту
+
+**Файл:** `apps/api/src/modules/settings/` (відсутні `*.spec.ts`, `*.contract.spec.ts`)
+**Severity:** LOW
+**Категорія:** test-coverage
+
+**Опис:**
+Новий endpoint `GET /settings/ui-features` доступний всім авторизованим ролям, повертає `UiFeatures` shape. Frontend `useUiFeatures` довіряє цьому контракту і кешує модульно. Відсутність contract-тесту означає що:
+- Зміна `OrganisationSettingsResponseDto.uiFeatures` без оновлення мапінгу не буде помічена тестами.
+- Не перевіряється, що `403/401` повертається при відсутньому токені.
+- Не перевіряється partial-merge поведінка `PATCH /settings/organisation` з `uiFeatures`.
+
+**Очікувана поведінка:**
+Contract test у `apps/api/src/modules/settings/settings.contract.spec.ts` що покриває:
+- `GET /settings/ui-features` → 200 + boolean keys
+- `PATCH /settings/organisation { uiFeatures: { toastEnabled: false } }` → 200 + merged result
+- `PATCH /settings/organisation { uiFeatures: { unknownKey: true } }` → 200 і unknownKey ВІДКИНУТО (після Bug #38 fix)
+
+**Фактична поведінка:**
+Coverage = 0% у settings module.
+
+**Виправлення:**
+Створити `settings.contract.spec.ts` з трьома тест-кейсами вище.
+
+**Статус:** [x] виправлено
+
+---
+
