@@ -10,6 +10,7 @@ describe('InventoryService.createMovement guards', () => {
   let prisma: {
     stockItem: { findFirst: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
     stockMovement: { create: ReturnType<typeof vi.fn> };
+    good: { findFirst: ReturnType<typeof vi.fn> };
   };
   let batchService: { createFromReceipt: ReturnType<typeof vi.fn> };
 
@@ -17,6 +18,7 @@ describe('InventoryService.createMovement guards', () => {
     prisma = {
       stockItem: { findFirst: vi.fn(), upsert: vi.fn().mockResolvedValue({}) },
       stockMovement: { create: vi.fn().mockResolvedValue({ id: 'mov-1' }) },
+      good: { findFirst: vi.fn().mockResolvedValue({ purchasePrice: null }) },
     };
     batchService = { createFromReceipt: vi.fn().mockResolvedValue({}) };
     const module = await Test.createTestingModule({
@@ -78,11 +80,24 @@ describe('InventoryService.createMovement guards', () => {
     }));
   });
 
-  it('Bug #15: RECEIPT без price кидає BadRequestException', async () => {
-    await expect(service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10 })))
-      .rejects.toThrow(BadRequestException);
-    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
-    expect(batchService.createFromReceipt).not.toHaveBeenCalled();
+  it('Bug #26: RECEIPT без price fallback до good.purchasePrice', async () => {
+    prisma.good.findFirst.mockResolvedValue({ purchasePrice: 42 });
+    await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10 }));
+    expect(batchService.createFromReceipt).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ receivedQty: 10, costPrice: 42 }),
+      expect.anything(),
+    );
+  });
+
+  it('Bug #26: RECEIPT без price і без purchasePrice → costPrice=0', async () => {
+    prisma.good.findFirst.mockResolvedValue({ purchasePrice: null });
+    await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10 }));
+    expect(batchService.createFromReceipt).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ receivedQty: 10, costPrice: 0 }),
+      expect.anything(),
+    );
   });
 
   it('Bug #15: RECEIPT з price=0 (безкоштовний зразок) створює партію з нульовою собівартістю', async () => {
@@ -93,6 +108,16 @@ describe('InventoryService.createMovement guards', () => {
       expect.objectContaining({ receivedQty: 5, costPrice: 0 }),
       expect.anything(),
     );
+  });
+
+  it('Bug #26: createMovement кидає при NaN quantity', async () => {
+    await expect(service.createMovement('org-1', dto({ quantity: NaN, price: 50 })))
+      .rejects.toThrow(BadRequestException);
+  });
+
+  it('Bug #26: createMovement кидає при NaN price', async () => {
+    await expect(service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 5, price: NaN })))
+      .rejects.toThrow(BadRequestException);
   });
 
   it('RESERVATION тільки інкрементує reserved, не quantity', async () => {

@@ -29,16 +29,29 @@ export class InventoryService {
 
   async createMovement(orgId: string, dto: CreateMovementDto, tx?: Prisma.TransactionClient): Promise<void> {
     if (dto.quantity === 0) throw new BadRequestException('Кількість не може бути нульовою');
+    if (!Number.isFinite(dto.quantity)) {
+      throw new BadRequestException('Невірне значення кількості');
+    }
+    if (dto.price !== undefined && dto.price !== null && !Number.isFinite(dto.price)) {
+      throw new BadRequestException('Невірне значення ціни');
+    }
     if (dto.type === 'RESERVATION_RELEASE' && dto.quantity > 0) {
       throw new BadRequestException('Зняття резерву: кількість повинна бути від\'ємною');
     }
-    // Bug #15: RECEIPT з quantity > 0 завжди створює StockBatch. Якщо ціна відсутня —
-    // батч-tracking зламається, бо consumeBatch у режимі FIFO/LIFO/FEFO не знайде партії.
-    // Дозволяємо price=0 (безкоштовні зразки) — для них батч створиться з нульовою собівартістю.
-    if (dto.type === 'RECEIPT' && dto.quantity > 0 && (dto.price === undefined || dto.price === null)) {
-      throw new BadRequestException('Ціна оприбуткування обов\'язкова для створення партії');
-    }
     const db = tx ?? this.prisma;
+
+    // Bug #15 + Bug #26: RECEIPT з quantity > 0 завжди створює StockBatch. Якщо ціна
+    // відсутня (типове для TRANSFER або інвентаризаційного оприбуткування) — fallback
+    // на good.purchasePrice, інакше 0 (безкоштовні зразки). Це зберігає батч-tracking
+    // без блокування легітимних бізнес-операцій.
+    let resolvedCostPrice: number | null = dto.price ?? null;
+    if (dto.type === 'RECEIPT' && dto.quantity > 0 && resolvedCostPrice === null) {
+      const good = await db.good.findFirst({
+        where: { id: dto.goodId, orgId, deletedAt: null },
+        select: { purchasePrice: true },
+      });
+      resolvedCostPrice = good?.purchasePrice != null ? Number(good.purchasePrice) : 0;
+    }
 
     if (dto.quantity < 0 || dto.type === 'RESERVATION' || dto.type === 'RESERVATION_RELEASE') {
       const item = await db.stockItem.findFirst({
@@ -65,7 +78,7 @@ export class InventoryService {
         warehouseId: dto.warehouseId,
         type: dto.type,
         quantity: dto.quantity,
-        price: dto.price ?? null,
+        price: dto.price ?? resolvedCostPrice,
         documentType: dto.documentType ?? null,
         documentId: dto.documentId ?? null,
         notes: dto.notes ?? null,
@@ -73,7 +86,7 @@ export class InventoryService {
       },
     });
 
-    // Create batch on RECEIPT (price can be 0 for free samples; undefined was rejected above)
+    // Create batch on RECEIPT. resolvedCostPrice = dto.price ?? good.purchasePrice ?? 0.
     if (dto.type === 'RECEIPT' && dto.quantity > 0) {
       await this.batchService.createFromReceipt(orgId, {
         goodId: dto.goodId,
@@ -83,7 +96,7 @@ export class InventoryService {
         batchNumber: dto.batchNumber,
         expiryDate: dto.expiryDate,
         receivedQty: dto.quantity,
-        costPrice: dto.price ?? 0,
+        costPrice: resolvedCostPrice ?? 0,
       }, db as Prisma.TransactionClient);
     }
 
