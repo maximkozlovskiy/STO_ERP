@@ -9,21 +9,27 @@
 ## Останній commit
 
 ```
-323d8d9 fix(review): cycle 2 — per-row deletingId, new Date() in render, WorkOrderQueryDto search/filter
+4391309 fix(review): Phase 19 — RBAC, perf, sync, a11y, tests for batch/pricing
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після tester cycle 4, 2026-05-25)
+## Поточний стан тестів (після review Phase 19, 2026-05-25)
 ```
 TypeScript:  ✅ 0 errors        (web + api, перевірено 2026-05-25)
-Unit:        ✅ 67/67 passed    (8 files: auth, inventory, settlements, contract×2, invariants×3)
+Unit:        ✅ 88/88 passed    (10 files: + pricing.service, batch.service)
 Contract:    ✅ 15/15 passed    (auth: 9, work-orders: 6)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
 E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн)
-Цикли QA:    ✅ 4 цикли завершено — 0 відкритих багів (cycle 4: 0 нових)
+Цикли QA:    ✅ Phase 19 review — 9 виправлень (RBAC, N+1, a11y, tests, sync)
 ```
+
+### Gotcha — Phase 19 batch/pricing review findings (2026-05-25)
+- `BatchesController.lookup` потребує `@Roles(...)` явно — без декоратора RolesGuard пропускає будь-кого авторизованого. Завжди додавати roles навіть на read-only endpoints де є cost/price дані.
+- `applyRuleToGoods`-стиль операції: prefetch усіх rules один раз, обчислення в пам'яті, batch-update через `$transaction` чанками по 100. Не викликати `calculateSalePrice` в loop (внутрішнє findMany → N+1).
+- Нові sync-ready моделі (з `syncVersion`) додавати в `PULL_TABLES` в sync.service.ts. Append-only логи (без syncVersion) — пропускати.
+- Custom inline modals (поза `<Modal>` компонентом) — додавати `role="dialog"`, `aria-modal="true"`, `aria-labelledby` + клік на backdrop із `e.stopPropagation()` на body.
 
 ### Gotcha — Inline HSL не адаптується в dark mode (Bugs #1-#5)
 `text-[hsl(0_84%_42%)]` працює в light mode але **не змінюється** коли `.dark { --color-destructive-text: hsl(0 84% 72%) }` спрацьовує. Завжди використовуй token-класи (`text-destructive-text`, `border-destructive-border`, `text-success-text`, `text-warning-text`, `text-info-text`) — вони підставляють CSS-змінну і автоматично перемикаються в dark mode.
