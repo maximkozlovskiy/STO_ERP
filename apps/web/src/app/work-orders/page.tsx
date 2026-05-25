@@ -83,15 +83,18 @@ function formatDate(iso: string): string {
   return `${day}.${month}.${year}`;
 }
 
-function isOverdue(dueDateIso: string): boolean {
+function isOverdue(dueDateIso: string, nowMs: number): boolean {
   const due = new Date(dueDateIso);
   due.setHours(23, 59, 59, 999);
-  return due < new Date();
+  return due.getTime() < nowMs;
 }
 
 export default function WorkOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
   const router = useRouter();
+
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => { setNowMs(Date.now()); }, []);
 
   const [data, setData] = useState<Paginated | null>(null);
   const [loading, setLoading] = useState(true);
@@ -341,7 +344,7 @@ export default function WorkOrdersPage() {
                     {wo.dueDate ? (
                       <span className={cn(
                         'font-medium',
-                        isOverdue(wo.dueDate) ? 'text-warning' : 'text-muted-foreground',
+                        isOverdue(wo.dueDate, nowMs) ? 'text-warning' : 'text-muted-foreground',
                       )}>
                         {formatDate(wo.dueDate)}
                       </span>
@@ -406,10 +409,10 @@ export default function WorkOrdersPage() {
                     <span className="text-muted-foreground">Дедлайн</span>
                     <p className={cn(
                       'font-medium mt-0.5',
-                      isOverdue(selectedWO.dueDate) ? 'text-warning' : 'text-foreground',
+                      isOverdue(selectedWO.dueDate, nowMs) ? 'text-warning' : 'text-foreground',
                     )}>
                       {formatDate(selectedWO.dueDate)}
-                      {isOverdue(selectedWO.dueDate) && (
+                      {isOverdue(selectedWO.dueDate, nowMs) && (
                         <span className="ml-1 text-[11px]">(прострочено)</span>
                       )}
                     </p>

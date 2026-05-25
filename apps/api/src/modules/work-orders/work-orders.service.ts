@@ -32,16 +32,25 @@ export class WorkOrdersService {
   // ─── CRUD ────────────────────────────────────────────────
 
   async findAll(orgId: string, query: WorkOrderQueryDto): Promise<PaginatedWorkOrdersDto> {
-    const where: {
-      orgId: string; deletedAt: null;
-      status?: WorkOrderStatus; priority?: WorkOrderPriority;
-      branchId?: string; counterpartyId?: string; vehicleId?: string;
-    } = { orgId, deletedAt: null };
+    const showDeleted = query.showDeleted === 'true';
+    const where: Prisma.WorkOrderWhereInput = {
+      orgId,
+      ...(showDeleted ? {} : { deletedAt: null }),
+    };
     if (query.status) where.status = query.status;
     if (query.priority) where.priority = query.priority;
     if (query.branchId) where.branchId = query.branchId;
     if (query.counterpartyId) where.counterpartyId = query.counterpartyId;
     if (query.vehicleId) where.vehicleId = query.vehicleId;
+    if (query.repairCategory) where.repairCategory = query.repairCategory as RepairCategory;
+    if (query.q) {
+      where.OR = [
+        { number: { contains: query.q, mode: 'insensitive' } },
+        { counterparty: { companyName: { contains: query.q, mode: 'insensitive' } } },
+        { counterparty: { lastName: { contains: query.q, mode: 'insensitive' } } },
+        { counterparty: { firstName: { contains: query.q, mode: 'insensitive' } } },
+      ];
+    }
 
     const skip = (query.page - 1) * query.limit;
     const [items, total] = await this.prisma.$transaction([

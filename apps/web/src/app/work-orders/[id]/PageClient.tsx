@@ -107,6 +107,8 @@ export default function WorkOrderCardPage() {
   const [partModal, setPartModal] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingLineId, setDeletingLineId] = useState<string | null>(null);
+  const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [refsError, setRefsError] = useState('');
 
@@ -163,10 +165,10 @@ export default function WorkOrderCardPage() {
 
   const removeLine = async (lineId: string) => {
     if (!confirm('Видалити роботу?')) return;
-    setSaving(true); setError('');
+    setDeletingLineId(lineId); setError('');
     try { await apiFetch<void>(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
-    finally { setSaving(false); }
+    finally { setDeletingLineId(null); }
   };
 
   const addPart = async () => {
@@ -190,10 +192,10 @@ export default function WorkOrderCardPage() {
 
   const removePart = async (partId: string) => {
     if (!confirm('Видалити запчастину?')) return;
-    setSaving(true); setError('');
+    setDeletingPartId(partId); setError('');
     try { await apiFetch<void>(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
-    finally { setSaving(false); }
+    finally { setDeletingPartId(null); }
   };
 
   const transition = async (newStatus: string) => {
@@ -364,7 +366,7 @@ export default function WorkOrderCardPage() {
                     <p className="text-sm font-medium text-foreground">{l.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
                     <p className="text-xs text-muted-foreground">{l.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} × {l.normoHours}</p>
                   </div>
-                  {canEdit && <button onClick={() => removeLine(l.id)} className="text-xs text-destructive/60 hover:text-destructive px-1">×</button>}
+                  {canEdit && <button onClick={() => removeLine(l.id)} disabled={deletingLineId === l.id} className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50">×</button>}
                 </div>
               ))}
             </div>
@@ -399,7 +401,7 @@ export default function WorkOrderCardPage() {
                   <div className="text-right mr-3">
                     <p className="text-sm font-medium text-foreground">{p.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
                   </div>
-                  {canEdit && <button onClick={() => removePart(p.id)} className="text-xs text-destructive/60 hover:text-destructive px-1">×</button>}
+                  {canEdit && <button onClick={() => removePart(p.id)} disabled={deletingPartId === p.id} className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50">×</button>}
                 </div>
               ))}
             </div>

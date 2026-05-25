@@ -1,4 +1,4 @@
-import { IsString, IsUUID, IsOptional, IsEnum, IsInt, IsNumber, Min, Max, IsISO8601, IsBoolean } from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsEnum, IsInt, IsNumber, Min, Max, IsISO8601, IsBoolean, IsBooleanString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
@@ -56,6 +56,21 @@ export class WorkOrderQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() branchId?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() counterpartyId?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() vehicleId?: string;
+
+  @ApiPropertyOptional({ description: 'Пошук за номером або назвою контрагента' })
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @ApiPropertyOptional({ enum: ['MAINTENANCE', 'CURRENT_REPAIR', 'MAJOR_REPAIR', 'BODY_REPAIR', 'DIAGNOSTICS', 'WARRANTY', 'SEASONAL'] })
+  @IsOptional()
+  @IsEnum(['MAINTENANCE', 'CURRENT_REPAIR', 'MAJOR_REPAIR', 'BODY_REPAIR', 'DIAGNOSTICS', 'WARRANTY', 'SEASONAL'])
+  repairCategory?: string;
+
+  @ApiPropertyOptional({ description: 'Показати видалені' })
+  @IsOptional()
+  @IsBooleanString()
+  showDeleted?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

@@ -79,6 +79,7 @@ function WorksTab() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ categoryId: '', name: '', normoHours: '', price: '', description: '' });
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedWork, setSelectedWork] = useState<Work | null>(null);
   const [editWork, setEditWork] = useState<Work | null>(null);
@@ -128,10 +129,10 @@ function WorksTab() {
 
   const remove = async (id: string) => {
     if (!confirm('Видалити роботу?')) return;
-    setSaving(true); setError('');
+    setDeletingId(id); setError('');
     try { await apiFetch<void>(`/works/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
-    finally { setSaving(false); }
+    finally { setDeletingId(null); }
   };
 
   const openEditWork = (w: Work) => {
@@ -233,6 +234,8 @@ function WorksTab() {
                         variant="ghost"
                         size="sm"
                         onClick={e => { e.stopPropagation(); remove(w.id); }}
+                        disabled={deletingId === w.id}
+                        loading={deletingId === w.id}
                         className="text-destructive/60 hover:text-destructive"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -1030,6 +1033,7 @@ function ServicesTab() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', price: '' });
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
@@ -1062,14 +1066,14 @@ function ServicesTab() {
 
   const remove = async (id: string) => {
     if (!confirm('Видалити послугу?')) return;
-    setSaving(true); setError('');
+    setDeletingId(id); setError('');
     try {
       await apiFetch<void>(`/services/${id}`, { method: 'DELETE' });
       if (selectedService?.id === id) setSelectedService(null);
       load();
     }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
-    finally { setSaving(false); }
+    finally { setDeletingId(null); }
   };
 
   const totalPages = services ? Math.ceil(services.total / services.limit) : 1;
@@ -1136,6 +1140,8 @@ function ServicesTab() {
                       variant="ghost"
                       size="sm"
                       onClick={e => { e.stopPropagation(); remove(s.id); }}
+                      disabled={deletingId === s.id}
+                      loading={deletingId === s.id}
                       className="text-destructive/60 hover:text-destructive"
                     >
                       <Trash2 className="h-3.5 w-3.5" />

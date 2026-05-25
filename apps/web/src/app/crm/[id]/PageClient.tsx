@@ -78,6 +78,9 @@ export default function CounterpartyCardPage() {
   const [cp, setCp] = useState<Counterparty | null>(null);
   const [tab, setTab] = useState<CrmTab>('info');
   const [loadError, setLoadError] = useState('');
+  const [todayMs, setTodayMs] = useState(0);
+
+  useEffect(() => { setTodayMs(Date.now()); }, []);
 
   // Garages
   const [garages, setGarages] = useState<Garage[]>([]);
@@ -534,13 +537,13 @@ export default function CounterpartyCardPage() {
                             </button>
                             {vSchedules.length > 0 && (
                               <div className="mt-2 space-y-1">
-                                {vSchedules.map(s => {
+                                {(() => {
+                                  return vSchedules.map(s => {
                                   const nextDate = s.nextMaintenanceDate
                                     ? new Date(s.nextMaintenanceDate)
                                     : null;
-                                  const today = new Date();
-                                  const daysUntil = nextDate
-                                    ? Math.ceil((nextDate.getTime() - today.getTime()) / 86_400_000)
+                                  const daysUntil = (nextDate && todayMs > 0)
+                                    ? Math.ceil((nextDate.getTime() - todayMs) / 86_400_000)
                                     : null;
                                   const isSoon = daysUntil !== null && daysUntil <= 30;
                                   return (
@@ -556,7 +559,8 @@ export default function CounterpartyCardPage() {
                                       )}
                                     </div>
                                   );
-                                })}
+                                  });
+                                })()}
                               </div>
                             )}
                           </div>
