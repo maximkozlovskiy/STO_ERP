@@ -10,7 +10,7 @@ import { PricingService } from './pricing.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePricingRuleDto, UpdatePricingRuleDto } from './pricing-rules.dto';
 import { NotFoundException } from '@nestjs/common';
-import { UserRole, PricingRule } from '@prisma/client';
+import { UserRole, PricingRule, Prisma } from '@prisma/client';
 
 type PricingRuleWithGood = PricingRule & {
   good: { id: string; name: string; sku: string | null } | null;
@@ -30,13 +30,31 @@ export class PricingRulesController {
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.STOREKEEPER)
   @ApiOperation({ summary: 'Список правил ціноутворення' })
   async findAll(@OrgContext() orgId: string) {
-    const rules = await this.prisma.pricingRule.findMany({
-      where: { orgId, deletedAt: null },
-      include: { good: { select: { id: true, name: true, sku: true } } },
-      orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
-      take: 200,
-    });
-    return rules.map(r => this.toDto(r));
+    // Bug #17: правила, прив'язані до soft-deleted Good — приховуємо.
+    // Bug #18: повертаємо paginated shape { items, total, page, limit } для відповідності API-контракту.
+    const where: Prisma.PricingRuleWhereInput = {
+      orgId,
+      deletedAt: null,
+      OR: [
+        { goodId: null },
+        { good: { deletedAt: null } },
+      ],
+    };
+    const [rules, total] = await this.prisma.$transaction([
+      this.prisma.pricingRule.findMany({
+        where,
+        include: { good: { select: { id: true, name: true, sku: true } } },
+        orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
+        take: 200,
+      }),
+      this.prisma.pricingRule.count({ where }),
+    ]);
+    return {
+      items: rules.map(r => this.toDto(r)),
+      total,
+      page: 1,
+      limit: 200,
+    };
   }
 
   @Post()
@@ -51,8 +69,13 @@ export class PricingRulesController {
       });
       if (!good) throw new NotFoundException('Товар не знайдено');
     }
+    // Bug #22: scope-поля взаємовиключні, ієрархія goodId > goodCategory > goodType.
+    // Очищаємо менш специфічні рівні, щоб менеджер не зберігав суперечливі правила.
+    const normalized = this.normalizeScope(dto);
+    // Bug #23 echo: backend очищає поля values, які не належать обраному type.
+    const cleanValues = this.cleanValuesForType(normalized);
     const rule = await this.prisma.pricingRule.create({
-      data: { orgId, ...dto, priority: dto.priority ?? 10 },
+      data: { orgId, ...cleanValues, priority: cleanValues.priority ?? 10 },
       include: { good: { select: { id: true, name: true, sku: true } } },
     });
     return this.toDto(rule);
@@ -81,9 +104,11 @@ export class PricingRulesController {
       if (!good) throw new NotFoundException('Товар не знайдено');
     }
 
+    const normalized = this.normalizeScope(dto);
+    const cleanValues = this.cleanValuesForType(normalized);
     const rule = await this.prisma.pricingRule.update({
       where: { id },
-      data: dto,
+      data: cleanValues,
       include: { good: { select: { id: true, name: true, sku: true } } },
     });
     return this.toDto(rule);
@@ -115,6 +140,48 @@ export class PricingRulesController {
     if (!existing) throw new NotFoundException('Правило не знайдено');
     const updated = await this.pricingService.applyRuleToGoods(orgId, id);
     return { updated, message: `Перераховано ${updated} товарів` };
+  }
+
+  /**
+   * Bug #22: Scope-поля взаємовиключні. Ієрархія: goodId > goodCategory > goodType > all.
+   * Якщо вказано goodId — обнуляємо goodCategory і goodType.
+   * Якщо вказано goodCategory (без goodId) — обнуляємо goodType.
+   */
+  private normalizeScope<T extends Partial<CreatePricingRuleDto> & Partial<UpdatePricingRuleDto>>(dto: T): T {
+    const clone = { ...dto };
+    if (clone.goodId) {
+      clone.goodCategory = undefined;
+      clone.goodType = undefined;
+    } else if (clone.goodCategory) {
+      clone.goodType = undefined;
+    }
+    return clone;
+  }
+
+  /**
+   * Bug #23: При зміні type старі value-поля (percentValue/fixedAmount/fixedPrice) можуть
+   * залишатись у БД після перемикання в UI. Backend нормалізує: для обраного type
+   * залишаємо лише релевантне поле, інші — undefined → не пишеться в Prisma.
+   */
+  private cleanValuesForType<T extends Partial<CreatePricingRuleDto> & Partial<UpdatePricingRuleDto>>(dto: T): T {
+    if (!dto.type) return dto;
+    const out = { ...dto };
+    switch (dto.type) {
+      case 'PERCENT':
+      case 'COMPETITOR_PLUS':
+        out.fixedAmount = undefined;
+        out.fixedPrice = undefined;
+        break;
+      case 'FIXED_AMOUNT':
+        out.percentValue = undefined;
+        out.fixedPrice = undefined;
+        break;
+      case 'FIXED_PRICE':
+        out.percentValue = undefined;
+        out.fixedAmount = undefined;
+        break;
+    }
+    return out;
   }
 
   private toDto(rule: PricingRuleWithGood) {

@@ -282,8 +282,8 @@ export default function PricingRulesClient() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<PricingRule[]>('/pricing-rules');
-      setRules(data);
+      const data = await apiFetch<{ items: PricingRule[]; total: number }>('/pricing-rules');
+      setRules(data.items);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка завантаження');
     } finally {
@@ -295,8 +295,8 @@ export default function PricingRulesClient() {
     let cancelled = false;
     (async () => {
       try {
-        const data = await apiFetch<PricingRule[]>('/pricing-rules');
-        if (!cancelled) setRules(data);
+        const data = await apiFetch<{ items: PricingRule[]; total: number }>('/pricing-rules');
+        if (!cancelled) setRules(data.items);
       } catch (e: unknown) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження');
       } finally {
@@ -314,21 +314,30 @@ export default function PricingRulesClient() {
     return () => { cancelled = true; };
   }, []);
 
+  // Bug #23: надсилаємо лише значення, релевантне для обраного type, щоб не зберігати
+  // "сміттєві" поля з минулої редакції форми.
+  const buildPayload = (form: RuleForm) => {
+    const isPercent = form.type === 'PERCENT' || form.type === 'COMPETITOR_PLUS';
+    const isFixedAmount = form.type === 'FIXED_AMOUNT';
+    const isFixedPrice = form.type === 'FIXED_PRICE';
+    return {
+      name: form.name,
+      type: form.type,
+      priority: Number(form.priority) || 10,
+      goodId: form.goodId || undefined,
+      goodCategory: form.goodId ? undefined : (form.goodCategory || undefined),
+      goodType: form.goodId || form.goodCategory ? undefined : (form.goodType || undefined),
+      percentValue: isPercent && form.percentValue ? Number(form.percentValue) : undefined,
+      fixedAmount: isFixedAmount && form.fixedAmount ? Number(form.fixedAmount) : undefined,
+      fixedPrice: isFixedPrice && form.fixedPrice ? Number(form.fixedPrice) : undefined,
+      roundTo: form.roundTo ? Number(form.roundTo) : undefined,
+    };
+  };
+
   const createRule = async (form: RuleForm) => {
     await apiFetch<PricingRule>('/pricing-rules', {
       method: 'POST',
-      body: JSON.stringify({
-        name: form.name,
-        type: form.type,
-        priority: Number(form.priority) || 10,
-        goodId: form.goodId || undefined,
-        goodCategory: form.goodCategory || undefined,
-        goodType: form.goodType || undefined,
-        percentValue: form.percentValue ? Number(form.percentValue) : undefined,
-        fixedAmount: form.fixedAmount ? Number(form.fixedAmount) : undefined,
-        fixedPrice: form.fixedPrice ? Number(form.fixedPrice) : undefined,
-        roundTo: form.roundTo ? Number(form.roundTo) : undefined,
-      }),
+      body: JSON.stringify(buildPayload(form)),
     });
     load();
   };
@@ -337,19 +346,7 @@ export default function PricingRulesClient() {
     if (!editRule) return;
     await apiFetch<PricingRule>(`/pricing-rules/${editRule.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({
-        name: form.name,
-        type: form.type,
-        priority: Number(form.priority) || 10,
-        goodId: form.goodId || undefined,
-        goodCategory: form.goodCategory || undefined,
-        goodType: form.goodType || undefined,
-        percentValue: form.percentValue ? Number(form.percentValue) : undefined,
-        fixedAmount: form.fixedAmount ? Number(form.fixedAmount) : undefined,
-        fixedPrice: form.fixedPrice ? Number(form.fixedPrice) : undefined,
-        roundTo: form.roundTo ? Number(form.roundTo) : undefined,
-        isActive: form.isActive,
-      }),
+      body: JSON.stringify({ ...buildPayload(form), isActive: form.isActive }),
     });
     setEditRule(null);
     load();

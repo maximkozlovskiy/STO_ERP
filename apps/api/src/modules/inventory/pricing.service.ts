@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { GoodType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -12,14 +13,15 @@ export class PricingService {
     goodType: string | undefined,
     costPrice: number,
   ): Promise<number> {
-    // Find the most specific active rule (lowest priority number wins)
+    // Find the most specific active rule (lowest priority number wins).
+    // Bug #17: rule with goodId must point to a non-soft-deleted Good — фільтруємо relation.
     const rules = await this.prisma.pricingRule.findMany({
       where: {
         orgId,
         isActive: true,
         deletedAt: null,
         OR: [
-          { goodId },
+          { goodId, good: { deletedAt: null } },
           { goodId: null, goodCategory: goodCategory ?? null },
           { goodId: null, goodCategory: null, goodType: goodType ?? null },
           { goodId: null, goodCategory: null, goodType: null },
@@ -73,12 +75,13 @@ export class PricingService {
     });
     if (!rule) return 0;
 
+    // Bug #19: GoodType enum cast замість `as never`, який вимикав перевірку типів.
     const where = {
       orgId,
       deletedAt: null as null,
       ...(rule.goodId ? { id: rule.goodId } : {}),
       ...(rule.goodCategory ? { category: rule.goodCategory } : {}),
-      ...(rule.goodType ? { goodType: rule.goodType as never } : {}),
+      ...(rule.goodType ? { goodType: rule.goodType as GoodType } : {}),
     };
 
     const goods = await this.prisma.good.findMany({
