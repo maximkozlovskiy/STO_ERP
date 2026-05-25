@@ -94,6 +94,10 @@ grep -rn "(--color-" apps/web/src/ --include="*.tsx" --include="*.ts"
 # Tailwind 4 — інші shorthand токенів які мають бути canonical
 grep -rnE "(rounded|shadow|text|bg|border|divide|ring)-\(--" apps/web/src/ --include="*.tsx" --include="*.ts"
 
+# Tailwind 4 — inline HSL замість canonical semantic токенів (не перемикається в dark mode → WCAG fail)
+# Винятки: badge.tsx purple, inventory reserved orange, button.tsx destructive-hover, input/select destructive focus-ring
+grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app apps/web/src/components --include="*.tsx"
+
 # Pixel значення замість Tailwind scale
 grep -rnE "(w|h|top|left|right|bottom|max-w|min-w|p|m|gap)-\[[0-9]+px\]" apps/web/src/ --include="*.tsx"
 

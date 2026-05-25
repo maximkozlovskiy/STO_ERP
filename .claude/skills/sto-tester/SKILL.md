@@ -220,6 +220,11 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 - [ ] `ring-brand-100` — не `ring-(--color-brand-100)`
 - [ ] `hover:border-border-hover` — не `hover:border-(--color-border-hover)`
 - [ ] `bg-secondary` — не `bg-(--color-secondary)` (якщо є в `@theme`)
+- [ ] **Жодних inline `text-[hsl(...)]` / `border-[hsl(...)]` / `bg-[hsl(...)]` для семантичних кольорів** — використовуй токени: `text-destructive-text`, `border-destructive-border`, `text-success-text`, `text-warning-text`, `text-info-text`. Inline HSL не перемикається в dark mode → WCAG контраст fail.
+  ```bash
+  grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app apps/web/src/components --include="*.tsx"
+  # Винятки: badge.tsx purple, inventory reserved orange, button.tsx destructive-hover, input/select destructive focus-ring
+  ```
 
 #### Роутинг
 - [ ] Захищені сторінки мають redirect якщо не авторизований
