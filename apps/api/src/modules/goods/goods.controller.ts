@@ -7,13 +7,19 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { GoodsService } from './goods.service';
 import { CreateGoodDto, UpdateGoodDto, GoodQueryDto } from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
+import { BatchService } from '../inventory/batch.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @ApiTags('Goods')
 @Controller('goods')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class GoodsController {
-  constructor(private readonly service: GoodsService) {}
+  constructor(
+    private readonly service: GoodsService,
+    private readonly batchService: BatchService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC')
@@ -81,5 +87,37 @@ export class GoodsController {
     @Param('barcodeId') barcodeId: string,
   ) {
     return this.service.deleteBarcode(orgId, goodId, barcodeId);
+  }
+
+  // ─── Batches + Price History Sub-resources ───────────────────────────────────
+
+  @Get(':id/batches')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Партії товару' })
+  getBatches(
+    @OrgContext() orgId: string,
+    @Param('id') id: string,
+    @Query('warehouseId') warehouseId?: string,
+  ) {
+    return this.batchService.getBatchesForGood(orgId, id, warehouseId);
+  }
+
+  @Get(':id/price-history')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Цінова історія товару' })
+  async getPriceHistory(@OrgContext() orgId: string, @Param('id') id: string) {
+    const rows = await this.prisma.priceHistory.findMany({
+      where: { orgId, goodId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return rows.map(h => ({
+      id: h.id,
+      oldPrice: h.oldPrice != null ? Number(h.oldPrice) : null,
+      newPrice: Number(h.newPrice),
+      costPrice: h.costPrice != null ? Number(h.costPrice) : null,
+      reason: h.reason,
+      createdAt: h.createdAt,
+    }));
   }
 }

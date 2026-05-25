@@ -10,6 +10,8 @@ import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
+import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
+import { Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -105,6 +107,7 @@ export default function WorkOrderCardPage() {
 
   const [lineModal, setLineModal] = useState(false);
   const [partModal, setPartModal] = useState(false);
+  const [batchViewer, setBatchViewer] = useState<{ goodId: string; warehouseId: string } | null>(null);
   const [transitioning, setTransitioning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingLineId, setDeletingLineId] = useState<string | null>(null);
@@ -395,7 +398,16 @@ export default function WorkOrderCardPage() {
               {wo.parts.map(p => (
                 <div key={p.id} className="flex items-center justify-between px-4 py-3">
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-foreground">{p.goodName}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-foreground">{p.goodName}</p>
+                      <button
+                        onClick={e => { e.stopPropagation(); setBatchViewer({ goodId: p.goodId, warehouseId: p.warehouseId }); }}
+                        title="Переглянути партії"
+                        className="p-0.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
+                      >
+                        <Layers className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                     <p className="text-xs text-muted-foreground">{p.quantity} шт × {p.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
                   </div>
                   <div className="text-right mr-3">
@@ -445,6 +457,16 @@ export default function WorkOrderCardPage() {
           </Button>
         </div>
       </Modal>
+
+      {/* Batch Viewer Modal */}
+      {batchViewer && (
+        <BatchViewerModal
+          goodId={batchViewer.goodId}
+          warehouseId={batchViewer.warehouseId}
+          open={!!batchViewer}
+          onClose={() => setBatchViewer(null)}
+        />
+      )}
 
       {/* Add Part Modal */}
       <Modal open={partModal} onClose={() => setPartModal(false)} title="Додати запчастину">

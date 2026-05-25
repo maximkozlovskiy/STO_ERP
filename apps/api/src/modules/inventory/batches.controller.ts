@@ -1,0 +1,58 @@
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { BatchService } from './batch.service';
+import { PrismaService } from '../../prisma/prisma.service';
+
+@ApiTags('Batches')
+@Controller('batches')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth()
+export class BatchesController {
+  constructor(
+    private readonly batchService: BatchService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  @Get('lookup')
+  @ApiOperation({ summary: 'Batch viewer: партії + цінова історія товару' })
+  @ApiQuery({ name: 'goodId', required: true })
+  @ApiQuery({ name: 'warehouseId', required: false })
+  async lookup(
+    @OrgContext() orgId: string,
+    @Query('goodId') goodId: string,
+    @Query('warehouseId') warehouseId?: string,
+  ) {
+    const [good, batches, priceHistory, avgCost] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id: goodId, orgId, deletedAt: null },
+        select: { id: true, name: true, sku: true, unit: true, salePrice: true },
+      }),
+      this.batchService.getBatchesForGood(orgId, goodId, warehouseId),
+      this.prisma.priceHistory.findMany({
+        where: { orgId, goodId },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      this.batchService.getAvgCost(orgId, goodId, warehouseId ?? ''),
+    ]);
+
+    if (!good) return null;
+
+    return {
+      good: { ...good, salePrice: Number(good.salePrice) },
+      avgCostPrice: avgCost,
+      batches,
+      priceHistory: priceHistory.map(h => ({
+        id: h.id,
+        oldPrice: h.oldPrice != null ? Number(h.oldPrice) : null,
+        newPrice: Number(h.newPrice),
+        costPrice: h.costPrice != null ? Number(h.costPrice) : null,
+        reason: h.reason,
+        createdAt: h.createdAt,
+      })),
+    };
+  }
+}

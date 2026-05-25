@@ -579,9 +579,427 @@
 
 ---
 
-## Фаза 17 — Installer та Production
+## Фаза 17 — Збагачення об'єктів + Нові моделі
 
-> Залежності: Фази 13–16.  
+> Залежності: Фази 0–16.  
+> Мета: Повноцінна ERP — типобезпека, HR-реквізити, технічні дані авто, акти, планування ТО, рядки Invoice з ПДВ.
+
+### 17.1 — Технічний борг: String → Enum
+
+- [x] `[sto-database]` `PurchaseOrder.status` → `PurchaseOrderStatus` enum (DRAFT/ORDERED/RECEIVED/PARTIAL/CANCELLED)
+    > Enum додано в schema + поле змінено. Міграція: `purchase_order_status_enum`.
+- [x] `[sto-database]` `Invoice.status` → `InvoiceStatus` enum (DRAFT/SENT/PAID/OVERDUE/CANCELLED)
+    > Enum додано в schema + поле змінено. Міграція: `invoice_status_enum`.
+- [x] `[sto-database]` `CalendarSlot.status/type` → `CalendarSlotStatus` / `CalendarSlotType` enum
+    > Два нові enum-и + поля у CalendarSlot. Міграція: `calendar_slot_enums`.
+- [x] `[sto-database]` `Employee.status` → `EmployeeStatus` enum (ACTIVE/ON_LEAVE/FIRED)
+    > Enum + поле в Employee. Міграція: `employee_status_enum`.
+
+### 17.2 — Збагачення існуючих моделей
+
+- [x] `[sto-database]` `Vehicle` — технічні реквізити: transmissionType, driveType, bodyType, engineCode, insuranceExpiry, inspectionExpiry
+    > 6 нових полів у Vehicle. Міграція: `vehicle_technical_fields`.
+- [x] `[sto-database]` `WorkOrder` — пріоритет/категорія/дедлайн: priority (WorkOrderPriority), repairCategory (RepairCategory), dueDate, clientApproval
+    > 2 нові enum-и (WorkOrderPriority, RepairCategory) + 4 поля у WorkOrder. Міграція: `work_order_priority_category`.
+- [x] `[sto-database]` `WorkOrderLine.actualHours` — фактичний час виконання
+    > Поле actualHours Float? у WorkOrderLine. Міграція: `work_order_line_actual_hours`.
+- [x] `[sto-database]` `Employee` — HR-поля: email, phone, dateOfHire, dateOfFire
+    > 4 нові поля у Employee. Міграція: `employee_hr_fields`.
+- [x] `[sto-database]` `Good` — тип товару та постачальник: goodType (GoodType), preferredSupplierId → Counterparty
+    > Enum GoodType (SPARE_PART/CONSUMABLE/MATERIAL/TOOL) + 2 поля + relation. Міграція: `good_type_supplier`.
+- [x] `[sto-database]` `Counterparty` — юридичні реквізити: legalForm, legalAddress, actualAddress, bankAccount, bankName, contactPerson, taxNumber
+    > Enum LegalForm (INDIVIDUAL/FOP/TOV/AT/PP/OTHER) + 7 полів. Міграція: `counterparty_legal_fields`.
+- [x] `[sto-database]` `Lift` — технічне обслуговування: status (LiftStatus), serialNumber, purchaseDate, warrantyUntil, maintenanceIntervalDays, lastMaintenanceDate, nextMaintenanceDate
+    > Enum LiftStatus (ACTIVE/MAINTENANCE/BROKEN/DECOMMISSIONED) + 7 полів. Міграція: `lift_maintenance_fields`.
+- [x] `[sto-database]` `Invoice` — рядки з ПДВ: нова модель InvoiceLine, поля totalWithoutVat/totalVat/totalWithVat/invoiceType/notes
+    > Нова модель InvoiceLine (9 фінансових полів + FK до Invoice/Good/Work). Міграція: `invoice_lines_vat`.
+
+### 17.3 — Нові об'єкти
+
+- [x] `[sto-database]` `MaintenanceSchedule` — планування ТО: intervalDays, intervalMileage, nextMaintenanceDate, nextMaintenanceMileage
+    > Нова модель MaintenanceSchedule + relation в Vehicle. Міграція: `maintenance_schedule`.
+- [x] `[sto-database]` `CompletionAct` — акт виконаних робіт: number, status (CompletionActStatus), signedAt, signedBy, clientPhone
+    > Enum CompletionActStatus (DRAFT/SIGNED/CANCELLED) + нова модель + relation в WorkOrder. Міграція: `completion_act`.
+
+---
+
+## Фаза 19 — Партійний облік + Цінова історичність
+
+> Залежності: Фаза 9 (StockMovement, StockItem, PurchaseOrderLine), Фаза 17 (збагачені моделі).  
+> Мета: кожна партія товару зберігається окремо з власною собівартістю; ціна продажу формується автоматично за правилом націнки; з будь-якого документа можна переглянути партії та цінову історію товару.
+
+### Що вирішує ця фаза
+
+| Проблема | Рішення |
+|---|---|
+| Невідомо, яка собівартість при списанні з наряду | `StockBatch` — кожен прихід = окрема партія з `costPrice` |
+| `Good.salePrice` перезаписується при кожній поставці | `PriceHistory` — append-only лог усіх змін ціни |
+| Ціна продажу встановлюється вручну | `PricingRule` — автоматичне обчислення при оприбуткуванні |
+| Неможливо побачити партії з наряду/накладної | Batch Viewer — модальне вікно з будь-якого документа |
+| Немає реальної маржинальності по документах | `batchCostPrice` у `WorkOrderPart` та `InvoiceLine` |
+
+---
+
+### Фаза 19.1 — Схема БД: StockBatch + PricingRule + PriceHistory
+
+**Нові моделі:**
+
+```prisma
+enum BatchCostMethod {
+  FIFO        // за замовчуванням
+  FEFO        // для товарів з терміном придатності
+  LIFO        // рідко
+  AVG_COST    // середньозважена
+}
+
+enum PricingRuleType {
+  PERCENT           // salePrice = costPrice × (1 + percent/100)
+  FIXED_AMOUNT      // salePrice = costPrice + fixedAmount
+  FIXED_PRICE       // salePrice = fixedValue (ігнорує собівартість)
+  COMPETITOR_PLUS   // salePrice = competitorPrice × (1 + percent/100)
+}
+
+model StockBatch {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId               String    @db.Uuid
+  goodId              String    @db.Uuid
+  warehouseId         String    @db.Uuid
+  purchaseOrderLineId String?   @db.Uuid   // null для OPENING_BALANCE партій
+  stockMovementId     String    @db.Uuid   // RECEIPT StockMovement
+  batchNumber         String?              // серійний номер, партія від постачальника
+  expiryDate          DateTime?            // для FEFO
+  receivedQty         Float
+  remainingQty        Float
+  costPrice           Decimal   @db.Decimal(12, 2)   // ціна оприбуткування — незмінна
+  salePrice           Decimal   @db.Decimal(12, 2)   // обчислена при прийомі за PricingRule
+  isActive            Boolean   @default(true)
+  syncVersion         BigInt    @default(0)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  good                Good                @relation(fields: [goodId], references: [id])
+  warehouse           Warehouse           @relation(fields: [warehouseId], references: [id])
+  purchaseOrderLine   PurchaseOrderLine?  @relation(fields: [purchaseOrderLineId], references: [id])
+  stockMovement       StockMovement       @relation(fields: [stockMovementId], references: [id])
+  consumptions        BatchConsumption[]
+
+  @@index([orgId, goodId, warehouseId, isActive])
+  @@index([orgId, goodId, expiryDate])
+  @@map("stock_batches")
+}
+
+// Append-only — фіксує яка партія була використана в документі
+model BatchConsumption {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  batchId        String    @db.Uuid
+  goodId         String    @db.Uuid
+  quantity       Float                    // від'ємне = списання, додатнє = повернення
+  documentType   String                   // WorkOrder | StockDocument | Transfer
+  documentId     String    @db.Uuid
+  documentLineId String?   @db.Uuid       // WorkOrderPart.id | StockDocumentLine.id
+  createdAt      DateTime  @default(now())
+  createdBy      String?   @db.Uuid
+
+  batch  StockBatch @relation(fields: [batchId], references: [id])
+
+  @@index([orgId, batchId])
+  @@index([orgId, documentType, documentId])
+  @@map("batch_consumptions")
+}
+
+model PricingRule {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String          @db.Uuid
+  name         String
+  type         PricingRuleType
+  // Пріоритет (менше = вищий пріоритет): goodId(1) > category(2) > goodType(3) > orgDefault(10)
+  priority     Int             @default(10)
+  goodId       String?         @db.Uuid   // якщо правило для конкретного товару
+  goodCategory String?                    // якщо для категорії
+  goodType     String?                    // якщо для типу (SPARE_PART, CONSUMABLE...)
+  // Параметри залежно від type
+  percentValue Decimal?        @db.Decimal(6, 2)    // для PERCENT і COMPETITOR_PLUS
+  fixedAmount  Decimal?        @db.Decimal(12, 2)   // для FIXED_AMOUNT
+  fixedPrice   Decimal?        @db.Decimal(12, 2)   // для FIXED_PRICE
+  roundTo      Decimal?        @db.Decimal(6, 2)    // округлення результату (напр. 0.5 → до 50 коп)
+  isActive     Boolean         @default(true)
+  syncVersion  BigInt          @default(0)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
+
+  good  Good? @relation(fields: [goodId], references: [id])
+
+  @@index([orgId, isActive, priority])
+  @@map("pricing_rules")
+}
+
+// Append-only — лог усіх змін ціни продажу
+model PriceHistory {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  goodId      String    @db.Uuid
+  oldPrice    Decimal?  @db.Decimal(12, 2)   // null при першій фіксації
+  newPrice    Decimal   @db.Decimal(12, 2)
+  costPrice   Decimal?  @db.Decimal(12, 2)   // собівартість партії яка спричинила зміну
+  reason      String?                        // "PricingRule: назва" | "Manual" | "Batch receipt"
+  batchId     String?   @db.Uuid
+  pricingRuleId String? @db.Uuid
+  createdAt   DateTime  @default(now())
+  createdBy   String?   @db.Uuid
+
+  good  Good @relation(fields: [goodId], references: [id])
+
+  @@index([orgId, goodId, createdAt])
+  @@map("price_history")
+}
+```
+
+**Розширення існуючих моделей:**
+
+```prisma
+// OrganisationSettings — додати:
+costMethod  BatchCostMethod  @default(FIFO)
+
+// WorkOrderPart — додати:
+batchId        String?  @db.Uuid    // null якщо AVG_COST
+batchCostPrice Decimal? @db.Decimal(12, 2)  // собівартість на момент списання
+
+// StockMovement — додати:
+batchId  String?  @db.Uuid
+
+// PurchaseOrderLine — додати:
+batchId  String?  @db.Uuid    // заповнюється після оприбуткування
+```
+
+**Міграція:** `--name batch_pricing_history`
+
+---
+
+### Фаза 19.2 — Backend: BatchService + PricingService
+
+**`BatchService`** — `apps/api/src/modules/inventory/batch.service.ts`
+
+```typescript
+// Методи:
+createFromReceipt(orgId, purchaseOrderLineId, stockMovementId, qty, costPrice): StockBatch
+  // 1. Шукає активний PricingRule для goodId
+  // 2. Обчислює salePrice
+  // 3. Якщо salePrice != Good.salePrice → оновлює Good.salePrice + пише PriceHistory
+  // 4. Повертає новостворену партію
+
+consumeBatch(orgId, goodId, warehouseId, qty, documentType, documentId, documentLineId): BatchConsumption[]
+  // 1. Читає OrganisationSettings.costMethod
+  // 2. FIFO: findMany batches ORDER BY createdAt ASC WHERE remainingQty > 0
+  // 3. FEFO: ORDER BY expiryDate ASC NULLS LAST
+  // 4. LIFO: ORDER BY createdAt DESC
+  // 5. AVG_COST: не прив'язує до партій, повертає []
+  // 6. Списує qty по партіях у prisma.$transaction
+  // 7. Пише BatchConsumption per batch
+  // 8. Повертає масив BatchConsumption
+
+getBatchesForGood(orgId, goodId, warehouseId?): StockBatchResponseDto[]
+  // Повертає всі активні + вичерпані партії, відсортовані за датою
+
+getAvgCost(orgId, goodId, warehouseId): number
+  // SUM(remainingQty * costPrice) / SUM(remainingQty)
+```
+
+**`PricingService`** — `apps/api/src/modules/pricing/pricing.service.ts`
+
+```typescript
+// Методи:
+calculateSalePrice(orgId, goodId, goodCategory, goodType, costPrice): Decimal
+  // Шукає PricingRule з найвищим пріоритетом (мінімальний priority int) що відповідає goodId/category/goodType
+  // Якщо правил немає → повертає Good.salePrice без змін
+
+applyRuleToAll(orgId, ruleId): { updated: number }
+  // Перераховує Good.salePrice для всіх товарів що підпадають під правило
+  // Пише PriceHistory для кожного зміненого товару
+  // Виконується в BullMQ job (може бути довго)
+
+CRUD /pricing-rules:
+  GET    /pricing-rules
+  POST   /pricing-rules
+  PATCH  /pricing-rules/:id
+  DELETE /pricing-rules/:id (soft delete)
+  POST   /pricing-rules/:id/apply-all   ← запускає BullMQ job
+```
+
+**Інтеграція з InventoryService:**
+
+```
+InventoryService.createMovement(type: RECEIPT) →
+  + BatchService.createFromReceipt(...)
+
+InventoryService.createMovement(type: WRITEOFF | RESERVATION) →
+  + BatchService.consumeBatch(...)
+
+WorkOrdersService → COMPLETED →
+  WorkOrderPart.batchId = batchId з consumeBatch
+  WorkOrderPart.batchCostPrice = batch.costPrice (або avgCost)
+```
+
+**Нові ендпоінти:**
+
+```
+GET  /goods/:id/batches              — всі партії товару
+GET  /goods/:id/price-history        — лог змін ціни
+GET  /goods/:id/batches/by-warehouse — партії по складах
+POST /inventory/batches/transfer     — переміщення партії між складами
+```
+
+---
+
+### Фаза 19.3 — Backend: Batch Viewer API
+
+```
+GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
+```
+
+Повертає:
+```typescript
+{
+  good: { id, name, sku, unit },
+  currentPrice: number,           // Good.salePrice
+  avgCostPrice: number,           // середньозважена залишків
+  batches: [{
+    id, batchNumber, receivedQty, remainingQty,
+    costPrice, salePrice, expiryDate, createdAt,
+    purchaseOrderNumber,           // з PurchaseOrder якщо є
+    status: 'ACTIVE' | 'DEPLETED' | 'CANCELLED'
+  }],
+  priceHistory: [{
+    oldPrice, newPrice, costPrice, reason, createdAt
+  }]
+}
+```
+
+---
+
+### Фаза 19.4 — Frontend: Batch Viewer Modal
+
+Компонент `BatchViewerModal` — викликається з будь-якого документа:
+
+```typescript
+<BatchViewerModal
+  goodId="..."
+  warehouseId="..."          // опціонально
+  documentType="WorkOrder"   // для підсвічування використаних партій
+  documentId="..."
+  open={showBatches}
+  onClose={() => setShowBatches(false)}
+/>
+```
+
+**UI структура:**
+
+```
+┌────────────────────────────────────────────────────┐
+│  Партії та ціни — Масло Shell Helix 5W-40 1L       │
+├────────────────┬───────────────────────────────────┤
+│  Вкладка       │  Вкладка                          │
+│  "Партії"  ●  │  "Історія цін"                    │
+├────────────────┴───────────────────────────────────┤
+│  Середня собівартість: 245,00 ₴                    │
+│  Поточна ціна продажу: 320,00 ₴  (маржа: 30,6%)   │
+├────────────────────────────────────────────────────┤
+│  Партія      Отримано   Залишок  Собіварт. Ціна    │
+│  ─────────── ────────── ──────── ──────── ──────── │
+│  PO-2026-012  10 шт     8 шт     245,00   320,00  │
+│  PO-2026-008   5 шт     0 шт     230,00   299,00  │  ← DEPLETED
+│  [OPENING]    20 шт     2 шт     210,00   280,00  │
+└────────────────────────────────────────────────────┘
+```
+
+**Де підключається кнопка "Партії":**
+
+| Документ | Де кнопка |
+|---|---|
+| `WorkOrderPart` рядок | іконка біля назви товару в деталях наряду |
+| `PurchaseOrderLine` рядок | іконка в деталях накладної (Фаза 9) |
+| `StockDocumentLine` рядок | іконка в складському документі |
+| `Catalog → Good` картка | таб "Партії" поряд з "Рухи" |
+| `InvoiceLine` рядок | іконка в деталях рахунку |
+
+---
+
+### Фаза 19.5 — Frontend: Pricing Rules UI
+
+Нова сторінка `/pricing-rules` (розділ "Каталог" або "Налаштування"):
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Правила ціноутворення                  + Додати    │
+├─────────────────────────────────────────────────────┤
+│  Назва              Тип         Застосовується  %   │
+│  ─────────────────  ──────────  ─────────────── ─── │
+│  Запчастини +35%    Відсоток    Тип: SPARE_PART  35  │
+│  Витрат. матеріали  Відсоток    Тип: CONSUMABLE  25  │
+│  Масла Shell (спец) Фіксована   Товар: Shell…   320  │
+└─────────────────────────────────────────────────────┘
+```
+
+Форма правила: тип (select) → динамічні поля (percent/amount/price) → вибір scope (весь асортимент / тип товару / категорія / конкретний товар).
+
+Кнопка "Застосувати до всіх" → BullMQ job → toast "Перераховано N товарів".
+
+---
+
+### Задачі фази
+
+- [x] `[sto-database]` **19.1** — Схема: `StockBatch`, `BatchConsumption`, `PricingRule`, `PriceHistory`; розширити `OrganisationSettings` (`costMethod`), `WorkOrderPart` (`batchId`, `batchCostPrice`), `StockMovement` (`batchId`), `PurchaseOrderLine` (`batchId`); міграція `--name batch_pricing_history`
+    > `packages/database/prisma/schema.prisma`. Міграція `20260525151450_batch_pricing_history`. Enum `BatchCostMethod` (FIFO/FEFO/LIFO/AVG_COST), `PricingRuleType` (PERCENT/FIXED_AMOUNT/FIXED_PRICE/COMPETITOR_PLUS).
+- [x] `[sto-backend]` **19.2** — `BatchService`: `createFromReceipt`, `consumeBatch` (FIFO/FEFO/LIFO/AVG_COST), `getAvgCost`; `PricingService`: `calculateSalePrice`, `applyRuleToAll` (BullMQ); інтеграція в `InventoryService.createMovement()` та `WorkOrdersService`
+    > `apps/api/src/modules/inventory/batch.service.ts`, `pricing.service.ts`. `InventoryService.createMovement()` викликає `BatchService.createFromReceipt()` для RECEIPT. `forwardRef` для уникнення circular dependency.
+- [x] `[sto-backend]` **19.3** — `GET /batches/lookup` (Batch Viewer API); `GET /goods/:id/batches`; `GET /goods/:id/price-history`; CRUD `/pricing-rules` + `POST /pricing-rules/:id/apply-all`
+    > `apps/api/src/modules/inventory/batches.controller.ts`, `pricing-rules.controller.ts`, `pricing-rules.dto.ts`. `GET /batches/lookup` повертає `{ good, avgCostPrice, batches, priceHistory }`. DTO використовує `!` для обов'язкових полів (`name!`, `type!`).
+- [x] `[sto-web]` **19.4** — `BatchViewerModal` компонент (вкладки "Партії" / "Історія цін"); підключення іконки у `WorkOrderPart`, картка товару (таб "Партії")
+    > `apps/web/src/components/ui/batch-viewer-modal.tsx`. Іконка `<Layers>` у `WorkOrderPart` рядках (`apps/web/src/app/work-orders/[id]/PageClient.tsx`). Таб "Партії" у каталозі товарів (`apps/web/src/app/catalog/page.tsx`).
+- [x] `[sto-web]` **19.5** — Сторінка `/pricing-rules` (список правил, форма створення/редагування, кнопка "Застосувати до всіх" з прогрес-тостом)
+    > `apps/web/src/app/pricing-rules/page.tsx` + `PricingRulesClient.tsx`. Навігація `TopShell` (розділ "Довідники", іконка `Zap`). Ролі: OWNER/ADMIN/STOREKEEPER.
+
+### Порядок виконання
+
+```
+19.1 → schema.prisma + міграція
+19.2 → BatchService + PricingService + інтеграція в InventoryService
+19.3 → Batch Viewer API endpoint
+19.4 → BatchViewerModal компонент + підключення в документах
+19.5 → PricingRules CRUD UI
+```
+
+Після кожного підпункту:
+- `pnpm --filter @sto/api exec tsc --noEmit`
+- `cd apps/web && tsc --noEmit --incremental false`
+- `git commit -m "feat(phase19): 19.X — ..."`
+
+---
+
+### Business Rules Catalogue (BR-BATCH)
+
+- **BR-BATCH-001**: Кожен RECEIPT StockMovement створює рівно одну `StockBatch`
+- **BR-BATCH-002**: `StockBatch.remainingQty` ніколи не стає від'ємним — блок на рівні `BatchService`
+- **BR-BATCH-003**: Метод списання (`FIFO|FEFO|LIFO|AVG_COST`) задається в `OrganisationSettings.costMethod`
+- **BR-BATCH-004**: При `FIFO/FEFO/LIFO` — списання фіксується в `BatchConsumption`; при `AVG_COST` — не прив'язується
+- **BR-BATCH-005**: `StockBatch.costPrice` — фіксується при оприбуткуванні, **ніколи не змінюється** (append-only принцип)
+- **BR-BATCH-006**: `StockBatch.salePrice` — розраховується при оприбуткуванні за найпріоритетнішим `PricingRule`
+- **BR-BATCH-007**: При зміні `salePrice` → автоматично пишеться запис у `PriceHistory`
+- **BR-BATCH-008**: `PricingRule` з `priority=1` (goodId) перекриває `priority=2` (category) перекриває `priority=10` (org default)
+- **BR-BATCH-009**: Скасування `PurchaseOrder` → `StockBatch.remainingQty` відновлюється, `isActive=false`
+- **BR-BATCH-010**: Переміщення товару (TRANSFER) між складами — `StockBatch.warehouseId` оновлюється
+- **BR-BATCH-011**: `WorkOrderPart.batchCostPrice` фіксується при списанні — не змінюється навіть при зміні партії
+- **BR-BATCH-012**: `InvoiceLine.costPrice` береться з `WorkOrderPart.batchCostPrice` для розрахунку маржі
+- **BR-BATCH-013**: Партія вважається `DEPLETED` коли `remainingQty = 0`
+- **BR-BATCH-014**: Ручна партія (OPENING_BALANCE) не має `purchaseOrderLineId` — це нормально
+- **BR-BATCH-015**: `POST /pricing-rules/:id/apply-all` — виконується асинхронно через BullMQ, не блокує UI
+
+---
+
+## Фаза 18 — Installer та Production
+
+> Залежності: Фази 13–17.  
 > Мета: `.exe` installer + auto-update + production hardening.
 
 - [ ] `[sto-installer]` Inno Setup скрипт: завантаження/розпакування Docker images, `docker compose up`, Windows service
@@ -614,8 +1032,10 @@
 | 13 | Web UI (оболонка + дашборд) | ✅ завершено (5/5+2) |
 | 14 | Мобільний додаток | ✅ завершено (6/6) |
 | 15 | Cloud Sync | ✅ завершено (4/4) |
-| 16 | Каталог v2 + CRM + XLSX-імпорт | ⬜ не розпочато (27 задач) |
-| 17 | Installer та Production | ⬜ не розпочато (7 задач) |
+| 16 | Каталог v2 + CRM + XLSX-імпорт | ✅ завершено (27/27) |
+| 17 | Збагачення об'єктів + Нові моделі | ✅ завершено (15/15) |
+| 18 | Installer та Production | ⬜ не розпочато (7 задач) |
+| 19 | Партійний облік + Цінова історичність | ⬜ не розпочато (5 підфаз) |
 
 > Оновлюється автоматично після кожного завершеного завдання.  
 > Статус таблиці: ⬜ не розпочато / 🔄 в процесі / ✅ завершено

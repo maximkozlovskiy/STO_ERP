@@ -1,6 +1,7 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { BatchService } from './batch.service';
 
 export interface CreateMovementDto {
   goodId: string;
@@ -10,13 +11,21 @@ export interface CreateMovementDto {
   price?: number;
   documentType?: string;
   documentId?: string;
+  documentLineId?: string;
   notes?: string;
   createdBy?: string;
+  // Batch fields (optional, used when type=RECEIPT)
+  purchaseOrderLineId?: string;
+  batchNumber?: string;
+  expiryDate?: Date;
 }
 
 @Injectable()
 export class InventoryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => BatchService)) private readonly batchService: BatchService,
+  ) {}
 
   async createMovement(orgId: string, dto: CreateMovementDto, tx?: Prisma.TransactionClient): Promise<void> {
     if (dto.quantity === 0) throw new BadRequestException('Кількість не може бути нульовою');
@@ -43,7 +52,7 @@ export class InventoryService {
       }
     }
 
-    await db.stockMovement.create({
+    const movement = await db.stockMovement.create({
       data: {
         orgId,
         goodId: dto.goodId,
@@ -57,6 +66,20 @@ export class InventoryService {
         createdBy: dto.createdBy ?? null,
       },
     });
+
+    // Create batch on RECEIPT
+    if (dto.type === 'RECEIPT' && dto.quantity > 0 && dto.price) {
+      await this.batchService.createFromReceipt(orgId, {
+        goodId: dto.goodId,
+        warehouseId: dto.warehouseId,
+        purchaseOrderLineId: dto.purchaseOrderLineId,
+        stockMovementId: movement.id,
+        batchNumber: dto.batchNumber,
+        expiryDate: dto.expiryDate,
+        receivedQty: dto.quantity,
+        costPrice: dto.price,
+      }, db as Prisma.TransactionClient);
+    }
 
     // RESERVATION/RESERVATION_RELEASE only affect reserved counter, not physical quantity
     // WRITEOFF decrements quantity; reserved was already decremented by the prior RESERVATION_RELEASE call

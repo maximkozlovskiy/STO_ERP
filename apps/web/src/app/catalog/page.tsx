@@ -12,6 +12,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel } from '@/components/ui/detail-panel';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
+import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
@@ -34,7 +35,7 @@ interface PaginatedServices { items: Service[]; total: number; page: number; lim
 interface GoodBarcode { id: string; barcode: string; type: string; isPrimary: boolean; }
 
 type Tab = 'works' | 'goods' | 'services' | 'units';
-type GoodDetailTab = 'info' | 'barcodes';
+type GoodDetailTab = 'info' | 'barcodes' | 'batches';
 
 const GOOD_TYPE_LABELS: Record<string, string> = {
   SPARE_PART: 'Запчастина',
@@ -418,6 +419,7 @@ function GoodsTab() {
   const [editGoodSaving, setEditGoodSaving] = useState(false);
   const [editGoodError, setEditGoodError] = useState('');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [batchViewerGoodId, setBatchViewerGoodId] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<Brand[]>('/brands').catch(() => []).then(v => { if (Array.isArray(v)) setBrands(v); });
@@ -662,6 +664,7 @@ function GoodsTab() {
                 {([
                   { key: 'info' as const, label: 'Інформація', icon: Package },
                   { key: 'barcodes' as const, label: 'Штрихкоди', icon: Barcode },
+                  { key: 'batches' as const, label: 'Партії', icon: Layers },
                 ] as const).map(({ key, label, icon: Icon }) => (
                   <button
                     key={key}
@@ -736,6 +739,24 @@ function GoodsTab() {
                 </div>
               )}
 
+              {/* Batches tab */}
+              {goodDetailTab === 'batches' && (
+                <div className="space-y-3">
+                  <p className="text-[12px] text-muted-foreground">
+                    Партії надходження та цінова історія товару.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    leftIcon={<Layers className="h-3.5 w-3.5" />}
+                    onClick={() => setBatchViewerGoodId(selectedGood.id)}
+                  >
+                    Відкрити Batch Viewer
+                  </Button>
+                </div>
+              )}
+
               {/* Barcodes tab */}
               {goodDetailTab === 'barcodes' && (
                 <div className="space-y-3">
@@ -802,6 +823,15 @@ function GoodsTab() {
       </div>
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+
+      {/* Batch Viewer Modal */}
+      {batchViewerGoodId && (
+        <BatchViewerModal
+          goodId={batchViewerGoodId}
+          open={!!batchViewerGoodId}
+          onClose={() => setBatchViewerGoodId(null)}
+        />
+      )}
 
       {/* Confirm mark-for-deletion dialog */}
       <Modal
