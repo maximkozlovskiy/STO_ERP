@@ -9,13 +9,28 @@
 ## Останній commit
 
 ```
-9150607 fix(tester): Phase 17 bugs — completion-acts contract, sign race, maintenance recalc
-8671770 fix(review): phase17 review fixes — canonical Tailwind tokens + maintenance schedules scope
-26856c6 feat(phase17): 17.1-17.3 frontend — new fields, priority badges, CompletionAct UI, maintenance widget
-1c132c9 feat(phase17): 17.1-17.3 backend — enums, enriched models, MaintenanceSchedule + CompletionAct modules
+23e10b6 fix(tester): post-theme/sidebar QA — 3 bugs (input ring bracket, blob revoke race, unused GripVertical)
+3b0af99 feat(web): keep full-size icons when sidebar is collapsed
+a41ba77 feat(web): fix theme hydration, dark mode palette, configurable quick actions
 ```
 
 Дата: 2026-05-25
+
+## Поточний стан тестів (post-23e10b6)
+```
+TypeScript:  ✅ 0 errors        (web + api + shared)
+Unit:        ✅ 67/67 passed    (8 files: auth, inventory, settlements, contract×2, invariants×3)
+Contract:    ✅ 15/15 passed    (auth: 9, work-orders: 6)
+Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
+Components:  ⏭  skipped         (apps/web/vitest.config.mts not present in current tree)
+E2E:         ✅ 16/16 passed    (smoke: 4, inventory: 4, api-errors: 8)
+```
+
+### Gotcha — Tailwind 4 arbitrary value must be fully closed
+Bug #1 цього циклу: `focus:ring-[hsl(0_86%_93%)` (без `]`) **компілюється тихо**, але клас не з'являється в CSS бо JIT не парсить незакриту dynamic-value. Подвійно перевіряй парні `[...]` в усіх `*-[...]` класах при ручному кодуванні. /sto-review має grep на незакриті дужки.
+
+### Gotcha — Blob URL revoke must defer past click()
+`URL.revokeObjectURL(url)` викликаний **синхронно** після `a.click()` зриває завантаження в Chromium (іноді). Завжди `setTimeout(() => URL.revokeObjectURL(url), 100)`. Патерн уже застосований у reports/page.tsx — використовуй як еталон.
 
 ---
 

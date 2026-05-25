@@ -97,6 +97,12 @@ grep -rnE "(rounded|shadow|text|bg|border|divide|ring)-\(--" apps/web/src/ --inc
 # Pixel значення замість Tailwind scale
 grep -rnE "(w|h|top|left|right|bottom|max-w|min-w|p|m|gap)-\[[0-9]+px\]" apps/web/src/ --include="*.tsx"
 
+# Tailwind 4 — незакрита квадратна дужка у arbitrary value (JIT тихо НЕ генерує клас)
+# Шукає рядки де є `-[` без подальшого `]` на тому ж рядку
+grep -rnE "\b[a-z:]+-\[[^]]*$" apps/web/src/ --include="*.tsx" --include="*.ts"
+# Також: рядки з відкритою дужкою чий вміст не закривається до кінця токена/рядка
+grep -rnE "(focus|hover|active|bg|text|border|ring|shadow|rounded|w|h|p|m|gap)-\[[^]]*[\",']" apps/web/src/ --include="*.tsx" | grep -v "\]'"
+
 # Застарілі утиліти
 grep -rn "flex-shrink-0" apps/web/src/ --include="*.tsx"
 
@@ -126,6 +132,8 @@ done
 | `The class '[var(--color-x)]' can be written as 'bg-x'` | Замінити `[var(--color-x)]` на canonical Tailwind token (див. `/sto-dev` Tailwind 4 секцію) |
 | `bg-(--color-X)` / `border-(--color-X)` shorthand | Замінити на canonical token: `bg-X` / `border-X` (`bg-(--color-primary)` → `bg-primary`) |
 | `shadow-(--shadow-xl)` / `rounded-(--radius)` | Canonical: `shadow-xl` / `rounded` |
+| `focus:ring-[hsl(...)` без закриваючої `]` | Tailwind 4 JIT тихо ігнорує клас. Додати закриваючу `]` — обов'язково перевірити парність дужок у кожному `*-[...]` arbitrary value |
+| `URL.revokeObjectURL(url)` синхронно після `a.click()` | Загорнути в `setTimeout(() => URL.revokeObjectURL(url), 100)` — Chromium іноді зриває завантаження blob якщо URL відкликаний до старту fetch |
 | `findMany` без `take` ліміту | Додати `take: N` (зони/підйомники: 100, авто/співробітники: 200, slots: 500, list endpoints: 200) — інакше при N → ∞ записах піде OOM |
 | `The class 'w-[Npx]' can be written as 'w-M'` | Перевести px → Tailwind scale: M = N/4 (52px→w-13, 216px→w-54, 420px→w-105) |
 | `The class 'flex-shrink-0' can be written as 'shrink-0'` | Просто перейменувати |

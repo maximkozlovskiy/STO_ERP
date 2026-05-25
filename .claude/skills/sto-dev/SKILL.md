@@ -368,6 +368,39 @@ tracking-[0.05em] → tracking-wider
 tracking-[0.08em] → tracking-widest
 ```
 
+### Arbitrary value — парність дужок ОБОВ'ЯЗКОВА
+
+Tailwind 4 JIT парсить `*-[...]` як arbitrary value. Якщо закриваюча `]` відсутня — клас **тихо НЕ генерується**, CSS просто не з'являється; помилки збірки немає.
+
+```tsx
+// ❌ Невидима помилка — фокус-ring не з'являється
+hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)',
+
+// ✅ Закрита дужка — клас працює
+hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)]',
+```
+
+При ручному кодуванні arbitrary values:
+1. Завжди подвійно перевір парність `[` і `]` усередині рядка з класами
+2. Якщо клас довгий — винеси в змінну: `const ringErr = 'focus:ring-[hsl(0_86%_93%)]'`
+3. `/sto-review` має grep на незакриті дужки
+
+### Blob URL — `revokeObjectURL` тільки через setTimeout
+
+`URL.revokeObjectURL(url)` викликаний **синхронно** після `a.click()` зриває завантаження у Chromium (відкликає URL до того як браузер встигне fetch'нути blob).
+
+```tsx
+// ❌ Зриває .xlsx завантаження в Chromium
+const url = URL.createObjectURL(blob);
+a.href = url; a.download = 'file.xlsx'; a.click();
+URL.revokeObjectURL(url);
+
+// ✅ Дай браузеру час почати fetch
+const url = URL.createObjectURL(blob);
+a.href = url; a.download = 'file.xlsx'; a.click();
+setTimeout(() => URL.revokeObjectURL(url), 100);
+```
+
 ---
 
 ## Prisma 5
