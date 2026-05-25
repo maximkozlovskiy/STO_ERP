@@ -999,7 +999,7 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ## Фаза 18 — Installer та Production
 
-> Залежності: Фази 13–17.  
+> Залежності: Фази 13–19 (фінальна стабільна версія).  
 > Мета: `.exe` installer + auto-update + production hardening.
 
 - [ ] `[sto-installer]` Inno Setup скрипт: завантаження/розпакування Docker images, `docker compose up`, Windows service
@@ -1034,24 +1034,8 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 | 15 | Cloud Sync | ✅ завершено (4/4) |
 | 16 | Каталог v2 + CRM + XLSX-імпорт | ✅ завершено (27/27) |
 | 17 | Збагачення об'єктів + Нові моделі | ✅ завершено (15/15) |
+| 19 | Партійний облік + Цінова історичність | ✅ завершено (5/5) |
 | 18 | Installer та Production | ⬜ не розпочато (7 задач) |
-| 19 | Партійний облік + Цінова історичність | ⬜ не розпочато (5 підфаз) |
 
 > Оновлюється автоматично після кожного завершеного завдання.  
 > Статус таблиці: ⬜ не розпочато / 🔄 в процесі / ✅ завершено
-
----
-
-## Виправлення (Code Review 2026-05-24)
-
-Автоматичний /sto-review виявив і виправив наступні баги:
-
-| Файл | Тип | Проблема | Виправлення |
-|------|-----|---------|-------------|
-| `apps/api/src/modules/reports/reports.service.ts` | Critical | Hardcoded `+03:00` DST offset — неправильно взимку (+02:00) | Додано `kyivOffsetMs()` через `Intl.DateTimeFormat` |
-| `apps/api/src/modules/purchase-orders/purchase-orders.service.ts` | Critical | `receive()` створював `PAYMENT` settlement замість `CHARGE` — борг до постачальника не фіксувався | Змінено `type: 'PAYMENT'` → `type: 'CHARGE'` |
-| `apps/api/src/auth/auth.spec.ts` | Test | Тест логіну падав з ForbiddenException: mock `authAccount` не мав `orgId` | Додано `orgId: 'org-1'` в mock |
-| `apps/api/src/auth/auth.spec.ts` | Test | Тест refresh падав: ConfigService mock не мав `getOrThrow` | Додано `getOrThrow` в ConfigService mock |
-| `apps/web/src/app/purchase-orders/page.tsx` | UI | Кнопка "Підтвердити прийом" не блокувалась під час запиту | Додано `disabled={saving}` |
-| `apps/web/src/app/stock-documents/page.tsx` | UI | FSM-кнопки не блокувались під час запиту | Додано `disabled={saving}` на обидві кнопки |
-| `apps/web/src/app/setup/page.tsx` | Critical | Кнопка "Далі →" завжди неактивна через конфлікт з `AuthProvider` в root layout | Ізольовано в окремий layout, видалено `useAuth`, додано `checking` step |
