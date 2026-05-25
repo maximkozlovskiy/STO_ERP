@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -90,28 +90,44 @@ export class GoodsController {
   }
 
   // ─── Batches + Price History Sub-resources ───────────────────────────────────
+  //
+  // Bug #28: list-style sub-resources повертають `{ items, total }` shape для
+  // відповідності API-контракту STO ERP (frontend всюди очікує `data.items.length`).
+  // Bug #31: перед запитом валідуємо існування Good у поточній org → 404 інакше
+  // силует "Немає партій" приховує помилковий goodId.
 
   @Get(':id/batches')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Партії товару' })
-  getBatches(
+  async getBatches(
     @OrgContext() orgId: string,
     @Param('id') id: string,
     @Query('warehouseId') warehouseId?: string,
   ) {
-    return this.batchService.getBatchesForGood(orgId, id, warehouseId);
+    const good = await this.prisma.good.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!good) throw new NotFoundException('Товар не знайдено');
+    const items = await this.batchService.getBatchesForGood(orgId, id, warehouseId);
+    return { items, total: items.length };
   }
 
   @Get(':id/price-history')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Цінова історія товару' })
   async getPriceHistory(@OrgContext() orgId: string, @Param('id') id: string) {
+    const good = await this.prisma.good.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!good) throw new NotFoundException('Товар не знайдено');
     const rows = await this.prisma.priceHistory.findMany({
       where: { orgId, goodId: id },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
-    return rows.map(h => ({
+    const items = rows.map(h => ({
       id: h.id,
       oldPrice: h.oldPrice != null ? Number(h.oldPrice) : null,
       newPrice: Number(h.newPrice),
@@ -119,5 +135,6 @@ export class GoodsController {
       reason: h.reason,
       createdAt: h.createdAt,
     }));
+    return { items, total: items.length };
   }
 }
