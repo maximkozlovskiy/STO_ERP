@@ -9,24 +9,24 @@
 ## Останній commit
 
 ```
+b23b606 docs(skills): add inline-HSL grep check to sto-review + sto-tester
+60832fc docs(memory): update MemoryManual after tester cycle 3
 7a7b474 fix(tester): cycle 3 — replace inline hsl with canonical Tailwind tokens
 637557c docs(tester): cycle after review cycle 2 — 0 new bugs, all green
 ce81b93 chore(claude): update settings.local.json with new bash permissions
-85bbf91 fix(web): add @source directive so Tailwind 4 scans all TSX files
-96f29cb docs(skills): add tsconfig + Tailwind canonical patterns to sto-dev/sto-review
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (tester cycle 3, post-7a7b474)
+## Поточний стан тестів (після review+tester cycle 3, post-b23b606)
 ```
 TypeScript:  ✅ 0 errors        (web + api + shared, перевірено 2026-05-25)
 Unit:        ✅ 67/67 passed    (8 files: auth, inventory, settlements, contract×2, invariants×3)
 Contract:    ✅ 15/15 passed    (auth: 9, work-orders: 6)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
-Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11) — vitest.config.mts є
-E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн на момент запуску)
-Bugs:        ✅ 5/6 fixed       (Bug #1-#5 — inline hsl → canonical tokens. Bug #6 — skill gap задокументовано, ручний апдейт SKILL.md потрібен бо edit на .claude/skills заблокований дозволами)
+Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
+E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн)
+Цикли QA:    ✅ 3 цикли завершено — 0 відкритих багів
 ```
 
 ### Gotcha — Inline HSL не адаптується в dark mode (Bugs #1-#5)
