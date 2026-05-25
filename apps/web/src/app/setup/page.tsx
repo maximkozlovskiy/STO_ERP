@@ -48,15 +48,20 @@ export default function SetupPage() {
 
   // Check if already initialized — redirect if so
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ initialized: boolean }>('/setup/status')
       .then((d) => {
+        if (cancelled) return;
         if (d.initialized) {
           router.replace('/login');
         } else {
           setStep('org');
         }
       })
-      .catch(() => setStep('org'));
+      .catch(() => {
+        if (!cancelled) setStep('org');
+      });
+    return () => { cancelled = true; };
   }, [router]);
 
   const stepIndex = STEPS.indexOf(step);
@@ -258,6 +263,11 @@ function Field({
   placeholder?: string;
   type?: string;
 }) {
+  // Browser autocomplete hints — purely UX, no security impact (one-shot wizard).
+  const autoComplete =
+    type === 'email' ? 'email' :
+    type === 'password' ? 'new-password' :
+    'off';
   return (
     <div className="mb-3">
       <label className="block text-sm font-medium text-foreground mb-1">{label}</label>
@@ -266,6 +276,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        autoComplete={autoComplete}
         className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
       />
     </div>

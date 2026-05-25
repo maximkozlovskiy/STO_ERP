@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -53,16 +53,27 @@ export default function CalendarPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   useEffect(() => { setDate(toDateString(new Date())); }, []);
 
   useEffect(() => {
-    apiFetch<Lift[]>('/lifts').then(setLifts).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'));
+    apiFetch<Lift[]>('/lifts')
+      .then(data => { if (mountedRef.current) setLifts(data); })
+      .catch((e: unknown) => { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження'); });
   }, []);
 
   const load = useCallback(() => {
     if (!date) return;
     setLoading(true);
-    apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`).then(setSlots).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
+    apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`)
+      .then(data => { if (mountedRef.current) setSlots(data); })
+      .catch((e: unknown) => { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження'); })
+      .finally(() => { if (mountedRef.current) setLoading(false); });
   }, [date]);
 
   useEffect(() => { load(); }, [load]);

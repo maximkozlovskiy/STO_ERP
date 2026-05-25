@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -118,22 +118,39 @@ export default function WorkOrderCardPage() {
   const [lineForm, setLineForm] = useState({ workId: '', employeeId: '', normoHours: '', price: '', notes: '' });
   const [partForm, setPartForm] = useState({ goodId: '', warehouseId: '', quantity: '1', price: '' });
 
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const load = useCallback(() => {
     apiFetch<WorkOrderDetail>(`/work-orders/${id}`)
-      .then(setWo)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження наряду'));
+      .then(data => { if (mountedRef.current) setWo(data); })
+      .catch((e: unknown) => { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження наряду'); });
     apiFetch<{ items: CompletionActSummary[] }>(`/completion-acts?workOrderId=${id}`)
-      .then(data => { if (data.items.length > 0) setCompletionAct(data.items[0]); })
+      .then(data => {
+        if (!mountedRef.current) return;
+        if (data.items.length > 0) setCompletionAct(data.items[0]);
+      })
       .catch((e: unknown) => console.warn('[CompletionAct] load failed:', e));
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    apiFetch<{ items: Work[] }>('/works?limit=200').then(r => setWorks(r.items)).catch((e: unknown) => setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
-    apiFetch<{ items: Employee[] }>('/employees?limit=200').then((r: { items?: Employee[] } | Employee[]) => setEmployees(Array.isArray(r) ? r : r.items ?? [])).catch((e: unknown) => setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
-    apiFetch<{ items: Good[] }>('/goods?limit=200').then(r => setGoods(r.items)).catch((e: unknown) => setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
-    apiFetch<Warehouse[]>('/warehouses').then(setWarehouses).catch((e: unknown) => setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
+    apiFetch<{ items: Work[] }>('/works?limit=200')
+      .then(r => { if (mountedRef.current) setWorks(r.items); })
+      .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
+    apiFetch<{ items: Employee[] }>('/employees?limit=200')
+      .then((r: { items?: Employee[] } | Employee[]) => { if (mountedRef.current) setEmployees(Array.isArray(r) ? r : r.items ?? []); })
+      .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
+    apiFetch<{ items: Good[] }>('/goods?limit=200')
+      .then(r => { if (mountedRef.current) setGoods(r.items); })
+      .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
+    apiFetch<Warehouse[]>('/warehouses')
+      .then(data => { if (mountedRef.current) setWarehouses(data); })
+      .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
   }, []);
 
   const selectWork = (workId: string) => {
