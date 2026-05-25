@@ -14,7 +14,7 @@
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після review cycle 2, post-323d8d9)
+## Поточний стан тестів (після tester cycle 4, 2026-05-25)
 ```
 TypeScript:  ✅ 0 errors        (web + api, перевірено 2026-05-25)
 Unit:        ✅ 67/67 passed    (8 files: auth, inventory, settlements, contract×2, invariants×3)
@@ -22,7 +22,7 @@ Contract:    ✅ 15/15 passed    (auth: 9, work-orders: 6)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
 E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн)
-Цикли QA:    ✅ 3 цикли завершено — 0 відкритих багів
+Цикли QA:    ✅ 4 цикли завершено — 0 відкритих багів (cycle 4: 0 нових)
 ```
 
 ### Gotcha — Inline HSL не адаптується в dark mode (Bugs #1-#5)

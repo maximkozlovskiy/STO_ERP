@@ -1,9 +1,38 @@
 # BUG_REPORT.md — STO ERP
 
 Дата: 2026-05-25
+Сесія: tester cycle 4 (Phase 17 final sweep — completion-acts, maintenance-schedules, work-orders FSM + priority/repairCategory)
+
+## Baseline (cycle 4 — чиста перевірка)
+
+- `tsc` web/api — ✅ 0 errors
+- Unit + contract + property API — ✅ 67/67 passed (8 файлів)
+- E2E Playwright — ⏭ skipped (dev server офлайн)
+
+## Знайдено багів у cycle 4: 0
+
+Статичний sweep покрив:
+- completion-acts.service.ts — orgId/deletedAt/toDto/no-hard-delete ✅
+- maintenance-schedules.service.ts — vehicle relation-filter/selective-recalc/no-hard-delete ✅
+- work-orders.service.ts — FSM via WORK_ORDER_TRANSITIONS/priority+repairCategory/side-effects ✅
+- Frontend raw fetch() — тільки setup/page.tsx + auth/context.tsx (intentional, pre-auth) ✅
+- new Date() в render path — усі існуючі useEffect/onClick/state-dependent ✅
+- addEventListener cleanup — TopShell + Modal мають removeEventListener ✅
+- Blob URL — reports/page.tsx + xlsx-import-button.tsx мають setTimeout+revokeObjectURL ✅
+- Inline HSL colors — 0 нових; попередньо виправлені bugs #1-#5 не регресували ✅
+- Append-only tables (StockMovement, SettlementTransaction) — ніяких update/delete ✅
+- Raw SQL casing — document-number + inventory використовують camelCase з лапками ✅
+- Tenant isolation (orgId) — всі findMany/findFirst/update мають orgId ✅
+- Soft delete (deletedAt: null) — всі запити на soft-deletable моделях ✅
+
+---
+
+## Попередні сесії — cycle 3 (Tailwind canonical tokens)
+
+Дата: 2026-05-25
 Сесія: tester cycle 3 (фінальна верифікація після review cycle 2 + ce81b93/637557c)
 
-## Baseline (cycle 3 reverify)
+### Baseline (cycle 3 reverify)
 
 - `tsc` web/api/shared — ✅ 0 errors
 - Unit + contract + property API — ✅ 67/67 passed (8 файлів)
