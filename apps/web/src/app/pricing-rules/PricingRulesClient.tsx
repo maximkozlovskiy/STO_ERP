@@ -351,7 +351,7 @@ export default function PricingRulesClient() {
       method: 'PATCH',
       body: JSON.stringify({ ...buildPayload(form), isActive: form.isActive }),
     });
-    setEditRule(null);
+    if (mountedRef.current) setEditRule(null);
     load();
   };
 
@@ -362,9 +362,9 @@ export default function PricingRulesClient() {
       await apiFetch<void>(`/pricing-rules/${id}`, { method: 'DELETE' });
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення');
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка видалення');
     } finally {
-      setDeletingId(null);
+      if (mountedRef.current) setDeletingId(null);
     }
   };
 
@@ -374,11 +374,11 @@ export default function PricingRulesClient() {
     setApplyResult(null);
     try {
       const result = await apiFetch<{ updated: number; message: string }>(`/pricing-rules/${rule.id}/apply-all`, { method: 'POST' });
-      setApplyResult({ ruleId: rule.id, message: result.message });
+      if (mountedRef.current) setApplyResult({ ruleId: rule.id, message: result.message });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка застосування');
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка застосування');
     } finally {
-      setApplyingId(null);
+      if (mountedRef.current) setApplyingId(null);
     }
   };
 
