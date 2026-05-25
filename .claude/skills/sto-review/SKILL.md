@@ -134,6 +134,7 @@ done
 | `Cannot find namespace 'React'` / `React.ReactNode` | `import type { ReactNode } from 'react'` → використовувати `ReactNode` |
 | `React.HTMLAttributes<T>` | `import type { HTMLAttributes } from 'react'` |
 | `React.SVGAttributes<T>` | `import type { SVGAttributes } from 'react'` |
+| `React.ChangeEvent<T>` / `React.FormEvent<T>` / `React.MouseEvent<T>` | `import type { ChangeEvent, FormEvent, MouseEvent } from 'react'` |
 | `Type '"default"' is not assignable to type 'Variant'` | Додати `'default'` до Variant union у `button.tsx` |
 | `Property 'placeholder' does not exist on SelectProps` | Додати `placeholder?: string`; рендерити як `<option value="" disabled>` |
 | `Type 'unknown'` на Prisma dynamic select | Cast: `(result as { field: type }).field` |
@@ -215,6 +216,7 @@ grep -rn "process\.env\." apps/api/src/ --include="*.ts" | grep -v "main.ts" | g
 - [ ] `process.env` доступ тільки в `main.ts` та конфіг-файлах — сервіси використовують `ConfigService`
 - [ ] `eval()`, `new Function()`, `child_process.exec()` — відсутні
 - [ ] Файлові upload paths не конкатенуються з user input без санітизації
+- [ ] `@Query('xxxId')` / `@Param('xxxId')` що очікують UUID — обгорнути `ParseUUIDPipe()` (або `new ParseUUIDPipe({ optional: true })` для optional). Без нього невалідний UUID → Prisma P2023 → HTTP 500 замість 400. Не використовуй `version: '4'` явно — тести часто використовують UUIDs з версією 0.
 
 ### 2.4 Витік чутливих даних
 

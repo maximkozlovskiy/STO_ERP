@@ -9,21 +9,27 @@
 ## Останній commit
 
 ```
-6e88e6b docs(tester): record bugs #14-#25 from Phase 19 /sto-tester session
+<буде оновлено після коміту cycle 3>
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після Phase 19 tester sweep, 2026-05-25)
+## Поточний стан тестів (після Phase 19 cycle 3 review, 2026-05-25)
 ```
 TypeScript:  ✅ 0 errors        (web + api + shared)
-Unit:        ✅ 105/105 passed  (12 files: + batches.contract, pricing-rules.contract; +3 Bug #14/#15 tests)
+Unit:        ✅ 105/105 passed  (12 files)
 Contract:    ✅ 29/29 passed    (auth: 9, work-orders: 6, pricing-rules: 10, batches: 4)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
 E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн)
-Цикли QA:    ✅ Phase 19 tester — 12 багів знайдено + виправлено (1 CRITICAL / 3 HIGH / 3 MEDIUM / 5 LOW)
+Цикли QA:    ✅ Phase 19 review cycle 3 — 4 findings виправлено (1 Important / 3 Suggestion)
 ```
+
+### Gotcha — Phase 19 cycle 3 review findings (2026-05-25)
+- `new Date()` всередині IIFE `(() => { const now = new Date(); return list.map(...)})()` у render — все одно виконується на SSR pass (для 'use client' компонентів, які Next.js 15 pre-renders). Канонічний фікс: `const [nowMs, setNowMs] = useState(0); useEffect(() => setNowMs(Date.now()), []);` + guard `nowMs > 0` у render. Той самий патерн що у `work-orders/page.tsx`.
+- `React.ChangeEvent<HTMLInputElement>` без `import type { ChangeEvent } from 'react'` — VSCode TS plugin падає з `Cannot find namespace 'React'`. Завжди іменовані імпорти типів подій з 'react', НЕ `React.*`.
+- `@Query('xxxId') id: string` для UUID параметрів — обгорнути `ParseUUIDPipe()`. Без нього невалідний UUID → Prisma P2023 → HTTP 500. Не вказуй `version: '4'` явно (тести часто кидають UUIDs з версією 0 → 400).
+
 
 ### Gotcha — Phase 19 tester findings (2026-05-25)
 - `BatchService.createFromReceipt`: при безкоштовному прийомі (`costPrice=0`) — НЕ перезаписувати `Good.salePrice` нулем; партія створюється з `salePrice = Good.salePrice` поточним. Пайтерн: `salePrice = (costPrice > 0 && computed > 0) ? computed : currentSalePrice`.

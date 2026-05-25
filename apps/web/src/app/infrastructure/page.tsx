@@ -70,6 +70,9 @@ export default function InfrastructurePage() {
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState<Record<string, string>>({});
+  // Bug (review): nowMs з useEffect замість new Date() у render — запобігає SSR hydration mismatch.
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => { setNowMs(Date.now()); }, []);
 
   const loadAll = () => {
     setLoading(true);
@@ -265,7 +268,7 @@ export default function InfrastructurePage() {
               </TableHeader>
               <TableBody>
                 {lifts.map(l => (
-                  <LiftRow key={l.id} lift={l} zoneName={zones.find(z => z.id === l.zoneId)?.name ?? '—'} onRemove={() => remove('/lifts', l.id)} />
+                  <LiftRow key={l.id} lift={l} zoneName={zones.find(z => z.id === l.zoneId)?.name ?? '—'} onRemove={() => remove('/lifts', l.id)} nowMs={nowMs} />
                 ))}
               </TableBody>
             </Table>
@@ -401,19 +404,18 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function isWithin14Days(value: string | null | undefined): boolean {
-  if (!value) return false;
+function isWithin14Days(value: string | null | undefined, nowMs: number): boolean {
+  if (!value || nowMs === 0) return false;
   const d = new Date(value);
   if (isNaN(d.getTime())) return false;
-  const now = new Date();
-  const diffMs = d.getTime() - now.getTime();
+  const diffMs = d.getTime() - nowMs;
   return diffMs >= 0 && diffMs <= 14 * 24 * 60 * 60 * 1000;
 }
 
-function LiftRow({ lift, zoneName, onRemove }: { lift: Lift; zoneName: string; onRemove: () => void }) {
+function LiftRow({ lift, zoneName, onRemove, nowMs }: { lift: Lift; zoneName: string; onRemove: () => void; nowMs: number }) {
   const [expanded, setExpanded] = useState(false);
   const hasDetail = lift.nextMaintenanceDate ?? lift.lastMaintenanceDate;
-  const nextSoon = isWithin14Days(lift.nextMaintenanceDate);
+  const nextSoon = isWithin14Days(lift.nextMaintenanceDate, nowMs);
 
   return (
     <>

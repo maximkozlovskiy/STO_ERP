@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -24,8 +24,8 @@ export class BatchesController {
   @ApiQuery({ name: 'warehouseId', required: false })
   async lookup(
     @OrgContext() orgId: string,
-    @Query('goodId') goodId: string,
-    @Query('warehouseId') warehouseId?: string,
+    @Query('goodId', new ParseUUIDPipe()) goodId: string,
+    @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
   ) {
     const [good, batches, priceHistory, avgCost] = await Promise.all([
       this.prisma.good.findFirst({

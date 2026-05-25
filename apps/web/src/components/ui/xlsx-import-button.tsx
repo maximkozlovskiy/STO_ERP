@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, type ChangeEvent } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { TOKEN_KEY } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -106,7 +106,7 @@ export function XlsxImportButton({
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     // Reset input so same file can be re-selected

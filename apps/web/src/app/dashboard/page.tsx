@@ -68,6 +68,10 @@ export default function DashboardPage() {
   const [greeting, setGreeting] = useState('Вітаємо');
   const [enabledQA, setEnabledQA] = useState<string[]>(DEFAULT_QUICK_ACTIONS);
   const [qaConfigOpen, setQaConfigOpen] = useState(false);
+  // Bug (review): nowMs з useEffect замість new Date() у render — запобігає SSR hydration mismatch
+  // та переобчисленню кожного рядка у .map(). Виставляється після mount.
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => { setNowMs(Date.now()); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -301,8 +305,8 @@ export default function DashboardPage() {
                     const dateStr = item.nextMaintenanceDate
                       ? new Date(item.nextMaintenanceDate).toLocaleDateString('uk-UA')
                       : null;
-                    const isOverdue = item.nextMaintenanceDate
-                      ? new Date(item.nextMaintenanceDate) < new Date()
+                    const isOverdue = item.nextMaintenanceDate && nowMs > 0
+                      ? new Date(item.nextMaintenanceDate).getTime() < nowMs
                       : false;
                     return (
                       <div key={item.id} className="flex items-center justify-between py-2">
