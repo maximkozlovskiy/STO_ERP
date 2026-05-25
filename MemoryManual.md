@@ -9,21 +9,33 @@
 ## Останній commit
 
 ```
-f6c96c9 fix(review): Phase 19 cycle 2 — cross-tenant goodId guard, sync indexes, a11y
+6e88e6b docs(tester): record bugs #14-#25 from Phase 19 /sto-tester session
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після review Phase 19 cycle 2, 2026-05-25)
+## Поточний стан тестів (після Phase 19 tester sweep, 2026-05-25)
 ```
-TypeScript:  ✅ 0 errors        (web + api, перевірено 2026-05-25)
-Unit:        ✅ 88/88 passed    (10 files: + pricing.service, batch.service)
-Contract:    ✅ 15/15 passed    (auth: 9, work-orders: 6)
+TypeScript:  ✅ 0 errors        (web + api + shared)
+Unit:        ✅ 105/105 passed  (12 files: + batches.contract, pricing-rules.contract; +3 Bug #14/#15 tests)
+Contract:    ✅ 29/29 passed    (auth: 9, work-orders: 6, pricing-rules: 10, batches: 4)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
 E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн)
-Цикли QA:    ✅ Phase 19 review cycle 2 — 3 виправлення (tenant, sync index, a11y)
+Цикли QA:    ✅ Phase 19 tester — 12 багів знайдено + виправлено (1 CRITICAL / 3 HIGH / 3 MEDIUM / 5 LOW)
 ```
+
+### Gotcha — Phase 19 tester findings (2026-05-25)
+- `BatchService.createFromReceipt`: при безкоштовному прийомі (`costPrice=0`) — НЕ перезаписувати `Good.salePrice` нулем; партія створюється з `salePrice = Good.salePrice` поточним. Пайтерн: `salePrice = (costPrice > 0 && computed > 0) ? computed : currentSalePrice`.
+- `InventoryService.createMovement(RECEIPT, qty>0)` обов'язково має `price` (можна 0). Без price — кидати `BadRequestException`. Інакше quantity++ без батча, далі consumeBatch ламається в FIFO/LIFO/FEFO режимах.
+- `getAvgCost(orgId, goodId, warehouseId?)` — третій параметр опціональний. Передавати `undefined` (не `''`) коли потрібна агрегація по всіх складах. Контролер: `getAvgCost(orgId, goodId, warehouseId)` — НЕ `warehouseId ?? ''`.
+- `consumeBatch`/`returnToBatch` без `tx` — обертати у `prisma.$transaction(innerTx => self(...innerTx))` рекурсивно, щоб update + log було атомарним.
+- `calculateSalePrice` + `findAll PricingRules` — фільтрувати правила, прив'язані до soft-deleted Good: `OR: [{ goodId: null }, { goodId, good: { deletedAt: null } }]`.
+- `findAll` для нових list endpoints — завжди `{ items, total, page, limit }` (навіть якщо без реальної пагінації). Майбутні консумери очікують paginated shape.
+- `as never` в `where` clause Prisma — анти-патерн. Використовуй явний enum: `goodType: x as GoodType`. Інакше runtime P2009 не вловиться TS.
+- Scope-поля в pricing rules взаємовиключні: `goodId` > `goodCategory` > `goodType`. Backend нормалізує (`normalizeScope`), щоб менеджер не зберігав суперечливі дані.
+- Value-поля для type обнуляти при PATCH: `PERCENT` зберігає лише `percentValue`, `FIXED_AMOUNT` — `fixedAmount`, `FIXED_PRICE` — `fixedPrice`. Backend `cleanValuesForType()` + frontend `buildPayload()`.
+- `margin(sale, cost)` у фронті — захист від `sale=0`: `if (!sale || !cost) return null`. Інакше `NaN%` в UI.
 
 ### Gotcha — Phase 19 cycle 2 review findings (2026-05-25)
 - `PATCH /pricing-rules/:id` має валідувати `dto.goodId` (cross-tenant attack): POST вже валідує, але UPDATE може змінити goodId на чужий orgId. Якщо updateDTO дозволяє змінити FK поле — перевіряти приналежність до orgId.
