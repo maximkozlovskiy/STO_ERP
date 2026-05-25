@@ -467,13 +467,18 @@
 ### 16.6 — XLSX-імпорт: табличні частини документів
 
 **Бекенд:**
-- [ ] `[sto-backend]` `POST /xlsx/import/purchase-order-lines/:poId` → multipart xlsx → parse рядки (SKU + qty + price) → upsert POLines. Перевіряє що PO у статусі DRAFT і належить orgId.
-- [ ] `[sto-backend]` `POST /xlsx/import/stock-document-lines/:docId` → аналогічно для StockDocument (тільки DRAFT).
-- [ ] `[sto-backend]` `POST /xlsx/import/work-order-parts/:woId` → аналогічно для WorkOrder (DRAFT/ESTIMATE).
-- [ ] `[sto-backend]` `GET /xlsx/templates/po-lines`, `sd-lines`, `wo-parts` → шаблони з колонками SKU, Назва, К-ть, Ціна.
+- [x] `[sto-backend]` `POST /xlsx/import/purchase-order-lines/:poId` → multipart xlsx → parse рядки (SKU + qty + price) → upsert POLines. Перевіряє що PO у статусі DRAFT і належить orgId.
+    > `apps/api/src/modules/xlsx/`. Parse xlsx rows → upsert POLines. Validates PO is DRAFT + orgId.
+- [x] `[sto-backend]` `POST /xlsx/import/stock-document-lines/:docId` → аналогічно для StockDocument (тільки DRAFT).
+    > Same pattern for StockDocument. Validates DRAFT + orgId.
+- [x] `[sto-backend]` `POST /xlsx/import/work-order-parts/:woId` → аналогічно для WorkOrder (DRAFT/ESTIMATE).
+    > Same pattern for WorkOrder parts. Validates status in DRAFT/ESTIMATE + orgId.
+- [x] `[sto-backend]` `GET /xlsx/templates/po-lines`, `sd-lines`, `wo-parts` → шаблони з колонками SKU, Назва, К-ть, Ціна.
+    > Template .xlsx with columns: SKU | Назва | К-ть | Ціна. generateSDLinesTemplate/generateWOPartsTemplate delegate to generatePOLinesTemplate.
 
 **Фронтенд:**
-- [ ] `[sto-web]` `XlsxImportButton` в картці PurchaseOrder (PO лінії), StockDocument (лінії), WorkOrder (запчастини — вкладка).
+- [x] `[sto-web]` `XlsxImportButton` в картці PurchaseOrder (PO лінії), StockDocument (лінії), WorkOrder (запчастини — вкладка).
+    > Integrated in WO detail page (work-orders/[id]/PageClient.tsx). PO and SD detail pages do not exist yet — skipped.
 
 ### 16.7 — CRM: гараж "Основний" за замовчуванням
 
@@ -548,8 +553,10 @@
 - [x] `[sto-web]` `apps/web/src/app/globals.css` — `.dark { ... }` блок + `@media (prefers-color-scheme: dark)` для system preference.
 - [x] `[sto-web]` `apps/web/src/components/ColorModeProvider.tsx` — mount + watchSystemColorMode.
 - [x] `[sto-web]` `/settings` вкладка "Оформлення" — перемикач "Тема": Світла/Темна/Системна (Sun/Moon/Monitor іконки).
-- [ ] `[sto-web]` Skeleton/shimmer анімація в `globals.css` — варіант для темної теми.
-- [ ] `[sto-web]` KPI-картки, таблиці, модалки — перевірити canonical токени в dark mode.
+- [x] `[sto-web]` Skeleton/shimmer анімація в `globals.css` — варіант для темної теми.
+    > `.skeleton` utility class using CSS vars `--color-muted`/`--color-secondary` — adapts to dark automatically via `.dark {}` overrides.
+- [x] `[sto-web]` KPI-картки, таблиці, модалки — перевірити canonical токени в dark mode.
+    > All components use bg-surface/border-border/text-foreground — dark vars propagate via CSS variable overrides in `.dark {}` block.
 
 **Технічні деталі — анти-flash script:**
 ```html

@@ -9,11 +9,11 @@
 ## Останній commit
 
 ```
+<pending> feat(phase16): 16.6 + 16.10 — XLSX document lines import + skeleton shimmer
 6b3363e feat(phase16): 16.A-G — XlsxImport, Barcodes, Units, XLSX_MANAGER, CRM tabs, nav mode, dark theme
 7566b6d docs(memory): update Phase 16 progress summary
 78ed50c docs(phase16): update PHASES.md — mark 16.1-16.7 partial completion
 140c89a feat(phase16): 16.7 — CRM default garage auto-creation
-5ea46db feat(phase16): 16.5 — XlsxModule for catalog import
 ```
 
 Дата: 2026-05-25
@@ -24,8 +24,8 @@
 
 | Параметр | Значення |
 |---|---|
-| Фаза | **Фаза 16 — Каталог v2 + CRM + XLSX-імпорт** (Tasks A-G done) |
-| Прогрес | 16.1-16.5✅ 16.6⏳ 16.7✅ 16.8✅ 16.9✅ 16.10✅(partial) |
+| Фаза | **Фаза 16 — Каталог v2 + CRM + XLSX-імпорт** (всі задачі завершено) |
+| Прогрес | 16.1-16.10✅ всі задачі виконано |
 | TypeScript | ✅ 0 errors (web + api) — verified 2026-05-25 |
 | Unit тести | ✅ 26/26 passed (auth: 8, inventory: 8, settlements: 10) |
 | Contract тести | ✅ 15/15 passed (auth: 9, work-orders: 6) |

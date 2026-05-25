@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, UseGuards, Inject, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Param, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiConsumes } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
 import { MultipartFile } from '@fastify/multipart';
@@ -7,16 +7,10 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { Request } from '@nestjs/common';
-import { XlsxService } from './xlsx.service';
+import { XlsxService, ImportResult } from './xlsx.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { UnitsService } from '../units/units.service';
-
-interface ImportResult {
-  created: number;
-  updated: number;
-  errors: string[];
-}
 
 @ApiTags('XLSX Import')
 @Controller('xlsx')
@@ -61,11 +55,11 @@ export class XlsxController {
         filename = 'po_lines_template.xlsx';
         break;
       case 'sd-lines':
-        buffer = await this.xlsxService.generatePOLinesTemplate();
+        buffer = await this.xlsxService.generateSDLinesTemplate();
         filename = 'sd_lines_template.xlsx';
         break;
       case 'wo-parts':
-        buffer = await this.xlsxService.generatePOLinesTemplate();
+        buffer = await this.xlsxService.generateWOPartsTemplate();
         filename = 'wo_parts_template.xlsx';
         break;
       default:
@@ -180,6 +174,50 @@ export class XlsxController {
     }
 
     return result;
+  }
+
+  // ─── Document line imports ────────────────────────────────────────────────────
+
+  @Post('import/purchase-order-lines/:poId')
+  @Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Імпортувати позиції замовлення постачальника з XLSX' })
+  @ApiConsumes('multipart/form-data')
+  async importPOLines(
+    @OrgContext() orgId: string,
+    @Param('poId') poId: string,
+    @Request() req: FastifyRequest,
+  ): Promise<ImportResult> {
+    const file = await this.getUploadedFile(req);
+    const buffer = await file.toBuffer();
+    return this.xlsxService.importPOLines(orgId, poId, buffer);
+  }
+
+  @Post('import/stock-document-lines/:docId')
+  @Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Імпортувати позиції складського документа з XLSX' })
+  @ApiConsumes('multipart/form-data')
+  async importSDLines(
+    @OrgContext() orgId: string,
+    @Param('docId') docId: string,
+    @Request() req: FastifyRequest,
+  ): Promise<ImportResult> {
+    const file = await this.getUploadedFile(req);
+    const buffer = await file.toBuffer();
+    return this.xlsxService.importSDLines(orgId, docId, buffer);
+  }
+
+  @Post('import/work-order-parts/:woId')
+  @Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Імпортувати запчастини наряду з XLSX' })
+  @ApiConsumes('multipart/form-data')
+  async importWOParts(
+    @OrgContext() orgId: string,
+    @Param('woId') woId: string,
+    @Request() req: FastifyRequest,
+  ): Promise<ImportResult> {
+    const file = await this.getUploadedFile(req);
+    const buffer = await file.toBuffer();
+    return this.xlsxService.importWOParts(orgId, woId, buffer);
   }
 
   // ─── Helper ───────────────────────────────────────────────────────────────────

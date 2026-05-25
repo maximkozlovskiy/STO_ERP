@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
+import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { cn } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -292,7 +293,16 @@ export default function WorkOrderCardPage() {
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-foreground">Запчастини та матеріали</h2>
-          {canEdit && <button onClick={() => { setError(''); setPartModal(true); }} className="text-sm text-primary hover:underline">+ Запчастина</button>}
+          {canEdit && (
+            <div className="flex items-center gap-3">
+              <XlsxImportButton
+                templateType="wo-parts"
+                importUrl={`/xlsx/import/work-order-parts/${id}`}
+                onImportComplete={load}
+              />
+              <button onClick={() => { setError(''); setPartModal(true); }} className="text-sm text-primary hover:underline">+ Запчастина</button>
+            </div>
+          )}
         </div>
         {wo.parts.length === 0
           ? <p className="text-sm text-muted-foreground">Запчастини не додані</p>

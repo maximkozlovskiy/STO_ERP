@@ -1,5 +1,6 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import ExcelJS from 'exceljs';
+import { PrismaService } from '../../prisma/prisma.service';
 
 export interface GoodRow {
   sku?: string;
@@ -35,8 +36,15 @@ export interface POLineRow {
   price: number;
 }
 
+export interface ImportResult {
+  created: number;
+  updated: number;
+  errors: string[];
+}
+
 @Injectable()
 export class XlsxService {
+  constructor(private readonly prisma: PrismaService) {}
   async generateGoodsTemplate(): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Товари');
@@ -274,6 +282,200 @@ export class XlsxService {
 
     if (rows.length === 0) throw new BadRequestException('Таблиця не містить жодного рядка даних');
     return rows;
+  }
+
+  async generateSDLinesTemplate(): Promise<Buffer> {
+    return this.generatePOLinesTemplate();
+  }
+
+  async generateWOPartsTemplate(): Promise<Buffer> {
+    return this.generatePOLinesTemplate();
+  }
+
+  // ─── Document line imports ────────────────────────────────────────────────────
+
+  async importPOLines(orgId: string, poId: string, buffer: Buffer | Uint8Array): Promise<ImportResult> {
+    const po = await this.prisma.purchaseOrder.findFirst({
+      where: { id: poId, orgId, deletedAt: null },
+    });
+    if (!po) throw new NotFoundException('Замовлення постачальника не знайдено');
+    if (po.status !== 'DRAFT') throw new ForbiddenException('Замовлення не в статусі DRAFT');
+
+    const rows = await this.parsePOLines(buffer);
+    const result: ImportResult = { created: 0, updated: 0, errors: [] };
+
+    for (const row of rows) {
+      try {
+        const good = await this.prisma.good.findFirst({
+          where: {
+            orgId,
+            deletedAt: null,
+            OR: [
+              ...(row.sku ? [{ sku: row.sku }] : []),
+              { name: row.name },
+            ],
+          },
+        });
+        if (!good) {
+          result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
+          continue;
+        }
+
+        const existing = await this.prisma.purchaseOrderLine.findFirst({
+          where: { purchaseOrderId: poId, goodId: good.id, orgId, deletedAt: null },
+        });
+
+        if (existing) {
+          await this.prisma.purchaseOrderLine.update({
+            where: { id: existing.id },
+            data: { quantity: row.quantity, price: row.price },
+          });
+          result.updated++;
+        } else {
+          await this.prisma.purchaseOrderLine.create({
+            data: {
+              orgId,
+              purchaseOrderId: poId,
+              goodId: good.id,
+              quantity: row.quantity,
+              price: row.price,
+            },
+          });
+          result.created++;
+        }
+      } catch (e: unknown) {
+        result.errors.push(`${row.sku ?? row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+      }
+    }
+
+    return result;
+  }
+
+  async importSDLines(orgId: string, docId: string, buffer: Buffer | Uint8Array): Promise<ImportResult> {
+    const doc = await this.prisma.stockDocument.findFirst({
+      where: { id: docId, orgId, deletedAt: null },
+    });
+    if (!doc) throw new NotFoundException('Складський документ не знайдено');
+    if (doc.status !== 'DRAFT') throw new ForbiddenException('Документ не в статусі DRAFT');
+
+    const rows = await this.parsePOLines(buffer);
+    const result: ImportResult = { created: 0, updated: 0, errors: [] };
+
+    for (const row of rows) {
+      try {
+        const good = await this.prisma.good.findFirst({
+          where: {
+            orgId,
+            deletedAt: null,
+            OR: [
+              ...(row.sku ? [{ sku: row.sku }] : []),
+              { name: row.name },
+            ],
+          },
+        });
+        if (!good) {
+          result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
+          continue;
+        }
+
+        const existing = await this.prisma.stockDocumentLine.findFirst({
+          where: { stockDocumentId: docId, goodId: good.id, orgId, deletedAt: null },
+        });
+
+        if (existing) {
+          await this.prisma.stockDocumentLine.update({
+            where: { id: existing.id },
+            data: { quantity: row.quantity, price: row.price },
+          });
+          result.updated++;
+        } else {
+          await this.prisma.stockDocumentLine.create({
+            data: {
+              orgId,
+              stockDocumentId: docId,
+              goodId: good.id,
+              quantity: row.quantity,
+              price: row.price,
+            },
+          });
+          result.created++;
+        }
+      } catch (e: unknown) {
+        result.errors.push(`${row.sku ?? row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+      }
+    }
+
+    return result;
+  }
+
+  async importWOParts(orgId: string, woId: string, buffer: Buffer | Uint8Array): Promise<ImportResult> {
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id: woId, orgId, deletedAt: null },
+    });
+    if (!wo) throw new NotFoundException('Наряд-замовлення не знайдено');
+    if (!['DRAFT', 'ESTIMATE'].includes(wo.status)) throw new ForbiddenException('Наряд не в статусі DRAFT або ESTIMATE');
+
+    const rows = await this.parsePOLines(buffer);
+    const result: ImportResult = { created: 0, updated: 0, errors: [] };
+
+    for (const row of rows) {
+      try {
+        const good = await this.prisma.good.findFirst({
+          where: {
+            orgId,
+            deletedAt: null,
+            OR: [
+              ...(row.sku ? [{ sku: row.sku }] : []),
+              { name: row.name },
+            ],
+          },
+        });
+        if (!good) {
+          result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
+          continue;
+        }
+
+        const existing = await this.prisma.workOrderPart.findFirst({
+          where: { workOrderId: woId, goodId: good.id, orgId, deletedAt: null },
+        });
+
+        const amount = row.quantity * row.price;
+
+        if (existing) {
+          await this.prisma.workOrderPart.update({
+            where: { id: existing.id },
+            data: { quantity: row.quantity, price: row.price, amount },
+          });
+          result.updated++;
+        } else {
+          // WorkOrderPart requires warehouseId — use the first warehouse for the org
+          const warehouse = await this.prisma.warehouse.findFirst({
+            where: { orgId, deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+          });
+          if (!warehouse) {
+            result.errors.push(`${row.sku ?? row.name}: склад не знайдено для організації`);
+            continue;
+          }
+          await this.prisma.workOrderPart.create({
+            data: {
+              orgId,
+              workOrderId: woId,
+              goodId: good.id,
+              warehouseId: warehouse.id,
+              quantity: row.quantity,
+              price: row.price,
+              amount,
+            },
+          });
+          result.created++;
+        }
+      } catch (e: unknown) {
+        result.errors.push(`${row.sku ?? row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+      }
+    }
+
+    return result;
   }
 
   async parsePOLines(buffer: Buffer | Uint8Array): Promise<POLineRow[]> {
