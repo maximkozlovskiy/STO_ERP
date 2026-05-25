@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
+import { Plus, Pencil, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -98,7 +98,11 @@ export default function EmployeesPage() {
   const [workCategories, setWorkCategories] = useState<WorkCategory[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [modal, setModal] = useState<'create' | 'card' | null>(null);
+  const [modal, setModal] = useState<'create' | 'card' | 'edit' | null>(null);
+  const [editEmp, setEditEmp] = useState<Employee | null>(null);
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', role: 'MECHANIC', phone: '', email: '', status: 'ACTIVE', dateOfHire: '', dateOfFire: '', rateType: 'percent_normo', percent: '40', fixedMonthly: '0', bonusPercent: '10' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
   const [selected, setSelected] = useState<Employee | null>(null);
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
   const [error, setError] = useState('');
@@ -208,6 +212,55 @@ export default function EmployeesPage() {
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
     finally { setMarkingId(null); }
+  };
+
+  const openEditEmp = (emp: Employee) => {
+    setEditEmp(emp);
+    const rs = emp.rateScheme;
+    setEditForm({
+      firstName: emp.firstName, lastName: emp.lastName, role: emp.role,
+      phone: emp.phone ?? '', email: emp.email ?? '',
+      status: emp.status,
+      dateOfHire: emp.dateOfHire ? emp.dateOfHire.slice(0, 10) : '',
+      dateOfFire: emp.dateOfFire ? emp.dateOfFire.slice(0, 10) : '',
+      rateType: rs?.type ?? 'percent_normo',
+      percent: rs?.type === 'percent_normo' ? String(rs.params.percent ?? 40) : '40',
+      fixedMonthly: rs?.type === 'fixed_plus_bonus' ? String(rs.params.fixedMonthly ?? 0) : '0',
+      bonusPercent: rs?.type === 'fixed_plus_bonus' ? String(rs.params.bonusPercent ?? 10) : '10',
+    });
+    setEditError('');
+    setModal('edit');
+  };
+
+  const saveEditEmp = async () => {
+    if (!editEmp) return;
+    setEditSaving(true); setEditError('');
+    let rateScheme;
+    if (editForm.rateType === 'percent_normo') {
+      const pct = Number(editForm.percent);
+      if (!Number.isFinite(pct) || pct <= 0 || pct > 100) { setEditError('Відсоток має бути від 1 до 100'); setEditSaving(false); return; }
+      rateScheme = { type: 'percent_normo', params: { percent: pct } };
+    } else {
+      const fixed = Number(editForm.fixedMonthly); const bonus = Number(editForm.bonusPercent);
+      if (!Number.isFinite(fixed) || fixed < 0) { setEditError('Фіксована ставка повинна бути невід\'ємним числом'); setEditSaving(false); return; }
+      if (!Number.isFinite(bonus) || bonus < 0 || bonus > 100) { setEditError('Бонус має бути від 0 до 100'); setEditSaving(false); return; }
+      rateScheme = { type: 'fixed_plus_bonus', params: { fixedMonthly: fixed, bonusPercent: bonus } };
+    }
+    try {
+      await apiFetch<Employee>(`/employees/${editEmp.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          firstName: editForm.firstName, lastName: editForm.lastName, role: editForm.role,
+          phone: editForm.phone || undefined, email: editForm.email || undefined,
+          status: editForm.status,
+          dateOfHire: editForm.dateOfHire || undefined,
+          dateOfFire: editForm.dateOfFire || undefined,
+          rateScheme,
+        }),
+      });
+      setModal(null); setEditEmp(null); load();
+    } catch (e: unknown) { setEditError(e instanceof Error ? e.message : 'Помилка збереження'); }
+    finally { setEditSaving(false); }
   };
 
   const flatCats = flattenTree(workCategories);
@@ -331,16 +384,26 @@ export default function EmployeesPage() {
                         : <span className="text-foreground-faint">—</span>}
                     </TableCell>
                     <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        title="Помітити на видалення"
-                        disabled={isMarking || !!markingId || isDeleted}
-                        onClick={() => markForDeletion(emp.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Редагувати"
+                          onClick={() => openEditEmp(emp)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          title="Помітити на видалення"
+                          disabled={isMarking || !!markingId || isDeleted}
+                          onClick={() => markForDeletion(emp.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -432,7 +495,16 @@ export default function EmployeesPage() {
                 </div>
               )}
 
-              <div className="pt-2 border-t border-border">
+              <div className="pt-2 border-t border-border space-y-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => openEditEmp(selectedEmp)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Редагувати дані
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -546,6 +618,59 @@ export default function EmployeesPage() {
             <CheckboxList label="Категорії робіт" items={flatCats} selected={assignedCats} onChange={setAssignedCats} />
           </div>
         )}
+      </Modal>
+
+      {/* Edit modal — employee data */}
+      <Modal
+        open={modal === 'edit' && !!editEmp}
+        onClose={() => { setModal(null); setEditEmp(null); }}
+        title={editEmp ? `${editEmp.lastName} ${editEmp.firstName}` : ''}
+        footer={
+          <>
+            <Button onClick={saveEditEmp} loading={editSaving} disabled={!editForm.firstName || !editForm.lastName}>
+              Зберегти
+            </Button>
+            <Button variant="outline" onClick={() => { setModal(null); setEditEmp(null); }}>Скасувати</Button>
+          </>
+        }
+      >
+        {editError && (
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{editError}</div>
+        )}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Ім'я" required value={editForm.firstName} onChange={e => setEditForm(f => ({ ...f, firstName: e.target.value }))} placeholder="Іван" />
+            <Input label="Прізвище" required value={editForm.lastName} onChange={e => setEditForm(f => ({ ...f, lastName: e.target.value }))} placeholder="Коваль" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Select label="Посада" required value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}>
+              {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+            <Select label="Статус" value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}>
+              {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Телефон" value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="+38 (067) 123-45-67" />
+            <Input label="Email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} placeholder="ivan@example.com" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Дата прийому" type="date" value={editForm.dateOfHire} onChange={e => setEditForm(f => ({ ...f, dateOfHire: e.target.value }))} />
+            <Input label="Дата звільнення" type="date" value={editForm.dateOfFire} onChange={e => setEditForm(f => ({ ...f, dateOfFire: e.target.value }))} />
+          </div>
+          <Select label="Схема нарахування" required value={editForm.rateType} onChange={e => setEditForm(f => ({ ...f, rateType: e.target.value }))}>
+            {Object.entries(RATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+          {editForm.rateType === 'percent_normo' && (
+            <Input label="Відсоток, %" type="number" value={editForm.percent} onChange={e => setEditForm(f => ({ ...f, percent: e.target.value }))} />
+          )}
+          {editForm.rateType === 'fixed_plus_bonus' && (
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Ставка, грн/міс" type="number" value={editForm.fixedMonthly} onChange={e => setEditForm(f => ({ ...f, fixedMonthly: e.target.value }))} />
+              <Input label="Бонус, %" type="number" value={editForm.bonusPercent} onChange={e => setEditForm(f => ({ ...f, bonusPercent: e.target.value }))} />
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

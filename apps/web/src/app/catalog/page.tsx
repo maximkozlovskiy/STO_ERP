@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Search, Trash2, BookOpen, Package, Layers, Star, Barcode, Ruler } from 'lucide-react';
+import { Plus, Pencil, Search, Trash2, BookOpen, Package, Layers, Star, Barcode, Ruler } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -80,6 +80,10 @@ function WorksTab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [selectedWork, setSelectedWork] = useState<Work | null>(null);
+  const [editWork, setEditWork] = useState<Work | null>(null);
+  const [editForm, setEditForm] = useState({ categoryId: '', name: '', normoHours: '', price: '', description: '' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   useEffect(() => {
     apiFetch<Category[]>('/work-categories').then(setCategories).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження категорій'));
@@ -127,6 +131,29 @@ function WorksTab() {
     try { await apiFetch<void>(`/works/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
     finally { setSaving(false); }
+  };
+
+  const openEditWork = (w: Work) => {
+    setEditWork(w);
+    setEditForm({ categoryId: w.categoryId, name: w.name, normoHours: String(w.normoHours), price: String(w.price), description: w.description ?? '' });
+    setEditError('');
+  };
+
+  const saveEditWork = async () => {
+    if (!editWork) return;
+    const normo = Number(editForm.normoHours); const price = Number(editForm.price);
+    if (!Number.isFinite(normo) || normo <= 0) { setEditError('Норма-годин повинна бути більше нуля'); return; }
+    if (!Number.isFinite(price) || price < 0) { setEditError('Ціна повинна бути невід\'ємним числом'); return; }
+    setEditSaving(true); setEditError('');
+    try {
+      await apiFetch<Work>(`/works/${editWork.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ categoryId: editForm.categoryId, name: editForm.name, normoHours: normo, price, description: editForm.description || undefined }),
+      });
+      setEditWork(null);
+      load();
+    } catch (e: unknown) { setEditError(e instanceof Error ? e.message : 'Помилка збереження'); }
+    finally { setEditSaving(false); }
   };
 
   const flat = flatCategories(categories);
@@ -197,14 +224,19 @@ function WorksTab() {
                   <TableCell className="text-muted-foreground">{w.normoHours}</TableCell>
                   <TableCell className="font-medium text-foreground">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={e => { e.stopPropagation(); remove(w.id); }}
-                      className="text-destructive/60 hover:text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditWork(w); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={e => { e.stopPropagation(); remove(w.id); }}
+                        className="text-destructive/60 hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -297,6 +329,61 @@ function WorksTab() {
           />
         </div>
       </Modal>
+
+      <Modal open={!!editWork} onClose={() => setEditWork(null)} title="Редагування роботи"
+        footer={
+          <>
+            <Button onClick={saveEditWork} loading={editSaving} disabled={!editForm.name || !editForm.categoryId || !editForm.normoHours || !editForm.price}>
+              Зберегти
+            </Button>
+            <Button variant="outline" onClick={() => setEditWork(null)}>Скасувати</Button>
+          </>
+        }
+      >
+        {editError && (
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{editError}</div>
+        )}
+        <div className="space-y-4">
+          <Select
+            label="Категорія"
+            required
+            value={editForm.categoryId}
+            onChange={e => setEditForm(f => ({ ...f, categoryId: e.target.value }))}
+          >
+            {flat.map(c => <option key={c.id} value={c.id}>{' '.repeat(c.depth * 4)}{c.name}</option>)}
+          </Select>
+          <Input
+            label="Назва"
+            required
+            value={editForm.name}
+            onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="Заміна масла"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Нормо-год"
+              required
+              type="number"
+              value={editForm.normoHours}
+              onChange={e => setEditForm(f => ({ ...f, normoHours: e.target.value }))}
+              placeholder="1.5"
+            />
+            <Input
+              label="Ціна, ₴"
+              required
+              type="number"
+              value={editForm.price}
+              onChange={e => setEditForm(f => ({ ...f, price: e.target.value }))}
+              placeholder="500"
+            />
+          </div>
+          <Input
+            label="Опис"
+            value={editForm.description}
+            onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+          />
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -322,6 +409,10 @@ function GoodsTab() {
   const [newBarcodeType, setNewBarcodeType] = useState('EAN13');
   const [addingBarcode, setAddingBarcode] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editGood, setEditGood] = useState<Good | null>(null);
+  const [editGoodForm, setEditGoodForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', notes: '', goodType: '' });
+  const [editGoodSaving, setEditGoodSaving] = useState(false);
+  const [editGoodError, setEditGoodError] = useState('');
 
   useEffect(() => {
     apiFetch<Brand[]>('/brands').catch(() => []).then(v => { if (Array.isArray(v)) setBrands(v); });
@@ -417,6 +508,44 @@ function GoodsTab() {
     if (g) loadBarcodes(g.id);
   };
 
+  const openEditGood = (g: Good) => {
+    setEditGood(g);
+    setEditGoodForm({
+      sku: g.sku ?? '', name: g.name, unit: g.unit, unitId: g.unitId ?? '',
+      purchasePrice: g.purchasePrice != null ? String(g.purchasePrice) : '',
+      salePrice: String(g.salePrice), category: g.category ?? '',
+      brandId: g.brandId ?? '', notes: g.notes ?? '', goodType: g.goodType ?? '',
+    });
+    setEditGoodError('');
+  };
+
+  const saveEditGood = async () => {
+    if (!editGood) return;
+    const salePrice = Number(editGoodForm.salePrice);
+    if (!Number.isFinite(salePrice) || salePrice < 0) { setEditGoodError('Ціна продажу повинна бути невід\'ємним числом'); return; }
+    setEditGoodSaving(true); setEditGoodError('');
+    try {
+      await apiFetch<Good>(`/goods/${editGood.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          sku: editGoodForm.sku || undefined,
+          name: editGoodForm.name,
+          unit: editGoodForm.unit || 'шт',
+          unitId: editGoodForm.unitId || undefined,
+          purchasePrice: editGoodForm.purchasePrice ? Number(editGoodForm.purchasePrice) : undefined,
+          salePrice,
+          category: editGoodForm.category || undefined,
+          brandId: editGoodForm.brandId || undefined,
+          notes: editGoodForm.notes || undefined,
+          goodType: editGoodForm.goodType || undefined,
+        }),
+      });
+      setEditGood(null);
+      load();
+    } catch (e: unknown) { setEditGoodError(e instanceof Error ? e.message : 'Помилка збереження'); }
+    finally { setEditGoodSaving(false); }
+  };
+
   const totalPages = goods ? Math.ceil(goods.total / goods.limit) : 1;
 
   return (
@@ -489,15 +618,20 @@ function GoodsTab() {
                   <TableCell className="text-muted-foreground">{g.purchasePrice != null ? g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}</TableCell>
                   <TableCell className="font-medium text-foreground">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={e => { e.stopPropagation(); setConfirmDeleteId(g.id); }}
-                      className="text-destructive/60 hover:text-destructive"
-                      title="Помітити на видалення"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditGood(g); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(g.id); }}
+                        className="text-destructive/60 hover:text-destructive"
+                        title="Помітити на видалення"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -687,6 +821,60 @@ function GoodsTab() {
         <p className="text-sm text-muted-foreground">
           Товар буде позначено як видалений (soft delete). Він зникне зі списків, але залишиться в базі даних для архіву.
         </p>
+      </Modal>
+
+      <Modal open={!!editGood} onClose={() => setEditGood(null)} title="Редагування товару"
+        footer={
+          <>
+            <Button onClick={saveEditGood} loading={editGoodSaving} disabled={!editGoodForm.name || !editGoodForm.salePrice}>
+              Зберегти
+            </Button>
+            <Button variant="outline" onClick={() => setEditGood(null)}>Скасувати</Button>
+          </>
+        }
+      >
+        {editGoodError && (
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{editGoodError}</div>
+        )}
+        <div className="space-y-4">
+          <Input label="Назва" required value={editGoodForm.name} onChange={e => setEditGoodForm(f => ({ ...f, name: e.target.value }))} placeholder="Масло моторне 5W-40" />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Артикул (SKU)" value={editGoodForm.sku} onChange={e => setEditGoodForm(f => ({ ...f, sku: e.target.value }))} placeholder="OIL-5W40" />
+            {units.length > 0 ? (
+              <Select label="Одиниця виміру" value={editGoodForm.unitId} onChange={e => {
+                const unit = units.find(u => u.id === e.target.value);
+                setEditGoodForm(f => ({ ...f, unitId: e.target.value, unit: unit?.shortName ?? f.unit }));
+              }}>
+                <option value="">— вписати вручну</option>
+                {units.map(u => <option key={u.id} value={u.id}>{u.shortName} ({u.name})</option>)}
+              </Select>
+            ) : (
+              <Input label="Одиниця" value={editGoodForm.unit} onChange={e => setEditGoodForm(f => ({ ...f, unit: e.target.value }))} placeholder="шт" />
+            )}
+          </div>
+          {units.length > 0 && !editGoodForm.unitId && (
+            <Input label="Одиниця (вручну)" value={editGoodForm.unit} onChange={e => setEditGoodForm(f => ({ ...f, unit: e.target.value }))} placeholder="шт" />
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Ціна закупки, ₴" type="number" value={editGoodForm.purchasePrice} onChange={e => setEditGoodForm(f => ({ ...f, purchasePrice: e.target.value }))} placeholder="350" />
+            <Input label="Ціна продажу, ₴" required type="number" value={editGoodForm.salePrice} onChange={e => setEditGoodForm(f => ({ ...f, salePrice: e.target.value }))} placeholder="500" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Select label="Бренд" value={editGoodForm.brandId} onChange={e => setEditGoodForm(f => ({ ...f, brandId: e.target.value }))}>
+              <option value="">—</option>
+              {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+            <Input label="Категорія" value={editGoodForm.category} onChange={e => setEditGoodForm(f => ({ ...f, category: e.target.value }))} placeholder="Мастила" />
+          </div>
+          <Select label="Тип товару" value={editGoodForm.goodType} onChange={e => setEditGoodForm(f => ({ ...f, goodType: e.target.value }))}>
+            <option value="">Не вказано</option>
+            <option value="SPARE_PART">Запчастина</option>
+            <option value="CONSUMABLE">Витратний матеріал</option>
+            <option value="MATERIAL">Матеріал</option>
+            <option value="TOOL">Інструмент</option>
+          </Select>
+          <Input label="Нотатки" value={editGoodForm.notes} onChange={e => setEditGoodForm(f => ({ ...f, notes: e.target.value }))} />
+        </div>
       </Modal>
 
       <Modal open={modal} onClose={() => setModal(false)} title="Новий товар / запчастина"

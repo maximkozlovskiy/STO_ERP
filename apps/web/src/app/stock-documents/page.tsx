@@ -182,9 +182,10 @@ export default function StockDocumentsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
         {/* Type filters */}
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">Тип</span>
           {types.map(t => (
             <button
               key={t}
@@ -196,12 +197,15 @@ export default function StockDocumentsPage() {
                   : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
               )}
             >
-              {t ? TYPE_LABELS[t] : 'Всі типи'}
+              {t ? TYPE_LABELS[t] : 'Всі'}
             </button>
           ))}
         </div>
+        {/* Divider */}
+        <div className="h-6 w-px bg-border" />
         {/* Status filters */}
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">Статус</span>
           {statuses.map(s => (
             <button
               key={s}
@@ -213,7 +217,7 @@ export default function StockDocumentsPage() {
                   : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
               )}
             >
-              {s ? STATUS_LABELS[s] : 'Всі статуси'}
+              {s ? STATUS_LABELS[s] : 'Всі'}
             </button>
           ))}
         </div>
