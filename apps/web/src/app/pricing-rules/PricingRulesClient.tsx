@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, Pencil, Trash2, Zap } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -279,38 +279,39 @@ export default function PricingRulesClient() {
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [applyResult, setApplyResult] = useState<{ ruleId: string; message: string } | null>(null);
 
+  // Bug #30: tracking mounted state — refetch після create/update/delete не повинен setState
+  // на unmounted компонент (race коли користувач перейшов на іншу сторінку).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       const data = await apiFetch<{ items: PricingRule[]; total: number }>('/pricing-rules');
-      setRules(data.items);
+      if (mountedRef.current) setRules(data.items);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await apiFetch<{ items: PricingRule[]; total: number }>('/pricing-rules');
-        if (!cancelled) setRules(data.items);
-      } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+    setLoading(true);
+    load();
+  }, [load]);
 
   useEffect(() => {
     let cancelled = false;
     apiFetch<{ items: Good[] }>('/goods?limit=500')
       .then(r => { if (!cancelled) setGoods(r.items); })
-      .catch(() => {});
+      .catch((e: unknown) => {
+        // Bug #29: не ковтаємо помилку мовчки. Логуємо для діагностики,
+        // але не блокуємо UI (правила можна редагувати без списку товарів).
+        console.warn('Не вдалося завантажити товари для форми правила:', e);
+      });
     return () => { cancelled = true; };
   }, []);
 
