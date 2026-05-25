@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { BatchService } from './batch.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -17,6 +18,7 @@ export class BatchesController {
   ) {}
 
   @Get('lookup')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Batch viewer: партії + цінова історія товару' })
   @ApiQuery({ name: 'goodId', required: true })
   @ApiQuery({ name: 'warehouseId', required: false })

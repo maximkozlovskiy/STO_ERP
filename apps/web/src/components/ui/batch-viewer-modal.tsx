@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Package, TrendingUp, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -61,24 +61,21 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    if (!open || !goodId) return;
+    let cancelled = false;
     setLoading(true);
     setError('');
-    try {
-      const params = new URLSearchParams({ goodId });
-      if (warehouseId) params.set('warehouseId', warehouseId);
-      const result = await apiFetch<BatchLookupResult>(`/batches/lookup?${params}`);
-      setData(result);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження');
-    } finally {
-      setLoading(false);
-    }
-  }, [goodId, warehouseId]);
-
-  useEffect(() => {
-    if (open && goodId) load();
-  }, [open, goodId, load]);
+    const params = new URLSearchParams({ goodId });
+    if (warehouseId) params.set('warehouseId', warehouseId);
+    apiFetch<BatchLookupResult>(`/batches/lookup?${params}`)
+      .then(result => { if (!cancelled) setData(result); })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, goodId, warehouseId]);
 
   if (!open) return null;
 
@@ -86,12 +83,22 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
   const depletedBatches = data?.batches.filter(b => !b.isActive || b.remainingQty <= 0) ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="batch-viewer-title"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-start justify-between p-4 border-b border-border">
           <div>
-            <h2 className="text-[15px] font-semibold text-foreground">Партії та ціни</h2>
+            <h2 id="batch-viewer-title" className="text-[15px] font-semibold text-foreground">Партії та ціни</h2>
             {data && (
               <p className="text-[13px] text-muted-foreground mt-0.5">
                 {data.good.name}
@@ -99,8 +106,12 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
               </p>
             )}
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary text-muted-foreground transition-colors">
-            <X className="h-4 w-4" />
+          <button
+            onClick={onClose}
+            aria-label="Закрити"
+            className="p-1 rounded-lg hover:bg-secondary text-muted-foreground transition-colors"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 

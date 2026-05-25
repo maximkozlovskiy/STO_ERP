@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { InventoryService } from './inventory.service';
+import { BatchService } from './batch.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 describe('InventoryService.createMovement guards', () => {
@@ -10,16 +11,19 @@ describe('InventoryService.createMovement guards', () => {
     stockItem: { findFirst: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
     stockMovement: { create: ReturnType<typeof vi.fn> };
   };
+  let batchService: { createFromReceipt: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     prisma = {
       stockItem: { findFirst: vi.fn(), upsert: vi.fn().mockResolvedValue({}) },
-      stockMovement: { create: vi.fn().mockResolvedValue({}) },
+      stockMovement: { create: vi.fn().mockResolvedValue({ id: 'mov-1' }) },
     };
+    batchService = { createFromReceipt: vi.fn().mockResolvedValue({}) };
     const module = await Test.createTestingModule({
       providers: [
         InventoryService,
         { provide: PrismaService, useValue: prisma },
+        { provide: BatchService, useValue: batchService },
       ],
     }).compile();
     service = module.get(InventoryService);

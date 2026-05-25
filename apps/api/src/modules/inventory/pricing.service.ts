@@ -87,28 +87,107 @@ export class PricingService {
       take: 5000,
     });
 
-    let updated = 0;
+    // Prefetch all active rules once — avoid N+1 in calculateSalePrice loop
+    const allRules = await this.prisma.pricingRule.findMany({
+      where: { orgId, isActive: true, deletedAt: null },
+      orderBy: { priority: 'asc' },
+      take: 200,
+    });
+
+    // Compute new prices in memory, then batch-update via $transaction chunks
+    type PriceUpdate = {
+      goodId: string;
+      oldPrice: number;
+      newPrice: number;
+      costPrice: number;
+    };
+    const updates: PriceUpdate[] = [];
     for (const good of goods) {
       const costPrice = Number(good.purchasePrice ?? good.salePrice);
-      const newPrice = await this.calculateSalePrice(
-        orgId, good.id, good.category ?? undefined, good.goodType ?? undefined, costPrice,
+      const newPrice = this.computePriceFromRules(
+        allRules, good.id, good.category ?? undefined, good.goodType ?? undefined, costPrice,
       );
-      if (Math.abs(newPrice - Number(good.salePrice)) > 0.001) {
-        await this.prisma.good.update({ where: { id: good.id }, data: { salePrice: newPrice } });
-        await this.prisma.priceHistory.create({
-          data: {
-            orgId,
-            goodId: good.id,
-            oldPrice: good.salePrice,
-            newPrice,
-            costPrice,
-            reason: `PricingRule: ${rule.name}`,
-            pricingRuleId: rule.id,
-          },
-        });
-        updated++;
+      const oldPrice = Number(good.salePrice);
+      if (Math.abs(newPrice - oldPrice) > 0.001) {
+        updates.push({ goodId: good.id, oldPrice, newPrice, costPrice });
       }
     }
-    return updated;
+
+    // Batch in chunks of 100 to keep transactions short (< 5s)
+    const CHUNK = 100;
+    for (let i = 0; i < updates.length; i += CHUNK) {
+      const chunk = updates.slice(i, i + CHUNK);
+      await this.prisma.$transaction([
+        ...chunk.map(u =>
+          this.prisma.good.update({ where: { id: u.goodId }, data: { salePrice: u.newPrice } }),
+        ),
+        this.prisma.priceHistory.createMany({
+          data: chunk.map(u => ({
+            orgId,
+            goodId: u.goodId,
+            oldPrice: u.oldPrice,
+            newPrice: u.newPrice,
+            costPrice: u.costPrice,
+            reason: `PricingRule: ${rule.name}`,
+            pricingRuleId: rule.id,
+          })),
+        }),
+      ]);
+    }
+    return updates.length;
+  }
+
+  // Pure in-memory rule resolution (no DB calls) — used in tight loops like applyRuleToGoods
+  private computePriceFromRules(
+    rules: Array<{
+      goodId: string | null;
+      goodCategory: string | null;
+      goodType: string | null;
+      type: string;
+      percentValue: unknown;
+      fixedAmount: unknown;
+      fixedPrice: unknown;
+      roundTo: unknown;
+    }>,
+    goodId: string,
+    goodCategory: string | undefined,
+    goodType: string | undefined,
+    costPrice: number,
+  ): number {
+    const candidates = rules.filter(r =>
+      r.goodId === goodId ||
+      (!r.goodId && r.goodCategory === (goodCategory ?? null)) ||
+      (!r.goodId && !r.goodCategory && r.goodType === (goodType ?? null)) ||
+      (!r.goodId && !r.goodCategory && !r.goodType),
+    );
+    if (!candidates.length) return costPrice;
+
+    const rule =
+      candidates.find(r => r.goodId === goodId) ??
+      candidates.find(r => !r.goodId && r.goodCategory === goodCategory) ??
+      candidates.find(r => !r.goodId && !r.goodCategory && r.goodType === goodType) ??
+      candidates.find(r => !r.goodId && !r.goodCategory && !r.goodType) ??
+      candidates[0];
+
+    let result: number;
+    switch (rule.type) {
+      case 'PERCENT':
+      case 'COMPETITOR_PLUS':
+        result = costPrice * (1 + Number(rule.percentValue ?? 0) / 100);
+        break;
+      case 'FIXED_AMOUNT':
+        result = costPrice + Number(rule.fixedAmount ?? 0);
+        break;
+      case 'FIXED_PRICE':
+        result = Number(rule.fixedPrice ?? costPrice);
+        break;
+      default:
+        result = costPrice;
+    }
+    if (rule.roundTo && Number(rule.roundTo) > 0) {
+      const r = Number(rule.roundTo);
+      result = Math.round(result / r) * r;
+    }
+    return Math.max(0, result);
   }
 }

@@ -10,7 +10,11 @@ import { PricingService } from './pricing.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePricingRuleDto, UpdatePricingRuleDto } from './pricing-rules.dto';
 import { NotFoundException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { UserRole, PricingRule } from '@prisma/client';
+
+type PricingRuleWithGood = PricingRule & {
+  good: { id: string; name: string; sku: string | null } | null;
+};
 
 @ApiTags('Pricing Rules')
 @Controller('pricing-rules')
@@ -39,6 +43,14 @@ export class PricingRulesController {
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Створити правило ціноутворення' })
   async create(@OrgContext() orgId: string, @Body() dto: CreatePricingRuleDto) {
+    // If goodId is provided, verify it belongs to the same org (prevent cross-tenant rule attachment)
+    if (dto.goodId) {
+      const good = await this.prisma.good.findFirst({
+        where: { id: dto.goodId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!good) throw new NotFoundException('Товар не знайдено');
+    }
     const rule = await this.prisma.pricingRule.create({
       data: { orgId, ...dto, priority: dto.priority ?? 10 },
       include: { good: { select: { id: true, name: true, sku: true } } },
@@ -86,11 +98,16 @@ export class PricingRulesController {
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Застосувати правило до всіх відповідних товарів' })
   async applyAll(@OrgContext() orgId: string, @Param('id') id: string) {
+    const existing = await this.prisma.pricingRule.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Правило не знайдено');
     const updated = await this.pricingService.applyRuleToGoods(orgId, id);
     return { updated, message: `Перераховано ${updated} товарів` };
   }
 
-  private toDto(rule: any) {
+  private toDto(rule: PricingRuleWithGood) {
     return {
       id: rule.id,
       name: rule.name,

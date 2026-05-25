@@ -291,12 +291,27 @@ export default function PricingRulesClient() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<PricingRule[]>('/pricing-rules');
+        if (!cancelled) setRules(data);
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ items: Good[] }>('/goods?limit=500')
-      .then(r => setGoods(r.items))
+      .then(r => { if (!cancelled) setGoods(r.items); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const createRule = async (form: RuleForm) => {
@@ -354,6 +369,7 @@ export default function PricingRulesClient() {
   };
 
   const applyAll = async (rule: PricingRule) => {
+    if (!confirm(`Застосувати правило "${rule.name}" до всіх відповідних товарів? Ціни буде перераховано.`)) return;
     setApplyingId(rule.id);
     setApplyResult(null);
     try {

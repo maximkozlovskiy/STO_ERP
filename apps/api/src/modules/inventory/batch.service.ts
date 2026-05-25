@@ -123,16 +123,14 @@ export class BatchService {
     }
 
     // Find batches by method
-    const orderBy: Prisma.StockBatchOrderByWithRelationInput =
-      costMethod === 'LIFO' ? { createdAt: 'desc' } :
-      costMethod === 'FEFO' ? { expiryDate: 'asc' } :
-      { createdAt: 'asc' }; // FIFO default
+    const orderBy: Prisma.StockBatchOrderByWithRelationInput[] =
+      costMethod === 'LIFO' ? [{ createdAt: 'desc' }] :
+      costMethod === 'FEFO' ? [{ expiryDate: 'asc' }, { createdAt: 'asc' }] :
+      [{ createdAt: 'asc' }]; // FIFO default
 
     const batches = await db.stockBatch.findMany({
       where: { orgId, goodId, warehouseId, isActive: true, remainingQty: { gt: 0 } },
-      orderBy: costMethod === 'FEFO'
-        ? [{ expiryDate: 'asc' }, { createdAt: 'asc' }]
-        : [orderBy],
+      orderBy,
       take: 100,
     });
 
@@ -180,6 +178,7 @@ export class BatchService {
     const batches = await this.prisma.stockBatch.findMany({
       where: { orgId, goodId, warehouseId, isActive: true, remainingQty: { gt: 0 } },
       select: { remainingQty: true, costPrice: true },
+      take: 500,
     });
     if (!batches.length) return 0;
     const totalCost = batches.reduce((sum, b) => sum + b.remainingQty * Number(b.costPrice), 0);

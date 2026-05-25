@@ -16,13 +16,15 @@ export { SyncRecord };
 
 // Tables included in cloud sync pull (read-only from server perspective for most)
 // Note: stock_movements is append-only and has no syncVersion — excluded from delta-sync
+// Note: batch_consumptions and price_history are append-only (no syncVersion) — excluded
 const PULL_TABLES = [
   'work_orders', 'work_order_lines', 'work_order_parts',
   'counterparties', 'vehicles', 'customer_garages',
-  'stock_items',
+  'stock_items', 'stock_batches',
   'invoices', 'payments',
   'calendar_slots',
   'maintenance_schedules', 'completion_acts',
+  'pricing_rules',
 ] as const;
 
 // Tables safe for push — excludes append-only logs and FSM-controlled models
