@@ -118,10 +118,26 @@ export default function CounterpartyCardPage() {
         // Load vehicles for each garage + maintenance schedules in parallel
         g.forEach(garage => {
           apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${garage.id}`)
-            .then(vehicles => setGarageVehicles(prev => ({ ...prev, [garage.id]: vehicles })))
+            .then(vehicles => {
+              setGarageVehicles(prev => ({ ...prev, [garage.id]: vehicles }));
+              // Fetch maintenance schedules per vehicle (API only supports single vehicleId)
+              Promise.all(
+                vehicles.map(v =>
+                  apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${v.id}`)
+                    .catch(() => [] as MaintenanceSchedule[])
+                ),
+              ).then(results => {
+                const schedules = results.flat();
+                if (schedules.length > 0) {
+                  setMaintenanceSchedules(prev => {
+                    const vehicleIds = new Set(vehicles.map(v => v.id));
+                    return [...prev.filter(s => !vehicleIds.has(s.vehicleId)), ...schedules];
+                  });
+                }
+              });
+            })
             .catch(() => setGarageVehicles(prev => ({ ...prev, [garage.id]: [] })));
         });
-        apiFetch<MaintenanceSchedule[]>('/maintenance-schedules').then(setMaintenanceSchedules).catch(() => {});
       })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка гаражів'))
       .finally(() => setGaragesLoading(false));
@@ -198,7 +214,7 @@ export default function CounterpartyCardPage() {
   if (!cp) return (
     <div className="flex items-center justify-center min-h-screen flex-col gap-4">
       {loadError
-        ? <p className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{loadError}</p>
+        ? <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{loadError}</p>
         : <Spinner size="lg" />}
     </div>
   );
@@ -213,7 +229,7 @@ export default function CounterpartyCardPage() {
   return (
     <div className="page-container max-w-4xl space-y-6">
       {loadError && (
-        <div className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{loadError}</div>
+        <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{loadError}</div>
       )}
 
       {/* Header */}

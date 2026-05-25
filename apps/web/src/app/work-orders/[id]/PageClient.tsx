@@ -228,7 +228,7 @@ export default function WorkOrderCardPage() {
   if (!wo) return (
     <div className="flex items-center justify-center min-h-screen flex-col gap-4">
       {error
-        ? <p className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{error}</p>
+        ? <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{error}</p>
         : <Spinner size="lg" />}
     </div>
   );
@@ -238,7 +238,7 @@ export default function WorkOrderCardPage() {
 
   return (
     <div className="page-container max-w-4xl space-y-6">
-      {error && <p className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2">{error}</p>}
+      {error && <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{error}</p>}
       {refsError && <p className="text-[13px] text-warning bg-warning-subtle border border-warning/20 rounded-lg px-4 py-2">Довідники: {refsError}</p>}
 
       {/* Header */}
@@ -402,7 +402,7 @@ export default function WorkOrderCardPage() {
       {/* Add Line Modal */}
       <Modal open={lineModal} onClose={() => setLineModal(false)} title="Додати роботу">
         <div className="space-y-3">
-          {error && <p className="text-[13px] text-[hsl(0_84%_42%)]">{error}</p>}
+          {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">Робота <span className="text-red-500">*</span></label>
             <Select value={lineForm.workId} onChange={e => selectWork(e.target.value)}>
@@ -440,7 +440,7 @@ export default function WorkOrderCardPage() {
       {/* Add Part Modal */}
       <Modal open={partModal} onClose={() => setPartModal(false)} title="Додати запчастину">
         <div className="space-y-3">
-          {error && <p className="text-[13px] text-[hsl(0_84%_42%)]">{error}</p>}
+          {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">Товар <span className="text-red-500">*</span></label>
             <Select value={partForm.goodId} onChange={e => selectGood(e.target.value)}>

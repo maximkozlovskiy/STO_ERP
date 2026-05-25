@@ -130,7 +130,7 @@ export default function DashboardPage() {
   return (
     <div className="page-container">
       {error && (
-        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
         </div>
       )}
@@ -223,10 +223,10 @@ export default function DashboardPage() {
               <CardContent>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={revenue} margin={{ left: -10 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(214 32% 91%)" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
                     <XAxis
                       dataKey="date"
-                      tick={{ fontSize: 11, fill: 'hsl(215 16% 55%)' }}
+                      tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
                       axisLine={false}
                       tickLine={false}
                       tickFormatter={d =>
@@ -234,21 +234,21 @@ export default function DashboardPage() {
                       }
                     />
                     <YAxis
-                      tick={{ fontSize: 11, fill: 'hsl(215 16% 55%)' }}
+                      tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
                       axisLine={false}
                       tickLine={false}
                       tickFormatter={v => (v / 1000).toFixed(0) + 'к'}
                     />
                     <Tooltip
-                      cursor={{ fill: 'hsl(214 95% 97%)' }}
+                      cursor={{ fill: 'var(--color-primary-subtle)' }}
                       contentStyle={{
-                        borderRadius: 8, border: '1px solid hsl(214 32% 91%)',
+                        borderRadius: 8, border: '1px solid var(--color-border)',
                         fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
                       }}
                       formatter={(v) => [fmt(Number(v ?? 0)), 'Виручка']}
                       labelFormatter={d => new Date(d + 'T00:00').toLocaleDateString('uk-UA')}
                     />
-                    <Bar dataKey="revenue" fill="hsl(221 83% 53%)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="revenue" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>

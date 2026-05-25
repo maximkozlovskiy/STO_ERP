@@ -44,18 +44,26 @@
   --color-destructive:            hsl(0 84% 60%);
   --color-destructive-foreground: hsl(0 0% 100%);
   --color-destructive-subtle:     hsl(0 86% 97%);
+  --color-destructive-text:       hsl(0 84% 42%);
+  --color-destructive-border:     hsl(0 84% 80%);
 
   --color-success:            hsl(142 71% 45%);
   --color-success-foreground: hsl(0 0% 100%);
   --color-success-subtle:     hsl(142 76% 95%);
+  --color-success-text:       hsl(142 71% 30%);
+  --color-success-border:     hsl(142 71% 78%);
 
   --color-warning:            hsl(38 92% 50%);
   --color-warning-foreground: hsl(26 83% 14%);
   --color-warning-subtle:     hsl(48 96% 95%);
+  --color-warning-text:       hsl(26 83% 30%);
+  --color-warning-border:     hsl(38 92% 72%);
 
   --color-info:            hsl(199 89% 48%);
   --color-info-foreground: hsl(0 0% 100%);
   --color-info-subtle:     hsl(204 100% 95%);
+  --color-info-text:       hsl(199 89% 30%);
+  --color-info-border:     hsl(199 89% 72%);
 
   /* ─── Border / Input ─── */
   --color-border:       hsl(214 32% 91%);

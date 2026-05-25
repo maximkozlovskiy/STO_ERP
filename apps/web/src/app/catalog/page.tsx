@@ -135,7 +135,7 @@ function WorksTab() {
   return (
     <div>
       {!modal && error && (
-        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-48">
@@ -254,7 +254,7 @@ function WorksTab() {
         }
       >
         {error && (
-          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{error}</div>
         )}
         <div className="space-y-4">
           <Select
@@ -422,7 +422,7 @@ function GoodsTab() {
   return (
     <div>
       {!modal && error && (
-        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-48">
@@ -697,7 +697,7 @@ function GoodsTab() {
         }
       >
         {error && (
-          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{error}</div>
         )}
         <div className="space-y-4">
           <Input
@@ -861,7 +861,7 @@ function ServicesTab() {
   return (
     <div>
       {!modal && error && (
-        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1">
@@ -1002,7 +1002,7 @@ function ServicesTab() {
         }
       >
         {error && (
-          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{error}</div>
         )}
         <div className="space-y-4">
           <Input
@@ -1077,7 +1077,7 @@ function UnitsTab() {
   return (
     <div>
       {!modal && error && (
-        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
       <div className="flex items-center justify-between gap-3 mb-4">
         <p className="text-[13px] text-muted-foreground">Одиниці виміру, що використовуються в каталозі товарів</p>
@@ -1146,7 +1146,7 @@ function UnitsTab() {
         }
       >
         {error && (
-          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{error}</div>
         )}
         <div className="space-y-4">
           <Input

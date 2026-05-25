@@ -16,10 +16,10 @@ const variants: Record<BadgeVariant, string> = {
   default:     'bg-brand-100 text-brand-800 border-brand-200',
   secondary:   'bg-secondary text-foreground-muted border-transparent',
   outline:     'bg-transparent text-foreground-muted border-border',
-  success:     'bg-success-subtle text-[hsl(142_71%_30%)] border-[hsl(142_71%_78%)]',
-  warning:     'bg-warning-subtle text-[hsl(26_83%_30%)] border-[hsl(38_92%_72%)]',
-  destructive: 'bg-destructive-subtle text-[hsl(0_84%_42%)] border-[hsl(0_84%_80%)]',
-  info:        'bg-info-subtle text-[hsl(199_89%_30%)] border-[hsl(199_89%_72%)]',
+  success:     'bg-success-subtle text-success-text border-success-border',
+  warning:     'bg-warning-subtle text-warning-text border-warning-border',
+  destructive: 'bg-destructive-subtle text-destructive-text border-destructive-border',
+  info:        'bg-info-subtle text-info-text border-info-border',
   purple:      'bg-[hsl(270_100%_97%)] text-[hsl(262_83%_44%)] border-[hsl(270_88%_82%)]',
 };
 

@@ -225,7 +225,7 @@ export default function EmployeesPage() {
       </div>
 
       {!modal && error && (
-        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
 
       {/* Filters */}
@@ -456,7 +456,7 @@ export default function EmployeesPage() {
         }
       >
         {error && (
-          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{error}</div>
         )}
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -536,7 +536,7 @@ export default function EmployeesPage() {
         }
       >
         {error && (
-          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">{error}</div>
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{error}</div>
         )}
         {selected && (
           <div className="space-y-3">

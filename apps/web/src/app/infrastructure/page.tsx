@@ -178,7 +178,7 @@ export default function InfrastructurePage() {
         <div className="flex justify-center py-8"><Spinner size="lg" /></div>
       )}
       {!loading && error && !modal && (
-        <div className="mb-4 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">{error}</div>
       )}
 
       {/* BRANCHES */}
@@ -309,7 +309,7 @@ export default function InfrastructurePage() {
         title="Нова філія"
         footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.address} className="w-full">Зберегти</Button>}
       >
-        {error && <div className="mb-3 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
+        {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
         <div className="space-y-4">
           <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Головна філія" />
           <Input label="Адреса" required value={form.address ?? ''} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="вул. Гагаріна 12, Київ" />
@@ -323,7 +323,7 @@ export default function InfrastructurePage() {
         title="Нова зона"
         footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.branchId} className="w-full">Зберегти</Button>}
       >
-        {error && <div className="mb-3 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
+        {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
         <div className="space-y-4">
           <Select label="Філія" required value={form.branchId ?? ''} onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -342,7 +342,7 @@ export default function InfrastructurePage() {
         title="Новий підйомник"
         footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.zoneId} className="w-full">Зберегти</Button>}
       >
-        {error && <div className="mb-3 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
+        {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
         <div className="space-y-4">
           <Select label="Зона" required value={form.zoneId ?? ''} onChange={e => setForm(f => ({ ...f, zoneId: e.target.value }))}>
             {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
@@ -367,7 +367,7 @@ export default function InfrastructurePage() {
         title="Новий склад"
         footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.branchId} className="w-full">Зберегти</Button>}
       >
-        {error && <div className="mb-3 text-sm text-[hsl(0_84%_42%)] bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
+        {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
         <div className="space-y-4">
           <Select label="Філія" required value={form.branchId ?? ''} onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
