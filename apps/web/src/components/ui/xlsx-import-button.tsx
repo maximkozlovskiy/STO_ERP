@@ -58,7 +58,7 @@ export function XlsxImportButton({
       a.href = url;
       a.download = data.filename;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка завантаження шаблону');
     } finally {

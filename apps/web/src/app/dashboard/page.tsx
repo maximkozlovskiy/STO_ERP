@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api-client';
 import Link from 'next/link';
 import {
   Wrench, Clock, TrendingUp, AlertTriangle, FileX, BarChart2,
-  Plus, Users, ShoppingCart, Receipt, CalendarClock, Settings2, GripVertical, Check,
+  Plus, Users, ShoppingCart, Receipt, CalendarClock, Settings2, Check,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
