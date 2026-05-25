@@ -1152,7 +1152,9 @@ ARIA combobox pattern (`role="combobox"` на input, `aria-controls` → listbox
 **Виправлення:**
 Додати `exceptionFactory` у `ValidationPipe` що мапить імена помилок (constraint keys: `isUuid`, `isIso8601`, `isEnum`, `min`, `max`, `isNumber`, `isInt`, `isPositive`, `isString`, `isNotEmpty`, `isBoolean`, `isOptional`, `arrayMinSize` тощо) до укр. шаблонів за полем.
 
-**Статус:** [ ] відкритий
+**Реалізація:** додано `apps/api/src/common/pipes/validation-error.factory.ts` з мапою TEMPLATES для ~25 constraint-ключів і функцією `validationExceptionFactory` що рекурсивно обходить ValidationError-дерево. Підключено у `main.ts:ValidationPipe`.
+
+**Статус:** [x] виправлено
 
 ---
 
@@ -1181,12 +1183,13 @@ Promise rejection обробляється на call-site (мовчазно, б�
 **Виправлення:**
 Додати `.catch(() => {})` (тост вже показаний в `onSave`):
 ```ts
-onChange={e => { inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
-onCommit={v => { inlineEdit.commitEdit(v).catch(() => {}); }}
+onChange={e => { void inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
+onCommit={v => { void inlineEdit.commitEdit(v).catch(() => {}); }}
 ```
-Також відобразити це у патерні `useInlineEdit` — повертати "void" з `commitEdit` (вже не Promise) і всередині ловити, але передавати помилку через callback. Простіший варіант — `.catch(noop)` на місці.
 
-**Статус:** [ ] відкритий
+**Реалізація:** обидва call-сайти у `apps/web/src/app/work-orders/page.tsx` обгорнуто `void ...catch(noop)`. Re-throw з commitEdit зберігає edit state для retry, тост показується усередині onSave.
+
+**Статус:** [x] виправлено
 
 ---
 
@@ -1209,7 +1212,9 @@ Text input, користувач має знати формат дати, пом
 **Виправлення:**
 Розширити union type: `type?: 'text' | 'number' | 'date' | 'datetime-local'`. Передавати у `<input type={type}>`. Тестами підтвердити що `date` рендериться без помилок і повертає ISO формат у `onChange`.
 
-**Статус:** [ ] відкритий
+**Реалізація:** розширено тип у `inline-edit-cell.tsx`; додано try/catch навколо `inputRef.current.select()` (date/datetime-local кидають InvalidStateError); у `work-orders/page.tsx` змінено `type="text"` → `type="date"` для dueDate, ширина `w-32` → `w-36`.
+
+**Статус:** [x] виправлено
 
 ---
 
@@ -1232,9 +1237,11 @@ Text input, користувач має знати формат дати, пом
 Без aria-label — невідомо що це поле редагування.
 
 **Виправлення:**
-Прийняти опціональний пропс `ariaLabel?: string` і застосувати до span. Default = "Натисніть для редагування".
+Прийняти опціональний пропс `ariaLabel?: string` і застосувати до span. Default = "Редагувати: <value>" або "Редагувати" якщо value порожнє.
 
-**Статус:** [ ] відкритий
+**Реалізація:** додано `ariaLabel?: string` пропс у `InlineViewCellProps`; додано `aria-label={label}` на `<span role="button">`. Тестами покрито 3 кейси: default з value, default без value, custom override.
+
+**Статус:** [x] виправлено
 
 ---
 
@@ -1263,7 +1270,9 @@ const parsed = JSON.parse(raw);
 return Array.isArray(parsed) ? (parsed as SavedFilter<T>[]) : [];
 ```
 
-**Статус:** [ ] відкритий
+**Реалізація:** додано Array.isArray guard у `useSavedFilters.ts:read()`. Тестами покрито 3 corruption-кейси (невалідний JSON, об'єкт замість масиву, примітив).
+
+**Статус:** [x] виправлено
 
 ---
 
@@ -1288,7 +1297,15 @@ Group 3 додав 4 нові примітиви UI без тестів. Існ�
 **Виправлення:**
 Додати 4 файли тестів вище. Покриття ≥80% для кожного хука/компонента.
 
-**Статус:** [ ] відкритий
+**Реалізація:** додано 4 тестових файли (+45 нових тестів):
+- `apps/web/src/components/ui/__tests__/saved-filters-bar.test.tsx` — 9 тестів
+- `apps/web/src/components/ui/__tests__/inline-edit-cell.test.tsx` — 17 тестів (включаючи InlineViewCell)
+- `apps/web/src/hooks/useInlineEdit.test.tsx` — 10 тестів (включаючи savingRef double-commit guard)
+- `apps/web/src/hooks/useSavedFilters.test.tsx` — 9 тестів (включаючи corruption defense)
+
+Веб-набір: 100/100 passed (було 55).
+
+**Статус:** [x] виправлено
 
 ---
 
