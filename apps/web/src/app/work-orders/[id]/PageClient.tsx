@@ -14,6 +14,7 @@ import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
 import { Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -123,6 +124,8 @@ export default function WorkOrderCardPage() {
   const [stockLoading, setStockLoading] = useState(false);
 
   const features = useUiFeatures();
+  const lineDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+  const partDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -179,11 +182,25 @@ export default function WorkOrderCardPage() {
   const selectWork = (workId: string) => {
     const w = works.find(x => x.id === workId);
     setLineForm(f => ({ ...f, workId, normoHours: w ? String(w.normoHours) : f.normoHours, price: w ? String(w.price) : f.price }));
+    lineDirty.markDirty();
   };
 
   const selectGood = (goodId: string) => {
     const g = goods.find(x => x.id === goodId);
     setPartForm(f => ({ ...f, goodId, price: g ? String(g.salePrice) : f.price }));
+    partDirty.markDirty();
+  };
+
+  const closeLineModal = () => {
+    if (!lineDirty.confirmClose()) return;
+    setLineModal(false);
+    lineDirty.resetDirty();
+  };
+
+  const closePartModal = () => {
+    if (!partDirty.confirmClose()) return;
+    setPartModal(false);
+    partDirty.resetDirty();
   };
 
   const addLine = async () => {
@@ -201,6 +218,7 @@ export default function WorkOrderCardPage() {
       });
       setLineModal(false);
       setLineForm({ workId: '', employeeId: '', normoHours: '', price: '', notes: '' });
+      lineDirty.resetDirty();
       if (features.toastEnabled) toast.success('Роботу додано');
       load();
     } catch (e: unknown) {
@@ -241,6 +259,7 @@ export default function WorkOrderCardPage() {
       });
       setPartModal(false);
       setPartForm({ goodId: '', warehouseId: '', quantity: '1', price: '' });
+      partDirty.resetDirty();
       if (features.toastEnabled) toast.success('Запчастину додано');
       load();
     } catch (e: unknown) {
@@ -493,7 +512,7 @@ export default function WorkOrderCardPage() {
       </div>
 
       {/* Add Line Modal */}
-      <Modal open={lineModal} onClose={() => setLineModal(false)} title="Додати роботу">
+      <Modal open={lineModal} onClose={closeLineModal} title="Додати роботу">
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div>
@@ -505,7 +524,7 @@ export default function WorkOrderCardPage() {
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">Виконавець <span className="text-destructive">*</span></label>
-            <Select value={lineForm.employeeId} onChange={e => setLineForm(f => ({ ...f, employeeId: e.target.value }))}>
+            <Select value={lineForm.employeeId} onChange={e => { setLineForm(f => ({ ...f, employeeId: e.target.value })); lineDirty.markDirty(); }}>
               <option value="">— Оберіть —</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.lastName} {e.firstName}</option>)}
             </Select>
@@ -513,16 +532,16 @@ export default function WorkOrderCardPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">Нормо-год</label>
-              <Input type="number" value={lineForm.normoHours} onChange={e => setLineForm(f => ({ ...f, normoHours: e.target.value }))} />
+              <Input type="number" value={lineForm.normoHours} onChange={e => { setLineForm(f => ({ ...f, normoHours: e.target.value })); lineDirty.markDirty(); }} />
             </div>
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">Ціна, ₴</label>
-              <Input type="number" value={lineForm.price} onChange={e => setLineForm(f => ({ ...f, price: e.target.value }))} />
+              <Input type="number" value={lineForm.price} onChange={e => { setLineForm(f => ({ ...f, price: e.target.value })); lineDirty.markDirty(); }} />
             </div>
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">Нотатки</label>
-            <Input value={lineForm.notes} onChange={e => setLineForm(f => ({ ...f, notes: e.target.value }))} />
+            <Input value={lineForm.notes} onChange={e => { setLineForm(f => ({ ...f, notes: e.target.value })); lineDirty.markDirty(); }} />
           </div>
           <Button onClick={addLine} loading={saving} disabled={!lineForm.workId || !lineForm.employeeId} className="w-full">
             Додати
@@ -541,7 +560,7 @@ export default function WorkOrderCardPage() {
       )}
 
       {/* Add Part Modal */}
-      <Modal open={partModal} onClose={() => setPartModal(false)} title="Додати запчастину">
+      <Modal open={partModal} onClose={closePartModal} title="Додати запчастину">
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div>
@@ -553,7 +572,7 @@ export default function WorkOrderCardPage() {
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">Склад <span className="text-destructive">*</span></label>
-            <Select value={partForm.warehouseId} onChange={e => setPartForm(f => ({ ...f, warehouseId: e.target.value }))}>
+            <Select value={partForm.warehouseId} onChange={e => { setPartForm(f => ({ ...f, warehouseId: e.target.value })); partDirty.markDirty(); }}>
               <option value="">— Оберіть —</option>
               {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </Select>
@@ -566,11 +585,11 @@ export default function WorkOrderCardPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">Кількість <span className="text-destructive">*</span></label>
-              <Input type="number" value={partForm.quantity} onChange={e => setPartForm(f => ({ ...f, quantity: e.target.value }))} min="0.001" step="0.001" />
+              <Input type="number" value={partForm.quantity} onChange={e => { setPartForm(f => ({ ...f, quantity: e.target.value })); partDirty.markDirty(); }} min="0.001" step="0.001" />
             </div>
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">Ціна, ₴</label>
-              <Input type="number" value={partForm.price} onChange={e => setPartForm(f => ({ ...f, price: e.target.value }))} />
+              <Input type="number" value={partForm.price} onChange={e => { setPartForm(f => ({ ...f, price: e.target.value })); partDirty.markDirty(); }} />
             </div>
           </div>
           <Button
