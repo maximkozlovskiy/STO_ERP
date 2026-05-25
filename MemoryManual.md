@@ -9,22 +9,30 @@
 ## Останній commit
 
 ```
-aed69c3 fix(review): Command Palette + keyboard shortcuts — 7 issues
+9adfb01 fix(tester): Bugs #42-#46 — CommandPalette backdrop close + a11y + perf
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після /sto-tester Phase 19.2 sweep, 2026-05-25)
+## Поточний стан тестів (після /sto-tester Group 2 sweep, 2026-05-25)
 ```
 TypeScript:  ✅ 0 errors        (web + api + shared)
-Unit:        ✅ 117/117 passed  (13 files; +6 settings.contract)
-Contract:    ✅ 38/38 passed    (was 32; +6 settings.contract.spec.ts)
+Unit:        ✅ 117/117 passed  (13 files)
+Contract:    ✅ 38/38 passed
 Property:    ✅ 26/26 passed
-Components:  ✅ 42/42 passed
-E2E:         ✅ 16/16 passed    (dev server онлайн на момент Кроку 4.5)
+Components:  ✅ 55/55 passed    (was 42; +13 command-palette.test.tsx)
+E2E:         ⏭ skipped          (dev server офлайн на момент Кроку 4.5)
 Build:       ✅ API OK
-Цикли QA:    tester Phase 19.2 — 5 багів (1 HIGH + 2 MEDIUM + 2 LOW), всі виправлені
+Цикли QA:    tester Group 2 — 5 багів (1 MEDIUM + 4 LOW), всі виправлені
 ```
+
+### Gotcha — Command Palette tester sweep (2026-05-25, баги #42-#46)
+- **Backdrop-click через `e.target === e.currentTarget`** — анти-патерн коли backdrop є дочірнім `absolute inset-0` сібінгом панелі: backdrop ВІЗУАЛЬНО покриває outer flex container, тож клік завжди приземляється на backdrop, а не на outer div → onClose ніколи не викликається. Канон: вішати `onMouseDown` НА САМ backdrop (`<div className="absolute inset-0 ..." onMouseDown={onClose} aria-hidden="true" />`), а не на outer dialog wrapper (Bug #42).
+- **`onMouseEnter` vs `onMouseMove` у списках з клавіатурною навігацією**: `onMouseEnter` спрацьовує коли список зсувається ПІД нерухомий курсор (після фільтру/перебудови) → активний індекс стрибає, перебиваючи стрілки. Канон: `onMouseMove` (потребує реального руху курсора) + дешева guard `if (activeIndex !== idx) setActiveIndex(idx)` (Bug #43).
+- **O(N²) flatList.indexOf у рендері** — для будь-якого list-у з груповим рендером, де треба знайти індекс у плоскому списку. Канон: `useMemo` побудувати `Map<Item, number>` один раз, в map-і груп брати `map.get(item)` за O(1) (Bug #44).
+- **Combobox/Listbox ARIA pattern для command palette / autocomplete**: input має `role="combobox"`, `aria-controls={listboxId}`, `aria-activedescendant={activeOptionId}`, `aria-autocomplete="list"`. Контейнер результатів — `role="listbox"` + id. Кожен option — `role="option"`, `aria-selected={isActive}`, унікальний `id` (через `useId`, НЕ `Math.random` — non-deterministic + hydration risk). Без цього screen reader не оголошує зміну активного пункту під час ArrowDown/Up у текстовому полі (Bug #45).
+- **Restore focus pattern для modal dialog**: WAI-ARIA вимагає повертати фокус на елемент-тригер після закриття. Канон: `previousFocusRef = useRef(null)`; у `useEffect` при `open=true` зберегти `document.activeElement`; при `open=false` — `setTimeout(() => previousFocusRef.current?.focus(), 0)` (defer один tick щоб модалка встигла unmount-нутись) (Bug #46).
+- **jsdom не має `Element.prototype.scrollIntoView`** — компоненти що скролять активний елемент у видимість (palette, select, list virtualizer) крашать тести з `TypeError`. Канон: глобальний стуб у `apps/web/src/__tests__/setup.ts`: `Element.prototype.scrollIntoView = function () {}`.
 
 ### Gotcha — /sto-review Command Palette (2026-05-25, commit aed69c3)
 - **Shift+/ vs '?'**: на US-розкладці `e.key` для Shift+/ → `'?'`, НЕ `'/'`. Hook що порівнює `e.key.toLowerCase() === mainKey` де `mainKey='/'` тихо не спрацьовує — ярлик `'?'` "є", але ніколи не фаєриться. Канон у `useKeyboardShortcut`: таблиця `SHIFT_ALIAS` (`'?':'/'`, `'!':'1'`, ...) + layout-independent fallback на `e.code` (`'Slash'`, `'KeyA'`, `'Digit1'`). Перевірити власноруч: Shift+/ показує help toast.
