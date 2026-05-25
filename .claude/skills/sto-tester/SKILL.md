@@ -44,7 +44,7 @@ Unit:        ✅ N/N passed     (або ❌ N failed)
 Contract:    ✅ N passed       (або ⏭ немає .contract.spec.ts)
 Property:    ✅ N passed       (або ⏭ fast-check не встановлений)
 Components:  ✅ N passed       (або ⏭ @testing-library не встановлений)
-E2E:         ✅ N passed       (або ⏭ skipped — dev server offline)
+E2E:         ✅ N passed       (або ⏭ skipped — dev server failed to start after 90s)
 ```
 
 Якщо під час тестування виявились нові gotchas — дописати у відповідний розділ `MemoryManual.md` без запиту.
@@ -76,6 +76,39 @@ grep "fast-check" apps/api/package.json > /dev/null && echo "fast-check OK" || e
 grep "@testing-library/react" apps/web/package.json > /dev/null && echo "testing-library OK" || echo "testing-library MISSING — component tests skipped"
 test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwright MISSING"
 ```
+
+### 0.1 — Автоматичний запуск dev-серверів (ОБОВ'ЯЗКОВО перед E2E)
+
+Перевір і запусти dev-сервери якщо вони офлайн. **Не пропускати E2E через відсутній сервер — запустити самостійно.**
+
+```bash
+# Перевірка стану сервісів
+docker ps --format "{{.Names}}\t{{.Status}}" | grep -E "postgres|redis|minio"
+curl -s http://localhost:3000/api/docs > /dev/null 2>&1 && echo "API:UP" || echo "API:DOWN"
+curl -s http://localhost:3001 > /dev/null 2>&1 && echo "WEB:UP" || echo "WEB:DOWN"
+```
+
+Якщо API:DOWN → запустити у фоні та дочекатись готовності:
+
+```bash
+# Запустити API dev-сервер у фоні
+pnpm --filter @sto/api dev > /tmp/sto-api-dev.log 2>&1 &
+# Дочекатись готовності (max 60s)
+until curl -s http://localhost:3000/api/docs > /dev/null 2>&1; do sleep 3; done && echo "API ready"
+```
+
+Якщо WEB:DOWN → запустити у фоні та дочекатись готовності:
+
+```bash
+# Запустити Web dev-сервер у фоні
+pnpm --filter @sto/web dev > /tmp/sto-web-dev.log 2>&1 &
+# Дочекатись готовності (max 90s)
+until curl -s http://localhost:3001 > /dev/null 2>&1; do sleep 3; done && echo "WEB ready"
+```
+
+> **Важливо:** після запуску серверів — рухатись далі без зупинки. E2E виконується в Кроці 4.5.  
+> Якщо після 90 секунд сервер не піднявся — перевірити `/tmp/sto-*-dev.log`, зафіксувати як CRITICAL Bug і пропустити E2E.  
+> Логи помилок старту: `tail -30 /tmp/sto-api-dev.log` та `tail -30 /tmp/sto-web-dev.log`
 
 ---
 
@@ -162,6 +195,40 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 #### Нумерація документів
 - [ ] Номери генеруються через `DocumentNumberService.next(orgId, type)` — не хардкодяться у форматі
 - [ ] `DocumentNumberConfig` читається по `orgId` — не по глобальному конфігу
+
+#### Алгоритми та формули (ОБОВ'ЯЗКОВО при змінах у pricing/batch/work-orders)
+
+```bash
+# Перевірити FEFO — nulls last (товари без терміну ідуть В КІНЦІ, не на початку)
+grep -n "expiryDate\|FEFO" apps/api/src/modules/inventory/batch.service.ts
+# Очікується: { expiryDate: 'asc', nulls: 'last' }
+
+# Перевірити AVG_COST — зважене, не просте
+grep -n "avgCost\|totalCost\|totalQty\|AVG_COST" apps/api/src/modules/inventory/batch.service.ts
+
+# Перевірити округлення цін — Math.round (не ceil/floor)
+grep -n "Math\.round\|Math\.ceil\|Math\.floor" apps/api/src/modules/inventory/pricing.service.ts
+
+# Перевірити захист від від'ємної ціни
+grep -n "Math.max" apps/api/src/modules/inventory/pricing.service.ts
+
+# Перевірити Decimal cast у recalcTotals
+grep -n "Number(l\.\|Number(p\.\|totalLabor\|totalParts" apps/api/src/modules/work-orders/work-orders.service.ts
+```
+
+- [ ] Pricing: `PERCENT` = `cost * (1 + pct/100)` — не `cost + pct/100`
+- [ ] Pricing: `FIXED_AMOUNT` = `cost + delta` — не `cost * delta`
+- [ ] Pricing: `FIXED_PRICE` fallback = `fixedPrice ?? costPrice` — не `fixedPrice ?? 0`
+- [ ] Pricing: округлення = `Math.round(result / r) * r` — не `Math.ceil` і не `Math.floor`
+- [ ] Pricing: floor guard = `Math.max(0, result)` присутній (ціна не від'ємна)
+- [ ] Pricing: `Number(rule.percentValue ?? 0)` — Decimal cast перед арифметикою
+- [ ] Batch FEFO: `[{ expiryDate: 'asc', nulls: 'last' }, { createdAt: 'asc' }]` — `nulls: 'last'` обов'язковий
+- [ ] Batch AVG_COST: `SUM(qty * price) / SUM(qty)` — не `SUM(price) / count`
+- [ ] Batch loop: `Math.min(remaining, batch.remainingQty)` — не `batch.remainingQty` напряму
+- [ ] Batch loop: після циклу якщо `remaining > 0` → `throw BadRequestException` (недостатньо в батчах)
+- [ ] recalcTotals: `Number(l.amount)` cast (Decimal у reduce без cast → рядкова конкатенація)
+- [ ] recalcTotals: `totalAmount = totalLabor + totalParts` — дві окремі суми, не одна
+- [ ] PriceHistory: `create` тільки якщо нова ціна відрізняється від `good.salePrice` (>0.001 tolerance)
 
 ### 1.2 — TypeScript / API якість
 
@@ -748,6 +815,181 @@ describe('Settlements — balance invariants (property-based)', () => {
 });
 ```
 
+### Шаблон: Algorithm invariants — Pricing, Batches, Totals
+
+```typescript
+// apps/api/src/modules/inventory/pricing.invariants.spec.ts
+import * as fc from 'fast-check';
+
+// Pure формули (без Prisma) — верифікуємо математику ізольовано
+function calcPercent(cost: number, pct: number): number {
+  return Math.max(0, cost * (1 + pct / 100));
+}
+function calcFixedAmount(cost: number, delta: number): number {
+  return Math.max(0, cost + delta);
+}
+function calcFixedPrice(fixedPrice: number | null, cost: number): number {
+  return Math.max(0, fixedPrice ?? cost);
+}
+function applyRounding(value: number, roundTo: number): number {
+  if (roundTo <= 0) return value;
+  return Math.round(value / roundTo) * roundTo;
+}
+
+describe('Pricing — algorithm invariants', () => {
+  it('PERCENT: результат >= 0 для будь-якого cost >= 0 і pct >= 0', () => {
+    fc.assert(
+      fc.property(
+        fc.float({ min: 0, max: 100_000, noNaN: true }),
+        fc.float({ min: 0, max: 500, noNaN: true }),
+        (cost, pct) => calcPercent(cost, pct) >= 0,
+      ),
+    );
+  });
+
+  it('PERCENT: при pct=0 результат дорівнює costPrice', () => {
+    fc.assert(
+      fc.property(
+        fc.float({ min: 0.01, max: 100_000, noNaN: true }),
+        (cost) => Math.abs(calcPercent(cost, 0) - cost) < 0.001,
+      ),
+    );
+  });
+
+  it('FIXED_PRICE: ігнорує costPrice коли fixedPrice задана', () => {
+    fc.assert(
+      fc.property(
+        fc.float({ min: 0.01, max: 100_000, noNaN: true }),
+        fc.float({ min: 0, max: 100_000, noNaN: true }),
+        (cost, fixed) => Math.abs(calcFixedPrice(fixed, cost) - Math.max(0, fixed)) < 0.001,
+      ),
+    );
+  });
+
+  it('Rounded result є кратним roundTo', () => {
+    fc.assert(
+      fc.property(
+        fc.float({ min: 0, max: 10_000, noNaN: true }),
+        fc.constantFrom(0.5, 1, 5, 10, 50, 100),
+        (value, r) => {
+          const rounded = applyRounding(value, r);
+          return Math.abs(rounded % r) < 0.001 || Math.abs(rounded % r - r) < 0.001;
+        },
+      ),
+    );
+  });
+
+  it('Floor guard: Math.max(0, result) — ціна не від\'ємна', () => {
+    fc.assert(
+      fc.property(
+        fc.float({ min: -10_000, max: 10_000, noNaN: true }),
+        (result) => Math.max(0, result) >= 0,
+      ),
+    );
+  });
+});
+
+describe('Batch cost — algorithm invariants', () => {
+  // AVG_COST: зважене середнє, не просте
+  it('AVG_COST: зважений avg >= min(costPrices) і <= max(costPrices)', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            remainingQty: fc.integer({ min: 1, max: 1000 }),
+            costPrice: fc.float({ min: 0.01, max: 100_000, noNaN: true }),
+          }),
+          { minLength: 1, maxLength: 10 },
+        ),
+        (batches) => {
+          const totalCost = batches.reduce((s, b) => s + b.remainingQty * b.costPrice, 0);
+          const totalQty  = batches.reduce((s, b) => s + b.remainingQty, 0);
+          const avg = totalCost / totalQty;
+          const minPrice = Math.min(...batches.map(b => b.costPrice));
+          const maxPrice = Math.max(...batches.map(b => b.costPrice));
+          return avg >= minPrice - 0.001 && avg <= maxPrice + 0.001;
+        },
+      ),
+    );
+  });
+
+  // FIFO loop: сума списань не перевищує запитану кількість
+  it('Batch loop: SUM(take) <= requested qty', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 500 }),
+        fc.array(fc.integer({ min: 1, max: 200 }), { minLength: 1, maxLength: 10 }),
+        (requested, batchQtys) => {
+          let remaining = requested;
+          let totalTaken = 0;
+          for (const batchQty of batchQtys) {
+            if (remaining <= 0) break;
+            const take = Math.min(remaining, batchQty);
+            totalTaken += take;
+            remaining -= take;
+          }
+          return totalTaken <= requested;
+        },
+      ),
+    );
+  });
+});
+
+describe('WorkOrder totals — algorithm invariants', () => {
+  it('totalAmount = totalLabor + totalParts завжди', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.float({ min: 0, max: 10_000, noNaN: true }), { minLength: 0, maxLength: 20 }),
+        fc.array(fc.float({ min: 0, max: 10_000, noNaN: true }), { minLength: 0, maxLength: 20 }),
+        (lineAmounts, partAmounts) => {
+          const totalLabor = lineAmounts.reduce((s, a) => s + a, 0);
+          const totalParts = partAmounts.reduce((s, a) => s + a, 0);
+          const totalAmount = totalLabor + totalParts;
+          // Перевіряємо адитивність: SUM(all) === totalLabor + totalParts
+          const allAmounts = [...lineAmounts, ...partAmounts];
+          const directSum = allAmounts.reduce((s, a) => s + a, 0);
+          return Math.abs(totalAmount - directSum) < 0.001;
+        },
+      ),
+    );
+  });
+
+  it('line amount = normoHours * price → завжди >= 0', () => {
+    fc.assert(
+      fc.property(
+        fc.float({ min: 0, max: 100, noNaN: true }),
+        fc.float({ min: 0, max: 100_000, noNaN: true }),
+        (normoHours, price) => normoHours * price >= 0,
+      ),
+    );
+  });
+});
+```
+
+#### Статичні перевірки алгоритмів (без запуску тестів)
+
+```bash
+# Перевірити FEFO ordering — чи є nulls last
+grep -n "expiryDate\|FEFO\|orderBy" apps/api/src/modules/inventory/batch.service.ts
+# FEFO має бути: { expiryDate: 'asc', nulls: 'last' }
+
+# Перевірити AVG_COST — не просте середнє
+grep -n "AVG_COST\|avgCost\|totalCost\|totalQty" apps/api/src/modules/inventory/batch.service.ts
+
+# Перевірити round алгоритм — саме round, не ceil/floor
+grep -n "Math\.round\|Math\.ceil\|Math\.floor" apps/api/src/modules/inventory/pricing.service.ts
+# Math.ceil/Math.floor для округлення цін — баг (завжди вгору/вниз незалежно від roundTo)
+
+# Перевірити recalcTotals — Decimal cast
+grep -n "Number(l\.\|Number(p\.\|reduce\|totalLabor\|totalParts\|totalAmount" \
+  apps/api/src/modules/work-orders/work-orders.service.ts
+# Без Number() cast: Decimal + Decimal в reduce дасть рядкову конкатенацію при деяких версіях
+
+# Floor guard присутній у pricing
+grep -n "Math.max(0" apps/api/src/modules/inventory/pricing.service.ts
+# Якщо відсутній — MEDIUM bug: від'ємна ціна при великому discount
+```
+
 ### Запуск property-based тестів
 
 ```bash
@@ -758,8 +1000,9 @@ pnpm --filter @sto/api test --run --reporter=verbose 2>&1 | grep -E "invariant|p
 
 ## Крок 4.5 — E2E тести (Playwright)
 
-> **Умова запуску:** dev-сервер (`pnpm dev`) повинен бути активним.  
-> Якщо `http://localhost:3001` не відповідає — пропустити цей крок, позначити в звіті як "⏭ skipped".
+> **Dev-сервери запускаються автоматично в Кроці 0.1.** До цього кроку вони ПОВИННІ бути готові.  
+> Якщо раптом `http://localhost:3001` не відповідає (збій після старту) — перезапустити за інструкцією з Кроку 0.1 і повторити.  
+> **Не пропускати E2E** — це ключовий крок що перевіряє реальну UI взаємодію.
 
 ### Перевірка наявності Playwright
 

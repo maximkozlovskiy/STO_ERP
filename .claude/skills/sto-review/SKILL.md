@@ -450,6 +450,91 @@ grep -rn "\.emit(\|this\.events\.emit(" apps/api/src/modules/ --include="*.servi
   grep -rn "URL.createObjectURL" apps/web/src --include="*.tsx"
   ```
 
+### 5.1 Algorithm Correctness (Pricing, Batches, Totals)
+
+> Перевіряти при будь-якій зміні `pricing.service.ts`, `batch.service.ts`, `work-orders.service.ts` або `inventory.service.ts`.
+
+#### Pricing formulas (`pricing.service.ts` → `calculateSalePrice`)
+
+```bash
+grep -n "PERCENT\|FIXED_AMOUNT\|FIXED_PRICE\|COMPETITOR_PLUS\|roundTo\|Math.max\|Math.round" \
+  apps/api/src/modules/inventory/pricing.service.ts
+```
+
+- [ ] `PERCENT`: `result = costPrice * (1 + percentValue / 100)` — не `costPrice + percentValue / 100`
+- [ ] `FIXED_AMOUNT`: `result = costPrice + fixedAmount` — не `costPrice * fixedAmount`
+- [ ] `FIXED_PRICE`: `result = fixedPrice ?? costPrice` — якщо `fixedPrice` відсутній → fallback на `costPrice`, не `0`
+- [ ] `COMPETITOR_PLUS`: використовує competitorPrice як базу, не costPrice
+- [ ] Округлення: `Math.round(result / r) * r` — саме `round`, не `ceil` / `floor`
+- [ ] Floor guard обов'язковий: `return Math.max(0, result)` — ціна не може бути від'ємною
+- [ ] `Number(rule.percentValue ?? 0)` — явний cast з `?? 0` захисником від `null` Decimal
+
+```typescript
+// ❌ BAD — percentValue як Decimal без cast → NaN у результаті
+result = costPrice * (1 + rule.percentValue / 100);
+
+// ✅ GOOD
+result = costPrice * (1 + Number(rule.percentValue ?? 0) / 100);
+```
+
+#### Batch cost methods (`batch.service.ts` → `consumeBatch`)
+
+```bash
+grep -n "FIFO\|FEFO\|LIFO\|AVG_COST\|orderBy\|expiryDate\|createdAt\|remainingQty\|totalCost" \
+  apps/api/src/modules/inventory/batch.service.ts
+```
+
+- [ ] FIFO: `orderBy: [{ createdAt: 'asc' }]` — старіші партії списуються першими
+- [ ] LIFO: `orderBy: [{ createdAt: 'desc' }]` — новіші першими
+- [ ] FEFO: `orderBy: [{ expiryDate: 'asc', nulls: 'last' }, { createdAt: 'asc' }]` — без `nulls: 'last'` товари без терміну придатності йдуть першими (КРИТИЧНИЙ баг для харчових/фармо товарів)
+- [ ] AVG_COST формула: `totalCost / totalQty` де `totalCost = SUM(batch.remainingQty * batch.costPrice)` і `totalQty = SUM(batch.remainingQty)` — не просте середнє `SUM(costPrice) / count`
+- [ ] Цикл списання: `const take = Math.min(remaining, batch.remainingQty)` — не перевищує доступний залишок батча
+- [ ] Після циклу: `remaining === 0` (все списано) — якщо `remaining > 0` після всіх батчів → `throw BadRequestException`
+- [ ] `BatchConsumption.create()` викликається для кожного батча, не тільки для першого
+
+```typescript
+// ❌ BAD — просте середнє ціни (неправильно при різних залишках)
+const avgCost = batches.reduce((sum, b) => sum + Number(b.costPrice), 0) / batches.length;
+
+// ✅ GOOD — зважене середнє
+const totalCost = batches.reduce((sum, b) => sum + b.remainingQty * Number(b.costPrice), 0);
+const totalQty  = batches.reduce((sum, b) => sum + b.remainingQty, 0);
+const avgCost   = totalQty > 0 ? totalCost / totalQty : 0;
+```
+
+#### WorkOrder totals (`work-orders.service.ts` → `recalcTotals`)
+
+```bash
+grep -n "recalcTotals\|totalLabor\|totalParts\|totalAmount\|normoHours\|amount" \
+  apps/api/src/modules/work-orders/work-orders.service.ts
+```
+
+- [ ] Рядок роботи: `amount = normoHours * price` (не `price` окремо)
+- [ ] Запчастина: `amount = quantity * price`
+- [ ] `totalLabor = SUM(lines.amount)` — тільки рядки робіт
+- [ ] `totalParts = SUM(parts.amount)` — тільки запчастини
+- [ ] `totalAmount = totalLabor + totalParts` — не `SUM(всіх amount разом)`
+- [ ] `Number(l.amount)` cast — `amount` у Prisma зберігається як `Decimal`, без cast дасть конкатенацію рядків
+
+```typescript
+// ❌ BAD — amount Decimal без cast → "10.0020.00" замість 30
+const totalLabor = lines.reduce((s, l) => s + l.amount, 0);
+
+// ✅ GOOD
+const totalLabor = lines.reduce((s, l) => s + Number(l.amount), 0);
+```
+
+#### PriceHistory trigger (`pricing.service.ts` або `goods.service.ts`)
+
+```bash
+grep -n "PriceHistory\|priceHistory\|priceChanged\|salePrice" \
+  apps/api/src/modules/inventory/pricing.service.ts \
+  apps/api/src/modules/goods/goods.service.ts
+```
+
+- [ ] `PriceHistory.create()` викликається **тільки** коли нова ціна відрізняється від поточної `good.salePrice` — не при кожному розрахунку
+- [ ] Порівняння: `Math.abs(newPrice - Number(good.salePrice)) > 0.001` — floating point safe comparison
+
 ---
 
 ## 6. Database
