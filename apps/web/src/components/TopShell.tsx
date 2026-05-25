@@ -31,6 +31,8 @@ import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { ToastContainer } from '@/components/ui/toast';
 import { CommandPalette } from '@/components/ui/command-palette';
+import { SyncIndicator } from '@/components/ui/sync-indicator';
+import { NotificationCenter } from '@/components/ui/notification-center';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
@@ -384,11 +386,19 @@ export function TopShell({ children }: { children: ReactNode }) {
 
       {/* User footer */}
       <div className="border-t border-sidebar-border px-2 py-2.5 shrink-0">
+        {!collapsed && uiFeatures.syncIndicatorEnabled && (
+          <div className="px-2 pb-2">
+            <SyncIndicator />
+          </div>
+        )}
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white text-[11px] font-bold">
               {initials}
             </div>
+            {uiFeatures.notificationCenterEnabled && (
+              <NotificationCenter enabled={uiFeatures.notificationCenterEnabled} />
+            )}
             <button
               onClick={handleLogout}
               className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
@@ -410,6 +420,9 @@ export function TopShell({ children }: { children: ReactNode }) {
                 {ROLE_LABELS[role] ?? role}
               </div>
             </div>
+            {uiFeatures.notificationCenterEnabled && (
+              <NotificationCenter enabled={uiFeatures.notificationCenterEnabled} />
+            )}
             <button
               onClick={handleLogout}
               className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"

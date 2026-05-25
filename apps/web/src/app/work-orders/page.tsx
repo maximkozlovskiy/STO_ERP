@@ -18,8 +18,10 @@ import {
 import { DetailPanel } from '@/components/ui/detail-panel';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { InlineEditCell, InlineViewCell } from '@/components/ui/inline-edit-cell';
+import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useInlineEdit } from '@/hooks/useInlineEdit';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
@@ -146,6 +148,8 @@ export default function WorkOrdersPage() {
     if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
   }, [saveFilter, statusFilter, categoryFilter, search, showDeleted, features.toastEnabled]);
 
+  const bulkSelect = useBulkSelect(data?.items ?? []);
+
   const inlineEdit = useInlineEdit({
     enabled: features.inlineEditEnabled,
     onSave: async (rowId, field, value) => {
@@ -192,6 +196,41 @@ export default function WorkOrdersPage() {
   }, [page, statusFilter, categoryFilter, search, showDeleted]);
 
   useEffect(() => { load(); }, [load]);
+
+  const bulkCancel = useCallback(async (ids: string[]) => {
+    try {
+      await Promise.all(ids.map(id => apiFetch(`/work-orders/${id}/transition`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'CANCELLED' }),
+      })));
+      bulkSelect.clear();
+      if (features.toastEnabled) toast.success(`Скасовано ${ids.length} нарядів`);
+      load();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка масової операції';
+      if (features.toastEnabled) toast.error(msg); else setError(msg);
+    }
+  }, [bulkSelect, features.toastEnabled, load]);
+
+  const bulkArchive = useCallback(async (ids: string[]) => {
+    try {
+      await Promise.all(ids.map(id => apiFetch(`/work-orders/${id}/transition`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'ARCHIVED' }),
+      })));
+      bulkSelect.clear();
+      if (features.toastEnabled) toast.success(`Архівовано ${ids.length} нарядів`);
+      load();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка масової операції';
+      if (features.toastEnabled) toast.error(msg); else setError(msg);
+    }
+  }, [bulkSelect, features.toastEnabled, load]);
+
+  const bulkActions: BulkAction[] = [
+    { id: 'cancel', label: 'Скасувати', variant: 'destructive', onClick: bulkCancel },
+    { id: 'archive', label: 'Архівувати', variant: 'outline', onClick: bulkArchive },
+  ];
 
   const loadVehicles = (counterpartyId: string) => {
     if (!counterpartyId) return;
@@ -325,12 +364,35 @@ export default function WorkOrdersPage() {
         </Button>
       </div>
 
+      {/* Bulk actions */}
+      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
+        <BulkActionsBar
+          count={bulkSelect.count}
+          selectedIds={Array.from(bulkSelect.selected)}
+          actions={bulkActions}
+          onClear={bulkSelect.clear}
+          className="mb-3"
+        />
+      )}
+
       {/* Table + DetailPanel */}
       <div className="flex gap-0 rounded-xl border border-border overflow-hidden">
         <div className="flex-1 min-w-0 overflow-auto border-r border-border">
           <Table>
             <TableHeader>
               <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-9 pr-0">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      ref={el => { if (el) el.indeterminate = bulkSelect.someSelected; }}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-3.5 w-3.5 rounded border-border"
+                      aria-label="Вибрати всі"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Номер</TableHead>
                 <TableHead>Клієнт / Авто</TableHead>
                 <TableHead>Статус</TableHead>
@@ -344,7 +406,7 @@ export default function WorkOrdersPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 9 : 8} className="py-12 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
@@ -352,7 +414,7 @@ export default function WorkOrdersPage() {
 
               {!loading && data?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="p-0">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 9 : 8} className="p-0">
                     <EmptyState
                       icon={ClipboardList}
                       title="Нарядів не знайдено"
@@ -367,8 +429,22 @@ export default function WorkOrdersPage() {
                 <TableRow
                   key={wo.id}
                   onClick={() => setSelectedWO(wo)}
-                  className={cn(selectedWO?.id === wo.id && 'bg-primary/5')}
+                  className={cn(
+                    selectedWO?.id === wo.id && 'bg-primary/5',
+                    bulkSelect.isSelected(wo.id) && 'bg-primary/5',
+                  )}
                 >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(wo.id)}
+                        onChange={() => bulkSelect.toggle(wo.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={`Вибрати наряд ${wo.number}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <div className="space-y-1">
                       <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
