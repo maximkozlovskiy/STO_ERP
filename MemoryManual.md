@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+9150607 fix(tester): Phase 17 bugs — completion-acts contract, sign race, maintenance recalc
 8671770 fix(review): phase17 review fixes — canonical Tailwind tokens + maintenance schedules scope
 26856c6 feat(phase17): 17.1-17.3 frontend — new fields, priority badges, CompletionAct UI, maintenance widget
 1c132c9 feat(phase17): 17.1-17.3 backend — enums, enriched models, MaintenanceSchedule + CompletionAct modules
@@ -71,6 +72,30 @@ Use `var(--color-border)` not `hsl(214 32% 91%)`, `var(--color-primary)` not `hs
 `GET /maintenance-schedules?vehicleId=X` accepts one vehicleId at a time.
 To fetch schedules for multiple vehicles (e.g. CRM garage tab), fire parallel calls per vehicle
 and merge results client-side. Do NOT fetch all org schedules and filter client-side.
+
+### Gotcha — Контракт endpoints: завжди `{ items, total }`, ніколи bare array
+- Усі list endpoints у проєкті повертають paginated shape `{ items, total, page?, limit? }` — `work-orders`, `invoices`, `purchase-orders`, `maintenance-schedules` (масив бо ≤200), `completion-acts` (тепер `{ items, total }` після Bug #1).
+- Frontend всюди робить `apiFetch<{ items: X[] }>(...)` — якщо сервіс повертає bare array, `.items` → `undefined.length` → TypeError. У комбінації з `.catch(() => {})` баг ховається.
+- При додаванні нового list endpoint — **завжди** обертай у paginated DTO навіть якщо `take` фіксовано.
+
+### Gotcha — FSM bypass всередині cross-service transactions
+- При підписанні CompletionAct авто-переводимо WO у `INVOICED`. Спокусливо зробити `tx.workOrder.update({ status: 'INVOICED' })` — це **обходить** FSM map. Окрім втрати валідації, такий код:
+  1. Робить race vікно (читання act поза tx, write всередині)
+  2. Дозволяє duplicate transitions якщо хтось паралельно перевів WO іншим шляхом
+- Правильно: re-read entity **всередині** tx + явна перевірка status (`if (workOrder.status === 'COMPLETED')`) + єдиний `update`.
+
+### Gotcha — Auto-side-effect помилки: log non-business, suppress only expected
+- Фон. дія типу `this.invoices.createFromWorkOrder().catch(() => {})` ковтає ВСЕ. Згодом баг "чому рахунки не створюються?" дуже важко відловити.
+- Шаблон: `.catch(e => { const msg = e.message; if (!msg.includes('очікувана_бізнес-помилка')) logger.warn(...) })`.
+
+### Gotcha — Soft delete у relation filters
+- `findMany({ where: { vehicle: { deletedAt: null }, ... } })` — Prisma підтримує relation-фільтри. Без цього widget "Наближається ТО" показує авто, які користувач уже видалив.
+- Правило: будь-яка `findMany` що рендериться у UI через FK має додавати `relation: { deletedAt: null }`.
+
+### Gotcha — Selective recalc у PATCH — recompute тільки коли input змінено
+- ❌ BAD: `const next = dto.next ?? calc(...)` — будь-який PATCH перераховує і затирає існуюче значення (`calc` може дати null якщо інтервалу немає в БД).
+- ✅ GOOD: `const shouldRecalc = INPUT_FIELDS.some(f => dto[f] !== undefined); const next = shouldRecalc ? calc(...) : existing.next`
+- Стосується: MaintenanceSchedule.update (виправлено), будь-який інший derived field.
 
 ### Gotcha — Raw SQL camelCase identifiers
 Prisma schema **без `@map`** → Postgres колонки double-quoted camelCase (`"orgId"`, `"goodId"`, `"deletedAt"`, `"minStock"`, тощо). Будь-який `$queryRaw` / `$executeRaw` повинен:
