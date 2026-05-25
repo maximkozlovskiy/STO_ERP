@@ -24,6 +24,10 @@ interface StockItem {
   quantity: number; reserved: number; available: number;
   minStock: number | null; isLow: boolean;
 }
+interface LowStockItem {
+  goodId: string; goodName: string; goodSku: string | null; unit: string;
+  warehouseName: string; quantity: number; minStock: number; deficit: number;
+}
 
 function fmt(n: number) {
   return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';
@@ -38,7 +42,7 @@ export default function InventoryPage() {
   const [q, setQ] = useState('');
   const [showLow, setShowLow] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [lowItems, setLowItems] = useState<StockItem[]>([]);
+  const [lowItems, setLowItems] = useState<LowStockItem[]>([]);
   const [showLowModal, setShowLowModal] = useState(false);
   const [error, setError] = useState('');
 
@@ -68,7 +72,7 @@ export default function InventoryPage() {
 
   const loadLow = useCallback(async (): Promise<boolean> => {
     try {
-      const data = await apiFetch<StockItem[]>('/stock-items/low');
+      const data = await apiFetch<LowStockItem[]>('/stock-items/low');
       setLowItems(data);
       return true;
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження'); return false; }
