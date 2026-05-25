@@ -9,21 +9,28 @@
 ## Останній commit
 
 ```
-d5bfc39 fix(review): cycle 4 — consistent mountedRef guard across all CRUD actions
+dd1813c fix(tester): Bugs #33-#36 — Phase 19 cycle 6 sweep
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після Phase 19 review cycle 4, 2026-05-25)
+## Поточний стан тестів (після Phase 19 tester cycle 6, 2026-05-25)
 ```
 TypeScript:  ✅ 0 errors        (web + api + shared)
-Unit:        ✅ 111/111 passed  (12 files; no regressions from cycle 4/5)
+Unit:        ✅ 111/111 passed  (12 files; 4 new bug fixes без регресій)
 Contract:    ✅ 32/32 passed    (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11)
-E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн)
-Цикли QA:    ✅ Phase 19 review cycle 4 — 1 Important фікс (mountedRef consistency)
+E2E:         ✅ 16/16 passed    (smoke: 4, api-errors: 8, inventory: 4 — Chromium)
+Build:       ✅ API OK
+Цикли QA:    ✅ Phase 19 tester cycle 6 — 4 нових баги (1 HIGH, 2 MEDIUM, 1 LOW)
 ```
+
+### Gotcha — Phase 19 tester cycle 6 findings (2026-05-25)
+- **DTO enum-валідація для FK полів-енумів**: Якщо BD стовпець — `enum` (Postgres ENUM), а DTO приймає `@IsString()`, runtime каст `value as Enum` у Prisma where ламається з `invalid input value for enum`. Канон: завжди `@IsEnum(EnumType)` + типізація `field?: EnumType` у DTO (Bug #33: `PricingRule.goodType`).
+- **Relation soft-delete фільтри**: `findStockItems` фільтрував лише `StockItem.deletedAt`, але не `good.deletedAt`/`warehouse.deletedAt`. Узгоджуй з `findLowStockItems` raw SQL (там `g.deletedAt IS NULL`/`w.deletedAt IS NULL`). Канон: будь-який list endpoint з `include` повинен мати `deletedAt: null` фільтр у relation-where (Bug #34).
+- **PATCH normalize з merge існуючого стану**: `normalizeScope(dto)` без merge існуючого — НЕ зачіпає поля, які клієнт не передав. PATCH `{ goodCategory: 'X' }` при існуючому `goodId` залишає suite goodId+goodCategory. Канон: `const merged = { ...dto, ...mergedScope }`, потім `normalizeScope(merged)` + explicit `null` для пониззених scope-полів у `UncheckedUpdateInput` (Bug #35).
+- **TS interface для API response — не "вільне поле"**: `apiFetch<WrongType[]>` проходить TS, але приховує невідповідність контракту. Завжди писати окремий `interface FooDto { ... }` для кожної API-відповіді, навіть якщо runtime використовує лише `.length` (Bug #36).
 
 ### Gotcha — Phase 19 review cycle 4 findings (2026-05-25)
 - mountedRef guard pattern: коли вводиш `mountedRef.current` для одного async handler (`load`), застосовуй ТОЙ САМИЙ guard до УСІХ інших async setState handlers у тому ж компоненті (`deleteRule`, `applyAll`, `updateRule`). Інакше навігація під час in-flight операції викличе setState на unmounted (Bug #30 був неповним).
