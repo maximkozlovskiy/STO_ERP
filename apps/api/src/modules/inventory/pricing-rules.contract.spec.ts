@@ -1,0 +1,226 @@
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { Test } from '@nestjs/testing';
+import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { PricingRulesController } from './pricing-rules.controller';
+import { PricingService } from './pricing.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+
+const prismaMock = {
+  pricingRule: {
+    findMany: vi.fn(),
+    findFirst: vi.fn(),
+    count: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
+  good: {
+    findFirst: vi.fn(),
+  },
+  $transaction: vi.fn().mockImplementation((arg: unknown) => {
+    if (typeof arg === 'function') {
+      return (arg as (tx: unknown) => Promise<unknown>)(prismaMock);
+    }
+    return Promise.all(arg as Promise<unknown>[]);
+  }),
+};
+
+const pricingServiceMock = {
+  calculateSalePrice: vi.fn(),
+  applyRuleToGoods: vi.fn().mockResolvedValue(42),
+};
+
+let jwtAllow = true;
+const mockJwtGuard = {
+  canActivate: vi.fn().mockImplementation((ctx) => {
+    if (!jwtAllow) return false;
+    const req = ctx.switchToHttp().getRequest();
+    req.user = { sub: 'emp-1', orgId: 'org-1', role: 'OWNER' };
+    return true;
+  }),
+};
+const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
+
+describe('PricingRules — HTTP Contract', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      controllers: [PricingRulesController],
+      providers: [
+        { provide: PricingService, useValue: pricingServiceMock },
+        { provide: PrismaService, useValue: prismaMock },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .compile();
+
+    app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
+    await app.init();
+    await (app as NestFastifyApplication).getHttpAdapter().getInstance().ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    jwtAllow = true;
+    vi.clearAllMocks();
+  });
+
+  describe('GET /pricing-rules', () => {
+    it('Bug #18: повертає paginated shape { items, total, page, limit }', async () => {
+      prismaMock.$transaction.mockResolvedValueOnce([[], 0]);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/pricing-rules',
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body).toMatchObject({
+        items: expect.any(Array),
+        total: expect.any(Number),
+        page: expect.any(Number),
+        limit: expect.any(Number),
+      });
+    });
+
+    it('повертає 403 коли guard не пропустив', async () => {
+      jwtAllow = false;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/pricing-rules',
+      });
+      expect(res.statusCode).toBe(403);
+    });
+  });
+
+  describe('POST /pricing-rules', () => {
+    it('повертає 400 без обов\'язкових полів (name, type)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: { priority: 10 },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 коли goodId не UUID', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: {
+          name: 'Test',
+          type: 'PERCENT',
+          goodId: 'not-a-uuid',
+          percentValue: 30,
+        },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 коли type не з enum', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: {
+          name: 'Test',
+          type: 'INVALID_TYPE',
+          percentValue: 30,
+        },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 201 + dto shape для валідного PERCENT правила', async () => {
+      prismaMock.pricingRule.create.mockResolvedValueOnce({
+        id: 'rule-uuid',
+        orgId: 'org-1',
+        name: 'Запчастини +35%',
+        type: 'PERCENT',
+        priority: 10,
+        goodId: null,
+        goodCategory: null,
+        goodType: 'SPARE_PART',
+        percentValue: 35,
+        fixedAmount: null,
+        fixedPrice: null,
+        roundTo: null,
+        isActive: true,
+        createdAt: new Date(),
+        good: null,
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: {
+          name: 'Запчастини +35%',
+          type: 'PERCENT',
+          goodType: 'SPARE_PART',
+          percentValue: 35,
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const body = res.json();
+      expect(body).toMatchObject({
+        id: expect.any(String),
+        name: expect.any(String),
+        type: 'PERCENT',
+        priority: expect.any(Number),
+        isActive: expect.any(Boolean),
+      });
+    });
+  });
+
+  describe('POST /pricing-rules/:id/apply-all', () => {
+    it('повертає 200 + { updated, message }', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce({ id: 'rule-uuid' });
+      pricingServiceMock.applyRuleToGoods.mockResolvedValueOnce(42);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules/00000000-0000-0000-0000-000000000001/apply-all',
+      });
+      expect(res.statusCode).toBe(201);
+      const body = res.json();
+      expect(body).toMatchObject({
+        updated: expect.any(Number),
+        message: expect.any(String),
+      });
+    });
+
+    it('повертає 404 для неіснуючого правила', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(null);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules/00000000-0000-0000-0000-000000000002/apply-all',
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('DELETE /pricing-rules/:id', () => {
+    it('повертає 204 для успішного soft-delete', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce({ id: 'rule-uuid' });
+      prismaMock.pricingRule.update.mockResolvedValueOnce({});
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'DELETE',
+        url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
+      });
+      expect(res.statusCode).toBe(204);
+    });
+
+    it('повертає 404 для неіснуючого правила', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(null);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'DELETE',
+        url: '/pricing-rules/00000000-0000-0000-0000-000000000002',
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+});
