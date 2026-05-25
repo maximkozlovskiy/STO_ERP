@@ -9,22 +9,29 @@
 ## Останній commit
 
 ```
-59e1694 fix(review): cycle 81534e0 — UI features endpoint accessible to all roles + cache failures
+8a57bdf docs(tester): record bugs #37-#41 from Phase 19.2 sweep
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (після /sto-review cycle 81534e0, 2026-05-25)
+## Поточний стан тестів (після /sto-tester Phase 19.2 sweep, 2026-05-25)
 ```
-TypeScript:  ✅ 0 errors        (web + api, --incremental false)
-Unit:        ✅ 111/111 passed  (12 files — previous cycle)
-Contract:    ✅ 32/32 passed    (previous cycle)
-Property:    ✅ 26/26 passed    (previous cycle)
-Components:  ✅ 42/42 passed    (previous cycle)
-E2E:         ✅ 16/16 passed    (previous cycle)
+TypeScript:  ✅ 0 errors        (web + api + shared)
+Unit:        ✅ 117/117 passed  (13 files; +6 settings.contract)
+Contract:    ✅ 38/38 passed    (was 32; +6 settings.contract.spec.ts)
+Property:    ✅ 26/26 passed
+Components:  ✅ 42/42 passed
+E2E:         ✅ 16/16 passed    (dev server онлайн на момент Кроку 4.5)
 Build:       ✅ API OK
-Цикли QA:    review cycle 81534e0 (toast/uiFeatures/stockIndicator) — 1 Important fix, 1 Suggestion left
+Цикли QA:    tester Phase 19.2 — 5 багів (1 HIGH + 2 MEDIUM + 2 LOW), всі виправлені
 ```
+
+### Gotcha — Phase 19.2 tester sweep (2026-05-25, бaги #37-#41)
+- **Module-level cache vs auth lifecycle** (Bug #37): React-хуки з модульно-глобальним `cache` (типу `useUiFeatures`) повинні очищатись при logout. Інакше на shared kiosk наступний користувач бачить кешовані flag-и попереднього орг. Канон: dispatch `sto:logout` Event у `AuthProvider.logout()` + кожен per-tenant cache hook слухає його і робить `invalidate() + setFeatures(DEFAULTS)`. Те саме треба робити для будь-яких client-side кешів (savedFilters, notifications counter, etc.).
+- **JSON column whitelist** (Bug #38): Prisma JSON колонки + `@IsObject()` DTO = безмежний DoS-вектор. Канон: завжди ДВІ окремі функції — `parseFromDb()` (повертає повний об'єкт з defaults, чистить legacy junk) і `pickAllowedKeys(dto)` (повертає Partial лише з whitelisted keys + правильним type guard на value). Merge у service: `{ ...currentFromDb, ...pickedFromDto }`. **НЕ дзеркали defaults у pick — затре поля які користувач не змінював.**
+- **Feature flag без consumer = dead code** (Bug #39): Якщо вводиш у `OrganisationSettings.uiFeatures` новий toggle (`unsavedGuardEnabled`), MUST у тому ж commit / phase підключити hook-консьюмер хоча б до одного реального компонента (мінімум до WorkOrder modal). Інакше toggle обіцяє функціонал, який не реалізовано. Канон: grep на `uiFeatures.<keyName>Enabled` повинен повертати ≥1 use site не у тестах/settings UI.
+- **Симетричні useEffect cleanup-и** (Bug #40): Якщо в одному useEffect ввели `let cancelled = false` + check у `.then()`, ОБОВ'ЯЗКОВО додати такий guard і у всі сусідні useEffect-и (event handlers, post-event refetch). Patterns тримати ідентичними у межах файлу.
+- **Settings module specs** (Bug #41): Кожен новий controller + DTO у `apps/api/src/modules/*` повинен супроводжуватись хоча б `*.contract.spec.ts`. Без нього: (a) контрактні зміни не помічаються, (b) authz регресії тихі, (c) `forbidNonWhitelisted: true` поведінка не верифікована. Settings контракт-тести використовують fresh Postgres row state per-beforeEach + redisMock без real Redis.
 
 ### Gotcha — /sto-review cycle 81534e0 (2026-05-25, Phase 19.2)
 - **Role-gated GET endpoint, що споживає всі ролі** — критичний анти-патерн. `useUiFeatures` хук викликається на `/work-orders/[id]` (доступна RECEPTIONIST/MECHANIC/ACCOUNTANT), але `/settings/organisation` має `@Roles('OWNER', 'ADMIN')`. Кожна навігація = 403 в network logs. Канон: для UI-feature-flags / branding / theme — окремий endpoint `/settings/ui-features` з `@Roles` для ВСІХ авторизованих ролей. Те саме стосується будь-яких "загально-читальних" даних, що mount-у завантажуються глобальними хуками.
