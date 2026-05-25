@@ -9,11 +9,7 @@
 ## Останній commit
 
 ```
-b23b606 docs(skills): add inline-HSL grep check to sto-review + sto-tester
-60832fc docs(memory): update MemoryManual after tester cycle 3
-7a7b474 fix(tester): cycle 3 — replace inline hsl with canonical Tailwind tokens
-637557c docs(tester): cycle after review cycle 2 — 0 new bugs, all green
-ce81b93 chore(claude): update settings.local.json with new bash permissions
+fix(review): phase17 DTO sync + TypeScript — useSearchParams Suspense + actualHours DTO
 ```
 
 Дата: 2026-05-25

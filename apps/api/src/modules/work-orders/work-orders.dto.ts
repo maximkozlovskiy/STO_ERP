@@ -119,7 +119,13 @@ export class CreateWorkOrderLineDto {
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 
-export class UpdateWorkOrderLineDto extends PartialType(CreateWorkOrderLineDto) {}
+export class UpdateWorkOrderLineDto extends PartialType(CreateWorkOrderLineDto) {
+  @ApiPropertyOptional({ description: 'Фактично витрачені години' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  actualHours?: number;
+}
 
 export class WorkOrderLineResponseDto {
   @ApiProperty() id!: string;

@@ -335,7 +335,7 @@ export class WorkOrdersService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.workOrderLine.update({
         where: { id: lineId, orgId },
-        data: { normoHours, price, amount, liftId: dto.liftId, notes: dto.notes },
+        data: { normoHours, price, amount, liftId: dto.liftId, notes: dto.notes, ...(dto.actualHours !== undefined && { actualHours: dto.actualHours }) },
         include: { work: { select: { name: true } }, employee: { select: { firstName: true, lastName: true } } },
       });
       await this.recalcTotals(workOrderId, tx, orgId);
