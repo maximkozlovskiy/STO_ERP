@@ -9,16 +9,16 @@
 ## Останній commit
 
 ```
+7a7b474 fix(tester): cycle 3 — replace inline hsl with canonical Tailwind tokens
+637557c docs(tester): cycle after review cycle 2 — 0 new bugs, all green
 ce81b93 chore(claude): update settings.local.json with new bash permissions
 85bbf91 fix(web): add @source directive so Tailwind 4 scans all TSX files
 96f29cb docs(skills): add tsconfig + Tailwind canonical patterns to sto-dev/sto-review
-0cd08e5 fix(review): canonical Tailwind classes + tsconfig deprecations + new sto-dev skill
-08e1481 fix(review): post-theme QA — drop unused imports + cancel-guard for dashboard loadData
 ```
 
 Дата: 2026-05-25
 
-## Поточний стан тестів (tester cycle, post-ce81b93)
+## Поточний стан тестів (tester cycle 3, post-7a7b474)
 ```
 TypeScript:  ✅ 0 errors        (web + api + shared, перевірено 2026-05-25)
 Unit:        ✅ 67/67 passed    (8 files: auth, inventory, settlements, contract×2, invariants×3)
@@ -26,11 +26,20 @@ Contract:    ✅ 15/15 passed    (auth: 9, work-orders: 6)
 Property:    ✅ 26/26 passed    (fsm: 11, inventory: 7, settlements: 8)
 Components:  ✅ 42/42 passed    (button: 12, select: 9, modal: 10, empty-state: 11) — vitest.config.mts є
 E2E:         ⏭  skipped         (dev server http://localhost:3001 офлайн на момент запуску)
-Bugs:        ✅ 0 new bugs found у tester cycle після review cycle 2
+Bugs:        ✅ 5/6 fixed       (Bug #1-#5 — inline hsl → canonical tokens. Bug #6 — skill gap задокументовано, ручний апдейт SKILL.md потрібен бо edit на .claude/skills заблокований дозволами)
 ```
 
-### Gotcha — Tailwind 4 arbitrary value must be fully closed
-Bug #1 цього циклу: `focus:ring-[hsl(0_86%_93%)` (без `]`) **компілюється тихо**, але клас не з'являється в CSS бо JIT не парсить незакриту dynamic-value. Подвійно перевіряй парні `[...]` в усіх `*-[...]` класах при ручному кодуванні. /sto-review має grep на незакриті дужки.
+### Gotcha — Inline HSL не адаптується в dark mode (Bugs #1-#5)
+`text-[hsl(0_84%_42%)]` працює в light mode але **не змінюється** коли `.dark { --color-destructive-text: hsl(0 84% 72%) }` спрацьовує. Завжди використовуй token-класи (`text-destructive-text`, `border-destructive-border`, `text-success-text`, `text-warning-text`, `text-info-text`) — вони підставляють CSS-змінну і автоматично перемикаються в dark mode.
+
+**grep для виявлення регресій:**
+```bash
+grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app apps/web/src/components --include="*.tsx"
+```
+Допустимі винятки: purple badge variant (немає purple токена), inventory reserved orange `25_95%_53%`, button destructive hover `0_84%_52%`, input/select destructive focus ring `0_86%_93%`.
+
+### Gotcha — Tailwind 4 arbitrary value must be fully closed (попередній цикл)
+`focus:ring-[hsl(0_86%_93%)` (без `]`) **компілюється тихо**, але клас не з'являється в CSS бо JIT не парсить незакриту dynamic-value. Подвійно перевіряй парні `[...]` в усіх `*-[...]` класах при ручному кодуванні. /sto-review має grep на незакриті дужки.
 
 ### Gotcha — Blob URL revoke must defer past click()
 `URL.revokeObjectURL(url)` викликаний **синхронно** після `a.click()` зриває завантаження в Chromium (іноді). Завжди `setTimeout(() => URL.revokeObjectURL(url), 100)`. Патерн уже застосований у reports/page.tsx — використовуй як еталон.
