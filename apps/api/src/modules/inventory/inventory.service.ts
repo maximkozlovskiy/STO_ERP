@@ -137,10 +137,19 @@ export class InventoryService {
   }
 
   async findStockItems(orgId: string, warehouseId?: string, goodId?: string, q?: string) {
-    const where: Prisma.StockItemWhereInput = { orgId, deletedAt: null };
+    // Bug #34: relation-фільтри `good`/`warehouse` повинні відсікати soft-deleted сутності,
+    // щоб список інвентаря не показував позиції з видаленими товарами/складами
+    // (узгоджується з `findLowStockItems` нижче, який це робить через raw SQL).
+    const where: Prisma.StockItemWhereInput = {
+      orgId,
+      deletedAt: null,
+      good: q
+        ? { deletedAt: null, name: { contains: q, mode: 'insensitive' } }
+        : { deletedAt: null },
+      warehouse: { deletedAt: null },
+    };
     if (warehouseId) where.warehouseId = warehouseId;
     if (goodId) where.goodId = goodId;
-    if (q) where.good = { name: { contains: q, mode: 'insensitive' } };
 
     const items = await this.prisma.stockItem.findMany({
       where,

@@ -40,6 +40,18 @@ interface InvoiceSummary { amount: number; }
 interface PaginatedWorkOrders { items: WorkOrderSummary[]; }
 interface PaginatedInvoices { items: InvoiceSummary[]; }
 interface RevenueReport { rows: RevenueDay[]; totalRevenue: number; }
+// Bug #36: правильний тип для відповіді `/stock-items/low`. Раніше було `WorkOrderSummary[]`,
+// що проходило TS (типи "довірливі"), але вело до runtime-помилок при доступі до полів.
+interface LowStockItem {
+  goodId: string;
+  goodName: string;
+  goodSku: string | null;
+  unit: string;
+  warehouseName: string;
+  quantity: number;
+  minStock: number;
+  deficit: number;
+}
 
 function fmt(n: number) {
   return n.toLocaleString('uk-UA', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₴';
@@ -91,7 +103,7 @@ export default function DashboardPage() {
 
         const [orders, lowStock, invoices, revenueData, toData] = await Promise.allSettled([
           apiFetch<PaginatedWorkOrders>('/work-orders?limit=200'),
-          apiFetch<WorkOrderSummary[]>('/stock-items/low'),
+          apiFetch<LowStockItem[]>('/stock-items/low'),
           apiFetch<PaginatedInvoices>('/invoices?status=SENT&limit=200'),
           apiFetch<RevenueReport>(`/reports/revenue?from=${weekStart}&to=${today}`),
           apiFetch<MaintenanceSchedule[]>('/maintenance-schedules/upcoming?days=30'),

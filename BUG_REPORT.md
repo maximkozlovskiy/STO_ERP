@@ -654,3 +654,130 @@ ValidationPipe повертає `400 Bad Request: "limit must not be greater tha
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-05-25 — Phase 19 cycle 6 (post-merge sweep)
+
+### Baseline (cycle 6)
+
+- `tsc` web/api/shared — ✅ 0 errors
+- Unit + contract + property API — ✅ 111/111 passed (12 файлів)
+- API:UP, WEB:UP, Docker postgres/redis/minio запущені
+
+### Знайдено багів у cycle 6: 4 (1 HIGH, 2 MEDIUM, 1 LOW)
+
+---
+
+## Bug #33 — [HIGH] `PricingRule.goodType` приймає будь-який рядок, що валить `applyRuleToGoods` runtime exception
+
+**Файл:** `apps/api/src/modules/inventory/pricing-rules.dto.ts:33-35,96-98` + `apps/api/src/modules/inventory/pricing.service.ts:84`
+**Severity:** HIGH
+**Категорія:** business-logic / validation
+
+**Опис:**
+DTO `CreatePricingRuleDto.goodType` / `UpdatePricingRuleDto.goodType` має лише `@IsString()` без enum-валідації. Сервіс `applyRuleToGoods` (line 84) кастить значення до `GoodType` для filter Good-таблиці:
+```ts
+...(rule.goodType ? { goodType: rule.goodType as GoodType } : {})
+```
+Якщо адміністратор створює правило з `goodType: 'CONSUMABLE_TYPO'` (опечатка) або через API напряму — endpoint POST `/pricing-rules/:id/apply-all` падає з `500 Internal Server Error`, бо Postgres повертає `invalid input value for enum GoodType: "CONSUMABLE_TYPO"`.
+
+Узгоджується з §1.1 чеклістом: "DTO validators must match runtime contract". Frontend дає select з 4 опціями, але API не валідує і приймає будь-який рядок.
+
+**Очікувана поведінка:**
+DTO відхиляє некоректний `goodType` з `400 Bad Request: "goodType must be one of: SPARE_PART, CONSUMABLE, MATERIAL, TOOL"`.
+
+**Фактична поведінка:**
+DTO приймає, БД зберігає, `applyRuleToGoods` падає з 500.
+
+**Виправлення:**
+Замінити `@IsString()` на `@IsEnum(GoodType)` у обох DTO. Імпортувати `GoodType` з `@prisma/client`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #34 — [MEDIUM] `InventoryService.findStockItems` не фільтрує soft-deleted `good` і `warehouse` у relation
+
+**Файл:** `apps/api/src/modules/inventory/inventory.service.ts:139-153`
+**Severity:** MEDIUM
+**Категорія:** soft-delete / business-logic
+
+**Опис:**
+`findStockItems` фільтрує `StockItem.deletedAt: null`, але `include: { good, warehouse }` без relation-фільтра `deletedAt: null`. Якщо адмін soft-deleted товар або склад, відповідні `StockItem` записи все ще активні (StockMovement пишеться на видалений товар не повинен, але існуючий запас залишається). У результаті:
+- сторінка `/inventory` показує позиції з soft-deleted товарами/складами
+- `findLowStockItems` (raw SQL нижче) фільтрує `g.deletedAt IS NULL`/`w.deletedAt IS NULL` — є невідповідність між двома endpoint-ами одного модуля
+
+Узгоджується з §1.1: "Relation-фільтри теж — якщо findMany рендериться в UI з FK на іншу soft-deletable модель, додати where: { relatedModel: { deletedAt: null } }".
+
+**Очікувана поведінка:**
+`/stock-items` повертає лише позиції з активними товарами і складами.
+
+**Фактична поведінка:**
+Видалений товар → позиція з ним рендериться у списку інвентаря.
+
+**Виправлення:**
+Додати в `where`:
+```ts
+good: { deletedAt: null, ...(q ? { name: { contains: q, mode: 'insensitive' } } : {}) },
+warehouse: { deletedAt: null },
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #35 — [MEDIUM] `PricingRulesController.update` не нормалізує scope при PATCH без `goodId`
+
+**Файл:** `apps/api/src/modules/inventory/pricing-rules.controller.ts:107` (PATCH endpoint, `normalizeScope` помічник)
+**Severity:** MEDIUM
+**Категорія:** api-contract / business-logic
+
+**Опис:**
+`normalizeScope(dto)` коректно очищає менш специфічні поля **лише коли користувач явно передав `goodId`** у DTO. У PATCH-сценарії "змінити правило з `goodId=A` на `goodCategory=X`" клієнт надсилає `{ goodId: null, goodCategory: 'X' }` АБО `{ goodCategory: 'X' }` (без `goodId`). У другому випадку:
+- `normalizeScope` бачить `clone.goodId === undefined` → falsy → переходить до `else if (clone.goodCategory)` → нулить `goodType`
+- АЛЕ існуючий `goodId` у БД залишається!
+- Результат: правило має одночасно `goodId` І `goodCategory` → у `applyRuleToGoods` спрацьовує `WHERE id = goodId AND category = goodCategory` → жоден товар не матчиться (ймовірно) → правило виглядає "немає товарів для застосування".
+
+Frontend `buildPayload` (PricingRulesClient.tsx:322-338) обходить це, явно ставлячи `goodCategory: form.goodId ? undefined : ...`. Але якщо клієнт буде кастомний (мобільний/integration), баг проявиться. API-контракт має бути self-consistent.
+
+**Очікувана поведінка:**
+PATCH з `{ goodCategory: 'X' }` (без `goodId`) при правилі з раніше встановленим `goodId` → backend очищає `goodId` АБО кидає 400 "Не можна вказувати goodCategory без явного скасування goodId".
+
+**Фактична поведінка:**
+Тихо зберігаємо некоректний стан (goodId+goodCategory одночасно).
+
+**Виправлення:**
+В `update` PATCH: якщо `dto.goodCategory !== undefined` і `existing.goodId !== null` і `dto.goodId === undefined` → автоматично зануляти `goodId` у нормалізованому payload (merge існуючого з новим scope hierarchy).
+
+Спрощений патч:
+```ts
+const merged = { ...existing, ...dto };
+const normalized = this.normalizeScope(merged);
+const cleanValues = this.cleanValuesForType(normalized);
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #36 — [LOW] `Dashboard` типує відповідь `/stock-items/low` як `WorkOrderSummary[]`
+
+**Файл:** `apps/web/src/app/dashboard/page.tsx:94`
+**Severity:** LOW
+**Категорія:** typescript / api-contract
+
+**Опис:**
+`apiFetch<WorkOrderSummary[]>('/stock-items/low')` — `WorkOrderSummary` має поля `status`, `completedAt`, `totalAmount`, які не існують у `LowStockItem` (повертається з `findLowStockItems`: `{ goodId, goodName, ..., quantity, minStock, deficit }`). У runtime код використовує лише `.length`, тому помилка не проявляється, але type-guard зламаний — будь-який доступ до `lowStock.value[0].status` пройде TS, але буде `undefined`.
+
+**Очікувана поведінка:**
+Окремий інтерфейс `LowStockItem` (або хоч `unknown[]`) для точного типу.
+
+**Фактична поведінка:**
+TypeScript "довіряє" неправильному типу — JIT-помилка очікує знайтися лише через runtime.
+
+**Виправлення:**
+Додати локальний `interface LowStockItem { goodId: string; goodName: string; quantity: number; minStock: number; deficit: number; ... }` і використати `apiFetch<LowStockItem[]>`.
+
+**Статус:** [x] виправлено
+
+---
+

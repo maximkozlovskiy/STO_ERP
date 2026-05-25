@@ -104,11 +104,33 @@ export class PricingRulesController {
       if (!good) throw new NotFoundException('Товар не знайдено');
     }
 
-    const normalized = this.normalizeScope(dto);
+    // Bug #35: PATCH повинен застосовувати ієрархію scope з урахуванням існуючого
+    // стану. Якщо клієнт надсилає лише `goodCategory` (без явного `goodId: null`),
+    // а в БД вже встановлено `goodId` — після `normalizeScope(dto)` бачимо лише
+    // нові поля і `goodId` залишається старим → суперечливий стан goodId+goodCategory.
+    // Merge існуючого з dto перед нормалізацією — забезпечує self-consistent контракт.
+    const mergedScope = {
+      goodId: dto.goodId !== undefined ? dto.goodId : existing.goodId,
+      goodCategory: dto.goodCategory !== undefined ? dto.goodCategory : existing.goodCategory,
+      goodType: dto.goodType !== undefined ? dto.goodType : existing.goodType ?? undefined,
+    };
+    const merged = { ...dto, ...mergedScope } as UpdatePricingRuleDto;
+    const normalized = this.normalizeScope(merged);
     const cleanValues = this.cleanValuesForType(normalized);
+
+    // Explicitly null out scope fields що були "пониззані" нормалізацією,
+    // інакше Prisma update лишить старі значення в БД.
+    // Використовуємо UncheckedUpdateInput, бо `goodId` — це foreign key поле без relation-обгортки.
+    const updateData: Prisma.PricingRuleUncheckedUpdateInput = {
+      ...cleanValues,
+      goodId: normalized.goodId ?? null,
+      goodCategory: normalized.goodCategory ?? null,
+      goodType: normalized.goodType ?? null,
+    };
+
     const rule = await this.prisma.pricingRule.update({
       where: { id },
-      data: cleanValues,
+      data: updateData,
       include: { good: { select: { id: true, name: true, sku: true } } },
     });
     return this.toDto(rule);

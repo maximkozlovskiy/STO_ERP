@@ -1,6 +1,6 @@
 import { IsString, IsEnum, IsOptional, IsNumber, IsBoolean, IsUUID, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PricingRuleType } from '@prisma/client';
+import { PricingRuleType, GoodType } from '@prisma/client';
 import { Type } from 'class-transformer';
 
 export class CreatePricingRuleDto {
@@ -29,10 +29,13 @@ export class CreatePricingRuleDto {
   @IsString()
   goodCategory?: string;
 
-  @ApiPropertyOptional()
+  // Bug #33: goodType — це enum GoodType у БД, тому валідуємо як enum.
+  // Без @IsEnum довільний рядок проходив DTO і валив `applyRuleToGoods` runtime exception
+  // (`invalid input value for enum GoodType`).
+  @ApiPropertyOptional({ enum: GoodType })
   @IsOptional()
-  @IsString()
-  goodType?: string;
+  @IsEnum(GoodType)
+  goodType?: GoodType;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -92,10 +95,11 @@ export class UpdatePricingRuleDto {
   @IsString()
   goodCategory?: string;
 
-  @ApiPropertyOptional()
+  // Bug #33: goodType — enum, не довільний рядок (див. CreatePricingRuleDto).
+  @ApiPropertyOptional({ enum: GoodType })
   @IsOptional()
-  @IsString()
-  goodType?: string;
+  @IsEnum(GoodType)
+  goodType?: GoodType;
 
   // Bug #27: PATCH повинен мати ті самі валідатори, що й POST,
   // інакше ціна продажу може стати від'ємною (`percentValue: -50` → costPrice * 0.5).
