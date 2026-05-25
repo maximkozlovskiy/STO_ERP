@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 interface WorkOrderLine {
   id: string; workId: string; workName?: string;
   employeeId: string; employeeName?: string;
-  liftId?: string | null; normoHours: number; price: number; amount: number; notes?: string | null;
+  liftId?: string | null; normoHours: number; actualHours?: number | null; price: number; amount: number; notes?: string | null;
 }
 interface WorkOrderPart {
   id: string; goodId: string; goodName?: string;
@@ -29,9 +29,15 @@ interface WorkOrderDetail {
   vehicleId: string; vehicleSummary?: string;
   counterpartyId: string; counterpartyName?: string;
   description?: string | null; inMileage?: number | null; outMileage?: number | null;
-  plannedAt?: string | null; completedAt?: string | null;
+  plannedAt?: string | null; completedAt?: string | null; dueDate?: string | null;
+  priority?: string | null; repairCategory?: string | null; clientApproval?: boolean | null;
   totalLabor: number; totalParts: number; totalAmount: number; paidAmount: number;
   lines: WorkOrderLine[]; parts: WorkOrderPart[];
+}
+
+interface CompletionActSummary {
+  id: string; number: string; status: 'DRAFT' | 'SIGNED' | 'CANCELLED';
+  signedAt?: string | null; signedBy?: string | null;
 }
 interface Work { id: string; name: string; normoHours: number; price: number; }
 interface Employee { id: string; firstName: string; lastName: string; }
@@ -93,6 +99,10 @@ export default function WorkOrderCardPage() {
   const [goods, setGoods] = useState<Good[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
+  const [completionAct, setCompletionAct] = useState<CompletionActSummary | null>(null);
+  const [generatingAct, setGeneratingAct] = useState(false);
+  const [signingAct, setSigningAct] = useState(false);
+
   const [lineModal, setLineModal] = useState(false);
   const [partModal, setPartModal] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
@@ -107,6 +117,9 @@ export default function WorkOrderCardPage() {
     apiFetch<WorkOrderDetail>(`/work-orders/${id}`)
       .then(setWo)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження наряду'));
+    apiFetch<{ items: CompletionActSummary[] }>(`/completion-acts?workOrderId=${id}`)
+      .then(data => { if (data.items.length > 0) setCompletionAct(data.items[0]); })
+      .catch(() => {});
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
@@ -194,6 +207,24 @@ export default function WorkOrderCardPage() {
     finally { setTransitioning(false); }
   };
 
+  const generateAct = async () => {
+    setGeneratingAct(true); setError('');
+    try {
+      const act = await apiFetch<CompletionActSummary>(`/completion-acts/from-work-order/${id}`, { method: 'POST' });
+      setCompletionAct(act);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка формування акту'); }
+    finally { setGeneratingAct(false); }
+  };
+
+  const signAct = async (actId: string) => {
+    setSigningAct(true); setError('');
+    try {
+      const act = await apiFetch<CompletionActSummary>(`/completion-acts/${actId}/sign`, { method: 'PATCH' });
+      setCompletionAct(act);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка підписання акту'); }
+    finally { setSigningAct(false); }
+  };
+
   if (!wo) return (
     <div className="flex items-center justify-center min-h-screen flex-col gap-4">
       {error
@@ -231,6 +262,10 @@ export default function WorkOrderCardPage() {
       {/* Info */}
       <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-2 gap-3 text-sm">
         {wo.branchName && <div><p className="text-xs text-muted-foreground">Філія</p><p className="text-foreground">{wo.branchName}</p></div>}
+        {wo.priority && <div><p className="text-xs text-muted-foreground">Пріоритет</p><p className="text-foreground">{wo.priority}</p></div>}
+        {wo.repairCategory && <div><p className="text-xs text-muted-foreground">Категорія ремонту</p><p className="text-foreground">{wo.repairCategory}</p></div>}
+        {wo.dueDate && <div><p className="text-xs text-muted-foreground">Дедлайн</p><p className="text-foreground">{new Date(wo.dueDate).toLocaleDateString('uk-UA')}</p></div>}
+        {wo.clientApproval != null && <div><p className="text-xs text-muted-foreground">Погодження клієнта</p><p className="text-foreground">{wo.clientApproval ? 'Так' : 'Ні'}</p></div>}
         {wo.inMileage != null && <div><p className="text-xs text-muted-foreground">Пробіг (вхід)</p><p className="text-foreground">{wo.inMileage.toLocaleString('uk-UA')} км</p></div>}
         {wo.outMileage != null && <div><p className="text-xs text-muted-foreground">Пробіг (вихід)</p><p className="text-foreground">{wo.outMileage.toLocaleString('uk-UA')} км</p></div>}
         {wo.plannedAt && <div><p className="text-xs text-muted-foreground">Заплановано</p><p className="text-foreground">{new Date(wo.plannedAt).toLocaleString('uk-UA')}</p></div>}
@@ -261,6 +296,43 @@ export default function WorkOrderCardPage() {
         <div><p className="text-xs text-muted-foreground">Оплачено</p><p className={cn('text-lg font-semibold', wo.paidAmount >= wo.totalAmount ? 'text-success' : 'text-foreground')}>{wo.paidAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p></div>
       </div>
 
+      {/* Completion Act */}
+      {(['COMPLETED', 'INVOICED'].includes(wo.status) || completionAct) && (
+        <div className="bg-surface rounded-xl border border-border p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-foreground">Акт виконаних робіт</h2>
+            {['COMPLETED', 'INVOICED'].includes(wo.status) && !completionAct && (
+              <Button variant="outline" size="sm" onClick={generateAct} loading={generatingAct}>
+                Сформувати акт
+              </Button>
+            )}
+          </div>
+          {completionAct ? (
+            <div className="flex items-center gap-4 flex-wrap">
+              <p className="text-sm font-medium text-foreground">Акт № {completionAct.number}</p>
+              <span className={cn(
+                'text-xs font-medium px-2 py-0.5 rounded-full',
+                completionAct.status === 'SIGNED'    && 'bg-success-subtle text-success',
+                completionAct.status === 'DRAFT'     && 'bg-secondary text-muted-foreground',
+                completionAct.status === 'CANCELLED' && 'bg-destructive-subtle text-destructive',
+              )}>
+                {completionAct.status === 'DRAFT' ? 'Чернетка' : completionAct.status === 'SIGNED' ? 'Підписано' : 'Скасовано'}
+              </span>
+              {completionAct.signedAt && (
+                <p className="text-xs text-muted-foreground">{new Date(completionAct.signedAt).toLocaleString('uk-UA')}</p>
+              )}
+              {completionAct.status === 'DRAFT' && (
+                <Button variant="outline" size="sm" onClick={() => signAct(completionAct.id)} loading={signingAct}>
+                  Позначити як підписано
+                </Button>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Акт не сформовано</p>
+          )}
+        </div>
+      )}
+
       {/* Lines */}
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
@@ -275,7 +347,10 @@ export default function WorkOrderCardPage() {
                 <div key={l.id} className="flex items-center justify-between px-4 py-3">
                   <div className="flex-1">
                     <p className="text-sm font-medium text-foreground">{l.workName}</p>
-                    <p className="text-xs text-muted-foreground">{l.employeeName} · {l.normoHours} год</p>
+                    <p className="text-xs text-muted-foreground">
+                      {l.employeeName} · {l.normoHours} н-год
+                      {l.actualHours != null && <span className="text-muted-foreground/70"> (факт: {l.actualHours} н-год)</span>}
+                    </p>
                     {l.notes && <p className="text-xs text-muted-foreground mt-0.5">{l.notes}</p>}
                   </div>
                   <div className="text-right mr-3">

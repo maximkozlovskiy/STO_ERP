@@ -22,6 +22,9 @@ interface WorkOrder {
   id: string; number: string; status: string;
   vehicleSummary?: string; counterpartyName?: string; branchName?: string;
   totalAmount: number; plannedAt?: string | null; createdAt: string;
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  repairCategory?: 'MAINTENANCE' | 'CURRENT_REPAIR' | 'MAJOR_REPAIR' | 'BODY_REPAIR' | 'DIAGNOSTICS' | 'WARRANTY' | 'SEASONAL' | null;
+  dueDate?: string | null;
 }
 interface Paginated { items: WorkOrder[]; total: number; page: number; limit: number; }
 interface Branch { id: string; name: string; }
@@ -40,6 +43,24 @@ const STATUS_BADGE: Record<string, BadgeVariant> = {
   INVOICED: 'default', PAID: 'success', ARCHIVED: 'secondary', CANCELLED: 'destructive',
 };
 
+const PRIORITY_LABELS: Record<string, string> = {
+  LOW: 'Низький', NORMAL: 'Звичайний', HIGH: 'Високий', URGENT: 'Терміново',
+};
+
+const PRIORITY_BADGE: Record<string, BadgeVariant> = {
+  LOW: 'secondary', NORMAL: 'default', HIGH: 'warning', URGENT: 'destructive',
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  MAINTENANCE: 'ТО',
+  CURRENT_REPAIR: 'Поточний ремонт',
+  MAJOR_REPAIR: 'Кап. ремонт',
+  BODY_REPAIR: 'Кузовний',
+  DIAGNOSTICS: 'Діагностика',
+  WARRANTY: 'Гарантійний',
+  SEASONAL: 'Сезонне',
+};
+
 const STATUS_TABS: Array<[string, string]> = [
   ['', 'Всі'],
   ['IN_PROGRESS', 'В роботі'],
@@ -54,6 +75,20 @@ const STATUS_TABS: Array<[string, string]> = [
   ['ARCHIVED', 'Архів'],
 ];
 
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
+function isOverdue(dueDateIso: string): boolean {
+  const due = new Date(dueDateIso);
+  due.setHours(23, 59, 59, 999);
+  return due < new Date();
+}
+
 export default function WorkOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
   const router = useRouter();
@@ -61,6 +96,7 @@ export default function WorkOrdersPage() {
   const [data, setData] = useState<Paginated | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -91,13 +127,14 @@ export default function WorkOrdersPage() {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '20' });
     if (statusFilter) p.set('status', statusFilter);
+    if (categoryFilter) p.set('repairCategory', categoryFilter);
     if (search) p.set('q', search);
     if (showDeleted) p.set('showDeleted', 'true');
     apiFetch<Paginated>(`/work-orders?${p}`)
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
       .finally(() => setLoading(false));
-  }, [page, statusFilter, search, showDeleted]);
+  }, [page, statusFilter, categoryFilter, search, showDeleted]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -161,7 +198,7 @@ export default function WorkOrdersPage() {
       </div>
 
       {!modal && error && (
-        <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-4 py-2.5">
+        <div className="mb-4 text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-4 py-2.5">
           {error}
         </div>
       )}
@@ -184,7 +221,7 @@ export default function WorkOrdersPage() {
         ))}
       </div>
 
-      {/* Search + showDeleted controls */}
+      {/* Search + category filter + showDeleted controls */}
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -195,6 +232,18 @@ export default function WorkOrdersPage() {
             className="pl-9"
           />
         </div>
+
+        <Select
+          value={categoryFilter}
+          onChange={e => { setCategoryFilter(e.target.value); setPage(1); }}
+          className="w-52"
+        >
+          <option value="">Всі категорії</option>
+          {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </Select>
+
         <Button
           variant="outline"
           size="sm"
@@ -215,15 +264,17 @@ export default function WorkOrdersPage() {
                 <TableHead>Номер</TableHead>
                 <TableHead>Клієнт / Авто</TableHead>
                 <TableHead>Статус</TableHead>
+                <TableHead>Пріоритет</TableHead>
                 <TableHead>Сума, ₴</TableHead>
                 <TableHead>Заплановано</TableHead>
+                <TableHead>Дедлайн</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-12 text-center">
+                  <TableCell colSpan={8} className="py-12 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
@@ -231,7 +282,7 @@ export default function WorkOrdersPage() {
 
               {!loading && data?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="p-0">
+                  <TableCell colSpan={8} className="p-0">
                     <EmptyState
                       icon={ClipboardList}
                       title="Нарядів не знайдено"
@@ -249,7 +300,14 @@ export default function WorkOrdersPage() {
                   className={cn(selectedWO?.id === wo.id && 'bg-primary/5')}
                 >
                   <TableCell>
-                    <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
+                    <div className="space-y-1">
+                      <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
+                      {wo.repairCategory && (
+                        <p className="text-[11px] text-muted-foreground">
+                          {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
+                        </p>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <p className="text-[13px] font-medium text-foreground">{wo.counterpartyName ?? '—'}</p>
@@ -258,6 +316,11 @@ export default function WorkOrdersPage() {
                   <TableCell>
                     <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>
                       {STATUS_LABELS[wo.status] ?? wo.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
+                      {PRIORITY_LABELS[wo.priority] ?? wo.priority}
                     </Badge>
                   </TableCell>
                   <TableCell className="font-medium text-foreground tabular-nums">
@@ -269,6 +332,16 @@ export default function WorkOrdersPage() {
                           day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
                         })
                       : '—'}
+                  </TableCell>
+                  <TableCell className="text-[12px]">
+                    {wo.dueDate ? (
+                      <span className={cn(
+                        'font-medium',
+                        isOverdue(wo.dueDate) ? 'text-warning' : 'text-muted-foreground',
+                      )}>
+                        {formatDate(wo.dueDate)}
+                      </span>
+                    ) : '—'}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
@@ -292,13 +365,24 @@ export default function WorkOrdersPage() {
         >
           {selectedWO && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant={STATUS_BADGE[selectedWO.status] ?? 'secondary'} dot>
                   {STATUS_LABELS[selectedWO.status] ?? selectedWO.status}
+                </Badge>
+                <Badge variant={PRIORITY_BADGE[selectedWO.priority] ?? 'secondary'}>
+                  {PRIORITY_LABELS[selectedWO.priority] ?? selectedWO.priority}
                 </Badge>
               </div>
 
               <div className="space-y-2 text-[13px]">
+                {selectedWO.repairCategory && (
+                  <div>
+                    <span className="text-muted-foreground">Категорія</span>
+                    <p className="font-medium text-foreground mt-0.5">
+                      {CATEGORY_LABELS[selectedWO.repairCategory] ?? selectedWO.repairCategory}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground">Клієнт</span>
                   <p className="font-medium text-foreground mt-0.5">{selectedWO.counterpartyName ?? '—'}</p>
@@ -313,6 +397,20 @@ export default function WorkOrdersPage() {
                     {selectedWO.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
                   </p>
                 </div>
+                {selectedWO.dueDate && (
+                  <div>
+                    <span className="text-muted-foreground">Дедлайн</span>
+                    <p className={cn(
+                      'font-medium mt-0.5',
+                      isOverdue(selectedWO.dueDate) ? 'text-warning' : 'text-foreground',
+                    )}>
+                      {formatDate(selectedWO.dueDate)}
+                      {isOverdue(selectedWO.dueDate) && (
+                        <span className="ml-1 text-[11px]">(прострочено)</span>
+                      )}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground">Заплановано</span>
                   <p className="font-medium text-foreground mt-0.5">
@@ -385,7 +483,7 @@ export default function WorkOrdersPage() {
         }
       >
         {formError && (
-          <div className="mb-4 text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg px-3 py-2">
+          <div className="mb-4 text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
             {formError}
           </div>
         )}

@@ -6,13 +6,22 @@ import { apiFetch } from '@/lib/api-client';
 import Link from 'next/link';
 import {
   Wrench, Clock, TrendingUp, AlertTriangle, FileX, BarChart2,
-  Plus, Users, ShoppingCart, Receipt,
+  Plus, Users, ShoppingCart, Receipt, CalendarClock,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+
+interface MaintenanceSchedule {
+  id: string; vehicleId: string; vehicleLabel?: string;
+  maintenanceType: string;
+  nextMaintenanceDate?: string | null;
+  nextMaintenanceMileage?: number | null;
+  intervalDays?: number | null;
+  isActive: boolean;
+}
 
 interface KPI {
   openOrders: number;
@@ -47,6 +56,7 @@ export default function DashboardPage() {
   const { employee } = useRequireAuth();
   const [kpi, setKpi] = useState<KPI | null>(null);
   const [revenue, setRevenue] = useState<RevenueDay[]>([]);
+  const [upcomingTO, setUpcomingTO] = useState<MaintenanceSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [todayStr, setTodayStr] = useState('');
@@ -67,17 +77,19 @@ export default function DashboardPage() {
         const monthStart = `${kyivYear}-${String(kyivMonth).padStart(2, '0')}-01`;
         const weekStart = kyivDate(new Date(Date.now() - 6 * 86_400_000));
 
-        const [orders, lowStock, invoices, revenueData] = await Promise.allSettled([
+        const [orders, lowStock, invoices, revenueData, toData] = await Promise.allSettled([
           apiFetch<PaginatedWorkOrders>('/work-orders?limit=200'),
           apiFetch<WorkOrderSummary[]>('/stock-items/low'),
           apiFetch<PaginatedInvoices>('/invoices?status=SENT&limit=200'),
           apiFetch<RevenueReport>(`/reports/revenue?from=${weekStart}&to=${today}`),
+          apiFetch<MaintenanceSchedule[]>('/maintenance-schedules/upcoming?days=30'),
         ]);
 
         const ordersData = orders.status === 'fulfilled' ? orders.value : { items: [] };
         const lowStockData = lowStock.status === 'fulfilled' ? lowStock.value : [];
         const invoicesData = invoices.status === 'fulfilled' ? invoices.value : { items: [] };
         const revData = revenueData.status === 'fulfilled' ? revenueData.value : { rows: [], totalRevenue: 0 };
+        if (toData.status === 'fulfilled') setUpcomingTO(toData.value);
 
         const allOrders: WorkOrderSummary[] = ordersData.items ?? [];
         const todayOrders = allOrders.filter(o => o.completedAt && o.completedAt.slice(0, 10) === today);
@@ -242,6 +254,55 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           ) : null}
+
+          {/* Upcoming maintenance ТО */}
+          {upcomingTO.length > 0 && (
+            <Card className="mb-6">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarClock className="h-4 w-4 text-warning" />
+                    Наближається ТО ({upcomingTO.length})
+                  </CardTitle>
+                  <Link href="/crm" className="text-[12px] text-primary hover:underline font-medium">
+                    Всі клієнти →
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="divide-y divide-border">
+                  {upcomingTO.slice(0, 8).map(item => {
+                    const dateStr = item.nextMaintenanceDate
+                      ? new Date(item.nextMaintenanceDate).toLocaleDateString('uk-UA')
+                      : null;
+                    const isOverdue = item.nextMaintenanceDate
+                      ? new Date(item.nextMaintenanceDate) < new Date()
+                      : false;
+                    return (
+                      <div key={item.id} className="flex items-center justify-between py-2">
+                        <div>
+                          <p className="text-[13px] font-medium text-foreground">
+                            {item.vehicleLabel ?? item.vehicleId}
+                          </p>
+                          <p className="text-[12px] text-muted-foreground">
+                            {item.maintenanceType === 'REGULAR' ? 'Планове ТО'
+                              : item.maintenanceType === 'SEASONAL' ? 'Сезонне ТО'
+                              : item.maintenanceType}
+                            {item.nextMaintenanceMileage ? ` · ${item.nextMaintenanceMileage.toLocaleString('uk-UA')} км` : ''}
+                          </p>
+                        </div>
+                        {dateStr && (
+                          <span className={`text-[12px] font-medium px-2 py-0.5 rounded-md ${isOverdue ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning'}`}>
+                            {isOverdue ? 'Прострочено' : dateStr}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Quick actions */}
           <Card>

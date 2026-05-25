@@ -25,6 +25,10 @@ interface Employee {
   deletedAt: string | null;
   rateScheme?: { type: string; params: Record<string, number> };
   zoneIds: string[]; liftIds: string[]; workCategoryIds: string[];
+  status: 'ACTIVE' | 'ON_LEAVE' | 'FIRED';
+  email?: string | null;
+  dateOfHire?: string | null;
+  dateOfFire?: string | null;
 }
 interface Zone { id: string; name: string; type: string; }
 interface Lift { id: string; name: string; type: string; }
@@ -43,6 +47,8 @@ const ROLE_BADGE: Record<string, BadgeVariant> = {
 const RATE_LABELS: Record<string, string> = {
   percent_normo: '% від норма-год', fixed_plus_bonus: 'Ставка + бонус',
 };
+const STATUS_LABELS: Record<string, string> = { ACTIVE: 'Активний', ON_LEAVE: 'У відпустці', FIRED: 'Звільнений' };
+const STATUS_BADGE: Record<string, BadgeVariant> = { ACTIVE: 'success', ON_LEAVE: 'warning', FIRED: 'secondary' };
 
 const ROLE_FILTER_OPTIONS: [string, string][] = [
   ['', 'Всі посади'],
@@ -257,6 +263,7 @@ export default function EmployeesPage() {
               <TableRow>
                 <TableHead>ПІБ</TableHead>
                 <TableHead>Посада</TableHead>
+                <TableHead>Статус</TableHead>
                 <TableHead>Схема нарахування</TableHead>
                 <TableHead>Зони</TableHead>
                 <TableHead>Підйомники</TableHead>
@@ -266,14 +273,14 @@ export default function EmployeesPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center">
+                  <TableCell colSpan={7} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && employees.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="p-0">
+                  <TableCell colSpan={7} className="p-0">
                     <EmptyState icon={Users} title="Немає співробітників" description="Додайте першого співробітника" />
                   </TableCell>
                 </TableRow>
@@ -304,6 +311,9 @@ export default function EmployeesPage() {
                       <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
                         {ROLE_LABELS[emp.role] ?? emp.role}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={STATUS_BADGE[emp.status] ?? 'secondary'}>{STATUS_LABELS[emp.status] ?? emp.status}</Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {emp.rateScheme
@@ -351,6 +361,9 @@ export default function EmployeesPage() {
                   <Badge variant={ROLE_BADGE[selectedEmp.role] ?? 'secondary'}>
                     {ROLE_LABELS[selectedEmp.role] ?? selectedEmp.role}
                   </Badge>
+                  <Badge variant={STATUS_BADGE[selectedEmp.status] ?? 'secondary'}>
+                    {STATUS_LABELS[selectedEmp.status] ?? selectedEmp.status}
+                  </Badge>
                   {selectedEmp.deletedAt && <Badge variant="secondary">видалено</Badge>}
                 </div>
                 {selectedEmp.rateScheme && (
@@ -361,6 +374,25 @@ export default function EmployeesPage() {
                 )}
                 {selectedEmp.phone && (
                   <p className="text-[13px] text-muted-foreground">{selectedEmp.phone}</p>
+                )}
+                {selectedEmp.email && (
+                  <p className="text-[13px] text-muted-foreground">{selectedEmp.email}</p>
+                )}
+                {selectedEmp.dateOfHire && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[12px] text-muted-foreground">Прийнятий:</span>
+                    <span className="text-[13px] text-foreground">
+                      {new Date(selectedEmp.dateOfHire).toLocaleDateString('uk-UA')}
+                    </span>
+                  </div>
+                )}
+                {selectedEmp.dateOfFire && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[12px] text-muted-foreground">Звільнений:</span>
+                    <span className="text-[13px] text-foreground">
+                      {new Date(selectedEmp.dateOfFire).toLocaleDateString('uk-UA')}
+                    </span>
+                  </div>
                 )}
               </div>
 

@@ -5,6 +5,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -14,11 +15,24 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
-// ─── Types ────────────────���──────────────────────────────
+// ─── Types ────────────────────────────────────────────────
 
 interface Branch { id: string; name: string; address: string; timezone: string; }
 interface Zone { id: string; branchId: string; name: string; type: string; }
-interface Lift { id: string; zoneId: string; name: string; type: string; maxWeightKg: number | null; }
+interface Lift {
+  id: string;
+  zoneId: string;
+  name: string;
+  type: string;
+  maxWeightKg: number | null;
+  status: 'ACTIVE' | 'MAINTENANCE' | 'BROKEN' | 'DECOMMISSIONED';
+  serialNumber?: string | null;
+  purchaseDate?: string | null;
+  warrantyUntil?: string | null;
+  maintenanceIntervalDays?: number | null;
+  lastMaintenanceDate?: string | null;
+  nextMaintenanceDate?: string | null;
+}
 interface Warehouse { id: string; branchId: string; name: string; type: string; }
 
 type Tab = 'branches' | 'zones' | 'lifts' | 'warehouses';
@@ -30,6 +44,12 @@ const ZONE_TYPE_LABELS: Record<string, string> = {
 const LIFT_TYPE_LABELS: Record<string, string> = {
   TWO_POST: '2-стійковий', FOUR_POST: '4-стійковий', ALIGNMENT: 'Розвал-сход',
   STENCIL: 'Стапель', STAND: 'Стенд', OTHER: 'Інший',
+};
+const LIFT_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Активний', MAINTENANCE: 'ТО', BROKEN: 'Несправний', DECOMMISSIONED: 'Списаний',
+};
+const LIFT_STATUS_BADGE: Record<string, BadgeVariant> = {
+  ACTIVE: 'success', MAINTENANCE: 'warning', BROKEN: 'destructive', DECOMMISSIONED: 'secondary',
 };
 const WAREHOUSE_TYPE_LABELS: Record<string, string> = {
   MAIN: 'Основний', WORKSHOP: 'Цеховий', TIRE_HOTEL: 'Шиновий готель', MOBILE: 'Мобільний',
@@ -85,7 +105,19 @@ export default function InfrastructurePage() {
         await apiFetch<Zone>('/zones', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
       } else if (modal === 'lift') {
         const w = form.maxWeightKg ? Number(form.maxWeightKg) : undefined;
-        await apiFetch<Lift>('/lifts', { method: 'POST', body: JSON.stringify({ zoneId: form.zoneId, name: form.name, type: form.type, maxWeightKg: w }) });
+        const interval = form.maintenanceIntervalDays ? Number(form.maintenanceIntervalDays) : undefined;
+        await apiFetch<Lift>('/lifts', {
+          method: 'POST',
+          body: JSON.stringify({
+            zoneId: form.zoneId,
+            name: form.name,
+            type: form.type,
+            maxWeightKg: w,
+            status: form.status || 'ACTIVE',
+            serialNumber: form.serialNumber || undefined,
+            maintenanceIntervalDays: interval,
+          }),
+        });
       } else if (modal === 'warehouse') {
         await apiFetch<Warehouse>('/warehouses', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
       }
@@ -215,13 +247,14 @@ export default function InfrastructurePage() {
 
       {/* LIFTS */}
       {!loading && tab === 'lifts' && (
-        <Section title="Підйомники" onAdd={() => openModal('lift', { zoneId: zones[0]?.id ?? '', name: '', type: 'TWO_POST', maxWeightKg: '' })}>
+        <Section title="Підйомники" onAdd={() => openModal('lift', { zoneId: zones[0]?.id ?? '', name: '', type: 'TWO_POST', maxWeightKg: '', status: 'ACTIVE', serialNumber: '', maintenanceIntervalDays: '' })}>
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Назва</TableHead>
                   <TableHead>Тип</TableHead>
+                  <TableHead>Статус</TableHead>
                   <TableHead>Вантажність, кг</TableHead>
                   <TableHead>Зона</TableHead>
                   <TableHead />
@@ -229,17 +262,7 @@ export default function InfrastructurePage() {
               </TableHeader>
               <TableBody>
                 {lifts.map(l => (
-                  <TableRow key={l.id}>
-                    <TableCell className="font-medium text-foreground">{l.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{LIFT_TYPE_LABELS[l.type] ?? l.type}</TableCell>
-                    <TableCell className="text-muted-foreground">{l.maxWeightKg ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{zones.find(z => z.id === l.zoneId)?.name ?? '—'}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => remove('/lifts', l.id)} className="text-destructive/60 hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <LiftRow key={l.id} lift={l} zoneName={zones.find(z => z.id === l.zoneId)?.name ?? '—'} onRemove={() => remove('/lifts', l.id)} />
                 ))}
               </TableBody>
             </Table>
@@ -328,7 +351,12 @@ export default function InfrastructurePage() {
           <Select label="Тип" required value={form.type ?? 'TWO_POST'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
             {Object.entries(LIFT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
+          <Select label="Статус" required value={form.status ?? 'ACTIVE'} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+            {Object.entries(LIFT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
           <Input label="Вантажність, кг" type="number" value={form.maxWeightKg ?? ''} onChange={e => setForm(f => ({ ...f, maxWeightKg: e.target.value }))} placeholder="3500" />
+          <Input label="Серійний номер" value={form.serialNumber ?? ''} onChange={e => setForm(f => ({ ...f, serialNumber: e.target.value }))} placeholder="SN-12345" />
+          <Input label="Інтервал ТО, днів" type="number" value={form.maintenanceIntervalDays ?? ''} onChange={e => setForm(f => ({ ...f, maintenanceIntervalDays: e.target.value }))} placeholder="180" />
         </div>
       </Modal>
 
@@ -355,6 +383,80 @@ export default function InfrastructurePage() {
 }
 
 // ─── Small components ────────────────────────────────────
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function isWithin14Days(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return false;
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  return diffMs >= 0 && diffMs <= 14 * 24 * 60 * 60 * 1000;
+}
+
+function LiftRow({ lift, zoneName, onRemove }: { lift: Lift; zoneName: string; onRemove: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = lift.nextMaintenanceDate ?? lift.lastMaintenanceDate;
+  const nextSoon = isWithin14Days(lift.nextMaintenanceDate);
+
+  return (
+    <>
+      <TableRow
+        className={cn(hasDetail && 'cursor-pointer select-none')}
+        onClick={hasDetail ? () => setExpanded(v => !v) : undefined}
+      >
+        <TableCell className="font-medium text-foreground">{lift.name}</TableCell>
+        <TableCell className="text-muted-foreground">{LIFT_TYPE_LABELS[lift.type] ?? lift.type}</TableCell>
+        <TableCell>
+          <Badge variant={LIFT_STATUS_BADGE[lift.status] ?? 'secondary'} dot>
+            {LIFT_STATUS_LABELS[lift.status] ?? lift.status}
+          </Badge>
+        </TableCell>
+        <TableCell className="text-muted-foreground">{lift.maxWeightKg ?? '—'}</TableCell>
+        <TableCell className="text-muted-foreground">{zoneName}</TableCell>
+        <TableCell className="text-right">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={e => { e.stopPropagation(); onRemove(); }}
+            className="text-destructive/60 hover:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </TableCell>
+      </TableRow>
+      {expanded && hasDetail && (
+        <TableRow>
+          <TableCell colSpan={6} className="bg-surface-subtle px-6 py-3">
+            <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
+              {lift.lastMaintenanceDate && (
+                <span className="text-muted-foreground">
+                  Останнє ТО:{' '}
+                  <span className="text-foreground font-medium">{formatDate(lift.lastMaintenanceDate)}</span>
+                </span>
+              )}
+              {lift.nextMaintenanceDate && (
+                <span className={cn('text-muted-foreground', nextSoon && 'text-warning font-medium')}>
+                  Наступне ТО:{' '}
+                  <span className={cn('font-medium', nextSoon ? 'text-warning' : 'text-foreground')}>
+                    {formatDate(lift.nextMaintenanceDate)}
+                  </span>
+                  {nextSoon && <span className="ml-1 text-xs">(незабаром)</span>}
+                </span>
+              )}
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
 
 function Section({ title, onAdd, children }: { title: string; onAdd: () => void; children: ReactNode }) {
   return (

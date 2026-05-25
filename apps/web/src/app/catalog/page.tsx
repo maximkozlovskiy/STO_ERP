@@ -15,6 +15,7 @@ import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ interface Work { id: string; categoryId: string; categoryName: string; name: str
 interface PaginatedWorks { items: Work[]; total: number; page: number; limit: number; }
 interface Brand { id: string; name: string; }
 interface Unit { id: string; name: string; shortName: string; isSystem: boolean; }
-interface Good { id: string; sku: string | null; name: string; unit: string; unitId: string | null; purchasePrice: number | null; salePrice: number; category: string | null; barcode: string | null; brandId: string | null; notes: string | null; }
+interface Good { id: string; sku: string | null; name: string; unit: string; unitId: string | null; purchasePrice: number | null; salePrice: number; category: string | null; barcode: string | null; brandId: string | null; notes: string | null; goodType?: string | null; preferredSupplierId?: string | null; preferredSupplierName?: string | null; }
 interface PaginatedGoods { items: Good[]; total: number; page: number; limit: number; }
 interface ServiceWork { workId: string; workName: string; normoHours: number; price: number; quantity: number; }
 interface ServiceGood { goodId: string; goodName: string; unit: string; salePrice: number; quantity: number; }
@@ -33,6 +34,19 @@ interface GoodBarcode { id: string; barcode: string; type: string; isPrimary: bo
 
 type Tab = 'works' | 'goods' | 'services' | 'units';
 type GoodDetailTab = 'info' | 'barcodes';
+
+const GOOD_TYPE_LABELS: Record<string, string> = {
+  SPARE_PART: 'Запчастина',
+  CONSUMABLE: 'Витратний матеріал',
+  MATERIAL: 'Матеріал',
+  TOOL: 'Інструмент',
+};
+const GOOD_TYPE_BADGE: Record<string, BadgeVariant> = {
+  SPARE_PART: 'default',
+  CONSUMABLE: 'secondary',
+  MATERIAL: 'warning',
+  TOOL: 'success',
+};
 
 function Pagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
   if (totalPages <= 1) return null;
@@ -297,7 +311,7 @@ function GoodsTab() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '' });
+  const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '', goodType: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [selectedGood, setSelectedGood] = useState<Good | null>(null);
@@ -345,10 +359,11 @@ function GoodsTab() {
           brandId: form.brandId || undefined,
           barcode: form.barcode || undefined,
           notes: form.notes || undefined,
+          goodType: form.goodType || undefined,
         }),
       });
       setModal(false);
-      setForm({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '' });
+      setForm({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '', goodType: '' });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
@@ -431,6 +446,7 @@ function GoodsTab() {
               <TableRow>
                 <TableHead>Назва / Артикул</TableHead>
                 <TableHead>Категорія</TableHead>
+                <TableHead>Тип</TableHead>
                 <TableHead>Од.</TableHead>
                 <TableHead>Закупка, ₴</TableHead>
                 <TableHead>Продаж, ₴</TableHead>
@@ -440,14 +456,14 @@ function GoodsTab() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center">
+                  <TableCell colSpan={7} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && goods?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="p-0">
+                  <TableCell colSpan={7} className="p-0">
                     <EmptyState icon={Package} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -464,6 +480,11 @@ function GoodsTab() {
                     {g.barcode && <p className="text-[12px] text-muted-foreground">Штрих: {g.barcode}</p>}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{g.category ?? '—'}</TableCell>
+                  <TableCell>
+                    {g.goodType
+                      ? <Badge variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}>{GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}</Badge>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{g.unit}</TableCell>
                   <TableCell className="text-muted-foreground">{g.purchasePrice != null ? g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}</TableCell>
                   <TableCell className="font-medium text-foreground">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
@@ -517,6 +538,14 @@ function GoodsTab() {
                       <span className="text-foreground font-mono">{selectedGood.sku}</span>
                     </div>
                   )}
+                  {selectedGood.goodType && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Тип:</span>
+                      <Badge variant={GOOD_TYPE_BADGE[selectedGood.goodType] ?? 'secondary'}>
+                        {GOOD_TYPE_LABELS[selectedGood.goodType] ?? selectedGood.goodType}
+                      </Badge>
+                    </div>
+                  )}
                   <div>
                     <span className="text-muted-foreground">Одиниця:</span>{' '}
                     <span className="text-foreground">{selectedGood.unit}</span>
@@ -545,6 +574,12 @@ function GoodsTab() {
                     <div>
                       <span className="text-muted-foreground">Штрихкод:</span>{' '}
                       <span className="text-foreground font-mono">{selectedGood.barcode}</span>
+                    </div>
+                  )}
+                  {selectedGood.preferredSupplierName && (
+                    <div>
+                      <span className="text-muted-foreground">Постачальник:</span>{' '}
+                      <span className="text-foreground">{selectedGood.preferredSupplierName}</span>
                     </div>
                   )}
                   {selectedGood.notes && (
@@ -741,6 +776,17 @@ function GoodsTab() {
               placeholder="Мастила"
             />
           </div>
+          <Select
+            label="Тип товару"
+            value={form.goodType}
+            onChange={e => setForm(f => ({ ...f, goodType: e.target.value }))}
+          >
+            <option value="">Не вказано</option>
+            <option value="SPARE_PART">Запчастина</option>
+            <option value="CONSUMABLE">Витратний матеріал</option>
+            <option value="MATERIAL">Матеріал</option>
+            <option value="TOOL">Інструмент</option>
+          </Select>
           <Input
             label="Штрихкод"
             value={form.barcode}

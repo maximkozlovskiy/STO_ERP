@@ -17,9 +17,25 @@ interface Counterparty {
   id: string; type: string; firstName: string | null; lastName: string | null;
   companyName: string | null; phone: string | null; email: string | null;
   edrpou: string | null; vatPayer: boolean; balance: number; notes: string | null;
+  legalForm?: string | null; legalAddress?: string | null; actualAddress?: string | null;
+  bankAccount?: string | null; bankName?: string | null; contactPerson?: string | null;
+  taxNumber?: string | null;
 }
 interface Garage { id: string; name: string; address: string | null; isDefault: boolean; }
-interface Vehicle { id: string; make: string; model: string; licensePlate: string | null; year: number | null; currentMileage: number | null; }
+interface Vehicle {
+  id: string; make: string; model: string; licensePlate: string | null;
+  year: number | null; currentMileage: number | null;
+  transmissionType?: string | null; driveType?: string | null; bodyType?: string | null;
+  engineCode?: string | null; insuranceExpiry?: string | null; inspectionExpiry?: string | null;
+}
+interface MaintenanceSchedule {
+  id: string; vehicleId: string;
+  maintenanceType: string;
+  intervalDays?: number | null; intervalMileage?: number | null;
+  lastMaintenanceDate?: string | null; lastMaintenanceMileage?: number | null;
+  nextMaintenanceDate?: string | null; nextMaintenanceMileage?: number | null;
+  isActive: boolean; notes?: string | null;
+}
 interface Transaction { id: string; type: string; amount: number; description: string | null; createdAt: string; }
 interface WorkOrder { id: string; number: string; status: string; vehicleMake: string; vehicleModel: string; createdAt: string; totalAmount: number; }
 
@@ -68,6 +84,7 @@ export default function CounterpartyCardPage() {
   const [garageAddress, setGarageAddress] = useState('');
   const [savingGarage, setSavingGarage] = useState(false);
   const [expandedGarages, setExpandedGarages] = useState<Set<string>>(new Set());
+  const [maintenanceSchedules, setMaintenanceSchedules] = useState<MaintenanceSchedule[]>([]);
 
   // Settlements
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -98,12 +115,13 @@ export default function CounterpartyCardPage() {
         setGarages(g);
         // Expand all garages by default
         setExpandedGarages(new Set(g.map(garage => garage.id)));
-        // Load vehicles for each garage
+        // Load vehicles for each garage + maintenance schedules in parallel
         g.forEach(garage => {
           apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${garage.id}`)
             .then(vehicles => setGarageVehicles(prev => ({ ...prev, [garage.id]: vehicles })))
             .catch(() => setGarageVehicles(prev => ({ ...prev, [garage.id]: [] })));
         });
+        apiFetch<MaintenanceSchedule[]>('/maintenance-schedules').then(setMaintenanceSchedules).catch(() => {});
       })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка гаражів'))
       .finally(() => setGaragesLoading(false));
@@ -264,13 +282,33 @@ export default function CounterpartyCardPage() {
           </div>
 
           {!editing ? (
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Ім'я / Назва" value={displayName(cp)} />
-              <Field label="Телефон" value={cp.phone} />
-              <Field label="Email" value={cp.email} />
-              <Field label="ЄДРПОУ" value={cp.edrpou} />
-              <Field label="Нотатки" value={cp.notes} />
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Ім'я / Назва" value={displayName(cp)} />
+                <Field label="Телефон" value={cp.phone} />
+                <Field label="Email" value={cp.email} />
+                <Field label="ЄДРПОУ" value={cp.edrpou} />
+                <Field label="Нотатки" value={cp.notes} />
+              </div>
+              {(cp.legalForm || cp.legalAddress || cp.actualAddress || cp.bankAccount || cp.bankName || cp.contactPerson || cp.taxNumber) && (
+                <div className="mt-4 pt-4 border-t border-border grid grid-cols-2 gap-x-6 gap-y-2">
+                  {([
+                    ['Форма власності', cp.legalForm],
+                    ['Юр. адреса', cp.legalAddress],
+                    ['Факт. адреса', cp.actualAddress],
+                    ['IBAN', cp.bankAccount],
+                    ['Банк', cp.bankName],
+                    ['Контактна особа', cp.contactPerson],
+                    ['ІПН', cp.taxNumber],
+                  ] as [string, string | null | undefined][]).filter(([, v]) => v).map(([label, value]) => (
+                    <div key={label}>
+                      <div className="text-[12px] text-muted-foreground">{label}:</div>
+                      <div className="text-[13px] text-foreground">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
             <div className="space-y-3">
               <Input
@@ -384,22 +422,59 @@ export default function CounterpartyCardPage() {
                   ) : garageVehicles[garage.id].length === 0 ? (
                     <p className="text-sm text-muted-foreground px-4 py-3">Немає автомобілів</p>
                   ) : (
-                    <div className="divide-y divide-border">
-                      {garageVehicles[garage.id].map(v => (
-                        <button
-                          key={v.id}
-                          onClick={() => router.push(`/vehicles/${v.id}`)}
-                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary text-left transition-colors"
-                        >
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{v.make} {v.model}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {[v.licensePlate, v.year, v.currentMileage ? `${v.currentMileage.toLocaleString()} км` : null].filter(Boolean).join(' · ')}
-                            </p>
+                    <div>
+                      {garageVehicles[garage.id].map(v => {
+                        const techParts = [v.transmissionType, v.driveType, v.bodyType].filter(Boolean);
+                        const vSchedules = maintenanceSchedules.filter(s => s.vehicleId === v.id && s.isActive);
+                        return (
+                          <div key={v.id} className="px-4 py-3 border-b border-border last:border-0">
+                            <button
+                              onClick={() => router.push(`/vehicles/${v.id}`)}
+                              className="w-full flex items-center justify-between text-left"
+                            >
+                              <div>
+                                <p className="text-sm font-medium text-foreground">{v.make} {v.model}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {[v.licensePlate, v.year, v.currentMileage ? `${v.currentMileage.toLocaleString()} км` : null].filter(Boolean).join(' · ')}
+                                </p>
+                                {techParts.length > 0 && (
+                                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                                    {techParts.join(' · ')}
+                                  </p>
+                                )}
+                              </div>
+                              <span className="text-muted-foreground text-sm">→</span>
+                            </button>
+                            {vSchedules.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {vSchedules.map(s => {
+                                  const nextDate = s.nextMaintenanceDate
+                                    ? new Date(s.nextMaintenanceDate)
+                                    : null;
+                                  const today = new Date();
+                                  const daysUntil = nextDate
+                                    ? Math.ceil((nextDate.getTime() - today.getTime()) / 86_400_000)
+                                    : null;
+                                  const isSoon = daysUntil !== null && daysUntil <= 30;
+                                  return (
+                                    <div key={s.id} className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                                      <span>ТО: {s.maintenanceType}</span>
+                                      {nextDate && (
+                                        <span>· Наступне: {nextDate.toLocaleDateString('uk-UA')}</span>
+                                      )}
+                                      {isSoon && (
+                                        <span className="px-1.5 py-0.5 bg-warning-subtle text-warning rounded text-[11px] font-medium">
+                                          ⚠ Скоро
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                          <span className="text-muted-foreground text-sm">→</span>
-                        </button>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
