@@ -605,3 +605,52 @@ Endpoint `GET /goods/:id/batches` повертає `[]` коли goodId не і�
 **Статус:** [x] виправлено — обидва endpoint-и перевіряють Good у org перед запитом.
 
 ---
+
+## Session 2026-05-25 — Phase 19 cycle 5 (post-cycle-4 regression sweep)
+
+### Baseline (cycle 5)
+
+- `tsc` web/api/shared — ✅ 0 errors
+- Unit + contract + property API — ✅ 111/111 passed (12 файлів)
+- E2E Playwright — ⏭ skipped (dev server офлайн)
+
+### Знайдено багів у cycle 5: 1
+
+Статичний sweep cycle 4 фіксів покрив:
+- `inventory.service.createMovement` — RECEIPT price fallback на good.purchasePrice ✅ (Bug #26 не регресував)
+- `UpdatePricingRuleDto` — @Min(0)/@Max(10000) на percentValue/fixedAmount/fixedPrice ✅ (Bug #27 не регресував)
+- `GoodsController.getBatches/getPriceHistory` — `{ items, total }` paginated shape + 404 коли good відсутній ✅ (Bug #28+#31 не регресували)
+- `PricingRulesClient.tsx` — console.warn на goods fetch error + mountedRef guard ✅ (Bug #29+#30 не регресували)
+- Append-only `StockMovement`/`BatchConsumption`/`PriceHistory`/`StockBatch` — ніяких update/delete ✅
+- Raw SQL ідентифікатори (inventory.service findLowStockItems + document-number) — camelCase з лапками ✅
+- Tenant isolation (orgId) у нових модулях — ✅
+- Soft-delete `deletedAt: null` для `PricingRule`, `Good` relation у raw queries ✅
+- Tailwind 4 canonical tokens — нових inline HSL немає (стара whitelist винятків актуальна) ✅
+
+### Знайдений баг #32
+
+---
+
+## Bug #32 — [HIGH] `PricingRulesClient` запитує `/goods?limit=500` — порушує `@Max(200)` валідацію DTO
+
+**Файл:** `apps/web/src/app/pricing-rules/PricingRulesClient.tsx:308`
+**Severity:** HIGH
+**Категорія:** business-logic + frontend (regression сцени Bug #29 виявив)
+
+**Опис:**
+`GoodQueryDto.limit` має `@Max(200)`, а сторінка правил надсилає `/goods?limit=500`. ValidationPipe з `forbidNonWhitelisted: true` і `whitelist: true` (`apps/api/src/main.ts:26-29`) відкидає запит з `400 Bad Request`. Після фіксу Bug #29 помилка більше не падає у toast — лише `console.warn`, тому проблема невидима для користувача. Менеджер відкриває форму "Нове правило", обирає поле "Конкретний товар (необов'язково)" і бачить порожній select → не може прив'язати правило до конкретного `goodId`.
+
+Виявлено: cycle 5 регресійний sweep cycle 4 фіксу Bug #29 — error-handling став м'якішим і приховав цю валідаційну помилку, яка вже була у коді з самого початку Phase 19.
+
+**Очікувана поведінка:**
+Запит проходить ValidationPipe → список товарів завантажується → користувач може прив'язати правило до конкретного `goodId`.
+
+**Фактична поведінка:**
+ValidationPipe повертає `400 Bad Request: "limit must not be greater than 200"` → `console.warn` логує → state `goods` залишається `[]` → у formі правила select "Конкретний товар" має лише `— Не вказано —`.
+
+**Виправлення:**
+Замінити `/goods?limit=500` на `/goods?limit=200` (узгоджено з усіма іншими сторінками: dashboard, work-orders, stock-documents, invoices, purchase-orders, settlements — усі використовують `limit=200`).
+
+**Статус:** [x] виправлено
+
+---
