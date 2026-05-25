@@ -24,11 +24,16 @@ import {
   ChevronLeft,
   Menu,
   Star,
+  Search,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { ToastContainer } from '@/components/ui/toast';
+import { CommandPalette } from '@/components/ui/command-palette';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
+import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
 
 interface NavItem {
   href: string;
@@ -145,8 +150,18 @@ export function TopShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [navMode, setNavMode] = useState<NavMode>('sections');
+  const [paletteOpen, setPaletteOpen] = useState(false);
   // Bookmarks: start empty to avoid SSR mismatch; hydrated via useEffect
   const [bookmarks, setBookmarks] = useState<string[]>([]);
+
+  const uiFeatures = useUiFeatures();
+
+  useKeyboardShortcut('ctrl+k', useCallback((e) => {
+    e.preventDefault();
+    if (uiFeatures.commandPaletteEnabled && employee) setPaletteOpen(p => !p);
+  }, [uiFeatures.commandPaletteEnabled, employee]), { enabled: true, allowInInput: true });
+
+  useGlobalShortcuts(!!employee && uiFeatures.keyboardShortcutsEnabled);
 
   useEffect(() => {
     try {
@@ -350,6 +365,20 @@ export function TopShell({ children }: { children: ReactNode }) {
         )}
       </div>
 
+      {/* Command Palette trigger — desktop sidebar */}
+      {!collapsed && uiFeatures.commandPaletteEnabled && (
+        <div className="px-2 pb-1">
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-sidebar-hover/40 text-sidebar-muted hover:bg-sidebar-hover hover:text-white transition-colors text-[12px]"
+          >
+            <Search className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 text-left">Пошук...</span>
+            <kbd className="text-[10px] bg-sidebar-hover border border-sidebar-border rounded px-1">Ctrl K</kbd>
+          </button>
+        </div>
+      )}
+
       <SidebarNav />
 
       {/* User footer */}
@@ -396,6 +425,13 @@ export function TopShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <ToastContainer />
+      {employee && uiFeatures.commandPaletteEnabled && (
+        <CommandPalette
+          open={paletteOpen}
+          role={role}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
       {/* Desktop sidebar */}
       <aside className={cn(
         'hidden lg:flex flex-col shrink-0 bg-sidebar-bg transition-[width] duration-200 ease-in-out',
@@ -431,6 +467,16 @@ export function TopShell({ children }: { children: ReactNode }) {
             </div>
             <span className="text-[14px] font-bold text-foreground">STO ERP</span>
           </Link>
+          {uiFeatures.commandPaletteEnabled && (
+            <button
+              onClick={() => setPaletteOpen(true)}
+              className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary text-muted-foreground text-[12px] hover:bg-secondary/80 transition-colors"
+              aria-label="Відкрити пошук"
+            >
+              <Search className="h-3.5 w-3.5" />
+              <span>Пошук</span>
+            </button>
+          )}
         </header>
 
         <main className="flex-1 overflow-auto">
