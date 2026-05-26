@@ -8,9 +8,15 @@ const pdfMake = require('pdfmake') as {
     getBuffer(): Promise<Buffer>;
   };
 };
-// vfs_fonts ships the embedded Roboto family as base64 so we don't need .ttf files on disk.
+// pdfmake v0.3.x server-side font handling: the printer's URLResolver expects each font
+// descriptor to be a STRING path (or URL), not a Buffer. Passing Buffers makes pdfmake call
+// `(buf).url.toLowerCase()` inside resolveUrls and crash with "Cannot read properties of
+// undefined (reading 'toLowerCase')".
+// pdfmake ships the Roboto family on disk under `pdfmake/fonts/Roboto/*.ttf` together with
+// a ready-to-use descriptor at `pdfmake/fonts/Roboto` — using that descriptor wires the file
+// paths in one line and is the canonical server-side recipe.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const vfsFonts = require('pdfmake/build/vfs_fonts') as { pdfMake?: { vfs?: Record<string, string> }; vfs?: Record<string, string> };
+const robotoFontDescriptor = require('pdfmake/fonts/Roboto') as { Roboto: { normal: string; bold: string; italics: string; bolditalics: string } };
 
 export interface OrgInfo {
   name: string;
@@ -61,18 +67,13 @@ type TableCell = string | Record<string, unknown>;
 @Injectable()
 export class PdfService {
   constructor() {
-    // Register Roboto family once at module-init. pdfMake mutates a virtual filesystem so font
-    // contents must be wired as Buffers (server) — the vfs_fonts.js export shape varies between
-    // pdfmake versions, so we tolerate both `.pdfMake.vfs` and `.vfs` shapes.
-    const vfs = vfsFonts.pdfMake?.vfs ?? vfsFonts.vfs ?? {};
-    pdfMake.setFonts({
-      Roboto: {
-        normal:      Buffer.from(vfs['Roboto-Regular.ttf']      ?? '', 'base64'),
-        bold:        Buffer.from(vfs['Roboto-Medium.ttf']       ?? '', 'base64'),
-        italics:     Buffer.from(vfs['Roboto-Italic.ttf']       ?? '', 'base64'),
-        bolditalics: Buffer.from(vfs['Roboto-MediumItalic.ttf'] ?? '', 'base64'),
-      },
-    });
+    // Register Roboto family once at module-init using the on-disk file paths. We fail fast
+    // here (rather than at first PDF request) if pdfmake/fonts/Roboto was somehow not
+    // installed — the boot-time error message is much clearer than the URLResolver crash.
+    if (!robotoFontDescriptor.Roboto?.normal) {
+      throw new Error('pdfmake Roboto descriptor missing. Re-install @sto/api dependencies.');
+    }
+    pdfMake.setFonts(robotoFontDescriptor);
   }
 
   async generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
