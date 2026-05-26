@@ -10,6 +10,13 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }));
 
+// CommandPalette runs a debounced `/search` apiFetch when query.length>=2.
+// Without this mock, jsdom has no fetch and `dataLoading` would stay true,
+// hiding the "Нічого не знайдено" empty state from the assertion.
+vi.mock('@/lib/api-client', () => ({
+  apiFetch: vi.fn().mockResolvedValue({ items: [] }),
+}));
+
 describe('CommandPalette', () => {
   beforeEach(() => {
     pushMock.mockClear();
@@ -127,7 +134,9 @@ describe('CommandPalette', () => {
 
     await userEvent.type(input, 'хххх_неіснуюча_команда');
 
-    expect(screen.getByText('Нічого не знайдено')).toBeInTheDocument();
+    // The component debounces /search by 300ms and shows "Пошук у даних…"
+    // while loading; use findByText to wait for the loaded empty state.
+    expect(await screen.findByText('Нічого не знайдено', undefined, { timeout: 2000 })).toBeInTheDocument();
   });
 
   it('ArrowDown зупиняється на останньому елементі', async () => {
