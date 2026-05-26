@@ -36,7 +36,7 @@ export class FollowUpProcessor {
     cutoffDate.setDate(cutoffDate.getDate() - (settings.followUpDays ?? 90));
 
     // Find vehicles with upcoming maintenance
-    const upcomingMaintenance = await this.prisma.maintenanceSchedule.findMany({
+    const upcomingMaintenance = (await this.prisma.maintenanceSchedule.findMany({
       where: {
         orgId,
         deletedAt: null,
@@ -52,16 +52,21 @@ export class FollowUpProcessor {
           },
         },
       },
-      take: 200,
-    });
+      take: 5000,
+    })).filter(
+      s => !s.vehicle.deletedAt &&
+           !s.vehicle.customerGarage.deletedAt &&
+           !s.vehicle.customerGarage.counterparty.deletedAt,
+    );
 
     // Find vehicles with no recent work orders
-    const inactiveVehicles = await this.prisma.vehicle.findMany({
+    const inactiveVehicles = (await this.prisma.vehicle.findMany({
       where: {
         orgId,
         deletedAt: null,
         workOrders: {
           none: {
+            deletedAt: null,
             completedAt: { gte: cutoffDate },
           },
         },
@@ -71,13 +76,15 @@ export class FollowUpProcessor {
           include: { counterparty: true },
         },
         workOrders: {
-          where: { completedAt: { not: null } },
+          where: { deletedAt: null, completedAt: { not: null } },
           orderBy: { completedAt: 'desc' },
           take: 1,
         },
       },
-      take: 200,
-    });
+      take: 5000,
+    })).filter(
+      v => !v.customerGarage.deletedAt && !v.customerGarage.counterparty.deletedAt,
+    );
 
     const sentTo = new Set<string>();
 
@@ -95,9 +102,7 @@ export class FollowUpProcessor {
         licensePlate: schedule.vehicle.licensePlate ?? '',
         nextMaintenanceDate: schedule.nextMaintenanceDate?.toLocaleDateString('uk-UA') ?? '',
       }).catch((e: Error) => {
-        if (!e.message.includes('не налаштовано') && !e.message.includes('не знайдено')) {
-          this.logger.warn(`Помилка відправки нагадування: ${e.message}`);
-        }
+        this.logger.warn(`Помилка відправки нагадування: ${e.message}`);
       });
     }
 
@@ -119,9 +124,7 @@ export class FollowUpProcessor {
         licensePlate: vehicle.licensePlate ?? '',
         nextMaintenanceDate: '',
       }).catch((e: Error) => {
-        if (!e.message.includes('не налаштовано') && !e.message.includes('не знайдено')) {
-          this.logger.warn(`Помилка відправки нагадування: ${e.message}`);
-        }
+        this.logger.warn(`Помилка відправки нагадування: ${e.message}`);
       });
     }
 
@@ -129,9 +132,11 @@ export class FollowUpProcessor {
   }
 
   private formatName(cp: { firstName?: string | null; lastName?: string | null; companyName?: string | null }): string {
-    if (cp.firstName || cp.lastName) {
-      return [cp.firstName, cp.lastName].filter(Boolean).join(' ');
-    }
-    return cp.companyName ?? '';
+    const full = [cp.firstName, cp.lastName]
+      .map(s => s?.trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    return full || (cp.companyName?.trim() ?? '');
   }
 }

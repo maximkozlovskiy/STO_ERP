@@ -19,24 +19,26 @@ export class FollowUpScheduler implements OnModuleInit {
       await this.followUpQueue.removeRepeatableByKey(job.key);
     }
 
-    // Schedule per-org follow-up jobs using BullMQ repeat
-    // Each org gets its own job scheduled at 09:00 Kyiv time (UTC+2/+3)
-    // Since BullMQ cron runs in UTC, we use 07:00 UTC which is 09:00 UTC+2 (winter)
-    // In summer (UTC+3) this fires at 10:00 local — acceptable trade-off without DST logic
+    // Fires at 09:00 Kyiv time (BullMQ respects DST via tz: 'Europe/Kyiv')
     const orgs = await this.prisma.organisation.findMany({
       select: { orgId: true },
-      take: 100,
+      take: 1000,
     });
+
+    if (orgs.length >= 1000) {
+      this.logger.warn('FollowUp scheduler: можливо не всі організації охоплені, потрібна пагінація');
+    }
 
     for (const org of orgs) {
       await this.followUpQueue.add(
         'send-reminders',
         { orgId: org.orgId },
         {
-          repeat: { cron: '0 7 * * *', tz: 'Europe/Kyiv' },
-          attempts: 3,
+          repeat: { cron: '0 9 * * *', tz: 'Europe/Kyiv' },
+          attempts: 10,
           backoff: { type: 'exponential', delay: 60_000 },
           jobId: `followup-${org.orgId}`,
+          removeOnComplete: true,
         },
       );
     }
