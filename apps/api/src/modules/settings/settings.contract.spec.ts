@@ -22,6 +22,7 @@ let orgRow: {
   requireClientApproval: boolean;
   allowPartialPayment: boolean;
   brandTheme: string;
+  costMethod: 'FIFO' | 'FEFO' | 'LIFO' | 'AVG_COST';
   uiFeatures: Record<string, unknown>;
   updatedAt: Date;
 };
@@ -38,6 +39,7 @@ function freshOrgRow() {
     requireClientApproval: false,
     allowPartialPayment: true,
     brandTheme: 'blue',
+    costMethod: 'FIFO',
     uiFeatures: { ...UI_FEATURES_DEFAULTS },
     updatedAt: new Date('2026-01-01T00:00:00Z'),
   };
@@ -208,6 +210,50 @@ describe('Settings — HTTP Contract', () => {
         invoiceDueDays: expect.any(Number),
         uiFeatures: expect.any(Object),
       });
+    });
+
+    it('повертає costMethod зі значення Prisma enum', async () => {
+      const res = await app.inject({ method: 'GET', url: '/settings/organisation' });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Record<string, unknown>;
+      expect(body.costMethod).toBeDefined();
+      expect(['FIFO', 'FEFO', 'LIFO', 'AVG_COST']).toContain(body.costMethod);
+    });
+  });
+
+  describe('PATCH /settings/organisation з costMethod', () => {
+    it('приймає AVG_COST і повертає його в response', async () => {
+      redisMock.get.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { costMethod: 'AVG_COST' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { costMethod: string };
+      expect(body.costMethod).toBe('AVG_COST');
+    });
+
+    it('приймає кожне з валідних значень Prisma enum', async () => {
+      for (const method of ['FIFO', 'FEFO', 'LIFO', 'AVG_COST'] as const) {
+        const res = await app.inject({
+          method: 'PATCH',
+          url: '/settings/organisation',
+          payload: { costMethod: method },
+        });
+        expect(res.statusCode).toBe(200);
+        const body = res.json() as { costMethod: string };
+        expect(body.costMethod).toBe(method);
+      }
+    });
+
+    it('відхиляє невалідне значення (regression: UI колись слала "AVERAGE")', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { costMethod: 'AVERAGE' },
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 });

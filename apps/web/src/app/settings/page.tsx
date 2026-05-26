@@ -13,6 +13,19 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useUiFeatures, invalidateUiFeaturesCache, type UiFeatures } from '@/hooks/useUiFeatures';
 
+// Must match Prisma enum BatchCostMethod (FIFO | FEFO | LIFO | AVG_COST).
+// String-typed in the API DTO, but kept as a literal union here so an
+// unknown value at compile time becomes a TS error rather than a 400
+// from class-validator at runtime.
+type CostMethod = 'FIFO' | 'FEFO' | 'LIFO' | 'AVG_COST';
+
+const COST_METHOD_OPTIONS: { value: CostMethod; label: string; hint: string }[] = [
+  { value: 'FIFO',     label: 'FIFO',     hint: 'Перший прийшов — перший пішов' },
+  { value: 'FEFO',     label: 'FEFO',     hint: 'За терміном придатності (раніший пішов першим)' },
+  { value: 'LIFO',     label: 'LIFO',     hint: 'Останній прийшов — перший пішов' },
+  { value: 'AVG_COST', label: 'Середній', hint: 'За середньозваженою собівартістю' },
+];
+
 interface OrgSettings {
   orgId: string;
   currency: string;
@@ -23,7 +36,7 @@ interface OrgSettings {
   requireClientApproval: boolean;
   allowPartialPayment: boolean;
   brandTheme: string;
-  costMethod: string;
+  costMethod: CostMethod;
   uiFeatures?: UiFeatures;
   updatedAt: string;
 }
@@ -275,26 +288,31 @@ export default function SettingsPage() {
             />
           </div>
 
-          <div>
+          <div role="radiogroup" aria-label="Метод списання партій">
             <label className="block text-sm font-medium text-foreground mb-1">Метод списання партій</label>
             <p className="text-xs text-muted-foreground mb-2">Визначає порядок списання запчастин з партійного обліку при виконанні нарядів</p>
-            <div className="flex gap-2">
-              {([['FIFO', 'FIFO', 'Перший прийшов — перший пішов'], ['LIFO', 'LIFO', 'Останній прийшов — перший пішов'], ['AVERAGE', 'Середній', 'За середньозваженою собівартістю']] as [string, string, string][]).map(([value, label, hint]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setOrgSettings({ ...orgSettings, costMethod: value })}
-                  className={cn(
-                    'flex-1 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors text-left',
-                    orgSettings.costMethod === value
-                      ? 'border-primary bg-primary-subtle text-primary'
-                      : 'border-border bg-surface text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                  )}
-                >
-                  <div className="font-semibold">{label}</div>
-                  <div className="text-xs mt-0.5 opacity-70">{hint}</div>
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              {COST_METHOD_OPTIONS.map(({ value, label, hint }) => {
+                const selected = orgSettings.costMethod === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setOrgSettings({ ...orgSettings, costMethod: value })}
+                    className={cn(
+                      'flex-1 min-w-40 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors text-left',
+                      selected
+                        ? 'border-primary bg-primary-subtle text-primary'
+                        : 'border-border bg-surface text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                    )}
+                  >
+                    <div className="font-semibold">{label}</div>
+                    <div className="text-xs mt-0.5 opacity-70">{hint}</div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
