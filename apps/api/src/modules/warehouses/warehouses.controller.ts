@@ -15,7 +15,10 @@ export class WarehousesController {
   constructor(private readonly service: WarehousesService) {}
 
   @Get()
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER')
+  // MECHANIC needs read-only access — work order /parts modal renders a
+  // warehouse <Select> and MECHANIC is permitted to add parts via
+  // WorkOrdersController.@Roles('...','MECHANIC').
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC')
   @ApiOperation({ summary: 'Список складів' })
   @ApiQuery({ name: 'branchId', required: false })
   @ApiResponse({ status: 200, type: [WarehouseResponseDto] })
