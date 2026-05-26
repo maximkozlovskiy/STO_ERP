@@ -265,6 +265,8 @@ model Organisation {
   employeeBranches      EmployeeBranch[]
   comments              Comment[]
   workOrderTemplates    WorkOrderTemplate[]
+  workOrderMedia        WorkOrderMedia[]
+  auditEvents           AuditEvent[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -420,6 +422,8 @@ model Employee {
   authAccount            AuthAccount?
   employeeBranches       EmployeeBranch[]
   comments               Comment[]
+  uploadedMedia          WorkOrderMedia[]
+  auditEvents            AuditEvent[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -848,6 +852,7 @@ model WorkOrder {
   invoices        Invoice[]
   calendarSlots   CalendarSlot[]
   completionActs  CompletionAct[]
+  media           WorkOrderMedia[]
 
   @@index([orgId, status, deletedAt])
   @@index([orgId, syncVersion])
@@ -1205,6 +1210,8 @@ model OrganisationSettings {
   allowPartialPayment   Boolean         @default(true)
   brandTheme            String          @default("blue")
   costMethod            BatchCostMethod @default(FIFO)
+  followUpActive        Boolean         @default(false)
+  followUpDays          Int             @default(90)
   uiFeatures            Json            @default("{}")
   syncVersion           BigInt          @default(0)
   updatedAt             DateTime        @updatedAt
@@ -1506,6 +1513,49 @@ model CompletionAct {
   @@index([orgId, workOrderId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("completion_acts")
+}
+
+// ─── WORK ORDER MEDIA (B12) ──────────────────────────────
+
+model WorkOrderMedia {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String   @db.Uuid
+  workOrderId String   @db.Uuid
+  fileKey     String
+  filename    String
+  mimeType    String
+  sizeBytes   Int
+  uploadedBy  String   @db.Uuid
+  createdAt   DateTime @default(now())
+  syncVersion BigInt   @default(0)
+
+  org       Organisation @relation(fields: [orgId], references: [id])
+  workOrder WorkOrder    @relation(fields: [workOrderId], references: [id])
+  uploader  Employee     @relation(fields: [uploadedBy], references: [id])
+
+  @@index([orgId, workOrderId])
+  @@index([orgId, syncVersion])
+  @@map("work_order_media")
+}
+
+// ─── AUDIT EVENTS (B11) ──────────────────────────────────
+
+model AuditEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId      String   @db.Uuid
+  entityType String
+  entityId   String   @db.Uuid
+  action     String
+  userId     String   @db.Uuid
+  diff       Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  org  Organisation @relation(fields: [orgId], references: [id])
+  user Employee     @relation(fields: [userId], references: [id])
+
+  @@index([orgId, entityType, entityId])
+  @@index([orgId, createdAt])
+  @@map("audit_events")
 }
 
 // ─── CLOUD SYNC ──────────────────────────────────────────

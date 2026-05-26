@@ -39,6 +39,9 @@ import { CompletionActsModule } from './modules/completion-acts/completion-acts.
 import { SearchModule } from './modules/search/search.module';
 import { CommentsModule } from './modules/comments/comments.module';
 import { WorkOrderTemplatesModule } from './modules/work-order-templates/work-order-templates.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { WorkOrderMediaModule } from './modules/work-order-media/work-order-media.module';
+import { AuditModule } from './modules/audit/audit.module';
 
 @Module({
   imports: [
@@ -90,6 +93,9 @@ import { WorkOrderTemplatesModule } from './modules/work-order-templates/work-or
     SearchModule,
     CommentsModule,
     WorkOrderTemplatesModule,
+    DashboardModule,
+    WorkOrderMediaModule,
+    AuditModule,
   ],
 })
 export class AppModule {}

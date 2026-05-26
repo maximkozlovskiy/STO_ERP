@@ -1064,14 +1064,19 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### B8 — Ремаркетинг / Follow-up нагадування
 
-- [ ] `[sto-database]` `OrganisationSettings` — додати `followUpDays Int @default(90)` (після скільки днів без візиту нагадувати)
-- [ ] `[sto-backend]` `FollowUpProcessor` (BullMQ CRON щодня о 09:00) → знаходить авто де `MaintenanceSchedule.nextMaintenanceDate` ≤ today+14 або `lastWO.completedAt` < today-followUpDays → відправляє SMS через NotificationService (шаблон `FOLLOWUP_REMINDER`)
-- [ ] `[sto-web]` Вкладка "Нагадування" в `/settings` → toggle isActive + налаштування followUpDays
+- [x] `[sto-database]` `OrganisationSettings` — додати `followUpDays Int @default(90)` (після скільки днів без візиту нагадувати)
+    > Додано `followUpActive` та `followUpDays` у `packages/database/prisma/schema.prisma`. Міграція готова до запуску при `docker-compose up`.
+- [~] `[sto-backend]` `FollowUpProcessor` (BullMQ CRON щодня о 09:00) → знаходить авто де `MaintenanceSchedule.nextMaintenanceDate` ≤ today+14 або `lastWO.completedAt` < today-followUpDays → відправляє SMS через NotificationService (шаблон `FOLLOWUP_REMINDER`)
+    > Коди готові (`apps/api/src/modules/notifications/followup.{processor,scheduler}.ts`) але тимчасово видалені бо потребують Prisma Client з новими полями. Буде реактивовано після міграції БД.
+- [x] `[sto-web]` Вкладка "Нагадування" в `/settings` → toggle isActive + налаштування followUpDays
+    > Реалізовано в `apps/web/src/app/settings/page.tsx`. Форма з toggle `followUpActive` та інпут для `followUpDays` (30-365 днів).
 
 ### B9 — SSE Real-time дашборд
 
-- [ ] `[sto-backend]` `GET /dashboard/stream` (SSE, `text/event-stream`) → кожні 30с пушить `{ activeWo, todayRevenue, pendingInvoices, lowStockCount }`. `@Public()` НЕ — захищений JWT.
-- [ ] `[sto-web]` `useDashboardStream()` хук — `EventSource` з reconnect logic. Dashboard KPI-картки оновлюються live без polling. Indicator "live" (пульсуюча зелена крапка).
+- [x] `[sto-backend]` `GET /dashboard/stream` (SSE, `text/event-stream`) → кожні 30с пушить `{ activeWo, todayRevenue, pendingInvoices, lowStockCount }`. `@Public()` НЕ — захищений JWT.
+    > Реалізовано `apps/api/src/modules/dashboard/{dashboard.controller,dashboard.service}.ts`. JWT передається через query param токену (обмеження EventSource). Endpoint `/api/dashboard/stream?token=...`.
+- [x] `[sto-web]` `useDashboardStream()` хук — `EventSource` з reconnect logic. Dashboard KPI-картки оновлюються live без polling. Indicator "live" (пульсуюча зелена крапка).
+    > Hook у `apps/web/src/hooks/useDashboardStream.ts` з автоматичним reconnect через 5s при помилці. Підключено до Dashboard: activeWo, todayRevenue, pendingInvoices, lowStockCount оновлюються live. Зелена пульсуюча крапка при SSE активному.
 
 ### B10 — Branch ACL (права по філіях)
 
@@ -1125,7 +1130,8 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### F7 — Live KPI дашборд
 
-- [ ] `[sto-web]` `useDashboardStream` (B9) підключити до Dashboard: КPI-картки оновлюються кожні 30с. Пульсуюча крапка "live" у куті картки. Fallback на polling `/dashboard/summary` якщо SSE недоступний.
+- [x] `[sto-web]` `useDashboardStream` (B9) підключити до Dashboard: КPI-картки оновлюються кожні 30с. Пульсуюча крапка "live" у куті картки. Fallback на polling `/dashboard/summary` якщо SSE недоступний.
+    > Реалізовано у `apps/web/src/app/dashboard/page.tsx`. Підключено SSE hook, KPI картки (activeWo, todayRevenue, pendingInvoices, lowStockCount) оновлюються з live stream. Зелена пульсуюча крапка "live sync" в header дашборду.
 
 ### F8 — Нотатки/Коментарі до об'єктів
 

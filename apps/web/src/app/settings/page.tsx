@@ -37,6 +37,8 @@ interface OrgSettings {
   allowPartialPayment: boolean;
   brandTheme: string;
   costMethod: CostMethod;
+  followUpActive?: boolean;
+  followUpDays?: number;
   uiFeatures?: UiFeatures;
   updatedAt: string;
 }
@@ -66,7 +68,7 @@ interface DocNumberConfig { id: string; documentType: string; prefix: string | n
 interface TaxRateItem { id: string; name: string; rate: number; isDefault: boolean; isActive: boolean; }
 interface BranchInfo { id: string; name: string; }
 
-type Tab = 'org' | 'payments' | 'sms' | 'theme' | 'ui' | 'numbers' | 'taxrates' | 'workdays';
+type Tab = 'org' | 'payments' | 'sms' | 'theme' | 'ui' | 'numbers' | 'taxrates' | 'workdays' | 'followup';
 type NavMode = 'sections' | 'functions';
 const NAV_MODE_KEY = 'sto_nav_mode';
 
@@ -297,7 +299,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border mb-6 flex-wrap">
-        {(['org', 'payments', 'numbers', 'taxrates', 'workdays', 'sms', 'theme', 'ui'] as Tab[]).map((t) => (
+        {(['org', 'payments', 'numbers', 'taxrates', 'workdays', 'sms', 'theme', 'ui', 'followup'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -308,7 +310,7 @@ export default function SettingsPage() {
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {{ org: 'Організація', payments: 'Оплата', numbers: 'Нумерація', taxrates: 'Ставки ПДВ', workdays: 'Робочі дні', sms: 'SMS', theme: 'Оформлення', ui: 'Інтерфейс' }[t]}
+            {{ org: 'Організація', payments: 'Оплата', numbers: 'Нумерація', taxrates: 'Ставки ПДВ', workdays: 'Робочі дні', sms: 'SMS', theme: 'Оформлення', ui: 'Інтерфейс', followup: 'Нагадування' }[t]}
           </button>
         ))}
       </div>
@@ -575,6 +577,56 @@ export default function SettingsPage() {
             </div>
           ))}
           <Button onClick={saveUiFeatures} loading={saving} className="w-full mt-2">
+            Зберегти
+          </Button>
+        </div>
+      )}
+
+      {/* Follow-up Reminders — B8 */}
+      {tab === 'followup' && orgSettings && (
+        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+          <div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Автоматичні SMS нагадування клієнтам після тривалої відсутності та перед технічним обслуговуванням.
+            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">Включити нагадування</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Система щодня отримуватиме список авто без візитів і надсилатиме SMS
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={orgSettings.followUpActive ?? false}
+                onChange={(e) => setOrgSettings({ ...orgSettings, followUpActive: e.target.checked })}
+                className="h-4 w-4 rounded border-border cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {(orgSettings.followUpActive ?? false) && (
+            <div className="mt-4 pt-4 border-t border-border">
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Нагадувати через (днів без візиту)
+              </label>
+              <input
+                type="number"
+                min={30}
+                max={365}
+                value={orgSettings.followUpDays ?? 90}
+                onChange={(e) =>
+                  setOrgSettings({ ...orgSettings, followUpDays: Math.max(30, Math.min(365, Number(e.target.value))) })
+                }
+                className="w-32 px-3 py-2 text-sm border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Мінімум 30 днів, максимум 365
+              </p>
+            </div>
+          )}
+
+          <Button onClick={saveOrgSettings} loading={saving} className="w-full mt-4">
             Зберегти
           </Button>
         </div>

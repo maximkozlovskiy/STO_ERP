@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { useDashboardStream } from '@/hooks/useDashboardStream';
 import Link from 'next/link';
 import {
   Wrench, Clock, TrendingUp, AlertTriangle, FileX, BarChart2,
@@ -84,6 +85,9 @@ export default function DashboardPage() {
   // та переобчисленню кожного рядка у .map(). Виставляється після mount.
   const [nowMs, setNowMs] = useState(0);
   useEffect(() => { setNowMs(Date.now()); }, []);
+
+  // F7: Live SSE dashboard stream
+  const { data: streamData, isLive } = useDashboardStream();
 
   useEffect(() => {
     let cancelled = false;
@@ -193,12 +197,23 @@ export default function DashboardPage() {
         <EmptyState title="Немає даних" description="Не вдалося завантажити показники" />
       ) : (
         <>
+          {/* Live indicator — F7: SSE stream */}
+          {isLive && (
+            <div className="flex items-center gap-1.5 text-[12px] text-success mb-3 font-medium">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
+              </span>
+              live sync
+            </div>
+          )}
+
           {/* KPI row 1 */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <Link href="/work-orders">
               <KpiCard
                 label="В роботі"
-                value={kpi.inProgressOrders}
+                value={streamData?.activeWo ?? kpi.inProgressOrders}
                 icon={<Wrench />}
                 colorClass="kpi-card-blue"
                 trend={{ value: `${kpi.completedToday} завершено сьогодні`, up: kpi.completedToday > 0 }}
@@ -215,7 +230,7 @@ export default function DashboardPage() {
             <Link href="/reports">
               <KpiCard
                 label="Виручка сьогодні"
-                value={fmt(kpi.revenueToday)}
+                value={fmt(streamData?.todayRevenue ?? kpi.revenueToday)}
                 icon={<TrendingUp />}
                 colorClass="kpi-card-green"
               />
@@ -235,18 +250,18 @@ export default function DashboardPage() {
             <Link href="/invoices">
               <KpiCard
                 label="Несплачені рахунки"
-                value={kpi.unpaidInvoices}
+                value={streamData?.pendingInvoices ?? kpi.unpaidInvoices}
                 icon={<FileX />}
-                colorClass={kpi.unpaidInvoices > 0 ? 'kpi-card-red' : 'kpi-card-blue'}
+                colorClass={(streamData?.pendingInvoices ?? kpi.unpaidInvoices) > 0 ? 'kpi-card-red' : 'kpi-card-blue'}
                 trend={kpi.unpaidAmount > 0 ? { value: fmt(kpi.unpaidAmount), up: false } : undefined}
               />
             </Link>
             <Link href="/inventory">
               <KpiCard
                 label="Низький залишок"
-                value={kpi.lowStockCount}
+                value={streamData?.lowStockCount ?? kpi.lowStockCount}
                 icon={<AlertTriangle />}
-                colorClass={kpi.lowStockCount > 0 ? 'kpi-card-amber' : 'kpi-card-teal'}
+                colorClass={(streamData?.lowStockCount ?? kpi.lowStockCount) > 0 ? 'kpi-card-amber' : 'kpi-card-teal'}
               />
             </Link>
           </div>
