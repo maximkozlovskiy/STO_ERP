@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useRequireAuth, useAuth } from '@/lib/auth';
+import { useRequireAuth, useAuth, TOKEN_KEY } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -225,18 +225,30 @@ export default function WorkOrderCardPage() {
 
   const handleMediaUpload = async (files: FileList) => {
     setUploadingMedia(true);
+    setError('');
+    // Канонічна env-змінна узгоджена з api-client / auth (`NEXT_PUBLIC_API_URL`),
+    // токен зберігається під `TOKEN_KEY = 'sto_access_token'`. Раніше тут було
+    // hardcoded 'sto_token' і URL без `/api` префіксу — обидва ламали upload.
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+    const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
+    let failures = 0;
     for (const file of Array.from(files)) {
       const fd = new FormData();
       fd.append('file', file);
       try {
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/work-orders/${id}/media`, {
+        const res = await fetch(`${apiBase}/api/work-orders/${id}/media`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('sto_token')}` },
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
           body: fd,
         });
+        if (!res.ok) failures += 1;
       } catch {
-        // continue uploading remaining files
+        failures += 1;
       }
+    }
+    if (failures > 0) {
+      setError(`Не вдалося завантажити ${failures} файл(ів)`);
     }
     await loadMedia();
     setUploadingMedia(false);

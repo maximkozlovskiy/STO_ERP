@@ -5,47 +5,51 @@ import {
   Sse,
   MessageEvent,
   UnauthorizedException,
-  Inject,
-  forwardRef,
+  UseGuards,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { DashboardService } from './dashboard.service';
-import { Observable, interval, firstValueFrom } from 'rxjs';
+import { Observable, interval, startWith } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
-import { ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { OrgContext } from '../../auth/decorators/org-context.decorator';
 
 interface JwtPayload {
   sub: string;
   orgId: string;
 }
 
+@ApiTags('Dashboard')
 @Controller('dashboard')
 export class DashboardController {
   constructor(
-    @Inject(forwardRef(() => DashboardService))
     private readonly dashboardService: DashboardService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}
 
   /**
-   * Получить текущий снимок дашборда (для опроса).
-   * Защищено JWT (Bearer token в headers).
+   * Поточний снапшот дашборду (для опитування — Bearer token у заголовку).
    */
   @Get('summary')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({ summary: 'Поточний стан дашборду' })
-  async getSummary() {
-    // Note: @OrgContext() decorator / @CurrentUser() was supposed to inject orgId,
-    // but for simplicity in SSE context we'll document the auth pattern below.
-    // In real code, use @CurrentUser() decorator to extract orgId from JWT.
-    return { message: 'Implement getSummary with @CurrentUser() decorator' };
+  getSummary(@OrgContext() orgId: string) {
+    return this.dashboardService.getSummary(orgId);
   }
 
   /**
    * SSE stream для дашборду (real-time).
    * JWT передається через query param: GET /dashboard/stream?token=xxx
    * Оскільки EventSource не підтримує custom headers.
+   * Verify токену відбувається вручну тут — на цей endpoint @UseGuards не вішається,
+   * бо JwtAuthGuard очікує Bearer header.
    */
   @Get('stream')
   @Sse()
@@ -59,20 +63,22 @@ export class DashboardController {
     let orgId: string;
     try {
       const payload = this.jwtService.verify<JwtPayload>(token, {
-        secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
+        secret: this.configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
       });
+      if (!payload.orgId || !payload.sub) {
+        throw new UnauthorizedException('Невірний токен (відсутні claims)');
+      }
       orgId = payload.orgId;
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Невірний або минулий токен');
     }
 
-    // Емітувати snapshot кожні 30 сек
+    // Емітувати snapshot одразу при підключенні + кожні 30 сек.
     return interval(30_000).pipe(
+      startWith(0),
       switchMap(async () => {
         const data = await this.dashboardService.getSummary(orgId);
-        return {
-          data: JSON.stringify(data),
-        } as MessageEvent;
+        return { data: JSON.stringify(data) } as MessageEvent;
       }),
     );
   }

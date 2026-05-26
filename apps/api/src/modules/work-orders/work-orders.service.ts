@@ -196,7 +196,9 @@ export class WorkOrdersService {
     }
   }
 
-  async clone(orgId: string, id: string, userId: string): Promise<WorkOrderResponseDto> {
+  // _userId reserved for future audit logging of clone events; kept in signature
+  // so controller can pass user context without breaking when audit hook is added.
+  async clone(orgId: string, id: string, _userId: string): Promise<WorkOrderResponseDto> {
     // 1. Find original WO with lines and parts
     const original = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },

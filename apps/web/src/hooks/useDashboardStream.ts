@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { TOKEN_KEY } from '@/lib/auth';
 
 export interface DashboardSummary {
   activeWo: number;
@@ -10,8 +11,10 @@ export interface DashboardSummary {
   timestamp: string;
 }
 
-const TOKEN_KEY = 'sto_token';
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3000';
+// Канонічна env-змінна — узгоджена з api-client.ts / auth/context.tsx.
+// `NEXT_PUBLIC_API_BASE` не існує в проекті — використання призводило до
+// localhost у проді і ламаного SSE для real-time дашборду.
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 /**
  * Hook для SSE стріму дашборду з automatic reconnect.
@@ -22,11 +25,12 @@ export function useDashboardStream() {
   const [isLive, setIsLive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
   const connectSSE = useCallback(() => {
     if (!mountedRef.current) return;
+    if (typeof window === 'undefined') return;
 
     const token = sessionStorage.getItem(TOKEN_KEY);
     if (!token) {
@@ -35,7 +39,7 @@ export function useDashboardStream() {
     }
 
     try {
-      const url = `${API_BASE}/api/dashboard/stream?token=${encodeURIComponent(token)}`;
+      const url = `${API_URL}/api/dashboard/stream?token=${encodeURIComponent(token)}`;
       const es = new EventSource(url);
       esRef.current = es;
 
@@ -51,8 +55,9 @@ export function useDashboardStream() {
         try {
           const parsed = JSON.parse(event.data) as DashboardSummary;
           setData(parsed);
-        } catch (e) {
-          console.warn('[DashboardStream] JSON parse error:', e);
+        } catch {
+          // Silently ignore malformed SSE payloads — heartbeat / partial frames
+          // may surface here under poor connectivity.
         }
       };
 
@@ -84,9 +89,11 @@ export function useDashboardStream() {
       mountedRef.current = false;
       if (esRef.current) {
         esRef.current.close();
+        esRef.current = null;
       }
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
       }
     };
   }, [connectSSE]);

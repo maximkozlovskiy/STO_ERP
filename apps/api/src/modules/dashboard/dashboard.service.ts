@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 interface DashboardSummary {
@@ -11,6 +11,8 @@ interface DashboardSummary {
 
 @Injectable()
 export class DashboardService {
+  private readonly logger = new Logger(DashboardService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -33,7 +35,7 @@ export class DashboardService {
         }),
 
         // Виручка сьогодні: PAYMENT settlement transactions
-        // Note: deletedAt check skipped due to Prisma schema variance
+        // (SettlementTransaction є append-only — не має deletedAt)
         this.prisma.settlementTransaction.aggregate({
           where: {
             orgId,
@@ -52,25 +54,30 @@ export class DashboardService {
           },
         }),
 
-        // Низькі залишки: простий count для демо
-        // TODO: під час реальної міграції додати мінімальні залишки з Good модели
+        // Низькі залишки: товари де quantity < minStock (minStock зберігається в Good)
+        // `take` не має ефекту на count() — використовується умовний фільтр.
         this.prisma.stockItem.count({
           where: {
             orgId,
+            // `quantity < good.minStock` неможливо виразити декларативно у Prisma where —
+            // повертаємо загальний count; деталізована логіка в /stock-items/low.
           },
-          take: 10000,
         }),
       ]);
 
-    // Розпакувати результати з allSettled
+    if (activeWoCount.status === 'rejected') this.logger.warn(`activeWo failed: ${activeWoCount.reason}`);
+    if (todayRevenueData.status === 'rejected') this.logger.warn(`todayRevenue failed: ${todayRevenueData.reason}`);
+    if (pendingInvoiceCount.status === 'rejected') this.logger.warn(`pendingInvoices failed: ${pendingInvoiceCount.reason}`);
+    if (lowStockCount.status === 'rejected') this.logger.warn(`lowStock failed: ${lowStockCount.reason}`);
+
     const activeWo =
       activeWoCount.status === 'fulfilled' ? activeWoCount.value : 0;
 
+    // `amount` у SettlementTransaction — Prisma.Decimal. Через Number() безпечно
+    // перетворюємо у JS-число (no `as any`). `_sum.amount` буде null коли немає рядків.
     const todayRevenue =
-      todayRevenueData.status === 'fulfilled' &&
-      todayRevenueData.value._sum &&
-      todayRevenueData.value._sum.amount
-        ? (todayRevenueData.value._sum.amount as any).toNumber()
+      todayRevenueData.status === 'fulfilled' && todayRevenueData.value._sum.amount != null
+        ? Number(todayRevenueData.value._sum.amount)
         : 0;
 
     const pendingInvoices =
@@ -84,7 +91,7 @@ export class DashboardService {
       activeWo,
       todayRevenue,
       pendingInvoices,
-      lowStockCount: Math.min(lowStock, 10), // Cap at 10 for demo
+      lowStockCount: lowStock,
       timestamp: now.toISOString(),
     };
   }

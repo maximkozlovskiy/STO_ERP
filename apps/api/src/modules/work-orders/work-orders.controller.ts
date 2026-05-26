@@ -78,9 +78,12 @@ export class WorkOrdersController {
     @OrgContext() orgId: string,
     @Param('id') id: string,
     @Body() dto: TransitionWorkOrderDto,
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.transition(orgId, id, dto.status, user?.sub);
+    // @CurrentUser повертає { id, orgId, role } (див. AuthenticatedUser у jwt.strategy.ts).
+    // Раніше тут була анотація { sub } — `user.sub` був undefined у рантаймі,
+    // через що audit-лог про FSM-перехід тихо не писався.
+    return this.service.transition(orgId, id, dto.status, user.id);
   }
 
   @Post(':id/clone')
@@ -90,9 +93,9 @@ export class WorkOrdersController {
   clone(
     @OrgContext() orgId: string,
     @Param('id') id: string,
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.clone(orgId, id, user?.sub);
+    return this.service.clone(orgId, id, user.id);
   }
 
   // ─── Lines ───────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -16,7 +17,7 @@ export class AuditService {
   ): Promise<void> {
     const diff = this.buildDiff(oldData, newData);
     await this.prisma.auditEvent.create({
-      data: { orgId, entityType, entityId, action, userId, diff: diff as unknown as any },
+      data: { orgId, entityType, entityId, action, userId, diff: diff as Prisma.InputJsonValue },
     });
   }
 

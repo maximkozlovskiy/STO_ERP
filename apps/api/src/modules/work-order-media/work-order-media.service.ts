@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import * as crypto from 'crypto';
+import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FilesService } from '../files/files.service';
 import { WorkOrderMediaResponseDto, WorkOrderMediaListDto } from './work-order-media.dto';
@@ -12,6 +13,11 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
 ]);
 
+// Whitelist дозволених розширень — захист від файлів які mime спуфить
+// (HTML/JS не може бути виконаний через MinIO, але блокуємо явно для defense in depth).
+const ALLOWED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'heic', 'heif', 'pdf']);
+
+const MAX_FILENAME_LENGTH = 255;
 const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 interface UploadFileInput {
@@ -19,6 +25,18 @@ interface UploadFileInput {
   filename: string;
   mimetype: string;
   size: number;
+}
+
+/**
+ * Нормалізує filename, прибираючи шляхові компоненти (../, абсолютні шляхи)
+ * і обмежуючи довжину. Захист від path traversal та DB overflow.
+ */
+function sanitizeFilename(raw: string): string {
+  // `path.basename` працює тільки з POSIX-стилем, тож додатково чистимо Windows backslash.
+  const base = path.basename(raw.replace(/\\/g, '/'));
+  const trimmed = base.replace(/[\x00-\x1f]/g, '').trim();
+  if (!trimmed) return 'upload';
+  return trimmed.slice(0, MAX_FILENAME_LENGTH);
 }
 
 @Injectable()
@@ -41,13 +59,18 @@ export class WorkOrderMediaService {
       throw new BadRequestException('Файл завеликий (максимум 10 МБ)');
     }
 
+    const filename = sanitizeFilename(file.filename);
+    const ext = (filename.split('.').pop() ?? '').toLowerCase();
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+      throw new BadRequestException('Недозволене розширення файлу');
+    }
+
     const wo = await this.prisma.workOrder.findFirst({
       where: { id: workOrderId, orgId, deletedAt: null },
       select: { id: true },
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
 
-    const ext = (file.filename.split('.').pop() ?? 'bin').toLowerCase();
     const objectName = `org/${orgId}/work-orders/${workOrderId}/${crypto.randomUUID()}.${ext}`;
 
     await this.files.uploadRaw(file.buffer, objectName, file.mimetype);
@@ -57,7 +80,7 @@ export class WorkOrderMediaService {
         orgId,
         workOrderId,
         fileKey: objectName,
-        filename: file.filename,
+        filename,
         mimeType: file.mimetype,
         sizeBytes: file.size,
         uploadedBy,
