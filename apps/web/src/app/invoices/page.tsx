@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, Receipt, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -83,6 +83,13 @@ export default function InvoicesPage() {
 
   const limit = 20;
 
+  const mountedRef = useRef(true);
+  const selectTokenRef = useRef(0);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -91,28 +98,43 @@ export default function InvoicesPage() {
       if (status) params.set('status', status);
       if (search) params.set('q', search);
       const data = await apiFetch<Paginated>(`/invoices?${params}`);
+      if (!mountedRef.current) return;
       setInvoices(data.items);
       setTotal(data.total);
     } catch (e: unknown) {
+      if (!mountedRef.current) return;
       setError(e instanceof Error ? e.message : 'Помилка завантаження');
-    } finally { setLoading(false); }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
   }, [page, status, search]);
 
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (showCreate) {
-      apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200').then(d => setCounterparties(d.items))
-        .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження контрагентів'));
-    }
+    if (!showCreate) return;
+    let cancelled = false;
+    apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200')
+      .then(d => { if (!cancelled && mountedRef.current) setCounterparties(d.items); })
+      .catch((e: unknown) => {
+        if (!cancelled && mountedRef.current) {
+          setError(e instanceof Error ? e.message : 'Помилка завантаження контрагентів');
+        }
+      });
+    return () => { cancelled = true; };
   }, [showCreate]);
 
   useEffect(() => {
-    if (showPayment) {
-      apiFetch<{ code: string; name: string; isActive: boolean }[]>('/payment-methods')
-        .then(d => setPayMethods(d.filter(m => m.isActive)))
-        .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження способів оплати'));
-    }
+    if (!showPayment) return;
+    let cancelled = false;
+    apiFetch<{ code: string; name: string; isActive: boolean }[]>('/payment-methods')
+      .then(d => { if (!cancelled && mountedRef.current) setPayMethods(d.filter(m => m.isActive)); })
+      .catch((e: unknown) => {
+        if (!cancelled && mountedRef.current) {
+          setError(e instanceof Error ? e.message : 'Помилка завантаження способів оплати');
+        }
+      });
+    return () => { cancelled = true; };
   }, [showPayment]);
 
   const handleCreate = async () => {
@@ -128,12 +150,15 @@ export default function InvoicesPage() {
           dueDate: form.dueDate || undefined,
         }),
       });
+      if (!mountedRef.current) return;
       setShowCreate(false);
       setForm({ counterpartyId: '', amount: '', dueDate: '' });
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
-    } finally { setSaving(false); }
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      if (mountedRef.current) setSaving(false);
+    }
   };
 
   const handleTransition = async (inv: Invoice, newStatus: string) => {
@@ -144,13 +169,17 @@ export default function InvoicesPage() {
       await apiFetch<void>(`/invoices/${inv.id}/transition`, {
         method: 'POST', body: JSON.stringify({ status: newStatus }),
       });
+      if (!mountedRef.current) return;
       // Sync selectedInv if it matches
       if (selectedInv?.id === inv.id) {
         setSelectedInv(prev => prev ? { ...prev, status: newStatus } : null);
       }
       load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка зміни статусу'); }
-    finally { setSavingId(null); }
+    } catch (e: unknown) {
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
+    } finally {
+      if (mountedRef.current) setSavingId(null);
+    }
   };
 
   const handlePay = async () => {
@@ -169,23 +198,31 @@ export default function InvoicesPage() {
           notes: payForm.notes || undefined,
         }),
       });
+      if (!mountedRef.current) return;
       setShowPayment(null);
       setPayForm({ method: 'cash', amount: '', notes: '' });
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка оплати');
-    } finally { setSaving(false); }
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка оплати');
+    } finally {
+      if (mountedRef.current) setSaving(false);
+    }
   };
 
   const selectInvoice = useCallback(async (inv: Invoice) => {
+    const token = ++selectTokenRef.current;
     setSelectedInv(inv);
     setDetailLoading(true);
     try {
       const detail = await apiFetch<Invoice>(`/invoices/${inv.id}`);
+      // Discard stale response if another row was clicked or unmounted
+      if (!mountedRef.current || token !== selectTokenRef.current) return;
       setSelectedInv(detail);
     } catch {
       // keep basic inv data if detail fetch fails
-    } finally { setDetailLoading(false); }
+    } finally {
+      if (mountedRef.current && token === selectTokenRef.current) setDetailLoading(false);
+    }
   }, []);
 
   const statuses = ['', 'DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'];
