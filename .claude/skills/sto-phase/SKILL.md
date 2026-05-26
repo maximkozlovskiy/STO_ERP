@@ -184,6 +184,79 @@ useEffect(() => {
 
 ---
 
+## Крок S — Синхронізація фронт ↔ бек (запускати окремо або після Кроку 2)
+
+> Виклик: `/sto-phase sync` або якщо юзер каже "синхронізуй фронт з беком".
+
+### Алгоритм
+
+```
+1. Скласти матрицю: backend modules ↔ frontend pages/tabs
+2. Перевірити Direction 1: бек→фронт (є API — немає UI)
+3. Перевірити Direction 2: фронт→бек (фронт кличе неіснуючий/неправильний endpoint)
+4. Перевірити Direction 3: контракт типів (interface vs toResponseDto())
+5. Виправити всі знайдені розбіжності
+6. pnpm tsc --noEmit — 0 errors
+7. git commit -m "fix(sync): ..."
+```
+
+### Direction 1 — Бек → Фронт (відсутній UI)
+
+```bash
+# Список модулів без відповідної сторінки/вкладки
+ls apps/api/src/modules/
+ls apps/web/src/app/
+```
+
+Для кожного модуля без UI — визначити куди додати:
+- Нова сторінка → якщо це основна сутність (список + деталі)
+- Нова вкладка → якщо це підлегла сутність (вкладка у деталях батьківської сторінки)
+- Вкладка в налаштуваннях → якщо це довідник (payment-methods, tax-rates, notification-templates, brands)
+
+### Direction 2 — Фронт → Бек (неправильні endpoint URLs)
+
+```bash
+# Знайти всі apiFetch виклики
+grep -rn "apiFetch(" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "lib/api-client"
+
+# Звірити кожен URL з реальними @Controller + @Get/@Post маршрутами
+grep -rn "@Controller\|@Get\|@Post\|@Patch\|@Delete\|@Put" apps/api/src/modules/ --include="*.controller.ts"
+```
+
+**Критичні патерни:**
+- `@Controller('counterparties/:counterpartyId')` → URL = `/counterparties/${id}/transactions`, **НЕ** `/settlements?counterpartyId=...`
+- Nested controllers завжди мають складний URL: `/parent/:parentId/child`
+- `{ items, total }` на всіх list endpoints — фронт ніколи не очікує bare array
+
+### Direction 3 — Контракт типів
+
+```bash
+# Знайти всі interface у page.tsx / PageClient.tsx
+grep -rn "^interface " apps/web/src/app/ --include="*.tsx"
+
+# Знайти відповідні toResponseDto() у сервісах
+grep -rn "toResponseDto\|toDto\|mapToDto" apps/api/src/modules/ --include="*.service.ts" --include="*.ts" | grep -v "spec"
+```
+
+**Часті розбіжності:**
+- `user.sub` у backend — завжди `user.id` (AuthenticatedUser interface)
+- `description` у фронтенді → може бути `notes` у бекенді (перевіряй Prisma schema)
+- Сума як `number` у фронтенді → `Decimal` у Prisma → `Number(t.amount)` при серіалізації
+- `PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE` = зменшення балансу (зелений), `CHARGE` = борг (червоний)
+
+### Чеклист синхронізації
+
+- [ ] Кожен backend модуль має відповідний UI (сторінка / вкладка / секція)
+- [ ] Кожен `apiFetch(url)` у фронтенді відповідає реальному endpoint у контролері
+- [ ] Nested controller URLs використовуються правильно (не query params замість path params)
+- [ ] Всі `interface` у page.tsx відповідають `toResponseDto()` полям (назви + типи)
+- [ ] `user.sub` → `user.id` у всіх контролерах
+- [ ] List endpoints: `{ items, total }` (не bare array) — фронт використовує `r.items`
+- [ ] Знаки транзакцій: PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE = '-' (виплата), CHARGE = '+' (борг)
+- [ ] `pnpm tsc --noEmit --incremental false` — 0 errors після всіх виправлень
+
+---
+
 ## Крок 3 — Позначити [x] + git commit
 
 Після успішної реалізації кожної задачі:
