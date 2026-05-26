@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import {
   DndContext, useDraggable, useDroppable,
@@ -267,11 +268,11 @@ export default function CalendarPage() {
           Попередній
         </Button>
         <div className="flex items-center gap-2">
-          <Input
-            type="date"
+          <DatePickerInput
             value={date}
-            onChange={e => setDate(e.target.value)}
-            className="w-auto"
+            onChange={setDate}
+            placeholder="Дата"
+            className="w-48"
           />
           <span className="text-sm text-muted-foreground capitalize">{formatDate(date)}</span>
         </div>

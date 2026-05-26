@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { Modal } from '@/components/ui/modal';
 
@@ -422,11 +423,10 @@ export default function VehicleCardPage() {
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Input
+              <DatePickerInput
                 label="Дата останнього ТО"
-                type="date"
                 value={scheduleForm.lastMaintenanceDate}
-                onChange={e => setScheduleForm(f => ({ ...f, lastMaintenanceDate: e.target.value }))}
+                onChange={v => setScheduleForm(f => ({ ...f, lastMaintenanceDate: v }))}
               />
               <Input
                 label="Пробіг при останньому ТО"
@@ -546,8 +546,8 @@ export default function VehicleCardPage() {
             <Input label="Код двигуна" value={editForm.engineCode} onChange={e => setEditForm(f => ({ ...f, engineCode: e.target.value }))} placeholder="2AZ-FE" className="font-mono" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Страховка до" type="date" value={editForm.insuranceExpiry} onChange={e => setEditForm(f => ({ ...f, insuranceExpiry: e.target.value }))} />
-            <Input label="Техогляд до" type="date" value={editForm.inspectionExpiry} onChange={e => setEditForm(f => ({ ...f, inspectionExpiry: e.target.value }))} />
+            <DatePickerInput label="Страховка до" value={editForm.insuranceExpiry} onChange={v => setEditForm(f => ({ ...f, insuranceExpiry: v }))} />
+            <DatePickerInput label="Техогляд до" value={editForm.inspectionExpiry} onChange={v => setEditForm(f => ({ ...f, inspectionExpiry: v }))} />
           </div>
           <Input label="Нотатки" value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} placeholder="Додаткова інформація..." />
         </div>

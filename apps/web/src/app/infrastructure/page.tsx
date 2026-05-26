@@ -9,6 +9,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -382,12 +383,12 @@ export default function InfrastructurePage() {
           <Input label="Вантажність, кг" type="number" value={form.maxWeightKg ?? ''} onChange={e => setForm(f => ({ ...f, maxWeightKg: e.target.value }))} placeholder="3500" />
           <Input label="Серійний номер" value={form.serialNumber ?? ''} onChange={e => setForm(f => ({ ...f, serialNumber: e.target.value }))} placeholder="SN-12345" />
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Дата купівлі" type="date" value={form.purchaseDate ?? ''} onChange={e => setForm(f => ({ ...f, purchaseDate: e.target.value }))} />
-            <Input label="Гарантія до" type="date" value={form.warrantyUntil ?? ''} onChange={e => setForm(f => ({ ...f, warrantyUntil: e.target.value }))} />
+            <DatePickerInput label="Дата купівлі" value={form.purchaseDate ?? ''} onChange={v => setForm(f => ({ ...f, purchaseDate: v }))} />
+            <DatePickerInput label="Гарантія до" value={form.warrantyUntil ?? ''} onChange={v => setForm(f => ({ ...f, warrantyUntil: v }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Інтервал ТО (днів)" type="number" value={form.maintenanceIntervalDays ?? ''} onChange={e => setForm(f => ({ ...f, maintenanceIntervalDays: e.target.value }))} placeholder="180" />
-            <Input label="Дата останнього ТО" type="date" value={form.lastMaintenanceDate ?? ''} onChange={e => setForm(f => ({ ...f, lastMaintenanceDate: e.target.value }))} />
+            <DatePickerInput label="Дата останнього ТО" value={form.lastMaintenanceDate ?? ''} onChange={v => setForm(f => ({ ...f, lastMaintenanceDate: v }))} />
           </div>
         </div>
       </Modal>

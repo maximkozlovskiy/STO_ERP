@@ -382,3 +382,46 @@ button, a, input, select, textarea {
     --color-info-subtle:        hsl(199 40% 13%);
   }
 }
+
+/* ─── Print CSS ─────────────────────────────────────────────────────────── */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-full {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  /* Sidebar і topbar */
+  [data-sidebar],
+  nav,
+  header.topbar,
+  .topbar {
+    display: none !important;
+  }
+  /* Розгорнути content на всю ширину */
+  main,
+  .page-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 1rem !important;
+  }
+  /* Кнопки дій — не друкувати */
+  button:not(.print-show),
+  [role="button"]:not(.print-show) {
+    display: none !important;
+  }
+  /* Таблиці — розгорнути */
+  table {
+    width: 100% !important;
+  }
+  /* Уникнути розриву сторінки всередині рядка */
+  tr {
+    page-break-inside: avoid;
+  }
+  /* Заголовки секцій — не розривати */
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+}

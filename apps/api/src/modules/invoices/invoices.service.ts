@@ -147,6 +147,57 @@ export class InvoicesService {
     return this.findOne(orgId, id);
   }
 
+  async clone(orgId: string, id: string): Promise<InvoiceResponseDto> {
+    // 1. Find original invoice with lines
+    const original = await this.prisma.invoice.findFirst({
+      where: { id, orgId, deletedAt: null },
+      include: {
+        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+        workOrder: { select: { number: true } },
+        lines: { orderBy: { sortOrder: 'asc' }, take: 500 },
+      },
+    });
+    if (!original) throw new NotFoundException('Рахунок не знайдено');
+
+    // 2. Get new number
+    const number = await this.docNumbers.next(orgId, 'INVOICE');
+
+    // 3. Create cloned invoice as DRAFT
+    const cloned = await this.prisma.invoice.create({
+      data: {
+        orgId,
+        counterpartyId: original.counterpartyId,
+        workOrderId: original.workOrderId,
+        number,
+        amount: original.amount,
+        dueDate: original.dueDate,
+        notes: original.notes,
+        status: InvoiceStatus.DRAFT,
+        lines: {
+          create: original.lines.map(l => ({
+            orgId,
+            goodId: l.goodId,
+            workId: l.workId,
+            description: l.description,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            vatRate: l.vatRate,
+            priceWithoutVat: l.priceWithoutVat,
+            vatAmount: l.vatAmount,
+            priceWithVat: l.priceWithVat,
+            sortOrder: l.sortOrder,
+          })),
+        },
+      },
+      include: {
+        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+        workOrder: { select: { number: true } },
+      },
+    });
+
+    return this.toDto(cloned);
+  }
+
   async addLine(orgId: string, invoiceId: string, dto: CreateInvoiceLineDto): Promise<InvoiceLineResponseDto> {
     const inv = await this.prisma.invoice.findFirst({ where: { id: invoiceId, orgId, deletedAt: null } });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');

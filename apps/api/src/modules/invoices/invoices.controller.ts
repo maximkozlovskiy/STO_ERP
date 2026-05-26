@@ -85,6 +85,17 @@ export class InvoicesController {
     return this.service.transition(orgId, id, dto.status as InvTransitionStatus);
   }
 
+  @Post(':id/clone')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Дублювати рахунок' })
+  clone(
+    @OrgContext() orgId: string,
+    @Param('id') id: string,
+  ) {
+    return this.service.clone(orgId, id);
+  }
+
   @Get(':id/pdf')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Завантажити рахунок у PDF' })

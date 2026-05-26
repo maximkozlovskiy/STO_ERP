@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, Receipt, Search } from 'lucide-react';
 import { useRequireAuth, TOKEN_KEY } from '@/lib/auth';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -232,20 +233,14 @@ export default function InvoicesPage() {
     }
   }, []);
 
+  const [cloning, setCloning] = useState(false);
+
   const downloadPdf = async (inv: Invoice) => {
-    // The `/invoices/:id/pdf` endpoint is JWT-guarded. A bare `<a href>` cannot attach the
-    // Authorization header, so we must fetch with a Bearer token and trigger the download via
-    // a temporary Blob URL (matches the pattern in work-orders/[id]/PageClient.tsx).
+    // Bug #77: use apiBlobFetch which does silent refresh on 401 — direct fetch
+    // breaks when access token expired (~15min) requiring full page reload.
     setError('');
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-      const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
-      const res = await fetch(`${apiBase}/api/invoices/${inv.id}/pdf`, {
-        credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`Помилка завантаження PDF (${res.status})`);
-      const blob = await res.blob();
+      const blob = await apiBlobFetch(`/invoices/${inv.id}/pdf`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -253,10 +248,27 @@ export default function InvoicesPage() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      // Defer revoke so Chromium has time to start reading the blob before it disappears.
+      // Defer revoke — Chromium can drop the download if revoke fires before the browser starts reading.
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка завантаження PDF');
+    }
+  };
+
+  const handleClone = async (inv: Invoice) => {
+    setCloning(true);
+    setError('');
+    try {
+      const cloned = await apiFetch<{ id: string }>(`/invoices/${inv.id}/clone`, { method: 'POST' });
+      // Reload data to show cloned invoice
+      load();
+      // Select and show the cloned invoice - fetch it first
+      const clonedInvoice = await apiFetch<Invoice>(`/invoices/${cloned.id}`);
+      selectInvoice(clonedInvoice);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка дублювання');
+    } finally {
+      setCloning(false);
     }
   };
 
@@ -525,6 +537,24 @@ export default function InvoicesPage() {
                   >
                     Завантажити PDF
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => window.print()}
+                  >
+                    Друк
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => void handleClone(selectedInv)}
+                    loading={cloning}
+                    disabled={cloning}
+                  >
+                    Дублювати
+                  </Button>
                 </div>
               </div>
             </div>
@@ -581,11 +611,10 @@ export default function InvoicesPage() {
             step="0.01"
             placeholder="0.00"
           />
-          <Input
+          <DatePickerInput
             label="Термін оплати"
-            type="date"
             value={form.dueDate}
-            onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+            onChange={v => setForm(f => ({ ...f, dueDate: v }))}
           />
         </div>
       </Modal>

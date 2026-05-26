@@ -7,6 +7,7 @@ import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
@@ -289,19 +290,17 @@ export default function SettlementsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <Input
+            <DatePickerInput
               label="Початок періоду"
               required
-              type="date"
               value={actForm.periodFrom}
-              onChange={e => setActForm(f => ({ ...f, periodFrom: e.target.value }))}
+              onChange={v => setActForm(f => ({ ...f, periodFrom: v }))}
             />
-            <Input
+            <DatePickerInput
               label="Кінець періоду"
               required
-              type="date"
               value={actForm.periodTo}
-              onChange={e => setActForm(f => ({ ...f, periodTo: e.target.value }))}
+              onChange={v => setActForm(f => ({ ...f, periodTo: v }))}
             />
             <Button
               onClick={handleCreateAct}

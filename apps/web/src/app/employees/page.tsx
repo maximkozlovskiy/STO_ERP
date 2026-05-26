@@ -9,6 +9,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -599,11 +600,10 @@ export default function EmployeesPage() {
             >
               {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
-            <Input
+            <DatePickerInput
               label="Дата прийому"
-              type="date"
               value={form.dateOfHire}
-              onChange={e => setForm(f => ({ ...f, dateOfHire: e.target.value }))}
+              onChange={v => setForm(f => ({ ...f, dateOfHire: v }))}
             />
           </div>
           <Select
@@ -710,8 +710,8 @@ export default function EmployeesPage() {
             <Input label="Email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} placeholder="ivan@example.com" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Дата прийому" type="date" value={editForm.dateOfHire} onChange={e => setEditForm(f => ({ ...f, dateOfHire: e.target.value }))} />
-            <Input label="Дата звільнення" type="date" value={editForm.dateOfFire} onChange={e => setEditForm(f => ({ ...f, dateOfFire: e.target.value }))} />
+            <DatePickerInput label="Дата прийому" value={editForm.dateOfHire} onChange={v => setEditForm(f => ({ ...f, dateOfHire: v }))} />
+            <DatePickerInput label="Дата звільнення" value={editForm.dateOfFire} onChange={v => setEditForm(f => ({ ...f, dateOfFire: v }))} />
           </div>
           <Select label="Схема нарахування" required value={editForm.rateType} onChange={e => setEditForm(f => ({ ...f, rateType: e.target.value }))}>
             {Object.entries(RATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

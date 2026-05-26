@@ -10,6 +10,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -905,11 +906,10 @@ export default function WorkOrdersPage() {
             />
           </div>
 
-          <Input
+          <DatePickerInput
             label="Дедлайн"
-            type="date"
             value={form.dueDate}
-            onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+            onChange={v => setForm(f => ({ ...f, dueDate: v }))}
           />
         </div>
       </Modal>

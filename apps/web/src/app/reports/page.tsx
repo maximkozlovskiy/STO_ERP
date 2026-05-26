@@ -5,6 +5,7 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -122,14 +123,20 @@ export default function ReportsPage() {
       <div className="flex flex-wrap gap-3 mb-6 items-end">
         {needsDates && (
           <>
-            <div>
-              <label className="block text-[12px] text-muted-foreground mb-1">З</label>
-              <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40" />
-            </div>
-            <div>
-              <label className="block text-[12px] text-muted-foreground mb-1">По</label>
-              <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40" />
-            </div>
+            <DatePickerInput
+              label="З"
+              value={from}
+              onChange={setFrom}
+              placeholder="ДД.ММ.РРРР"
+              className="w-40"
+            />
+            <DatePickerInput
+              label="По"
+              value={to}
+              onChange={setTo}
+              placeholder="ДД.ММ.РРРР"
+              className="w-40"
+            />
           </>
         )}
         <Button onClick={load} loading={loading}>

@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 
 interface VehicleResponse {
@@ -273,17 +274,15 @@ export default function NewVehiclePageClient() {
       <div className="bg-surface rounded-xl border border-border p-5 space-y-4">
         <h2 className="text-sm font-semibold text-foreground">Документи</h2>
         <div className="grid grid-cols-2 gap-3">
-          <Input
+          <DatePickerInput
             label="Страховка до"
-            type="date"
             value={form.insuranceExpiry}
-            onChange={e => set('insuranceExpiry', e.target.value)}
+            onChange={v => set('insuranceExpiry', v)}
           />
-          <Input
+          <DatePickerInput
             label="Техогляд до"
-            type="date"
             value={form.inspectionExpiry}
-            onChange={e => set('inspectionExpiry', e.target.value)}
+            onChange={v => set('inspectionExpiry', v)}
           />
         </div>
       </div>
