@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-<pending> fix(review): warehouse auto-select — restore dropped trgm GIN indexes, race-safe vehicle loader, preserve manual picks
+83921d2 fix(review): warehouse auto-select — restore dropped trgm GIN indexes + race-safe pickers
 7a08623 feat: auto-select default values for single-entry reference data
 ```
 
