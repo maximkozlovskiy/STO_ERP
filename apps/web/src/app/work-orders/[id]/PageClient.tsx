@@ -331,7 +331,11 @@ export default function WorkOrderCardPage() {
         }),
       });
       setPartModal(false);
-      setPartForm({ goodId: '', warehouseId: '', quantity: '1', price: '' });
+      // Preserve `warehouseId` so the auto-selected main warehouse stays put
+      // across consecutive part additions. The auto-select useEffect runs
+      // only on mount; without this, MECHANIC adding 3-5 parts would have
+      // to re-pick the same warehouse every time — defeating the feature.
+      setPartForm(f => ({ goodId: '', warehouseId: f.warehouseId, quantity: '1', price: '' }));
       partDirty.resetDirty();
       if (features.toastEnabled) toast.success('Запчастину додано');
       load();
