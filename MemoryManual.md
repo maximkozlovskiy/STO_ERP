@@ -9,8 +9,7 @@
 ## Останній commit
 
 ```
-48e3dcd docs(tester): record bugs #58-#60 from /sto-tester session on invoices page
-e867ba4 fix(tester): Bugs #58-#60 — invoices DetailPanel state-race + VAT breakdown UX
+16b632c docs(skills): add AUTO/FULL modes to sto-tester + change-type matrix to sto-review
 ```
 
 Дата: 2026-05-26

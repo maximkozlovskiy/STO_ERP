@@ -1012,6 +1012,147 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ---
 
+---
+
+## Фаза 21 — Бекленд: Покращення досвіду та нові функції
+
+> Залежності: Фази 0–19.
+> Мета: функціонал що підвищує цінність системи для СТО — без зміни core.
+> Пріоритет: B1–B5 (висока цінність, низька складність) → B6–B12 (середня складність).
+
+### B1 — Вихідні webhook-нотифікації
+
+- [ ] `[sto-database]` Модель `WebhookEndpoint` (`orgId`, `url`, `secret`, `events String[]`, `isActive`) + `WebhookDelivery` (`endpointId`, `event`, `payload`, `status`, `attempts`, `responseCode`)
+- [ ] `[sto-backend]` `WebhookModule`: CRUD `/webhooks` (OWNER/ADMIN) + `OutboundWebhookProcessor` (BullMQ, attempts=5, exponential backoff) — підписується на `WO_STATUS_CHANGED`, `PAYMENT_RECEIVED`, `LOW_STOCK_ALERT`
+- [ ] `[sto-web]` UI у `/settings` → вкладка "Інтеграції": список вебхуків + форма (URL, secret, події) + лог доставки
+
+### B2 — Технічний огляд (Inspection Checklist)
+
+- [ ] `[sto-database]` Модель `InspectionReport` (`workOrderId`, `points: Json` — масив `{name, value, unit, status: OK|WARN|CRITICAL}`, `mileage`, `createdBy`) + поле `WorkOrder.inspectionReportId`
+- [ ] `[sto-backend]` `POST /work-orders/:id/inspection` + `GET /work-orders/:id/inspection`. При `CRITICAL` точках — авто-запис рекомендованих робіт у WO lines (з `Work` catalog).
+- [ ] `[sto-web]` Форма огляду у картці наряду: динамічний список точок (гальма/шини/масло/гальмівна рідина), slider або input + статус, кнопка "Створити роботи з критичних пунктів"
+
+### B3 — Планувальник записів (Booking Engine)
+
+- [ ] `[sto-backend]` `GET /booking/availability?date=&branchId=&serviceIds=` → вільні слоти (враховує зайнятість підйомників + час на роботи з Work.normoHours). Публічний endpoint `@Public()`.
+- [ ] `[sto-backend]` `POST /booking/request` (публічний) → створює `BookingRequest` (PENDING) → SMS підтвердження через NotificationService → авто-CalendarSlot при підтвердженні персоналом
+- [ ] `[sto-web]` Сторінка `/booking` (без auth) — вибір послуг → вибір дати/слоту → форма контакту → підтвердження. Embed-кнопка для сайту СТО.
+
+### B4 — Гарантійний облік
+
+- [ ] `[sto-database]` Модель `Warranty` (`orgId`, `workOrderId`, `workOrderLineId?`, `workOrderPartId?`, `expiresAt`, `description`, `claimedAt?`, `claimWoId?`)
+- [ ] `[sto-backend]` `POST /work-orders/:id/warranties` (авто після COMPLETED за `OrganisationSettings.warrantyDays`) + `GET /warranties/expiring?days=30` + `POST /warranties/:id/claim` (прив'язує новий WO)
+- [ ] `[sto-web]` Вкладка "Гарантії" у картці контрагента + badge "Гарантія" у WO list для активних гарантій
+
+### B5 — Бонусна програма (Loyalty Points)
+
+- [ ] `[sto-database]` Модель `LoyaltyAccount` (`counterpartyId UNIQUE`, `balance Decimal`) + `LoyaltyTransaction` (`accountId`, `type: EARN|REDEEM`, `points`, `documentId`, `documentType`, append-only)
+- [ ] `[sto-backend]` `LoyaltyService.earn(orgId, counterpartyId, paymentAmount)` → нараховує `floor(amount / settings.loyaltyEarnPer) * settings.loyaltyEarnPoints` балів. `LoyaltyService.redeem(orgId, counterpartyId, points)` → зменшує баланс + CREDIT_NOTE settlement. Через BullMQ щоб не тримати основну tx.
+- [ ] `[sto-web]` Баланс балів у картці контрагента + форма списання при оплаті наряду
+
+### B6 — Full-text search
+
+- [ ] `[sto-database]` Міграція: `CREATE EXTENSION IF NOT EXISTS pg_trgm;` + GIN-індекси на `workOrders.number`, `counterparties.firstName/lastName/phone`, `goods.name/sku`
+- [ ] `[sto-backend]` `GET /search?q=&types=wo,counterparty,good&limit=10` → `$queryRaw` з `similarity()` або `plainto_tsquery`. Повертає `{ type, id, label, sub }[]`.
+- [ ] `[sto-web]` Command Palette (вже є) — підключити `/search` API для data search під nav-пошуком
+
+### B7 — PDF-export рахунків і нарядів
+
+- [ ] `[sto-backend]` `GET /invoices/:id/pdf` → генерує PDF через `pdfmake` (npm, без headless browser). Шаблон: реквізити org + counterparty + таблиця ліній + ПДВ підсумок + підпис-блок. Відповідь `application/pdf`.
+- [ ] `[sto-backend]` `GET /work-orders/:id/pdf` → аналогічно: наряд-замовлення з переліком робіт і запчастин, підпис клієнта.
+- [ ] `[sto-web]` Кнопка "PDF" у DetailPanel рахунку і картці наряду → `<a download>` blob
+
+### B8 — Ремаркетинг / Follow-up нагадування
+
+- [ ] `[sto-database]` `OrganisationSettings` — додати `followUpDays Int @default(90)` (після скільки днів без візиту нагадувати)
+- [ ] `[sto-backend]` `FollowUpProcessor` (BullMQ CRON щодня о 09:00) → знаходить авто де `MaintenanceSchedule.nextMaintenanceDate` ≤ today+14 або `lastWO.completedAt` < today-followUpDays → відправляє SMS через NotificationService (шаблон `FOLLOWUP_REMINDER`)
+- [ ] `[sto-web]` Вкладка "Нагадування" в `/settings` → toggle isActive + налаштування followUpDays
+
+### B9 — SSE Real-time дашборд
+
+- [ ] `[sto-backend]` `GET /dashboard/stream` (SSE, `text/event-stream`) → кожні 30с пушить `{ activeWo, todayRevenue, pendingInvoices, lowStockCount }`. `@Public()` НЕ — захищений JWT.
+- [ ] `[sto-web]` `useDashboardStream()` хук — `EventSource` з reconnect logic. Dashboard KPI-картки оновлюються live без polling. Indicator "live" (пульсуюча зелена крапка).
+
+### B10 — Branch ACL (права по філіях)
+
+- [ ] `[sto-database]` Таблиця `EmployeeBranch` (`employeeId`, `branchId`) — M:M. Поле `Employee.allBranches Boolean @default(false)` для OWNER/ADMIN.
+- [ ] `[sto-backend]` `BranchAccessGuard` — перевіряє що `orgId` у JWT + `branchId` з request param є в `employeeBranches[]` (або `allBranches=true`). Застосовується до WO, Invoice, CalendarSlot.
+- [ ] `[sto-web]` Форма співробітника → вкладка "Доступ до філій" (checkbox-список)
+
+### B11 — Audit Log (документальна стрічка)
+
+- [ ] `[sto-database]` Модель `AuditEvent` (`orgId`, `entityType`, `entityId`, `action: CREATE|UPDATE|DELETE`, `userId`, `diff: Json`, `createdAt`, append-only, без `updatedAt/deletedAt/syncVersion`)
+- [ ] `[sto-backend]` `AuditService.record(orgId, entity, action, userId, oldData, newData)` — Prisma `diff` через JSON-порівняння. Викликається у WO/Invoice/Employee service-методах. `GET /audit?entityType=WorkOrder&entityId=:id`
+- [ ] `[sto-web]` Стрічка змін у DetailPanel WO/Invoice: "Іван змінив статус DRAFT → IN_PROGRESS о 14:32"
+
+### B12 — Фотозвіт у Web (drag-and-drop upload)
+
+- [ ] `[sto-database]` Модель `WorkOrderMedia` (`workOrderId`, `fileKey`, `filename`, `mimeType`, `sizeBytes`, `uploadedBy`, `createdAt`)
+- [ ] `[sto-backend]` `POST /work-orders/:id/media` (multipart/form-data, max 10MB, JPEG/PNG/HEIC) → MinIO upload → `WorkOrderMedia` record. `GET /work-orders/:id/media` → signed URLs (1 год TTL). `DELETE /work-orders/:id/media/:mediaId`.
+- [ ] `[sto-web]` Секція "Фото" у картці наряду: drag-and-drop зона + grid галерея + lightbox. Не потребує Expo.
+
+---
+
+## Фаза 22 — Frontend UX: Покращення досвіду
+
+> Залежності: Фаза 21 для деяких пунктів (B6, B7, B9).
+> Мета: зменшити кількість кліків, покращити швидкість роботи операторів.
+
+### F1 — Global Data Search в Command Palette
+
+- [ ] `[sto-web]` Підключити `GET /search` (B6) у Command Palette — окрема секція "Дані" під навігацією. Результати: WO (номер + клієнт + статус), клієнт (ім'я + телефон), товар (SKU + залишок).
+
+### F2 — Drag-and-drop в Calendar
+
+- [ ] `[sto-web]` `dnd-kit` + `@dnd-kit/sortable`: перетягування CalendarSlot по timeline. `PATCH /calendar/slots/:id` при drop. Collision detection на бекенді (409 при конфлікті).
+
+### F3 — Optimistic UI для статусних переходів
+
+- [ ] `[sto-web]` `useOptimisticMutation` хук: відразу оновлює локальний стан → відправляє запит → rollback при помилці + toast. Застосувати до: FSM-переходів WO, оплати рахунку, підтвердження PO.
+
+### F4 — Клонування документів
+
+- [ ] `[sto-backend]` `POST /work-orders/:id/clone` → новий DRAFT з тими ж лініями і запчастинами (без payments/reservations). `POST /invoices/:id/clone` — аналогічно.
+- [ ] `[sto-web]` Кнопка "Дублювати" у DetailPanel WO і Invoice
+
+### F5 — Друк / Print View
+
+- [ ] `[sto-web]` `@media print` CSS у globals.css: приховує sidebar/topbar/кнопки, розгортає таблиці. `window.print()` кнопка у картці наряду і рахунку. Окремо — кнопка "PDF" (B7).
+
+### F6 — "Мої наряди" швидкий фільтр
+
+- [ ] `[sto-web]` Chip "Мої" у toolbar списку WO → додає `&employeeId=me` до запиту. Зберігається в URL. Для механіків — active за замовчуванням.
+
+### F7 — Live KPI дашборд
+
+- [ ] `[sto-web]` `useDashboardStream` (B9) підключити до Dashboard: КPI-картки оновлюються кожні 30с. Пульсуюча крапка "live" у куті картки. Fallback на polling `/dashboard/summary` якщо SSE недоступний.
+
+### F8 — Нотатки/Коментарі до об'єктів
+
+- [ ] `[sto-database]` Модель `Comment` (`orgId`, `entityType`, `entityId`, `body`, `authorId`, `createdAt`, без `deletedAt`)
+- [ ] `[sto-backend]` `GET/POST /comments?entityType=WorkOrder&entityId=:id`. Roles: всі авторизовані.
+- [ ] `[sto-web]` Стрічка коментарів під основним контентом у DetailPanel WO і картці контрагента. Textarea + submit.
+
+### F9 — Кастомний date-picker (uk-UA)
+
+- [ ] `[sto-web]` Компонент `DatePickerInput` на базі `react-day-picker` v9: popover, тиждень з понеділка, uk-UA місяці/дні, формат `DD.MM.YYYY`. Замінити всі `<input type="date">` в формах.
+
+### F10 — Шаблони нарядів
+
+- [ ] `[sto-database]` Модель `WorkOrderTemplate` (`orgId`, `name`, `lines: Json[]`, `parts: Json[]`)
+- [ ] `[sto-backend]` CRUD `/work-order-templates` + `POST /work-orders` з optional `templateId` → авто-заповнення ліній
+- [ ] `[sto-web]` Кнопка "Зберегти як шаблон" у картці WO + Select шаблону у формі створення
+
+### F11 — Offline-pending counter у SyncIndicator
+
+- [ ] `[sto-web]` `SyncIndicator` розширити: при `navigator.onLine === false` — рахувати незбережені зміни (через `BroadcastChannel` або `localStorage` queue). Показувати "3 зміни очікують" замість просто "offline".
+
+### F12 — Налаштування колонок таблиці
+
+- [ ] `[sto-web]` `useTableColumns` хук: `localStorage` persistence per page-key. Кнопка "Колонки" (налаштувати видимість через checkbox-dropdown). Застосувати до: WO list, inventory, employees.
+
+---
+
 ## Поточний стан
 
 | Фаза | Назва | Статус |
@@ -1036,6 +1177,8 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 | 17 | Збагачення об'єктів + Нові моделі | ✅ завершено (15/15) |
 | 19 | Партійний облік + Цінова історичність | ✅ завершено (5/5) |
 | 18 | Installer та Production | ⬜ не розпочато (7 задач) |
+| 21 | Бекенд: Покращення досвіду | ⬜ не розпочато (36 задач) |
+| 22 | Frontend UX: Покращення досвіду | ⬜ не розпочато (24 задачі) |
 
 > Оновлюється автоматично після кожного завершеного завдання.  
 > Статус таблиці: ⬜ не розпочато / 🔄 в процесі / ✅ завершено

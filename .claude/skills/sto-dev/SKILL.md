@@ -721,6 +721,162 @@ prisma.stockMovement.findMany({ where: { orgId }, take: limit, skip: offset })
 
 ---
 
+## SSE (Server-Sent Events) — Real-time дані без WebSocket
+
+```typescript
+// ❌ Polling (зайве навантаження)
+useEffect(() => {
+  const id = setInterval(() => apiFetch('/dashboard/summary').then(setData), 30_000);
+  return () => clearInterval(id);
+}, []);
+
+// ✅ SSE з reconnect + AbortController cleanup
+useEffect(() => {
+  const es = new EventSource('/api/dashboard/stream', {
+    // withCredentials потрібен якщо auth через cookie
+  });
+  es.onmessage = (e) => setData(JSON.parse(e.data));
+  es.onerror = () => { es.close(); }; // браузер авто-реконектиться за spec
+  return () => es.close();
+}, []);
+
+// Backend (NestJS + Fastify) — SSE endpoint:
+// ❌ НЕ використовувати @Sse() декоратор NestJS з Fastify — несумісно
+// ✅ Реалізувати через Fastify reply напряму:
+@Get('stream')
+async stream(@Req() req: FastifyRequest, @Res() reply: FastifyReply) {
+  reply.raw.setHeader('Content-Type', 'text/event-stream');
+  reply.raw.setHeader('Cache-Control', 'no-cache');
+  reply.raw.setHeader('Connection', 'keep-alive');
+  reply.raw.flushHeaders();
+
+  const send = (data: unknown) => reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  const interval = setInterval(async () => {
+    const kpi = await this.dashboardService.getKpi(orgId);
+    send(kpi);
+  }, 30_000);
+
+  req.raw.on('close', () => clearInterval(interval));
+}
+```
+
+**Правила SSE:**
+- Endpoint захищений JWT (НЕ `@Public()`) — token у query param або Authorization header
+- Завжди `req.raw.on('close', cleanup)` — прибирати interval/subscription при відключенні клієнта
+- Fallback у frontend: `if (!window.EventSource) { /* polling fallback */ }`
+- SSE — тільки server→client; для client→server — окремий REST endpoint
+
+---
+
+## Optimistic UI — миттєвий відгук без очікування API
+
+```typescript
+// ❌ Блокуючий UX — кнопка disabled, чекаємо відповіді
+const handleTransition = async (id: string, status: string) => {
+  setSaving(id);
+  await apiFetch(`/work-orders/${id}/transition`, { method: 'POST', body: JSON.stringify({ status }) });
+  await load();
+  setSaving(null);
+};
+
+// ✅ Optimistic update — відразу показуємо новий стан, rollback при помилці
+const handleTransition = async (id: string, newStatus: string) => {
+  const prev = items.find(i => i.id === id);
+  // 1. Одразу оновлюємо UI
+  setItems(items => items.map(i => i.id === id ? { ...i, status: newStatus } : i));
+  try {
+    await apiFetch(`/work-orders/${id}/transition`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
+    // 2. Refetch для консистентності (side-effects на сервері)
+    await load();
+  } catch (e) {
+    // 3. Rollback при помилці
+    setItems(items => items.map(i => i.id === id ? { ...i, status: prev!.status } : i));
+    if (features.toastEnabled) toast.error(`Помилка: ${e instanceof Error ? e.message : 'Невідома помилка'}`);
+  }
+};
+```
+
+**Правила Optimistic UI:**
+- Зберігати `prev` state ПЕРЕД мутацією для rollback
+- `setItems` з functional updater (не closure value) — щоб не затерти паралельні зміни
+- Завжди робити `load()` після успіху — side-effects на сервері можуть змінити інші поля
+- НЕ застосовувати до: фінансових операцій, FSM-переходів з критичними side-effects (WRITEOFF, CHARGE)
+
+---
+
+## Polymorphic entities — Comments, AuditLog, Media
+
+```typescript
+// Polymorphic relation через entityType + entityId (без FK):
+model Comment {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String   @db.Uuid
+  entityType  String   // 'WorkOrder' | 'Counterparty' | 'Vehicle'
+  entityId    String   @db.Uuid
+  body        String
+  authorId    String   @db.Uuid
+  createdAt   DateTime @default(now())
+  // НЕМАє deletedAt, updatedAt, syncVersion — append-only
+
+  @@index([orgId, entityType, entityId, createdAt])
+}
+
+// ❌ НЕ використовувати nullable FK для polymorphism:
+// workOrderId String? + counterpartyId String? — кожен новий тип = нова міграція
+
+// ✅ entityType + entityId + @@index
+// При запиті: WHERE "orgId" = $orgId AND "entityType" = 'WorkOrder' AND "entityId" = $id
+```
+
+**Правила polymorphic:**
+- Завжди composite index `[orgId, entityType, entityId, createdAt]` — без нього повний scan
+- `entityType` — константи в `@sto/shared/constants` (не magic strings у сервісах)
+- Tenant isolation: завжди фільтрувати по `orgId` (entityId може випадково збігтись між org-ами)
+- Append-only сутності (`Comment`, `AuditEvent`, `WorkOrderMedia`) — без `deletedAt`; hard limit по кількості (take: 100)
+
+---
+
+## Webhook pattern — вихідні нотифікації
+
+```typescript
+// Не блокувати основну транзакцію — webhook через BullMQ:
+// ❌
+await this.webhookService.deliver('WO_STATUS_CHANGED', payload); // може timeout 5s
+
+// ✅
+await this.webhookQueue.add('deliver', { event: 'WO_STATUS_CHANGED', orgId, payload }, {
+  attempts: 5,
+  backoff: { type: 'exponential', delay: 60_000 },
+});
+
+// Processor — HMAC-підпис для безпеки:
+const signature = crypto
+  .createHmac('sha256', endpoint.secret)
+  .update(JSON.stringify(payload))
+  .digest('hex');
+
+await fetch(endpoint.url, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-STO-Signature': `sha256=${signature}`,
+    'X-STO-Event': event,
+  },
+  body: JSON.stringify(payload),
+  signal: AbortSignal.timeout(10_000), // обов'язковий timeout
+});
+```
+
+**Правила Webhook:**
+- HMAC-підпис (`X-STO-Signature`) — клієнт верифікує через той самий secret
+- `AbortSignal.timeout(10_000)` — без цього зависаємо на повільному клієнті
+- Зберігати `WebhookDelivery` з response code і body (max 1KB) — для debug UI
+- Max 5 спроб (менше ніж SMS/ПРРО) — webhook не фінансово-критичний
+- `endpoint.isActive = false` якщо 5 поспіль провалів — авто-деактивація щоб не спамити
+
+---
+
 ## Offline-first / BullMQ
 
 ```typescript
