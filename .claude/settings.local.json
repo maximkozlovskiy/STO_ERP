@@ -57,7 +57,12 @@
       "Bash(tail -20 /tmp/web-dev.log 2>&1)",
       "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; grep -n \"useState.*\\\\\\(loading\\\\|saving\\\\\\)\" {} | wc -l')",
       "Bash(ls -la apps/web/src/app/invoices/)",
-      "Bash(ls -la apps/web/src/app/settlements/)"
+      "Bash(ls -la apps/web/src/app/settlements/)",
+      "Bash(findstr /i \"fix\\(review\\)\")",
+      "Edit(/.claude/skills/sto-web/**)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); paths=[p for p in d['paths'] if 'pricing' in p or 'batch' in p]; print\\('\\\\n'.join\\(paths\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); paths=[p for p in d.get\\('paths',{}\\) if 'pricing' in p or 'batch' in p or 'lookup' in p]; print\\('\\\\n'.join\\(sorted\\(paths\\)\\)\\)\")",
+      "Bash(python -c ' *)"
     ],
     "additionalDirectories": [
       "e:\\Git\\STO ERP\\.claude",
