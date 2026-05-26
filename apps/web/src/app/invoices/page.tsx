@@ -18,23 +18,39 @@ import { DetailPanel } from '@/components/ui/detail-panel';
 import { cn } from '@/lib/utils';
 
 interface Counterparty { id: string; firstName?: string; lastName?: string; companyName?: string; }
+interface InvoiceLine {
+  id: string; invoiceId: string; goodId?: string | null; workId?: string | null;
+  description: string; quantity: number; unitPrice: number; vatRate: number;
+  priceWithoutVat: number; vatAmount: number; priceWithVat: number; sortOrder: number;
+}
 interface Invoice {
   id: string; number: string; status: string;
   counterpartyId: string; counterpartyName?: string;
   workOrderId?: string | null; workOrderNumber?: string | null;
-  amount: number; dueDate?: string | null;
+  amount: number;
+  totalWithoutVat?: number; totalVat?: number; totalWithVat?: number;
+  invoiceType?: string; notes?: string | null;
+  dueDate?: string | null;
+  lines?: InvoiceLine[];
   createdAt: string; updatedAt: string;
 }
 interface Paginated { items: Invoice[]; total: number; page: number; limit: number; }
 
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка', SENT: 'Надіслано', PAID: 'Оплачено', CANCELLED: 'Скасовано',
+  DRAFT: 'Чернетка', SENT: 'Надіслано', PAID: 'Оплачено',
+  OVERDUE: 'Прострочено', CANCELLED: 'Скасовано',
 };
 const STATUS_BADGE: Record<string, BadgeVariant> = {
-  DRAFT: 'secondary', SENT: 'default', PAID: 'success', CANCELLED: 'destructive',
+  DRAFT: 'secondary', SENT: 'default', PAID: 'success',
+  OVERDUE: 'warning', CANCELLED: 'destructive',
 };
 const STATUS_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ['SENT', 'CANCELLED'], SENT: ['PAID', 'CANCELLED'], PAID: [], CANCELLED: [],
+  DRAFT: ['SENT', 'CANCELLED'], SENT: ['PAID', 'CANCELLED'],
+  OVERDUE: ['PAID', 'CANCELLED'], PAID: [], CANCELLED: [],
+};
+
+const INVOICE_TYPE_LABELS: Record<string, string> = {
+  STANDARD: 'Стандартний', PREPAYMENT: 'Аванс', CREDIT_NOTE: 'Кредит-нота',
 };
 
 function fmt(n: number) {
@@ -53,6 +69,7 @@ export default function InvoicesPage() {
   const [error, setError] = useState('');
 
   const [selectedInv, setSelectedInv] = useState<Invoice | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const [showCreate, setShowCreate] = useState(false);
   const [showPayment, setShowPayment] = useState<Invoice | null>(null);
@@ -160,7 +177,18 @@ export default function InvoicesPage() {
     } finally { setSaving(false); }
   };
 
-  const statuses = ['', 'DRAFT', 'SENT', 'PAID', 'CANCELLED'];
+  const selectInvoice = useCallback(async (inv: Invoice) => {
+    setSelectedInv(inv);
+    setDetailLoading(true);
+    try {
+      const detail = await apiFetch<Invoice>(`/invoices/${inv.id}`);
+      setSelectedInv(detail);
+    } catch {
+      // keep basic inv data if detail fetch fails
+    } finally { setDetailLoading(false); }
+  }, []);
+
+  const statuses = ['', 'DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'];
 
   return (
     <div className="page-container">
@@ -241,7 +269,7 @@ export default function InvoicesPage() {
               {!loading && invoices.map(inv => (
                 <TableRow
                   key={inv.id}
-                  onClick={() => setSelectedInv(inv)}
+                  onClick={() => selectInvoice(inv)}
                   className={cn(selectedInv?.id === inv.id && 'bg-primary/5')}
                 >
                   <TableCell className="font-mono font-medium text-foreground">{inv.number}</TableCell>
@@ -287,10 +315,15 @@ export default function InvoicesPage() {
         >
           {selectedInv && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant={STATUS_BADGE[selectedInv.status] ?? 'secondary'}>
                   {STATUS_LABELS[selectedInv.status] ?? selectedInv.status}
                 </Badge>
+                {selectedInv.invoiceType && (
+                  <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                    {INVOICE_TYPE_LABELS[selectedInv.invoiceType] ?? selectedInv.invoiceType}
+                  </span>
+                )}
               </div>
 
               <div className="space-y-2 text-[13px]">
@@ -301,10 +334,6 @@ export default function InvoicesPage() {
                 <div>
                   <span className="text-muted-foreground">Наряд</span>
                   <p className="font-medium text-foreground mt-0.5 font-mono">{selectedInv.workOrderNumber ?? '—'}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Сума</span>
-                  <p className="font-semibold text-foreground mt-0.5">{fmt(selectedInv.amount)}</p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Термін оплати</span>
@@ -321,7 +350,68 @@ export default function InvoicesPage() {
                     })}
                   </p>
                 </div>
+                {selectedInv.notes && (
+                  <div>
+                    <span className="text-muted-foreground">Примітки</span>
+                    <p className="text-foreground mt-0.5">{selectedInv.notes}</p>
+                  </div>
+                )}
               </div>
+
+              {/* Invoice lines */}
+              {detailLoading && (
+                <div className="flex justify-center py-4"><Spinner size="sm" /></div>
+              )}
+              {!detailLoading && selectedInv.lines && selectedInv.lines.length > 0 && (
+                <div className="space-y-1.5 pt-2 border-t border-border">
+                  <p className="text-[12px] text-muted-foreground font-medium uppercase tracking-wide">Позиції</p>
+                  <div className="rounded-lg border border-border overflow-hidden">
+                    <table className="w-full text-[12px]">
+                      <thead>
+                        <tr className="bg-secondary/50">
+                          <th className="text-left p-2 text-muted-foreground font-medium">Назва</th>
+                          <th className="text-right p-2 text-muted-foreground font-medium">К-сть</th>
+                          <th className="text-right p-2 text-muted-foreground font-medium">Ціна</th>
+                          <th className="text-right p-2 text-muted-foreground font-medium">ПДВ</th>
+                          <th className="text-right p-2 text-muted-foreground font-medium">Сума</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedInv.lines.map(line => (
+                          <tr key={line.id} className="border-t border-border/50">
+                            <td className="p-2 text-foreground">{line.description}</td>
+                            <td className="p-2 text-right text-foreground-muted">{line.quantity}</td>
+                            <td className="p-2 text-right text-foreground-muted">{fmt(line.unitPrice)}</td>
+                            <td className="p-2 text-right text-foreground-muted">{line.vatRate}%</td>
+                            <td className="p-2 text-right font-medium text-foreground">{fmt(line.priceWithVat)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* VAT breakdown */}
+              {!detailLoading && selectedInv.totalWithVat != null && (
+                <div className="space-y-1.5 pt-2 border-t border-border">
+                  <p className="text-[12px] text-muted-foreground font-medium uppercase tracking-wide">Підсумок</p>
+                  <div className="space-y-1 text-[13px]">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Без ПДВ</span>
+                      <span className="text-foreground">{fmt(selectedInv.totalWithoutVat ?? 0)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">ПДВ</span>
+                      <span className="text-foreground">{fmt(selectedInv.totalVat ?? 0)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold border-t border-border/50 pt-1 mt-1">
+                      <span className="text-foreground">З ПДВ</span>
+                      <span className="text-foreground">{fmt(selectedInv.totalWithVat)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Action buttons in panel */}
               {STATUS_TRANSITIONS[selectedInv.status]?.length > 0 && (
