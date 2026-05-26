@@ -7,19 +7,13 @@ model: claude-opus-4-7
 
 # sto-review — Code Review Skill
 
-## Режим Auto (ОБОВ'ЯЗКОВО)
-
-**Запускай у режимі Auto:** знаходь усі проблеми → виправляй кожну одразу → без питань до користувача.
+## Алгоритм (AUTO режим — завжди так)
 
 ```
 1. git diff HEAD --name-only          → список змінених файлів
-2. Класифікуй файли по шарах:
-     api/   → §1 TS, §2 Security, §4 Architecture, §5 Business Rules, §6 DB, §7 Backend Perf, §9 Sync, §10 Offline
-     web/   → §1 TS, §3 Memory, §7 Frontend Perf, §8 Web Frontend, §12 a11y, §13 i18n
-     prisma → §6 DB, §9 Sync
-     *.dto  → §2.3 Validation, §2.4 Data Leaks, §13 API Contract
-3. Для кожного зміненого файлу — пройди тільки релевантні секції ГЛИБОКО
-   Для незмінених файлів — тільки grep-команди для cross-cutting concerns
+2. Для кожного файлу — визнач тип зміни (таблиця нижче)
+3. Запусти ТІЛЬКИ секції з колонки "Обов'язкові §" для цього типу
+   + §1 TS — завжди (для будь-якого .ts/.tsx файлу)
 4. Кожну проблему виправляй одразу   → Edit/Write → tsc --noEmit
 5. git commit -m "fix(review): ..."  → після всіх правок (БЕЗ запиту)
 6. Оновити MemoryManual.md           → Останній commit + Changelog (БЕЗ запиту)
@@ -28,21 +22,23 @@ model: claude-opus-4-7
 > Не питай дозволу на виправлення, коміт і оновлення MemoryManual.md — все виконується автоматично.
 > Якщо fix потребує міграції БД або зміни публічного API — зафіксуй як CRITICAL і повідом після завершення всіх інших правок.
 
-### Пріоритет перевірок по типу змін
+### Матриця: тип зміни → обов'язкові секції
 
-| Тип зміни | Перевіряти В ПЕРШУ ЧЕРГУ |
-|---|---|
-| Новий `@Controller` | §2.1 Auth guards, §2.2 Tenant isolation, §13 API Contract |
-| Новий `*.service.ts` | §5 Business Rules, §6 DB (N+1, take), §4 Architecture |
-| Нова Prisma модель | §6 DB (indexes, unique), §9 Sync (syncVersion, PULL_TABLES) |
-| Зміна `toResponseDto` | §13 API Contract (фронт-тип синхронізований?) |
-| Нова `page.tsx` | §8.2 UI стани, §8.3 Hydration, §8.4 Auth, §12 a11y |
-| Новий `*.dto.ts` | §2.3 Validation, §2.4 Data Leaks, §11 Configuration |
-| Зміна BullMQ | §2.5 Queue Safety, §10 Offline |
-| Новий UX хук (`use*.ts`) | §3.1 Memory Leaks (cleanup), §8.5 UX Features (bulk/toast/indeterminate) |
-| Новий UI компонент (`components/ui/`) | §8.5 UX Features, §14 a11y, §12 Component test coverage |
-| Зміна `TopShell.tsx` | §8.4 Auth guard, §8.5 useUiFeatures endpoint roles, §3.1 listeners |
-| `bulkActions` / `bulkSelect` | §8.5: Promise.allSettled, stale IDs, colSpan, useMemo |
+| Тип зміни | Обов'язкові § | Пропустити |
+|---|---|---|
+| Новий `@Controller` | §1, §2.1 Auth, §2.2 Tenant, §2.3 Validation, §4 Arch, §13 Contract | §3, §6, §9, §10, §11 |
+| Новий `*.service.ts` | §1, §4 Arch, §5 Business Rules, §6 DB, §7 Perf | §2, §8, §12, §14 |
+| Нова Prisma модель | §1, §6 DB, §9 Sync | §2, §3, §5, §7, §8 |
+| Зміна `toResponseDto` | §1, §13 Contract | всі інші |
+| Нова `page.tsx` | §1, §3 Memory, §8 Web Frontend, §12 a11y | §2, §4, §5, §6, §9 |
+| Новий `*.dto.ts` | §1, §2.3 Validation, §2.4 Data Leaks | §3, §4, §5, §6 |
+| Зміна BullMQ | §1, §2.5 Queue Safety, §10 Offline | §3, §4, §6, §8 |
+| Новий UX хук (`use*.ts`) | §1, §3.1 Memory Leaks | §2, §4, §5, §6, §9 |
+| Новий UI компонент (`components/ui/`) | §1, §8.5 UX Features, §14 a11y | §2, §4, §5, §6, §9 |
+| Зміна `TopShell.tsx` | §1, §3.1 listeners, §8.4 Auth guard, §8.5 useUiFeatures | §2, §4, §5, §6 |
+| `bulkActions` / `bulkSelect` | §1, §8.5 bulk patterns | §2, §4, §5, §6, §9 |
+| Config/docs-only зміни | §1 TS — тільки | всі інші |
+| `*.spec.ts` / `*.test.tsx` | §1 TS — тільки | всі інші |
 
 ### Як оновлювати MemoryManual.md (крок 5)
 

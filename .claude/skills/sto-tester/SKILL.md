@@ -10,29 +10,77 @@ model: claude-opus-4-7
 
 # sto-tester — Автоматичний тестувальник STO ERP
 
-## Режим Auto (ОБОВ'ЯЗКОВО)
+## Два режими
 
-**Запускай у режимі Auto:** знаходь баги → записуй у BUG_REPORT.md → виправляй одразу → без питань.
+| Режим | Коли | Що виконувати |
+|---|---|---|
+| **AUTO** | Автоматично після кожного git commit (post-feature QA) | Кроки 0 → 1 (тільки змінені файли) → 2 → 3 → 4 → 4.3 |
+| **FULL** | Явний виклик `/sto-tester` користувачем | Всі кроки 0 → 1 → 2 → 3 → 4 → 4.3 → 4.4 → 4.5 → 4.6 → 4.7 → 4.8 → 4.9 → 5 |
 
-Алгоритм:
-1.  Виконай Крок 0 (tsc + unit tests + dev-server start)
-2.  Пройди Крок 1 (збір багів) — записуй кожен у BUG_REPORT.md
-3.  Крок 3 (авто-фікс) — виправляй від CRITICAL до LOW без зупинки
-4.  Крок 4 (верифікація) — tsc + unit tests мають бути зеленими
-5.  Крок 4.3 (Contract-тести Supertest) — HTTP контракт нових/змінених endpoints
-6.  Крок 4.4 (Property-based fast-check) — FSM, inventory/settlements, алгоритмічні інваріанти
-7.  Крок 4.5 (E2E Playwright) — smoke + user flows (dev-сервер запущений з §0.1)
-8.  Крок 4.6 (Component-тести Vitest) — ui/ компоненти
-9.  Крок 4.7 (Функціональне тестування) — happy path для WO/Inventory/Finance/Auth
-10. Крок 4.8 (Негативне тестування) — DTO validation, бізнес-правила, auth/tenant
-11. Крок 4.9 (Нефункціональне тестування) — performance, security headers, queue resilience
-12. Крок 5 — фінальний звіт
-13. Оновити MemoryManual.md — Останній commit + стан тестів (БЕЗ запиту)
+> **Як відрізнити:** якщо тестер запускається автоматично після завдання (через CLAUDE.md правило) — це AUTO. Якщо користувач явно написав `/sto-tester` або попросив протестувати — це FULL.
+
+## AUTO режим — алгоритм (post-feature QA)
+
+```
+1. Крок 0: tsc (web + api + shared), unit tests
+2. Крок 1: статичний аналіз ТІЛЬКИ змінених файлів (git diff HEAD --name-only)
+   - api/*.ts     → §1.1 (бізнес-логіка), §1.2 (TS якість)
+   - web/*.tsx    → §1.3 (frontend)
+   - *.spec.ts    → §1.4 (тест-покриття)
+   - prisma/*.ts  → §1.1 (soft delete, tenant), §1.2 (TS)
+3. Крок 2: записати знайдені баги у BUG_REPORT.md
+4. Крок 3: виправити кожен баг (CRITICAL → HIGH → MEDIUM → LOW)
+5. Крок 4: верифікація (tsc + unit tests)
+6. Крок 4.3: contract-тести ТІЛЬКИ для нових/змінених endpoints
+7. git commit -m "fix(tester): ..." + оновити MemoryManual.md
+```
+
+**Матриця AUTO: тип зміни → що перевіряти**
+
+| Тип зміни | Секції Кроку 1 |
+|---|---|
+| Новий `@Controller` або endpoint | §1.1 (tenant, soft delete, api contract), §1.2 (TS), §1.4 (contract spec) |
+| Змінений `*.service.ts` | §1.1 (business logic, FSM, inventory, settlements) |
+| Нова `page.tsx` або зміна UI | §1.3 (стани, hydration, routing, Tailwind) |
+| Новий `*.dto.ts` | §1.2 (API якість), §1.1 (validation guards) |
+| Зміна `prisma/schema.prisma` | §1.1 (soft delete fields, orgId, deletedAt), §1.2 |
+| UI-only (тільки `components/ui/`) | §1.3 (компоненти, Tailwind), §1.2 (TS) |
+| Config/docs/тести | §0 (tsc) — більше нічого |
+
+## FULL режим — алгоритм (явний виклик)
+
+```
+1.  Крок 0: tsc + unit tests + перевірка optional deps (fast-check, Playwright, testing-library)
+2.  Крок 0.1: запуск dev-серверів (для E2E)
+3.  Крок 1: повний статичний аналіз (§1.1–§1.5)
+4.  Крок 2: BUG_REPORT.md
+5.  Крок 3: авто-фікс від CRITICAL до LOW
+6.  Крок 4: верифікація (tsc + unit + build)
+7.  Крок 4.3: contract-тести (Supertest) — всі .contract.spec.ts
+8.  Крок 4.4: property-based (fast-check) — якщо встановлений
+9.  Крок 4.5: E2E (Playwright) — якщо встановлений
+10. Крок 4.6: component-тести (testing-library) — якщо встановлений
+11. Крок 4.7: функціональне тестування (happy path)
+12. Крок 4.8: негативне тестування
+13. Крок 4.9: нефункціональне тестування
+14. Крок 5: фінальний звіт
+15. git commit + оновити MemoryManual.md
+```
+
+**Optional залежності** (встановити → розблокує відповідний крок):
+
+| Залежність | Крок | Команда встановлення |
+|---|---|---|
+| `fast-check` | 4.4 Property-based | `pnpm --filter @sto/api add -D fast-check` |
+| `@playwright/test` | 4.5 E2E | `pnpm --filter @sto/web add -D @playwright/test` |
+| `@testing-library/react` | 4.6 Component | `pnpm --filter @sto/web add -D @testing-library/react @testing-library/user-event @testing-library/jest-dom jsdom` |
+
+> Якщо залежність не встановлена — позначити відповідний крок як `⏭ skipped` у звіті, не намагатись запустити.
 
 > Не питай дозволу на виправлення, коміт і оновлення MemoryManual.md — все виконується автоматично.
 > Якщо fix потребує міграції БД або змін у shared — зафіксуй як CRITICAL і повідом після завершення.
 
-### Як оновлювати MemoryManual.md (крок 6)
+### Як оновлювати MemoryManual.md
 
 Після фінального коміту — одразу (без запиту) оновити в `MemoryManual.md`:
 
@@ -45,12 +93,12 @@ model: claude-opus-4-7
 TypeScript:      ✅ 0 errors       (або ❌ N errors)
 Unit:            ✅ N/N passed     (або ❌ N failed)
 Contract:        ✅ N passed       (або ⏭ немає .contract.spec.ts)
-Property:        ✅ N passed       (або ⏭ fast-check не встановлений)
-Components:      ✅ N passed       (або ⏭ @testing-library не встановлений)
-E2E:             ✅ N passed       (або ⏭ skipped — dev server failed to start after 90s)
-Functional:      ✅ N кейсів OK   (або ⚠ N пропущено)
-Negative:        ✅ N кейсів OK   (або ⚠ N відсутніх тестів)
-Non-functional:  ✅ perf/headers OK (або ⚠ N проблем)
+Property:        ✅ N passed       (або ⏭ fast-check не встановлений — install to unlock)
+Components:      ✅ N passed       (або ⏭ @testing-library не встановлений — install to unlock)
+E2E:             ✅ N passed       (або ⏭ Playwright не встановлений — install to unlock)
+Functional:      ✅ N кейсів OK   (або ⚠ N пропущено)   [тільки FULL режим]
+Negative:        ✅ N кейсів OK   (або ⚠ N відсутніх)   [тільки FULL режим]
+Non-functional:  ✅ perf/headers OK (або ⚠ N проблем)   [тільки FULL режим]
 ```
 
 Якщо під час тестування виявились нові gotchas — дописати у відповідний розділ `MemoryManual.md` без запиту.
@@ -66,7 +114,7 @@ Non-functional:  ✅ perf/headers OK (або ⚠ N проблем)
 
 ```bash
 # 1. TypeScript — нульова точка відліку
-pnpm --filter @sto/web exec tsc --noEmit
+cd apps/web && node_modules/.bin/tsc --noEmit --incremental false 2>&1 | tail -20
 pnpm --filter @sto/api exec tsc --noEmit
 pnpm --filter @sto/shared exec tsc --noEmit
 
@@ -76,16 +124,16 @@ pnpm --filter @sto/api test --run 2>&1 | tail -30
 
 Якщо TypeScript або тести вже червоні — зафіксуй як Bug #0 і виправ ПЕРШИМ.
 
+### 0.1 — Перевірка optional залежностей (тільки FULL режим)
+
 ```bash
-# 3. Перевірити наявність тестових залежностей
-grep "fast-check" apps/api/package.json > /dev/null && echo "fast-check OK" || echo "fast-check MISSING"
-grep "@testing-library/react" apps/web/package.json > /dev/null && echo "testing-library OK" || echo "testing-library MISSING — component tests skipped"
-test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwright MISSING"
+# Перевірити наявність тестових залежностей
+grep "fast-check" apps/api/package.json > /dev/null && echo "fast-check OK" || echo "fast-check MISSING — §4.4 skipped"
+grep "@testing-library/react" apps/web/package.json > /dev/null && echo "testing-library OK" || echo "testing-library MISSING — §4.6 skipped"
+test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwright MISSING — §4.5 skipped"
 ```
 
-### 0.1 — Автоматичний запуск dev-серверів (ОБОВ'ЯЗКОВО перед E2E)
-
-Перевір і запусти dev-сервери якщо вони офлайн. **Не пропускати E2E через відсутній сервер — запустити самостійно.**
+### 0.2 — Запуск dev-серверів (тільки FULL режим, тільки перед E2E)
 
 ```bash
 # Перевірка стану сервісів
@@ -94,33 +142,28 @@ curl -s http://localhost:3000/api/docs > /dev/null 2>&1 && echo "API:UP" || echo
 curl -s http://localhost:3001 > /dev/null 2>&1 && echo "WEB:UP" || echo "WEB:DOWN"
 ```
 
-Якщо API:DOWN → запустити у фоні та дочекатись готовності:
-
+Якщо API:DOWN:
 ```bash
-# Запустити API dev-сервер у фоні
 pnpm --filter @sto/api dev > /tmp/sto-api-dev.log 2>&1 &
-# Дочекатись готовності (max 60s)
 until curl -s http://localhost:3000/api/docs > /dev/null 2>&1; do sleep 3; done && echo "API ready"
 ```
 
-Якщо WEB:DOWN → запустити у фоні та дочекатись готовності:
-
+Якщо WEB:DOWN:
 ```bash
-# Запустити Web dev-сервер у фоні
 pnpm --filter @sto/web dev > /tmp/sto-web-dev.log 2>&1 &
-# Дочекатись готовності (max 90s)
 until curl -s http://localhost:3001 > /dev/null 2>&1; do sleep 3; done && echo "WEB ready"
 ```
 
-> **Важливо:** після запуску серверів — рухатись далі без зупинки. E2E виконується в Кроці 4.5.  
-> Якщо після 90 секунд сервер не піднявся — перевірити `/tmp/sto-*-dev.log`, зафіксувати як CRITICAL Bug і пропустити E2E.  
-> Логи помилок старту: `tail -30 /tmp/sto-api-dev.log` та `tail -30 /tmp/sto-web-dev.log`
+> Якщо після 90s сервер не піднявся — перевірити `/tmp/sto-*-dev.log`, зафіксувати як CRITICAL Bug і пропустити §4.5.
 
 ---
 
 ## Крок 1 — Збір багів (статичний аналіз)
 
-Проходь по кожному пункту нижче. Кожен знайдений баг → записати в `BUG_REPORT.md`.
+> **AUTO режим:** аналізуй ТІЛЬКИ змінені файли (`git diff HEAD --name-only`). Пропускай §1.1–§1.5 для незмінених модулів.  
+> **FULL режим:** повний аналіз всіх секцій §1.1–§1.5.
+
+Кожен знайдений баг → записати в `BUG_REPORT.md`.
 
 ### 1.1 — Бізнес-логіка Backend
 
@@ -313,7 +356,7 @@ grep -n "Number(l\.\|Number(p\.\|totalLabor\|totalParts" apps/api/src/modules/wo
   if (!isPublic && (isLoading || !employee)) return <Spinner />;
   ```
 
-### 1.4 — Тести Backend
+### 1.4 — Тести Backend _(AUTO: тільки якщо змінено *.spec.ts або service; FULL: завжди)_
 
 #### Unit-тести (`.spec.ts`) — перевір покриття
 
@@ -355,7 +398,7 @@ find apps/api/src -name "*.invariants.spec.ts" | sort
 # Якщо файлів немає і fast-check встановлений — це MEDIUM bug
 ```
 
-### 1.5 — Тести Frontend
+### 1.5 — Тести Frontend _(тільки FULL режим)_
 
 #### Component-тести (`src/components/ui/__tests__/*.test.tsx`)
 
@@ -618,7 +661,9 @@ pnpm --filter @sto/api test --run --reporter=verbose 2>&1 | grep -E "contract|PA
 
 ---
 
-## Крок 4.4 — Property-based тести (fast-check)
+## Крок 4.4 — Property-based тести (fast-check) _(тільки FULL режим)_
+
+> **AUTO:** пропустити. **FULL:** виконати якщо `fast-check` встановлений, інакше ⏭ skipped.
 
 Property-based тести генерують **сотні випадкових вхідних даних** і перевіряють інваріанти.
 Найефективніші для: FSM (всі можливі пари переходів), фінансових розрахунків (кумулятивні суми), inventory (race conditions).
@@ -1004,11 +1049,10 @@ pnpm --filter @sto/api test --run --reporter=verbose 2>&1 | grep -E "invariant|p
 
 ---
 
-## Крок 4.5 — E2E тести (Playwright)
+## Крок 4.5 — E2E тести (Playwright) _(тільки FULL режим)_
 
-> **Dev-сервери запускаються автоматично в Кроці 0.1.** До цього кроку вони ПОВИННІ бути готові.  
-> Якщо раптом `http://localhost:3001` не відповідає (збій після старту) — перезапустити за інструкцією з Кроку 0.1 і повторити.  
-> **Не пропускати E2E** — це ключовий крок що перевіряє реальну UI взаємодію.
+> **AUTO:** пропустити. **FULL:** виконати якщо `@playwright/test` встановлений + dev-сервери з §0.2 запущені.  
+> Якщо `http://localhost:3001` не відповідає — перезапустити за §0.2 і повторити.
 
 ### Перевірка наявності Playwright
 
@@ -1328,13 +1372,13 @@ test.describe('API error resilience', () => {
 
 ---
 
-## Крок 4.6 — Component-тести (Vitest + Testing Library)
+## Крок 4.6 — Component-тести (Vitest + Testing Library) _(тільки FULL режим)_
+
+> **AUTO:** пропустити. **FULL:** виконати якщо `@testing-library/react` встановлений, інакше ⏭ skipped.
 
 Component-тести перевіряють **ізольовані React-компоненти**: рендер, props, взаємодія.
-Вони швидші за E2E і ловлять регресії у `ui/` компонентах раніше.
 
-> **Мета:** переконатись що `Button`, `Select`, `Modal`, `Input` рендеряться коректно
-> і не ламаються при зміні props або variants.
+> **Мета:** переконатись що `Button`, `Select`, `Modal`, `Input` рендеряться коректно.
 
 ### Встановлення Testing Library для web
 
@@ -1536,10 +1580,10 @@ pnpm --filter @sto/web exec vitest run --reporter=verbose 2>&1 | tail -30
 
 ---
 
-## Крок 4.7 — Функціональне тестування (Functional)
+## Крок 4.7 — Функціональне тестування (Functional) _(тільки FULL режим)_
 
-> **Мета:** перевірити що кожна бізнес-функція дає правильний результат при правильних вхідних даних.
-> Охоплює happy path + типові варіанти, але НЕ помилкові сценарії (вони в §4.8 негативне).
+> **AUTO:** пропустити. **FULL:** перевіряти happy path для зміненого функціоналу.  
+> **Мета:** переконатись що кожна бізнес-функція дає правильний результат при правильних вхідних даних.
 
 ### Алгоритм
 
@@ -1644,10 +1688,10 @@ it('reconciliation: openingBalance + charges - payments = closingBalance', async
 
 ---
 
-## Крок 4.8 — Негативне тестування (Negative)
+## Крок 4.8 — Негативне тестування (Negative) _(тільки FULL режим)_
 
-> **Мета:** перевірити що система **відхиляє неправильні вхідні дані** з коректним HTTP-кодом
-> і зрозумілим українським повідомленням — і НЕ крашиться, НЕ зберігає некоректні дані.
+> **AUTO:** пропустити. **FULL:** перевіряти для нових/змінених endpoints.  
+> **Мета:** переконатись що система **відхиляє неправильні вхідні дані** з коректним HTTP-кодом і українським повідомленням.
 
 ### Алгоритм
 
@@ -1836,10 +1880,10 @@ grep -rn "@Param('id')" apps/api/src/ --include="*.controller.ts" | grep -v "Par
 
 ---
 
-## Крок 4.9 — Нефункціональне тестування (Non-Functional)
+## Крок 4.9 — Нефункціональне тестування (Non-Functional) _(тільки FULL режим)_
 
-> **Мета:** перевірити характеристики системи що **не пов'язані з бізнес-логікою**:
-> продуктивність, безпека заголовків, стійкість до навантаження, поведінка під помилками.
+> **AUTO:** пропустити. **FULL:** виконати статичний аналіз (без живого сервера) + performance checks якщо dev-сервер доступний.  
+> **Мета:** продуктивність, security headers, стійкість черги, обмеження пам'яті.
 
 ### 4.9.1 — Продуктивність відповідей (Response Time)
 
@@ -1998,27 +2042,38 @@ grep -rn "@Process\|@Processor" apps/api/src/ --include="*.ts" -l \
 
 ---
 
-## Крок 5 — Фінальний звіт
+## Крок 5 — Фінальний звіт _(тільки FULL режим; AUTO — короткий підсумок)_
 
-Виведи підсумок:
-
+**AUTO підсумок:**
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🧪 РЕЗУЛЬТАТИ ТЕСТУВАННЯ STO ERP
+🧪 AUTO QA — STO ERP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TypeScript:  ✅ 0 errors
+Unit:        ✅ N/N passed
+Contract:    ✅ N passed  (або ⏭ немає .contract.spec.ts)
+Баги:        N знайдено / N виправлено / 0 залишилось
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**FULL підсумок:**
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧪 FULL ТЕСТУВАННЯ STO ERP
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Знайдено багів:    N (CRITICAL: X / HIGH: Y / MEDIUM: Z / LOW: W)
 Виправлено:        N
 Залишилось:        0
 
 TypeScript:        ✅ 0 errors
-Unit тести:        ✅ N passed / 0 failed
-Contract тести:    ✅ N passed  (або ⏭ немає .contract.spec.ts)
+Unit:              ✅ N passed / 0 failed
+Contract:          ✅ N passed  (або ⏭ немає .contract.spec.ts)
 Property-based:    ✅ N passed  (або ⏭ fast-check не встановлений)
-Component тести:   ✅ N passed  (або ⏭ @testing-library не встановлений)
-E2E (Playwright):  ✅ N passed / 0 failed  (або ⏭ dev server failed to start after 90s)
-Функціональне:     ✅ N кейсів перевірено  (або ⚠ N пропущено)
-Негативне:         ✅ N кейсів перевірено  (або ⚠ N відсутніх негативних тестів)
-Нефункціональне:   ✅ response < 200ms, headers OK  (або ⚠ N проблем)
+Component:         ✅ N passed  (або ⏭ @testing-library не встановлений)
+E2E:               ✅ N passed  (або ⏭ Playwright не встановлений)
+Функціональне:     ✅ N кейсів (або ⚠ N пропущено)
+Негативне:         ✅ N кейсів (або ⚠ N відсутніх)
+Нефункціональне:   ✅ perf OK, headers OK (або ⚠ N проблем)
 Build:             ✅ OK
 
 Коміти:
