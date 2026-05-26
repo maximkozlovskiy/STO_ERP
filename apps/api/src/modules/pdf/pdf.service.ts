@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
+// pdfmake v0.3.x server-side API: singleton instance with createPdf(docDef).getBuffer().
+// The legacy `pdfmake/build/pdfmake` path is a browser-only UMD bundle and has no PdfPrinter class.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const PdfPrinter = require('pdfmake/build/pdfmake') as {
-  new (fonts: Record<string, unknown>): {
-    createPdfKitDocument(
-      docDef: Record<string, unknown>,
-      options?: Record<string, unknown>,
-    ): NodeJS.EventEmitter & { end(): void };
+const pdfMake = require('pdfmake') as {
+  setFonts(fonts: Record<string, unknown>): void;
+  createPdf(docDef: Record<string, unknown>, options?: Record<string, unknown>): {
+    getBuffer(): Promise<Buffer>;
   };
 };
+// vfs_fonts ships the embedded Roboto family as base64 so we don't need .ttf files on disk.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const vfsFonts = require('pdfmake/build/vfs_fonts') as { pdfMake?: { vfs?: Record<string, string> }; vfs?: Record<string, string> };
 
@@ -59,19 +60,19 @@ type TableCell = string | Record<string, unknown>;
 
 @Injectable()
 export class PdfService {
-  private printer: InstanceType<typeof PdfPrinter>;
-
   constructor() {
+    // Register Roboto family once at module-init. pdfMake mutates a virtual filesystem so font
+    // contents must be wired as Buffers (server) — the vfs_fonts.js export shape varies between
+    // pdfmake versions, so we tolerate both `.pdfMake.vfs` and `.vfs` shapes.
     const vfs = vfsFonts.pdfMake?.vfs ?? vfsFonts.vfs ?? {};
-    const fonts = {
+    pdfMake.setFonts({
       Roboto: {
-        normal: Buffer.from(vfs['Roboto-Regular.ttf'] ?? '', 'base64'),
-        bold: Buffer.from(vfs['Roboto-Medium.ttf'] ?? '', 'base64'),
-        italics: Buffer.from(vfs['Roboto-Italic.ttf'] ?? '', 'base64'),
+        normal:      Buffer.from(vfs['Roboto-Regular.ttf']      ?? '', 'base64'),
+        bold:        Buffer.from(vfs['Roboto-Medium.ttf']       ?? '', 'base64'),
+        italics:     Buffer.from(vfs['Roboto-Italic.ttf']       ?? '', 'base64'),
         bolditalics: Buffer.from(vfs['Roboto-MediumItalic.ttf'] ?? '', 'base64'),
       },
-    };
-    this.printer = new PdfPrinter(fonts);
+    });
   }
 
   async generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
@@ -215,13 +216,8 @@ export class PdfService {
   }
 
   private buildBuffer(docDef: Record<string, unknown>): Promise<Buffer> {
-    return new Promise<Buffer>((resolve, reject) => {
-      const chunks: Buffer[] = [];
-      const pdfDoc = this.printer.createPdfKitDocument(docDef);
-      pdfDoc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
-      pdfDoc.on('error', reject);
-      pdfDoc.end();
-    });
+    // pdfmake v0.3.x: createPdf().getBuffer() handles the readable stream internally
+    // and returns a Promise<Buffer>. We no longer need to wire up readable/end/error events.
+    return pdfMake.createPdf(docDef).getBuffer();
   }
 }

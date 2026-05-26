@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsBoolean, IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 import { EmployeeStatus, UserRole } from '@prisma/client';
 import { z } from 'zod';
 
@@ -119,6 +118,7 @@ export class AssignBranchesDto {
 
   @ApiPropertyOptional({ description: 'Доступ до всіх філій (OWNER/ADMIN)' })
   @IsOptional()
+  @IsBoolean()
   allBranches?: boolean;
 }
 

@@ -41,11 +41,12 @@ export class CommentsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Видалити коментар' })
+  @ApiOperation({ summary: 'Видалити коментар (тільки автор або OWNER/ADMIN)' })
   remove(
     @OrgContext() orgId: string,
     @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: { id: string; role: string },
   ): Promise<void> {
-    return this.service.remove(orgId, id);
+    return this.service.remove(orgId, id, user);
   }
 }

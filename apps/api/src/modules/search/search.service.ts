@@ -14,17 +14,14 @@ export class SearchService {
     types: SearchType[],
     limit: number,
   ): Promise<SearchResultItemDto[]> {
-    const results: SearchResultItemDto[] = [];
+    // Keep ordering deterministic: queries run in parallel for latency, but results are
+    // re-emitted in the user-requested `types` order. Otherwise a slow `goods` query could
+    // arrive last and be dropped by `slice(0, limit)` while `wo` results dominate.
     const perType = Math.ceil(limit / types.length);
-
-    await Promise.all(
-      types.map(async (type) => {
-        const items = await this.searchByType(orgId, q, type, perType);
-        results.push(...items);
-      }),
+    const buckets = await Promise.all(
+      types.map((type) => this.searchByType(orgId, q, type, perType)),
     );
-
-    return results.slice(0, limit);
+    return buckets.flat().slice(0, limit);
   }
 
   private async searchByType(
@@ -45,10 +42,10 @@ export class SearchService {
 
   private async searchWorkOrders(orgId: string, q: string, limit: number) {
     const rows = await this.prisma.$queryRaw<
-      { id: string; number: string; status: string; firstName: string | null; lastName: string | null }[]
+      { id: string; number: string; status: string; firstName: string | null; lastName: string | null; companyName: string | null }[]
     >`
       SELECT wo.id, wo."number", wo."status",
-             cp."firstName", cp."lastName"
+             cp."firstName", cp."lastName", cp."companyName"
       FROM work_orders wo
       LEFT JOIN counterparties cp ON cp.id = wo."counterpartyId" AND cp."deletedAt" IS NULL
       WHERE wo."orgId" = ${orgId}::uuid
@@ -57,34 +54,43 @@ export class SearchService {
       ORDER BY similarity(wo."number", ${q}) DESC
       LIMIT ${limit}
     `;
-    return rows.map((r) => ({
-      type: 'wo',
-      id: r.id,
-      label: r.number,
-      sub: r.firstName ? `${r.firstName} ${r.lastName ?? ''}`.trim() : undefined,
-      extra: { status: r.status },
-    }));
+    return rows.map((r) => {
+      const personName = [r.firstName, r.lastName].filter(Boolean).join(' ');
+      return {
+        type: 'wo',
+        id: r.id,
+        label: r.number,
+        sub: r.companyName ?? (personName || undefined),
+        extra: { status: r.status },
+      };
+    });
   }
 
   private async searchCounterparties(orgId: string, q: string, limit: number) {
+    // Counterparty can be an individual (firstName + lastName) OR a company (companyName).
+    // Without the companyName branch, B2B clients are invisible to the command palette.
     const rows = await this.prisma.$queryRaw<
-      { id: string; firstName: string; lastName: string | null; phone: string | null }[]
+      { id: string; firstName: string | null; lastName: string | null; companyName: string | null; phone: string | null }[]
     >`
-      SELECT id, "firstName", "lastName", phone
+      SELECT id, "firstName", "lastName", "companyName", phone
       FROM counterparties
       WHERE "orgId" = ${orgId}::uuid
         AND "deletedAt" IS NULL
         AND (
-          similarity("firstName" || ' ' || COALESCE("lastName", ''), ${q}) > 0.1
+          similarity(COALESCE("firstName", '') || ' ' || COALESCE("lastName", ''), ${q}) > 0.1
+          OR similarity(COALESCE("companyName", ''), ${q}) > 0.1
           OR phone ILIKE ${'%' + q + '%'}
         )
-      ORDER BY similarity("firstName" || ' ' || COALESCE("lastName", ''), ${q}) DESC
+      ORDER BY GREATEST(
+        similarity(COALESCE("firstName", '') || ' ' || COALESCE("lastName", ''), ${q}),
+        similarity(COALESCE("companyName", ''), ${q})
+      ) DESC
       LIMIT ${limit}
     `;
     return rows.map((r) => ({
       type: 'counterparty',
       id: r.id,
-      label: `${r.firstName} ${r.lastName ?? ''}`.trim(),
+      label: r.companyName ?? `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim(),
       sub: r.phone ?? undefined,
     }));
   }

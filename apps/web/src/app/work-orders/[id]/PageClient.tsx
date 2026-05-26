@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useRequireAuth, useAuth } from '@/lib/auth';
+import { useRequireAuth, useAuth, TOKEN_KEY } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -180,7 +180,8 @@ export default function WorkOrderCardPage() {
   useEffect(() => { load(); }, [load]);
 
   const loadComments = useCallback(() => {
-    apiFetch<{ items: Comment[] }>(`/comments?entityType=work_order&entityId=${id}`)
+    // entityType must match the API DTO whitelist (PascalCase). See comments.dto.ts COMMENT_ENTITY_TYPES.
+    apiFetch<{ items: Comment[] }>(`/comments?entityType=WorkOrder&entityId=${id}`)
       .then(r => { if (mountedRef.current) setComments(r.items ?? []); })
       .catch(() => {});
   }, [id]);
@@ -216,7 +217,7 @@ export default function WorkOrderCardPage() {
     try {
       await apiFetch(`/comments`, {
         method: 'POST',
-        body: JSON.stringify({ entityType: 'work_order', entityId: id, body: commentBody.trim() }),
+        body: JSON.stringify({ entityType: 'WorkOrder', entityId: id, body: commentBody.trim() }),
       });
       setCommentBody('');
       loadComments();
@@ -376,14 +377,31 @@ export default function WorkOrderCardPage() {
     finally { setGeneratingAct(false); }
   };
 
-  const downloadPdf = () => {
-    const url = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api'}/work-orders/${id}/pdf`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `work-order-${wo?.number ?? id}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const downloadPdf = async () => {
+    // The PDF endpoint is JWT-guarded — a bare `<a href>` cannot attach the Authorization header,
+    // so we must fetch the response with a Bearer token and trigger download via Blob URL.
+    setError('');
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
+      const res = await fetch(`${apiBase}/api/work-orders/${id}/pdf`, {
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Помилка завантаження PDF (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `work-order-${wo?.number ?? id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Defer revoke — Chromium can drop the download if revoke fires before the browser starts reading.
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження PDF');
+    }
   };
 
   const signAct = async (actId: string) => {

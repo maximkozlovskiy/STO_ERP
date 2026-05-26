@@ -9,22 +9,29 @@
 ## Останній commit
 
 ```
-16b632c docs(skills): add AUTO/FULL modes to sto-tester + change-type matrix to sto-review
+fix(review): Phases 21-22 — TDZ in WO page, broken pdfmake API, employeeId filter, polymorphic entityType mismatch, comment DELETE auth, SSR-unsafe localStorage, search ordering
 ```
 
 Дата: 2026-05-26
 
 ## Поточний стан проєкту
 ```
-TypeScript:      ✅ 0 errors        (apps/web + apps/api + apps/shared)
-Unit (api):      ✅ 117/117 passed  (включно з contract specs)
-Contract:        ✅ присутні для auth/work-orders/inventory/pricing-rules/settings/batches
-Property-based:  ⏭ fast-check не встановлений у @sto/api (відомо з попередніх циклів)
-Component:       ✅ 13 файлів — без змін у цій сесії (точковий fix на одну сторінку)
-E2E (Playwright): ⏭ не запускались — точковий sweep по invoices/page.tsx
-Build:           ✅ apps/web compiles
-Tester sweep:    Phase 17 invoices/page DetailPanel — 3 баги знайдено та виправлено (#58-#60)
+TypeScript:      ✅ 0 errors        (apps/web + apps/api)
+Review sweep:    Phases 21-22 (B6/B7/B10/F1/F2/F6/F8/F10/F12) — 12 проблем, всі виправлено
+Critical fixes:  WO page TDZ, pdfmake server API, F6 employeeId DTO, F8 entityType casing, PDF blob download w/ Bearer
+Important fixes: comments DELETE без auth, useTableColumns SSR-unsafe, search ordering non-deterministic, branch guard not wired
 ```
+
+### Gotcha — /sto-review Phases 21-22 cycle (2026-05-26, commit fix(review): ...)
+- **TDZ у `useEffect` що читає `useRef`/`useState` оголошені нижче** (work-orders/page.tsx): рефакторинг "auto-init my-orders chip" зсунув `myOrdersInitRef = useRef(false)` нижче `useEffect` що його читає → `ReferenceError: Cannot access 'myOrdersInitRef' before initialization` при першому render для всіх ролей. Канон: ВСІ `useRef`/`useState` декларації йдуть ПЕРЕД будь-яким `useEffect`/`useCallback`/`useMemo` що їх читає. Не покладатися на JS hoisting — `let`/`const` не hoisted, виконання падає на стрічці `useEffect(...)`. Той самий ризик при додаванні нових ефектів зверху файлу під час інкрементальних feature builds.
+- **F6 "Мої наряди" chip не фільтрує — `employeeId` відсутній у `WorkOrderQueryDto`** (work-orders.dto.ts): фронт надсилає `?employeeId=X` але `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })` повертає HTTP 400 "property employeeId should not exist". Філ не валідується тихо — endpoint крашиться. Канон: будь-який новий query-param фільтр на фронті → парний `@IsOptional() @IsUUID() field?` у DTO + handler у `findAll`. Перевірка: на кожен `apiFetch(\`?${param}\`)` має бути присутнє поле у відповідному `QueryDto`.
+- **Polymorphic `entityType` casing mismatch** (comments F8): DTO whitelist `['WorkOrder', 'Counterparty', 'Vehicle', 'Invoice']` (PascalCase), фронт надсилав `'work_order'` (snake_case) → POST `400`, GET повертає `[]` (мовчки 0 матчів). Канон: експортувати `COMMENT_ENTITY_TYPES` константу з DTO і використовувати її у фронті через імпорт. Або принаймні задокументувати канонічну форму поряд із `@IsIn(...)`. Той самий ризик для будь-яких polymorphic discriminator strings — sync, audit, notifications.
+- **pdfmake v0.3.x server-side API повністю відрізняється від UMD/browser** (pdf.service.ts): `require('pdfmake/build/pdfmake')` повертає browser bundle БЕЗ `PdfPrinter` класу → endpoint крашиться при першому виклику `new PdfPrinter(fonts)`. Канон для server (Node): `require('pdfmake')` (singleton) → `pdfMake.setFonts({...})` → `pdfMake.createPdf(docDef).getBuffer()` повертає `Promise<Buffer>`. Никогда `pdfmake/build/*` на бекенді.
+- **`<a href>` download з JWT-guarded endpoint = HTTP 401** (PageClient.tsx downloadPdf): нативний браузерний download не може прикрутити `Authorization: Bearer` header. Канон: `fetch(url, { headers: { Authorization: \`Bearer \${token}\` } })` → `res.blob()` → `URL.createObjectURL(blob)` → `<a>` click → `setTimeout(revokeObjectURL, 100)`. Та сама проблема для будь-якого download endpoint захищеного `JwtAuthGuard`: PDF, Excel, ZIP, image-with-watermark.
+- **`useState(() => localStorage.getItem(...))` lazy initializer крашить SSR + дає hydration mismatch** (useTableColumns.ts): Next.js static-export prerender виконує initializer на сервері де `localStorage` undefined → throw / hydration mismatch (server `defaults` ≠ client `stored`). Канон: ініціалізувати дефолтами, читати localStorage в `useEffect([])` після mount, defensive `typeof window !== 'undefined'` guard на write. Те саме для будь-якого hook що hydrate-ить state з storage: `useSavedFilters`, `useColumnOrder`, `useUserPreferences`.
+- **Comment DELETE без author/role check = кожен може стерти будь-який коментар** (comments.service.ts): тільки `findFirst({ id, orgId })` потім `delete()` — будь-який авторизований у `orgId` може видалити comment колеги. Канон: `if (comment.authorId !== user.id && user.role !== 'OWNER' && user.role !== 'ADMIN') throw new ForbiddenException(...)`. Той самий патерн для будь-яких user-generated content: notes, attachments, files, reminders.
+- **`Promise.all` + `slice(N)` для багатотипного пошуку дає non-deterministic ordering** (search.service.ts): `results.push(...items)` у `Promise.all` callbacks порядок залежить від latency окремих query → switch goods/wo раз від разу. Канон: `Promise.all(types.map(t => searchByType(t)))` → результат — массив **в порядку types** → `.flat().slice(0, limit)` детермінований.
+- **B6 search by company name не покривається** (search.service.ts): початкова версія `similarity(firstName || ' ' || lastName, q)` — B2B клієнти невидимі. Канон: окрема similarity для `companyName` + label у respose має fallback на companyName.
 
 ### Gotcha — /sto-tester invoices/page sweep (2026-05-26, баги #58-#60, commit e867ba4)
 - **Closure-check + functional-setter race у `handleTransition`** (Bug #58): `if (selectedInv?.id === inv.id) setSelectedInv(prev => ({...prev, status: newStatus}))` змішує JS-closure value (для перевірки `if`) і live React state (`prev` у setter). Якщо панель перемикається на іншу invoice між кліком і відповіддю API — newStatus застосовується до НОВОЇ invoice. Канон: ВСЯ перевірка має бути всередині функціонального setter — `setSelectedInv(prev => prev && prev.id === inv.id ? {...prev, status: newStatus} : prev)`. Той самий патерн потрібен скрізь де `if (selectedX) setSelectedX(prev => ...)` після `await` — детальні панелі, відкриті модалки, токенізовані selection.

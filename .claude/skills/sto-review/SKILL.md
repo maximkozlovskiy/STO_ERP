@@ -342,6 +342,11 @@ useEffect(() => {
 - [ ] `useEffect` з `apiFetch` і `[]` deps (mount-only) на сторінках з навігацією — **теж** потребує `let cancelled = false; ... if (!cancelled) setX(...); return () => { cancelled = true }` бо користувач може покинути сторінку до завершення Promise (dashboard, settings, list pages)
 - [ ] Стани не оновлюються після unmount (`isMounted` ref або AbortController)
 - [ ] **mountedRef consistency**: коли в компоненті є `mountedRef` guard на `load()` — застосовуй ТОЙ САМИЙ guard у ВСІХ async handlers (`createX`, `updateX`, `deleteX`, `applyX`). Часткове застосування (тільки в `load`) — анти-патерн: навігація під час in-flight CRUD усе одно викличе setState на unmounted. Шаблон: кожен `setX(...)` після `await apiFetch(...)` обгортати в `if (mountedRef.current) setX(...)`.
+- [ ] **`useEffect` / `useCallback` НЕ читає `useState`/`useRef`, оголошені нижче по файлу** — це TDZ ReferenceError при першому render. Декларації `useState`/`useRef` зі змінною X мають передувати будь-якому `useEffect(() => { ... X ... }, [X])`. Шукати: `useState`/`useRef` декларації пере-впорядковані під час рефакторингу хука "auto-init from employee role".
+  ```bash
+  # Heuristic: useEffect що згадує Ref/setX, який оголошений нижче в тому ж файлі
+  # (важко grep'нути напряму — перевіряй вручну при додаванні нових useEffect на верхівці компонента)
+  ```
 - [ ] `useCallback` і `useMemo` не пропущені для функцій що передаються у дочірні компоненти з великим ре-рендером
 
 ### 3.2 Frontend — Стан і ре-рендери
@@ -454,7 +459,7 @@ grep -rn "\.emit(\|this\.events\.emit(" apps/api/src/modules/ --include="*.servi
 - [ ] `RESERVATION_RELEASE`: перевіряє `reserved >= Math.abs(qty)` — запобігає від'ємному резерву
 - [ ] Invoice cross-reference: `inv.workOrderId === dto.workOrderId` — запобігає підміні документів
 - [ ] Soft delete скрізь — `deletedAt: null` у всіх `where`
-- [ ] **Виключення без `deletedAt`**: `SettlementAccount`, `SettlementTransaction`, `StockMovement`, `StockBatch`, `BatchConsumption`, `PriceHistory`, `Payment`, `WorkOrderLineEmployee`
+- [ ] **Виключення без `deletedAt`**: `SettlementAccount`, `SettlementTransaction`, `StockMovement`, `StockBatch`, `BatchConsumption`, `PriceHistory`, `Payment`, `WorkOrderLineEmployee`, `Comment`, `EmployeeBranch` (M:M join)
 - [ ] `SettlementsService.createTransaction` — internal `amount > 0 && Number.isFinite(amount)` guard (defense-in-depth, окрім DTO `@Min`)
 - [ ] `URL.createObjectURL` на frontend — обов'язково `URL.revokeObjectURL(url)` через setTimeout після click
   ```bash
@@ -773,6 +778,25 @@ grep -rn "new Date()\|localStorage\|sessionStorage\|window\.\|document\." \
 ```
 
 - [ ] `localStorage` / `sessionStorage` / `window.*` / `document.*` — тільки всередині `useEffect` або у `'use client'` компонентах
+- [ ] **`useState(() => localStorage.getItem(...))` lazy initializer НЕ можна** — Next.js prerender виконує initializer на сервері, де `localStorage` undefined → throw, далі hydration mismatch (server state ≠ client state). Канон: `useState(defaults)` + `useEffect(() => { read localStorage; setState(parsed) }, [])`.
+  ```typescript
+  // ❌ BAD — крашить SSR prerender + hydration mismatch
+  const [v, setV] = useState<Set<string>>(() => {
+    const s = localStorage.getItem(key);
+    return s ? new Set(JSON.parse(s)) : new Set(defaults);
+  });
+
+  // ✅ GOOD — defaults rendered both on server and on initial client paint,
+  // localStorage merged in via effect after mount
+  const [v, setV] = useState<Set<string>>(() => new Set(defaults));
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const s = window.localStorage.getItem(key);
+      if (s) setV(new Set(JSON.parse(s)));
+    } catch { /* ignore */ }
+  }, [key]);
+  ```
 - [ ] `new Date()` у render → `useEffect` + `useState('')`
 - [ ] **`useState(new Date())` або `useState(() => new Date()...)` теж заборонено** — lazy initializer виконується І на server, І на client з різним часом → hydration mismatch. Шаблон: `useState('')` + `useEffect(() => { setX(new Date()...) }, [])`
   ```typescript
@@ -946,6 +970,13 @@ grep -rn "toResponseDto\|toDto\|toDetailDto" apps/api/src/modules/ --include="*.
 - [ ] Optional поля захищені guard-ом: `data?.field` або `{data.field && ...}`
 - [ ] Числові поля з Prisma `Decimal` → `Number(x)` у `toResponseDto()` — не повертається як об'єкт
 - [ ] `createdAt`, `updatedAt` → передаються як `string` (JSON серіалізація) — фронтенд-тип має `string`, не `Date`
+- [ ] **Polymorphic `entityType`/`kind` string fields** мають **одну** канонічну форму у DTO whitelist (`IsIn(['WorkOrder', ...])`). Фронтенд повинен використовувати **точно ту саму** форму (PascalCase vs snake_case) у POST та GET query — інакше POST падає `400 BadRequest` і GET повертає 0 записів. Шаблон: експортувати `COMMENT_ENTITY_TYPES` (або аналог) з DTO і імпортувати константи у фронт замість магічних рядків.
+  ```bash
+  # Знайти всі polymorphic entityType виклики на фронті
+  grep -rn "entityType[\"']*:\s*[\"']" apps/web/src/ --include="*.tsx" --include="*.ts"
+  # Порівняти зі списком у *.dto.ts
+  grep -rn "ENTITY_TYPES\s*=" apps/api/src/modules/ --include="*.dto.ts"
+  ```
 
 ```typescript
 // ❌ BAD — фронт очікує number, API повертає Decimal об'єкт

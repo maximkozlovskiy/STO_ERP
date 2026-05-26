@@ -58,6 +58,13 @@ export class WorkOrderQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() counterpartyId?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() vehicleId?: string;
 
+  // F6: "Мої наряди" chip — filter by assigned mechanic. The filter joins through workOrderLines.employeeId,
+  // so an employee sees an order if ANY of its line items reference them as the executor.
+  @ApiPropertyOptional({ description: 'Фільтр за виконавцем (через рядки робіт)' })
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+
   @ApiPropertyOptional({ description: 'Пошук за номером або назвою контрагента' })
   @IsOptional()
   @IsString()

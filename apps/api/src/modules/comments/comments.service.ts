@@ -1,6 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateCommentDto, CommentResponseDto, CommentsListResponseDto } from './comments.dto';
+import {
+  CreateCommentDto, CommentResponseDto, CommentsListResponseDto,
+  COMMENT_ENTITY_TYPES, type CommentEntityType,
+} from './comments.dto';
+
+function isAllowedEntityType(value: string): value is CommentEntityType {
+  return (COMMENT_ENTITY_TYPES as readonly string[]).includes(value);
+}
 
 type CommentWithAuthor = {
   id: string;
@@ -22,6 +29,15 @@ export class CommentsService {
     entityType: string,
     entityId: string,
   ): Promise<CommentsListResponseDto> {
+    // Reject arbitrary entity types — without this guard, callers could probe arbitrary
+    // string values and bypass the polymorphic relation contract. Also keeps the composite
+    // index `(orgId, entityType, entityId, createdAt)` selective.
+    if (!isAllowedEntityType(entityType)) {
+      throw new BadRequestException(`Невідомий тип сутності для коментарів: ${entityType}`);
+    }
+    if (!entityId || typeof entityId !== 'string') {
+      throw new BadRequestException('entityId обов\'язковий');
+    }
     const [items, total] = await Promise.all([
       this.prisma.comment.findMany({
         where: { orgId, entityType, entityId },
@@ -50,9 +66,16 @@ export class CommentsService {
     return this.toDto(comment as CommentWithAuthor);
   }
 
-  async remove(orgId: string, id: string): Promise<void> {
+  async remove(orgId: string, id: string, user: { id: string; role: string }): Promise<void> {
     const comment = await this.prisma.comment.findFirst({ where: { id, orgId } });
     if (!comment) throw new NotFoundException('Коментар не знайдено');
+    // Only the comment author or an owner/admin can delete. Without this check ANY authenticated
+    // employee could erase another employee's notes — a moderation/audit problem.
+    const isAuthor = comment.authorId === user.id;
+    const isAdmin  = user.role === 'OWNER' || user.role === 'ADMIN';
+    if (!isAuthor && !isAdmin) {
+      throw new ForbiddenException('Видаляти коментарі можуть лише автор або адміністратор');
+    }
     await this.prisma.comment.delete({ where: { id } });
   }
 

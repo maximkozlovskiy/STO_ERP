@@ -116,14 +116,6 @@ export default function WorkOrdersPage() {
   const [nowMs, setNowMs] = useState(0);
   useEffect(() => { setNowMs(Date.now()); }, []);
 
-  // Auto-activate "my orders" chip once for MECHANIC role (run only once after employee loads)
-  useEffect(() => {
-    if (employee && !myOrdersInitRef.current) {
-      myOrdersInitRef.current = true;
-      if (employee.role === 'MECHANIC') setMyOrders(true);
-    }
-  }, [employee]);
-
   const [data, setData] = useState<Paginated | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
@@ -140,6 +132,16 @@ export default function WorkOrdersPage() {
   const [myOrders, setMyOrders] = useState(false);
   const myOrdersInitRef = useRef(false);
   const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
+
+  // Auto-activate "my orders" chip once for MECHANIC role (run only once after employee loads).
+  // Must be declared AFTER the `myOrdersInitRef` and `setMyOrders` it references, otherwise TDZ
+  // ReferenceError fires on first render.
+  useEffect(() => {
+    if (employee && !myOrdersInitRef.current) {
+      myOrdersInitRef.current = true;
+      if (employee.role === 'MECHANIC') setMyOrders(true);
+    }
+  }, [employee]);
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);

@@ -45,6 +45,11 @@ export class WorkOrdersService {
     if (query.counterpartyId) where.counterpartyId = query.counterpartyId;
     if (query.vehicleId) where.vehicleId = query.vehicleId;
     if (query.repairCategory) where.repairCategory = query.repairCategory as RepairCategory;
+    if (query.employeeId) {
+      // F6: surface only orders that have at least one line assigned to this employee.
+      // `some` produces a correlated EXISTS subquery and respects soft-deleted lines.
+      where.lines = { some: { employeeId: query.employeeId, deletedAt: null } };
+    }
     if (query.q) {
       where.OR = [
         { number: { contains: query.q, mode: 'insensitive' } },
