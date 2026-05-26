@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Sun, Moon, Monitor } from 'lucide-react';
+import { Sun, Moon, Monitor, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Modal } from '@/components/ui/modal';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { THEMES, type ThemeName, applyTheme } from '@/lib/theme';
@@ -81,7 +82,7 @@ const WEBHOOK_EVENT_OPTIONS = [
   { value: 'LOW_STOCK_ALERT', label: 'Низький залишок' },
 ];
 
-type Tab = 'org' | 'payments' | 'sms' | 'theme' | 'ui' | 'numbers' | 'taxrates' | 'workdays' | 'followup' | 'integrations';
+type Tab = 'org' | 'payments' | 'notifications' | 'theme' | 'ui' | 'numbers' | 'taxrates' | 'workdays' | 'followup' | 'integrations';
 type NavMode = 'sections' | 'functions';
 const NAV_MODE_KEY = 'sto_nav_mode';
 
@@ -111,8 +112,16 @@ export default function SettingsPage() {
   const [selectedBranch, setSelectedBranch] = useState('');
   const [branchSettings, setBranchSettings] = useState<{ workStartTime: string; workEndTime: string; workDays: number[]; slotDurationMinutes: number } | null>(null);
   const [newTaxRate, setNewTaxRate] = useState({ name: '', rate: '' });
+  const [editTaxRate, setEditTaxRate] = useState<TaxRateItem | null>(null);
+  const [editTaxForm, setEditTaxForm] = useState({ name: '', rate: '' });
   const [savingTax, setSavingTax] = useState(false);
   const [savingBranch, setSavingBranch] = useState(false);
+  // Payment method editing
+  const [editPayment, setEditPayment] = useState<PaymentMethod | null>(null);
+  const [editPaymentForm, setEditPaymentForm] = useState({ name: '', requiresFiscal: false });
+  const [paymentModal, setPaymentModal] = useState(false);
+  const [newPaymentForm, setNewPaymentForm] = useState({ code: '', name: '', requiresFiscal: false });
+  const [savingPayment, setSavingPayment] = useState(false);
 
   // Webhook state
   const [webhooks, setWebhooks] = useState<WebhookEndpoint[]>([]);
@@ -286,6 +295,69 @@ export default function SettingsPage() {
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
   };
 
+  const openEditTaxRate = (tr: TaxRateItem) => {
+    setEditTaxRate(tr);
+    setEditTaxForm({ name: tr.name, rate: String(tr.rate) });
+  };
+
+  const saveEditTaxRate = async () => {
+    if (!editTaxRate) return;
+    const rate = Number(editTaxForm.rate);
+    if (!editTaxForm.name || !Number.isFinite(rate) || rate < 0 || rate > 100) { setError('Некоректні дані'); return; }
+    setSavingTax(true);
+    try {
+      const updated = await apiFetch<TaxRateItem>(`/settings/tax-rates/${editTaxRate.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: editTaxForm.name, rate }),
+      });
+      setTaxRates(prev => prev.map(r => r.id === updated.id ? updated : r));
+      setEditTaxRate(null);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSavingTax(false); }
+  };
+
+  const openEditPayment = (pm: PaymentMethod) => {
+    setEditPayment(pm);
+    setEditPaymentForm({ name: pm.name, requiresFiscal: pm.requiresFiscal });
+  };
+
+  const saveEditPayment = async () => {
+    if (!editPayment) return;
+    setSavingPayment(true);
+    try {
+      const updated = await apiFetch<PaymentMethod>(`/payment-methods/${editPayment.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: editPaymentForm.name, requiresFiscal: editPaymentForm.requiresFiscal }),
+      });
+      setPayments(prev => prev.map(p => p.id === updated.id ? updated : p));
+      setEditPayment(null);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSavingPayment(false); }
+  };
+
+  const createPaymentMethod = async () => {
+    if (!newPaymentForm.code.trim() || !newPaymentForm.name.trim()) { setError('Код і назва є обов\'язковими'); return; }
+    setSavingPayment(true);
+    try {
+      const created = await apiFetch<PaymentMethod>('/payment-methods', {
+        method: 'POST',
+        body: JSON.stringify({ code: newPaymentForm.code.trim().toUpperCase(), name: newPaymentForm.name.trim(), requiresFiscal: newPaymentForm.requiresFiscal }),
+      });
+      setPayments(prev => [...prev, created]);
+      setPaymentModal(false);
+      setNewPaymentForm({ code: '', name: '', requiresFiscal: false });
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSavingPayment(false); }
+  };
+
+  const deletePaymentMethod = async (id: string) => {
+    if (!confirm('Видалити метод оплати?')) return;
+    try {
+      await apiFetch(`/payment-methods/${id}`, { method: 'DELETE' });
+      setPayments(prev => prev.filter(p => p.id !== id));
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+  };
+
   const resetDocNumber = async (documentType: string) => {
     if (!confirm(`Скинути лічильник для ${documentType}?`)) return;
     try {
@@ -375,7 +447,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border mb-6 flex-wrap">
-        {(['org', 'payments', 'numbers', 'taxrates', 'workdays', 'sms', 'theme', 'ui', 'followup', 'integrations'] as Tab[]).map((t) => (
+        {(['org', 'payments', 'numbers', 'taxrates', 'workdays', 'notifications', 'theme', 'ui', 'followup', 'integrations'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -386,7 +458,7 @@ export default function SettingsPage() {
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {{ org: 'Організація', payments: 'Оплата', numbers: 'Нумерація', taxrates: 'Ставки ПДВ', workdays: 'Робочі дні', sms: 'SMS', theme: 'Оформлення', ui: 'Інтерфейс', followup: 'Нагадування', integrations: 'Інтеграції' }[t]}
+            {{ org: 'Організація', payments: 'Оплата', numbers: 'Нумерація', taxrates: 'Ставки ПДВ', workdays: 'Робочі дні', notifications: 'Сповіщення', theme: 'Оформлення', ui: 'Інтерфейс', followup: 'Нагадування', integrations: 'Інтеграції' }[t]}
           </button>
         ))}
       </div>
@@ -488,59 +560,83 @@ export default function SettingsPage() {
       )}
 
       {/* SMS templates */}
-      {tab === 'sms' && (
-        <div className="space-y-4">
+      {tab === 'notifications' && (
+        <div className="space-y-6">
           <p className="text-sm text-muted-foreground">
             Використовуйте змінні у подвійних дужках: {'{{workOrderNumber}}'}, {'{{clientName}}'}, {'{{amount}}'}
           </p>
           {templates.length === 0 && (
             <p className="text-muted-foreground text-sm">Шаблони не знайдено</p>
           )}
-          {templates.map(t => (
-            <div key={t.id} className="bg-surface rounded-xl border border-border p-4">
-              {editingTemplate?.id === t.id ? (
+          {(['SMS', 'EMAIL', 'PUSH'] as const).map(channel => {
+            const channelTemplates = templates.filter(t => t.channel === channel);
+            if (channelTemplates.length === 0) return null;
+            return (
+              <div key={channel}>
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-secondary rounded text-xs font-mono">{channel}</span>
+                  {channel === 'SMS' && 'SMS-сповіщення'}
+                  {channel === 'EMAIL' && 'Email-сповіщення'}
+                  {channel === 'PUSH' && 'Push-сповіщення'}
+                </h3>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
-                    <span className="text-xs text-muted-foreground">{t.channel}</span>
-                  </div>
-                  <textarea
-                    value={editingTemplate.body}
-                    onChange={e => setEditingTemplate(et => et ? { ...et, body: e.target.value } : et)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary bg-surface text-foreground"
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={saveTemplate} loading={saving}>
-                      Зберегти
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setEditingTemplate(null)}>
-                      Скасувати
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-foreground">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
-                      <span className="text-xs px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">{t.channel}</span>
-                      <span className={cn(
-                        'text-xs px-1.5 py-0.5 rounded',
-                        t.isActive ? 'bg-success-subtle text-success' : 'bg-secondary text-muted-foreground',
-                      )}>
-                        {t.isActive ? 'Активний' : 'Вимкнено'}
-                      </span>
+                  {channelTemplates.map(t => (
+                    <div key={t.id} className="bg-surface rounded-xl border border-border p-4">
+                      {editingTemplate?.id === t.id ? (
+                        <div className="space-y-3">
+                          <span className="text-sm font-medium text-foreground">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
+                          {channel === 'EMAIL' && (
+                            <input
+                              type="text"
+                              value={editingTemplate.subject ?? ''}
+                              onChange={e => setEditingTemplate(et => et ? { ...et, subject: e.target.value } : et)}
+                              placeholder="Тема листа"
+                              className="w-full px-3 py-1.5 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-surface text-foreground"
+                            />
+                          )}
+                          <textarea
+                            value={editingTemplate.body}
+                            onChange={e => setEditingTemplate(et => et ? { ...et, body: e.target.value } : et)}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-border rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary bg-surface text-foreground"
+                          />
+                          <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={editingTemplate.isActive}
+                                onChange={e => setEditingTemplate(et => et ? { ...et, isActive: e.target.checked } : et)}
+                                className="rounded border-border"
+                              />
+                              <span className="text-sm text-foreground">Активний</span>
+                            </label>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={saveTemplate} loading={saving}>Зберегти</Button>
+                            <Button size="sm" variant="outline" onClick={() => setEditingTemplate(null)}>Скасувати</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-medium text-foreground">{EVENT_LABELS[t.eventType] ?? t.eventType}</span>
+                              <span className={cn('text-xs px-1.5 py-0.5 rounded', t.isActive ? 'bg-success-subtle text-success' : 'bg-secondary text-muted-foreground')}>
+                                {t.isActive ? 'Активний' : 'Вимкнено'}
+                              </span>
+                            </div>
+                            {t.subject && <p className="text-xs text-muted-foreground mb-1">Тема: {t.subject}</p>}
+                            <p className="text-xs text-muted-foreground font-mono bg-secondary rounded p-2">{t.body}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => setEditingTemplate(t)}>Редагувати</Button>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground font-mono bg-secondary rounded p-2">{t.body}</p>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setEditingTemplate(t)}>
-                    Редагувати
-                  </Button>
+                  ))}
                 </div>
-              )}
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -710,35 +806,71 @@ export default function SettingsPage() {
 
       {/* Payment methods */}
       {tab === 'payments' && (
-        <div className="bg-surface rounded-xl border border-border divide-y divide-border">
-          {payments.length === 0 && (
-            <p className="p-6 text-sm text-muted-foreground">Методи оплати не знайдено</p>
-          )}
-          {payments.map((pm) => (
-            <div key={pm.id} className="flex items-center justify-between px-5 py-4">
-              <div>
-                <p className="text-sm font-medium text-foreground">{pm.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {pm.code}
-                  {pm.requiresFiscal ? ' · фіскальний' : ''}
-                </p>
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setNewPaymentForm({ code: '', name: '', requiresFiscal: false }); setPaymentModal(true); }}>
+              Метод оплати
+            </Button>
+          </div>
+          <div className="bg-surface rounded-xl border border-border divide-y divide-border">
+            {payments.length === 0 && (
+              <p className="p-6 text-sm text-muted-foreground">Методи оплати не знайдено</p>
+            )}
+            {payments.map((pm) => (
+              <div key={pm.id} className="flex items-center justify-between px-5 py-4">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{pm.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {pm.code}
+                    {pm.requiresFiscal ? ' · фіскальний' : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => togglePayment(pm)}
+                    className={cn('relative inline-flex h-5 w-9 rounded-full transition-colors', pm.isActive ? 'bg-primary' : 'bg-border')}
+                  >
+                    <span className={cn('inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5', pm.isActive ? 'translate-x-4' : 'translate-x-0.5')} />
+                  </button>
+                  <button onClick={() => openEditPayment(pm)} className="p-1 text-muted-foreground hover:text-foreground">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => deletePaymentMethod(pm.id)} className="p-1 text-destructive/60 hover:text-destructive">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => togglePayment(pm)}
-                className={cn(
-                  'relative inline-flex h-5 w-9 rounded-full transition-colors',
-                  pm.isActive ? 'bg-primary' : 'bg-border',
-                )}
-              >
-                <span
-                  className={cn(
-                    'inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5',
-                    pm.isActive ? 'translate-x-4' : 'translate-x-0.5',
-                  )}
-                />
-              </button>
+            ))}
+          </div>
+
+          {/* Edit payment modal */}
+          {editPayment && (
+            <Modal open={!!editPayment} onClose={() => setEditPayment(null)} title="Редагувати метод оплати"
+              footer={<Button onClick={saveEditPayment} loading={savingPayment} className="w-full">Зберегти</Button>}
+            >
+              <div className="space-y-4">
+                <Input label="Назва" value={editPaymentForm.name} onChange={e => setEditPaymentForm(f => ({ ...f, name: e.target.value }))} required />
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={editPaymentForm.requiresFiscal} onChange={e => setEditPaymentForm(f => ({ ...f, requiresFiscal: e.target.checked }))} className="rounded border-border" />
+                  <span className="text-sm text-foreground">Фіскальний (потребує ПРРО)</span>
+                </label>
+              </div>
+            </Modal>
+          )}
+
+          {/* Create payment modal */}
+          <Modal open={paymentModal} onClose={() => setPaymentModal(false)} title="Новий метод оплати"
+            footer={<Button onClick={createPaymentMethod} loading={savingPayment} disabled={!newPaymentForm.code || !newPaymentForm.name} className="w-full">Додати</Button>}
+          >
+            <div className="space-y-4">
+              <Input label="Код" value={newPaymentForm.code} onChange={e => setNewPaymentForm(f => ({ ...f, code: e.target.value }))} placeholder="CASH, CARD, BANK" required hint="Унікальний ідентифікатор (латиниця, великі літери)" />
+              <Input label="Назва" value={newPaymentForm.name} onChange={e => setNewPaymentForm(f => ({ ...f, name: e.target.value }))} placeholder="Готівка" required />
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={newPaymentForm.requiresFiscal} onChange={e => setNewPaymentForm(f => ({ ...f, requiresFiscal: e.target.checked }))} className="rounded border-border" />
+                <span className="text-sm text-foreground">Фіскальний (потребує ПРРО)</span>
+              </label>
             </div>
-          ))}
+          </Modal>
         </div>
       )}
 
@@ -804,21 +936,49 @@ export default function SettingsPage() {
           <div className="bg-surface rounded-xl border border-border divide-y divide-border">
             {taxRates.length === 0 && <p className="p-4 text-sm text-muted-foreground">Ставок ПДВ не знайдено</p>}
             {taxRates.map(tr => (
-              <div key={tr.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <span className="text-sm font-medium text-foreground">{tr.name}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">{tr.rate}%</span>
-                  {tr.isDefault && <span className="ml-2 text-xs text-primary">(за замовчуванням)</span>}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => toggleTaxRate(tr)}
-                    className={cn('relative inline-flex h-5 w-9 rounded-full transition-colors', tr.isActive ? 'bg-primary' : 'bg-border')}
-                  >
-                    <span className={cn('inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5', tr.isActive ? 'translate-x-4' : 'translate-x-0.5')} />
-                  </button>
-                  <button onClick={() => deleteTaxRate(tr.id)} className="text-xs text-destructive/60 hover:text-destructive px-1">×</button>
-                </div>
+              <div key={tr.id} className="px-4 py-3">
+                {editTaxRate?.id === tr.id ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={editTaxForm.name}
+                      onChange={e => setEditTaxForm(f => ({ ...f, name: e.target.value }))}
+                      className="flex-1 px-2 py-1 border border-border rounded-lg text-sm bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    <input
+                      type="number"
+                      min="0" max="100"
+                      value={editTaxForm.rate}
+                      onChange={e => setEditTaxForm(f => ({ ...f, rate: e.target.value }))}
+                      className="w-20 px-2 py-1 border border-border rounded-lg text-sm bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    <span className="text-muted-foreground text-sm">%</span>
+                    <Button size="sm" onClick={saveEditTaxRate} loading={savingTax}>Зберегти</Button>
+                    <Button size="sm" variant="outline" onClick={() => setEditTaxRate(null)}>Скасувати</Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-medium text-foreground">{tr.name}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{tr.rate}%</span>
+                      {tr.isDefault && <span className="ml-2 text-xs text-primary">(за замовчуванням)</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleTaxRate(tr)}
+                        className={cn('relative inline-flex h-5 w-9 rounded-full transition-colors', tr.isActive ? 'bg-primary' : 'bg-border')}
+                      >
+                        <span className={cn('inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5', tr.isActive ? 'translate-x-4' : 'translate-x-0.5')} />
+                      </button>
+                      <button onClick={() => openEditTaxRate(tr)} className="p-1 text-muted-foreground hover:text-foreground">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => deleteTaxRate(tr.id)} className="p-1 text-destructive/60 hover:text-destructive">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

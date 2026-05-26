@@ -42,7 +42,7 @@ interface Paginated { items: WorkOrder[]; total: number; page: number; limit: nu
 interface Branch { id: string; name: string; }
 interface Vehicle { id: string; make: string; model: string; licensePlate: string | null; }
 interface Counterparty { id: string; firstName: string | null; lastName: string | null; companyName: string | null; }
-interface WOTemplate { id: string; name: string; }
+interface WOTemplate { id: string; name: string; lines: { workId: string; quantity: number }[]; parts: { goodId: string; quantity: number }[]; }
 
 interface WOFilters extends Record<string, unknown> {
   statusFilter: string;
@@ -149,6 +149,7 @@ export default function WorkOrdersPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [templates, setTemplates] = useState<WOTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<WOTemplate | null>(null);
 
   const features = useUiFeatures();
 
@@ -782,7 +783,7 @@ export default function WorkOrdersPage() {
       {/* Create modal */}
       <Modal
         open={modal}
-        onClose={() => setModal(false)}
+        onClose={() => { setModal(false); setSelectedTemplate(null); }}
         title="Новий наряд"
         description="Заповніть дані для створення наряду"
         footer={
@@ -804,27 +805,33 @@ export default function WorkOrdersPage() {
 
         <div className="space-y-4">
           {templates.length > 0 && (
-            <Select
-              label="Шаблон (необов'язково)"
-              value=""
-              onChange={e => {
-                const tpl = templates.find(t => t.id === e.target.value);
-                if (!tpl) return;
-                // Prefix description so the user immediately sees which template was applied.
-                // Plain `tpl.name` would overwrite the field with what looks like an actual
-                // description and obscure the fact that lines/parts auto-apply is not (yet)
-                // implemented for the create form — see Bug #67 in BUG_REPORT.md.
-                setForm(f => ({
-                  ...f,
-                  description: `Створено за шаблоном «${tpl.name}»`,
-                }));
-              }}
-            >
-              <option value="">— Без шаблону —</option>
-              {templates.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </Select>
+            <div>
+              <Select
+                label="Шаблон (необов'язково)"
+                value={selectedTemplate?.id ?? ''}
+                onChange={e => {
+                  const tpl = templates.find(t => t.id === e.target.value) ?? null;
+                  setSelectedTemplate(tpl);
+                  if (tpl) {
+                    setForm(f => ({ ...f, description: `Створено за шаблоном «${tpl.name}»` }));
+                  }
+                }}
+              >
+                <option value="">— Без шаблону —</option>
+                {templates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </Select>
+              {selectedTemplate && (selectedTemplate.lines.length > 0 || selectedTemplate.parts.length > 0) && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Шаблон містить:{' '}
+                  {selectedTemplate.lines.length > 0 && `${selectedTemplate.lines.length} роб.`}
+                  {selectedTemplate.lines.length > 0 && selectedTemplate.parts.length > 0 && ', '}
+                  {selectedTemplate.parts.length > 0 && `${selectedTemplate.parts.length} запч.`}
+                  {' — '} буде додано після відкриття наряду
+                </p>
+              )}
+            </div>
           )}
 
           <Select
