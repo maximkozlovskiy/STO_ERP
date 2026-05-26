@@ -19,6 +19,18 @@ import { toast } from '@/lib/toast';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+interface WorkOrderMedia {
+  id: string; workOrderId: string; fileKey: string; filename: string;
+  mimeType: string; sizeBytes: number; uploadedBy: string;
+  signedUrl: string; createdAt: string;
+}
+
+interface AuditEventItem {
+  id: string; action: string; diff: Record<string, unknown>;
+  createdAt: string;
+  user: { firstName: string; lastName: string };
+}
+
 interface WorkOrderLine {
   id: string; workId: string; workName?: string;
   employeeId: string; employeeName?: string;
@@ -137,6 +149,12 @@ export default function WorkOrderCardPage() {
   const [commentBody, setCommentBody] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
 
+  const [media, setMedia] = useState<WorkOrderMedia[]>([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
+
   const [savingTemplate, setSavingTemplate] = useState(false);
 
   const features = useUiFeatures();
@@ -188,6 +206,41 @@ export default function WorkOrderCardPage() {
   }, [id]);
 
   useEffect(() => { loadComments(); }, [loadComments]);
+
+  const loadMedia = useCallback(() => {
+    apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`)
+      .then(d => { if (mountedRef.current) setMedia(d.items ?? []); })
+      .catch(() => {});
+  }, [id]);
+
+  useEffect(() => { loadMedia(); }, [loadMedia]);
+
+  const loadAudit = useCallback(() => {
+    apiFetch<{ items: AuditEventItem[] }>(`/audit?entityType=WorkOrder&entityId=${id}`)
+      .then(d => { if (mountedRef.current) setAuditEvents(d.items ?? []); })
+      .catch(() => {});
+  }, [id]);
+
+  useEffect(() => { loadAudit(); }, [loadAudit]);
+
+  const handleMediaUpload = async (files: FileList) => {
+    setUploadingMedia(true);
+    for (const file of Array.from(files)) {
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/work-orders/${id}/media`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('sto_token')}` },
+          body: fd,
+        });
+      } catch {
+        // continue uploading remaining files
+      }
+    }
+    await loadMedia();
+    setUploadingMedia(false);
+  };
 
   const saveAsTemplate = async () => {
     if (!wo) return;
@@ -390,6 +443,8 @@ export default function WorkOrderCardPage() {
     finally { setGeneratingAct(false); }
   };
 
+  const [cloning, setCloning] = useState(false);
+
   const downloadPdf = async () => {
     // Bug #77: use apiBlobFetch which does silent refresh on 401 — direct fetch
     // breaks when access token expired (~15min) requiring full page reload.
@@ -407,6 +462,19 @@ export default function WorkOrderCardPage() {
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка завантаження PDF');
+    }
+  };
+
+  const handleClone = async () => {
+    setCloning(true);
+    setError('');
+    try {
+      const cloned = await apiFetch<{ id: string }>(`/work-orders/${id}/clone`, { method: 'POST' });
+      router.push(`/work-orders/${cloned.id}`);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка дублювання');
+    } finally {
+      setCloning(false);
     }
   };
 
@@ -499,6 +567,12 @@ export default function WorkOrderCardPage() {
         ))}
         <Button variant="outline" size="sm" onClick={downloadPdf}>
           PDF
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => window.print()}>
+          Друк
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleClone} loading={cloning} disabled={cloning}>
+          Дублювати
         </Button>
         <Button variant="outline" size="sm" onClick={() => void saveAsTemplate()} loading={savingTemplate} disabled={savingTemplate || !wo?.lines.length && !wo?.parts.length}>
           Шаблон ↓
@@ -685,6 +759,83 @@ export default function WorkOrderCardPage() {
           </div>
         )}
       </div>
+
+      {/* Фото */}
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
+          <h3 className="font-medium text-foreground text-sm">Фото ({media.length})</h3>
+          <label className="cursor-pointer">
+            <input type="file" accept="image/*,application/pdf" multiple className="hidden"
+              onChange={e => { if (e.target.files) void handleMediaUpload(e.target.files); }} />
+            <Button variant="outline" size="sm" loading={uploadingMedia} onClick={e => e.preventDefault()}>
+              Додати фото
+            </Button>
+          </label>
+        </div>
+        <div className="p-4"
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); void handleMediaUpload(e.dataTransfer.files); }}
+        >
+          {media.length === 0 ? (
+            <div className="text-center text-muted-foreground text-sm py-6 border-2 border-dashed border-border rounded-lg">
+              Перетягніть фото сюди або натисніть &quot;Додати фото&quot;
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-3">
+              {media.map(m => (
+                <div key={m.id} className="relative group aspect-square rounded-lg overflow-hidden bg-secondary cursor-pointer"
+                  onClick={() => setLightboxUrl(m.signedUrl)}>
+                  {m.mimeType.startsWith('image/') ? (
+                    <img src={m.signedUrl} alt={m.filename} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-xs text-muted-foreground p-1 text-center break-all">{m.filename}</div>
+                  )}
+                  <button onClick={async e => {
+                    e.stopPropagation();
+                    await apiFetch(`/work-orders/${id}/media/${m.id}`, { method: 'DELETE' });
+                    setMedia(prev => prev.filter(x => x.id !== m.id));
+                  }} className="absolute top-1 right-1 hidden group-hover:flex w-6 h-6 bg-destructive text-white rounded-full items-center justify-center text-xs">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="Фото" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
+        </div>
+      )}
+
+      {/* Журнал змін */}
+      {auditEvents.length > 0 && (
+        <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="px-5 py-3 border-b border-border bg-secondary">
+            <h3 className="font-medium text-foreground text-sm">Журнал змін</h3>
+          </div>
+          <div className="divide-y divide-border max-h-64 overflow-y-auto">
+            {auditEvents.map(ev => {
+              const who = `${ev.user.lastName} ${ev.user.firstName}`;
+              const when = new Date(ev.createdAt).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+              const diff = ev.diff as Record<string, { from: unknown; to: unknown }>;
+              const changes = Object.entries(diff)
+                .filter(([, v]) => v && typeof v === 'object' && 'from' in v)
+                .map(([k, v]) => `${k}: ${(v as { from: unknown; to: unknown }).from} → ${(v as { from: unknown; to: unknown }).to}`)
+                .join(', ');
+              return (
+                <div key={ev.id} className="px-5 py-2.5 text-[12px] text-muted-foreground">
+                  <span className="font-medium text-foreground">{who}</span>{' '}
+                  {ev.action === 'CREATE' ? 'створив' : ev.action === 'DELETE' ? 'видалив' : 'змінив'}{' '}
+                  {changes && <span className="text-foreground-muted">({changes})</span>}{' '}
+                  <span className="ml-1">{when}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Add Line Modal */}
       <Modal open={lineModal} onClose={closeLineModal} title="Додати роботу">

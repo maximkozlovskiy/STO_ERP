@@ -1,0 +1,129 @@
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import * as crypto from 'crypto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { FilesService } from '../files/files.service';
+import { WorkOrderMediaResponseDto, WorkOrderMediaListDto } from './work-order-media.dto';
+
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/heic',
+  'image/heif',
+  'application/pdf',
+]);
+
+const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+interface UploadFileInput {
+  buffer: Buffer;
+  filename: string;
+  mimetype: string;
+  size: number;
+}
+
+@Injectable()
+export class WorkOrderMediaService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly files: FilesService,
+  ) {}
+
+  async upload(
+    orgId: string,
+    workOrderId: string,
+    uploadedBy: string,
+    file: UploadFileInput,
+  ): Promise<WorkOrderMediaResponseDto> {
+    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      throw new BadRequestException('Дозволені формати: JPEG, PNG, HEIC, HEIF, PDF');
+    }
+    if (file.size > MAX_SIZE_BYTES) {
+      throw new BadRequestException('Файл завеликий (максимум 10 МБ)');
+    }
+
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id: workOrderId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+
+    const ext = (file.filename.split('.').pop() ?? 'bin').toLowerCase();
+    const objectName = `org/${orgId}/work-orders/${workOrderId}/${crypto.randomUUID()}.${ext}`;
+
+    await this.files.uploadRaw(file.buffer, objectName, file.mimetype);
+
+    const record = await this.prisma.workOrderMedia.create({
+      data: {
+        orgId,
+        workOrderId,
+        fileKey: objectName,
+        filename: file.filename,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        uploadedBy,
+      },
+    });
+
+    const signedUrl = await this.files.getSignedUrl(objectName, 3600);
+    return this.toDto(record, signedUrl);
+  }
+
+  async findAll(orgId: string, workOrderId: string): Promise<WorkOrderMediaListDto> {
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id: workOrderId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+
+    const records = await this.prisma.workOrderMedia.findMany({
+      where: { orgId, workOrderId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const items = await Promise.all(
+      records.map(async (r) => {
+        const signedUrl = await this.files.getSignedUrl(r.fileKey, 3600);
+        return this.toDto(r, signedUrl);
+      }),
+    );
+
+    return { items, total: items.length };
+  }
+
+  async remove(orgId: string, workOrderId: string, mediaId: string): Promise<void> {
+    const record = await this.prisma.workOrderMedia.findFirst({
+      where: { id: mediaId, orgId, workOrderId },
+    });
+    if (!record) throw new NotFoundException('Медіа не знайдено');
+
+    await this.files.deleteObject(record.fileKey);
+    await this.prisma.workOrderMedia.delete({ where: { id: mediaId } });
+  }
+
+  private toDto(
+    r: {
+      id: string;
+      workOrderId: string;
+      fileKey: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      uploadedBy: string;
+      createdAt: Date;
+    },
+    signedUrl: string,
+  ): WorkOrderMediaResponseDto {
+    return {
+      id: r.id,
+      workOrderId: r.workOrderId,
+      fileKey: r.fileKey,
+      filename: r.filename,
+      mimeType: r.mimeType,
+      sizeBytes: r.sizeBytes,
+      uploadedBy: r.uploadedBy,
+      signedUrl,
+      createdAt: r.createdAt.toISOString(),
+    };
+  }
+}

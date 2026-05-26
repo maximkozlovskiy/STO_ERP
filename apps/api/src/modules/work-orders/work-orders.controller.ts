@@ -37,8 +37,8 @@ export class WorkOrdersController {
   @Post()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Створити наряд' })
-  create(@OrgContext() orgId: string, @Body() dto: CreateWorkOrderDto) {
-    return this.service.create(orgId, dto);
+  create(@OrgContext() orgId: string, @CurrentUser() user: { id: string }, @Body() dto: CreateWorkOrderDto) {
+    return this.service.create(orgId, dto, user.id);
   }
 
   @Patch(':id')
@@ -67,8 +67,8 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити чернетку наряду' })
-  remove(@OrgContext() orgId: string, @Param('id') id: string) {
-    return this.service.remove(orgId, id);
+  remove(@OrgContext() orgId: string, @CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.service.remove(orgId, id, user.id);
   }
 
   @Post(':id/transition')
@@ -81,6 +81,18 @@ export class WorkOrdersController {
     @CurrentUser() user: { sub: string },
   ) {
     return this.service.transition(orgId, id, dto.status, user?.sub);
+  }
+
+  @Post(':id/clone')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Дублювати наряд' })
+  clone(
+    @OrgContext() orgId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.service.clone(orgId, id, user?.sub);
   }
 
   // ─── Lines ───────────────────────────────────────────────

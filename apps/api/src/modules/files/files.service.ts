@@ -20,6 +20,8 @@ export class FilesService implements OnModuleInit {
     bucketExists(name: string): Promise<boolean>;
     makeBucket(name: string, region: string): Promise<void>;
     putObject(bucket: string, object: string, stream: Buffer, size: number, meta: Record<string, string>): Promise<unknown>;
+    presignedGetObject(bucket: string, object: string, expiry: number): Promise<string>;
+    removeObject(bucket: string, object: string): Promise<void>;
   } | null;
 
   constructor(
@@ -84,5 +86,37 @@ export class FilesService implements OnModuleInit {
     }
 
     return { fileId, url: `${this.publicUrl}/${this.bucket}/${objectName}`, filename: file.originalname };
+  }
+
+  async uploadRaw(buffer: Buffer, objectName: string, mimeType: string): Promise<void> {
+    if (!this.client) throw new InternalServerErrorException('Сервіс файлів недоступний');
+    try {
+      await this.client.putObject(this.bucket, objectName, buffer, buffer.length, {
+        'Content-Type': mimeType,
+      });
+    } catch {
+      throw new InternalServerErrorException('Помилка збереження файлу');
+    }
+  }
+
+  async getSignedUrl(objectName: string, expirySeconds = 3600): Promise<string> {
+    if (!this.client) {
+      // Fallback: return direct public URL when MinIO client not available
+      return `${this.publicUrl}/${this.bucket}/${objectName}`;
+    }
+    try {
+      return await this.client.presignedGetObject(this.bucket, objectName, expirySeconds);
+    } catch {
+      return `${this.publicUrl}/${this.bucket}/${objectName}`;
+    }
+  }
+
+  async deleteObject(objectName: string): Promise<void> {
+    if (!this.client) return;
+    try {
+      await this.client.removeObject(this.bucket, objectName);
+    } catch {
+      // Non-fatal — record will still be deleted from DB
+    }
   }
 }

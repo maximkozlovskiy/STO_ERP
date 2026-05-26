@@ -10,6 +10,7 @@ import { formatPersonName } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
 import { WORK_ORDER_TRANSITIONS, CLOSED_STATUSES, DELETABLE_STATUSES, RESERVATION_ACTIVE_STATUSES, EDITABLE_STATUSES } from './work-orders.fsm';
+import { AuditService } from '../audit/audit.service';
 import {
   CreateWorkOrderDto, UpdateWorkOrderDto, WorkOrderQueryDto,
   WorkOrderResponseDto, WorkOrderDetailDto, PaginatedWorkOrdersDto,
@@ -29,6 +30,7 @@ export class WorkOrdersService {
     private readonly docNumbers: DocumentNumberService,
     private readonly maintenanceSchedules: MaintenanceSchedulesService,
     private readonly pdf: PdfService,
+    private readonly audit: AuditService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
@@ -107,7 +109,7 @@ export class WorkOrdersService {
     };
   }
 
-  async create(orgId: string, dto: CreateWorkOrderDto): Promise<WorkOrderResponseDto> {
+  async create(orgId: string, dto: CreateWorkOrderDto, userId?: string): Promise<WorkOrderResponseDto> {
     const [branch, vehicle, counterparty] = await Promise.all([
       this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }),
       this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId, orgId, deletedAt: null } }),
@@ -139,6 +141,11 @@ export class WorkOrdersService {
         branch: { select: { name: true } },
       },
     });
+
+    if (userId) {
+      this.audit.record(orgId, 'WorkOrder', wo.id, 'CREATE', userId, undefined, { status: wo.status, number: wo.number })
+        .catch((e: unknown) => this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`));
+    }
 
     return this.toDto(wo);
   }
@@ -176,13 +183,91 @@ export class WorkOrdersService {
     return this.toDto(updated);
   }
 
-  async remove(orgId: string, id: string): Promise<void> {
+  async remove(orgId: string, id: string, userId?: string): Promise<void> {
     const wo = await this.prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (!DELETABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Можна видалити лише наряд у статусі Чернетка або Скасовано');
     }
     await this.prisma.workOrder.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    if (userId) {
+      this.audit.record(orgId, 'WorkOrder', id, 'DELETE', userId, { status: wo.status, number: wo.number })
+        .catch((e: unknown) => this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`));
+    }
+  }
+
+  async clone(orgId: string, id: string, userId: string): Promise<WorkOrderResponseDto> {
+    // 1. Find original WO with lines and parts
+    const original = await this.prisma.workOrder.findFirst({
+      where: { id, orgId, deletedAt: null },
+      include: {
+        vehicle: { select: { make: true, model: true, licensePlate: true } },
+        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+        branch: { select: { name: true } },
+        lines: {
+          where: { deletedAt: null },
+          include: {
+            work: { select: { name: true } },
+            employee: { select: { firstName: true, lastName: true } },
+          },
+        },
+        parts: {
+          where: { deletedAt: null },
+          include: { good: { select: { name: true } } },
+        },
+      },
+    });
+    if (!original) throw new NotFoundException('Наряд не знайдено');
+
+    // 2. Get new number
+    const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
+
+    // 3. Create cloned WO as DRAFT
+    const cloned = await this.prisma.workOrder.create({
+      data: {
+        orgId,
+        number,
+        status: WorkOrderStatus.DRAFT,
+        vehicleId: original.vehicleId,
+        counterpartyId: original.counterpartyId,
+        branchId: original.branchId,
+        description: original.description,
+        inMileage: original.inMileage,
+        priority: original.priority,
+        repairCategory: original.repairCategory,
+        dueDate: original.dueDate,
+        lines: {
+          create: original.lines.map((l) => ({
+            orgId,
+            workId: l.workId,
+            employeeId: l.employeeId,
+            liftId: l.liftId ?? undefined,
+            price: l.price,
+            normoHours: l.normoHours,
+            actualHours: l.actualHours ?? null,
+            notes: l.notes ?? null,
+            amount: l.amount,
+          })),
+        },
+        parts: {
+          create: original.parts.map((p) => ({
+            orgId,
+            goodId: p.goodId,
+            quantity: p.quantity,
+            price: p.price,
+            warehouseId: p.warehouseId,
+            amount: p.amount,
+          })),
+        },
+      },
+      include: {
+        vehicle: { select: { make: true, model: true, licensePlate: true } },
+        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+        branch: { select: { name: true } },
+      },
+    });
+
+    return this.toDto(cloned);
   }
 
   // ─── FSM ─────────────────────────────────────────────────
@@ -258,6 +343,12 @@ export class WorkOrdersService {
         workOrderNumber: updated.number,
         clientName: formatPersonName(updated.counterparty.lastName, updated.counterparty.firstName, updated.counterparty.companyName),
       }).catch((e: unknown) => this.logger.warn(`Помилка сповіщення WO_COMPLETED: ${e instanceof Error ? e.message : e}`));
+    }
+
+    // Audit log for status transition
+    if (userId) {
+      this.audit.record(orgId, 'WorkOrder', id, 'UPDATE', userId, { status: wo.status }, { status: newStatus })
+        .catch((e: unknown) => this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`));
     }
 
     return this.toDto(updated);

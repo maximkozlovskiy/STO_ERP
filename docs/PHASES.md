@@ -1086,15 +1086,21 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### B11 — Audit Log (документальна стрічка)
 
-- [ ] `[sto-database]` Модель `AuditEvent` (`orgId`, `entityType`, `entityId`, `action: CREATE|UPDATE|DELETE`, `userId`, `diff: Json`, `createdAt`, append-only, без `updatedAt/deletedAt/syncVersion`)
-- [ ] `[sto-backend]` `AuditService.record(orgId, entity, action, userId, oldData, newData)` — Prisma `diff` через JSON-порівняння. Викликається у WO/Invoice/Employee service-методах. `GET /audit?entityType=WorkOrder&entityId=:id`
-- [ ] `[sto-web]` Стрічка змін у DetailPanel WO/Invoice: "Іван змінив статус DRAFT → IN_PROGRESS о 14:32"
+- [x] `[sto-database]` Модель `AuditEvent` (`orgId`, `entityType`, `entityId`, `action: CREATE|UPDATE|DELETE`, `userId`, `diff: Json`, `createdAt`, append-only, без `updatedAt/deletedAt/syncVersion`)
+    > `packages/database/prisma/schema.prisma`. Міграція `20260526180000`. FK до Organisation та Employee.
+- [x] `[sto-backend]` `AuditService.record(orgId, entity, action, userId, oldData, newData)` — Prisma `diff` через JSON-порівняння. Викликається у WO/Invoice/Employee service-методах. `GET /audit?entityType=WorkOrder&entityId=:id`
+    > `apps/api/src/modules/audit/`. WorkOrdersService.create/transition/remove тепер приймає userId і записує аудит fire-and-forget. Controller OWNER/ADMIN/ACCOUNTANT.
+- [x] `[sto-web]` Стрічка змін у DetailPanel WO/Invoice: "Іван змінив статус DRAFT → IN_PROGRESS о 14:32"
+    > `apps/web/src/app/work-orders/[id]/PageClient.tsx`. `loadAudit` + `auditEvents` стан + render секція "Журнал змін".
 
 ### B12 — Фотозвіт у Web (drag-and-drop upload)
 
-- [ ] `[sto-database]` Модель `WorkOrderMedia` (`workOrderId`, `fileKey`, `filename`, `mimeType`, `sizeBytes`, `uploadedBy`, `createdAt`)
-- [ ] `[sto-backend]` `POST /work-orders/:id/media` (multipart/form-data, max 10MB, JPEG/PNG/HEIC) → MinIO upload → `WorkOrderMedia` record. `GET /work-orders/:id/media` → signed URLs (1 год TTL). `DELETE /work-orders/:id/media/:mediaId`.
-- [ ] `[sto-web]` Секція "Фото" у картці наряду: drag-and-drop зона + grid галерея + lightbox. Не потребує Expo.
+- [x] `[sto-database]` Модель `WorkOrderMedia` (`workOrderId`, `fileKey`, `filename`, `mimeType`, `sizeBytes`, `uploadedBy`, `createdAt`)
+    > `packages/database/prisma/schema.prisma`. Міграція `20260526180000`. FK до Organisation, WorkOrder, Employee.
+- [x] `[sto-backend]` `POST /work-orders/:id/media` (multipart/form-data, max 10MB, JPEG/PNG/HEIC) → MinIO upload → `WorkOrderMedia` record. `GET /work-orders/:id/media` → signed URLs (1 год TTL). `DELETE /work-orders/:id/media/:mediaId`.
+    > `apps/api/src/modules/work-order-media/`. FilesService розширено методами `uploadRaw`, `getSignedUrl`, `deleteObject`. Валідація mimetype + size у сервісі.
+- [x] `[sto-web]` Секція "Фото" у картці наряду: drag-and-drop зона + grid галерея + lightbox. Не потребує Expo.
+    > `apps/web/src/app/work-orders/[id]/PageClient.tsx`. `loadMedia/handleMediaUpload` + grid 4 cols + lightbox overlay.
 
 ---
 
