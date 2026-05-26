@@ -754,7 +754,8 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
-| `pending` | fix(tester): Bugs #61-#67 — search reservedQty column, /branches shape mismatch, invoice PDF Bearer fetch, employees filter DTO, palette deep-link, WO template orgId scope + description prefix |
+| `f70c7c7` | docs(tester): record Bugs #61-#67 from /sto-tester FULL pass + update MemoryManual |
+| `aef124b` | fix(tester): Bugs #61-#67 — search reservedQty column, /branches shape mismatch, invoice PDF Bearer fetch, employees filter DTO, palette deep-link, WO template orgId scope + description prefix |
 | `4cc4e6f` | fix(review): Phases 21-22 — TDZ, broken pdfmake, employeeId filter, polymorphic entityType, comment DELETE auth, SSR-unsafe localStorage, search ordering |
 | `ef146d3` | feat(phases21-22): B6 search, B7 PDF, B10 branch ACL, F1-F2-F6-F8-F10-F12 UX features |
 | `c938dc0` | fix(review): invoices page — mountedRef guards on all setState-after-await, selectTokenRef to drop stale detail responses on fast row-switching |
