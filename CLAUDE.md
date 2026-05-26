@@ -45,6 +45,7 @@ sto-erp/
 /sto-tester     <- для тестування: знаходить баги, фіксує, виправляє
 /sto-installer  <- для Windows installer
 /sto-git        <- для git: commit, branch, changelog, статус
+/sto-phase      <- реалізує наступний блок фаз (database→backend→frontend→QA), автоматично
 ```
 
 ## Типовий workflow нової фічі
