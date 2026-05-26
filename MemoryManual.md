@@ -9,6 +9,10 @@
 ## Останній commit
 
 ```
+d53b626 fix(review): commit 7b899e4 — 11 issues across profitability/invoices/settings/PDF/migration
+<pending> fix(tester): Bugs #74-#80 — profitability cost fallback + vehicle mileage NULL guard + PDF blob refresh + invoice ternary + VAT cap + slot clamp + cancel 204
+<pending> docs(tester): record bugs #74-#80 from /sto-tester FULL session on commit 7b899e4
+7b899e4 feat: implement 21 UX/UI gaps — profitability report, maintenance schedules, profile page, PDF buttons, isWarranty, calendar normoHours suggestion, reconciliation PDF, settlements PDF
 18598d7 fix(review): costMethod UI enum value + literal-union type + regression tests
 c8ce19a feat(settings): add costMethod (FIFO/LIFO/AVERAGE) selector to org settings
 da68955 docs(tester): record Bug #73 from /sto-tester session on isMain feature
@@ -25,17 +29,34 @@ eb48186 fix(tester): Bug #72 — preserve manual vehicleId in loadVehicles (MEDI
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 142/142 passed  (was 138 → +4 settings contract: costMethod GET/PATCH/AVG_COST/regression)
+Unit:            ✅ 142/142 passed
 Contract:        ✅ inside 142 (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4, settings: 10, warehouses: 10)
 Property:        ✅ inside 142 (fsm: 11, inventory: 7, settlements: 8)
 Components:      ✅ 139/139 passed
-E2E:             ✅ 16/16 passed    (playwright on running dev-server)
+E2E:             ⏭ skipped this run (FULL session on commit 7b899e4 was static + unit only)
 Build:           ✅ @sto/api + @sto/web tsc clean
-Review sweep:    /sto-review on c8ce19a (costMethod feature) — 1 CRITICAL + 2 IMPORTANT + 1 SUGGESTION
-Critical fix:    18598d7 — UI sent 'AVERAGE' (not Prisma enum); enum is AVG_COST. FEFO option was missing.
-                 Tightened web type to literal union `'FIFO' | 'FEFO' | 'LIFO' | 'AVG_COST'`.
-                 Added regression contract tests + radio-group a11y.
+Bugs found:      7 (Bug #74 CRITICAL / Bug #75 HIGH / Bug #76-77 MEDIUM / Bug #78-80 LOW) — all fixed
 ```
+
+### Gotcha — /sto-review on commit 7b899e4 (2026-05-26, d53b626)
+
+- **Prisma auto-migrations silently DROP untracked indexes (pg_trgm GIN, custom raw-SQL).** Each `prisma migrate dev` re-generates a draft with `DROP INDEX "idx_*_trgm"` for the trigram GIN indexes created by `20260526061209_b6_trgm_gin_indexes` (raw SQL — Prisma schema parser doesn't see them). Two migrations have now repeated this mistake (`20260526113130_warehouse_is_main` was caught; `20260526124850_stock_document_receipt_work_warranty` was not until this review). **Canon:** every new migration must be diff-checked for `DROP INDEX "idx_.*_trgm"` and patched with `CREATE INDEX IF NOT EXISTS ...` defense block. Consider a pre-commit hook: `grep -L "DROP INDEX.*trgm" packages/database/prisma/migrations/*/migration.sql || exit 1`.
+- **Nested-controller route + standalone frontend URL = path drift.** Frontend called `/api/settlements/reconciliation-acts/:id/pdf` while controller mounted at `@Controller('counterparties/:counterpartyId')`. Real route is `/api/counterparties/:cpId/reconciliation-acts/:actId/pdf`. **Canon:** when adding a new endpoint to a nested-prefix controller, grep frontend `apiFetch`/`apiBlobFetch` calls for the resource name and verify path prefix matches. Add cross-FK tenant isolation in service (`findFirst({ id, orgId, counterpartyId })`) — `@Param('counterpartyId')` alone doesn't validate it belongs to the act.
+- **Cross-tenant FK validation on ADD-line / UPDATE endpoints** (invoices.addLine `goodId`/`workId`). The skill calls this out in §2.2, but it's easy to forget for sub-entity CRUD (lines, parts, comments). **Canon:** every endpoint that accepts an FK uuid in body — even on a child resource — must do `findFirst({ id, orgId })` before linking. The parent being in-org does NOT imply the new FK is in-org.
+- **Soft-delete vs hard-delete for config tables**: `TaxRate` has no `deletedAt` but IS referenced (by `vatRate` decimal value) in past `InvoiceLine` rows. Hard delete loses audit trail. **Canon:** for config tables snapshotted into business records (rate copies, name copies), use `isActive=false` as soft-delete + reject delete on `isDefault=true`. Same pattern: `PaymentMethodConfig`, `NotificationTemplate`.
+- **Magic-number cost ratio in financial reports** (reports.profitability `0.4` labor cost). Even when not yet wired to a DB setting, factor into named `const` with TODO comment — makes refactor to `OrganisationSettings.laborCostRatio` discoverable via grep.
+- **Inline PATCH on every onChange** (settings/page.tsx docNumbers prefix/separator): fires DB write per keystroke. **Canon:** auto-save inputs use `onBlur`, not `onChange`. Surface errors in page-level `error` state instead of silent `.catch(() => {})`.
+- **Enum-string `@Param` casting to Prisma enum at service layer** (settings.controller `documentType: string` → `documentType as DocumentType`). Invalid string passes controller, then either silently misses by `findFirst` (404) or P2009-crashes Prisma (500). Add `@IsIn(Object.values(EnumName))` on DTO fields cast to Prisma enums.
+
+### Gotcha — /sto-tester FULL on commit 7b899e4 (2026-05-26, bugs #74–#80)
+
+- **Cost fallback в звітності НІКОЛИ не дорівнює sale-price** (Bug #74, `reports.service.ts profitability()`): код мав `const cost = part.batchCostPrice ?? part.price` де `part.price` — це САЛЕ-ціна позиції WO. Коли `batchCostPrice IS NULL` (запчастина додана без батча), собівартість дорівнювала виручці і прибуток ≈ 0 — катастрофічно неправильно для P&L звітності. Канон: при будь-якому fallback на "cost" НІКОЛИ не використовувати sale-price. Послідовність: `batchCostPrice ?? good.purchasePrice ?? null`. Якщо все ще null — додавати позицію до `unknownCostPartsCount` лічильника, не до `totalCost`. Краще завищити прибуток (and surface that some parts are uncosted) ніж занизити підставою sale-price як cost.
+- **Prisma `lt`/`gt` filter EXCLUDES NULL rows** (Bug #75, work-orders.service.ts mileage sync): `prisma.vehicle.updateMany({ where: { currentMileage: { lt: N } }, data: { currentMileage: N } })` НЕ оновлює рядки з `currentMileage IS NULL` (SQL: NULL vs число → UNKNOWN → row excluded). Канон: будь-який числовий "update if smaller OR if missing" — обов'язково `OR: [{ currentMileage: null }, { currentMileage: { lt: N } }]`. Те ж стосується дат: `updatedAt`, `lastSeenAt`, `dateOfLastService` — не покладатись на implicit NULL semantics у фільтрах.
+- **PDF/Blob downloads повинні мати silent refresh як `apiFetch`** (Bug #77, settlements + work-orders pages): прямий `fetch(${apiBase}/api/...)` з ручним Bearer-токеном не робить retry після 401 — користувач отримує помилку замість файлу через 15 хв простою. Канон: винести `apiBlobFetch(path)` у `lib/api-client.ts` що дублює auth/refresh логіку `apiFetch` але повертає `Blob`. Використовувати ВСЮДИ де PDF/Excel/CSV downloads. Не дублювати inline fetch у компонентах — кожна inline-копія втрачає silent-refresh + redirect-on-logout логіку.
+- **`||` має нижчий пріоритет за `?:`, призводить до dead-branch ternary** (Bug #76, invoices.recalcTotals): `const x = a || b ? c : c;` парситься як `(a || b) ? c : c` — обидві гілки `c`, конструкція безглузда. Якщо в код проходить тернарник з ідентичними `true`/`false` гілками — це 99% copy-paste артефакт. Канон: спрощувати негайно. Якщо потрібна реальна умова — писати її явно з parentheses і коментарем.
+- **VAT/percent fields потребують `@Max(100)` поряд із `@Min(0)`** (Bug #78, invoices.dto.ts): `@IsNumber() @Min(0) vatRate?: number;` приймає 9999%. Канон: будь-яке поле що означає percent — і `@Min(0) і @Max(100)`. Стосується: `vatRate`, `discountPercent`, `marginPercent`, `loadPercent`, `tax` etc. Grep на `@IsNumber.*percent|vatRate|@Min\(0\)` без `@Max(100)` — це регулярний баг-шаблон.
+- **Time math з `% 24` робить тихий wrap до попереднього дня** (Bug #79, calendar normoHours auto-end): `(h*60 + m + normoMin) % (24*60)` для 14:00 + 15h дає 05:00 — на тій же даті — раніше за початок. UX-проблема: фронт показує валідне з вигляду значення, API падає 400. Канон: для time-math у тому ж calendar-day — clamp до `23:59`: `Math.min(totalMin, 23*60 + 59)`. Wrap (`% 24`) — лише коли явно потрібен перехід на наступний день, що для слотів СТО недопустимо.
+- **DELETE/cancel endpoint що повертає void → завжди `@HttpCode(HttpStatus.NO_CONTENT)`** (Bug #80, completion-acts cancel): NestJS за замовч. видає 200 + порожнє тіло, але REST-стандарт + UI-очікування — 204. Канон: коли метод повертає `Promise<void>` — додати `@HttpCode(HttpStatus.NO_CONTENT)`. Узгодженість з логаут/`removeSlot`/`removeLine` важлива для frontend (`apiFetch` перевіряє `status === 204` щоб не парсити JSON).
 
 ### Gotcha — /sto-review costMethod selector (2026-05-26, commit 18598d7)
 - **Frontend enum literal drift from Prisma enum** (settings/page.tsx costMethod selector): Prisma enum `BatchCostMethod = { FIFO, FEFO, LIFO, AVG_COST }`. New UI shipped `[['FIFO', ...], ['LIFO', ...], ['AVERAGE', ...]]` — `AVERAGE` is not in the enum and `FEFO` is missing entirely. Backend `@IsEnum(BatchCostMethod)` returns 400 on any "Середній" pick → user can never change the default. Канон: when an enum is shared across the boundary, declare a literal-union type on the frontend (`type CostMethod = 'FIFO' | 'FEFO' | 'LIFO' | 'AVG_COST'`) and derive the option list from that single source of truth. NEVER let the field be typed `string` in the frontend `interface` — that defeats TS as a safety net for enum drift. Also: every Prisma enum that surfaces in UI needs a contract test that PATCHes each valid value AND asserts an invalid string 400s (regression guard).

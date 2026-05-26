@@ -2101,3 +2101,242 @@ if (allVehicles.length === 1) setForm(f => (f.vehicleId ? f : { ...f, vehicleId:
 
 ---
 
+## Session 2026-05-26 — commit 7b899e4 (profitability report, maintenance schedules UI, profile, PDF downloads, isWarranty, normoHours suggestion, settlements PDF)
+
+Тестувалися 38 файлів зміни в commit `7b899e4`: новий звіт рентабельності, UI для регламентів ТО на сторінці авто, профіль користувача (`GET /auth/me`, `change-password`), PDF-завантаження актів виконаних робіт та звірки, `Work.isWarranty` у каталозі, авто-обчислення кінця слоту в календарі за норм-годинами, PDF звірки в settlements, синхронізація `Vehicle.currentMileage` з `outMileage` нарядом, інлайн-редагування `minStock` у складі, ручне керування рядками рахунку, налаштування нумерації документів та ставок ПДВ.
+
+---
+
+## Bug #74 — [CRITICAL] Звіт рентабельності використовує ціну продажу як fallback собівартості
+
+**Файл:** `apps/api/src/modules/reports/reports.service.ts:204-208`
+**Severity:** CRITICAL
+**Категорія:** business-logic / financial-calc
+
+**Опис:**
+У циклі обчислення собівартості запчастин:
+```ts
+for (const part of wo.parts) {
+  const cost = part.batchCostPrice ?? part.price;  // ❌ part.price це САЛЕ-ціна, не собівартість
+  totalCostParts += part.quantity * Number(cost ?? 0);
+}
+```
+
+`WorkOrderPart.price` зберігає **ціну продажу** позиції (= `salePrice` товару на момент додавання). `batchCostPrice` — собівартість з батча (FIFO/AVG). Коли `batchCostPrice IS NULL` (позиція додана без батча, наприклад до запуску batch-системи або при `STOCK_DEDUCT_MODE='OPTIONAL'`), fallback використовує **виручкову ціну як собівартість** — отже:
+
+- `totalCostParts ≈ totalRevenueParts` для всіх «non-batch» позицій
+- Валовий прибуток за такими нарядами ≈ 0
+- Маржинальність штучно занижена
+
+Це **критично** для фінансової звітності: власник СТО бачить «бізнес у нулі», хоча наряд реально прибутковий.
+
+**Очікувана поведінка:**
+Fallback має бути `good.costPrice` (середня собівартість товару зі стокової книги) або, якщо її теж нема — позиція виключається з обчислення (з відмітковою приміткою «частково невизначена собівартість»).
+
+**Фактична поведінка:**
+Sale price підставляється як cost — звіт показує нереалістично низький прибуток.
+
+**Фікс:**
+1. Розширити `include` у `findMany` на `parts.good.select.costPrice`.
+2. Послідовність fallback: `batchCostPrice ?? good.costPrice ?? 0`.
+3. Якщо `good.costPrice` теж null/0 — повертати `costUnknownPartsCount` у звіті, щоб клієнт міг розрізнити «реально дешеве» vs «без даних».
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #75 — [HIGH] Синхронізація пробігу авто не оновлює auto з `currentMileage IS NULL`
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:230-236`
+**Severity:** HIGH
+**Категорія:** business-logic / data-integrity
+
+**Опис:**
+Після завершення WO виконується:
+```ts
+if (newStatus === 'COMPLETED' && wo.outMileage) {
+  this.prisma.vehicle.updateMany({
+    where: { id: wo.vehicleId, orgId, currentMileage: { lt: wo.outMileage } },
+    data: { currentMileage: wo.outMileage },
+  }).catch(...);
+}
+```
+
+Prisma фільтр `currentMileage: { lt: N }` **не матчить рядки де `currentMileage IS NULL`** (NULL не порівнюється з числом — повертає UNKNOWN у SQL, рядок виключається з результату).
+
+Сценарій реального бага:
+- Створено авто без поля `currentMileage` (часта ситуація: створюємо авто з номером і VIN, пробіг невідомий).
+- Через місяць — перший наряд із `outMileage = 85000`.
+- Після COMPLETED — `vehicle.currentMileage` залишається NULL.
+- Регламенти ТО на основі пробігу (`intervalMileage`) ніколи не активуються, бо `lastMaintenanceMileage / currentMileage` обоє null.
+
+**Очікувана поведінка:**
+При першому ж нарядові з виставленим `outMileage` — `Vehicle.currentMileage` має бути заповнений.
+
+**Фактична поведінка:**
+Залишається NULL до ручного редагування картки авто.
+
+**Фікс:**
+Замінити фільтр на OR: `{ currentMileage: null }` або `{ currentMileage: { lt: wo.outMileage } }`:
+```ts
+where: {
+  id: wo.vehicleId, orgId,
+  OR: [{ currentMileage: null }, { currentMileage: { lt: wo.outMileage } }],
+},
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #76 — [MEDIUM] `invoices.recalcTotals` має мертву тернарну гілку (copy-paste артефакт)
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:231`
+**Severity:** MEDIUM
+**Категорія:** code-quality / readability
+
+**Опис:**
+```ts
+const amount = totalWithVat || lines.length === 0 ? totalWithVat : totalWithVat;
+```
+
+1. Через пріоритет операторів JS це парситься як `(totalWithVat || lines.length === 0) ? totalWithVat : totalWithVat` — обидві гілки `totalWithVat`, отже значення завжди дорівнює `totalWithVat`.
+2. Якщо метою було «при порожньому списку — амоунт залишити старим» — це **не реалізовано**: при 0 ліній `totalWithVat = 0`, отже `amount` буде встановлений на 0. Існуючий не-нульовий `amount` (наприклад з ручного створення інвойсу) **переписується на 0** при видаленні останнього рядка.
+3. Якщо метою було просто «використати totalWithVat» — конструкція абсолютно зайва і misleading.
+
+Це не runtime-краш, але:
+- Видача manual-amount інвойсу губиться при додаванні/видаленні будь-якого рядка.
+- Reviewer що дивиться код — намагається зрозуміти умову і витрачає час.
+
+**Очікувана поведінка:**
+Або просто `const amount = totalWithVat;` — без тернарника.
+
+**Фактична поведінка:**
+Code-smell з невинною поведінкою (амоунт завжди стає totalWithVat).
+
+**Фікс:**
+Спрощити до `const amount = totalWithVat;`. Ручне керування `amount` тепер відбувається через PATCH `/invoices/:id` (existing endpoint, працює до додавання рядків).
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #77 — [MEDIUM] PDF-завантаження не виконує silent refresh при 401 (settlements, completion-acts)
+
+**Файл:** `apps/web/src/app/settlements/page.tsx:103-119`, `apps/web/src/app/work-orders/[id]/PageClient.tsx:420-440`
+**Severity:** MEDIUM
+**Категорія:** frontend / auth-ux
+
+**Опис:**
+PDF-завантаження виконується через прямий `fetch(...)` (бо `apiFetch` парсить response як JSON, що ламає бінарний blob). Цей прямий fetch:
+- Читає `sessionStorage.getItem(TOKEN_KEY)` напряму
+- Ставить `Authorization: Bearer ${token}`
+- При 401 (access token expired, ~15 хв) — просто кидає `Error('Помилка завантаження PDF (401)')`
+
+`apiFetch` має `tryRefresh()` що тихо оновлює access token через refresh cookie і повторює запит. Прямий PDF fetch цього не робить — користувач бачить помилку замість файлу.
+
+Сценарій: користувач відкриває сторінку, працює 20 хвилин (access token expired), натискає «PDF» → отримує `401`. Доводиться оновити сторінку.
+
+**Очікувана поведінка:**
+PDF-завантаження теж робить silent refresh при 401: викликати `/auth/refresh`, отримати новий accessToken, повторити PDF-запит з новим токеном.
+
+**Фактична поведінка:**
+Користувач бачить «Помилка завантаження PDF (401)», має оновити сторінку.
+
+**Фікс:**
+Винести спільний хелпер `apiBlobFetch(path)` у `api-client.ts` що дублює `apiFetch` логіку (silent refresh, redirect на login), але повертає `Blob` замість JSON. Використати в settlements + work-orders + (за можливості) invoices PDF download.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #78 — [LOW] `CreateInvoiceLineDto.vatRate` приймає 9999% (відсутній `@Max(100)`)
+
+**Файл:** `apps/api/src/modules/invoices/invoices.dto.ts:32, 42`
+**Severity:** LOW
+**Категорія:** validation / DTO
+
+**Опис:**
+```ts
+export class CreateInvoiceLineDto {
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) vatRate?: number;  // ❌ no @Max(100)
+}
+```
+
+Можна надіслати `vatRate = 9999` — рядок створиться, `priceWithVat = priceWithoutVat * 100` (величезне число), totals інвойсу будуть некоректними.
+
+Українське податкове законодавство допускає максимум 20% (ПДВ), 7% (мед/освіта), 0%. 100% — це абсолютна теоретична межа. Будь-яке більше значення — помилка введення.
+
+**Очікувана поведінка:**
+`vatRate` приймає значення 0–100.
+
+**Фактична поведінка:**
+Приймає будь-яке невід'ємне число.
+
+**Фікс:**
+Додати `@Max(100)` до обох DTO (`CreateInvoiceLineDto`, `UpdateInvoiceLineDto`).
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #79 — [LOW] Calendar normoHours auto-end може дати кінець < початок (wrap через 24h)
+
+**Файл:** `apps/web/src/app/calendar/page.tsx:316-326, 343-352`
+**Severity:** LOW
+**Категорія:** frontend / UX
+
+**Опис:**
+При зміні `startAt` або `normoHours` фронт обчислює `endAt`:
+```ts
+const totalMin = h * 60 + m + Math.round(Number(nh) * 60);
+const endH = Math.floor(totalMin / 60) % 24;
+```
+
+`% 24` забезпечує що `endH` лежить у 0..23, але **тихо** робить wrap: при `startAt='14:00'` і `normoHours=15` → `endAt='05:00'`, що **раніше** за start. Submit потім падає з 400 «Час завершення має бути після початку» від API.
+
+UX проблема — користувач не розуміє чому валідне з вигляду значення (14:00 + 15h) призводить до помилки.
+
+**Очікувана поведінка:**
+Або hint, або при overflow — clamp `endAt = '23:59'` і не робити wrap.
+
+**Фактична поведінка:**
+Тихий wrap, потім 400 від API.
+
+**Фікс:**
+Перевірити `totalMin >= 24*60` → не робити `% 24`, замість того clamp до `23:59`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #80 — [LOW] `CompletionActsController.cancel` повертає 200 замість 204
+
+**Файл:** `apps/api/src/modules/completion-acts/completion-acts.controller.ts:68-73`
+**Severity:** LOW
+**Категорія:** api-contract / consistency
+
+**Опис:**
+```ts
+@Delete(':id')
+@Roles(...)
+cancel(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+  return this.service.cancel(orgId, id);  // returns Promise<void>
+}
+```
+
+`cancel` повертає `void`, але без `@HttpCode(HttpStatus.NO_CONTENT)` NestJS видає `200 OK` з порожнім тілом. Прийнятий стандарт — 204 No Content (узгоджується з `logout`, `removeSlot`, `removeLine` у тому ж проєкті).
+
+**Очікувана поведінка:**
+HTTP 204 No Content.
+
+**Фактична поведінка:**
+HTTP 200 з порожнім тілом.
+
+**Фікс:**
+Додати `@HttpCode(HttpStatus.NO_CONTENT)` до методу.
+
+**Статус:** [x] виправлено
+
+---
+
