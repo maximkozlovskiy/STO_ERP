@@ -1052,15 +1052,15 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### B6 — Full-text search
 
-- [ ] `[sto-database]` Міграція: `CREATE EXTENSION IF NOT EXISTS pg_trgm;` + GIN-індекси на `workOrders.number`, `counterparties.firstName/lastName/phone`, `goods.name/sku`
-- [ ] `[sto-backend]` `GET /search?q=&types=wo,counterparty,good&limit=10` → `$queryRaw` з `similarity()` або `plainto_tsquery`. Повертає `{ type, id, label, sub }[]`.
-- [ ] `[sto-web]` Command Palette (вже є) — підключити `/search` API для data search під nav-пошуком
+- [x] `[sto-database]` Міграція: `CREATE EXTENSION IF NOT EXISTS pg_trgm;` + GIN-індекси на `workOrders.number`, `counterparties.firstName/lastName/phone`, `goods.name/sku`
+- [x] `[sto-backend]` `GET /search?q=&types=wo,counterparty,good&limit=10` → `$queryRaw` з `similarity()` або `plainto_tsquery`. Повертає `{ type, id, label, sub }[]`.
+- [x] `[sto-web]` Command Palette (вже є) — підключити `/search` API для data search під nav-пошуком
 
 ### B7 — PDF-export рахунків і нарядів
 
-- [ ] `[sto-backend]` `GET /invoices/:id/pdf` → генерує PDF через `pdfmake` (npm, без headless browser). Шаблон: реквізити org + counterparty + таблиця ліній + ПДВ підсумок + підпис-блок. Відповідь `application/pdf`.
-- [ ] `[sto-backend]` `GET /work-orders/:id/pdf` → аналогічно: наряд-замовлення з переліком робіт і запчастин, підпис клієнта.
-- [ ] `[sto-web]` Кнопка "PDF" у DetailPanel рахунку і картці наряду → `<a download>` blob
+- [x] `[sto-backend]` `GET /invoices/:id/pdf` → генерує PDF через `pdfmake` (npm, без headless browser). Шаблон: реквізити org + counterparty + таблиця ліній + ПДВ підсумок + підпис-блок. Відповідь `application/pdf`.
+- [x] `[sto-backend]` `GET /work-orders/:id/pdf` → аналогічно: наряд-замовлення з переліком робіт і запчастин, підпис клієнта.
+- [x] `[sto-web]` Кнопка "PDF" у DetailPanel рахунку і картці наряду → `<a download>` blob
 
 ### B8 — Ремаркетинг / Follow-up нагадування
 
@@ -1075,8 +1075,8 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### B10 — Branch ACL (права по філіях)
 
-- [ ] `[sto-database]` Таблиця `EmployeeBranch` (`employeeId`, `branchId`) — M:M. Поле `Employee.allBranches Boolean @default(false)` для OWNER/ADMIN.
-- [ ] `[sto-backend]` `BranchAccessGuard` — перевіряє що `orgId` у JWT + `branchId` з request param є в `employeeBranches[]` (або `allBranches=true`). Застосовується до WO, Invoice, CalendarSlot.
+- [x] `[sto-database]` Таблиця `EmployeeBranch` (`employeeId`, `branchId`) — M:M. Поле `Employee.allBranches Boolean @default(false)` для OWNER/ADMIN.
+- [x] `[sto-backend]` `BranchAccessGuard` — перевіряє що `orgId` у JWT + `branchId` з request param є в `employeeBranches[]` (або `allBranches=true`). Застосовується до WO, Invoice, CalendarSlot.
 - [ ] `[sto-web]` Форма співробітника → вкладка "Доступ до філій" (checkbox-список)
 
 ### B11 — Audit Log (документальна стрічка)
@@ -1100,7 +1100,7 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### F1 — Global Data Search в Command Palette
 
-- [ ] `[sto-web]` Підключити `GET /search` (B6) у Command Palette — окрема секція "Дані" під навігацією. Результати: WO (номер + клієнт + статус), клієнт (ім'я + телефон), товар (SKU + залишок).
+- [x] `[sto-web]` Підключити `GET /search` (B6) у Command Palette — окрема секція "Дані" під навігацією. Результати: WO (номер + клієнт + статус), клієнт (ім'я + телефон), товар (SKU + залишок).
 
 ### F2 — Drag-and-drop в Calendar
 
@@ -1121,7 +1121,7 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### F6 — "Мої наряди" швидкий фільтр
 
-- [ ] `[sto-web]` Chip "Мої" у toolbar списку WO → додає `&employeeId=me` до запиту. Зберігається в URL. Для механіків — active за замовчуванням.
+- [x] `[sto-web]` Chip "Мої" у toolbar списку WO → додає `&employeeId=me` до запиту. Зберігається в URL. Для механіків — active за замовчуванням.
 
 ### F7 — Live KPI дашборд
 
@@ -1129,9 +1129,9 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### F8 — Нотатки/Коментарі до об'єктів
 
-- [ ] `[sto-database]` Модель `Comment` (`orgId`, `entityType`, `entityId`, `body`, `authorId`, `createdAt`, без `deletedAt`)
-- [ ] `[sto-backend]` `GET/POST /comments?entityType=WorkOrder&entityId=:id`. Roles: всі авторизовані.
-- [ ] `[sto-web]` Стрічка коментарів під основним контентом у DetailPanel WO і картці контрагента. Textarea + submit.
+- [x] `[sto-database]` Модель `Comment` (`orgId`, `entityType`, `entityId`, `body`, `authorId`, `createdAt`, без `deletedAt`)
+- [x] `[sto-backend]` `GET/POST /comments?entityType=WorkOrder&entityId=:id`. Roles: всі авторизовані.
+- [x] `[sto-web]` Стрічка коментарів під основним контентом у DetailPanel WO і картці контрагента. Textarea + submit.
 
 ### F9 — Кастомний date-picker (uk-UA)
 
@@ -1139,9 +1139,9 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### F10 — Шаблони нарядів
 
-- [ ] `[sto-database]` Модель `WorkOrderTemplate` (`orgId`, `name`, `lines: Json[]`, `parts: Json[]`)
-- [ ] `[sto-backend]` CRUD `/work-order-templates` + `POST /work-orders` з optional `templateId` → авто-заповнення ліній
-- [ ] `[sto-web]` Кнопка "Зберегти як шаблон" у картці WO + Select шаблону у формі створення
+- [x] `[sto-database]` Модель `WorkOrderTemplate` (`orgId`, `name`, `lines: Json[]`, `parts: Json[]`)
+- [x] `[sto-backend]` CRUD `/work-order-templates` + `POST /work-orders` з optional `templateId` → авто-заповнення ліній
+- [x] `[sto-web]` Кнопка "Зберегти як шаблон" у картці WO + Select шаблону у формі створення
 
 ### F11 — Offline-pending counter у SyncIndicator
 
@@ -1149,7 +1149,7 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### F12 — Налаштування колонок таблиці
 
-- [ ] `[sto-web]` `useTableColumns` хук: `localStorage` persistence per page-key. Кнопка "Колонки" (налаштувати видимість через checkbox-dropdown). Застосувати до: WO list, inventory, employees.
+- [x] `[sto-web]` `useTableColumns` хук: `localStorage` persistence per page-key. Кнопка "Колонки" (налаштувати видимість через checkbox-dropdown). Застосувати до: WO list, inventory, employees.
 
 ---
 
@@ -1177,8 +1177,8 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 | 17 | Збагачення об'єктів + Нові моделі | ✅ завершено (15/15) |
 | 19 | Партійний облік + Цінова історичність | ✅ завершено (5/5) |
 | 18 | Installer та Production | ⬜ не розпочато (7 задач) |
-| 21 | Бекенд: Покращення досвіду | ⬜ не розпочато (36 задач) |
-| 22 | Frontend UX: Покращення досвіду | ⬜ не розпочато (24 задачі) |
+| 21 | Бекенд: Покращення досвіду | 🔄 в процесі (B6✅ B7✅ B10✅ B12⬜ B11⬜ B1⬜ B2⬜ B3⬜ B4⬜ B5⬜ B8⬜ B9⬜) |
+| 22 | Frontend UX: Покращення досвіду | 🔄 в процесі (F1✅ F6✅ F8✅ F10✅ F12✅ F2⬜ F3⬜ F4⬜ F5⬜ F7⬜ F9⬜ F11⬜) |
 
 > Оновлюється автоматично після кожного завершеного завдання.  
 > Статус таблиці: ⬜ не розпочато / 🔄 в процесі / ✅ завершено
