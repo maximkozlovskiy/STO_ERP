@@ -9,22 +9,24 @@
 ## Останній commit
 
 ```
-803a5da docs(tester): record bugs #47-#52 from Group 3 tester session
+f947021 fix(review): Group 4-6 — delete button visibility, indeterminate ref, ReactNode import
 ```
 
 Дата: 2026-05-26
 
-## Поточний стан тестів (після /sto-tester Group 3 sweep, 2026-05-26)
+## Поточний стан проєкту
 ```
-TypeScript:  ✅ 0 errors        (web + api + shared)
-Unit:        ✅ 117/117 passed  (13 files)
-Contract:    ✅ 38/38 passed
-Property:    ✅ 26/26 passed
-Components:  ✅ 100/100 passed  (was 55; +45 для Group 3: inline-edit-cell 17 / saved-filters-bar 9 / useInlineEdit 10 / useSavedFilters 9)
-E2E:         ⏭ skipped          (dev server офлайн на момент Кроку 4.5)
-Build:       ✅ API OK
-Цикли QA:    tester Group 3 — 6 багів (1 HIGH + 2 MEDIUM + 3 LOW), всі виправлені
+TypeScript:  ✅ 0 errors        (apps/web tsc --noEmit --incremental false)
+Build:       ✅ apps/web compiles
+Review:      Group 4-6 cycle 1 — 3 фікси (1 Critical UX + 1 Important + 1 Style)
 ```
+
+### Gotcha — /sto-review Group 4-6 cycle 1 (2026-05-26, commit f947021)
+- **`opacity-0 hover:opacity-100` на тому ж елементі = unreachable** (notification-center per-row delete X): кнопка `opacity-0` має ефективну площу 0px, тож курсор не може приземлитись щоб `hover:` спрацював. Канон: показувати on-hover дочірнього елементу — додавати `group` на батьківську карточку, на дочірньому `opacity-0 group-hover:opacity-100`. Завжди дублювати `focus:opacity-100` щоб клавіатурні користувачі через Tab могли побачити кнопку.
+- **`React.ReactNode` без `import React`** — tsc може мовчки пройти через next-env.d.ts глобали, але VSCode Next.js TS plugin суворіший і блимає червоним; також згідно sto-dev §1 — заборонено. Канон: `import type { ReactNode } from 'react'` + використовувати голий `ReactNode`. Той самий патерн для всіх React.X типів (`HTMLAttributes`, `ChangeEvent`, `SVGAttributes`).
+- **HTMLInputElement.indeterminate через ref callback** — працює (інлайн arrow має нову identity на кожен render → React викликає cleanup + re-attach), але це implicit поведінка React 19 і легко зламати при додаванні React Compiler / memo. Канон: `const ref = useRef<HTMLInputElement>(null); useEffect(() => { if (ref.current) ref.current.indeterminate = X; }, [X]);` — explicit і future-proof.
+- **`useMemo` для inline literal arrays що передаються у дочірні компоненти** — `const actions = [{ ... }]` створюється новою референцією на кожен рендер. Якщо дочка робить `useEffect` / `useMemo` з `actions` у deps — тригерить зайве. Канон: `useMemo(() => [...], [deps])` коли елементи містять `useCallback`-references.
+- **Dead useEffect listener** — `addEventListener('event', () => {})` з no-op handler. Виглядає невинно, але алокує DOM-listener на кожен mount + плутає reviewer (намір незрозумілий). Канон: видаляти повністю якщо handler нічого не робить; якщо event used elsewhere — додати TODO коментар з реальним handler-кодом.
 
 ### Gotcha — Group 3 tester sweep (2026-05-26, баги #47-#52)
 - **class-validator messages — повинні бути локалізовані глобальним `exceptionFactory`** (Bug #47): без нього кожне `@IsUUID`/`@IsISO8601`/`@IsEnum` повертає англійський текст у toast користувача, що порушує "UI українською" правило CLAUDE.md §16. Канон: створити `apps/api/src/common/pipes/validation-error.factory.ts` з мапою constraint-keys → укр. шаблонів і підключити у `main.ts:ValidationPipe({ exceptionFactory })`. Особливо помітно у inline-edit flows, де помилки валідації виходять прямо в toast.
