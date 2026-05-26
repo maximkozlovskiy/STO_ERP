@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { WarehouseType } from '@prisma/client';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { WarehouseType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateWarehouseDto, UpdateWarehouseDto, WarehouseResponseDto } from './warehouses.dto';
 
@@ -29,24 +29,41 @@ export class WarehousesService {
       where: { id: dto.branchId, orgId, deletedAt: null },
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
-    const item = await this.prisma.$transaction(async (tx) => {
-      if (dto.isMain) {
-        await tx.warehouse.updateMany({ where: { orgId, deletedAt: null }, data: { isMain: false } });
+    try {
+      const item = await this.prisma.$transaction(async (tx) => {
+        if (dto.isMain) {
+          await tx.warehouse.updateMany({ where: { orgId, deletedAt: null }, data: { isMain: false } });
+        }
+        return tx.warehouse.create({ data: { ...dto, orgId } });
+      });
+      return this.toDto(item);
+    } catch (e) {
+      // Partial unique index `warehouses_orgId_isMain_unique` enforces single-main invariant.
+      // The service-layer updateMany covers the common case, but a parallel
+      // transaction may race past it; surface a clear 409 instead of opaque 500.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('Лише один склад може бути основним у організації. Спробуйте ще раз.');
       }
-      return tx.warehouse.create({ data: { ...dto, orgId } });
-    });
-    return this.toDto(item);
+      throw e;
+    }
   }
 
   async update(orgId: string, id: string, dto: UpdateWarehouseDto): Promise<WarehouseResponseDto> {
     await this.findOne(orgId, id);
-    const item = await this.prisma.$transaction(async (tx) => {
-      if (dto.isMain) {
-        await tx.warehouse.updateMany({ where: { orgId, deletedAt: null, id: { not: id } }, data: { isMain: false } });
+    try {
+      const item = await this.prisma.$transaction(async (tx) => {
+        if (dto.isMain) {
+          await tx.warehouse.updateMany({ where: { orgId, deletedAt: null, id: { not: id } }, data: { isMain: false } });
+        }
+        return tx.warehouse.update({ where: { id, orgId }, data: dto });
+      });
+      return this.toDto(item);
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('Лише один склад може бути основним у організації. Спробуйте ще раз.');
       }
-      return tx.warehouse.update({ where: { id, orgId }, data: dto });
-    });
-    return this.toDto(item);
+      throw e;
+    }
   }
 
   async remove(orgId: string, id: string): Promise<void> {

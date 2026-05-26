@@ -1923,3 +1923,155 @@ TypeError: Cannot read properties of undefined (reading 'toLowerCase')
 
 ---
 
+## Session 2026-05-26 — /sto-tester FULL pass on warehouse.isMain auto-select feature
+
+Дата: 2026-05-26
+Сесія: FULL bug hunt after warehouse `isMain` Prisma migration, auto-select feature for single-entry reference data (commits 7a08623, 83921d2)
+
+### Baseline (cycle поточний)
+
+- `tsc` web/api/shared — ✅ 0 errors
+- Unit + contract + property API — ✅ 120/120 passed (14 файлів)
+- API dev-server — ✅ 200 на /api/docs
+- Web dev-server — ✅ 200 на http://localhost:3001
+
+### Знайдено: 4 бага (1 CRITICAL data integrity, 1 HIGH role gap, 2 MEDIUM UX)
+
+---
+
+## Bug #69 — [CRITICAL] Відсутність partial unique index на `warehouses.isMain` — race condition може створити кілька основних складів
+
+**Файл:** `apps/api/src/modules/warehouses/warehouses.service.ts:32-37,43-48`, `packages/database/prisma/schema.prisma:365-388`
+**Severity:** CRITICAL
+**Категорія:** data-integrity / database
+
+**Опис:**
+`create()` і `update()` встановлюють `isMain=true` за схемою:
+1. Усередині `$transaction`: `updateMany({ where: { orgId, deletedAt: null, id: { not: id } }, data: { isMain: false } })` — знімає прапорець з усіх інших складів.
+2. Потім `create()` / `update()` створює/оновлює потрібний.
+
+Проте `updateMany` бере **row-locks тільки на існуючі рядки**, а `create` додає **новий рядок**, який не конфліктує з тими блокуваннями. При двох паралельних транзакціях (адмін у двох вкладках; миттєвий повтор у клієнті) Postgres у `READ COMMITTED` дозволить обом завершитись. Результат — **дві (або більше) `isMain=true` записів** в одній організації одночасно.
+
+Frontend код в усіх трьох сторінках вибирає `data.find(x => x.isMain)` — поверне **перший знайдений**, тому між сесіями користувача auto-select зведе різні склади (нестабільна поведінка). Складські документи / PO можуть випадково створюватись на "не той" склад.
+
+**Очікувана поведінка:**
+БД-рівневий інваріант: **максимум одна** `isMain=true` запис на `orgId` (серед не-soft-deleted). Атомарна гарантія, не лише service-layer.
+
+**Фактична поведінка:**
+БД не валідує — service-layer race-window дозволяє мати ≥2 main warehouse.
+
+**Фікс:**
+1. Створити нову Prisma міграцію `20260526150000_warehouse_is_main_unique`:
+   ```sql
+   CREATE UNIQUE INDEX "warehouses_orgId_isMain_unique"
+   ON "warehouses" ("orgId")
+   WHERE "isMain" = true AND "deletedAt" IS NULL;
+   ```
+2. У service-layer обгорнути `P2002` від цього індексу в `ConflictException('Лише один склад може бути основним...')` — на випадок race condition.
+3. Додати поле в `schema.prisma` через `@@index`/SQL note (не модельований Prisma — це partial index, тому залишити як raw SQL у міграції з коментарем).
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #70 — [HIGH] MECHANIC не має доступу до `GET /warehouses` — не може додати запчастину до наряду
+
+**Файл:** `apps/api/src/modules/warehouses/warehouses.controller.ts:18`, `apps/web/src/app/work-orders/[id]/PageClient.tsx:243`
+**Severity:** HIGH
+**Категорія:** role-permissions / cross-module-gap
+
+**Опис:**
+`WorkOrdersController` дозволяє MECHANIC додавати запчастини: `POST /work-orders/:id/parts` має `@Roles('OWNER','ADMIN','RECEPTIONIST','MECHANIC')`. Сторінка `/work-orders/[id]` теж дозволяє MECHANIC (`useRequireAuth(['OWNER','ADMIN','RECEPTIONIST','MECHANIC','ACCOUNTANT'])`).
+
+Модалка "Додати запчастину" робить `apiFetch<Warehouse[]>('/warehouses')`, проте `WarehousesController.findAll` має `@Roles('OWNER','ADMIN','RECEPTIONIST','STOREKEEPER')` — **без MECHANIC**.
+
+Результат: MECHANIC відкриває WO → бачить кнопку "Додати запчастину" → відкриває модалку → отримує `403 Forbidden` від `/warehouses` → list порожній → не може створити запчастину.
+
+**Очікувана поведінка:**
+MECHANIC може вибрати склад при додаванні запчастини (read-only доступ).
+
+**Фактична поведінка:**
+MECHANIC отримує 403, форма недоступна.
+
+**Фікс:**
+Додати `MECHANIC` до `@Roles` декоратора на `WarehousesController.findAll` (рядок 18). Достатньо для read-only списку — write-операції (create/update/remove) лишаються `OWNER`/`ADMIN`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #71 — [MEDIUM] Auto-select головного складу зникає після додавання першої запчастини у WO
+
+**Файл:** `apps/web/src/app/work-orders/[id]/PageClient.tsx:334`
+**Severity:** MEDIUM
+**Категорія:** frontend / UX-regression
+
+**Опис:**
+`useEffect` для завантаження warehouses (рядки 243-252) виконується **один раз при mount**. У ньому `setPartForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }))` — заповнює `warehouseId` головним складом.
+
+Після додавання запчастини `addPart()` робить `setPartForm({ goodId: '', warehouseId: '', quantity: '1', price: '' })` — повне обнулення форми, **включно з `warehouseId`**. `useEffect` уже відпрацював — повторно не запуститься. Наступне відкриття модалки покаже **порожній склад**.
+
+Користувач (особливо MECHANIC, який додає 3–5 запчастин підряд) змушений руками обирати склад **щоразу**, хоча по факту майже завжди це один і той самий головний склад.
+
+Це частково нівелює саму ідею фічі.
+
+**Очікувана поведінка:**
+Після додавання запчастини auto-fill заповнює `warehouseId` головним складом, якщо такий є.
+
+**Фактична поведінка:**
+Поле скидається в `''` і більше не автозаповнюється.
+
+**Фікс:**
+У `addPart()` (рядок 334) зберігати `warehouseId` при reset:
+```ts
+setPartForm(f => ({ goodId: '', warehouseId: f.warehouseId, quantity: '1', price: '' }));
+```
+Альтернатива — обчислити `mainW.id` у `partForm` initial state через useMemo з warehouses, але це додає circular dependency. Зберегти останній обраний — простіше і UX-краще.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #72 — [MEDIUM] `loadVehicles` auto-select не зберігає manual choice користувача (race-window)
+
+**Файл:** `apps/web/src/app/work-orders/page.tsx:313-317`
+**Severity:** MEDIUM
+**Категорія:** frontend / UX-regression
+
+**Опис:**
+Review-фікс у commit 83921d2 додав `vehicleReqRef` guard від stale responses — це правильно. Проте сам код auto-select **усе ще не зберігає** manual pick користувача:
+
+```ts
+.then(results => {
+  if (reqId !== vehicleReqRef.current) return;
+  const allVehicles = results.flat();
+  setVehicles(allVehicles);
+  if (allVehicles.length === 1) setForm(f => ({ ...f, vehicleId: allVehicles[0].id })); // ← завжди перетирає
+});
+```
+
+Сценарій:
+1. Користувач обирає клієнта A → `loadVehicles(A)` стартує.
+2. Поки fetch у польоті, користувач **встигає вибрати vehicle вручну** (наприклад, з cached optimistic dropdown — припустимо, в майбутньому).
+3. Fetch повертається з 1-vehicle відповіддю → `setForm(f => ({ ...f, vehicleId: ... }))` **перетирає manual pick**.
+
+У *цьому commit* перетирання не критичне через `disabled={!form.counterpartyId}` на vehicle select, але в інших ауто-селектах (branchId, warehouseId) review-фікс свідомо додав `f.x ? f : {...}` patron. Тут — пропустили.
+
+Інша проблема: `length === 1` гілка спрацьовує **кожного разу при перемиканні counterparty** на іншого, в якого теж 1 авто — навіть якщо vehicleId уже встановлено (хоч би й до того іншого авто). У такому випадку перетирання потрібне і правильне (бо це новий клієнт), але цей нюанс має бути виправлений через `setForm(f => ({ ...f, counterpartyId, vehicleId: '' }))` у `onChange` клієнта (рядок 820) — який уже є. Тому достатньо в `loadVehicles` додати такий же patron `f.vehicleId ? f : {...}` для консистентності з рештою auto-selects.
+
+**Очікувана поведінка:**
+Якщо `form.vehicleId` уже встановлено (наприклад, користувач уже клікнув), auto-select не перетирає; якщо пусто — заповнюємо.
+
+**Фактична поведінка:**
+Завжди перетирає при `length === 1`, що **порушує** консистентність із patron-ом у решті місць (commit 83921d2 явно вказував на цей patron у комміт-msg).
+
+**Фікс:**
+Замінити рядок 317:
+```ts
+if (allVehicles.length === 1) setForm(f => (f.vehicleId ? f : { ...f, vehicleId: allVehicles[0].id }));
+```
+
+**Статус:** [x] виправлено
+
+---
+
