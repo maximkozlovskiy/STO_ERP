@@ -327,6 +327,17 @@ useEffect(() => {
 
 - [ ] Кожен `useEffect` з `addEventListener` має `return () => removeEventListener`
 - [ ] Кожен `useEffect` з `setInterval` має `return () => clearInterval`
+- [ ] **Dead useEffect listeners (no-op `() => {}` handler)** — видаляти повністю; виглядає невинно, але алокує DOM-listener і плутає reviewer. Шукати: `addEventListener\([^,]+,\s*\(\)\s*=>\s*\{\s*\}\s*\)`.
+- [ ] **Імперативне оновлення DOM-property (`indeterminate`, `selectionStart`, ...) через інлайн `ref={el => ...}` callback** — працює в React 19 (новий identity callback re-fires), але крихко (React Compiler / memo можуть стабілізувати identity). Канон: `useRef` + `useEffect([dep])`:
+  ```typescript
+  // ❌ FRAGILE — relies on React re-invoking inline ref callbacks
+  <input ref={el => { if (el) el.indeterminate = someSelected; }} />
+
+  // ✅ STABLE
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = someSelected; }, [someSelected]);
+  <input ref={ref} />
+  ```
 - [ ] `useEffect` з `apiFetch` при залежності від `id`/`page` — має AbortController або ignore-flag
 - [ ] `useEffect` з `apiFetch` і `[]` deps (mount-only) на сторінках з навігацією — **теж** потребує `let cancelled = false; ... if (!cancelled) setX(...); return () => { cancelled = true }` бо користувач може покинути сторінку до завершення Promise (dashboard, settings, list pages)
 - [ ] Стани не оновлюються після unmount (`isMounted` ref або AbortController)
@@ -927,6 +938,10 @@ grep -rn "onClick" apps/web/src/ --include="*.tsx" | grep -E "<div |<span |<td "
 - [ ] Форми: кожен `<input>`/`<select>`/`<textarea>` має `<label>` або `aria-label`
 - [ ] Модальні вікна: `role="dialog"` + `aria-modal="true"` + `aria-labelledby` (вже у `Modal` компоненті — перевір що використовується `title` проп)
 - [ ] Статус-Badge не покладається лише на колір — є текстова мітка або `aria-label`
+- [ ] **`opacity-0 hover:opacity-100` на тому ж елементі = unreachable**: невидима кнопка з нульовою hover-площею ніколи не показується. Канон: hover на батьку через `group` + `group-hover:opacity-100` на дитині + `focus:opacity-100` для клавіатури. Grep:
+  ```bash
+  grep -rnE "opacity-0\s+hover:opacity-100" apps/web/src/ --include="*.tsx"
+  ```
 
 ```typescript
 // ❌ BAD — іконка-кнопка без доступного імені
