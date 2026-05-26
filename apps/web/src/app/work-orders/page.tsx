@@ -314,7 +314,13 @@ export default function WorkOrdersPage() {
         if (reqId !== vehicleReqRef.current) return; // stale response — ignore
         const allVehicles = results.flat();
         setVehicles(allVehicles);
-        if (allVehicles.length === 1) setForm(f => ({ ...f, vehicleId: allVehicles[0].id }));
+        // Preserve manual pick (consistent with branchId/warehouseId auto-select
+        // patrons added in 83921d2). The counterparty <Select> already clears
+        // vehicleId via `setForm(f => ({ ...f, counterpartyId, vehicleId: '' }))`
+        // when the user switches counterparty, so this guard only protects
+        // a freshly-chosen vehicleId for the *current* counterparty from being
+        // overwritten by a late-arriving auto-select.
+        if (allVehicles.length === 1) setForm(f => (f.vehicleId ? f : { ...f, vehicleId: allVehicles[0].id }));
       })
       .catch((e: unknown) => {
         if (reqId !== vehicleReqRef.current) return;
