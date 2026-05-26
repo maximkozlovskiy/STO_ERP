@@ -1123,12 +1123,15 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### F4 — Клонування документів
 
-- [ ] `[sto-backend]` `POST /work-orders/:id/clone` → новий DRAFT з тими ж лініями і запчастинами (без payments/reservations). `POST /invoices/:id/clone` — аналогічно.
-- [ ] `[sto-web]` Кнопка "Дублювати" у DetailPanel WO і Invoice
+- [x] `[sto-backend]` `POST /work-orders/:id/clone` → новий DRAFT з тими ж лініями і запчастинами (без payments/reservations). `POST /invoices/:id/clone` — аналогічно.
+    > `apps/api/src/modules/{work-orders,invoices}/`: методи clone() у service + POST endpoints у controller. Клон отримує новий документний номер через DocumentNumberService. Скопіюються лінії/запчастини у той же транзакції.
+- [x] `[sto-web]` Кнопка "Дублювати" у DetailPanel WO і Invoice
+    > `apps/web/src/app/work-orders/[id]/PageClient.tsx` та `invoices/page.tsx`: кнопка "Duplicate" в header, виклик POST /clone, автоселект клонованого документу у списку.
 
 ### F5 — Друк / Print View
 
-- [ ] `[sto-web]` `@media print` CSS у globals.css: приховує sidebar/topbar/кнопки, розгортає таблиці. `window.print()` кнопка у картці наряду і рахунку. Окремо — кнопка "PDF" (B7).
+- [x] `[sto-web]` `@media print` CSS у globals.css: приховує sidebar/topbar/кнопки, розгортає таблиці. `window.print()` кнопка у картці наряду і рахунку. Окремо — кнопка "PDF" (B7).
+    > `apps/web/src/app/globals.css`: @media print блок приховує #sidebar, #topbar, buttons, розширює основний контент, забороняє page breaks у table rows. Кнопки "Print" та "PDF" додано у work-orders/[id]/PageClient та invoices/page.
 
 ### F6 — "Мої наряди" швидкий фільтр
 
@@ -1147,7 +1150,8 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### F9 — Кастомний date-picker (uk-UA)
 
-- [ ] `[sto-web]` Компонент `DatePickerInput` на базі `react-day-picker` v9: popover, тиждень з понеділка, uk-UA місяці/дні, формат `DD.MM.YYYY`. Замінити всі `<input type="date">` в формах.
+- [x] `[sto-web]` Компонент `DatePickerInput` на базі `react-day-picker` v9: popover, тиждень з понеділка, uk-UA місяці/дні, формат `DD.MM.YYYY`. Замінити всі `<input type="date">` в формах.
+    > `apps/web/src/components/ui/date-picker-input.tsx`: компонент з react-day-picker v9, date-fns uk-UA локаль, тиждень з понеділка, попап календар, ручне введення DD.MM.YYYY, parse/format API ↔ user форматів. Замінено у 8 файлах: work-orders, invoices, calendar, reports, settlements, employees, vehicles (new + edit), infrastructure.
 
 ### F10 — Шаблони нарядів
 
