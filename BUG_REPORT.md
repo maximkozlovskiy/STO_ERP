@@ -2075,3 +2075,29 @@ if (allVehicles.length === 1) setForm(f => (f.vehicleId ? f : { ...f, vehicleId:
 
 ---
 
+## Bug #73 — [MEDIUM] Pre-existing failing test: `command-palette.test.tsx > показує "Нічого не знайдено"`
+
+**Файл:** `apps/web/src/components/ui/__tests__/command-palette.test.tsx:124-131`
+**Severity:** MEDIUM
+**Категорія:** test-coverage / regression
+
+**Опис:**
+Тест `показує "Нічого не знайдено" при порожньому фільтрі` пише query 'хххх_неіснуюча_команда' в combobox і одразу очікує `screen.getByText('Нічого не знайдено')`.
+
+У component є debounced `useEffect` що при `query.length >= 2` встановлює `setDataLoading(true)` і робить `apiFetch('/search?...')` через 300ms. У jsdom без моку `apiFetch`, цей запит **зависає або кидає** (нема fetch у середовищі) — `dataLoading` лишається `true`, а рендер показує `<p>Пошук у даних…</p>` замість `Нічого не знайдено`. Тест fails.
+
+Цей тест **був зламаний з commit ef146d3** (B6 search integration) — пройшов непомічено, бо CI вочевидь не блокує на одиничному failing test (всі останні commit messages говорять про 12 passed, цей завжди failing).
+
+**Очікувана поведінка:**
+Тест мокає apiFetch для `/search` щоб повернути порожній масив миттєво, або використовує `waitFor`/`findByText` щоб дочекатись loading→empty переходу.
+
+**Фактична поведінка:**
+`getByText` синхронно шукає текст, який ще не з'явився → throws.
+
+**Фікс:**
+Мокнути `@/lib/api-client` через `vi.mock(...)` на верхньому рівні: повертати `Promise.resolve({ items: [] })` для будь-якого URL — тоді `dataLoading` стане false швидко і фінальний empty state з'явиться. Використовувати `findByText` (async).
+
+**Статус:** [x] виправлено
+
+---
+
