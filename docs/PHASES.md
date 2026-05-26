@@ -1028,9 +1028,9 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### B2 — Технічний огляд (Inspection Checklist)
 
-- [ ] `[sto-database]` Модель `InspectionReport` (`workOrderId`, `points: Json` — масив `{name, value, unit, status: OK|WARN|CRITICAL}`, `mileage`, `createdBy`) + поле `WorkOrder.inspectionReportId`
-- [ ] `[sto-backend]` `POST /work-orders/:id/inspection` + `GET /work-orders/:id/inspection`. При `CRITICAL` точках — авто-запис рекомендованих робіт у WO lines (з `Work` catalog).
-- [ ] `[sto-web]` Форма огляду у картці наряду: динамічний список точок (гальма/шини/масло/гальмівна рідина), slider або input + статус, кнопка "Створити роботи з критичних пунктів"
+- [x] `[sto-database]` Модель `InspectionReport` (`workOrderId`, `points: Json` — масив `{name, value, unit, status: OK|WARN|CRITICAL}`, `mileage`, `createdBy`) + поле `WorkOrder.inspectionReport`
+- [x] `[sto-backend]` `POST /work-orders/:id/inspection` + `GET /work-orders/:id/inspection`. При `CRITICAL` точках — авто-запис рекомендованих робіт у WO lines (з `Work` catalog).
+- [x] `[sto-web]` Форма огляду у картці наряду: динамічний список точок (гальма/шини/масло/гальмівна рідина), input + статус, авто-збереження критичних пунктів у WO lines
 
 ### B3 — Планувальник записів (Booking Engine)
 
