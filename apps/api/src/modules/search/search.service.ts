@@ -96,19 +96,26 @@ export class SearchService {
   }
 
   private async searchGoods(orgId: string, q: string, limit: number) {
+    // Aggregate stock across all warehouses with SUM(quantity - reserved). Without GROUP BY,
+    // a good present in multiple stock_items would multiply rows and inflate `LIMIT`.
+    // The Prisma schema uses camelCase Postgres identifiers (`"reserved"`, not `"reservedQty"`),
+    // so double-quoted identifiers are required — unquoted would be folded to lowercase.
     const rows = await this.prisma.$queryRaw<
       { id: string; name: string; sku: string | null; available: number | null }[]
     >`
       SELECT g.id, g.name, g.sku,
-             si.quantity - COALESCE(si."reservedQty", 0) AS available
+             COALESCE(SUM(si.quantity - COALESCE(si."reserved", 0)), 0) AS available
       FROM goods g
-      LEFT JOIN stock_items si ON si."goodId" = g.id AND si."deletedAt" IS NULL
+      LEFT JOIN stock_items si ON si."goodId" = g.id
+        AND si."orgId" = ${orgId}::uuid
+        AND si."deletedAt" IS NULL
       WHERE g."orgId" = ${orgId}::uuid
         AND g."deletedAt" IS NULL
         AND (
           similarity(g.name, ${q}) > 0.1
           OR g.sku ILIKE ${'%' + q + '%'}
         )
+      GROUP BY g.id, g.name, g.sku
       ORDER BY similarity(g.name, ${q}) DESC
       LIMIT ${limit}
     `;

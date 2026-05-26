@@ -140,7 +140,10 @@ export default function EmployeesPage() {
       apiFetch<Zone[]>('/zones').then(setZones),
       apiFetch<Lift[]>('/lifts').then(setLifts),
       apiFetch<WorkCategory[]>('/work-categories').then(setWorkCategories),
-      apiFetch<{ items: Branch[] }>('/branches').then(r => setBranches(r.items ?? [])),
+      // `/branches` returns a plain `BranchResponseDto[]` (BranchesController.findAll), NOT a
+      // paginated `{ items, total }` envelope. Treating it as `{ items }` resulted in `r.items`
+      // being undefined and the branches multi-select staying empty — blocking B10 entirely.
+      apiFetch<Branch[]>('/branches').then(setBranches),
     ]).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps

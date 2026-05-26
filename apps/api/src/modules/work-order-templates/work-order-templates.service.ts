@@ -45,8 +45,10 @@ export class WorkOrderTemplatesService {
 
   async update(orgId: string, id: string, dto: UpdateWorkOrderTemplateDto): Promise<WorkOrderTemplateResponseDto> {
     await this.findOne(orgId, id);
+    // `where: { id, orgId }` keeps tenant isolation at the SQL layer (defense-in-depth) —
+    // the findOne above is the primary guard but we don't want a future refactor to leak it.
     const t = await this.prisma.workOrderTemplate.update({
-      where: { id },
+      where: { id, orgId },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.lines !== undefined && { lines: dto.lines as object[] }),
@@ -59,7 +61,7 @@ export class WorkOrderTemplatesService {
   async remove(orgId: string, id: string): Promise<void> {
     await this.findOne(orgId, id);
     await this.prisma.workOrderTemplate.update({
-      where: { id },
+      where: { id, orgId },
       data: { deletedAt: new Date() },
     });
   }

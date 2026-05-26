@@ -34,10 +34,13 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
-const DATA_ROUTE: Record<string, string> = {
-  wo: '/work-orders',
-  counterparty: '/crm',
-  good: '/catalog',
+// For types where a detail page exists we append the entity id; otherwise we fall back to the
+// list view. Without this distinction the palette swallowed the click context — selecting
+// «ТОВ Альфа» from the palette dropped the user on the /crm list and forced a second search.
+const DATA_ROUTE: Record<string, { list: string; detail?: (id: string) => string }> = {
+  wo:           { list: '/work-orders', detail: (id) => `/work-orders/${id}` },
+  counterparty: { list: '/crm',         detail: (id) => `/crm/${id}` },
+  good:         { list: '/catalog' /* no /catalog/[id] route yet */ },
 };
 
 export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
@@ -74,8 +77,8 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
     description: item.sub ?? (item.extra?.status as string | undefined),
     group: 'data',
     perform: ({ router: r }) => {
-      const basePath = DATA_ROUTE[item.type] ?? '/';
-      r.push(item.type === 'wo' ? `/work-orders/${item.id}` : basePath);
+      const route = DATA_ROUTE[item.type];
+      r.push(route?.detail ? route.detail(item.id) : route?.list ?? '/');
     },
   })), [dataResults]);
 

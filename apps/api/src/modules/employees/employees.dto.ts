@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsBooleanString, IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { EmployeeStatus, UserRole } from '@prisma/client';
 import { z } from 'zod';
 
@@ -111,6 +111,26 @@ export class UpdateEmployeeDto {
   dateOfFire?: string;
 }
 
+// Query DTO for `GET /employees` — without it the controller silently dropped q/role/showDeleted
+// (NestJS @Query without DTO has no whitelisting, so the params arrived but were never read).
+export class EmployeesQueryDto {
+  @ApiPropertyOptional({ description: 'Пошук за ім\'ям, прізвищем або телефоном' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  @ApiPropertyOptional({ enum: UserRole, description: 'Фільтр за посадою' })
+  @IsOptional()
+  @IsEnum(UserRole)
+  role?: UserRole;
+
+  @ApiPropertyOptional({ description: 'Показати soft-deleted' })
+  @IsOptional()
+  @IsBooleanString()
+  showDeleted?: string;
+}
+
 export class AssignBranchesDto {
   @ApiProperty({ type: [String], description: 'Масив UUID філій' })
   @IsUUID('4', { each: true })
@@ -159,6 +179,8 @@ export class EmployeeResponseDto {
   @ApiProperty() allBranches!: boolean;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional({ description: 'Set when the employee is soft-deleted' })
+  deletedAt?: Date | null;
 }
 
 export class EmployeeDetailDto extends EmployeeResponseDto {

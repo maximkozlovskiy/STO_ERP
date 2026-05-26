@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   AssignBranchesDto, AssignLiftsDto, AssignWorkCategoriesDto, AssignZonesDto,
-  CreateEmployeeDto, EmployeeResponseDto, UpdateEmployeeDto,
+  CreateEmployeeDto, EmployeeResponseDto, EmployeesQueryDto, UpdateEmployeeDto,
   rateSchemeSchema,
 } from './employees.dto';
 
@@ -11,9 +11,28 @@ import {
 export class EmployeesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(orgId: string): Promise<EmployeeResponseDto[]> {
+  async findAll(orgId: string, query: EmployeesQueryDto = {}): Promise<EmployeeResponseDto[]> {
+    // Without an explicit query DTO the controller previously silently dropped q/role/showDeleted —
+    // /employees UI filters were no-ops. Build the where clause honestly.
+    const showDeleted = query.showDeleted === 'true';
+    const where: Prisma.EmployeeWhereInput = {
+      orgId,
+      ...(showDeleted ? {} : { deletedAt: null }),
+    };
+    if (query.role) where.role = query.role;
+    if (query.q) {
+      const q = query.q.trim();
+      if (q.length > 0) {
+        where.OR = [
+          { firstName: { contains: q, mode: 'insensitive' } },
+          { lastName: { contains: q, mode: 'insensitive' } },
+          { phone: { contains: q, mode: 'insensitive' } },
+          { email: { contains: q, mode: 'insensitive' } },
+        ];
+      }
+    }
     const items = await this.prisma.employee.findMany({
-      where: { orgId, deletedAt: null },
+      where,
       include: {
         employeeZones: true,
         employeeLifts: true,
@@ -191,6 +210,7 @@ export class EmployeesService {
     phone?: string | null; email?: string | null;
     dateOfHire?: Date | null; dateOfFire?: Date | null;
     createdAt: Date; updatedAt: Date;
+    deletedAt?: Date | null;
     allBranches: boolean;
     employeeZones: Array<{ zoneId: string }>;
     employeeLifts: Array<{ liftId: string }>;
@@ -217,6 +237,8 @@ export class EmployeesService {
       allBranches: item.allBranches,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
+      // Surface deletedAt so the UI can render the «видалено» badge when showDeleted=true is on.
+      deletedAt: item.deletedAt ?? null,
     };
   }
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -6,7 +6,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import {
   AssignBranchesDto, AssignLiftsDto, AssignWorkCategoriesDto, AssignZonesDto,
-  CreateEmployeeDto, EmployeeResponseDto, UpdateEmployeeDto,
+  CreateEmployeeDto, EmployeeResponseDto, EmployeesQueryDto, UpdateEmployeeDto,
 } from './employees.dto';
 import { EmployeesService } from './employees.service';
 
@@ -21,8 +21,8 @@ export class EmployeesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Список співробітників' })
   @ApiResponse({ status: 200, type: [EmployeeResponseDto] })
-  findAll(@OrgContext() orgId: string) {
-    return this.service.findAll(orgId);
+  findAll(@OrgContext() orgId: string, @Query() query: EmployeesQueryDto) {
+    return this.service.findAll(orgId, query);
   }
 
   @Get(':id')

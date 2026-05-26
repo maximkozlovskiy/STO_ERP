@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, Receipt, Search } from 'lucide-react';
-import { useRequireAuth } from '@/lib/auth';
+import { useRequireAuth, TOKEN_KEY } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
@@ -230,6 +230,34 @@ export default function InvoicesPage() {
       if (mountedRef.current && token === selectTokenRef.current) setDetailLoading(false);
     }
   }, []);
+
+  const downloadPdf = async (inv: Invoice) => {
+    // The `/invoices/:id/pdf` endpoint is JWT-guarded. A bare `<a href>` cannot attach the
+    // Authorization header, so we must fetch with a Bearer token and trigger the download via
+    // a temporary Blob URL (matches the pattern in work-orders/[id]/PageClient.tsx).
+    setError('');
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
+      const res = await fetch(`${apiBase}/api/invoices/${inv.id}/pdf`, {
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Помилка завантаження PDF (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${inv.number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Defer revoke so Chromium has time to start reading the blob before it disappears.
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження PDF');
+    }
+  };
 
   const statuses = ['', 'DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'];
 
@@ -478,15 +506,7 @@ export default function InvoicesPage() {
                     variant="outline"
                     size="sm"
                     className="w-full"
-                    onClick={() => {
-                      const url = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api'}/invoices/${selectedInv.id}/pdf`;
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `invoice-${selectedInv.number}.pdf`;
-                      document.body.appendChild(a);
-                      a.click();
-                      setTimeout(() => document.body.removeChild(a), 100);
-                    }}
+                    onClick={() => void downloadPdf(selectedInv)}
                   >
                     Завантажити PDF
                   </Button>

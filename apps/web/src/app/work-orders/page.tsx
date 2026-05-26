@@ -777,7 +777,15 @@ export default function WorkOrdersPage() {
               value=""
               onChange={e => {
                 const tpl = templates.find(t => t.id === e.target.value);
-                if (tpl) setForm(f => ({ ...f, description: tpl.name }));
+                if (!tpl) return;
+                // Prefix description so the user immediately sees which template was applied.
+                // Plain `tpl.name` would overwrite the field with what looks like an actual
+                // description and obscure the fact that lines/parts auto-apply is not (yet)
+                // implemented for the create form — see Bug #67 in BUG_REPORT.md.
+                setForm(f => ({
+                  ...f,
+                  description: `Створено за шаблоном «${tpl.name}»`,
+                }));
               }}
             >
               <option value="">— Без шаблону —</option>
