@@ -1839,3 +1839,87 @@ where: { id, orgId }
 
 ---
 
+## Session 2026-05-26 — FULL pass after Phases 21-22 follow-up commits 8ed0a42
+
+Перевірка після раундів виправлень `4cc4e6f`, `aef124b`, `e867ba4`. Запущено: tsc (0 errors), unit tests 117/117 passed, build OK.
+
+---
+
+## Bug #68 — [CRITICAL] PdfService завантажує vfs_fonts з неправильною формою — всі PDF падають у runtime
+
+**Файл:** `apps/api/src/modules/pdf/pdf.service.ts:13-75`
+**Severity:** CRITICAL
+**Категорія:** business-logic / business-feature
+
+**Опис:**
+Поточний код:
+```typescript
+const vfsFonts = require('pdfmake/build/vfs_fonts') as { pdfMake?: { vfs?: Record<string, string> }; vfs?: Record<string, string> };
+// ...
+const vfs = vfsFonts.pdfMake?.vfs ?? vfsFonts.vfs ?? {};
+pdfMake.setFonts({
+  Roboto: {
+    normal: Buffer.from(vfs['Roboto-Regular.ttf'] ?? '', 'base64'),
+    // ...
+  },
+});
+```
+
+Файл `pdfmake/build/vfs_fonts.js` v0.3.9 експортує **сам vfs словник напряму**:
+```js
+module.exports = vfs;  // { 'Roboto-Italic.ttf': '...', 'Roboto-Medium.ttf': '...', ... }
+```
+
+І тип `@types/pdfmake/build/vfs_fonts.d.ts` підтверджує:
+```ts
+declare const vfs: TVirtualFileSystem;
+export = vfs;
+```
+
+Тому `vfsFonts.pdfMake` і `vfsFonts.vfs` обидва — `undefined`, fallback `?? {}` спрацьовує завжди. Усі чотири шрифти стають `Buffer.from('', 'base64')` — порожні буфери. При першому виклику `generateInvoicePdf` або `generateWorkOrderPdf` pdfmake внутрішньо падає з:
+```
+TypeError: Cannot read properties of undefined (reading 'toLowerCase')
+```
+
+(перевірено локально через `node -e "require('pdfmake').createPdf({content:[{text:'Test', font:'Roboto'}]}).getBuffer()"` після того, як setFonts викликано з порожніми буферами).
+
+**Цей баг **повністю ламає** B7 «PDF export для invoices та work-orders».** Користувач натискає «Завантажити PDF» — фронт отримує 500 + повідомлення «Помилка завантаження PDF».
+
+**Очікувана поведінка:**
+```typescript
+// vfs_fonts.js export shape = TVirtualFileSystem (Record<string, string>)
+const vfs = require('pdfmake/build/vfs_fonts') as Record<string, string>;
+pdfMake.setFonts({
+  Roboto: {
+    normal:      Buffer.from(vfs['Roboto-Regular.ttf'],      'base64'),
+    bold:        Buffer.from(vfs['Roboto-Medium.ttf'],       'base64'),
+    italics:     Buffer.from(vfs['Roboto-Italic.ttf'],       'base64'),
+    bolditalics: Buffer.from(vfs['Roboto-MediumItalic.ttf'], 'base64'),
+  },
+});
+```
+
+**Фактична поведінка:**
+Усі шрифти — порожні Buffer'и. PDF не генерується ніколи.
+
+**Чому пройшло попередні раунди:**
+TypeScript «as» каст приховав реальну форму експорту. tsc не може verifикувати runtime значення require(). Жодного unit/contract тесту не існує для PdfService — тому баг непомітний доки користувач не клікне «Завантажити PDF».
+
+**Глибше дослідження після експерименту:**
+Навіть коли vfs передається коректно з реальними base64-даними, pdfmake v0.3.9 server-side НЕ приймає `Buffer` у `setFonts()`. Його URLResolver очікує **string path/URL**:
+```
+TypeError: Cannot read properties of undefined (reading 'toLowerCase')
+  at URLResolver.resolve(url) — бо url = bufferObject.url = undefined
+  at Printer.resolveUrls — обходить font descriptors, передає кожен у URLResolver
+```
+Канонічний server-side рецепт — використати `require('pdfmake/fonts/Roboto')`, який повертає вже готовий descriptor зі шляхами до `.ttf` файлів на диску (`pdfmake/fonts/Roboto/Roboto-Regular.ttf` etc).
+
+**Фікс:**
+1. Замість `pdfmake/build/vfs_fonts` → використати `pdfmake/fonts/Roboto` (string paths, не buffers).
+2. Додано boot-time guard: якщо descriptor.Roboto?.normal відсутній — throw з зрозумілим повідомленням.
+3. Додано `pdf.service.spec.ts` з трьома integration тестами (invoice, work-order, empty arrays) — кожен генерує реальний PDF buffer і перевіряє `%PDF` magic header. Регресія тепер буде впійманою при першому ж test run.
+
+**Статус:** [x] виправлено
+
+---
+
