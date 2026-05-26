@@ -170,10 +170,11 @@ export default function InvoicesPage() {
         method: 'POST', body: JSON.stringify({ status: newStatus }),
       });
       if (!mountedRef.current) return;
-      // Sync selectedInv if it matches
-      if (selectedInv?.id === inv.id) {
-        setSelectedInv(prev => prev ? { ...prev, status: newStatus } : null);
-      }
+      // Sync selectedInv if it still matches the transitioned invoice.
+      // Check via functional setter to avoid stale-closure: panel could be
+      // switched to another row between click and response — without this guard
+      // the new selectedInv would get the wrong status applied.
+      setSelectedInv(prev => prev && prev.id === inv.id ? { ...prev, status: newStatus } : prev);
       load();
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
@@ -199,8 +200,13 @@ export default function InvoicesPage() {
         }),
       });
       if (!mountedRef.current) return;
+      const paidInvoiceId = showPayment.id;
       setShowPayment(null);
       setPayForm({ method: 'cash', amount: '', notes: '' });
+      // PaymentsService transitions invoice → PAID on payment creation.
+      // Reflect that immediately in the open DetailPanel so the user does not
+      // see a stale SENT status with an «Оплатити» button that would 400 on click.
+      setSelectedInv(prev => prev && prev.id === paidInvoiceId ? { ...prev, status: 'PAID' } : prev);
       load();
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка оплати');
@@ -429,8 +435,10 @@ export default function InvoicesPage() {
                 </div>
               )}
 
-              {/* VAT breakdown */}
-              {!detailLoading && selectedInv.totalWithVat != null && (
+              {/* VAT breakdown — render only when there are real line totals,
+                  otherwise Prisma defaults of 0 produce a misleading
+                  «Без ПДВ: 0,00 ₴ / ПДВ: 0,00 ₴ / З ПДВ: 0,00 ₴» summary. */}
+              {!detailLoading && (selectedInv.totalWithVat ?? 0) > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-border">
                   <p className="text-[12px] text-muted-foreground font-medium uppercase tracking-wide">Підсумок</p>
                   <div className="space-y-1 text-[13px]">
@@ -444,7 +452,7 @@ export default function InvoicesPage() {
                     </div>
                     <div className="flex justify-between font-semibold border-t border-border/50 pt-1 mt-1">
                       <span className="text-foreground">З ПДВ</span>
-                      <span className="text-foreground">{fmt(selectedInv.totalWithVat)}</span>
+                      <span className="text-foreground">{fmt(selectedInv.totalWithVat ?? 0)}</span>
                     </div>
                   </div>
                 </div>
