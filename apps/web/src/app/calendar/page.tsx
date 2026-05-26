@@ -8,6 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import {
+  DndContext, useDraggable, useDroppable,
+  type DragEndEvent, PointerSensor, useSensor, useSensors,
+} from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 
 interface CalendarSlot {
   id: string;
@@ -40,6 +45,78 @@ function fmtTime(iso: string) {
 }
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 8); // 08:00–19:00
+const TOTAL_HOURS = HOURS.length;
+
+// ─── DnD helpers ─────────────────────────────────────────────────────────────
+
+interface DraggableSlotProps {
+  slot: CalendarSlot;
+  onRemove: (id: string) => void;
+}
+function DraggableSlot({ slot, onRemove }: DraggableSlotProps) {
+  const startH = kyivHours(slot.startAt);
+  const endH   = kyivHours(slot.endAt);
+  const left  = ((startH - HOURS[0]) / TOTAL_HOURS) * 100;
+  const width = ((endH - startH)     / TOTAL_HOURS) * 100;
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: slot.id, data: { slot } });
+  const style: React.CSSProperties = {
+    left:      `${left}%`,
+    width:     `${width}%`,
+    transform: CSS.Translate.toString(transform),
+    opacity:   isDragging ? 0.5 : 1,
+    zIndex:    isDragging ? 50 : 10,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      className="absolute top-1 bottom-1 bg-primary rounded text-white text-xs flex items-center px-1.5 overflow-hidden cursor-grab active:cursor-grabbing hover:opacity-90 group"
+      title={slot.workOrderNumber ? `Наряд ${slot.workOrderNumber}` : slot.notes ?? ''}
+    >
+      <span className="truncate select-none">{fmtTime(slot.startAt)}–{fmtTime(slot.endAt)}{slot.workOrderNumber ? ` · ${slot.workOrderNumber}` : ''}</span>
+      <button
+        onPointerDown={e => e.stopPropagation()}
+        onClick={() => onRemove(slot.id)}
+        className="ml-auto opacity-0 group-hover:opacity-100 text-white/80 hover:text-white px-0.5"
+        aria-label="Видалити слот"
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+interface DroppableLiftRowProps {
+  liftId: string;
+  liftSlots: CalendarSlot[];
+  onRemove: (id: string) => void;
+}
+function DroppableLiftRow({ liftId, liftSlots, onRemove }: DroppableLiftRowProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: `lift-${liftId}`, data: { liftId } });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`col-span-12 relative min-h-12 transition-colors ${isOver ? 'bg-primary/5' : ''}`}
+      style={{ gridColumn: `2 / span ${TOTAL_HOURS}` }}
+    >
+      <div className="flex h-full">
+        {HOURS.map(h => (
+          <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-12" />
+        ))}
+      </div>
+      {liftSlots.map(s => (
+        <DraggableSlot key={s.id} slot={s} onRemove={onRemove} />
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
@@ -52,6 +129,9 @@ export default function CalendarPage() {
   const [form, setForm] = useState({ liftId: '', employeeId: '', workOrderId: '', startAt: '', endAt: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const timelineRef = useRef<HTMLDivElement>(null);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -112,6 +192,49 @@ export default function CalendarPage() {
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
     finally { setSaving(false); }
   };
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, delta, over } = event;
+    if (!active || !delta) return;
+
+    const slot = slots.find(s => s.id === active.id);
+    if (!slot) return;
+
+    // Determine new liftId from drop target (if dropped onto a different lift row)
+    const newLiftId: string | null = over?.data?.current?.liftId ?? slot.liftId ?? null;
+
+    // Calculate time shift from horizontal drag delta
+    const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
+    if (!containerWidth) return;
+
+    // timeline area excludes the 160px lift-label column
+    const timelineWidth = containerWidth - 160;
+    const hoursPer100Px = TOTAL_HOURS / timelineWidth;
+    const shiftHours = delta.x * hoursPer100Px;
+
+    if (Math.abs(shiftHours) < 0.08 && newLiftId === slot.liftId) return; // negligible move
+
+    const origStart = new Date(slot.startAt);
+    const origEnd   = new Date(slot.endAt);
+    const shiftMs   = Math.round(shiftHours * 3600 * 1000 / (15 * 60 * 1000)) * (15 * 60 * 1000); // snap to 15min
+
+    const newStart = new Date(origStart.getTime() + shiftMs);
+    const newEnd   = new Date(origEnd.getTime()   + shiftMs);
+
+    try {
+      await apiFetch(`/calendar/slots/${slot.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          startAt: newStart.toISOString(),
+          endAt: newEnd.toISOString(),
+          ...(newLiftId !== slot.liftId && { liftId: newLiftId }),
+        }),
+      });
+      load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка переміщення слоту');
+    }
+  }, [slots, load]);
 
   const slotsForLift = (liftId: string) => slots.filter(s => s.liftId === liftId);
   const unassignedSlots = slots.filter(s => !s.liftId);
@@ -237,56 +360,33 @@ export default function CalendarPage() {
         </div>
       )}
       {!loading && lifts.length > 0 && (
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          {/* Hour headers */}
-          <div className="grid border-b border-border" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
-            <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">Підйомник</div>
-            {HOURS.map(h => (
-              <div key={h} className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0">
-                {pad(h)}:00
-              </div>
-            ))}
-          </div>
+        <DndContext sensors={sensors} onDragEnd={e => { void handleDragEnd(e); }}>
+          <div ref={timelineRef} className="bg-surface border border-border rounded-xl overflow-hidden">
+            {/* Hour headers */}
+            <div className="grid border-b border-border" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
+              <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">Підйомник</div>
+              {HOURS.map(h => (
+                <div key={h} className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0">
+                  {pad(h)}:00
+                </div>
+              ))}
+            </div>
 
-          {/* Lift rows */}
-          {lifts.map(lift => {
-            const liftSlots = slotsForLift(lift.id);
-            return (
+            {/* Lift rows */}
+            {lifts.map(lift => (
               <div key={lift.id} className="grid border-b border-border last:border-b-0" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
                 <div className="px-3 py-3 text-sm font-medium text-foreground bg-secondary border-r border-border flex items-center">
                   {lift.name}
                 </div>
-                <div className="col-span-12 relative min-h-12" style={{ gridColumn: `2 / span ${HOURS.length}` }}>
-                  <div className="flex h-full">
-                    {HOURS.map(h => (
-                      <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-12" />
-                    ))}
-                  </div>
-                  {liftSlots.map(s => {
-                    const startH = kyivHours(s.startAt);
-                    const endH = kyivHours(s.endAt);
-                    const left = ((startH - HOURS[0]) / HOURS.length) * 100;
-                    const width = ((endH - startH) / HOURS.length) * 100;
-                    return (
-                      <div
-                        key={s.id}
-                        className="absolute top-1 bottom-1 bg-primary rounded text-white text-xs flex items-center px-1.5 overflow-hidden cursor-pointer hover:opacity-90 group"
-                        style={{ left: `${left}%`, width: `${width}%` }}
-                        title={s.workOrderNumber ? `Наряд ${s.workOrderNumber}` : s.notes ?? ''}
-                      >
-                        <span className="truncate">{fmtTime(s.startAt)}–{fmtTime(s.endAt)}{s.workOrderNumber ? ` · ${s.workOrderNumber}` : ''}</span>
-                        <button onClick={() => removeSlot(s.id)}
-                          className="ml-auto opacity-0 group-hover:opacity-100 text-white/80 hover:text-white px-0.5">
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <DroppableLiftRow
+                  liftId={lift.id}
+                  liftSlots={slotsForLift(lift.id)}
+                  onRemove={removeSlot}
+                />
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        </DndContext>
       )}
 
       {/* Unassigned slots */}

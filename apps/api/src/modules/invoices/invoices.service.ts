@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { PdfService } from '../pdf/pdf.service';
 import {
   CreateInvoiceDto, UpdateInvoiceDto,
   InvoiceLineResponseDto, InvoiceResponseDto, PaginatedInvoicesDto,
@@ -22,6 +23,7 @@ export class InvoicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly docNumbers: DocumentNumberService,
+    private readonly pdf: PdfService,
   ) {}
 
   async findAll(orgId: string, page = 1, limit = 20, status?: string): Promise<PaginatedInvoicesDto> {
@@ -183,6 +185,42 @@ export class InvoicesService {
       ...(includeLines && inv.lines ? { lines: inv.lines.map(l => this.toLineDto(l)) } : {}),
       createdAt: inv.createdAt, updatedAt: inv.updatedAt,
     };
+  }
+
+  async generatePdf(orgId: string, id: string): Promise<Buffer> {
+    const [inv, org] = await Promise.all([
+      this.prisma.invoice.findFirst({
+        where: { id, orgId, deletedAt: null },
+        include: {
+          counterparty: { select: { firstName: true, lastName: true, companyName: true, phone: true, edrpou: true } },
+          lines: { orderBy: { sortOrder: 'asc' }, take: 500 },
+        },
+      }),
+      this.prisma.organisation.findFirst({ where: { id: orgId }, select: { name: true, edrpou: true } }),
+    ]);
+    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+
+    const cp = inv.counterparty;
+    const counterpartyName = cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ') ?? '';
+
+    return this.pdf.generateInvoicePdf({
+      org: { name: org?.name ?? '', edrpou: org?.edrpou },
+      counterparty: { name: counterpartyName, phone: cp?.phone, edrpou: cp?.edrpou },
+      number: inv.number,
+      date: inv.createdAt,
+      dueDate: inv.dueDate,
+      lines: (inv.lines ?? []).map((l) => ({
+        description: l.description,
+        quantity: l.quantity,
+        unit: 'шт',
+        unitPrice: Number(l.unitPrice),
+        vatRate: Number(l.vatRate),
+        total: Number(l.priceWithVat),
+      })),
+      subtotal: Number(inv.totalWithoutVat),
+      vatTotal: Number(inv.totalVat),
+      grandTotal: Number(inv.totalWithVat),
+    });
   }
 
   private toLineDto(l: {

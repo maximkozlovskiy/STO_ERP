@@ -2,20 +2,31 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback, useId } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ArrowRight, Navigation, Zap } from 'lucide-react';
+import { Search, ArrowRight, Navigation, Zap, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCommands, searchCommands, type Command } from '@/lib/commands';
+import { apiFetch } from '@/lib/api-client';
 
 const GROUP_LABELS: Record<string, string> = {
   navigation: 'Навігація',
   action:     'Дії',
   settings:   'Налаштування',
+  data:       'Дані',
 };
 const GROUP_ICONS: Record<string, typeof Navigation> = {
   navigation: Navigation,
   action:     Zap,
   settings:   Zap,
+  data:       Database,
 };
+
+interface SearchResultItem {
+  type: string;
+  id: string;
+  label: string;
+  sub?: string;
+  extra?: Record<string, unknown>;
+}
 
 interface CommandPaletteProps {
   open: boolean;
@@ -23,10 +34,18 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
+const DATA_ROUTE: Record<string, string> = {
+  wo: '/work-orders',
+  counterparty: '/crm',
+  good: '/catalog',
+};
+
 export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  const [dataResults, setDataResults] = useState<SearchResultItem[]>([]);
+  const [dataLoading, setDataLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   // Stable IDs from React 18+ — replaces non-deterministic Math.random()
@@ -48,8 +67,26 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
     return acc;
   }, {}), [filtered]);
 
+  // Convert data search results to Command-like objects
+  const dataCommands = useMemo<Command[]>(() => dataResults.map(item => ({
+    id: `data-${item.type}-${item.id}`,
+    label: item.label,
+    description: item.sub ?? (item.extra?.status as string | undefined),
+    group: 'data',
+    perform: ({ router: r }) => {
+      const basePath = DATA_ROUTE[item.type] ?? '/';
+      r.push(item.type === 'wo' ? `/work-orders/${item.id}` : basePath);
+    },
+  })), [dataResults]);
+
   // Flat list for keyboard navigation
-  const flatList = useMemo(() => Object.values(groups).flat(), [groups]);
+  const allGroups = useMemo(() => {
+    const base = { ...groups };
+    if (dataCommands.length > 0) base.data = dataCommands;
+    return base;
+  }, [groups, dataCommands]);
+
+  const flatList = useMemo(() => Object.values(allGroups).flat(), [allGroups]);
 
   // O(1) lookup of command → flat index (replaces O(n) indexOf in render).
   const flatIndex = useMemo(() => {
@@ -82,6 +119,23 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
   }, [open]);
 
   useEffect(() => { setActiveIndex(0); }, [query]);
+
+  // Debounced data search via /search API
+  useEffect(() => {
+    if (query.length < 2) { setDataResults([]); return; }
+    setDataLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await apiFetch<{ items: SearchResultItem[] }>(`/search?q=${encodeURIComponent(query)}&limit=6`);
+        setDataResults(res.items ?? []);
+      } catch {
+        setDataResults([]);
+      } finally {
+        setDataLoading(false);
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   useEffect(() => {
     const el = listRef.current?.querySelector(`[data-index="${activeIndex}"]`);
@@ -187,10 +241,13 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
           aria-label="Результати пошуку"
           className="max-h-[360px] overflow-y-auto py-1"
         >
-          {filtered.length === 0 ? (
+          {dataLoading && query.length >= 2 && (
+            <p className="px-4 py-2 text-[12px] text-muted-foreground animate-pulse">Пошук у даних…</p>
+          )}
+          {flatList.length === 0 && !dataLoading ? (
             <p className="py-8 text-center text-[13px] text-muted-foreground">Нічого не знайдено</p>
           ) : (
-            Object.entries(groups).map(([group, cmds]) => {
+            Object.entries(allGroups).map(([group, cmds]) => {
               const GroupIcon = GROUP_ICONS[group] ?? Navigation;
               return (
                 <div key={group}>

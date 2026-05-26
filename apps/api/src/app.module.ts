@@ -36,6 +36,9 @@ import { SyncModule } from './modules/sync/sync.module';
 import { DocumentNumberModule } from './modules/document-number/document-number.module';
 import { MaintenanceSchedulesModule } from './modules/maintenance-schedules/maintenance-schedules.module';
 import { CompletionActsModule } from './modules/completion-acts/completion-acts.module';
+import { SearchModule } from './modules/search/search.module';
+import { CommentsModule } from './modules/comments/comments.module';
+import { WorkOrderTemplatesModule } from './modules/work-order-templates/work-order-templates.module';
 
 @Module({
   imports: [
@@ -84,6 +87,9 @@ import { CompletionActsModule } from './modules/completion-acts/completion-acts.
     DocumentNumberModule,
     MaintenanceSchedulesModule,
     CompletionActsModule,
+    SearchModule,
+    CommentsModule,
+    WorkOrderTemplatesModule,
   ],
 })
 export class AppModule {}

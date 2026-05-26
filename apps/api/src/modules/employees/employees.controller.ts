@@ -5,7 +5,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import {
-  AssignLiftsDto, AssignWorkCategoriesDto, AssignZonesDto,
+  AssignBranchesDto, AssignLiftsDto, AssignWorkCategoriesDto, AssignZonesDto,
   CreateEmployeeDto, EmployeeResponseDto, UpdateEmployeeDto,
 } from './employees.dto';
 import { EmployeesService } from './employees.service';
@@ -83,5 +83,17 @@ export class EmployeesController {
     @Body() dto: AssignWorkCategoriesDto,
   ) {
     return this.service.assignWorkCategories(orgId, id, dto);
+  }
+
+  @Post(':id/branches')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Призначити філії співробітнику (замінює поточні)' })
+  @ApiResponse({ status: 200, type: EmployeeResponseDto })
+  assignBranches(
+    @OrgContext() orgId: string,
+    @Param('id') id: string,
+    @Body() dto: AssignBranchesDto,
+  ) {
+    return this.service.assignBranches(orgId, id, dto);
   }
 }

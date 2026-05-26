@@ -112,6 +112,16 @@ export class UpdateEmployeeDto {
   dateOfFire?: string;
 }
 
+export class AssignBranchesDto {
+  @ApiProperty({ type: [String], description: 'Масив UUID філій' })
+  @IsUUID('4', { each: true })
+  branchIds!: string[];
+
+  @ApiPropertyOptional({ description: 'Доступ до всіх філій (OWNER/ADMIN)' })
+  @IsOptional()
+  allBranches?: boolean;
+}
+
 export class AssignZonesDto {
   @ApiProperty({ type: [String], description: 'Масив UUID зон' })
   @IsUUID('4', { each: true })
@@ -145,6 +155,8 @@ export class EmployeeResponseDto {
   @ApiProperty({ type: [String] }) zoneIds!: string[];
   @ApiProperty({ type: [String] }) liftIds!: string[];
   @ApiProperty({ type: [String] }) workCategoryIds!: string[];
+  @ApiProperty({ type: [String] }) branchIds!: string[];
+  @ApiProperty() allBranches!: boolean;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }

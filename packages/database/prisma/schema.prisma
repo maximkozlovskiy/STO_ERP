@@ -261,6 +261,9 @@ model Organisation {
   notificationTemplates NotificationTemplate[]
   taxRates              TaxRate[]
   paymentMethods        PaymentMethodConfig[]
+  employeeBranches      EmployeeBranch[]
+  comments              Comment[]
+  workOrderTemplates    WorkOrderTemplate[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -297,12 +300,13 @@ model GarageBranch {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  org            Organisation    @relation(fields: [orgId], references: [id])
-  zones          Zone[]
-  warehouses     Warehouse[]
-  branchSettings BranchSettings?
-  workOrders     WorkOrder[]
-  stockDocuments StockDocument[]
+  org              Organisation    @relation(fields: [orgId], references: [id])
+  zones            Zone[]
+  warehouses       Warehouse[]
+  branchSettings   BranchSettings?
+  workOrders       WorkOrder[]
+  stockDocuments   StockDocument[]
+  employeeBranches EmployeeBranch[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -403,6 +407,8 @@ model Employee {
   updatedAt   DateTime       @updatedAt
   deletedAt   DateTime?
 
+  allBranches Boolean @default(false)
+
   org                    Organisation           @relation(fields: [orgId], references: [id])
   employeeZones          EmployeeZone[]
   employeeLifts          EmployeeLift[]
@@ -410,6 +416,8 @@ model Employee {
   workOrderLines         WorkOrderLine[]
   workOrderLineAssists   WorkOrderLineEmployee[]
   authAccount            AuthAccount?
+  employeeBranches       EmployeeBranch[]
+  comments               Comment[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -444,6 +452,61 @@ model EmployeeWorkCategory {
 
   @@id([employeeId, workCategoryId])
   @@map("employee_work_categories")
+}
+
+// B10: Branch ACL
+model EmployeeBranch {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employeeId String       @db.Uuid
+  branchId   String       @db.Uuid
+  orgId      String       @db.Uuid
+  createdAt  DateTime     @default(now())
+
+  employee   Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  branch     GarageBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  org        Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, branchId])
+  @@index([orgId])
+  @@index([employeeId])
+  @@map("employee_branches")
+}
+
+// F8: Comments (polymorphic)
+model Comment {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String   @db.Uuid
+  entityType  String
+  entityId    String   @db.Uuid
+  body        String
+  authorId    String   @db.Uuid
+  createdAt   DateTime @default(now())
+  syncVersion BigInt   @default(0)
+
+  org    Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  author Employee     @relation(fields: [authorId], references: [id])
+
+  @@index([orgId, entityType, entityId, createdAt])
+  @@index([orgId, syncVersion])
+  @@map("comments")
+}
+
+// F10: Work Order Templates
+model WorkOrderTemplate {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  lines       Json      @default("[]")
+  parts       Json      @default("[]")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  syncVersion BigInt    @default(0)
+
+  org Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, deletedAt])
+  @@map("work_order_templates")
 }
 
 // ─── CRM ─────────────────────────────────────────────────

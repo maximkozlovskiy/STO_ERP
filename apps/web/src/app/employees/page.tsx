@@ -25,6 +25,7 @@ interface Employee {
   deletedAt: string | null;
   rateScheme?: { type: string; params: Record<string, number> };
   zoneIds: string[]; liftIds: string[]; workCategoryIds: string[];
+  branchIds: string[]; allBranches: boolean;
   status: 'ACTIVE' | 'ON_LEAVE' | 'FIRED';
   email?: string | null;
   dateOfHire?: string | null;
@@ -33,6 +34,7 @@ interface Employee {
 interface Zone { id: string; name: string; type: string; }
 interface Lift { id: string; name: string; type: string; }
 interface WorkCategory { id: string; name: string; parentId: string | null; children: WorkCategory[]; }
+interface Branch { id: string; name: string; address: string; }
 
 const ROLE_LABELS: Record<string, string> = {
   OWNER: 'Власник', ADMIN: 'Адміністратор', RECEPTIONIST: 'Приймальник',
@@ -96,6 +98,7 @@ export default function EmployeesPage() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [workCategories, setWorkCategories] = useState<WorkCategory[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [modal, setModal] = useState<'create' | 'card' | 'edit' | null>(null);
@@ -119,6 +122,8 @@ export default function EmployeesPage() {
   const [assignedZones, setAssignedZones] = useState<string[]>([]);
   const [assignedLifts, setAssignedLifts] = useState<string[]>([]);
   const [assignedCats, setAssignedCats] = useState<string[]>([]);
+  const [assignedBranches, setAssignedBranches] = useState<string[]>([]);
+  const [allBranches, setAllBranches] = useState(false);
 
   const load = (opts?: { search?: string; role?: string; showDeleted?: boolean }) => {
     setLoading(true);
@@ -135,6 +140,7 @@ export default function EmployeesPage() {
       apiFetch<Zone[]>('/zones').then(setZones),
       apiFetch<Lift[]>('/lifts').then(setLifts),
       apiFetch<WorkCategory[]>('/work-categories').then(setWorkCategories),
+      apiFetch<{ items: Branch[] }>('/branches').then(r => setBranches(r.items ?? [])),
     ]).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -149,6 +155,8 @@ export default function EmployeesPage() {
     setAssignedZones(emp.zoneIds);
     setAssignedLifts(emp.liftIds);
     setAssignedCats(emp.workCategoryIds);
+    setAssignedBranches(emp.branchIds ?? []);
+    setAllBranches(emp.allBranches ?? false);
     setError('');
     setModal('card');
   };
@@ -205,6 +213,7 @@ export default function EmployeesPage() {
         apiFetch<void>(`/employees/${selected.id}/zones`, { method: 'POST', body: JSON.stringify({ zoneIds: assignedZones }) }),
         apiFetch<void>(`/employees/${selected.id}/lifts`, { method: 'POST', body: JSON.stringify({ liftIds: assignedLifts }) }),
         apiFetch<void>(`/employees/${selected.id}/work-categories`, { method: 'POST', body: JSON.stringify({ workCategoryIds: assignedCats }) }),
+        apiFetch<void>(`/employees/${selected.id}/branches`, { method: 'POST', body: JSON.stringify({ branchIds: allBranches ? [] : assignedBranches, allBranches }) }),
       ]);
       closeModal(); load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
@@ -649,6 +658,16 @@ export default function EmployeesPage() {
             <CheckboxList label="Зони" items={zones} selected={assignedZones} onChange={setAssignedZones} />
             <CheckboxList label="Підйомники" items={lifts} selected={assignedLifts} onChange={setAssignedLifts} />
             <CheckboxList label="Категорії робіт" items={flatCats} selected={assignedCats} onChange={setAssignedCats} />
+            <div className="mb-3">
+              <label className="block text-[13px] font-medium text-foreground mb-2">Доступ до філій</label>
+              <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                <input type="checkbox" checked={allBranches} onChange={e => setAllBranches(e.target.checked)} className="rounded border-border" />
+                <span className="text-[13px] text-foreground">Доступ до всіх філій</span>
+              </label>
+              {!allBranches && (
+                <CheckboxList label="" items={branches} selected={assignedBranches} onChange={setAssignedBranches} />
+              )}
+            </div>
           </div>
         )}
       </Modal>

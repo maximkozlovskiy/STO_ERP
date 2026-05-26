@@ -8,6 +8,7 @@ import { MaintenanceSchedulesService } from '../maintenance-schedules/maintenanc
 import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { PdfService } from '../pdf/pdf.service';
 import { WORK_ORDER_TRANSITIONS, CLOSED_STATUSES, DELETABLE_STATUSES, RESERVATION_ACTIVE_STATUSES, EDITABLE_STATUSES } from './work-orders.fsm';
 import {
   CreateWorkOrderDto, UpdateWorkOrderDto, WorkOrderQueryDto,
@@ -27,6 +28,7 @@ export class WorkOrdersService {
     private readonly notifications: NotificationsService,
     private readonly docNumbers: DocumentNumberService,
     private readonly maintenanceSchedules: MaintenanceSchedulesService,
+    private readonly pdf: PdfService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
@@ -451,6 +453,57 @@ export class WorkOrdersService {
   }
 
   // ─── Mappers ─────────────────────────────────────────────
+
+  async generatePdf(orgId: string, id: string): Promise<Buffer> {
+    const [wo, org] = await Promise.all([
+      this.prisma.workOrder.findFirst({
+        where: { id, orgId, deletedAt: null },
+        include: {
+          vehicle: { select: { make: true, model: true, licensePlate: true } },
+          counterparty: { select: { firstName: true, lastName: true, companyName: true, phone: true } },
+          lines: {
+            where: { deletedAt: null },
+            include: { work: { select: { name: true } } },
+            take: 500,
+          },
+          parts: {
+            where: { deletedAt: null },
+            include: { good: { select: { name: true } } },
+            take: 500,
+          },
+        },
+      }),
+      this.prisma.organisation.findFirst({ where: { id: orgId }, select: { name: true, edrpou: true } }),
+    ]);
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+
+    const cp = wo.counterparty;
+    const counterpartyName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || '';
+    const vehicleLabel = wo.vehicle
+      ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}`
+      : '';
+
+    return this.pdf.generateWorkOrderPdf({
+      org: { name: org?.name ?? '', edrpou: org?.edrpou },
+      counterparty: { name: counterpartyName, phone: cp?.phone },
+      vehicleLabel,
+      number: wo.number,
+      date: wo.createdAt,
+      works: wo.lines.map((l) => ({
+        name: l.work?.name ?? '',
+        quantity: l.actualHours ?? l.normoHours,
+        price: Number(l.price),
+        total: Number(l.amount),
+      })),
+      parts: wo.parts.map((p) => ({
+        name: p.good?.name ?? '',
+        quantity: p.quantity,
+        price: Number(p.price),
+        total: Number(p.amount),
+      })),
+      total: Number(wo.totalAmount),
+    });
+  }
 
   private toDto(wo: {
     id: string; orgId: string; number: string; status: WorkOrderStatus;

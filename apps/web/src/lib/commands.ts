@@ -8,7 +8,7 @@ export interface Command {
   description?: string;
   icon?: LucideIcon;
   keywords?: string[];
-  group: 'navigation' | 'action' | 'settings';
+  group: 'navigation' | 'action' | 'settings' | 'data';
   perform: (ctx: CommandContext) => void;
 }
 

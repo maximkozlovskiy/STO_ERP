@@ -459,25 +459,39 @@ export default function InvoicesPage() {
               )}
 
               {/* Action buttons in panel */}
-              {STATUS_TRANSITIONS[selectedInv.status]?.length > 0 && (
-                <div className="space-y-2 pt-2 border-t border-border">
-                  <p className="text-[12px] text-muted-foreground font-medium uppercase tracking-wide">Дії</p>
-                  <div className="flex flex-col gap-2">
-                    {STATUS_TRANSITIONS[selectedInv.status].map(s => (
-                      <Button
-                        key={s}
-                        variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
-                        size="sm"
-                        className="w-full"
-                        onClick={() => s === 'PAID' ? setShowPayment(selectedInv) : handleTransition(selectedInv, s)}
-                        loading={savingId === selectedInv.id}
-                      >
-                        {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
-                      </Button>
-                    ))}
-                  </div>
+              <div className="space-y-2 pt-2 border-t border-border">
+                <p className="text-[12px] text-muted-foreground font-medium uppercase tracking-wide">Дії</p>
+                <div className="flex flex-col gap-2">
+                  {STATUS_TRANSITIONS[selectedInv.status]?.map(s => (
+                    <Button
+                      key={s}
+                      variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
+                      size="sm"
+                      className="w-full"
+                      onClick={() => s === 'PAID' ? setShowPayment(selectedInv) : handleTransition(selectedInv, s)}
+                      loading={savingId === selectedInv.id}
+                    >
+                      {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      const url = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api'}/invoices/${selectedInv.id}/pdf`;
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `invoice-${selectedInv.number}.pdf`;
+                      document.body.appendChild(a);
+                      a.click();
+                      setTimeout(() => document.body.removeChild(a), 100);
+                    }}
+                  >
+                    Завантажити PDF
+                  </Button>
                 </div>
-              )}
+              </div>
             </div>
           )}
         </DetailPanel>

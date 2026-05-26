@@ -1,7 +1,8 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query, Res,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -82,6 +83,21 @@ export class InvoicesController {
     @Body() dto: TransitionInvoiceDto,
   ) {
     return this.service.transition(orgId, id, dto.status as InvTransitionStatus);
+  }
+
+  @Get(':id/pdf')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Завантажити рахунок у PDF' })
+  async downloadPdf(
+    @OrgContext() orgId: string,
+    @Param('id') id: string,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const buffer = await this.service.generatePdf(orgId, id);
+    reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="invoice-${id}.pdf"`)
+      .send(buffer);
   }
 
   @Delete(':id')

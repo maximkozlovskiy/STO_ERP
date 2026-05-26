@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useRequireAuth } from '@/lib/auth';
+import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +38,14 @@ interface WorkOrderDetail {
   priority?: string | null; repairCategory?: string | null; clientApproval?: boolean | null;
   totalLabor: number; totalParts: number; totalAmount: number; paidAmount: number;
   lines: WorkOrderLine[]; parts: WorkOrderPart[];
+}
+
+interface Comment {
+  id: string;
+  body: string;
+  authorId: string;
+  authorName?: string;
+  createdAt: string;
 }
 
 interface CompletionActSummary {
@@ -95,6 +103,7 @@ const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'>
 
 export default function WorkOrderCardPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
+  const { employee } = useAuth();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
@@ -122,6 +131,12 @@ export default function WorkOrderCardPage() {
   const [partForm, setPartForm] = useState({ goodId: '', warehouseId: '', quantity: '1', price: '' });
   const [stockAvailable, setStockAvailable] = useState<number | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
+
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentBody, setCommentBody] = useState('');
+  const [commentSaving, setCommentSaving] = useState(false);
+
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const features = useUiFeatures();
   const lineDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -163,6 +178,56 @@ export default function WorkOrderCardPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadComments = useCallback(() => {
+    apiFetch<{ items: Comment[] }>(`/comments?entityType=work_order&entityId=${id}`)
+      .then(r => { if (mountedRef.current) setComments(r.items ?? []); })
+      .catch(() => {});
+  }, [id]);
+
+  useEffect(() => { loadComments(); }, [loadComments]);
+
+  const saveAsTemplate = async () => {
+    if (!wo) return;
+    const name = window.prompt('Назва шаблону:', wo.number || 'Новий шаблон');
+    if (!name?.trim()) return;
+    setSavingTemplate(true);
+    try {
+      await apiFetch('/work-order-templates', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: name.trim(),
+          lines: wo.lines.map(l => ({ workId: l.workId, quantity: l.normoHours, note: l.notes ?? undefined })),
+          parts: wo.parts.map(p => ({ goodId: p.goodId, quantity: p.quantity })),
+        }),
+      });
+      if (features.toastEnabled) toast.success(`Шаблон "${name.trim()}" збережено`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка збереження шаблону';
+      if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const submitComment = async () => {
+    if (!commentBody.trim()) return;
+    setCommentSaving(true);
+    try {
+      await apiFetch(`/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ entityType: 'work_order', entityId: id, body: commentBody.trim() }),
+      });
+      setCommentBody('');
+      loadComments();
+      if (features.toastEnabled) toast.success('Коментар додано');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка';
+      if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setCommentSaving(false);
+    }
+  };
 
   useEffect(() => {
     apiFetch<{ items: Work[] }>('/works?limit=200')
@@ -311,6 +376,16 @@ export default function WorkOrderCardPage() {
     finally { setGeneratingAct(false); }
   };
 
+  const downloadPdf = () => {
+    const url = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api'}/work-orders/${id}/pdf`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `work-order-${wo?.number ?? id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const signAct = async (actId: string) => {
     setSigningAct(true); setError('');
     try {
@@ -368,21 +443,25 @@ export default function WorkOrderCardPage() {
       </div>
 
       {/* FSM Buttons */}
-      {allowedTransitions.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          {allowedTransitions.map(s => (
-            <Button
-              key={s}
-              variant={TRANSITION_VARIANTS[s] ?? 'outline'}
-              onClick={() => transition(s)}
-              disabled={transitioning}
-              loading={transitioning}
-            >
-              {TRANSITION_LABELS[s] ?? s}
-            </Button>
-          ))}
-        </div>
-      )}
+      <div className="flex gap-2 flex-wrap items-center">
+        {allowedTransitions.map(s => (
+          <Button
+            key={s}
+            variant={TRANSITION_VARIANTS[s] ?? 'outline'}
+            onClick={() => transition(s)}
+            disabled={transitioning}
+            loading={transitioning}
+          >
+            {TRANSITION_LABELS[s] ?? s}
+          </Button>
+        ))}
+        <Button variant="outline" size="sm" onClick={downloadPdf}>
+          PDF
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => void saveAsTemplate()} loading={savingTemplate} disabled={savingTemplate || !wo?.lines.length && !wo?.parts.length}>
+          Шаблон ↓
+        </Button>
+      </div>
 
       {/* Totals */}
       <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-3 gap-4 text-sm">
@@ -509,6 +588,57 @@ export default function WorkOrderCardPage() {
               ))}
             </div>
           )}
+      </div>
+
+      {/* Comments */}
+      <div className="bg-surface rounded-xl border border-border p-5">
+        <h2 className="font-semibold text-foreground mb-4">Коментарі</h2>
+        {comments.length > 0 && (
+          <div className="space-y-3 mb-4">
+            {comments.map(c => (
+              <div key={c.id} className="flex gap-3">
+                <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <span className="text-[11px] font-semibold text-primary">
+                    {c.authorName ? c.authorName[0] : '?'}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[12px] font-medium text-foreground">{c.authorName ?? 'Невідомо'}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {new Date(c.createdAt).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-[13px] text-foreground whitespace-pre-wrap wrap-break-word">{c.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {comments.length === 0 && (
+          <p className="text-sm text-muted-foreground mb-4">Коментарів немає</p>
+        )}
+        {employee && (
+          <div className="flex gap-2">
+            <textarea
+              value={commentBody}
+              onChange={e => setCommentBody(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { void submitComment(); } }}
+              placeholder="Напишіть коментар... (Ctrl+Enter для відправки)"
+              rows={2}
+              className="flex-1 rounded-lg border border-border bg-transparent px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+            />
+            <Button
+              size="sm"
+              onClick={() => void submitComment()}
+              loading={commentSaving}
+              disabled={!commentBody.trim()}
+              className="self-end"
+            >
+              Надіслати
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Add Line Modal */}

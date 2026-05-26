@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  AssignLiftsDto, AssignWorkCategoriesDto, AssignZonesDto,
+  AssignBranchesDto, AssignLiftsDto, AssignWorkCategoriesDto, AssignZonesDto,
   CreateEmployeeDto, EmployeeResponseDto, UpdateEmployeeDto,
   rateSchemeSchema,
 } from './employees.dto';
@@ -18,6 +18,7 @@ export class EmployeesService {
         employeeZones: true,
         employeeLifts: true,
         employeeWorkCategories: true,
+        employeeBranches: true,
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       take: 200,
@@ -32,6 +33,7 @@ export class EmployeesService {
         employeeZones: true,
         employeeLifts: true,
         employeeWorkCategories: true,
+        employeeBranches: true,
       },
     });
     if (!item) throw new NotFoundException('Співробітника не знайдено');
@@ -49,7 +51,7 @@ export class EmployeesService {
         rateScheme: dto.rateScheme as object,
         phone: dto.phone,
       },
-      include: { employeeZones: true, employeeLifts: true, employeeWorkCategories: true },
+      include: { employeeZones: true, employeeLifts: true, employeeWorkCategories: true, employeeBranches: true },
     });
     return this.toDto(item);
   }
@@ -66,7 +68,7 @@ export class EmployeesService {
         ...(dto.rateScheme !== undefined && { rateScheme: dto.rateScheme as object }),
         ...(dto.phone !== undefined && { phone: dto.phone }),
       },
-      include: { employeeZones: true, employeeLifts: true, employeeWorkCategories: true },
+      include: { employeeZones: true, employeeLifts: true, employeeWorkCategories: true, employeeBranches: true },
     });
     return this.toDto(item);
   }
@@ -145,6 +147,35 @@ export class EmployeesService {
     return this.findOne(orgId, id);
   }
 
+  async assignBranches(
+    orgId: string,
+    id: string,
+    dto: AssignBranchesDto,
+  ): Promise<EmployeeResponseDto> {
+    await this.findOne(orgId, id);
+    if (dto.branchIds.length > 0) {
+      const branches = await this.prisma.garageBranch.findMany({
+        where: { id: { in: dto.branchIds }, orgId, deletedAt: null },
+        take: 100,
+      });
+      if (branches.length !== dto.branchIds.length) {
+        throw new NotFoundException('Одну або кілька філій не знайдено');
+      }
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.employeeBranch.deleteMany({ where: { employeeId: id } });
+      if (dto.branchIds.length) {
+        await tx.employeeBranch.createMany({
+          data: dto.branchIds.map((branchId) => ({ employeeId: id, branchId, orgId })),
+        });
+      }
+      if (dto.allBranches !== undefined) {
+        await tx.employee.update({ where: { id }, data: { allBranches: dto.allBranches } });
+      }
+    });
+    return this.findOne(orgId, id);
+  }
+
   private validateRateScheme(scheme: unknown): void {
     const result = rateSchemeSchema.safeParse(scheme);
     if (!result.success) {
@@ -160,9 +191,11 @@ export class EmployeesService {
     phone?: string | null; email?: string | null;
     dateOfHire?: Date | null; dateOfFire?: Date | null;
     createdAt: Date; updatedAt: Date;
+    allBranches: boolean;
     employeeZones: Array<{ zoneId: string }>;
     employeeLifts: Array<{ liftId: string }>;
     employeeWorkCategories: Array<{ workCategoryId: string }>;
+    employeeBranches: Array<{ branchId: string }>;
   }): EmployeeResponseDto {
     return {
       id: item.id,
@@ -180,6 +213,8 @@ export class EmployeesService {
       zoneIds: item.employeeZones.map((z) => z.zoneId),
       liftIds: item.employeeLifts.map((l) => l.liftId),
       workCategoryIds: item.employeeWorkCategories.map((c) => c.workCategoryId),
+      branchIds: item.employeeBranches.map((b) => b.branchId),
+      allBranches: item.allBranches,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

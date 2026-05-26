@@ -5,9 +5,11 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { SettlementsModule } from '../settlements/settlements.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MaintenanceSchedulesModule } from '../maintenance-schedules/maintenance-schedules.module';
+import { PdfModule } from '../pdf/pdf.module';
+import { DocumentNumberModule } from '../document-number/document-number.module';
 
 @Module({
-  imports: [InventoryModule, SettlementsModule, NotificationsModule, MaintenanceSchedulesModule],
+  imports: [InventoryModule, SettlementsModule, NotificationsModule, MaintenanceSchedulesModule, PdfModule, DocumentNumberModule],
   controllers: [WorkOrdersController],
   providers: [WorkOrdersService],
   exports: [WorkOrdersService],

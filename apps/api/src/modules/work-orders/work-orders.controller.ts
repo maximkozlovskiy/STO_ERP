@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -45,6 +46,21 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Оновити наряд' })
   update(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderDto) {
     return this.service.update(orgId, id, dto);
+  }
+
+  @Get(':id/pdf')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
+  @ApiOperation({ summary: 'Завантажити наряд у PDF' })
+  async downloadPdf(
+    @OrgContext() orgId: string,
+    @Param('id') id: string,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const buffer = await this.service.generatePdf(orgId, id);
+    reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="work-order-${id}.pdf"`)
+      .send(buffer);
   }
 
   @Delete(':id')
