@@ -313,8 +313,10 @@ export default function CalendarPage() {
                   setForm(f => {
                     if (start && f.normoHours && Number(f.normoHours) > 0) {
                       const [h, m] = start.split(':').map(Number);
-                      const totalMin = h * 60 + m + Math.round(Number(f.normoHours) * 60);
-                      const endH = Math.floor(totalMin / 60) % 24;
+                      // Clamp end-time within the same calendar day (23:59 max).
+                      // Slot cannot cross midnight in STO scheduling model.
+                      const totalMin = Math.min(h * 60 + m + Math.round(Number(f.normoHours) * 60), 23 * 60 + 59);
+                      const endH = Math.floor(totalMin / 60);
                       const endM = totalMin % 60;
                       const endAt = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
                       return { ...f, startAt: start, endAt };
@@ -338,8 +340,9 @@ export default function CalendarPage() {
                   setForm(f => {
                     if (f.startAt && nh && Number(nh) > 0) {
                       const [h, m] = f.startAt.split(':').map(Number);
-                      const totalMin = h * 60 + m + Math.round(Number(nh) * 60);
-                      const endH = Math.floor(totalMin / 60) % 24;
+                      // Clamp end-time within the same calendar day (23:59 max).
+                      const totalMin = Math.min(h * 60 + m + Math.round(Number(nh) * 60), 23 * 60 + 59);
+                      const endH = Math.floor(totalMin / 60);
                       const endM = totalMin % 60;
                       const endAt = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
                       return { ...f, normoHours: nh, endAt };

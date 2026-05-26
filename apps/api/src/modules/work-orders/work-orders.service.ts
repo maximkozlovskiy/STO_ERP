@@ -227,10 +227,18 @@ export class WorkOrdersService {
       });
     });
 
-    // Sync Vehicle.currentMileage from outMileage when WO completes
+    // Sync Vehicle.currentMileage from outMileage when WO completes.
+    // Bug #75: Prisma `lt` filter EXCLUDES NULL rows — vehicles created without
+    // an initial mileage stay NULL forever. Match both "lower" and "NULL".
     if (newStatus === 'COMPLETED' && wo.outMileage) {
       this.prisma.vehicle.updateMany({
-        where: { id: wo.vehicleId, orgId, currentMileage: { lt: wo.outMileage } },
+        where: {
+          id: wo.vehicleId, orgId,
+          OR: [
+            { currentMileage: null },
+            { currentMileage: { lt: wo.outMileage } },
+          ],
+        },
         data: { currentMileage: wo.outMileage },
       }).catch((e: unknown) => this.logger.warn(`Помилка оновлення пробігу авто: ${e instanceof Error ? e.message : e}`));
     }

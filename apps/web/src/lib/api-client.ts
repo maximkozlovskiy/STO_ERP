@@ -76,3 +76,46 @@ export async function apiFetch<T>(
 
   return await res.json() as T;
 }
+
+/**
+ * Bug #77: PDF/blob downloads must also do silent refresh on 401.
+ * Same auth/refresh logic as `apiFetch`, but returns a `Blob` (no JSON parsing).
+ */
+export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Blob> {
+  const token = getToken();
+
+  const makeRequest = (accessToken: string | null) =>
+    fetch(`${API_URL}/api${path}`, {
+      credentials: 'include',
+      ...init,
+      headers: {
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...init?.headers,
+      },
+    });
+
+  let res = await makeRequest(token);
+
+  if (res.status === 401) {
+    const newToken = await tryRefresh();
+    if (newToken) {
+      res = await makeRequest(newToken);
+    } else {
+      clearToken();
+      if (typeof window !== 'undefined') {
+        window.location.replace('/login');
+      }
+      throw new Error('Сесія застаріла, увійдіть знову');
+    }
+  }
+
+  if (!res.ok) {
+    // Try to parse error body as JSON (most likely shape from NestJS) — fall back to status text
+    const errMsg = await res.json()
+      .catch(() => ({ message: `Помилка завантаження файлу (${res.status})` }))
+      .then((d: { message?: string }) => d.message ?? `Помилка завантаження файлу (${res.status})`);
+    throw new Error(errMsg);
+  }
+
+  return await res.blob();
+}

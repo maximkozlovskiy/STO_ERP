@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useRequireAuth, useAuth, TOKEN_KEY } from '@/lib/auth';
-import { apiFetch } from '@/lib/api-client';
+import { useRequireAuth, useAuth } from '@/lib/auth';
+import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -391,18 +391,11 @@ export default function WorkOrderCardPage() {
   };
 
   const downloadPdf = async () => {
-    // The PDF endpoint is JWT-guarded — a bare `<a href>` cannot attach the Authorization header,
-    // so we must fetch the response with a Bearer token and trigger download via Blob URL.
+    // Bug #77: use apiBlobFetch which does silent refresh on 401 — direct fetch
+    // breaks when access token expired (~15min) requiring full page reload.
     setError('');
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-      const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
-      const res = await fetch(`${apiBase}/api/work-orders/${id}/pdf`, {
-        credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`Помилка завантаження PDF (${res.status})`);
-      const blob = await res.blob();
+      const blob = await apiBlobFetch(`/work-orders/${id}/pdf`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -420,14 +413,8 @@ export default function WorkOrderCardPage() {
   const downloadActPdf = async (actId: string) => {
     setDownloadingActPdf(true); setError('');
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-      const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
-      const res = await fetch(`${apiBase}/api/completion-acts/${actId}/pdf`, {
-        credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`Помилка завантаження PDF (${res.status})`);
-      const blob = await res.blob();
+      // Bug #77: same silent-refresh hardening as downloadPdf above.
+      const blob = await apiBlobFetch(`/completion-acts/${actId}/pdf`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

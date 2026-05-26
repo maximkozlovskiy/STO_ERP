@@ -17,7 +17,8 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { ResetPeriod } from '@prisma/client';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -36,7 +37,10 @@ class UpdateDocNumberDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() includeDate?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() separator?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(10) padding?: number;
-  @ApiPropertyOptional() @IsOptional() @IsString() resetPeriod?: string;
+  @ApiPropertyOptional({ enum: ResetPeriod })
+  @IsOptional()
+  @IsIn(Object.values(ResetPeriod))
+  resetPeriod?: ResetPeriod;
 }
 
 class CreateTaxRateDto {

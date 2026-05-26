@@ -21,6 +21,13 @@ function normalizeDateRange(from: string, to: string) {
 
 const WORK_HOURS_PER_DAY = 9;
 
+/**
+ * Labor cost ratio (mechanic salary as fraction of labor revenue).
+ * 0.4 = 40% — typical for Ukraine SMB auto-services where salary fund is ~40% of labor income.
+ * TODO: move to OrganisationSettings.laborCostRatio for per-org configuration.
+ */
+const LABOR_COST_RATIO = 0.4;
+
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -193,8 +200,18 @@ export class ReportsService {
         completedAt: { gte: fromDate, lte: toDate },
       },
       include: {
-        parts: { select: { quantity: true, price: true, batchCostPrice: true } },
-        lines: { select: { normoHours: true, price: true, amount: true } },
+        // Bug #74: cost fallback must use Good.purchasePrice — not WorkOrderPart.price (sale price)
+        parts: {
+          where: { deletedAt: null },
+          select: {
+            quantity: true,
+            price: true,
+            batchCostPrice: true,
+            good: { select: { purchasePrice: true } },
+          },
+          take: 500,
+        },
+        lines: { where: { deletedAt: null }, select: { normoHours: true, price: true, amount: true }, take: 500 },
       },
       take: 10000,
     });
@@ -202,15 +219,22 @@ export class ReportsService {
     let totalRevenue = 0;
     let totalCostParts = 0;
     let totalCostLabor = 0;
+    let unknownCostPartsCount = 0;
 
     for (const wo of orders) {
       totalRevenue += Number(wo.totalAmount);
       for (const part of wo.parts) {
-        const cost = part.batchCostPrice ?? part.price;
-        totalCostParts += part.quantity * Number(cost ?? 0);
+        // Bug #74: never use sale price (part.price) as cost — that flattens profit to ≈ 0
+        const cost = part.batchCostPrice ?? part.good?.purchasePrice ?? null;
+        if (cost == null) {
+          unknownCostPartsCount += 1;
+          // Treat unknown cost as 0 — better to over-report profit than under-report by using sale price
+          continue;
+        }
+        totalCostParts += part.quantity * Number(cost);
       }
       for (const line of wo.lines) {
-        totalCostLabor += Number(line.amount) * 0.4;
+        totalCostLabor += Number(line.amount) * LABOR_COST_RATIO;
       }
     }
 
@@ -222,6 +246,7 @@ export class ReportsService {
       totalRevenue, totalCost, totalCostParts, totalCostLabor,
       grossProfit, margin: Math.round(margin * 100) / 100,
       ordersCount: orders.length,
+      unknownCostPartsCount,
       from, to,
     };
   }

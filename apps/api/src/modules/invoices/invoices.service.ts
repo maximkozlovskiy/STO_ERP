@@ -152,6 +152,16 @@ export class InvoicesService {
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
     if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Рядки можна додавати лише до чернетки');
 
+    // Cross-tenant FK validation
+    if (dto.goodId) {
+      const good = await this.prisma.good.findFirst({ where: { id: dto.goodId, orgId, deletedAt: null }, select: { id: true } });
+      if (!good) throw new NotFoundException('Запчастину не знайдено');
+    }
+    if (dto.workId) {
+      const work = await this.prisma.work.findFirst({ where: { id: dto.workId, orgId, deletedAt: null }, select: { id: true } });
+      if (!work) throw new NotFoundException('Роботу не знайдено');
+    }
+
     const vatRate = dto.vatRate ?? 20;
     const priceWithoutVat = dto.quantity * dto.unitPrice;
     const vatAmount = priceWithoutVat * (vatRate / 100);
@@ -224,15 +234,16 @@ export class InvoicesService {
   }
 
   private async recalcTotals(orgId: string, invoiceId: string): Promise<void> {
-    const lines = await this.prisma.invoiceLine.findMany({ where: { invoiceId, orgId } });
+    const lines = await this.prisma.invoiceLine.findMany({ where: { invoiceId, orgId }, take: 1000 });
     const totalWithoutVat = lines.reduce((s, l) => s + Number(l.priceWithoutVat), 0);
     const totalVat = lines.reduce((s, l) => s + Number(l.vatAmount), 0);
     const totalWithVat = lines.reduce((s, l) => s + Number(l.priceWithVat), 0);
-    const amount = totalWithVat || lines.length === 0 ? totalWithVat : totalWithVat;
 
+    // Bug #76: prior code had a dead ternary (`totalWithVat || lines.length === 0 ? totalWithVat : totalWithVat`).
+    // Both branches identical → result always equals totalWithVat. Use it directly.
     await this.prisma.invoice.update({
       where: { id: invoiceId, orgId },
-      data: { totalWithoutVat, totalVat, totalWithVat, amount },
+      data: { totalWithoutVat, totalVat, totalWithVat, amount: totalWithVat },
     });
   }
 

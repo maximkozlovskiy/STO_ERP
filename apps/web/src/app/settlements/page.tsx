@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Search } from 'lucide-react';
-import { useRequireAuth, TOKEN_KEY } from '@/lib/auth';
-import { apiFetch } from '@/lib/api-client';
+import { useRequireAuth } from '@/lib/auth';
+import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
@@ -101,16 +101,12 @@ export default function SettlementsPage() {
   };
 
   const downloadActPdf = async (actId: string) => {
+    if (!selected) return;
     setDownloadingActId(actId); setError('');
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-      const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
-      const res = await fetch(`${apiBase}/api/settlements/reconciliation-acts/${actId}/pdf`, {
-        credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`Помилка завантаження PDF (${res.status})`);
-      const blob = await res.blob();
+      // Bug #77: use apiBlobFetch for silent refresh on 401.
+      // Endpoint is nested under counterparties/:cpId/reconciliation-acts/:actId/pdf for tenant isolation.
+      const blob = await apiBlobFetch(`/counterparties/${selected.id}/reconciliation-acts/${actId}/pdf`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = `reconciliation-${actId}.pdf`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);

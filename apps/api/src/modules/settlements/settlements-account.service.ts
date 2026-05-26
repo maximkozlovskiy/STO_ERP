@@ -145,9 +145,9 @@ export class SettlementsAccountService {
     };
   }
 
-  async generateReconciliationPdf(orgId: string, actId: string): Promise<Buffer> {
+  async generateReconciliationPdf(orgId: string, counterpartyId: string, actId: string): Promise<Buffer> {
     const act = await this.prisma.reconciliationAct.findFirst({
-      where: { id: actId, orgId },
+      where: { id: actId, orgId, counterpartyId },
       include: { counterparty: { select: { firstName: true, lastName: true, companyName: true } } },
     });
     if (!act) throw new NotFoundException('Акт звірки не знайдено');

@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { VatMode, BatchCostMethod, DocumentType, ResetPeriod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -248,7 +248,11 @@ export class SettingsService {
   }
 
   async getDocumentNumbers(orgId: string) {
-    const configs = await this.prisma.documentNumberConfig.findMany({ where: { orgId }, orderBy: { documentType: 'asc' } });
+    const configs = await this.prisma.documentNumberConfig.findMany({
+      where: { orgId },
+      orderBy: { documentType: 'asc' },
+      take: 100,
+    });
     return configs.map(c => ({
       id: c.id, documentType: c.documentType, prefix: c.prefix, includeDate: c.includeDate,
       separator: c.separator, padding: c.padding, currentSeq: Number(c.currentSeq),
@@ -280,7 +284,11 @@ export class SettingsService {
   }
 
   async getTaxRates(orgId: string) {
-    const rates = await this.prisma.taxRate.findMany({ where: { orgId }, orderBy: { rate: 'asc' } });
+    const rates = await this.prisma.taxRate.findMany({
+      where: { orgId },
+      orderBy: { rate: 'asc' },
+      take: 100,
+    });
     return rates.map(r => ({ id: r.id, name: r.name, rate: Number(r.rate), isDefault: r.isDefault, isActive: r.isActive }));
   }
 
@@ -299,8 +307,11 @@ export class SettingsService {
   }
 
   async deleteTaxRate(orgId: string, id: string) {
+    // TaxRate is referenced indirectly through invoices/lines (по rate as decimal).
+    // Hard delete would lose audit trail. We soft-deactivate via isActive=false.
     const existing = await this.prisma.taxRate.findFirst({ where: { id, orgId } });
     if (!existing) throw new NotFoundException('Ставку ПДВ не знайдено');
-    await this.prisma.taxRate.delete({ where: { id } });
+    if (existing.isDefault) throw new BadRequestException('Не можна видалити ставку за замовчуванням');
+    await this.prisma.taxRate.update({ where: { id }, data: { isActive: false } });
   }
 }

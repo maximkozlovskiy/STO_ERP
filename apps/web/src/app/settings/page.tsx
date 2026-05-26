@@ -632,7 +632,11 @@ export default function SettingsPage() {
                     onChange={e => {
                       const prefix = e.target.value || null;
                       setDocNumbers(prev => prev.map(c => c.documentType === cfg.documentType ? { ...c, prefix } : c));
-                      apiFetch(`/settings/document-numbers/${cfg.documentType}`, { method: 'PATCH', body: JSON.stringify({ prefix }) }).catch(() => {});
+                    }}
+                    onBlur={e => {
+                      const prefix = e.target.value || null;
+                      apiFetch(`/settings/document-numbers/${cfg.documentType}`, { method: 'PATCH', body: JSON.stringify({ prefix }) })
+                        .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Помилка збереження префікса'));
                     }}
                     className="h-7 text-sm"
                     placeholder="Без префіксу"
@@ -645,7 +649,11 @@ export default function SettingsPage() {
                     onChange={e => {
                       const separator = e.target.value || '-';
                       setDocNumbers(prev => prev.map(c => c.documentType === cfg.documentType ? { ...c, separator } : c));
-                      apiFetch(`/settings/document-numbers/${cfg.documentType}`, { method: 'PATCH', body: JSON.stringify({ separator }) }).catch(() => {});
+                    }}
+                    onBlur={e => {
+                      const separator = e.target.value || '-';
+                      apiFetch(`/settings/document-numbers/${cfg.documentType}`, { method: 'PATCH', body: JSON.stringify({ separator }) })
+                        .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Помилка збереження роздільника'));
                     }}
                     className="h-7 text-sm w-16"
                   />

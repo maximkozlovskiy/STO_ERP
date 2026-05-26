@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards, ParseUUIDPipe, HttpCode, HttpStatus } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -67,6 +67,8 @@ export class CompletionActsController {
 
   @Delete(':id')
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER)
+  // Bug #80: cancel() returns Promise<void> — emit 204 No Content (matches logout/removeSlot/removeLine).
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Cancel completion act (DRAFT only)' })
   cancel(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.cancel(orgId, id);

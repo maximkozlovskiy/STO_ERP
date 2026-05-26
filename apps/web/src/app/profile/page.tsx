@@ -77,7 +77,7 @@ export default function ProfilePage() {
       <div className="bg-surface rounded-xl border border-border p-5 space-y-3">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-primary text-2xl font-bold">
-            {(me.firstName[0] ?? '?').toUpperCase()}
+            {(me.firstName?.[0] ?? me.lastName?.[0] ?? '?').toUpperCase()}
           </div>
           <div>
             <p className="font-semibold text-foreground text-lg">{me.lastName} {me.firstName}</p>
