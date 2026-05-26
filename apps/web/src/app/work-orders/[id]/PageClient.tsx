@@ -245,7 +245,9 @@ export default function WorkOrderCardPage() {
         if (!mountedRef.current) return;
         setWarehouses(data);
         const mainW = data.find(x => x.isMain) ?? (data.length === 1 ? data[0] : null);
-        if (mainW) setPartForm(f => ({ ...f, warehouseId: mainW.id }));
+        // Preserve a warehouse the user has already chosen manually — only
+        // pre-fill when the field is still empty.
+        if (mainW) setPartForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
       })
       .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
   }, []);

@@ -218,7 +218,8 @@ export default function WorkOrdersPage() {
   useEffect(() => {
     apiFetch<Branch[]>('/branches').then(bs => {
       setBranches(bs);
-      if (bs.length === 1) setForm(f => ({ ...f, branchId: bs[0].id }));
+      // Auto-select single branch but preserve user's manual pick (race-safe on remount).
+      if (bs.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: bs[0].id }));
     }).catch((e: unknown) => setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити філії'));
     apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200')
       .then(r => setCounterparties(r.items))
@@ -292,8 +293,14 @@ export default function WorkOrdersPage() {
     { id: 'archive', label: 'Архівувати', variant: 'outline', onClick: bulkArchive },
   ], [bulkCancel, bulkArchive]);
 
+  // Track the most recent vehicle-fetch request so a stale response
+  // can't overwrite vehicles/auto-selected vehicleId for the *current* counterparty.
+  // Without this guard, switching counterparties faster than the network
+  // would let the older fetch's `length === 1` branch hijack the form state.
+  const vehicleReqRef = useRef(0);
   const loadVehicles = (counterpartyId: string) => {
     if (!counterpartyId) return;
+    const reqId = ++vehicleReqRef.current;
     apiFetch<Array<{ id: string }>>(`/counterparties/${counterpartyId}/garages`)
       .then(garages => {
         const garagesArr = Array.isArray(garages) ? garages : [];
@@ -304,11 +311,15 @@ export default function WorkOrdersPage() {
         );
       })
       .then(results => {
+        if (reqId !== vehicleReqRef.current) return; // stale response — ignore
         const allVehicles = results.flat();
         setVehicles(allVehicles);
         if (allVehicles.length === 1) setForm(f => ({ ...f, vehicleId: allVehicles[0].id }));
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження автомобілів'));
+      .catch((e: unknown) => {
+        if (reqId !== vehicleReqRef.current) return;
+        setError(e instanceof Error ? e.message : 'Помилка завантаження автомобілів');
+      });
   };
 
   const cpName = (cp: Counterparty) =>

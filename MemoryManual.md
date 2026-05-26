@@ -9,8 +9,8 @@
 ## Останній commit
 
 ```
-a516edc docs(tester): record Bug #68 from /sto-tester FULL pass on 2026-05-26
-ce01c4d fix(tester): Bug #68 — PdfService font wiring (CRITICAL) — all PDFs broken at runtime
+<pending> fix(review): warehouse auto-select — restore dropped trgm GIN indexes, race-safe vehicle loader, preserve manual picks
+7a08623 feat: auto-select default values for single-entry reference data
 ```
 
 Дата: 2026-05-26
@@ -18,15 +18,26 @@ ce01c4d fix(tester): Bug #68 — PdfService font wiring (CRITICAL) — all PDFs 
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 120/120 passed  (+3 new PdfService integration tests locking Bug #68)
+Unit:            ✅ 120/120 passed  (warehouse changes covered by existing infra/inventory specs)
 Contract:        ✅ inside 120 (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4, settings: 6)
 Property:        ✅ inside 120 (fsm: 11, inventory: 7, settlements: 8)
-Components:      ⏭ web testing-library не запускали (FULL pass focused on regression)
+Components:      ⏭ web testing-library не запускали (review focused on diff)
 E2E:             ⏭ playwright не запускали (server not running this session)
-Build:           ✅ @sto/api nest build clean (7.9s)
-Tester sweep:    FULL pass after 8ed0a42 — 1 CRITICAL bug found + fixed (Bug #68 pdfmake fonts)
-Critical fixes:  PdfService.setFonts re-wired from vfs Buffers → on-disk Roboto paths (B7 dead-on-arrival)
+Build:           ✅ @sto/api nest build clean
+Review sweep:    /sto-review on 7a08623 — 1 CRITICAL (migration dropped trgm GINs) + 3 IMPORTANT fixed
+Critical fixes:  warehouse_is_main migration rewritten to NOT drop trgm GIN indexes (restored idempotently)
+                 trgm GIN indexes re-created in dev DB after detection; checksum row updated
+                 loadVehicles in work-orders/page.tsx now race-safe via vehicleReqRef counter
+                 auto-select effects in stock-docs/PO/WO preserve user's manual choice on remount
+                 warehouses findAll now orders isMain desc → name asc (consistent default)
 ```
+
+### Gotcha — /sto-review warehouse auto-select cycle (2026-05-26, commit fix(review): warehouse auto-select)
+- **`prisma migrate dev` drops raw-SQL "drift" indexes silently** (migrations/20260526113130_warehouse_is_main): the trgm GIN indexes from `20260526061209_b6_trgm_gin_indexes` are created by hand-written `CREATE INDEX IF NOT EXISTS ...` *outside* schema.prisma. When the next `migrate dev` was generated for the unrelated `Warehouse.isMain` column, Prisma saw 6 indexes present in DB but not in schema → emitted `DROP INDEX` statements at the top of the auto-generated migration. This silently killed B6 fuzzy search (HTTP 200 still, just sequential scans on every search). Канон: every raw-SQL migration MUST be paired with **either** a corresponding schema.prisma directive (`@@index([...], type: Gin, ops: ...)` for trgm if supported) **or** the next auto-generated migration MUST be reviewed line-by-line for unexpected DROPs. The fix re-creates indexes idempotently inside the same migration, and updates the recorded checksum in `_prisma_migrations` so future `migrate dev` does not warn about drift.
+- **Stale async response overrides user input** (work-orders/page.tsx loadVehicles): a counterparty change triggers a multi-step fetch (garages → vehicles per garage). If the user switches counterparty before the older fetch resolves, the older `length === 1` branch hijacks `form.vehicleId`. Канон: increment-on-call counter ref + guard at resolution (`if (reqId !== ref.current) return;`). The same pattern applies anywhere `setForm(f => ({ ...f, X: result }))` runs after an `await` whose source can re-fire faster than the network — counterparty/garage/vehicle cascades, dependent selects, search-driven combobox auto-select.
+- **Auto-select effects must preserve manual user pick** (stock-documents, purchase-orders, work-orders, WO card part form): pattern `if (single) setForm(f => ({ ...f, x: single.id }))` looks innocent but clobbers a value the user has just typed/picked when the effect re-fires (modal re-opens, deps change, slow fetch resolves after re-mount). Канон: `setForm(f => (f.x ? f : { ...f, x: single.id }))` — only fill empty fields. Apply to every "default selection" code path; do not assume the field is always empty at effect time.
+- **`findMany` ordering should reflect "canonical first" semantics** (warehouses.service.ts): adding an `isMain` boolean without bumping the `orderBy` means dropdowns still alphabetize, hiding the main warehouse below others. Канон: when a model gains a "primary/main/default" boolean flag, the default `findMany` order becomes `[{ isMain: 'desc' }, ...originalOrder]` so consumers naturally land on the canonical record.
+
 
 ### Gotcha — /sto-tester FULL pass 2026-05-26 after commit 8ed0a42 (Bug #68)
 

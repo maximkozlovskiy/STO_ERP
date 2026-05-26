@@ -368,6 +368,7 @@ model Warehouse {
   branchId    String        @db.Uuid
   name        String
   type        WarehouseType @default(MAIN)
+  isMain      Boolean       @default(false)
   syncVersion BigInt        @default(0)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt

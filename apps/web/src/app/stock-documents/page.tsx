@@ -109,9 +109,16 @@ export default function StockDocumentsPage() {
         setBranches(bList);
         setWarehouses(wList);
         setGoods(Array.isArray(g) ? g : g.items);
-        if (bList.length === 1) setForm(f => ({ ...f, branchId: bList[0].id }));
-        const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
-        if (mainW) setForm(f => ({ ...f, warehouseId: mainW.id }));
+        // Auto-select defaults only if user hasn't already picked one — avoids
+        // overriding manual choice if modal re-opens during a slow fetch, and
+        // also collapses two sequential setForm calls into one render-safe update.
+        setForm(f => {
+          const next = { ...f };
+          if (!next.branchId && bList.length === 1) next.branchId = bList[0].id;
+          const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
+          if (!next.warehouseId && mainW) next.warehouseId = mainW.id;
+          return next;
+        });
       }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
     }
   }, [showCreate]);

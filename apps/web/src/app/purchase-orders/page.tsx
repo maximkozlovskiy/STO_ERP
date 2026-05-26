@@ -116,7 +116,9 @@ export default function PurchaseOrdersPage() {
         setWarehouses(wList);
         setGoods(Array.isArray(g) ? g : g.items);
         const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
-        if (mainW) setForm(f => ({ ...f, warehouseId: mainW.id }));
+        // Auto-select main warehouse only if the user hasn't already picked one
+        // (e.g. modal re-opened after a slow fetch — preserves manual choice).
+        if (mainW) setForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
       }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
     }
   }, [showCreate]);
