@@ -1347,3 +1347,147 @@ useEffect(() => {
 
 ---
 
+## Session 2026-05-26 — Phase 20 UX Groups 4-6 (SyncIndicator, NotificationCenter, BulkActions) bug hunt
+
+Сесія: tester — UX/UI features (commits `4e33a4e`, `f947021`).
+Файли у фокусі: `sync-indicator.tsx`, `notification-center.tsx`, `bulk-actions-bar.tsx`, `useBulkSelect.ts`, `work-orders/page.tsx`, `TopShell.tsx`.
+
+---
+
+## Bug #53 — [HIGH] `useBulkSelect`: stale selected IDs після зміни сторінки / refetch
+
+**Файл:** `apps/web/src/hooks/useBulkSelect.ts:1-34`
+**Severity:** HIGH
+**Категорія:** frontend, state-management
+
+**Опис:**
+Хук тримає `Set<string>` обраних рядків, але не очищає його коли масив `items` змінюється. На сторінці нарядів (`page.tsx:151`) `useBulkSelect(data?.items ?? [])` отримує нові items при пагінації, фільтрації, інлайн-edit refetch, або toggle `showDeleted`. Стара виборка з попередньої сторінки залишається у Set.
+
+**Очікувана поведінка:**
+Після зміни джерела `items` (інша сторінка / інші фільтри) Set повинен містити лише ті ID, що **реально присутні** у новому списку. Або хук повинен ефективно фіксувати «потенційно небачені» вибори, або ауто-pruning при зміні масиву.
+
+**Фактична поведінка:**
+1. User обирає 5 рядків на сторінці 1.
+2. Перемикається на сторінку 2 — `bulkSelect.count` показує 5, хоча на сторінці 2 нічого не обрано.
+3. `bulkSelect.allSelected` обчислюється від `items.length` → false, але `someSelected` true (плутає UI чекбокса "select all").
+4. При виклику `bulkCancel(Array.from(selected))` запит йде по 5 ID з попередньої сторінки, які користувач не бачить.
+
+**Виправлення:**
+Додати `useEffect` що фільтрує `selected` до перетину з поточним `items`:
+
+```ts
+useEffect(() => {
+  const visibleIds = new Set(items.map(i => i.id));
+  setSelected(prev => {
+    let changed = false;
+    const next = new Set<string>();
+    prev.forEach(id => {
+      if (visibleIds.has(id)) next.add(id);
+      else changed = true;
+    });
+    return changed ? next : prev;
+  });
+}, [items]);
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #54 — [HIGH] Bulk cancel/archive `Promise.all` fail-fast — частковий успіх, stale state
+
+**Файл:** `apps/web/src/app/work-orders/page.tsx:208-236`
+**Severity:** HIGH
+**Категорія:** frontend, business-logic
+
+**Опис:**
+`bulkCancel` і `bulkArchive` використовують `await Promise.all(ids.map(id => apiFetch(...)))`. При FSM-валідації (наприклад, спроба `ARCHIVE` з не-PAID статусу) сервер кидає `400 BadRequestException`. `Promise.all` rejects при першому fail → success-toast і `bulkSelect.clear()` не викликаються. Частина WO може вже перейти у новий статус, але:
+- `setError` показує тільки повідомлення першої помилки
+- `bulkSelect.clear()` не виконується → старі вибрані IDs залишаються в UI
+- `load()` не викликається → таблиця показує застарілі статуси
+
+**Очікувана поведінка:**
+Використовувати `Promise.allSettled`, рахувати скільки успіх / скільки помилок, очищати виборку та оновлювати список незалежно від помилок, показати агреговану нотифікацію (наприклад: "Скасовано 3 з 5. 2 не змінено через статус").
+
+**Фактична поведінка:**
+Перша помилка перериває батч → UI неконсистентний, користувач не розуміє що саме зробилось.
+
+**Виправлення:**
+Перевести на `Promise.allSettled`, рахувати fulfilled/rejected. Завжди викликати `clear()` і `load()` після завершення. Показати агреговане повідомлення.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #55 — [MEDIUM] Bulk archive фактично завжди фейлить для не-PAID нарядів (FSM)
+
+**Файл:** `apps/web/src/app/work-orders/page.tsx:223-241`
+**Severity:** MEDIUM
+**Категорія:** frontend, business-logic, UX
+
+**Опис:**
+FSM (`work-orders.fsm.ts`) дозволяє `→ ARCHIVED` тільки з `PAID`. UI кнопка "Архівувати" показується для будь-яких обраних рядків без фільтрації. Для `DRAFT`/`ESTIMATE`/`APPROVED`/`IN_PROGRESS`/`ON_HOLD`/`COMPLETED`/`INVOICED`/`CANCELLED`/`ARCHIVED` ця операція **гарантовано** поверне `400`.
+
+Аналогічно, `CANCELLED` дозволено тільки з `DRAFT`/`ESTIMATE`/`APPROVED`/`ON_HOLD` — не з `IN_PROGRESS`/`COMPLETED`/`INVOICED`/`PAID`/`ARCHIVED`.
+
+**Очікувана поведінка:**
+Кнопка показує скільки WO зі стану-вибірки реально можуть бути скасовані/архівовані (наприклад: "Архівувати (2 з 5)"). АБО кнопка disabled якщо жоден не може. АБО batch виклик враховує переходи і пропускає невалідні без помилки.
+
+**Фактична поведінка:**
+User натискає "Архівувати" → bulk запит → перший fail → блокада.
+
+**Виправлення:**
+Разом з Bug #54: використовувати `Promise.allSettled` робить операцію best-effort. У відображенні також додавати **підказку про кількість сумісних WO** (можна окремий рефакторинг). Мінімальний фікс — graceful fallback через #54.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #56 — [LOW] NotificationCenter: Space на кнопці «X» одночасно видаляє і позначає прочитаним
+
+**Файл:** `apps/web/src/components/ui/notification-center.tsx:140-163`
+**Severity:** LOW
+**Категорія:** frontend, a11y
+
+**Опис:**
+Рядок-сповіщення `<div role="button" tabIndex={0} onKeyDown={...}>` слухає `Enter`/`Space` для виклику `markRead`. Усередині нього є кнопка `<button onClick={... remove()}>` (іконка X). Коли користувач Tab-ається на кнопку X і натискає Space — це нативно клікає button (remove), АЛЕ keydown також bubble-up до батьківського div з `onKeyDown` → `markRead` спрацьовує на щойно видаленому ID (нешкідливо, але плутає).
+
+**Очікувана поведінка:**
+`onKeyDown` рядка не повинен спрацьовувати, якщо подія прийшла з вкладеного інтерактивного елемента (button).
+
+**Фактична поведінка:**
+Подвійний виклик логіки. Не критично, але — bug.
+
+**Виправлення:**
+У `onKeyDown` додати guard `if (e.target !== e.currentTarget) return;` — реагувати тільки на keydown що походить безпосередньо з рядка.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #57 — [LOW] Відсутні component-тести для Group 4-6 нових компонентів
+
+**Файл:** `apps/web/src/components/ui/__tests__/`, `apps/web/src/hooks/`
+**Severity:** LOW
+**Категорія:** test-coverage
+
+**Опис:**
+Нові компоненти `SyncIndicator`, `NotificationCenter`, `BulkActionsBar` та хук `useBulkSelect` не мають жодного тестового файлу. SKILL §1.5 вимагає component-тести для всіх UI компонентів.
+
+**Очікувана поведінка:**
+Для кожного компонента щонайменше: рендер, основні взаємодії, граничні випадки.
+
+**Фактична поведінка:**
+Нульове покриття для 3 компонентів + 1 хук.
+
+**Виправлення:**
+Додати `*.test.tsx` тестові файли:
+- `useBulkSelect.test.tsx` — toggle, toggleAll, clear, isSelected, pruning при зміні items
+- `bulk-actions-bar.test.tsx` — рендер кількості, виклик дій з selectedIds, onClear
+- `notification-center.test.tsx` — додавання/markRead/markAllRead/remove, localStorage persist
+- `sync-indicator.test.tsx` — рендер за статусом, online/offline events
+
+**Статус:** [x] виправлено
+
+---
+
