@@ -143,7 +143,14 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
                   onClick={() => markRead(n.id)}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); markRead(n.id); } }}
+                  // Guard: only react when the keydown originated on the row itself,
+                  // not from a nested interactive element (e.g. the delete button).
+                  // Without this, pressing Space on "X" both deletes the notification
+                  // AND marks it read via bubbled keydown.
+                  onKeyDown={e => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); markRead(n.id); }
+                  }}
                 >
                   <Icon className={cn('h-4 w-4 mt-0.5 shrink-0', ICON_STYLES[n.type])} aria-hidden="true" />
                   <div className="flex-1 min-w-0">
