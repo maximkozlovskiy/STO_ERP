@@ -58,6 +58,19 @@ export class ReportsController {
     return this.service.stock(orgId, warehouseId, from, to);
   }
 
+  @Get('profitability')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Рентабельність (виручка vs собівартість)' })
+  @ApiQuery({ name: 'from', required: true })
+  @ApiQuery({ name: 'to', required: true })
+  profitability(
+    @OrgContext() orgId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.service.profitability(orgId, from, to);
+  }
+
   @Get('settlements')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Дебіторська / кредиторська заборгованість' })

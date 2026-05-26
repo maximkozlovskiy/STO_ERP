@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   Res,
   Req,
@@ -14,16 +15,44 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiCookieAuth,
+  ApiProperty,
+  ApiPropertyOptional,
 } from '@nestjs/swagger';
+import { IsString, MinLength } from 'class-validator';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.service';
 import { LoginDto, AuthResponseDto } from './auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { OrgContext } from './decorators/org-context.decorator';
+
+class ChangePasswordDto {
+  @ApiProperty() @IsString() currentPassword!: string;
+  @ApiProperty() @IsString() @MinLength(8) newPassword!: string;
+}
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Поточний користувач' })
+  getMe(@CurrentUser() user: { sub: string }, @OrgContext() orgId: string) {
+    return this.authService.getMe(orgId, user.sub);
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Змінити пароль' })
+  changePassword(@CurrentUser() user: { sub: string }, @OrgContext() orgId: string, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(orgId, user.sub, dto.currentPassword, dto.newPassword);
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

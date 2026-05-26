@@ -77,6 +77,7 @@ enum StockDocumentType {
   WRITEOFF
   TRANSFER
   OPENING_BALANCE
+  RECEIPT
 }
 
 enum StockDocumentStatus {
@@ -660,6 +661,7 @@ model Work {
   normoHours  Float
   price       Decimal   @db.Decimal(12, 2)
   description String?
+  isWarranty  Boolean   @default(false)
   syncVersion BigInt    @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

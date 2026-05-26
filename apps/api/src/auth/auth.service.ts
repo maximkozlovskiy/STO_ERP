@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   ForbiddenException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -116,6 +117,25 @@ export class AuthService {
 
   logout(res: FastifyReply): void {
     res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
+  }
+
+  async getMe(orgId: string, employeeId: string) {
+    const emp = await this.prisma.employee.findFirst({
+      where: { id: employeeId, orgId, deletedAt: null },
+      select: { id: true, orgId: true, firstName: true, lastName: true, role: true },
+    });
+    if (!emp) throw new NotFoundException('Користувача не знайдено');
+    const auth = await this.prisma.authAccount.findFirst({ where: { employeeId, orgId, deletedAt: null }, select: { email: true } });
+    return { ...emp, email: auth?.email ?? null };
+  }
+
+  async changePassword(orgId: string, employeeId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const auth = await this.prisma.authAccount.findFirst({ where: { employeeId, orgId, deletedAt: null } });
+    if (!auth) throw new NotFoundException('Обліковий запис не знайдено');
+    const valid = await bcrypt.compare(currentPassword, auth.passwordHash);
+    if (!valid) throw new UnauthorizedException('Поточний пароль невірний');
+    const hash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.authAccount.update({ where: { id: auth.id }, data: { passwordHash: hash } });
   }
 
   generateAccessToken(payload: JwtPayload): string {

@@ -19,6 +19,12 @@ interface Vehicle {
   engineCode: string | null; insuranceExpiry: string | null; inspectionExpiry: string | null;
 }
 interface VehicleNode { id: string; category: string; name: string; mileageAtInstall: number | null; notes: string | null; }
+interface MaintenanceSchedule {
+  id: string; maintenanceType: string; intervalDays: number | null; intervalMileage: number | null;
+  lastMaintenanceDate: string | null; lastMaintenanceMileage: number | null;
+  nextMaintenanceDate: string | null; nextMaintenanceMileage: number | null;
+  isActive: boolean; notes: string | null;
+}
 
 const FUEL_TYPES = ['Бензин', 'Дизель', 'Газ', 'Гібрид', 'Електро', 'LPG'];
 const TRANSMISSION_TYPES = [
@@ -50,8 +56,13 @@ export default function VehicleCardPage() {
 
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [nodes, setNodes] = useState<VehicleNode[]>([]);
+  const [schedules, setSchedules] = useState<MaintenanceSchedule[]>([]);
   const [showAddNode, setShowAddNode] = useState(false);
   const [nodeForm, setNodeForm] = useState({ category: 'engine', name: '', mileageAtInstall: '', notes: '' });
+  const [showAddSchedule, setShowAddSchedule] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({ maintenanceType: 'ТО', intervalDays: '', intervalMileage: '', lastMaintenanceDate: '', lastMaintenanceMileage: '', notes: '' });
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [today, setToday] = useState<Date | null>(null);
@@ -73,6 +84,7 @@ export default function VehicleCardPage() {
     Promise.all([
       apiFetch<Vehicle>(`/vehicles/${id}`).then(setVehicle),
       apiFetch<VehicleNode[]>(`/vehicles/${id}/nodes`).then(setNodes),
+      apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${id}`).then(setSchedules).catch(() => {}),
     ]).catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
   };
   useEffect(() => { load(); }, [id]);
@@ -166,6 +178,39 @@ export default function VehicleCardPage() {
     try { await apiFetch<void>(`/vehicles/${id}/nodes/${nodeId}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка видалення'); }
     finally { setSaving(false); }
+  };
+
+  const addSchedule = async () => {
+    if (!scheduleForm.maintenanceType.trim()) return;
+    setSavingSchedule(true);
+    try {
+      await apiFetch<MaintenanceSchedule>('/maintenance-schedules', {
+        method: 'POST',
+        body: JSON.stringify({
+          vehicleId: id,
+          maintenanceType: scheduleForm.maintenanceType,
+          intervalDays: scheduleForm.intervalDays ? Number(scheduleForm.intervalDays) : undefined,
+          intervalMileage: scheduleForm.intervalMileage ? Number(scheduleForm.intervalMileage) : undefined,
+          lastMaintenanceDate: scheduleForm.lastMaintenanceDate || undefined,
+          lastMaintenanceMileage: scheduleForm.lastMaintenanceMileage ? Number(scheduleForm.lastMaintenanceMileage) : undefined,
+          notes: scheduleForm.notes || undefined,
+        }),
+      });
+      setScheduleForm({ maintenanceType: 'ТО', intervalDays: '', intervalMileage: '', lastMaintenanceDate: '', lastMaintenanceMileage: '', notes: '' });
+      setShowAddSchedule(false);
+      apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${id}`).then(setSchedules).catch(() => {});
+    } catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка збереження регламенту'); }
+    finally { setSavingSchedule(false); }
+  };
+
+  const removeSchedule = async (scheduleId: string) => {
+    if (!confirm('Видалити регламент ТО?')) return;
+    setDeletingScheduleId(scheduleId);
+    try {
+      await apiFetch<void>(`/maintenance-schedules/${scheduleId}`, { method: 'DELETE' });
+      setSchedules(s => s.filter(sc => sc.id !== scheduleId));
+    } catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setDeletingScheduleId(null); }
   };
 
   if (!vehicle) return (
@@ -330,6 +375,118 @@ export default function VehicleCardPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Maintenance Schedules */}
+      <div className="bg-surface rounded-xl border border-border p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-foreground">Регламент ТО</h2>
+          <Button variant="ghost" size="sm" onClick={() => setShowAddSchedule(v => !v)}>
+            <Plus className="h-4 w-4" />
+            Регламент
+          </Button>
+        </div>
+
+        {showAddSchedule && (
+          <div className="mb-4 p-3 bg-secondary rounded-lg space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                label="Тип ТО"
+                value={scheduleForm.maintenanceType}
+                onChange={e => setScheduleForm(f => ({ ...f, maintenanceType: e.target.value }))}
+                placeholder="ТО, Заміна масла..."
+              />
+              <Input
+                label="Нотатки"
+                value={scheduleForm.notes}
+                onChange={e => setScheduleForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Опціонально"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                label="Інтервал (дні)"
+                type="number"
+                min="1"
+                value={scheduleForm.intervalDays}
+                onChange={e => setScheduleForm(f => ({ ...f, intervalDays: e.target.value }))}
+                placeholder="365"
+              />
+              <Input
+                label="Інтервал (км)"
+                type="number"
+                min="1"
+                value={scheduleForm.intervalMileage}
+                onChange={e => setScheduleForm(f => ({ ...f, intervalMileage: e.target.value }))}
+                placeholder="10000"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                label="Дата останнього ТО"
+                type="date"
+                value={scheduleForm.lastMaintenanceDate}
+                onChange={e => setScheduleForm(f => ({ ...f, lastMaintenanceDate: e.target.value }))}
+              />
+              <Input
+                label="Пробіг при останньому ТО"
+                type="number"
+                min="0"
+                value={scheduleForm.lastMaintenanceMileage}
+                onChange={e => setScheduleForm(f => ({ ...f, lastMaintenanceMileage: e.target.value }))}
+                placeholder="85000"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={addSchedule} loading={savingSchedule} disabled={!scheduleForm.maintenanceType.trim()}>
+                Зберегти
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowAddSchedule(false)}>
+                Скасувати
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {schedules.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Регламентів ТО не додано</p>
+        ) : (
+          <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
+            {schedules.map(sc => (
+              <div key={sc.id} className="flex items-start justify-between px-3 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-foreground">{sc.maintenanceType}</p>
+                    {!sc.isActive && <span className="text-[11px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">Неактивний</span>}
+                    {sc.nextMaintenanceDate && today && (() => {
+                      const next = new Date(sc.nextMaintenanceDate!);
+                      const diffDays = Math.ceil((next.getTime() - today.getTime()) / 86_400_000);
+                      if (diffDays < 0) return <span className="text-[11px] px-1.5 py-0.5 bg-destructive-subtle text-destructive rounded font-medium">Прострочено</span>;
+                      if (diffDays <= 14) return <span className="text-[11px] px-1.5 py-0.5 bg-warning-subtle text-warning rounded font-medium">Незабаром</span>;
+                      return null;
+                    })()}
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                    {sc.intervalDays && <p className="text-xs text-muted-foreground">Кожні {sc.intervalDays} дн.</p>}
+                    {sc.intervalMileage && <p className="text-xs text-muted-foreground">Кожні {sc.intervalMileage.toLocaleString('uk-UA')} км</p>}
+                    {sc.nextMaintenanceDate && <p className="text-xs text-muted-foreground">Наступне: {new Date(sc.nextMaintenanceDate).toLocaleDateString('uk-UA')}</p>}
+                    {sc.nextMaintenanceMileage && <p className="text-xs text-muted-foreground">При {sc.nextMaintenanceMileage.toLocaleString('uk-UA')} км</p>}
+                    {sc.notes && <p className="text-xs text-muted-foreground">{sc.notes}</p>}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  loading={deletingScheduleId === sc.id}
+                  onClick={() => removeSchedule(sc.id)}
+                  className="text-destructive/60 hover:text-destructive shrink-0"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Edit Modal */}

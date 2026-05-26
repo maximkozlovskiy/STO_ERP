@@ -3,6 +3,7 @@ import { CompletionActStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
+import { PdfService } from '../pdf/pdf.service';
 import {
   CompletionActResponseDto, CompletionActLineDto, SignCompletionActDto,
   PaginatedCompletionActsDto,
@@ -16,6 +17,7 @@ export class CompletionActsService {
     private readonly prisma: PrismaService,
     private readonly docNumbers: DocumentNumberService,
     private readonly invoices: InvoicesService,
+    private readonly pdf: PdfService,
   ) {}
 
   async findAll(orgId: string, workOrderId?: string): Promise<PaginatedCompletionActsDto> {
@@ -163,6 +165,41 @@ export class CompletionActsService {
       throw new BadRequestException('Підписаний акт не можна скасувати');
     }
     await this.prisma.completionAct.update({ where: { id, orgId }, data: { status: CompletionActStatus.CANCELLED } });
+  }
+
+  async generatePdf(orgId: string, id: string): Promise<Buffer> {
+    const act = await this.findOne(orgId, id);
+
+    const org = await this.prisma.organisation.findFirst({ where: { id: orgId } });
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id: act.workOrderId, orgId },
+      include: {
+        counterparty: { select: { firstName: true, lastName: true, companyName: true, phone: true, actualAddress: true } },
+        vehicle: { select: { make: true, model: true, licensePlate: true } },
+      },
+    });
+
+    const cp = wo?.counterparty;
+    const cpName = (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Клієнт';
+    const vehicleLabel = wo?.vehicle
+      ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}`
+      : '';
+
+    const lines = act.lines ?? [];
+    const total = lines.reduce((s, l) => s + l.amount, 0);
+
+    return this.pdf.generateCompletionActPdf({
+      org: { name: org?.name ?? 'СТО', edrpou: null, address: null },
+      counterparty: { name: cpName, phone: cp?.phone, address: cp?.actualAddress },
+      vehicleLabel,
+      number: act.number,
+      date: act.createdAt,
+      signedAt: act.signedAt,
+      signedBy: act.signedBy,
+      lines: lines.map(l => ({ description: l.description, quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount })),
+      total,
+      notes: act.notes,
+    });
   }
 
   private buildLines(wo: {

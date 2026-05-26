@@ -29,6 +29,7 @@ interface Invoice {
   workOrderId?: string | null; workOrderNumber?: string | null;
   amount: number;
   totalWithoutVat?: number; totalVat?: number; totalWithVat?: number;
+  paidAmount?: number;
   invoiceType?: string; notes?: string | null;
   dueDate?: string | null;
   lines?: InvoiceLine[];
@@ -482,6 +483,20 @@ export default function InvoicesPage() {
                       <span className="text-foreground">З ПДВ</span>
                       <span className="text-foreground">{fmt(selectedInv.totalWithVat ?? 0)}</span>
                     </div>
+                    {selectedInv.paidAmount !== undefined && (
+                      <>
+                        <div className="flex justify-between text-success-text border-t border-border/50 pt-1 mt-1">
+                          <span>Оплачено</span>
+                          <span className="font-medium">{fmt(selectedInv.paidAmount)}</span>
+                        </div>
+                        {(selectedInv.totalWithVat ?? 0) > selectedInv.paidAmount && (
+                          <div className="flex justify-between text-warning-text">
+                            <span>Залишок</span>
+                            <span className="font-medium">{fmt((selectedInv.totalWithVat ?? 0) - selectedInv.paidAmount)}</span>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               )}

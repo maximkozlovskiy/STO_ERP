@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PdfService } from '../pdf/pdf.service';
 import { CreateReconciliationActDto } from './settlements.dto';
 
 /** Returns the UTC instant corresponding to 00:00:00 Kyiv time on the given calendar date (YYYY-MM-DD). DST-safe. */
@@ -27,7 +28,10 @@ function kyivEndOfDay(date: string): Date {
 
 @Injectable()
 export class SettlementsAccountService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pdf: PdfService,
+  ) {}
 
   async getBalance(orgId: string, counterpartyId: string) {
     const account = await this.prisma.settlementAccount.findFirst({
@@ -139,6 +143,32 @@ export class SettlementsAccountService {
       transactions: act.snapshotJson,
       createdAt: act.createdAt,
     };
+  }
+
+  async generateReconciliationPdf(orgId: string, actId: string): Promise<Buffer> {
+    const act = await this.prisma.reconciliationAct.findFirst({
+      where: { id: actId, orgId },
+      include: { counterparty: { select: { firstName: true, lastName: true, companyName: true } } },
+    });
+    if (!act) throw new NotFoundException('Акт звірки не знайдено');
+
+    const org = await this.prisma.organisation.findFirst({ where: { id: orgId } });
+    const cp = act.counterparty;
+    const cpName = (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Контрагент';
+
+    const transactions = Array.isArray(act.snapshotJson)
+      ? (act.snapshotJson as Array<{ date: string; type: string; amount: number; documentType?: string }>)
+      : [];
+
+    return this.pdf.generateReconciliationActPdf({
+      org: { name: org?.name ?? 'СТО' },
+      counterpartyName: cpName,
+      periodFrom: act.periodFrom,
+      periodTo: act.periodTo,
+      openingBalance: Number(act.openingBalance),
+      closingBalance: Number(act.closingBalance),
+      transactions: transactions.map(t => ({ date: new Date(t.date), type: t.type, amount: t.amount, documentType: t.documentType })),
+    });
   }
 
   async getReconciliationActs(orgId: string, counterpartyId: string) {

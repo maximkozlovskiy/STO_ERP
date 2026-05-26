@@ -21,7 +21,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Category { id: string; name: string; children: Category[]; }
-interface Work { id: string; categoryId: string; categoryName: string; name: string; normoHours: number; price: number; description: string | null; }
+interface Work { id: string; categoryId: string; categoryName: string; name: string; normoHours: number; price: number; description: string | null; isWarranty: boolean; }
 interface PaginatedWorks { items: Work[]; total: number; page: number; limit: number; }
 interface Brand { id: string; name: string; }
 interface Unit { id: string; name: string; shortName: string; isSystem: boolean; }
@@ -78,13 +78,13 @@ function WorksTab() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ categoryId: '', name: '', normoHours: '', price: '', description: '' });
+  const [form, setForm] = useState({ categoryId: '', name: '', normoHours: '', price: '', description: '', isWarranty: false });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedWork, setSelectedWork] = useState<Work | null>(null);
   const [editWork, setEditWork] = useState<Work | null>(null);
-  const [editForm, setEditForm] = useState({ categoryId: '', name: '', normoHours: '', price: '', description: '' });
+  const [editForm, setEditForm] = useState({ categoryId: '', name: '', normoHours: '', price: '', description: '', isWarranty: false });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -119,10 +119,11 @@ function WorksTab() {
           normoHours: normo,
           price,
           description: form.description || undefined,
+          isWarranty: form.isWarranty,
         }),
       });
       setModal(false);
-      setForm({ categoryId: '', name: '', normoHours: '', price: '', description: '' });
+      setForm({ categoryId: '', name: '', normoHours: '', price: '', description: '', isWarranty: false });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
@@ -138,7 +139,7 @@ function WorksTab() {
 
   const openEditWork = (w: Work) => {
     setEditWork(w);
-    setEditForm({ categoryId: w.categoryId, name: w.name, normoHours: String(w.normoHours), price: String(w.price), description: w.description ?? '' });
+    setEditForm({ categoryId: w.categoryId, name: w.name, normoHours: String(w.normoHours), price: String(w.price), description: w.description ?? '', isWarranty: w.isWarranty });
     setEditError('');
   };
 
@@ -151,7 +152,7 @@ function WorksTab() {
     try {
       await apiFetch<Work>(`/works/${editWork.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ categoryId: editForm.categoryId, name: editForm.name, normoHours: normo, price, description: editForm.description || undefined }),
+        body: JSON.stringify({ categoryId: editForm.categoryId, name: editForm.name, normoHours: normo, price, description: editForm.description || undefined, isWarranty: editForm.isWarranty }),
       });
       setEditWork(null);
       load();
@@ -181,7 +182,7 @@ function WorksTab() {
           importUrl="/xlsx/import/works"
           onImportComplete={load}
         />
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setForm({ categoryId: flat[0]?.id ?? '', name: '', normoHours: '', price: '', description: '' }); setError(''); setModal(true); }}>
+        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setForm({ categoryId: flat[0]?.id ?? '', name: '', normoHours: '', price: '', description: '', isWarranty: false }); setError(''); setModal(true); }}>
           Робота
         </Button>
       </div>
@@ -270,6 +271,11 @@ function WorksTab() {
                   {selectedWork.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
                 </span>
               </div>
+              {selectedWork.isWarranty && (
+                <div>
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-warning-subtle text-warning">Гарантійна</span>
+                </div>
+              )}
               {selectedWork.description && (
                 <div>
                   <p className="text-muted-foreground mb-1">Опис:</p>
@@ -332,6 +338,15 @@ function WorksTab() {
             value={form.description}
             onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
           />
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.isWarranty}
+              onChange={e => setForm(f => ({ ...f, isWarranty: e.target.checked }))}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="text-sm text-foreground">Гарантійна робота (виконується безкоштовно)</span>
+          </label>
         </div>
       </Modal>
 
@@ -387,6 +402,15 @@ function WorksTab() {
             value={editForm.description}
             onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
           />
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editForm.isWarranty}
+              onChange={e => setEditForm(f => ({ ...f, isWarranty: e.target.checked }))}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="text-sm text-foreground">Гарантійна робота (виконується безкоштовно)</span>
+          </label>
         </div>
       </Modal>
     </div>

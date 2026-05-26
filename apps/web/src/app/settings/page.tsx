@@ -62,7 +62,11 @@ const EVENT_LABELS: Record<string, string> = {
   INVOICE_SENT: 'Рахунок надіслано', LOW_STOCK_ALERT: 'Низький залишок',
 };
 
-type Tab = 'org' | 'payments' | 'sms' | 'theme' | 'ui';
+interface DocNumberConfig { id: string; documentType: string; prefix: string | null; includeDate: boolean; separator: string; padding: number; currentSeq: number; resetPeriod: string; }
+interface TaxRateItem { id: string; name: string; rate: number; isDefault: boolean; isActive: boolean; }
+interface BranchInfo { id: string; name: string; }
+
+type Tab = 'org' | 'payments' | 'sms' | 'theme' | 'ui' | 'numbers' | 'taxrates' | 'workdays';
 type NavMode = 'sections' | 'functions';
 const NAV_MODE_KEY = 'sto_nav_mode';
 
@@ -86,6 +90,14 @@ export default function SettingsPage() {
   const [colorMode, setColorModeState] = useState<ColorMode>('system');
   const [uiFeatures, setUiFeatures] = useState<UiFeatures | null>(null);
   const currentFeatures = useUiFeatures();
+  const [docNumbers, setDocNumbers] = useState<DocNumberConfig[]>([]);
+  const [taxRates, setTaxRates] = useState<TaxRateItem[]>([]);
+  const [branches, setBranches] = useState<BranchInfo[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState('');
+  const [branchSettings, setBranchSettings] = useState<{ workStartTime: string; workEndTime: string; workDays: number[]; slotDurationMinutes: number } | null>(null);
+  const [newTaxRate, setNewTaxRate] = useState({ name: '', rate: '' });
+  const [savingTax, setSavingTax] = useState(false);
+  const [savingBranch, setSavingBranch] = useState(false);
 
   useEffect(() => {
     try {
@@ -116,6 +128,15 @@ export default function SettingsPage() {
     apiFetch<NotificationTemplate[]>('/notification-templates')
       .then(setTemplates)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження шаблонів'));
+    apiFetch<DocNumberConfig[]>('/settings/document-numbers')
+      .then(setDocNumbers)
+      .catch(() => {});
+    apiFetch<TaxRateItem[]>('/settings/tax-rates')
+      .then(setTaxRates)
+      .catch(() => {});
+    apiFetch<{ items: BranchInfo[] } | BranchInfo[]>('/branches')
+      .then(d => { const arr = Array.isArray(d) ? d : d.items; setBranches(arr); if (arr.length > 0) setSelectedBranch(arr[0].id); })
+      .catch(() => {});
   }, []);
 
   const saveTemplate = async () => {
@@ -189,6 +210,72 @@ export default function SettingsPage() {
     } finally { setSaving(false); }
   };
 
+  useEffect(() => {
+    if (!selectedBranch) return;
+    let cancelled = false;
+    apiFetch<{ workStartTime: string; workEndTime: string; workDays: number[]; slotDurationMinutes: number }>(`/settings/branch/${selectedBranch}`)
+      .then(s => { if (!cancelled) setBranchSettings({ workStartTime: s.workStartTime, workEndTime: s.workEndTime, workDays: s.workDays, slotDurationMinutes: s.slotDurationMinutes }); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedBranch]);
+
+  const saveBranchSettings = async () => {
+    if (!branchSettings || !selectedBranch) return;
+    setSavingBranch(true);
+    try {
+      await apiFetch(`/settings/branch/${selectedBranch}`, { method: 'PATCH', body: JSON.stringify(branchSettings) });
+      setMsg('Налаштування філії збережено');
+      if (currentFeatures.toastEnabled) toast.success('Налаштування філії збережено');
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSavingBranch(false); }
+  };
+
+  const addTaxRate = async () => {
+    const rate = Number(newTaxRate.rate);
+    if (!newTaxRate.name || !Number.isFinite(rate) || rate < 0 || rate > 100) { setError('Некоректні дані'); return; }
+    setSavingTax(true);
+    try {
+      const created = await apiFetch<TaxRateItem>('/settings/tax-rates', { method: 'POST', body: JSON.stringify({ name: newTaxRate.name, rate }) });
+      setTaxRates(prev => [...prev, created]);
+      setNewTaxRate({ name: '', rate: '' });
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSavingTax(false); }
+  };
+
+  const toggleTaxRate = async (tr: TaxRateItem) => {
+    try {
+      const updated = await apiFetch<TaxRateItem>(`/settings/tax-rates/${tr.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !tr.isActive }) });
+      setTaxRates(prev => prev.map(r => r.id === updated.id ? updated : r));
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+  };
+
+  const deleteTaxRate = async (id: string) => {
+    if (!confirm('Видалити ставку ПДВ?')) return;
+    try {
+      await apiFetch(`/settings/tax-rates/${id}`, { method: 'DELETE' });
+      setTaxRates(prev => prev.filter(r => r.id !== id));
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+  };
+
+  const resetDocNumber = async (documentType: string) => {
+    if (!confirm(`Скинути лічильник для ${documentType}?`)) return;
+    try {
+      await apiFetch(`/settings/document-numbers/${documentType}/reset`, { method: 'POST' });
+      setDocNumbers(prev => prev.map(c => c.documentType === documentType ? { ...c, currentSeq: 0 } : c));
+      setMsg('Лічильник скинуто');
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+  };
+
+  const WORK_DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+
+  const toggleWorkDay = (day: number) => {
+    if (!branchSettings) return;
+    const days = branchSettings.workDays.includes(day)
+      ? branchSettings.workDays.filter(d => d !== day)
+      : [...branchSettings.workDays, day].sort();
+    setBranchSettings({ ...branchSettings, workDays: days });
+  };
+
   const togglePayment = async (pm: PaymentMethod) => {
     setSaving(true);
     try {
@@ -210,7 +297,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border mb-6 flex-wrap">
-        {(['org', 'payments', 'sms', 'theme', 'ui'] as Tab[]).map((t) => (
+        {(['org', 'payments', 'numbers', 'taxrates', 'workdays', 'sms', 'theme', 'ui'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -221,7 +308,7 @@ export default function SettingsPage() {
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {t === 'org' ? 'Організація' : t === 'payments' ? 'Методи оплати' : t === 'sms' ? 'SMS-сповіщення' : t === 'theme' ? 'Оформлення' : 'Інтерфейс'}
+            {{ org: 'Організація', payments: 'Оплата', numbers: 'Нумерація', taxrates: 'Ставки ПДВ', workdays: 'Робочі дні', sms: 'SMS', theme: 'Оформлення', ui: 'Інтерфейс' }[t]}
           </button>
         ))}
       </div>
@@ -524,6 +611,138 @@ export default function SettingsPage() {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Document number configs */}
+      {tab === 'numbers' && (
+        <div className="space-y-3">
+          {docNumbers.length === 0 && <p className="text-sm text-muted-foreground">Конфігурацій не знайдено</p>}
+          {docNumbers.map(cfg => (
+            <div key={cfg.id} className="bg-surface rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-foreground">{cfg.documentType}</span>
+                <span className="text-xs text-muted-foreground font-mono">#{cfg.currentSeq}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-[13px]">
+                <div>
+                  <label className="block text-muted-foreground mb-1">Префікс</label>
+                  <Input
+                    value={cfg.prefix ?? ''}
+                    onChange={e => {
+                      const prefix = e.target.value || null;
+                      setDocNumbers(prev => prev.map(c => c.documentType === cfg.documentType ? { ...c, prefix } : c));
+                      apiFetch(`/settings/document-numbers/${cfg.documentType}`, { method: 'PATCH', body: JSON.stringify({ prefix }) }).catch(() => {});
+                    }}
+                    className="h-7 text-sm"
+                    placeholder="Без префіксу"
+                  />
+                </div>
+                <div>
+                  <label className="block text-muted-foreground mb-1">Роздільник</label>
+                  <Input
+                    value={cfg.separator}
+                    onChange={e => {
+                      const separator = e.target.value || '-';
+                      setDocNumbers(prev => prev.map(c => c.documentType === cfg.documentType ? { ...c, separator } : c));
+                      apiFetch(`/settings/document-numbers/${cfg.documentType}`, { method: 'PATCH', body: JSON.stringify({ separator }) }).catch(() => {});
+                    }}
+                    className="h-7 text-sm w-16"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[13px] text-muted-foreground">Скидати: {cfg.resetPeriod === 'NEVER' ? 'Ніколи' : cfg.resetPeriod === 'YEARLY' ? 'Щороку' : 'Щомісяця'}</span>
+                <Button size="sm" variant="destructive" onClick={() => resetDocNumber(cfg.documentType)} className="h-7 text-xs">
+                  Скинути лічильник
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Tax rates */}
+      {tab === 'taxrates' && (
+        <div className="space-y-4">
+          <div className="bg-surface rounded-xl border border-border divide-y divide-border">
+            {taxRates.length === 0 && <p className="p-4 text-sm text-muted-foreground">Ставок ПДВ не знайдено</p>}
+            {taxRates.map(tr => (
+              <div key={tr.id} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <span className="text-sm font-medium text-foreground">{tr.name}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{tr.rate}%</span>
+                  {tr.isDefault && <span className="ml-2 text-xs text-primary">(за замовчуванням)</span>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleTaxRate(tr)}
+                    className={cn('relative inline-flex h-5 w-9 rounded-full transition-colors', tr.isActive ? 'bg-primary' : 'bg-border')}
+                  >
+                    <span className={cn('inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5', tr.isActive ? 'translate-x-4' : 'translate-x-0.5')} />
+                  </button>
+                  <button onClick={() => deleteTaxRate(tr.id)} className="text-xs text-destructive/60 hover:text-destructive px-1">×</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
+            <p className="text-[13px] font-medium text-foreground">Нова ставка</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Назва" value={newTaxRate.name} onChange={e => setNewTaxRate(f => ({ ...f, name: e.target.value }))} placeholder="ПДВ 20%" />
+              <Input label="Ставка, %" type="number" min="0" max="100" value={newTaxRate.rate} onChange={e => setNewTaxRate(f => ({ ...f, rate: e.target.value }))} />
+            </div>
+            <Button onClick={addTaxRate} loading={savingTax} disabled={!newTaxRate.name || !newTaxRate.rate}>Додати ставку</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Work days */}
+      {tab === 'workdays' && (
+        <div className="space-y-4">
+          {branches.length > 1 && (
+            <Select label="Філія" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}>
+              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          )}
+          {branchSettings && (
+            <div className="bg-surface rounded-xl border border-border p-5 space-y-4">
+              <div>
+                <p className="text-[13px] font-medium text-foreground mb-2">Робочі дні</p>
+                <div className="flex gap-2">
+                  {WORK_DAYS.map((label, i) => (
+                    <button
+                      key={i}
+                      onClick={() => toggleWorkDay(i + 1)}
+                      className={cn(
+                        'w-9 h-9 rounded-full text-sm font-medium transition-colors',
+                        branchSettings.workDays.includes(i + 1)
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-muted-foreground hover:bg-secondary/80',
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[13px] font-medium text-foreground mb-1">Початок роботи</label>
+                  <Input type="time" value={branchSettings.workStartTime} onChange={e => setBranchSettings(s => s ? { ...s, workStartTime: e.target.value } : s)} className="w-32" />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-foreground mb-1">Кінець роботи</label>
+                  <Input type="time" value={branchSettings.workEndTime} onChange={e => setBranchSettings(s => s ? { ...s, workEndTime: e.target.value } : s)} className="w-32" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1">Тривалість слоту (хв)</label>
+                <Input type="number" min="15" max="240" step="15" value={branchSettings.slotDurationMinutes} onChange={e => setBranchSettings(s => s ? { ...s, slotDurationMinutes: Number(e.target.value) } : s)} className="w-32" />
+              </div>
+              <Button onClick={saveBranchSettings} loading={savingBranch}>Зберегти</Button>
+            </div>
+          )}
         </div>
       )}
     </div>

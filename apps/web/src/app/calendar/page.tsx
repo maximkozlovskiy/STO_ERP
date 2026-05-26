@@ -126,7 +126,7 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ liftId: '', employeeId: '', workOrderId: '', startAt: '', endAt: '', notes: '' });
+  const [form, setForm] = useState({ liftId: '', employeeId: '', workOrderId: '', startAt: '', endAt: '', notes: '', normoHours: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -179,7 +179,7 @@ export default function CalendarPage() {
         }),
       });
       setShowAdd(false);
-      setForm({ liftId: '', employeeId: '', workOrderId: '', startAt: '', endAt: '', notes: '' });
+      setForm({ liftId: '', employeeId: '', workOrderId: '', startAt: '', endAt: '', notes: '', normoHours: '' });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
@@ -292,7 +292,7 @@ export default function CalendarPage() {
         <div className="bg-surface border border-border rounded-xl p-5 mb-6 space-y-3">
           <h3 className="font-semibold text-foreground text-sm">Новий слот на {date}</h3>
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Підйомник</label>
               <Select
@@ -308,7 +308,46 @@ export default function CalendarPage() {
               <Input
                 type="time"
                 value={form.startAt}
-                onChange={e => setForm(f => ({ ...f, startAt: e.target.value }))}
+                onChange={e => {
+                  const start = e.target.value;
+                  setForm(f => {
+                    if (start && f.normoHours && Number(f.normoHours) > 0) {
+                      const [h, m] = start.split(':').map(Number);
+                      const totalMin = h * 60 + m + Math.round(Number(f.normoHours) * 60);
+                      const endH = Math.floor(totalMin / 60) % 24;
+                      const endM = totalMin % 60;
+                      const endAt = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+                      return { ...f, startAt: start, endAt };
+                    }
+                    return { ...f, startAt: start };
+                  });
+                }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Норм-год <span className="font-normal text-muted-foreground/70">(авто кінець)</span>
+              </label>
+              <Input
+                type="number"
+                step="0.5"
+                min="0.5"
+                value={form.normoHours}
+                onChange={e => {
+                  const nh = e.target.value;
+                  setForm(f => {
+                    if (f.startAt && nh && Number(nh) > 0) {
+                      const [h, m] = f.startAt.split(':').map(Number);
+                      const totalMin = h * 60 + m + Math.round(Number(nh) * 60);
+                      const endH = Math.floor(totalMin / 60) % 24;
+                      const endM = totalMin % 60;
+                      const endAt = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+                      return { ...f, normoHours: nh, endAt };
+                    }
+                    return { ...f, normoHours: nh };
+                  });
+                }}
+                placeholder="1.5"
               />
             </div>
             <div>

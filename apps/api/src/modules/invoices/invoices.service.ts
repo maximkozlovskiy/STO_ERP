@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
 import {
-  CreateInvoiceDto, UpdateInvoiceDto,
+  CreateInvoiceDto, UpdateInvoiceDto, CreateInvoiceLineDto, UpdateInvoiceLineDto,
   InvoiceLineResponseDto, InvoiceResponseDto, PaginatedInvoicesDto,
 } from './invoices.dto';
 
@@ -52,6 +52,7 @@ export class InvoicesService {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: { select: { number: true } },
         lines: { orderBy: { sortOrder: 'asc' }, take: 500 },
+        payments: { select: { amount: true } },
       },
     });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
@@ -146,6 +147,95 @@ export class InvoicesService {
     return this.findOne(orgId, id);
   }
 
+  async addLine(orgId: string, invoiceId: string, dto: CreateInvoiceLineDto): Promise<InvoiceLineResponseDto> {
+    const inv = await this.prisma.invoice.findFirst({ where: { id: invoiceId, orgId, deletedAt: null } });
+    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Рядки можна додавати лише до чернетки');
+
+    const vatRate = dto.vatRate ?? 20;
+    const priceWithoutVat = dto.quantity * dto.unitPrice;
+    const vatAmount = priceWithoutVat * (vatRate / 100);
+    const priceWithVat = priceWithoutVat + vatAmount;
+
+    const line = await this.prisma.invoiceLine.create({
+      data: {
+        orgId,
+        invoiceId,
+        goodId: dto.goodId ?? null,
+        workId: dto.workId ?? null,
+        description: dto.description,
+        quantity: dto.quantity,
+        unitPrice: dto.unitPrice,
+        vatRate,
+        priceWithoutVat,
+        vatAmount,
+        priceWithVat,
+        sortOrder: dto.sortOrder ?? 0,
+      },
+    });
+
+    await this.recalcTotals(orgId, invoiceId);
+    return this.toLineDto(line);
+  }
+
+  async updateLine(orgId: string, invoiceId: string, lineId: string, dto: UpdateInvoiceLineDto): Promise<InvoiceLineResponseDto> {
+    const inv = await this.prisma.invoice.findFirst({ where: { id: invoiceId, orgId, deletedAt: null } });
+    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Рядки можна редагувати лише у чернетці');
+
+    const existing = await this.prisma.invoiceLine.findFirst({ where: { id: lineId, invoiceId, orgId } });
+    if (!existing) throw new NotFoundException('Рядок не знайдено');
+
+    const quantity = dto.quantity ?? existing.quantity;
+    const unitPrice = dto.unitPrice !== undefined ? dto.unitPrice : Number(existing.unitPrice);
+    const vatRate = dto.vatRate !== undefined ? dto.vatRate : Number(existing.vatRate);
+    const priceWithoutVat = quantity * unitPrice;
+    const vatAmount = priceWithoutVat * (vatRate / 100);
+    const priceWithVat = priceWithoutVat + vatAmount;
+
+    const updated = await this.prisma.invoiceLine.update({
+      where: { id: lineId },
+      data: {
+        description: dto.description ?? undefined,
+        quantity,
+        unitPrice,
+        vatRate,
+        priceWithoutVat,
+        vatAmount,
+        priceWithVat,
+        sortOrder: dto.sortOrder ?? undefined,
+      },
+    });
+
+    await this.recalcTotals(orgId, invoiceId);
+    return this.toLineDto(updated);
+  }
+
+  async removeLine(orgId: string, invoiceId: string, lineId: string): Promise<void> {
+    const inv = await this.prisma.invoice.findFirst({ where: { id: invoiceId, orgId, deletedAt: null } });
+    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Рядки можна видаляти лише з чернетки');
+
+    const existing = await this.prisma.invoiceLine.findFirst({ where: { id: lineId, invoiceId, orgId } });
+    if (!existing) throw new NotFoundException('Рядок не знайдено');
+
+    await this.prisma.invoiceLine.delete({ where: { id: lineId } });
+    await this.recalcTotals(orgId, invoiceId);
+  }
+
+  private async recalcTotals(orgId: string, invoiceId: string): Promise<void> {
+    const lines = await this.prisma.invoiceLine.findMany({ where: { invoiceId, orgId } });
+    const totalWithoutVat = lines.reduce((s, l) => s + Number(l.priceWithoutVat), 0);
+    const totalVat = lines.reduce((s, l) => s + Number(l.vatAmount), 0);
+    const totalWithVat = lines.reduce((s, l) => s + Number(l.priceWithVat), 0);
+    const amount = totalWithVat || lines.length === 0 ? totalWithVat : totalWithVat;
+
+    await this.prisma.invoice.update({
+      where: { id: invoiceId, orgId },
+      data: { totalWithoutVat, totalVat, totalWithVat, amount },
+    });
+  }
+
   async remove(orgId: string, id: string): Promise<void> {
     const inv = await this.prisma.invoice.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
@@ -161,6 +251,7 @@ export class InvoicesService {
     dueDate: Date | null; createdAt: Date; updatedAt: Date;
     counterparty: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
     workOrder: { number: string } | null;
+    payments?: Array<{ amount: Prisma.Decimal }>;
     lines?: Array<{
       id: string; invoiceId: string; goodId: string | null; workId: string | null;
       description: string; quantity: number; unitPrice: Prisma.Decimal; vatRate: Prisma.Decimal;
@@ -170,6 +261,7 @@ export class InvoicesService {
   }, includeLines = false): InvoiceResponseDto {
     const cp = inv.counterparty;
     const counterpartyName = cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ');
+    const paidAmount = inv.payments ? inv.payments.reduce((s, p) => s + Number(p.amount), 0) : undefined;
     return {
       id: inv.id, orgId: inv.orgId, number: inv.number, status: inv.status,
       counterpartyId: inv.counterpartyId, counterpartyName,
@@ -182,6 +274,7 @@ export class InvoicesService {
       invoiceType: inv.invoiceType,
       notes: inv.notes,
       dueDate: inv.dueDate ?? null,
+      ...(paidAmount !== undefined ? { paidAmount } : {}),
       ...(includeLines && inv.lines ? { lines: inv.lines.map(l => this.toLineDto(l)) } : {}),
       createdAt: inv.createdAt, updatedAt: inv.updatedAt,
     };

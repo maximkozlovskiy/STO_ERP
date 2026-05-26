@@ -50,6 +50,29 @@ export interface InvoicePdfData {
   grandTotal: number;
 }
 
+export interface ReconciliationActPdfData {
+  org: OrgInfo;
+  counterpartyName: string;
+  periodFrom: Date;
+  periodTo: Date;
+  openingBalance: number;
+  closingBalance: number;
+  transactions: Array<{ date: Date; type: string; amount: number; documentType?: string }>;
+}
+
+export interface CompletionActPdfData {
+  org: OrgInfo;
+  counterparty: CounterpartyInfo;
+  vehicleLabel: string;
+  number: string;
+  date: Date;
+  signedAt?: Date | null;
+  signedBy?: string | null;
+  lines: Array<{ description: string; quantity: number; unitPrice: number; amount: number }>;
+  total: number;
+  notes?: string | null;
+}
+
 export interface WorkOrderPdfData {
   org: OrgInfo;
   counterparty: CounterpartyInfo;
@@ -112,6 +135,87 @@ export class PdfService {
         { text: ' ', margin: [0, 4] },
         this.totalsBlock(data.subtotal, data.vatTotal, data.grandTotal),
         { text: '\n\nПідпис: _____________________', margin: [0, 32, 0, 0] },
+      ],
+      defaultStyle: { font: 'Roboto', fontSize: 10 },
+      pageSize: 'A4',
+      pageMargins: [40, 40, 40, 40],
+    };
+    return this.buildBuffer(docDef);
+  }
+
+  async generateReconciliationActPdf(data: ReconciliationActPdfData): Promise<Buffer> {
+    const txTypeLabel = (type: string) => ({
+      CHARGE: 'Нарахування', PAYMENT: 'Оплата', PREPAYMENT: 'Передоплата',
+      REFUND: 'Повернення', CREDIT_NOTE: 'Кредит-нота',
+    }[type] ?? type);
+
+    const docDef = {
+      content: [
+        this.header(data.org, 'Акт звірки'),
+        { text: `Контрагент: ${data.counterpartyName}`, margin: [0, 4, 0, 2] },
+        { text: `Період: ${this.fmtDate(data.periodFrom)} — ${this.fmtDate(data.periodTo)}`, margin: [0, 0, 0, 8] },
+        { text: `Початковий залишок: ${this.fmtMoney(data.openingBalance)}`, margin: [0, 2, 0, 2] },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['auto', '*', 'auto', 80],
+            body: [
+              [{ text: 'Дата', bold: true }, { text: 'Тип', bold: true }, { text: 'Документ', bold: true }, { text: 'Сума', bold: true, alignment: 'right' }],
+              ...data.transactions.map((t): TableCell[] => [
+                this.fmtDate(new Date(t.date)),
+                txTypeLabel(t.type),
+                t.documentType ?? '',
+                { text: this.fmtMoney(t.amount), alignment: 'right' },
+              ]),
+            ],
+          },
+          layout: 'lightHorizontalLines',
+          margin: [0, 4, 0, 8],
+        },
+        { text: `Кінцевий залишок: ${this.fmtMoney(data.closingBalance)}`, bold: true, margin: [0, 4, 0, 0] },
+        { text: '\n\nПідпис (виконавець): _____________________     Підпис (контрагент): _____________________', margin: [0, 40, 0, 0] },
+      ],
+      defaultStyle: { font: 'Roboto', fontSize: 10 },
+      pageSize: 'A4',
+      pageMargins: [40, 40, 40, 40],
+    };
+    return this.buildBuffer(docDef);
+  }
+
+  async generateCompletionActPdf(data: CompletionActPdfData): Promise<Buffer> {
+    const docDef = {
+      content: [
+        this.header(data.org, `Акт виконаних робіт № ${data.number}`),
+        { text: `Дата: ${this.fmtDate(data.date)}${data.signedAt ? `   Підписано: ${this.fmtDate(data.signedAt)}` : ''}`, margin: [0, 4, 0, 8] },
+        this.partyBlock('Виконавець', data.org),
+        this.partyBlock('Замовник', data.counterparty),
+        { text: `Автомобіль: ${data.vehicleLabel}`, margin: [0, 4, 0, 8] },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['*', 50, 65, 70],
+            body: [
+              [
+                { text: 'Найменування', bold: true },
+                { text: 'Кіл.', bold: true },
+                { text: 'Ціна', bold: true },
+                { text: 'Сума', bold: true },
+              ],
+              ...data.lines.map((l): TableCell[] => [
+                l.description,
+                { text: String(l.quantity), alignment: 'right' },
+                { text: this.fmtMoney(l.unitPrice), alignment: 'right' },
+                { text: this.fmtMoney(l.amount), alignment: 'right' },
+              ]),
+            ],
+          },
+          layout: 'lightHorizontalLines',
+        },
+        { text: ' ', margin: [0, 4] },
+        { columns: [{ width: '*', text: '' }, { width: 200, stack: [{ text: `Разом: ${this.fmtMoney(data.total)}`, bold: true, fontSize: 11 }] }] },
+        ...(data.notes ? [{ text: `Примітки: ${data.notes}`, margin: [0, 8, 0, 0], fontSize: 9 }] : []),
+        ...(data.signedBy ? [{ text: `Підписав: ${data.signedBy}`, margin: [0, 8, 0, 0] }] : []),
+        { text: '\n\nПідпис замовника: _____________________     Підпис виконавця: _____________________', margin: [0, 32, 0, 0] },
       ],
       defaultStyle: { font: 'Roboto', fontSize: 10 },
       pageSize: 'A4',

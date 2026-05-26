@@ -227,6 +227,14 @@ export class WorkOrdersService {
       });
     });
 
+    // Sync Vehicle.currentMileage from outMileage when WO completes
+    if (newStatus === 'COMPLETED' && wo.outMileage) {
+      this.prisma.vehicle.updateMany({
+        where: { id: wo.vehicleId, orgId, currentMileage: { lt: wo.outMileage } },
+        data: { currentMileage: wo.outMileage },
+      }).catch((e: unknown) => this.logger.warn(`Помилка оновлення пробігу авто: ${e instanceof Error ? e.message : e}`));
+    }
+
     // Auto-update maintenance schedules when MAINTENANCE WO completes
     if (newStatus === 'COMPLETED' && wo.repairCategory === RepairCategory.MAINTENANCE) {
       this.maintenanceSchedules.updateAfterWorkOrder(
@@ -333,7 +341,7 @@ export class WorkOrdersService {
 
     const line = await this.prisma.$transaction(async (tx) => {
       const created = await tx.workOrderLine.create({
-        data: { orgId, workOrderId, workId: dto.workId, employeeId: dto.employeeId, liftId: dto.liftId ?? null, normoHours, price, amount, notes: dto.notes },
+        data: { orgId, workOrderId, workId: dto.workId, employeeId: dto.employeeId, liftId: dto.liftId ?? null, normoHours, actualHours: dto.actualHours ?? null, price, amount, notes: dto.notes },
         include: { work: { select: { name: true } }, employee: { select: { firstName: true, lastName: true } } },
       });
       await this.recalcTotals(workOrderId, tx, orgId);

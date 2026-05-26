@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Res, UseGuards } from '@nestjs/common';
+import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -53,5 +54,20 @@ export class SettlementsController {
   @ApiOperation({ summary: 'Акти звірки контрагента' })
   getActs(@OrgContext() orgId: string, @Param('counterpartyId') counterpartyId: string) {
     return this.service.getReconciliationActs(orgId, counterpartyId);
+  }
+
+  @Get('reconciliation-acts/:actId/pdf')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Завантажити акт звірки у PDF' })
+  async downloadActPdf(
+    @OrgContext() orgId: string,
+    @Param('actId') actId: string,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const buffer = await this.service.generateReconciliationPdf(orgId, actId);
+    reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="reconciliation-${actId}.pdf"`)
+      .send(buffer);
   }
 }

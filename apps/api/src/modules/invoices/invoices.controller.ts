@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query, Res,
-  UseGuards, HttpCode, HttpStatus,
+  UseGuards, HttpCode, HttpStatus, ParseUUIDPipe,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
@@ -10,7 +10,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { InvoicesService } from './invoices.service';
-import { CreateInvoiceDto, UpdateInvoiceDto, TransitionInvoiceDto, InvTransitionStatus } from './invoices.dto';
+import { CreateInvoiceDto, UpdateInvoiceDto, TransitionInvoiceDto, InvTransitionStatus, CreateInvoiceLineDto, UpdateInvoiceLineDto } from './invoices.dto';
 
 @ApiTags('Invoices')
 @Controller('invoices')
@@ -106,5 +106,40 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Видалити рахунок (тільки DRAFT)' })
   remove(@OrgContext() orgId: string, @Param('id') id: string) {
     return this.service.remove(orgId, id);
+  }
+
+  @Post(':id/lines')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Додати рядок до рахунку' })
+  addLine(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateInvoiceLineDto,
+  ) {
+    return this.service.addLine(orgId, id, dto);
+  }
+
+  @Patch(':id/lines/:lineId')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Оновити рядок рахунку' })
+  updateLine(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('lineId', ParseUUIDPipe) lineId: string,
+    @Body() dto: UpdateInvoiceLineDto,
+  ) {
+    return this.service.updateLine(orgId, id, lineId, dto);
+  }
+
+  @Delete(':id/lines/:lineId')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Видалити рядок рахунку' })
+  removeLine(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('lineId', ParseUUIDPipe) lineId: string,
+  ) {
+    return this.service.removeLine(orgId, id, lineId);
   }
 }

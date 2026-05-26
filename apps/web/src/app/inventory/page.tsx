@@ -47,6 +47,9 @@ export default function InventoryPage() {
   const [error, setError] = useState('');
 
   const [selectedItem, setSelectedItem] = useState<StockItem | null>(null);
+  const [editingMinStock, setEditingMinStock] = useState(false);
+  const [minStockVal, setMinStockVal] = useState('');
+  const [savingMinStock, setSavingMinStock] = useState(false);
 
   const loadWarehouses = useCallback(async () => {
     try {
@@ -77,6 +80,20 @@ export default function InventoryPage() {
       return true;
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження'); return false; }
   }, []);
+
+  const saveMinStock = async () => {
+    if (!selectedItem) return;
+    const val = minStockVal.trim() === '' ? null : Number(minStockVal);
+    if (val !== null && (!Number.isFinite(val) || val < 0)) { setError('Некоректне значення мінімального залишку'); return; }
+    setSavingMinStock(true);
+    try {
+      await apiFetch(`/stock-items/${selectedItem.id}/min-stock`, { method: 'PATCH', body: JSON.stringify({ minStock: val }) });
+      setSelectedItem(prev => prev ? { ...prev, minStock: val, isLow: val !== null && prev.quantity <= val } : prev);
+      setItems(prev => prev.map(i => i.id === selectedItem.id ? { ...i, minStock: val, isLow: val !== null && i.quantity <= val } : i));
+      setEditingMinStock(false);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка збереження'); }
+    finally { setSavingMinStock(false); }
+  };
 
   useEffect(() => { loadWarehouses(); }, [loadWarehouses]);
   useEffect(() => { loadItems(); }, [loadItems]);
@@ -256,16 +273,42 @@ export default function InventoryPage() {
                   <span className="text-muted-foreground">Ціна продажу</span>
                   <p className="font-semibold text-foreground mt-0.5">{fmt(selectedItem.salePrice)}</p>
                 </div>
-                {selectedItem.minStock != null && (
-                  <div>
+                <div>
+                  <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Мінімальний залишок</span>
-                    <div className="mt-1">
-                      <Badge variant={selectedItem.isLow ? 'warning' : 'secondary'}>
-                        ≥ {selectedItem.minStock} {selectedItem.unit}
-                      </Badge>
-                    </div>
+                    {!editingMinStock && (
+                      <button
+                        className="text-xs text-primary hover:underline"
+                        onClick={() => { setMinStockVal(selectedItem.minStock != null ? String(selectedItem.minStock) : ''); setEditingMinStock(true); }}
+                      >
+                        змінити
+                      </button>
+                    )}
                   </div>
-                )}
+                  {editingMinStock ? (
+                    <div className="flex gap-1.5 mt-1.5">
+                      <Input
+                        type="number"
+                        value={minStockVal}
+                        onChange={e => setMinStockVal(e.target.value)}
+                        placeholder="0"
+                        min="0"
+                        step="1"
+                        className="h-7 text-sm"
+                      />
+                      <Button size="sm" onClick={saveMinStock} loading={savingMinStock} className="h-7 px-2 text-xs">Зберегти</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingMinStock(false)} className="h-7 px-2 text-xs">✕</Button>
+                    </div>
+                  ) : (
+                    <div className="mt-1">
+                      {selectedItem.minStock != null ? (
+                        <Badge variant={selectedItem.isLow ? 'warning' : 'secondary'}>
+                          ≥ {selectedItem.minStock} {selectedItem.unit}
+                        </Badge>
+                      ) : <span className="text-muted-foreground text-[12px]">не встановлено</span>}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

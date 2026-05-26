@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -47,6 +48,21 @@ export class CompletionActsController {
     @Body() dto: SignCompletionActDto,
   ) {
     return this.service.sign(orgId, id, dto);
+  }
+
+  @Get(':id/pdf')
+  @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER, UserRole.ACCOUNTANT)
+  @ApiOperation({ summary: 'Завантажити акт у PDF' })
+  async downloadPdf(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const buffer = await this.service.generatePdf(orgId, id);
+    reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="act-${id}.pdf"`)
+      .send(buffer);
   }
 
   @Delete(':id')

@@ -183,6 +183,49 @@ export class ReportsService {
     };
   }
 
+  async profitability(orgId: string, from: string, to: string) {
+    const { fromDate, toDate } = normalizeDateRange(from, to);
+
+    const orders = await this.prisma.workOrder.findMany({
+      where: {
+        orgId, deletedAt: null,
+        status: { in: ['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED'] as WorkOrderStatus[] },
+        completedAt: { gte: fromDate, lte: toDate },
+      },
+      include: {
+        parts: { select: { quantity: true, price: true, batchCostPrice: true } },
+        lines: { select: { normoHours: true, price: true, amount: true } },
+      },
+      take: 10000,
+    });
+
+    let totalRevenue = 0;
+    let totalCostParts = 0;
+    let totalCostLabor = 0;
+
+    for (const wo of orders) {
+      totalRevenue += Number(wo.totalAmount);
+      for (const part of wo.parts) {
+        const cost = part.batchCostPrice ?? part.price;
+        totalCostParts += part.quantity * Number(cost ?? 0);
+      }
+      for (const line of wo.lines) {
+        totalCostLabor += Number(line.amount) * 0.4;
+      }
+    }
+
+    const totalCost = totalCostParts + totalCostLabor;
+    const grossProfit = totalRevenue - totalCost;
+    const margin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+
+    return {
+      totalRevenue, totalCost, totalCostParts, totalCostLabor,
+      grossProfit, margin: Math.round(margin * 100) / 100,
+      ordersCount: orders.length,
+      from, to,
+    };
+  }
+
   async settlements(orgId: string, counterpartyId?: string) {
     const where: { orgId: string; counterpartyId?: string } = { orgId };
     if (counterpartyId) where.counterpartyId = counterpartyId;

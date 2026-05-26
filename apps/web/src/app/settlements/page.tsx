@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Search } from 'lucide-react';
-import { useRequireAuth } from '@/lib/auth';
+import { useRequireAuth, TOKEN_KEY } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -51,6 +51,7 @@ export default function SettlementsPage() {
   const [actResult, setActResult] = useState<RecAct & { transactions: Transaction[] } | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [downloadingActId, setDownloadingActId] = useState<string | null>(null);
 
   useEffect(() => {
     setCpLoading(true);
@@ -97,6 +98,26 @@ export default function SettlementsPage() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка створення акту');
     } finally { setSaving(false); }
+  };
+
+  const downloadActPdf = async (actId: string) => {
+    setDownloadingActId(actId); setError('');
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
+      const res = await fetch(`${apiBase}/api/settlements/reconciliation-acts/${actId}/pdf`, {
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Помилка завантаження PDF (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `reconciliation-${actId}.pdf`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження PDF акту звірки');
+    } finally { setDownloadingActId(null); }
   };
 
   const cpName = (cp: Counterparty) =>
@@ -219,8 +240,8 @@ export default function SettlementsPage() {
                   </div>
                   <div className="divide-y divide-border">
                     {acts.map(act => (
-                      <div key={act.id} className="px-5 py-3 flex items-center justify-between text-sm">
-                        <div>
+                      <div key={act.id} className="px-5 py-3 flex items-center justify-between text-sm gap-3">
+                        <div className="flex-1">
                           <div className="font-medium text-foreground">
                             {new Date(act.periodFrom).toLocaleDateString('uk-UA')} –{' '}
                             {new Date(act.periodTo).toLocaleDateString('uk-UA')}
@@ -236,6 +257,14 @@ export default function SettlementsPage() {
                             Закриття: {fmt(act.closingBalance)}
                           </div>
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          loading={downloadingActId === act.id}
+                          onClick={() => downloadActPdf(act.id)}
+                        >
+                          PDF
+                        </Button>
                       </div>
                     ))}
                   </div>

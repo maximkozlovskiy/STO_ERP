@@ -12,6 +12,11 @@ const SYNC_VERSION_MODELS = new Set([
   'Invoice', 'CalendarSlot', 'ReconciliationAct',
   'OrganisationSettings', 'BranchSettings', 'DocumentNumberConfig',
   'NotificationTemplate', 'TaxRate', 'PaymentMethodConfig', 'SettlementAccount',
+  // Phases 16-19 additions
+  'Brand', 'UnitOfMeasure', 'WorkOrderTemplate',
+  'Comment', 'MaintenanceSchedule', 'CompletionAct',
+  'StockBatch', 'PricingRule', 'Payment',
+  'SyncJob',
 ]);
 
 // Prisma 5 requires $extends for query middleware — $use was removed in v5

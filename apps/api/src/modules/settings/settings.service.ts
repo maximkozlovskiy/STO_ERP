@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type Redis from 'ioredis';
-import { VatMode, BatchCostMethod } from '@prisma/client';
+import { VatMode, BatchCostMethod, DocumentType, ResetPeriod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import {
@@ -245,5 +245,62 @@ export class SettingsService {
       smsSenderName: s.smsSenderName,
       updatedAt: s.updatedAt,
     };
+  }
+
+  async getDocumentNumbers(orgId: string) {
+    const configs = await this.prisma.documentNumberConfig.findMany({ where: { orgId }, orderBy: { documentType: 'asc' } });
+    return configs.map(c => ({
+      id: c.id, documentType: c.documentType, prefix: c.prefix, includeDate: c.includeDate,
+      separator: c.separator, padding: c.padding, currentSeq: Number(c.currentSeq),
+      resetPeriod: c.resetPeriod, updatedAt: c.updatedAt,
+    }));
+  }
+
+  async updateDocumentNumber(orgId: string, documentType: string, dto: { prefix?: string | null; includeDate?: boolean; separator?: string; padding?: number; resetPeriod?: string }) {
+    const cfg = await this.prisma.documentNumberConfig.findFirst({ where: { orgId, documentType: documentType as DocumentType } });
+    if (!cfg) throw new NotFoundException('Конфігурацію не знайдено');
+    const updated = await this.prisma.documentNumberConfig.update({
+      where: { id: cfg.id },
+      data: {
+        prefix: dto.prefix !== undefined ? dto.prefix : undefined,
+        includeDate: dto.includeDate !== undefined ? dto.includeDate : undefined,
+        separator: dto.separator ?? undefined,
+        padding: dto.padding ?? undefined,
+        resetPeriod: dto.resetPeriod !== undefined ? (dto.resetPeriod as ResetPeriod) : undefined,
+      },
+    });
+    return { id: updated.id, documentType: updated.documentType, prefix: updated.prefix, includeDate: updated.includeDate, separator: updated.separator, padding: updated.padding, currentSeq: Number(updated.currentSeq), resetPeriod: updated.resetPeriod, updatedAt: updated.updatedAt };
+  }
+
+  async resetDocumentNumber(orgId: string, documentType: string) {
+    const cfg = await this.prisma.documentNumberConfig.findFirst({ where: { orgId, documentType: documentType as DocumentType } });
+    if (!cfg) throw new NotFoundException('Конфігурацію не знайдено');
+    await this.prisma.documentNumberConfig.update({ where: { id: cfg.id }, data: { currentSeq: 0 } });
+    return { message: 'Лічильник скинуто' };
+  }
+
+  async getTaxRates(orgId: string) {
+    const rates = await this.prisma.taxRate.findMany({ where: { orgId }, orderBy: { rate: 'asc' } });
+    return rates.map(r => ({ id: r.id, name: r.name, rate: Number(r.rate), isDefault: r.isDefault, isActive: r.isActive }));
+  }
+
+  async createTaxRate(orgId: string, dto: { name: string; rate: number; isDefault?: boolean; isActive?: boolean }) {
+    const rate = await this.prisma.taxRate.create({
+      data: { orgId, name: dto.name, rate: dto.rate, isDefault: dto.isDefault ?? false, isActive: dto.isActive ?? true },
+    });
+    return { id: rate.id, name: rate.name, rate: Number(rate.rate), isDefault: rate.isDefault, isActive: rate.isActive };
+  }
+
+  async updateTaxRate(orgId: string, id: string, dto: { name?: string; rate?: number; isDefault?: boolean; isActive?: boolean }) {
+    const existing = await this.prisma.taxRate.findFirst({ where: { id, orgId } });
+    if (!existing) throw new NotFoundException('Ставку ПДВ не знайдено');
+    const updated = await this.prisma.taxRate.update({ where: { id }, data: { name: dto.name ?? undefined, rate: dto.rate ?? undefined, isDefault: dto.isDefault ?? undefined, isActive: dto.isActive ?? undefined } });
+    return { id: updated.id, name: updated.name, rate: Number(updated.rate), isDefault: updated.isDefault, isActive: updated.isActive };
+  }
+
+  async deleteTaxRate(orgId: string, id: string) {
+    const existing = await this.prisma.taxRate.findFirst({ where: { id, orgId } });
+    if (!existing) throw new NotFoundException('Ставку ПДВ не знайдено');
+    await this.prisma.taxRate.delete({ where: { id } });
   }
 }

@@ -1,6 +1,5 @@
 import { IsUUID, IsOptional, IsNumber, Min, IsString, IsDateString, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import { InvoiceStatus } from '@prisma/client';
 
 export class CreateInvoiceDto {
@@ -24,6 +23,24 @@ export class TransitionInvoiceDto {
   @ApiProperty({ enum: INV_TRANSITION_STATUSES })
   @IsEnum(INV_TRANSITION_STATUSES)
   status!: InvTransitionStatus;
+}
+
+export class CreateInvoiceLineDto {
+  @ApiProperty() @IsString() description!: string;
+  @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
+  @ApiProperty() @IsNumber() @Min(0) unitPrice!: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) vatRate?: number;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() goodId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() workId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() sortOrder?: number;
+}
+
+export class UpdateInvoiceLineDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.001) quantity?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) unitPrice?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) vatRate?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() sortOrder?: number;
 }
 
 export class InvoiceLineResponseDto {
@@ -58,6 +75,7 @@ export class InvoiceResponseDto {
   @ApiPropertyOptional() invoiceType?: string;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() dueDate?: Date | null;
+  @ApiPropertyOptional() paidAmount?: number;
   @ApiPropertyOptional({ type: [InvoiceLineResponseDto] }) lines?: InvoiceLineResponseDto[];
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;

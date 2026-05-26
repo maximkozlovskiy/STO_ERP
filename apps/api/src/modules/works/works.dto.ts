@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsUUID, IsNumber, Min, Max, IsOptional, IsPositive } from 'class-validator';
+import { IsString, IsNotEmpty, IsUUID, IsNumber, Min, Max, IsOptional, IsPositive, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -12,6 +12,11 @@ export class CreateWorkDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({ description: 'Гарантійна робота (виконується безкоштовно)' })
+  @IsOptional()
+  @IsBoolean()
+  isWarranty?: boolean;
 }
 
 export class UpdateWorkDto extends PartialType(CreateWorkDto) {}
@@ -52,6 +57,7 @@ export class WorkResponseDto {
   @ApiProperty() normoHours!: number;
   @ApiProperty() price!: number;
   @ApiPropertyOptional() description!: string | null;
+  @ApiProperty() isWarranty!: boolean;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }

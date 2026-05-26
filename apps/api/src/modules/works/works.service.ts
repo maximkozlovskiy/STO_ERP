@@ -79,7 +79,8 @@ export class WorksService {
 
   private toDto(item: {
     id: string; orgId: string; categoryId: string; name: string; normoHours: number;
-    price: import('@prisma/client').Prisma.Decimal; description: string | null; createdAt: Date; updatedAt: Date;
+    price: import('@prisma/client').Prisma.Decimal; description: string | null;
+    isWarranty: boolean; createdAt: Date; updatedAt: Date;
     category: { name: string };
   }): WorkResponseDto {
     return {
@@ -91,6 +92,7 @@ export class WorksService {
       normoHours: item.normoHours,
       price: Number(item.price),
       description: item.description ?? null,
+      isWarranty: item.isWarranty,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

@@ -138,6 +138,7 @@ export class CreateWorkOrderLineDto {
   @ApiProperty() @IsUUID() employeeId!: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() liftId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) normoHours?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) actualHours?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }

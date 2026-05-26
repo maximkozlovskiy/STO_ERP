@@ -116,6 +116,7 @@ export default function WorkOrderCardPage() {
   const [completionAct, setCompletionAct] = useState<CompletionActSummary | null>(null);
   const [generatingAct, setGeneratingAct] = useState(false);
   const [signingAct, setSigningAct] = useState(false);
+  const [downloadingActPdf, setDownloadingActPdf] = useState(false);
 
   const [lineModal, setLineModal] = useState(false);
   const [partModal, setPartModal] = useState(false);
@@ -127,7 +128,7 @@ export default function WorkOrderCardPage() {
   const [error, setError] = useState('');
   const [refsError, setRefsError] = useState('');
 
-  const [lineForm, setLineForm] = useState({ workId: '', employeeId: '', normoHours: '', price: '', notes: '' });
+  const [lineForm, setLineForm] = useState({ workId: '', employeeId: '', normoHours: '', actualHours: '', price: '', notes: '' });
   const [partForm, setPartForm] = useState({ goodId: '', warehouseId: '', quantity: '1', price: '' });
   const [stockAvailable, setStockAvailable] = useState<number | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
@@ -285,12 +286,13 @@ export default function WorkOrderCardPage() {
           workId: lineForm.workId,
           employeeId: lineForm.employeeId,
           normoHours: lineForm.normoHours ? Number(lineForm.normoHours) : undefined,
+          actualHours: lineForm.actualHours ? Number(lineForm.actualHours) : undefined,
           price: lineForm.price ? Number(lineForm.price) : undefined,
           notes: lineForm.notes || undefined,
         }),
       });
       setLineModal(false);
-      setLineForm({ workId: '', employeeId: '', normoHours: '', price: '', notes: '' });
+      setLineForm({ workId: '', employeeId: '', normoHours: '', actualHours: '', price: '', notes: '' });
       lineDirty.resetDirty();
       if (features.toastEnabled) toast.success('Роботу додано');
       load();
@@ -415,6 +417,30 @@ export default function WorkOrderCardPage() {
     }
   };
 
+  const downloadActPdf = async (actId: string) => {
+    setDownloadingActPdf(true); setError('');
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
+      const res = await fetch(`${apiBase}/api/completion-acts/${actId}/pdf`, {
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Помилка завантаження PDF (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `act-${completionAct?.number ?? actId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження PDF акту');
+    } finally { setDownloadingActPdf(false); }
+  };
+
   const signAct = async (actId: string) => {
     setSigningAct(true); setError('');
     try {
@@ -529,6 +555,9 @@ export default function WorkOrderCardPage() {
                   Позначити як підписано
                 </Button>
               )}
+              <Button variant="outline" size="sm" onClick={() => downloadActPdf(completionAct.id)} loading={downloadingActPdf}>
+                PDF акту
+              </Button>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Акт не сформовано</p>
@@ -690,13 +719,17 @@ export default function WorkOrderCardPage() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Нормо-год</label>
-              <Input type="number" value={lineForm.normoHours} onChange={e => { setLineForm(f => ({ ...f, normoHours: e.target.value })); lineDirty.markDirty(); }} />
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Нормо-год (план)</label>
+              <Input type="number" value={lineForm.normoHours} onChange={e => { setLineForm(f => ({ ...f, normoHours: e.target.value })); lineDirty.markDirty(); }} min="0" step="0.1" />
             </div>
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Ціна, ₴</label>
-              <Input type="number" value={lineForm.price} onChange={e => { setLineForm(f => ({ ...f, price: e.target.value })); lineDirty.markDirty(); }} />
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Факт. год</label>
+              <Input type="number" value={lineForm.actualHours} onChange={e => { setLineForm(f => ({ ...f, actualHours: e.target.value })); lineDirty.markDirty(); }} min="0" step="0.1" placeholder="необов'язково" />
             </div>
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Ціна, ₴</label>
+            <Input type="number" value={lineForm.price} onChange={e => { setLineForm(f => ({ ...f, price: e.target.value })); lineDirty.markDirty(); }} />
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">Нотатки</label>

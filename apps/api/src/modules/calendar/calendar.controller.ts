@@ -19,12 +19,14 @@ export class CalendarController {
   @ApiOperation({ summary: 'Слоти на дату' })
   @ApiQuery({ name: 'date', required: true, example: '2026-05-22' })
   @ApiQuery({ name: 'branchId', required: false })
+  @ApiQuery({ name: 'employeeId', required: false })
   findSlots(
     @OrgContext() orgId: string,
     @Query('date') date: string,
     @Query('branchId') branchId?: string,
+    @Query('employeeId') employeeId?: string,
   ) {
-    return this.service.findSlots(orgId, date, branchId);
+    return this.service.findSlots(orgId, date, branchId, employeeId);
   }
 
   @Post()

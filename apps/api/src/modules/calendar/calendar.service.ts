@@ -7,7 +7,7 @@ import { CreateCalendarSlotDto, CalendarSlotResponseDto } from './calendar.dto';
 export class CalendarService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findSlots(orgId: string, date: string, branchId?: string): Promise<CalendarSlotResponseDto[]> {
+  async findSlots(orgId: string, date: string, branchId?: string, employeeId?: string): Promise<CalendarSlotResponseDto[]> {
     // Convert Kyiv calendar date to UTC range using Intl (handles DST correctly)
     const kyivOffset = this.kyivOffsetMs(new Date(`${date}T12:00:00Z`));
     const start = new Date(new Date(`${date}T00:00:00Z`).getTime() - kyivOffset);
@@ -19,6 +19,7 @@ export class CalendarService {
       startAt: { gte: Date };
       endAt: { lte: Date };
       lift?: { zone: { branchId: string; orgId: string } };
+      employeeId?: string;
     } = {
       orgId,
       deletedAt: null,
@@ -26,6 +27,7 @@ export class CalendarService {
       endAt: { lte: end },
     };
     if (branchId) where.lift = { zone: { branchId, orgId } };
+    if (employeeId) where.employeeId = employeeId;
 
     const slots = await this.prisma.calendarSlot.findMany({
       where,

@@ -15,7 +15,7 @@ import {
   LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 
-type Tab = 'revenue' | 'work-orders' | 'stock' | 'settlements' | 'load';
+type Tab = 'revenue' | 'work-orders' | 'stock' | 'settlements' | 'load' | 'profitability';
 
 type RevenueRow = { date: string; revenue: number; labor: number; parts: number; count: number };
 type WorkOrderRow = { employeeId: string; employeeName: string; totalNormoHours: number; linesCount: number; totalAmount: number };
@@ -23,12 +23,15 @@ type StockItem = { goodName: string; goodSku: string | null; warehouseName: stri
 type SettlementRow = { counterpartyId: string; counterpartyName: string; balance: number };
 type LoadRow = { liftId: string; liftName: string; zoneName: string; totalSlots: number; totalHours: number; loadPercent: number };
 
+type ProfitabilityData = { totalRevenue: number; totalCost: number; totalCostParts: number; totalCostLabor: number; grossProfit: number; margin: number; ordersCount: number };
+
 type ReportData =
   | { _tab: 'revenue'; totalRevenue: number; totalOrders: number; rows: RevenueRow[] }
   | { _tab: 'work-orders'; totalNormoHours: number; totalAmount: number; rows: WorkOrderRow[] }
   | { _tab: 'stock'; totalValue: number; stockItems: StockItem[] }
   | { _tab: 'settlements'; totalDebit: number; totalCredit: number; rows: SettlementRow[] }
-  | { _tab: 'load'; rows: LoadRow[] };
+  | { _tab: 'load'; rows: LoadRow[] }
+  | ({ _tab: 'profitability' } & ProfitabilityData);
 
 function fmt(n: number) {
   return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';
@@ -87,9 +90,10 @@ export default function ReportsPage() {
     { id: 'stock', label: 'Залишки' },
     { id: 'settlements', label: 'Розрахунки' },
     { id: 'load', label: 'Завантаженість' },
+    { id: 'profitability', label: 'Рентабельність' },
   ];
 
-  const needsDates = ['revenue', 'work-orders', 'load'].includes(tab);
+  const needsDates = ['revenue', 'work-orders', 'load', 'stock', 'profitability'].includes(tab);
 
   return (
     <div className="page-container">
@@ -316,6 +320,66 @@ export default function ReportsPage() {
         </div>
       )}
 
+      {/* Profitability report */}
+      {data && data._tab === 'profitability' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <StatCard label="Виручка" value={fmt(data.totalRevenue)} sub={`${data.ordersCount} нарядів`} />
+            <StatCard label="Собівартість" value={fmt(data.totalCost)} sub={`Запч: ${fmt(data.totalCostParts)}`} />
+            <StatCard label="Валовий прибуток" value={fmt(data.grossProfit)} />
+            <StatCard label="Маржинальність" value={`${data.margin.toFixed(1)}%`} sub={data.margin >= 30 ? '✓ Норма' : '↓ Нижче норми'} />
+          </div>
+          <div className="bg-surface rounded-xl border border-border p-5">
+            <h3 className="font-medium text-foreground mb-4">Структура витрат</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Запчастини', value: data.totalCostParts },
+                    { name: 'Праця (40%)', value: data.totalCostLabor },
+                    { name: 'Прибуток', value: Math.max(0, data.grossProfit) },
+                  ]}
+                  cx="50%" cy="50%" outerRadius={90} dataKey="value"
+                >
+                  <Cell fill="#f59e0b" />
+                  <Cell fill="#8b5cf6" />
+                  <Cell fill="#10b981" />
+                </Pie>
+                <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Показник</TableHead>
+                  <TableHead className="text-right">Сума</TableHead>
+                  <TableHead className="text-right">% до виручки</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[
+                  { label: 'Виручка', value: data.totalRevenue, pct: 100 },
+                  { label: '— Запчастини (собівартість)', value: data.totalCostParts, pct: data.totalRevenue > 0 ? (data.totalCostParts / data.totalRevenue) * 100 : 0 },
+                  { label: '— Праця (оцінка 40%)', value: data.totalCostLabor, pct: data.totalRevenue > 0 ? (data.totalCostLabor / data.totalRevenue) * 100 : 0 },
+                  { label: 'Валовий прибуток', value: data.grossProfit, pct: data.margin },
+                ].map((row) => (
+                  <TableRow key={row.label}>
+                    <TableCell className="text-foreground">{row.label}</TableCell>
+                    <TableCell className={cn('text-right font-semibold', row.label === 'Валовий прибуток' ? (row.value >= 0 ? 'text-success' : 'text-destructive') : '')}>
+                      {fmt(row.value)}
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">{row.pct.toFixed(1)}%</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
       {/* Load report */}
       {data && data._tab === 'load' && (
         <div className="space-y-6">
@@ -393,6 +457,16 @@ function buildCsv(tab: Tab, data: ReportData): string {
   }
   if (tab === 'load' && data._tab === 'load') {
     const rows = [['Підйомник', 'Зона', 'Слотів', 'Годин', 'Завантаженість%'], ...data.rows.map(r => [r.liftName, r.zoneName, r.totalSlots, r.totalHours.toFixed(1), r.loadPercent])];
+    return rows.map(r => r.join(';')).join('\n');
+  }
+  if (tab === 'profitability' && data._tab === 'profitability') {
+    const rows = [
+      ['Показник', 'Сума', '% до виручки'],
+      ['Виручка', data.totalRevenue, '100.0'],
+      ['Запчастини', data.totalCostParts, data.totalRevenue > 0 ? ((data.totalCostParts / data.totalRevenue) * 100).toFixed(1) : '0'],
+      ['Праця', data.totalCostLabor, data.totalRevenue > 0 ? ((data.totalCostLabor / data.totalRevenue) * 100).toFixed(1) : '0'],
+      ['Валовий прибуток', data.grossProfit, data.margin.toFixed(1)],
+    ];
     return rows.map(r => r.join(';')).join('\n');
   }
   return '';

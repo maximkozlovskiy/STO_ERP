@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BatchService } from './batch.service';
@@ -216,5 +216,12 @@ export class InventoryService {
       minStock: r.minStock,
       deficit: r.minStock - r.quantity,
     }));
+  }
+
+  async updateMinStock(orgId: string, stockItemId: string, minStock: number | null): Promise<{ id: string; minStock: number | null }> {
+    const item = await this.prisma.stockItem.findFirst({ where: { id: stockItemId, orgId, deletedAt: null } });
+    if (!item) throw new NotFoundException('Залишок не знайдено');
+    const updated = await this.prisma.stockItem.update({ where: { id: stockItemId }, data: { minStock } });
+    return { id: updated.id, minStock: updated.minStock ?? null };
   }
 }
