@@ -120,6 +120,7 @@ enum NotificationEventType {
   PAYMENT_RECEIVED
   INVOICE_SENT
   LOW_STOCK_ALERT
+  FOLLOWUP_REMINDER
 }
 
 enum NotificationChannel {

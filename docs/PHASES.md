@@ -1072,8 +1072,8 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 - [x] `[sto-database]` `OrganisationSettings` — додати `followUpDays Int @default(90)` (після скільки днів без візиту нагадувати)
     > Додано `followUpActive` та `followUpDays` у `packages/database/prisma/schema.prisma`. Міграція готова до запуску при `docker-compose up`.
-- [~] `[sto-backend]` `FollowUpProcessor` (BullMQ CRON щодня о 09:00) → знаходить авто де `MaintenanceSchedule.nextMaintenanceDate` ≤ today+14 або `lastWO.completedAt` < today-followUpDays → відправляє SMS через NotificationService (шаблон `FOLLOWUP_REMINDER`)
-    > Коди готові (`apps/api/src/modules/notifications/followup.{processor,scheduler}.ts`) але тимчасово видалені бо потребують Prisma Client з новими полями. Буде реактивовано після міграції БД.
+- [x] `[sto-backend]` `FollowUpProcessor` (BullMQ CRON щодня о 09:00) → знаходить авто де `MaintenanceSchedule.nextMaintenanceDate` ≤ today+14 або `lastWO.completedAt` < today-followUpDays → відправляє SMS через NotificationService (шаблон `FOLLOWUP_REMINDER`)
+    > `apps/api/src/modules/notifications/followup.{processor,scheduler}.ts`. FOLLOWUP_REMINDER додано до enum NotificationEventType + міграція `20260526230000_add_followup_reminder_event`. FollowUpScheduler реєструє CRON при onModuleInit. FollowUpProcessor обробляє upcoming maintenance (14 днів) + idle vehicles (followUpDays).
 - [x] `[sto-web]` Вкладка "Нагадування" в `/settings` → toggle isActive + налаштування followUpDays
     > Реалізовано в `apps/web/src/app/settings/page.tsx`. Форма з toggle `followUpActive` та інпут для `followUpDays` (30-365 днів).
 
