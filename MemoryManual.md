@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-18f1d48 docs(tester): record bugs #53-#57 from sto-tester Phase 20 UX session
+c938dc0 fix(review): invoices page — guard setState after await, fix selectInvoice race
 ```
 
 Дата: 2026-05-26
@@ -726,6 +726,7 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `c938dc0` | fix(review): invoices page — mountedRef guards on all setState-after-await, selectTokenRef to drop stale detail responses on fast row-switching |
 | `a60d3d3` | fix(review): Group 3 — SSR safety (useSavedFilters), a11y (Check/X onClick), nullable dueDate, uncontrolled priority select |
 | `aed69c3` | fix(review): Command Palette + keyboard shortcuts — 7 issues (shift+/, useMemo deps, focus trap, a11y) |
 | `bef35b7` | fix(tester): 6 bugs (settlement validate, low-stock LIMIT, CSV revoke, take, +tests) |
