@@ -9,19 +9,15 @@
 ## Останній commit
 
 ```
+7ee1db4 fix(review): dashboard SSE auth + media upload token + path traversal
+cdeb9f6 docs(skills): add /sto-phase skill — automated block-by-block phase implementation
+598cecb feat(F9+F4+F5): DatePickerInput uk-UA + clone WO/Invoice + print CSS
+b41bf10 feat(B12+B11): WorkOrderMedia photo upload + AuditEvent changelog
+e7e0c83 feat(B9+F7+B8): SSE real-time dashboard + live KPI cards + follow-up reminder settings
 d53b626 fix(review): commit 7b899e4 — 11 issues across profitability/invoices/settings/PDF/migration
-<pending> fix(tester): Bugs #74-#80 — profitability cost fallback + vehicle mileage NULL guard + PDF blob refresh + invoice ternary + VAT cap + slot clamp + cancel 204
-<pending> docs(tester): record bugs #74-#80 from /sto-tester FULL session on commit 7b899e4
 7b899e4 feat: implement 21 UX/UI gaps — profitability report, maintenance schedules, profile page, PDF buttons, isWarranty, calendar normoHours suggestion, reconciliation PDF, settlements PDF
 18598d7 fix(review): costMethod UI enum value + literal-union type + regression tests
 c8ce19a feat(settings): add costMethod (FIFO/LIFO/AVERAGE) selector to org settings
-da68955 docs(tester): record Bug #73 from /sto-tester session on isMain feature
-dd37d69 fix(tester): Bug #73 — pre-existing failing command-palette empty-state test
-354cb51 test(warehouses): contract + service specs for isMain + P2002 mapping
-eb48186 fix(tester): Bug #72 — preserve manual vehicleId in loadVehicles (MEDIUM UX)
-7da9160 fix(tester): Bug #71 — preserve warehouseId across part additions (MEDIUM UX)
-4b49453 fix(tester): Bug #70 — MECHANIC GET /warehouses access (HIGH role gap)
-317723a fix(tester): Bug #69 — partial unique index on warehouses.isMain (CRITICAL)
 ```
 
 Дата: 2026-05-26
@@ -29,14 +25,25 @@ eb48186 fix(tester): Bug #72 — preserve manual vehicleId in loadVehicles (MEDI
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 142/142 passed
-Contract:        ✅ inside 142 (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4, settings: 10, warehouses: 10)
-Property:        ✅ inside 142 (fsm: 11, inventory: 7, settlements: 8)
-Components:      ✅ 139/139 passed
-E2E:             ⏭ skipped this run (FULL session on commit 7b899e4 was static + unit only)
-Build:           ✅ @sto/api + @sto/web tsc clean
-Bugs found:      7 (Bug #74 CRITICAL / Bug #75 HIGH / Bug #76-77 MEDIUM / Bug #78-80 LOW) — all fixed
+Unit:            ⏭ not re-run this pass (review session only — static + commit)
+Components:      ⏭ not re-run this pass
+E2E:             ⏭ skipped this run
+Build:           ✅ @sto/api + @sto/web tsc clean (incremental:false)
+Review fixes:    11 issues across SSE/media/audit/dashboard (commit 7ee1db4)
 ```
+
+### Gotcha — /sto-review on e7e0c83..cdeb9f6 (2026-05-26, commit 7ee1db4)
+
+- **EventSource не передає Bearer header — SSE авторизація через query token обов'язково має manual verify** (dashboard.controller.ts B9): нативний `EventSource` не підтримує custom headers, тому SSE endpoint не можна захистити стандартним `@UseGuards(JwtAuthGuard)` — guard очікує `Authorization: Bearer`. Канон: для SSE окремий endpoint який приймає `?token=<jwt>`, вручну викликає `jwtService.verify(token, { secret: config.getOrThrow('JWT_ACCESS_SECRET') })`, валідує `payload.sub && payload.orgId`, кидає `UnauthorizedException` інакше. **АЛЕ паралельний non-SSE endpoint (`/dashboard/summary`) ВСЕ ОДНО треба захистити** контролер-рівневим `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(...)` — інакше це open hole. Грeп `@Controller` без `@UseGuards` на рівні класу І без `@UseGuards` на кожному методі — це CRITICAL.
+- **Hardcoded `'sto_token'` рядок як ключ sessionStorage = німий auth fail** (useDashboardStream.ts + work-orders/[id]/PageClient.tsx): канонічний ключ — `TOKEN_KEY = 'sto_access_token'` (експортується з `@/lib/auth`). Hardcoded `'sto_token'` ніколи не повертає валідний токен, але `sessionStorage.getItem` повертає `null` мовчки — fetch стартує без header, API відповідає 401, EventSource onerror зриває reconnect loop. Канон: ЗАВЖДИ `import { TOKEN_KEY } from '@/lib/auth'`. Grep на `sessionStorage.getItem.*sto_` без TOKEN_KEY — CRITICAL.
+- **Env var drift `NEXT_PUBLIC_API_BASE` vs `NEXT_PUBLIC_API_URL`** (useDashboardStream.ts): в проекті прийнято `NEXT_PUBLIC_API_URL` (api-client.ts, auth/context.tsx, xlsx-import-button.tsx). Hook `useDashboardStream` шукав `NEXT_PUBLIC_API_BASE` що ніколи не існував → `localhost:3000` у проді, SSE не конектиться. Канон: одна канонічна env-змінна на API base URL, винесена у `lib/api-client.ts` як `export const API_URL`. Уникнути копі-паст hardcoded `process.env.NEXT_PUBLIC_API_*` у нових файлах — імпортуй з api-client.
+- **Multipart file upload через нативний `fetch` потребує `/api` префіксу І `credentials: 'include'`** (work-orders/[id]/PageClient.tsx handleMediaUpload): `apiFetch` сам додає `/api`, але `apiFetch` не підтримує `FormData` (фіксує Content-Type у JSON). При використанні raw `fetch(${API_URL}/work-orders/...)` забули `/api` префікс І `credentials: 'include'` для refresh-cookie. Канон: коли upload вимагає `multipart/form-data` — `fetch(\`\${apiBase}/api/<path>\`, { credentials: 'include', headers: { Authorization: \`Bearer \${token}\` } })` БЕЗ Content-Type (браузер сам додасть boundary). Альтернатива: розширити `apiFetch` щоб detect-ив `FormData` body і пропускав Content-Type — TODO у follow-up.
+- **`@CurrentUser() user: { sub: string }` тип-брехня** (work-orders.controller.ts transition/clone): `AuthenticatedUser` (jwt.strategy.ts) реально повертає `{ id, orgId, role }` — НЕ `{ sub }`. `sub` присутній лише у raw JWT payload. Анотація `{ sub: string }` ламає TS у боку розробника: TS приймає `user.sub` (поле є в типі), runtime повертає `undefined`. Будь-який downstream код що передає `userId` далі (audit, settlement.createTransaction) тихо отримує `undefined` → audit log skip, settlements creator missing. Канон: ЗАВЖДИ `@CurrentUser() user: { id: string }` для controllers що потребують auth user. Глобально grep `@CurrentUser.*sub` — це регулярний bug-pattern (8+ контролерів у проекті досі мають цю помилку).
+- **Path traversal у multipart filename → object-storage** (work-order-media.service.ts upload): `file.filename.split('.').pop()` для extension без sanitization не дає traversal (`crypto.randomUUID()` робить шлях унікальним), АЛЕ `filename` зберігається в DB і повертається у DTO; HTML `<img alt={m.filename}>` міг би показати XSS-нерелевантне `../../etc/passwd.jpg`. Канон: `path.basename(filename.replace(/\\/g, '/'))` + control-char strip + 255-char cap + ext whitelist. Те ж стосується будь-яких file upload endpoints: `xlsx-import`, `attachment-upload`, custom logo upload.
+- **`take: N` на `prisma.X.count()` — мовчки ігнорується** (dashboard.service.ts stockItem): `count()` повертає число, не масив — `take` параметр не входить у `Prisma.XCountArgs`. TS не ловить бо `count` приймає `{ where, ... }` без обмеження keys. Канон: НЕ передавати `take` у `count()` — нема ефекту, плутає reviewer. Якщо реально треба capped count — `take` у `findMany({ select: { id: true } }).then(r => r.length)`.
+- **`(decimal as any).toNumber()` ховає тип Prisma.Decimal** (dashboard.service.ts revenue sum): Prisma `_sum.amount` повертає `Prisma.Decimal | null`. Cast `as any` → виклик `.toNumber()` працює, але type lost і null-check не gerada (NaN при null). Канон: `Number(decimalValue)` (працює і для Decimal і для null → NaN → треба guard) АБО `decimalValue != null ? Number(decimalValue) : 0`. Ніколи `as any` навколо Prisma результатів — використовуй `Number(x)` cast який TS розуміє через Decimal.toNumber вбудоване coercion.
+- **`audit-log` endpoint без ParseUUIDPipe → P2023 → HTTP 500** (audit.controller.ts findByEntity): `@Query('entityId')` без `ParseUUIDPipe` приймає будь-який string, Prisma `where: { entityId: 'not-a-uuid' }` падає `PrismaClientKnownRequestError P2023`, NestJS повертає 500 замість 400. Канон: `@Query('xxxId', new ParseUUIDPipe())` для будь-якого param/query очікуваного UUID. Те ж для polymorphic `entityType` — whitelist у `@IsIn(...)` або in-controller `if (!ENTITY_TYPES.includes(entityType)) throw new BadRequestException(...)`.
+
 
 ### Gotcha — /sto-review on commit 7b899e4 (2026-05-26, d53b626)
 
