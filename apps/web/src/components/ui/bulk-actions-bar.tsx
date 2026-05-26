@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from './button';
@@ -8,7 +9,7 @@ export interface BulkAction {
   id: string;
   label: string;
   variant?: 'default' | 'destructive' | 'outline';
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   disabled?: boolean;
   onClick: (selectedIds: string[]) => void;
 }

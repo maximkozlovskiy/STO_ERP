@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, ClipboardList, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -150,6 +150,14 @@ export default function WorkOrdersPage() {
 
   const bulkSelect = useBulkSelect(data?.items ?? []);
 
+  // Sync indeterminate state on the "select-all" checkbox.
+  // DOM property `indeterminate` is not exposed via the React `checked` prop,
+  // so we set it imperatively whenever `someSelected` changes.
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
+
   const inlineEdit = useInlineEdit({
     enabled: features.inlineEditEnabled,
     onSave: async (rowId, field, value) => {
@@ -227,10 +235,10 @@ export default function WorkOrdersPage() {
     }
   }, [bulkSelect, features.toastEnabled, load]);
 
-  const bulkActions: BulkAction[] = [
+  const bulkActions = useMemo<BulkAction[]>(() => [
     { id: 'cancel', label: 'Скасувати', variant: 'destructive', onClick: bulkCancel },
     { id: 'archive', label: 'Архівувати', variant: 'outline', onClick: bulkArchive },
-  ];
+  ], [bulkCancel, bulkArchive]);
 
   const loadVehicles = (counterpartyId: string) => {
     if (!counterpartyId) return;
@@ -386,7 +394,7 @@ export default function WorkOrdersPage() {
                     <input
                       type="checkbox"
                       checked={bulkSelect.allSelected}
-                      ref={el => { if (el) el.indeterminate = bulkSelect.someSelected; }}
+                      ref={selectAllRef}
                       onChange={bulkSelect.toggleAll}
                       className="h-3.5 w-3.5 rounded border-border"
                       aria-label="Вибрати всі"

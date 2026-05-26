@@ -91,13 +91,6 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
   const [open, setOpen] = useState(false);
   const { items, markRead, markAllRead, remove, unreadCount } = useNotifications();
 
-  useEffect(() => {
-    if (!enabled) return;
-    const handler = () => {};
-    window.addEventListener('sto:notification-add', handler);
-    return () => window.removeEventListener('sto:notification-add', handler);
-  }, [enabled]);
-
   // close on outside click
   useEffect(() => {
     if (!open) return;
@@ -146,8 +139,11 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
               return (
                 <div
                   key={n.id}
-                  className={cn('flex gap-3 px-4 py-3 cursor-pointer hover:bg-secondary transition-colors', !n.read && 'bg-primary-subtle/30')}
+                  className={cn('group flex gap-3 px-4 py-3 cursor-pointer hover:bg-secondary transition-colors', !n.read && 'bg-primary-subtle/30')}
                   onClick={() => markRead(n.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); markRead(n.id); } }}
                 >
                   <Icon className={cn('h-4 w-4 mt-0.5 shrink-0', ICON_STYLES[n.type])} aria-hidden="true" />
                   <div className="flex-1 min-w-0">
@@ -159,7 +155,7 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
                   </div>
                   <button
                     onClick={e => { e.stopPropagation(); remove(n.id); }}
-                    className="shrink-0 opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                    className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
                     aria-label="Видалити сповіщення"
                   >
                     <X className="h-3.5 w-3.5" />
