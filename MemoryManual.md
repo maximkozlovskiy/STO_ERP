@@ -9,17 +9,30 @@
 ## Останній commit
 
 ```
-f947021 fix(review): Group 4-6 — delete button visibility, indeterminate ref, ReactNode import
+18f1d48 docs(tester): record bugs #53-#57 from sto-tester Phase 20 UX session
 ```
 
 Дата: 2026-05-26
 
 ## Поточний стан проєкту
 ```
-TypeScript:  ✅ 0 errors        (apps/web tsc --noEmit --incremental false)
-Build:       ✅ apps/web compiles
-Review:      Group 4-6 cycle 1 — 3 фікси (1 Critical UX + 1 Important + 1 Style)
+TypeScript:      ✅ 0 errors        (apps/web + apps/api, --incremental false)
+Unit (web):      ✅ 139/139 passed  (10 useBulkSelect + 6 bulk-actions-bar + 8 sync-indicator + 15 notification-center new)
+Unit (api):      ✅ 117/117 passed  (включно з contract specs)
+Contract:        ✅ присутні для auth/work-orders/inventory/pricing-rules/settings/batches
+Property-based:  ⏭ fast-check не встановлений у @sto/api (відомо з попередніх циклів)
+Component:       ✅ 13 файлів — додано 4 у цій сесії (sync-indicator, notification-center, bulk-actions-bar, useBulkSelect)
+E2E (Playwright): ⏭ не запускались — потребує живий dev-server (поза scope hot-fix sweep)
+Build:           ✅ apps/web compiles
+Tester sweep:    Phase 20 UX Groups 4-6 — 5 багів знайдено та виправлено (#53-#57)
 ```
+
+### Gotcha — /sto-tester Phase 20 UX Groups 4-6 sweep (2026-05-26, баги #53-#57, commit 18f1d48)
+- **`useBulkSelect` без pruning при зміні items → stale Set across pages** (Bug #53): Set обраних ID зберігається при пагінації/фільтрації/refetch, що дає невидимі вибори у count + хибний allSelected/someSelected + bulk actions проти невидимих ID. Канон: `useEffect(() => { setSelected(prev => prev ∩ visibleIds) }, [items])` з early-return `prev.size === 0`, щоб не тригерити re-render для порожньої виборки. Цей патерн обов'язковий для будь-якого хука що тримає `Set<string>` IDs прив'язаних до зовнішнього масиву.
+- **`Promise.all` для bulk-операцій → fail-fast псує UX** (Bug #54): один FSM-invalid перехід (ARCHIVE з не-PAID, CANCEL з ARCHIVED/CANCELLED) реджектить ВЕСЬ батч; success-toast і `bulkSelect.clear()` не викликаються, але частина WO вже трансформувалась — UI неконсистентний. Канон: `Promise.allSettled` + рахунок fulfilled/rejected + ЗАВЖДИ викликати `clear()` і `load()` у `finally`-логіці + агрегований toast вигляду "Скасовано 3 з 5. 2 не змінено". Те саме для `bulkArchive`, `bulkRemove`, `bulkRestore`, `bulkExport` — будь-яка масова мутація.
+- **Bulk-actions UI що не враховує FSM → завжди фейлить для частини selection** (Bug #55): `ARCHIVE` дозволено тільки з `PAID` (per `WORK_ORDER_TRANSITIONS`); інші 9 статусів повертатимуть 400. Аналогічно `CANCEL` з `IN_PROGRESS/COMPLETED/INVOICED/PAID/ARCHIVED/CANCELLED` неможливий. Мінімальний фікс — `Promise.allSettled` гасить регресію (#54). Якісне виправлення — disable / count-down кнопки на основі реальної кількості сумісних із FSM. TODO у follow-up: показувати "Архівувати (2 з 5)" або фільтрувати selection до compatible IDs перед mutation.
+- **`onKeyDown` на `role="button"` рядку без `target !== currentTarget` guard → подвійне спрацювання** (Bug #56): Space на вкладеній `<button>` (наприклад X delete) нативно клікає кнопку АЛЕ keydown bubble-up до батьківського div з `onKeyDown` → друга дія (markRead) на щойно видаленому ID. Канон: `onKeyDown={e => { if (e.target !== e.currentTarget) return; ... }}` для всіх клавіатурних handler-ів на елементах-обгортках з інтерактивними нащадками.
+- **Component coverage для Phase X нових компонентів — частина того ж sweep** (Bug #57): нові UI компоненти не отримують тестів автоматично в первинному PR — sto-review зосереджується на коді, не на test gaps. Канон: `/sto-tester` після кожного фічевого commit має grep-ом за `git diff --name-only HEAD~5..HEAD | grep components/ui` знайти нові файли і перевірити наявність `__tests__/<name>.test.tsx`; якщо відсутні — додати як LOW bug. Мін. coverage: рендер всіх variant пропс, всі callbacks (toggle/clear/onClick), edge cases (count=0, items=[], unread=12).
 
 ### Gotcha — /sto-review Group 4-6 cycle 1 (2026-05-26, commit f947021)
 - **`opacity-0 hover:opacity-100` на тому ж елементі = unreachable** (notification-center per-row delete X): кнопка `opacity-0` має ефективну площу 0px, тож курсор не може приземлитись щоб `hover:` спрацював. Канон: показувати on-hover дочірнього елементу — додавати `group` на батьківську карточку, на дочірньому `opacity-0 group-hover:opacity-100`. Завжди дублювати `focus:opacity-100` щоб клавіатурні користувачі через Tab могли побачити кнопку.
