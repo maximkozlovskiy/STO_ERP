@@ -266,6 +266,10 @@ export const columns: ColumnDef<WorkOrderResponse>[] = [
 - [ ] Role-based rendering: wrap admin-only sections with `<RoleGuard roles={[...]}/>`
 - [ ] Tables use DataTable wrapper (consistent pagination)
 - [ ] `pnpm --filter @sto/web build` passes
+- [ ] toast.X завжди за `if (features.toastEnabled)` + fallback `setError`
+- [ ] Bulk mutations через `Promise.allSettled` — ніколи `Promise.all`
+- [ ] `indeterminate` через `useRef` + `useEffect`, не inline ref callback
+- [ ] `useSavedFilters` init `[]`, гідратація у `useEffect`, `Array.isArray` guard
 
 ---
 
@@ -375,10 +379,89 @@ export const workOrderColumns: ColumnDef<WorkOrderResponse>[] = [
 
 ### Ukrainian Toast Notifications
 ```typescript
-// Use Ukrainian messages in all toasts
-toast.success('Наряд успішно збережено');
-toast.error('Помилка збереження. Спробуйте ще раз');
-toast.info('Запчастини зарезервовано на складі');
+// ✅ Завжди перевіряй прапорець + fallback
+const features = useUiFeatures();
+try {
+  await apiFetch('/work-orders', { method: 'POST', body: JSON.stringify(data) });
+  if (features.toastEnabled) toast.success('Наряд створено');
+  setModal(false);
+} catch (e) {
+  const msg = e instanceof Error ? e.message : 'Помилка';
+  if (features.toastEnabled) toast.error(msg);
+  else setError(msg);  // ❌ НЕ викидай помилку мовчки
+}
+
+// ✅ Типові повідомлення (Ukrainian):
+toast.success('Збережено');
+toast.success(`Фільтр "${name}" збережено`);
+toast.success(`Скасовано ${n} нарядів`);
+toast.warning(`Скасовано ${ok} з ${total}. ${total - ok} не змінено`);  // bulk partial
+toast.warning('Залишок нижче мінімального рівня');
+toast.error(`Помилка: ${e.message}`);
+toast.info('Синхронізацію завершено');
+```
+
+---
+
+## UX Hooks — довідник
+
+### useUiFeatures
+```typescript
+import { useUiFeatures, invalidateUiFeaturesCache } from '@/hooks/useUiFeatures';
+const features = useUiFeatures();  // module-level cache, одна мережа-запит на сесію
+invalidateUiFeaturesCache();       // викликати після збереження налаштувань
+```
+Endpoint: `GET /settings/ui-features` — доступний усім авторизованим ролям.
+
+### useDirtyForm
+```typescript
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+const { isDirty, markDirty, resetDirty, confirmClose } = useDirtyForm({
+  enabled: features.unsavedGuardEnabled,
+});
+// onChange: markDirty()
+// onClose button: if (await confirmClose()) { resetDirty(); closeModal(); }
+// after save: resetDirty()
+```
+
+### useInlineEdit
+```typescript
+import { useInlineEdit } from '@/hooks/useInlineEdit';
+const inlineEdit = useInlineEdit({ enabled: features.inlineEditEnabled, onSave });
+// isEditing(id, field), startEdit(id, field, value), commitEdit(value), cancelEdit
+// InlineEditCell + InlineViewCell з '@/components/ui/inline-edit-cell'
+// commitEdit ЗАВЖДИ: void inlineEdit.commitEdit(v).catch(() => {})
+```
+
+### useBulkSelect
+```typescript
+import { useBulkSelect } from '@/hooks/useBulkSelect';
+const bulkSelect = useBulkSelect(data?.items ?? []);
+// { selected, toggle, toggleAll, clear, isSelected, allSelected, someSelected, count }
+// Автоматично прибирає stale IDs при зміні items (пагінація / фільтрація)
+```
+Шаблон indeterminate:
+```typescript
+const selectAllRef = useRef<HTMLInputElement>(null);
+useEffect(() => {
+  if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+}, [bulkSelect.someSelected]);
+```
+
+### useSavedFilters
+```typescript
+import { useSavedFilters } from '@/hooks/useSavedFilters';
+interface MyFilters extends Record<string, unknown> { status: string; }
+const { saved, save, remove } = useSavedFilters<MyFilters>('page-key');
+const preset = save('Назва', filters);  // повертає { id, name, filters }
+```
+
+### useKeyboardShortcut
+```typescript
+import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
+useKeyboardShortcut('k', () => setPaletteOpen(true), { enabled: features.commandPaletteEnabled, ctrl: true });
+// SHIFT_ALIAS map: '?' → '/' (layout-independent)
+// null guard на e.target перед перевіркою isInputEl
 ```
 
 ### Windows Dev Notes

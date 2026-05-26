@@ -39,6 +39,10 @@ model: claude-opus-4-7
 | Нова `page.tsx` | §8.2 UI стани, §8.3 Hydration, §8.4 Auth, §12 a11y |
 | Новий `*.dto.ts` | §2.3 Validation, §2.4 Data Leaks, §11 Configuration |
 | Зміна BullMQ | §2.5 Queue Safety, §10 Offline |
+| Новий UX хук (`use*.ts`) | §3.1 Memory Leaks (cleanup), §8.5 UX Features (bulk/toast/indeterminate) |
+| Новий UI компонент (`components/ui/`) | §8.5 UX Features, §14 a11y, §12 Component test coverage |
+| Зміна `TopShell.tsx` | §8.4 Auth guard, §8.5 useUiFeatures endpoint roles, §3.1 listeners |
+| `bulkActions` / `bulkSelect` | §8.5: Promise.allSettled, stale IDs, colSpan, useMemo |
 
 ### Як оновлювати MemoryManual.md (крок 5)
 
@@ -791,6 +795,53 @@ grep -rn "new Date()\|localStorage\|sessionStorage\|window\.\|document\." \
 - [ ] `/setup` доступний без авторизації
 - [ ] `/setup` має окремий `layout.tsx` без `AuthProvider`/`TopShell` (щоб уникнути circular redirect)
 
+### 8.5 UX Features System
+
+```bash
+# toast без перевірки features.toastEnabled (може бути вимкнено)
+grep -rn "toast\." apps/web/src/app/ apps/web/src/components/ --include="*.tsx" \
+  | grep -v "features\.toastEnabled\|// toast\|ToastContainer\|useNotif"
+
+# Promise.all для bulk-мутацій — має бути Promise.allSettled
+grep -rn "Promise\.all(" apps/web/src/ --include="*.tsx" --include="*.ts" \
+  | grep -i "bulk\|transition\|map.*apiFetch" | grep -v "allSettled"
+
+# useBulkSelect без очищення при зміні items
+# (перевірити що в хуку є useEffect([items]) що пересікає Set)
+grep -rn "useBulkSelect\|bulkSelect\.selected" apps/web/src/ --include="*.tsx" | head -10
+
+# indeterminate через inline ref callback (крихко — React Compiler може зламати)
+grep -rn "indeterminate" apps/web/src/ --include="*.tsx" \
+  | grep -v "useEffect\|useRef\|// indeterminate"
+
+# onKeyDown на role="button" обгорткою без target guard
+grep -rn 'role="button"' apps/web/src/ --include="*.tsx" -A 5 \
+  | grep "onKeyDown" | grep -v "currentTarget\|target !=="
+
+# opacity-0 hover:opacity-100 на тому ж елементі (недосяжна кнопка)
+grep -rn "opacity-0.*hover:opacity-100\|hover:opacity-100.*opacity-0" \
+  apps/web/src/ --include="*.tsx" | grep -v "group-hover"
+
+# useUiFeatures в компонентах що доступні неадмінам, але GET endpoint обмежений
+# (перевірити що endpoint /settings/ui-features є і не @Roles обмежений)
+grep -rn "useUiFeatures" apps/web/src/ --include="*.tsx" | head -10
+# Потім перевір: GET /settings/ui-features у settings.controller.ts є @Roles для всіх ролей
+```
+
+**UX Features чеклісти:**
+- [ ] `toast.X(...)` завжди за `if (features.toastEnabled)` — НЕ голий виклик
+- [ ] При `!features.toastEnabled` є fallback: `setError(msg)` або `setFormError(msg)`
+- [ ] Bulk-мутації через `Promise.allSettled` + `bulkSelect.clear()` + `load()` в finally
+- [ ] Частковий успіх bulk → агрегований toast `"OK N з M. K не змінено"` (не мовчки)
+- [ ] `indeterminate` checkbox: `useRef` + `useEffect([dep])`, НЕ `ref={el => el.indeterminate = x}`
+- [ ] `useBulkSelect` — `items` prop оновлюється при `setData` → stale IDs авто-прибираються
+- [ ] `colSpan` у loading/empty rows: `features.bulkActionsEnabled ? baseColCount + 1 : baseColCount`
+- [ ] `useMemo` для `bulkActions: BulkAction[]` — array literal не пере-створюється на кожен render
+- [ ] `useSavedFilters` — `Array.isArray` guard при читанні localStorage (corruption defense)
+- [ ] Кнопка delete у списках з `opacity-0` — `group` на батьківській картці + `group-hover:opacity-100` на кнопці + `focus:opacity-100` (не `self-hover:opacity-100`)
+- [ ] `onKeyDown` на `role="button"` обгортках з інтерактивними нащадками: guard `if (e.target !== e.currentTarget) return`
+- [ ] `useUiFeatures` endpoint: `GET /settings/ui-features` відкритий для всіх авторизованих ролей (не тільки OWNER/ADMIN)
+
 ---
 
 ## 9. Sync Readiness
@@ -1040,7 +1091,7 @@ grep -rn "\.toISOString()\b\|\.toString()" apps/web/src/app/ --include="*.tsx" |
 | 5 | Business Rules | api/ — FSM, inventory, settlements |
 | 6 | Database | prisma, api/ — N+1, take, indexes, select vs include |
 | 7 | Performance | api/ — parallel queries; web/ — hydration, useMemo |
-| 8 | Web Frontend | web/ — API calls, UI states, SSR, auth routing |
+| 8 | Web Frontend | web/ — API calls, UI states, SSR, auth routing, UX features |
 | 9 | Sync Readiness | prisma, api/sync/ |
 | 10 | Offline-First | api/ — BullMQ, зовнішні API |
 | 11 | Configuration | api/ — magic numbers, hardcoded templates |

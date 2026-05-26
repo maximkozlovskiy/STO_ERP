@@ -306,6 +306,283 @@ const data = await apiFetch<WorkOrder[]>('/work-orders');
 
 ---
 
+## UX/UI Features System (Phase 20)
+
+> STO ERP підтримує 10 UX-прапорців у `OrganisationSettings.uiFeatures` (JSON, per-org).
+> Всі прапорці за замовчуванням `true`. Читаються через `useUiFeatures()` хук.
+
+### uiFeatures — повна схема
+
+```typescript
+// apps/api/src/modules/settings/settings.dto.ts
+interface UiFeatures {
+  toastEnabled: boolean;              // Toast-сповіщення після мутацій
+  unsavedGuardEnabled: boolean;       // Попередження при закритті брудної форми
+  stockIndicatorEnabled: boolean;     // "Доступно: N шт." при виборі запчастини
+  commandPaletteEnabled: boolean;     // Ctrl+K → Command Palette
+  keyboardShortcutsEnabled: boolean;  // Alt+W/D/C/I/N та інші глобальні шорткати
+  savedFiltersEnabled: boolean;       // Збережені пресети фільтрів (localStorage)
+  inlineEditEnabled: boolean;         // Редагування прямо у рядку таблиці
+  syncIndicatorEnabled: boolean;      // Індикатор online/offline у sidebar
+  notificationCenterEnabled: boolean; // Дзвоник з лічильником непрочитаних
+  bulkActionsEnabled: boolean;        // Чекбокси + BulkActionsBar у таблицях
+}
+const UI_FEATURES_DEFAULTS: UiFeatures = { /* всі true */ };
+```
+
+### useUiFeatures — отримання прапорців
+
+```typescript
+// apps/web/src/hooks/useUiFeatures.ts
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+
+// В компоненті:
+const features = useUiFeatures();
+if (features.toastEnabled) toast.success('Збережено');
+
+// ОБОВ'ЯЗКОВО: всі прапорці захищають свій функціонал
+{features.bulkActionsEnabled && <BulkActionsBar ... />}
+```
+
+**Правила useUiFeatures:**
+- Module-level cache з TTL: один fetch на всю сесію, не на кожен mount
+- Endpoint: `GET /settings/ui-features` — доступний ВСІМ ролям (не тільки OWNER/ADMIN)
+- При помилці — кешує `DEFAULTS` на 60 сек щоб не спамити backend
+- Очищення при logout: слухає `sto:logout` event → скидає до `DEFAULTS`
+- Інвалідація після зміни налаштувань: `invalidateUiFeaturesCache()` → dispatch `sto:ui-features-change`
+
+### Toast — сповіщення після мутацій
+
+```typescript
+// apps/web/src/lib/toast.ts
+import { toast } from '@/lib/toast';
+
+// ✅ Завжди перевіряй прапорець
+if (features.toastEnabled) toast.success('Збережено');
+if (features.toastEnabled) toast.error(`Помилка: ${e.message}`);
+if (features.toastEnabled) toast.warning('Залишок < мінімального рівня');
+if (features.toastEnabled) toast.info('Синхронізацію завершено');
+
+// ❌ Не використовуй напряму без прапорця
+toast.success('...');  // може бути вимкнено в налаштуваннях
+
+// ✅ Резервний варіант коли toast вимкнено
+try {
+  await apiFetch(...);
+  if (features.toastEnabled) toast.success('Збережено');
+} catch (e) {
+  const msg = e instanceof Error ? e.message : 'Помилка';
+  if (features.toastEnabled) toast.error(msg);
+  else setError(msg);  // fallback у inline error display
+}
+```
+
+**ToastContainer** монтується в `TopShell.tsx` — підключати в новому layout не потрібно.
+
+### useDirtyForm — захист від випадкового закриття
+
+```typescript
+// apps/web/src/hooks/useDirtyForm.ts
+const { isDirty, markDirty, resetDirty, confirmClose } = useDirtyForm({
+  enabled: features.unsavedGuardEnabled,
+});
+
+// onChange будь-якого поля:
+onChange={e => { setForm(f => ({ ...f, name: e.target.value })); markDirty(); }}
+
+// У кнопці "Скасувати":
+onClick={async () => {
+  if (await confirmClose()) { resetDirty(); setModal(false); }
+}}
+
+// Після успішного збереження:
+onSave: async () => {
+  await apiFetch(...);
+  resetDirty();  // ОБОВ'ЯЗКОВО — скидає брудний стан
+}
+```
+
+**Правила useDirtyForm:**
+- `isDirtyRef` (useRef) — для синхронного `beforeunload` обробника
+- `isDirty` (useState) — для React рендерингу (кнопка Скасувати показує "Є зміни")
+- `confirmClose()` — повертає `Promise<boolean>`: `true` якщо можна закривати
+
+### useInlineEdit — редагування у таблиці
+
+```typescript
+// apps/web/src/hooks/useInlineEdit.ts
+const inlineEdit = useInlineEdit({
+  enabled: features.inlineEditEnabled,
+  onSave: async (rowId, field, value) => {
+    await apiFetch(`/work-orders/${rowId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ [field]: value === '' ? null : value }),
+    });
+    if (features.toastEnabled) toast.success('Збережено');
+    load(); // оновити список
+  },
+});
+
+// В JSX — текстовий/числовий input:
+{inlineEdit.isEditing(row.id, 'field') ? (
+  <InlineEditCell
+    value={inlineEdit.editing?.value ?? row.field}
+    saving={inlineEdit.saving}
+    onCommit={v => { void inlineEdit.commitEdit(v).catch(() => {}); }}
+    onCancel={inlineEdit.cancelEdit}
+    type="text"
+  />
+) : (
+  <InlineViewCell
+    value={row.field}
+    enabled={features.inlineEditEnabled}
+    onClick={() => inlineEdit.startEdit(row.id, 'field', row.field)}
+  >
+    {row.field}
+  </InlineViewCell>
+)}
+
+// Для enum (select) — uncontrolled pattern:
+{inlineEdit.isEditing(row.id, 'priority') ? (
+  <select
+    defaultValue={inlineEdit.editing?.value ?? row.priority}
+    onChange={e => { void inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
+    onBlur={() => inlineEdit.cancelEdit()}
+    onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancelEdit(); }}
+    disabled={inlineEdit.saving}
+    autoFocus
+    className="rounded border border-primary bg-surface text-[12px] px-1.5 py-0.5 outline-none disabled:opacity-50"
+  >
+    {OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+  </select>
+) : (...)}
+```
+
+**Правила useInlineEdit:**
+- `savingRef` всередині хука запобігає подвійному коміту (blur + click обидва фаєряться)
+- `commitEdit` re-throws після показу toast → call-сайт ЗАВЖДИ `.catch(() => {})`
+- `defaultValue` (uncontrolled) для `<select>` — контрольований `value` "відскакує" візуально при in-flight save
+- `inputRef.current?.select()` обгорнутий у try/catch — date inputs кидають `InvalidStateError`
+
+### useBulkSelect — множинний вибір у таблиці
+
+```typescript
+// apps/web/src/hooks/useBulkSelect.ts
+const bulkSelect = useBulkSelect(data?.items ?? []);
+
+// КРИТИЧНО: useBulkSelect автоматично прибирає stale IDs при зміні items
+// (при пагінації / фільтрації / refetch — обрані ID з попередньої сторінки зникають)
+
+// TableHeader:
+{features.bulkActionsEnabled && (
+  <TableHead className="w-9 pr-0">
+    <input
+      type="checkbox"
+      ref={selectAllRef}   // useRef<HTMLInputElement>(null) + useEffect для indeterminate
+      checked={bulkSelect.allSelected}
+      onChange={bulkSelect.toggleAll}
+      aria-label="Вибрати всі"
+    />
+  </TableHead>
+)}
+
+// Imperative indeterminate (НЕ через inline ref callback):
+const selectAllRef = useRef<HTMLInputElement>(null);
+useEffect(() => {
+  if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+}, [bulkSelect.someSelected]);
+
+// BulkActionsBar — ЗАВЖДИ Promise.allSettled для множинних мутацій:
+const bulkActions = useMemo<BulkAction[]>(() => [
+  {
+    id: 'cancel', label: 'Скасувати', variant: 'destructive',
+    onClick: async (ids) => {
+      const results = await Promise.allSettled(
+        ids.map(id => apiFetch(`/resource/${id}/transition`, {
+          method: 'POST', body: JSON.stringify({ status: 'CANCELLED' }),
+        }))
+      );
+      const ok = results.filter(r => r.status === 'fulfilled').length;
+      bulkSelect.clear();
+      load();  // в finally-логіці — завжди reload
+      if (features.toastEnabled) {
+        if (ok === ids.length) toast.success(`Скасовано ${ok}`);
+        else toast.warning(`Скасовано ${ok} з ${ids.length}. ${ids.length - ok} не змінено`);
+      }
+    },
+  },
+], [bulkSelect, features.toastEnabled, load]);
+```
+
+**Правила useBulkSelect + BulkActionsBar:**
+- `Promise.allSettled` — ніколи `Promise.all` для bulk-мутацій (один 400 не зупиняє решту)
+- `bulkSelect.clear()` + `load()` — ЗАВЖДИ, незалежно від кількості помилок
+- colSpan у loading/empty rows: `features.bulkActionsEnabled ? cols + 1 : cols`
+- `useMemo` для `bulkActions` array — щоб не перестворювати нову референцію на кожен render
+
+### useSavedFilters — збережені пресети фільтрів
+
+```typescript
+// apps/web/src/hooks/useSavedFilters.ts
+interface MyFilters extends Record<string, unknown> {
+  statusFilter: string;
+  search: string;
+}
+const { saved, save, remove } = useSavedFilters<MyFilters>('page-key');
+
+// save повертає збережений пресет з .id:
+const preset = save('Активні', { statusFilter: 'IN_PROGRESS', search: '' });
+setActiveSavedFilterId(preset.id);
+if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+
+// onApply:
+const applyFilter = useCallback((preset: { id: string; filters: MyFilters }) => {
+  setStatusFilter(preset.filters.statusFilter ?? '');
+  setSearch(preset.filters.search ?? '');
+  setPage(1);
+  setActiveSavedFilterId(preset.id);
+}, []);
+```
+
+**Правила useSavedFilters:**
+- SSR-safe: `useState([])` → гідратація у `useEffect` з localStorage
+- `Array.isArray` guard при читанні — захист від corruption localStorage (стара версія додатку)
+- `pageKey` — унікальний per-page рядок (`'work-orders'`, `'inventory'`, `'employees'`)
+
+### NotificationCenter — сповіщення у sidebar
+
+```typescript
+// apps/web/src/components/ui/notification-center.tsx
+import { useNotifications } from '@/components/ui/notification-center';
+
+// Додати сповіщення програматично:
+const { add } = useNotifications();
+add('success', 'Наряд виконано', `#${wo.number} перейшов у статус "Виконано"`);
+add('error', 'Помилка синхронізації', error.message);
+add('warning', 'Низький залишок', `${good.name}: залишилось ${qty} шт.`);
+```
+
+**Правила NotificationCenter:**
+- `group` клас на батьківській картці + `opacity-0 group-hover:opacity-100` на кнопці delete
+- `focus:opacity-100` на кнопці — для клавіатурних користувачів
+- `onKeyDown` на `role="button"` рядку — guard `if (e.target !== e.currentTarget) return`
+
+### SyncIndicator — статус синхронізації
+
+```typescript
+// Диспетч статусу синхронізації з будь-якого місця:
+window.dispatchEvent(new CustomEvent('sto:sync-status', {
+  detail: { status: 'syncing' }  // 'idle' | 'syncing' | 'offline' | 'error'
+}));
+
+// Після завершення:
+window.dispatchEvent(new CustomEvent('sto:sync-status', { detail: { status: 'idle' } }));
+```
+
+**SyncIndicator** відображається автоматично у sidebar (wired у TopShell). Показується тільки коли `status !== 'idle'` або `lastSync !== null`.
+
+---
+
 ## Tailwind 4 — Canonical Syntax
 
 ### CSS var → canonical
@@ -545,6 +822,19 @@ Next.js
   [ ] loading: true при ініціалізації
   [ ] Cleanup у useEffect (removeEventListener, clearInterval)
   [ ] apiFetch, не fetch/axios напряму
+
+UX/UI Features
+  [ ] toast.X завжди за `if (features.toastEnabled)`
+  [ ] Fallback на setError коли toast вимкнено
+  [ ] useDirtyForm: resetDirty() після успішного збереження
+  [ ] useInlineEdit: commitEdit завжди .catch(() => {})
+  [ ] useBulkSelect: Promise.allSettled, не Promise.all
+  [ ] bulkSelect.clear() + load() в finally-логіці bulk-операцій
+  [ ] indeterminate checkbox через useRef+useEffect, не inline ref callback
+  [ ] colSpan у loading/empty rows враховує bulkActionsEnabled
+  [ ] useSavedFilters: Array.isArray guard при читанні localStorage
+  [ ] NotificationCenter delete button: group/group-hover + focus:opacity-100
+  [ ] onKeyDown на role="button" обгортках: guard e.target !== e.currentTarget
 
 Tailwind
   [ ] `[var(--x)]` → `(--x)` або canonical token
