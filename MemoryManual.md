@@ -9,15 +9,9 @@
 ## Останній commit
 
 ```
-7ee1db4 fix(review): dashboard SSE auth + media upload token + path traversal
-cdeb9f6 docs(skills): add /sto-phase skill — automated block-by-block phase implementation
-598cecb feat(F9+F4+F5): DatePickerInput uk-UA + clone WO/Invoice + print CSS
-b41bf10 feat(B12+B11): WorkOrderMedia photo upload + AuditEvent changelog
-e7e0c83 feat(B9+F7+B8): SSE real-time dashboard + live KPI cards + follow-up reminder settings
-d53b626 fix(review): commit 7b899e4 — 11 issues across profitability/invoices/settings/PDF/migration
-7b899e4 feat: implement 21 UX/UI gaps — profitability report, maintenance schedules, profile page, PDF buttons, isWarranty, calendar normoHours suggestion, reconciliation PDF, settlements PDF
-18598d7 fix(review): costMethod UI enum value + literal-union type + regression tests
-c8ce19a feat(settings): add costMethod (FIFO/LIFO/AVERAGE) selector to org settings
+fab5fd1 fix(review): B8 followup — soft-delete filters, cron 09:00 Kyiv, take 5000, retry 10
+3c6d233 feat(B8): FollowUp CRON — followup.processor + scheduler + FOLLOWUP_REMINDER enum
+0bb2334 feat(B3): Warranty model + CRUD API + auto-create on WO COMPLETED + counterparty tab + WO badge
 ```
 
 Дата: 2026-05-26
@@ -25,12 +19,50 @@ c8ce19a feat(settings): add costMethod (FIFO/LIFO/AVERAGE) selector to org setti
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ⏭ not re-run this pass (review session only — static + commit)
-Components:      ⏭ not re-run this pass
-E2E:             ⏭ skipped this run
+Unit:            ✅ 151/151 passed  (17 файлів — додано audit.contract.spec.ts (5) + 4 followUp regression тести у settings.contract)
+Contract:        ✅ 17 файлів covered (auth, audit, batches, invoices/pricing-rules, settings, warehouses, work-orders)
+Property-based:  ✅ inventory + settlements + work-orders.fsm invariants (3 файли)
+Components:      ✅ 139/139 passed  (13 файлів — Button, Modal, Select, CommandPalette, etc.)
+E2E (Playwright): ✅ 4/4 smoke passed (dev сервер живий, http://localhost:3001)
 Build:           ✅ @sto/api + @sto/web tsc clean (incremental:false)
-Review fixes:    11 issues across SSE/media/audit/dashboard (commit 7ee1db4)
+Tester fixes:    13 bugs виправлено (#0a, #81-90, #91-96 крім #95-LOW)
 ```
+
+### Gotcha — /sto-tester FULL on e7e0c83..0aa4cb3 (2026-05-26, bugs #0a + #91-#96)
+
+- **Baseline TS-помилка маскується пропущеним `mapXxx()` shape оновленням** (Bug #0a, settings.service.ts): попередня сесія додала `followUpActive`/`followUpDays` у DTO/Response, але приватний `mapOrgSettings` мав inline тип параметра — оновлення цього inline shape тихо пропустили. `tsc --noEmit` ламається на КОЖНОМУ запуску. Канон: коли додаєш поле у Response DTO + DB schema, обов'язково оновити: (a) DTO `OrganisationSettingsResponseDto`, (b) Request DTO `UpdateOrganisationSettingsDto` з валідацією, (c) **усі `mapXxx()` shape**-визначення, (d) seed/mock у contract тестах. Краще пара generic helper-ів типу `Pick<Prisma.OrganisationSettings, keyof OrganisationSettingsResponseDto>` ніж дублювати inline shape. Тестуй регресію — додав contract test `Bug #84 regression: followUp fields end-to-end` (4 кейси).
+
+- **`@CurrentUser() user: { sub: string }` повторюється у нових контролерах попри попередню Gotcha** (Bug #92, invoices.controller.ts create + createFromWorkOrder): попередня сесія зафіксувала цей анти-паттерн для work-orders, але invoices, які `@CurrentUser` теж використовують, пропустили. Канон: загальний grep `@CurrentUser.*sub` як precommit check.
+  ```bash
+  grep -rn "@CurrentUser.*sub" apps/api/src --include="*.ts" && exit 1 || exit 0
+  ```
+
+- **Clone-операції — окремий клас invariantів** (Bugs #81, #82, #90, #91, #94, #96): дублювання сутності з релейтед records (lines/parts, FK на vehicle/counterparty/branch) має 6+ скритих pitfalls:
+  1. **Totals** — Prisma defaults все обнуляють, обов'язково pre-compute (#81, #82).
+  2. **workOrderId/parentId reference** — НЕ копіювати owning FK (один-до-одного зв'язок) (#91). Клон — самостійна сутність.
+  3. **Soft-deleted FK** — pre-check кожен FK у `findFirst({ deletedAt: null })`, інакше P2003 → HTTP 500 замість дружнього 404 (#90).
+  4. **State-related fields** — `actualHours`, `completedAt`, `paidAmount` мають reset до DRAFT-defaults (#94). НЕ копіювати "виконано/оплачено" у новий DRAFT.
+  5. **AuditEvent** — клон ЦЕ create operation, потребує `audit.record('CREATE', ..., { clonedFromId })` (#96).
+  6. **Document number sequence** — `docNumbers.next` поза `$transaction` → "дірка" у numbering при FK fail (#95, поки відкритий — LOW).
+
+- **`apiMultipartFetch` — третій canonical fetch helper** (Bug #85, api-client.ts): тепер три варіанти silent-refresh:
+  | Helper | Content-Type | Body | Returns |
+  |---|---|---|---|
+  | `apiFetch<T>(path, init?)` | application/json | string/JSON | `T` (parsed JSON) |
+  | `apiBlobFetch(path, init?)` | (не задається) | (зазвичай undefined) | `Blob` |
+  | `apiMultipartFetch<T>(path, formData, init?)` | (multipart/form-data automatic) | `FormData` | `T` (parsed JSON) |
+  ВСІ роблять `tryRefresh()` при 401, `window.location.replace('/login')` при refresh fail. **Ніколи** не використовуй native `fetch(...)` напряму у компонентах — це обхід refresh+redirect logic.
+
+- **AuditEvent `findByEntity` total мав bug-pattern `total: items.length` після `take: N`** (Bug #88): класична помилка пагінації — `total` cap-ується разом з items. Frontend думає що бачить ВСЕ. Канон: `$transaction([findMany, count])` де `count` без `take`/`skip`/`orderBy`. Той же патерн застосуй у будь-якому новому `findX` що має `take: N`. Grep:
+  ```bash
+  grep -rn "total: items.length\|total: .*\\.length" apps/api/src --include="*.service.ts"
+  ```
+
+- **DTO `fileKey` витік на frontend = least-privilege порушення** (Bug #93, work-order-media.dto.ts): внутрішній MinIO object path `org/<uuid>/work-orders/<uuid>/<uuid>.jpg` повертався у DTO, але frontend його не використовує (тільки signedUrl). Канон: response DTO містить **лише поля які реально потрібні UI**. Будь-яке поле що не споживається — кандидат на видалення (грeп у frontend).
+
+- **`min`/`max` props у DatePickerInput треба ВЖИВАТИ, а не лише декларувати** (Bug #87): TS-інтерфейс мав `min?: string; max?: string`, але `DayPicker` не отримував `disabled={[...]}` matcher. Це класична TS-довірливість: тип проходить compile, runtime ігнорує. Канон: будь-який prop у TS interface — у JSX має бути спожитий. Lint-правило `react/no-unused-prop-types` від `eslint-plugin-react` ловить це. Без нього — code review.
+
+- **`useEffect` для Escape handler лише при `lightboxUrl` truthy** (Bug #89, work-orders/[id]/PageClient.tsx): `useEffect(() => { ... }, [lightboxUrl])` з early-return `if (!lightboxUrl) return` робить subscribe тільки коли модалка відкрита, і автоматично unsubscribe при закритті. Канон для будь-якої наступної lightbox/popover/dropdown реалізації: pair з `role="dialog" aria-modal="true" aria-label="..."` І keydown listener у `useEffect([open])`. 
 
 ### Gotcha — /sto-review on e7e0c83..cdeb9f6 (2026-05-26, commit 7ee1db4)
 
