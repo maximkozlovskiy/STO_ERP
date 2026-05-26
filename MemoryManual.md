@@ -9,7 +9,8 @@
 ## Останній commit
 
 ```
-fix(tester): Bugs #61-#67 — Phases 21-22 follow-up (reservedQty, /branches shape, invoice PDF, employees filters, palette deep-link, template prefill)
+a516edc docs(tester): record Bug #68 from /sto-tester FULL pass on 2026-05-26
+ce01c4d fix(tester): Bug #68 — PdfService font wiring (CRITICAL) — all PDFs broken at runtime
 ```
 
 Дата: 2026-05-26
@@ -17,16 +18,20 @@ fix(tester): Bugs #61-#67 — Phases 21-22 follow-up (reservedQty, /branches sha
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 117/117 passed
-Contract:        ✅ inside 117 (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4, settings: 6)
-Property:        ✅ inside 117 (fsm: 11, inventory: 7, settlements: 8)
+Unit:            ✅ 120/120 passed  (+3 new PdfService integration tests locking Bug #68)
+Contract:        ✅ inside 120 (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4, settings: 6)
+Property:        ✅ inside 120 (fsm: 11, inventory: 7, settlements: 8)
 Components:      ⏭ web testing-library не запускали (FULL pass focused on regression)
 E2E:             ⏭ playwright не запускали (server not running this session)
-Tester sweep:    Phases 21-22 follow-up — 7 нових багів знайдено + виправлено
-Critical fixes:  search reservedQty→reserved (Postgres column did not exist), invoice PDF blob+Bearer
-High-impact:     /branches shape mismatch in employees page, employees filters were no-ops, command palette deep-link
-Important:       WO template names overrode description silently, WO templates update/remove missing orgId
+Build:           ✅ @sto/api nest build clean (7.9s)
+Tester sweep:    FULL pass after 8ed0a42 — 1 CRITICAL bug found + fixed (Bug #68 pdfmake fonts)
+Critical fixes:  PdfService.setFonts re-wired from vfs Buffers → on-disk Roboto paths (B7 dead-on-arrival)
 ```
+
+### Gotcha — /sto-tester FULL pass 2026-05-26 after commit 8ed0a42 (Bug #68)
+
+- **pdfmake v0.3.x server-side: Buffer descriptors crash, ONLY string paths work**: pdfmake's URLResolver does `font.normal.url.toLowerCase()` inside `Printer.resolveUrls`. If you pass a Buffer it reads `buffer.url` → `undefined.toLowerCase()` → `TypeError`. The correct server recipe is `pdfMake.setFonts(require('pdfmake/fonts/Roboto'))` — that module returns `{ Roboto: { normal: '/abs/path/Roboto-Regular.ttf', ... } }` pointing at the ttf files bundled inside `node_modules/pdfmake/fonts/Roboto/`. The legacy v0.1 vfs envelope (`{ pdfMake: { vfs } }`) does NOT exist in v0.3.9 — `pdfmake/build/vfs_fonts` is `module.exports = vfs;` (flat map), and feeding Buffers from that map still hits the URLResolver crash. Never trust an `as { ... }` cast on `require()` results without runtime smoke-testing.
+- **Integration tests for any pdfmake-dependent code are mandatory**: tsc cannot validate the shape of `require()` output, and the URLResolver crash only fires on actual `getBuffer()`. The Bug #68 fix added `pdf.service.spec.ts` with three tests that generate real PDF buffers and assert `%PDF` magic — this is the cheapest guard against future regressions in font wiring or pdfmake upgrades.
 
 ### Gotcha — /sto-tester follow-up 2026-05-26 (commit fix(tester): Bugs #61-#67)
 
