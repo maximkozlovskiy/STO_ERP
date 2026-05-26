@@ -205,35 +205,48 @@ export default function WorkOrdersPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const bulkCancel = useCallback(async (ids: string[]) => {
-    try {
-      await Promise.all(ids.map(id => apiFetch(`/work-orders/${id}/transition`, {
-        method: 'POST',
-        body: JSON.stringify({ status: 'CANCELLED' }),
-      })));
-      bulkSelect.clear();
-      if (features.toastEnabled) toast.success(`Скасовано ${ids.length} нарядів`);
-      load();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка масової операції';
-      if (features.toastEnabled) toast.error(msg); else setError(msg);
-    }
-  }, [bulkSelect, features.toastEnabled, load]);
+  // Bulk transition helper:
+  //   - Uses Promise.allSettled so a single FSM-invalid transition doesn't
+  //     abort the whole batch (e.g. ARCHIVE works only from PAID — the rest
+  //     would otherwise leave the UI with stale selection + no feedback).
+  //   - Always clears the selection and reloads, regardless of partial errors.
+  //   - Aggregates the result into one toast: "Скасовано 3, не вдалось 2".
+  const bulkTransition = useCallback(
+    async (ids: string[], status: 'CANCELLED' | 'ARCHIVED', successLabel: string) => {
+      const results = await Promise.allSettled(
+        ids.map(id => apiFetch(`/work-orders/${id}/transition`, {
+          method: 'POST',
+          body: JSON.stringify({ status }),
+        })),
+      );
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed    = results.length - succeeded;
 
-  const bulkArchive = useCallback(async (ids: string[]) => {
-    try {
-      await Promise.all(ids.map(id => apiFetch(`/work-orders/${id}/transition`, {
-        method: 'POST',
-        body: JSON.stringify({ status: 'ARCHIVED' }),
-      })));
       bulkSelect.clear();
-      if (features.toastEnabled) toast.success(`Архівовано ${ids.length} нарядів`);
       load();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка масової операції';
-      if (features.toastEnabled) toast.error(msg); else setError(msg);
-    }
-  }, [bulkSelect, features.toastEnabled, load]);
+
+      if (features.toastEnabled) {
+        if (succeeded > 0 && failed === 0) {
+          toast.success(`${successLabel} ${succeeded} ${succeeded === 1 ? 'наряд' : 'нарядів'}`);
+        } else if (succeeded > 0 && failed > 0) {
+          toast.warning(`${successLabel} ${succeeded} з ${results.length}. ${failed} не змінено (статус не дозволяє)`);
+        } else {
+          // 0 succeeded — surface first error message if any
+          const firstError = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+          const errMsg = firstError?.reason instanceof Error
+            ? firstError.reason.message
+            : 'жоден наряд не змінено (статус не дозволяє)';
+          toast.error(errMsg);
+        }
+      } else if (failed > 0) {
+        setError(`${succeeded} з ${results.length} нарядів змінено, ${failed} не вдалось`);
+      }
+    },
+    [bulkSelect, features.toastEnabled, load],
+  );
+
+  const bulkCancel  = useCallback((ids: string[]) => bulkTransition(ids, 'CANCELLED', 'Скасовано'), [bulkTransition]);
+  const bulkArchive = useCallback((ids: string[]) => bulkTransition(ids, 'ARCHIVED',  'Архівовано'), [bulkTransition]);
 
   const bulkActions = useMemo<BulkAction[]>(() => [
     { id: 'cancel', label: 'Скасувати', variant: 'destructive', onClick: bulkCancel },
