@@ -9,23 +9,28 @@
 ## Останній commit
 
 ```
-c938dc0 fix(review): invoices page — guard setState after await, fix selectInvoice race
+48e3dcd docs(tester): record bugs #58-#60 from /sto-tester session on invoices page
+e867ba4 fix(tester): Bugs #58-#60 — invoices DetailPanel state-race + VAT breakdown UX
 ```
 
 Дата: 2026-05-26
 
 ## Поточний стан проєкту
 ```
-TypeScript:      ✅ 0 errors        (apps/web + apps/api, --incremental false)
-Unit (web):      ✅ 139/139 passed  (10 useBulkSelect + 6 bulk-actions-bar + 8 sync-indicator + 15 notification-center new)
+TypeScript:      ✅ 0 errors        (apps/web + apps/api + apps/shared)
 Unit (api):      ✅ 117/117 passed  (включно з contract specs)
 Contract:        ✅ присутні для auth/work-orders/inventory/pricing-rules/settings/batches
 Property-based:  ⏭ fast-check не встановлений у @sto/api (відомо з попередніх циклів)
-Component:       ✅ 13 файлів — додано 4 у цій сесії (sync-indicator, notification-center, bulk-actions-bar, useBulkSelect)
-E2E (Playwright): ⏭ не запускались — потребує живий dev-server (поза scope hot-fix sweep)
+Component:       ✅ 13 файлів — без змін у цій сесії (точковий fix на одну сторінку)
+E2E (Playwright): ⏭ не запускались — точковий sweep по invoices/page.tsx
 Build:           ✅ apps/web compiles
-Tester sweep:    Phase 20 UX Groups 4-6 — 5 багів знайдено та виправлено (#53-#57)
+Tester sweep:    Phase 17 invoices/page DetailPanel — 3 баги знайдено та виправлено (#58-#60)
 ```
+
+### Gotcha — /sto-tester invoices/page sweep (2026-05-26, баги #58-#60, commit e867ba4)
+- **Closure-check + functional-setter race у `handleTransition`** (Bug #58): `if (selectedInv?.id === inv.id) setSelectedInv(prev => ({...prev, status: newStatus}))` змішує JS-closure value (для перевірки `if`) і live React state (`prev` у setter). Якщо панель перемикається на іншу invoice між кліком і відповіддю API — newStatus застосовується до НОВОЇ invoice. Канон: ВСЯ перевірка має бути всередині функціонального setter — `setSelectedInv(prev => prev && prev.id === inv.id ? {...prev, status: newStatus} : prev)`. Той самий патерн потрібен скрізь де `if (selectedX) setSelectedX(prev => ...)` після `await` — детальні панелі, відкриті модалки, токенізовані selection.
+- **Server-side side-effects не віддзеркалюються в selectedDetail** (Bug #59): `POST /payments` тригерить `invoice.status = 'PAID'` (PaymentsService:101), але клієнтський `handlePay` оновлює лише список через `load()` — DetailPanel показує застарілий SENT з активною кнопкою «Оплатити», що 400. Канон: після кожної мутації, що змінює статус через side-effect — оновити локально через functional setter ДО `load()`: `setSelectedInv(prev => prev && prev.id === id ? {...prev, status: 'PAID'} : prev)`. Шаблон: detail-panel-state-after-mutation = (mutate) → (sync local visible) → (refetch list).
+- **VAT/totals defaults у Prisma = 0 рендеряться як «реальні» нулі** (Bug #60): `totalWithVat?: number` з API завжди present (default 0) для рахунків створених вручну без InvoiceLines. Перевірка `totalWithVat != null` truthy для 0 → секція «Підсумок» показує «Без ПДВ: 0,00 ₴ / ПДВ: 0,00 ₴ / З ПДВ: 0,00 ₴» поряд із `amount=1000 ₴`. Канон: для полів-сум з Prisma default 0 використовувати `(field ?? 0) > 0` як guard на рендер, не `!= null`. Те саме для будь-яких aggregated Decimal колонок: `totalAmount`, `totalLabor`, `totalParts`, `totalCost` — `> 0` фільтрує і undefined, і нулі.
 
 ### Gotcha — /sto-tester Phase 20 UX Groups 4-6 sweep (2026-05-26, баги #53-#57, commit 18f1d48)
 - **`useBulkSelect` без pruning при зміні items → stale Set across pages** (Bug #53): Set обраних ID зберігається при пагінації/фільтрації/refetch, що дає невидимі вибори у count + хибний allSelected/someSelected + bulk actions проти невидимих ID. Канон: `useEffect(() => { setSelected(prev => prev ∩ visibleIds) }, [items])` з early-return `prev.size === 0`, щоб не тригерити re-render для порожньої виборки. Цей патерн обов'язковий для будь-якого хука що тримає `Set<string>` IDs прив'язаних до зовнішнього масиву.
