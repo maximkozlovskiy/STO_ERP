@@ -126,6 +126,10 @@ export default function EmployeesPage() {
   const [assignedBranches, setAssignedBranches] = useState<string[]>([]);
   const [allBranches, setAllBranches] = useState(false);
 
+  // Edit modal branch state
+  const [editBranchIds, setEditBranchIds] = useState<string[]>([]);
+  const [editAllBranches, setEditAllBranches] = useState(false);
+
   const load = (opts?: { search?: string; role?: string; showDeleted?: boolean }) => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -250,6 +254,8 @@ export default function EmployeesPage() {
       fixedMonthly: rs?.type === 'fixed_plus_bonus' ? String(rs.params.fixedMonthly ?? 0) : '0',
       bonusPercent: rs?.type === 'fixed_plus_bonus' ? String(rs.params.bonusPercent ?? 10) : '10',
     });
+    setEditBranchIds(emp.branchIds ?? []);
+    setEditAllBranches(emp.allBranches ?? false);
     setEditError('');
     setModal('edit');
   };
@@ -279,6 +285,11 @@ export default function EmployeesPage() {
           dateOfFire: editForm.dateOfFire || undefined,
           rateScheme,
         }),
+      });
+      // Save branch assignments
+      await apiFetch<void>(`/employees/${editEmp.id}/branches`, {
+        method: 'POST',
+        body: JSON.stringify({ branchIds: editAllBranches ? [] : editBranchIds, allBranches: editAllBranches }),
       });
       setModal(null); setEditEmp(null); load();
     } catch (e: unknown) { setEditError(e instanceof Error ? e.message : 'Помилка збереження'); }
@@ -723,6 +734,42 @@ export default function EmployeesPage() {
             <div className="grid grid-cols-2 gap-3">
               <Input label="Ставка, грн/міс" type="number" value={editForm.fixedMonthly} onChange={e => setEditForm(f => ({ ...f, fixedMonthly: e.target.value }))} />
               <Input label="Бонус, %" type="number" value={editForm.bonusPercent} onChange={e => setEditForm(f => ({ ...f, bonusPercent: e.target.value }))} />
+            </div>
+          )}
+          {branches.length > 0 && (
+            <div className="space-y-2">
+              <label className="block text-[13px] font-medium text-foreground">Доступ до філій</label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editAllBranches}
+                  onChange={e => setEditAllBranches(e.target.checked)}
+                  className="rounded border-border"
+                />
+                <span className="text-[13px] text-foreground">Доступ до всіх філій</span>
+              </label>
+              {!editAllBranches && (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto border border-border rounded-lg p-2">
+                  {branches.map(branch => (
+                    <label key={branch.id} className="flex items-center gap-2 text-sm cursor-pointer px-1 py-0.5 hover:bg-secondary rounded">
+                      <input
+                        type="checkbox"
+                        checked={editBranchIds.includes(branch.id)}
+                        onChange={e => {
+                          setEditBranchIds(prev =>
+                            e.target.checked
+                              ? [...prev, branch.id]
+                              : prev.filter(id => id !== branch.id),
+                          );
+                        }}
+                        className="rounded border-border text-primary focus:ring-ring"
+                      />
+                      <span className="text-foreground">{branch.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <p className="text-[12px] text-muted-foreground">OWNER та ADMIN мають доступ до всіх філій автоматично.</p>
             </div>
           )}
         </div>

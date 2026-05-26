@@ -1005,7 +1005,7 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 - [ ] `[sto-installer]` Inno Setup скрипт: завантаження/розпакування Docker images, `docker compose up`, Windows service
 - [ ] `[sto-installer]` PowerShell `Update.ps1`: pull нових images + `migrate deploy` + restart
 - [ ] `[sto-installer]` PowerShell `Backup.ps1`: `pg_dump` + архів MinIO + ротація 30 днів
-- [ ] `[sto-backend]` `GET /health` → детальний статус: DB, Redis, MinIO, BullMQ queues
+- [x] `[sto-backend]` `GET /health` → детальний статус: DB, Redis, MinIO, BullMQ queues
 - [ ] `[sto-web]` Production Next.js build + статичний експорт в `apps/api/public/`
 - [ ] `[sto-mobile]` EAS Build: APK (Android) + TestFlight (iOS)
 - [ ] Фінальне тестування: smoke test після установки на чистій Windows VM
@@ -1034,9 +1034,9 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### B3 — Планувальник записів (Booking Engine)
 
-- [ ] `[sto-backend]` `GET /booking/availability?date=&branchId=&serviceIds=` → вільні слоти (враховує зайнятість підйомників + час на роботи з Work.normoHours). Публічний endpoint `@Public()`.
-- [ ] `[sto-backend]` `POST /booking/request` (публічний) → створює `BookingRequest` (PENDING) → SMS підтвердження через NotificationService → авто-CalendarSlot при підтвердженні персоналом
-- [ ] `[sto-web]` Сторінка `/booking` (без auth) — вибір послуг → вибір дати/слоту → форма контакту → підтвердження. Embed-кнопка для сайту СТО.
+- [x] `[sto-backend]` `GET /booking/availability?date=&branchId=&serviceIds=` → вільні слоти (враховує зайнятість підйомників + час на роботи з Work.normoHours). Публічний endpoint `@Public()`.
+- [x] `[sto-backend]` `POST /booking/request` (публічний) → створює `BookingRequest` (PENDING) → SMS підтвердження через NotificationService → авто-CalendarSlot при підтвердженні персоналом
+- [x] `[sto-web]` Сторінка `/booking` (без auth) — вибір послуг → вибір дати/слоту → форма контакту → підтвердження. Embed-кнопка для сайту СТО.
 
 ### B4 — Гарантійний облік
 
@@ -1088,7 +1088,7 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 - [x] `[sto-database]` Таблиця `EmployeeBranch` (`employeeId`, `branchId`) — M:M. Поле `Employee.allBranches Boolean @default(false)` для OWNER/ADMIN.
 - [x] `[sto-backend]` `BranchAccessGuard` — перевіряє що `orgId` у JWT + `branchId` з request param є в `employeeBranches[]` (або `allBranches=true`). Застосовується до WO, Invoice, CalendarSlot.
-- [ ] `[sto-web]` Форма співробітника → вкладка "Доступ до філій" (checkbox-список)
+- [x] `[sto-web]` Форма співробітника → вкладка "Доступ до філій" (checkbox-список)
 
 ### B11 — Audit Log (документальна стрічка)
 

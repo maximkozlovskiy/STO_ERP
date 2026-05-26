@@ -271,6 +271,7 @@ model Organisation {
   inspectionReports     InspectionReport[]
   webhookEndpoints      WebhookEndpoint[]
   loyaltyAccounts       LoyaltyAccount[]
+  bookingRequests       BookingRequest[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -314,6 +315,7 @@ model GarageBranch {
   workOrders       WorkOrder[]
   stockDocuments   StockDocument[]
   employeeBranches EmployeeBranch[]
+  bookingRequests  BookingRequest[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -1690,6 +1692,31 @@ model SyncJob {
   @@index([orgId, status])
   @@index([orgId, tableName, syncVersion])
   @@map("sync_jobs")
+}
+
+// ─── BOOKING REQUESTS (B3) ───────────────────────────────
+
+model BookingRequest {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String    @db.Uuid
+  branchId        String    @db.Uuid
+  status          String    @default("PENDING")
+  clientName      String
+  clientPhone     String
+  serviceIds      String[]
+  requestedDate   DateTime
+  confirmedSlotId String?   @db.Uuid
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  org    Organisation  @relation(fields: [orgId], references: [id])
+  branch GarageBranch  @relation(fields: [branchId], references: [id])
+
+  @@index([orgId, status, deletedAt])
+  @@index([orgId, createdAt])
+  @@map("booking_requests")
 }
 
 // ─── LOYALTY PROGRAM (B4) ────────────────────────────────

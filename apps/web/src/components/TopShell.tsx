@@ -138,7 +138,7 @@ function isActive(pathname: string, href: string): boolean {
   return pathname.startsWith(href);
 }
 
-const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403'];
+const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403', '/booking'];
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some((p) => pathname === p || pathname.startsWith(`${p}/`));

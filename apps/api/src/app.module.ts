@@ -46,6 +46,7 @@ import { WarrantiesModule } from './modules/warranties/warranties.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { InspectionModule } from './modules/inspection/inspection.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { BookingModule } from './modules/booking/booking.module';
 
 @Module({
   imports: [
@@ -104,6 +105,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     LoyaltyModule,
     InspectionModule,
     WebhooksModule,
+    BookingModule,
   ],
 })
 export class AppModule {}
