@@ -1491,3 +1491,122 @@ User натискає "Архівувати" → bulk запит → перши�
 
 ---
 
+
+## Session 2026-05-26 — Phase 17 InvoiceLine + DetailPanel race protection (commits ce37b48, c938dc0)
+
+Тестування `apps/web/src/app/invoices/page.tsx` після додавання:
+- `InvoiceLine` interface + lines table в DetailPanel
+- `OVERDUE` status + transitions
+- VAT breakdown (`totalWithoutVat/totalVat/totalWithVat`)
+- detail fetch race-protection (`selectTokenRef`, `mountedRef`)
+
+---
+
+## Bug #58 — [HIGH] `handleTransition` функціональний setter застосовує newStatus до ПОТОЧНОГО `selectedInv`, а не до того що перевіряв `if`
+
+**Файл:** `apps/web/src/app/invoices/page.tsx:173-176`
+**Severity:** HIGH
+**Категорія:** frontend (state-update race)
+
+**Опис:**
+```typescript
+const handleTransition = async (inv: Invoice, newStatus: string) => {
+  ...
+  if (selectedInv?.id === inv.id) {                         // ← closure value
+    setSelectedInv(prev => prev ? { ...prev, status: newStatus } : null);  // ← prev = LIVE state
+  }
+  ...
+};
+```
+
+Чек `selectedInv?.id === inv.id` читає `selectedInv` з замикання (capture-at-click).
+Функціональний setter `setSelectedInv(prev => ...)` отримує **актуальний** `selectedInv` на момент комміту,
+який може вже бути іншим запи��ом.
+
+Сценарій:
+1. Користувач відкриває панель з INV-A → `selectedInv=A`
+2. Натискає «Скасувати» на рядку INV-A (`inv=A`, замикання `selectedInv=A`)
+3. До завершення запиту натискає рядок INV-C → `selectedInv=C`
+4. Запит на A завершується → `if (A.id === A.id)` true → setter застосовує `{...prev, status: 'CANCELLED'}` де `prev=C`
+5. **C тепер показано зі статусом CANCELLED**, хоча скасовувався A.
+
+**Очікувана поведінка:**
+Перевірка має бути всередині функціонального setter, щоб порівнювати з актуальним стейтом:
+```typescript
+setSelectedInv(prev => prev?.id === inv.id ? { ...prev, status: newStatus } : prev);
+```
+
+**Фактична поведінка:**
+Статус застосовується до випадково обраного на той момент рахунку.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #59 — [MEDIUM] Після `handlePay` `selectedInv` не оновлюється — показується застарілий статус
+
+**Файл:** `apps/web/src/app/invoices/page.tsx:185-210`
+**Severity:** MEDIUM
+**Категорія:** frontend (stale UI state)
+
+**Опис:**
+`PaymentsService.create()` транзиційно змінює `invoice.status = 'PAID'`
+(`apps/api/src/modules/payments/payments.service.ts:101`). Після успішного `POST /payments`
+`load()` оновлює список, але `selectedInv` залишається старим (статус не оновлено,
+totalWithoutVat/Vat/WithVat не оновлено, lines не оновлено).
+
+**Очікувана поведінка:**
+Після успішної оплати потрібно або:
+- закрити DetailPanel (`setSelectedInv(null)`), щоб показ був консистентний; або
+- повторно завантажити деталі: `apiFetch<Invoice>(/invoices/${id})` і оновити `selectedInv`.
+
+**Фактична поведінка:**
+DetailPanel показує `SENT` статус та action button «Оплатити» хоча сервер вже `PAID`.
+Користувач плутається — натискає «Оплатити» вдруге, отримує 400 Bad Request.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #60 — [MEDIUM] VAT breakdown показує «0,00 ₴» при відсутності лайнів — оманливо для рахунків без позицій
+
+**Файл:** `apps/web/src/app/invoices/page.tsx:433`
+**Severity:** MEDIUM
+**Категорія:** frontend (UX / data display)
+
+**Опис:**
+```typescript
+{!detailLoading && selectedInv.totalWithVat != null && (
+  <div className="space-y-1.5 pt-2 border-t border-border">
+    <p>Підсумок</p>
+    <div>Без ПДВ: {fmt(selectedInv.totalWithoutVat ?? 0)}</div>  // 0,00 ₴
+    <div>ПДВ: {fmt(selectedInv.totalVat ?? 0)}</div>             // 0,00 ₴
+    <div>З ПДВ: {fmt(selectedInv.totalWithVat)}</div>            // 0,00 ₴
+  </div>
+)}
+```
+
+Prisma defaults `totalWithoutVat/totalVat/totalWithVat = 0`. Для рахунків створених вручну
+через `POST /invoices` (без InvoiceLines) ці значення завжди 0. Умова `!= null` truthy для 0,
+тому секція «Підсумок» рендериться з трьома нулями, що дезінформує користувача
+(`inv.amount=1000 ₴` а в підсумку — 0).
+
+**Очікувана поведінка:**
+Показувати «Підсумок з ПДВ» лише коли він реально розрахований (є лінії або сума > 0):
+```typescript
+{!detailLoading && (selectedInv.lines?.length ?? 0) > 0 && selectedInv.totalWithVat != null && (
+  ...
+)}
+// або
+{!detailLoading && (selectedInv.totalWithVat ?? 0) > 0 && (
+  ...
+)}
+```
+
+**Фактична поведінка:**
+Користувач бачить «Без ПДВ: 0,00 ₴ / ПДВ: 0,00 ₴ / З ПДВ: 0,00 ₴» для рахунку на 1000 ₴.
+
+**Статус:** [x] виправлено
+
+---
+
