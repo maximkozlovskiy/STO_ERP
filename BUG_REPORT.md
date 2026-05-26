@@ -2340,3 +2340,956 @@ HTTP 200 з порожнім тілом.
 
 ---
 
+
+## Session 2026-05-26 — B12 (WorkOrderMedia), B11 (AuditEvent), B9+F7 (SSE Dashboard), B8 (FollowUp CRON), F9 (DatePickerInput), F4 (Clone WO/Invoice), F5 (Print CSS)
+
+Запуск: FULL `/sto-tester`
+Baseline:
+- TypeScript: OK (web + api + shared)
+- Unit tests: 142/142 passed (16 test files)
+
+---
+
+## Bug #81 — [HIGH] `WorkOrdersService.clone` не перераховує totals
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:228-272`
+**Severity:** HIGH
+**Категорія:** business-logic
+
+**Опис:**
+`clone()` копіює `lines` і `parts` оригіналу (з їх `amount`), але **НЕ копіює і НЕ перераховує** `totalLabor`, `totalParts`, `totalAmount`. WorkOrder.create() пише з Prisma defaults → всі totals == 0.
+
+**Очікувана поведінка:**
+Після клонування `totalLabor`, `totalParts`, `totalAmount` повинні відповідати сумам ліній/запчастин.
+
+**Фактична поведінка:**
+Користувач бачить новий DRAFT WO з усіма позиціями, але totals = 0,00 ₴. Інформація неконсистентна (UI малює `wo.lines[].amount=1500` поряд з `totalLabor=0`).
+
+**Фікс:**
+Після `prisma.workOrder.create(...)` обчислити суми з оригіналу і записати у `update`. Або обернути create+recalc у `$transaction` з викликом `recalcTotals`.
+
+**Статус:** [x] виправлено (totalLabor/totalParts/totalAmount обчислюються з original.lines/parts перед create)
+
+---
+
+## Bug #82 — [HIGH] `InvoicesService.clone` не перераховує VAT totals
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:150-199`
+**Severity:** HIGH
+**Категорія:** business-logic / financial
+
+**Опис:**
+`clone()` копіює `lines` оригіналу (з `priceWithoutVat`, `vatAmount`, `priceWithVat`) і `original.amount`, але **НЕ записує** `totalWithoutVat`, `totalVat`, `totalWithVat` у нову інвойс-сутність. Prisma defaults → 0.
+
+**Очікувана поведінка:**
+Клонована інвойс містить коректні `totalWithoutVat`/`totalVat`/`totalWithVat`, що відповідають копії ліній.
+
+**Фактична поведінка:**
+DetailPanel показує "Без ПДВ: 0,00 ₴ / ПДВ: 0,00 ₴ / З ПДВ: 0,00 ₴", але amount = original.amount → візуальна неконсистентність. PDF буде з amount, але без VAT breakdown.
+
+**Фікс:**
+Після `prisma.invoice.create(...)` викликати `recalcTotals(orgId, cloned.id)` (приватний метод вже існує).
+
+**Статус:** [x] виправлено (totalWithoutVat/totalVat/totalWithVat обчислюються з original.lines перед create)
+
+---
+
+## Bug #83 — [HIGH] `DashboardService.lowStockCount` повертає всі StockItem, не товари з низьким залишком
+
+**Файл:** `apps/api/src/modules/dashboard/dashboard.service.ts:59-65`
+**Severity:** HIGH
+**Категорія:** business-logic / KPI
+
+**Опис:**
+SSE `getSummary` має повертати кількість товарів де `quantity < good.minStock`, але код пише `prisma.stockItem.count({ where: { orgId } })` — повертає **всю кількість StockItem**. Коментар у коді визнає це: «`quantity < good.minStock` неможливо виразити декларативно у Prisma».
+
+**Очікувана поведінка:**
+Повернути кількість де `quantity < minStock` (узгоджено з `/stock-items/low` endpoint).
+
+**Фактична поведінка:**
+KPI картка "Низький залишок" показує загальну кількість всіх stock-items (іноді тисячі), що цілковито вводить в оману.
+
+**Фікс:**
+Використати raw SQL `$queryRaw` з JOIN на Good (camelCase колонки в `"orgId"`/`"minStock"`).
+
+**Статус:** [x] виправлено (dashboard.service.ts тепер robi raw SQL COUNT з si.quantity <= si."minStock")
+
+---
+
+## Bug #84 — [HIGH] Frontend settings шле `followUpActive`/`followUpDays`, але бекенд їх не приймає і не повертає
+
+**Файл:**
+- `apps/api/src/modules/settings/settings.dto.ts:41-97` (немає полів)
+- `apps/api/src/modules/settings/settings.service.ts:186-216` (mapOrgSettings не повертає)
+- `apps/web/src/app/settings/page.tsx:586-633` (UI шле в PATCH)
+
+**Severity:** HIGH
+**Категорія:** api-contract / data-loss
+
+**Опис:**
+Schema містить `OrganisationSettings.followUpActive`/`followUpDays` (додані в коміті e7e0c83), але DTO/сервіс не передають їх ні на запис, ні на читання. `ValidationPipe whitelist: true` мовчки відкидає поля з PATCH. `mapOrgSettings` не повертає ці поля → frontend завжди отримує `undefined`.
+
+**Очікувана поведінка:**
+PATCH `/settings/organisation` з `{ followUpActive, followUpDays }` має зберегти у БД; GET повертає ці значення.
+
+**Фактична поведінка:**
+Тогл "Включити нагадування" у settings нічого не зберігає. Після reload зникає state. Користувач не знає що нічого не записалось — повідомлення «Збережено» вводить в оману.
+
+**Фікс:**
+1. Додати `followUpActive?: boolean` (`@IsOptional() @IsBoolean()`) і `followUpDays?: number` (`@IsInt() @Min(30) @Max(365)`) у `UpdateOrganisationSettingsDto`.
+2. Додати поля у `OrganisationSettingsResponseDto`.
+3. Додати у `mapOrgSettings` повернення значень.
+
+**Статус:** [x] виправлено (DTO + Response мали поля, але mapOrgSettings shape був без них → tsc баг #0a — виправлено першим у сесії)
+
+---
+
+## Bug #85 — [MEDIUM] `WorkOrderMedia` upload не використовує silent refresh — fail при expired access token
+
+**Файл:** `apps/web/src/app/work-orders/[id]/PageClient.tsx:226-255`
+**Severity:** MEDIUM
+**Категорія:** frontend / UX
+
+**Опис:**
+`handleMediaUpload` використовує native `fetch` з Bearer токеном з sessionStorage. Access token живе ~15 хв; після його закінчення upload падає з 401, інкрементується `failures` без розуміння причини. Силент refresh з `api-client.ts` не задіюється.
+
+**Очікувана поведінка:**
+При 401 — викликати refresh, повторити upload з новим токеном. Як `apiBlobFetch`.
+
+**Фактична поведінка:**
+Користувач отримує абстрактне "Не вдалося завантажити N файл(ів)". Доводиться вручну перелогінитись.
+
+**Фікс:**
+Винести multipart upload у новий хелпер `apiMultipartFetch` в `api-client.ts` з тією ж refresh-логікою, що і `apiBlobFetch`. У PageClient.tsx замінити прямий `fetch` на `apiMultipartFetch`.
+
+**Статус:** [x] виправлено (api-client.ts: новий apiMultipartFetch; PageClient.tsx: замінено native fetch)
+
+---
+
+## Bug #86 — [MEDIUM] `WorkOrdersService.update` не пише AuditEvent
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:153-184`
+**Severity:** MEDIUM
+**Категорія:** business-logic / audit-coverage
+
+**Опис:**
+Звичайний `update()` (зміна опису, mileage, priority, repairCategory, plannedAt, dueDate, clientApproval) **не пише AuditEvent**. B11 фіча обіцяла journal of changes. Зараз журналом фіксуються тільки CREATE/DELETE та FSM transition.
+
+**Очікувана поведінка:**
+Кожна зміна поля → запис в AuditEvent з diff oldData → newData.
+
+**Фактична поведінка:**
+У "Журналі змін" відсутні події редагування. Адмін не може дізнатись хто і коли змінив пробіг або дедлайн.
+
+**Фікс:**
+Передати `userId` з контролера у `update()`. Після `prisma.workOrder.update`, викликати `audit.record(orgId, 'WorkOrder', id, 'UPDATE', userId, oldData, newData)` (з catch у warn).
+
+**Статус:** [x] виправлено (controller.update передає user.id; service.update збирає oldData/newData з touched fields і викликає audit.record)
+
+---
+
+## Bug #87 — [MEDIUM] `DatePickerInput.min`/`max` props ігноруються
+
+**Файл:** `apps/web/src/components/ui/date-picker-input.tsx:10-22, 110-138`
+**Severity:** MEDIUM
+**Категорія:** frontend / contract
+
+**Опис:**
+Інтерфейс декларує `min?: string` і `max?: string` (YYYY-MM-DD), але **не передає** їх у `DayPicker` через `disabled={...}` правила. Також `handleInputChange` парсить дату без перевірки меж.
+
+**Очікувана поведінка:**
+Дні поза `[min, max]` повинні бути disabled у DayPicker і onChange не повинен викликатися при ручному вводі поза межами.
+
+**Фактична поведінка:**
+Користувач може вибрати/вводити будь-яку дату — обмеження невидиме для UI.
+
+**Фікс:**
+Перетворити `min`/`max` на Date і передати у DayPicker через `disabled={[{ before: minDate }, { after: maxDate }]}`. У `handleInputChange` після успішного parse — перевірити що дата в межах [min, max].
+
+**Статус:** [x] виправлено (destructure min/max з props; isWithinBounds() в handleInputChange та handleDaySelect; disabledMatchers: Matcher[] у DayPicker)
+
+---
+
+## Bug #88 — [MEDIUM] `AuditService.findByEntity` повертає `total = items.length`, а не справжній count
+
+**Файл:** `apps/api/src/modules/audit/audit.service.ts:41-64`
+**Severity:** MEDIUM
+**Категорія:** api-contract / pagination
+
+**Опис:**
+```ts
+const items = await prisma.auditEvent.findMany({ ..., take: 100 });
+return { items, total: items.length };
+```
+Якщо в БД 150 подій, фронт отримує `total: 100` — і думає що це повна кількість. Pagination ніколи не буде доданий, бо frontend думає що бачить все.
+
+**Очікувана поведінка:**
+`total` = справжній `prisma.auditEvent.count(where)`. Або хоча б позначка `hasMore: items.length === 100`.
+
+**Фактична поведінка:**
+Frontend не знає що деякі події приховані за межею 100.
+
+**Фікс:**
+Замінити на `$transaction([findMany, count])` і повернути справжній total.
+
+**Статус:** [x] виправлено (audit.service.ts findByEntity тепер використовує $transaction([findMany, count]))
+
+---
+
+## Bug #89 — [LOW] Lightbox для media — немає Escape handler та a11y role
+
+**Файл:** `apps/web/src/app/work-orders/[id]/PageClient.tsx:818-822`
+**Severity:** LOW
+**Категорія:** frontend / a11y / UX
+
+**Опис:**
+```jsx
+{lightboxUrl && (
+  <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
+       onClick={() => setLightboxUrl(null)}>
+    <img src={lightboxUrl} alt="Фото" ... />
+  </div>
+)}
+```
+- Немає `role="dialog"`/`aria-modal`/`aria-label`.
+- Немає keyboard handler — клавіша Escape не закриває.
+- Клавіатурні юзери не можуть закрити модалку.
+
+**Очікувана поведінка:**
+Lightbox — модальний; підтримує Escape; має ARIA-роль.
+
+**Фактична поведінка:**
+Mouse-only закриття.
+
+**Фікс:**
+Додати `role="dialog"`, `aria-modal="true"`, `aria-label="Перегляд фото"` і `useEffect` з `keydown` listener для Escape.
+
+**Статус:** [x] виправлено (PageClient.tsx: useEffect із document keydown listener; lightbox div з role/aria-modal/aria-label)
+
+---
+
+## Bug #90 — [LOW] `WorkOrdersService.clone` і `InvoicesService.clone` не перевіряють чи FK-сутності soft-deleted
+
+**Файл:**
+- `apps/api/src/modules/work-orders/work-orders.service.ts:201-273`
+- `apps/api/src/modules/invoices/invoices.service.ts:150-199`
+
+**Severity:** LOW
+**Категорія:** business-logic / error-UX
+
+**Опис:**
+Клонування не валідує що `vehicleId`/`counterpartyId`/`branchId` ще існують (не soft-deleted). Якщо оригінал старий — Prisma викине P2003 FK error замість дружнього 404.
+
+**Очікувана поведінка:**
+Чітке повідомлення «Контрагент / Авто / Філію видалено — клонування неможливе».
+
+**Фактична поведінка:**
+500 з технічним повідомленням Prisma.
+
+**Фікс:**
+Додати парне `findFirst({ where: { id, orgId, deletedAt: null } })` для кожного FK перед `create`.
+
+**Статус:** [x] виправлено (work-orders.service.ts clone: pre-check vehicle/counterparty/branch; invoices.service.ts clone: pre-check counterparty)
+
+---
+
+
+## Session 2026-05-26 — FULL re-run after 0aa4cb3 (verify #81-90 fixes + new sweep on e7e0c83..0aa4cb3)
+
+Запуск: FULL `/sto-tester` (re-verification of previously-open bugs + cover new modules)
+
+Baseline:
+- `tsc` api — ❌ 1 error in `settings.service.ts` (Bug #0a / #84 follow-up — mapOrgSettings missing followUpActive/followUpDays in shape; ВИПРАВЛЕНО першим)
+- `tsc` web/shared — ✅ 0 errors
+- Unit + contract + property API — ✅ 142/142 passed (16 test files)
+- Component (web vitest) — ✅ 139/139 passed (13 test files)
+
+---
+
+
+## Bug #91 — [HIGH] `InvoicesService.clone` копіює `workOrderId` → дублікат рахунку прив'язаний до того ж наряду
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:174-188`
+**Severity:** HIGH
+**Категорія:** business-logic / financial
+
+**Опис:**
+`clone()` пише `workOrderId: original.workOrderId` у новий рахунок. Якщо оригінал створено з наряду (`createFromWorkOrder`), клон **прив'язується до того ж самого WO**. Наслідки:
+- Один WO має 2+ рахунки (`prisma.invoice.findFirst({ where: { workOrderId } })` повертає випадковий).
+- Якщо WO ще не завершено і його завершення викликає авто-створення рахунку — буде створено ТРЕТІЙ рахунок (один з оригіналу, один клон, один авто).
+- Звіт "виручка за WO" дублює суму.
+
+**Очікувана поведінка:**
+Клон — самостійний рахунок без прив'язки до WO. `workOrderId: null`. Якщо потрібен зв'язок — окрема операція.
+
+**Фактична поведінка:**
+`workOrderId` копіюється беззвучно.
+
+**Фікс:**
+У `clone()` data: `workOrderId: null`.
+
+**Статус:** [x] виправлено (invoices.service.ts clone: `workOrderId: null` явно)
+
+---
+
+
+## Bug #92 — [HIGH] `InvoicesController.create` і `createFromWorkOrder` використовують `@CurrentUser() user: { sub: string }`
+
+**Файл:** `apps/api/src/modules/invoices/invoices.controller.ts:50-52, 60-63`
+**Severity:** HIGH
+**Категорія:** typescript / security (creator tracking)
+
+**Опис:**
+Контролери передають `user?.sub` у сервіс, але `AuthenticatedUser` (jwt.strategy.ts) повертає `{ id, orgId, role }`, БЕЗ `sub`. `user.sub` завжди `undefined`. Це — той самий патерн, що описаний у Gotcha від 2026-05-26 (commit 7ee1db4) для WO controller, але `invoices.controller` пропустили.
+
+Підсумок: будь-який downstream код що використовує `createdBy` (audit, рекомендації) тихо отримує `undefined`.
+
+**Очікувана поведінка:**
+`@CurrentUser() user: { id: string }` + `user.id`.
+
+**Фактична поведінка:**
+`user.sub` undefined → creator/audit info втрачено.
+
+**Фікс:**
+Замінити обидві анотації типу і передачу: `user.id`.
+
+**Статус:** [x] виправлено (invoices.controller.ts create + createFromWorkOrder: `{ id: string }` + `user.id`)
+
+---
+
+
+## Bug #93 — [LOW] `WorkOrderMediaResponseDto.fileKey` витікає на frontend без використання
+
+**Файл:** `apps/api/src/modules/work-order-media/work-order-media.dto.ts:6`
+**Severity:** LOW
+**Категорія:** api-design / information-disclosure
+
+**Опис:**
+DTO повертає `fileKey` (внутрішній MinIO object path, `org/<uuid>/work-orders/<uuid>/<uuid>.jpg`). Frontend declares цей `fileKey` у interface, але **не використовує** для рендеру (всюди `m.signedUrl`).
+
+**Очікувана поведінка:**
+DTO не містить internal storage layout. `signedUrl` достатньо.
+
+**Фактична поведінка:**
+Розкриває структуру S3/MinIO bucket-у (org id у URL). Не security disaster, але порушує least-privilege.
+
+**Фікс:**
+Видалити `fileKey` з `WorkOrderMediaResponseDto` (з DTO та з `toDto`). Оновити frontend interface.
+
+**Статус:** [x] виправлено (work-order-media.dto.ts: видалено поле; service.ts toDto: видалено; PageClient.tsx WorkOrderMedia interface: видалено)
+
+---
+
+
+## Bug #94 — [LOW] `WorkOrdersService.clone` копіює `actualHours` у клон-DRAFT
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:251-261`
+**Severity:** LOW
+**Категорія:** business-logic / UX
+
+**Опис:**
+`clone()` копіює `actualHours: l.actualHours ?? null` з оригіналу. Клон — це новий DRAFT, де роботи ще НЕ виконано → `actualHours` повинно бути `null`. Зараз клонується факт. години, ніби роботу вже зробили.
+
+**Очікувана поведінка:**
+`actualHours: null` для всіх ліній клона.
+
+**Фактична поведінка:**
+Виконавець бачить факт-години з минулого наряду як свої → введе в оману звіт по фактичних трудовитратах.
+
+**Фікс:**
+У `clone()` `actualHours: null` явно (а не `?? null`).
+
+**Статус:** [x] виправлено (work-orders.service.ts clone: lines.create мають `actualHours: null`)
+
+---
+
+
+## Bug #95 — [LOW] `WorkOrdersService.clone` і `InvoicesService.clone` без `$transaction` → втрачений document number при FK fail
+
+**Файл:**
+- `apps/api/src/modules/work-orders/work-orders.service.ts:225-279`
+- `apps/api/src/modules/invoices/invoices.service.ts:163-209`
+
+**Severity:** LOW
+**Категорія:** atomicity / sequence-leak
+
+**Опис:**
+`docNumbers.next()` (raw SQL з `UPDATE document_number_configs SET currentSeq = ...`) виконується перед `prisma.workOrder/invoice.create`. Якщо create падає (наприклад, FK violation бо vehicle видалили), номер вже advanced → "діра" у sequence. Зростає monotonically, аудит вимагає consecutive numbering для деяких форм первинної документації в Україні (хоча для WO/Invoice не критично).
+
+**Очікувана поведінка:**
+Обернути docNumbers.next + create в одну `$transaction`.
+
+**Фактична поведінка:**
+Втрата sequence number → зростання дір у нумерації документів.
+
+**Фікс:**
+`prisma.$transaction(async tx => { ... docNumbers.next(orgId, type, tx); ... tx.workOrder.create(...) })`. Або catch error → docNumbers rollback (складніше).
+
+**Статус:** [ ] відкритий (LOW — мінорний sequence-leak; Bug #90 pre-check тепер ловить більшість FK violations ДО docNumbers.next, що зменшує реальний вплив. Окремий фікс для $transaction інтеграції з document-number raw SQL — у пізнішому скоупі)
+
+---
+
+
+## Bug #96 — [LOW] `WorkOrdersService.clone` не пише AuditEvent
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:201, 281`
+**Severity:** LOW
+**Категорія:** audit-coverage
+
+**Опис:**
+Контролер передає `user.id` у сервіс (`_userId` параметр), але клон не викликає `this.audit.record(...)`. Коментар у коді: `// _userId reserved for future audit logging of clone events`. Frontend "Журнал змін" не покаже хто і коли клонував наряд.
+
+**Очікувана поведінка:**
+`audit.record(orgId, 'WorkOrder', cloned.id, 'CREATE', userId, undefined, { status: 'DRAFT', number, clonedFromId: id })`.
+
+**Фактична поведінка:**
+Клонований наряд має пустий audit log.
+
+**Фікс:**
+Додати виклик audit.record після create + перейменувати `_userId` → `userId`.
+
+**Статус:** [x] виправлено (work-orders.service.ts clone: userId без префіксу; audit.record викликається з diff `{ clonedFromId, clonedFromNumber }`)
+
+---
+
+
+## Bug #0a (baseline) — [CRITICAL] `mapOrgSettings` shape missing `followUpActive`/`followUpDays`
+
+**Файл:** `apps/api/src/modules/settings/settings.service.ts:186-216`
+**Severity:** CRITICAL (TS build break)
+**Категорія:** typescript
+
+**Опис:**
+Bug #84 (попередня сесія) додав `followUpActive`/`followUpDays` у `OrganisationSettingsResponseDto` і DTO, але `mapOrgSettings` параметр-тип і return-об'єкт залишились без цих полів. Кожен tsc виконується з помилкою:
+```
+src/modules/settings/settings.service.ts(201,5): error TS2739: Type '{ ... }' is missing the following properties from type 'OrganisationSettingsResponseDto': followUpActive, followUpDays
+```
+
+**Очікувана поведінка:**
+`mapOrgSettings` приймає і повертає всі поля.
+
+**Фактична поведінка:**
+TS компіляція ламається.
+
+**Фікс:**
+Додати `followUpActive: boolean; followUpDays: number;` у параметр-shape і `followUpActive: s.followUpActive, followUpDays: s.followUpDays` у return.
+
+**Статус:** [x] виправлено (першим у сесії, бо блокує всі інші tsc)
+
+---
+
+
+## Session 2026-05-26 — B8 FollowUp CRON (commits 3c6d233 + fab5fd1) — /sto-tester FULL
+
+Тестується реалізація B8: `followup.processor.ts` + `followup.scheduler.ts` + `NotificationsModule` (followup queue) + `FOLLOWUP_REMINDER` enum + migration. Phase 18 (Installer) НЕ тестується за прямим вказівкою користувача.
+
+Базова перевірка (Крок 0):
+- TS: ✅ 0 errors (api + web + shared).
+- Unit: ✅ 151/151 passed.
+
+---
+
+
+## Bug #97 — [CRITICAL] `FollowUpScheduler` додає CRON для soft-deleted організацій
+
+**Файл:** `apps/api/src/modules/notifications/followup.scheduler.ts:23-26`
+**Severity:** CRITICAL
+**Категорія:** business-logic / soft-delete
+
+**Опис:**
+`prisma.organisation.findMany({ select: { orgId: true }, take: 1000 })` — НЕ фільтрує `deletedAt: null`. У продакшені, де клієнт мігрував з однієї СТО на іншу (стара організація soft-deleted), CRON продовжуватиме раз на день будити процесор для тієї org → процесор шукатиме шаблон → лог пропусків. Гірше: якщо у видаленій org є завислі активні `MaintenanceSchedule` (бо `deletedAt: null` — soft-delete не каскадний по Prisma), реальні SMS будуть надіслані з імені вже неіснуючої СТО (підпис `branchSettings.smsSenderName`).
+
+Згідно SKILL §1.1 (Soft Delete): "Всі `findFirst`/`findMany` містять `deletedAt: null`". Виключення лише для append-only моделей — Organisation не у списку.
+
+**Очікувана поведінка:**
+`where: { deletedAt: null }` для виключення видалених організацій.
+
+**Фактична поведінка:**
+CRON для всіх організацій, включно з deleted; daily wake-up на видалені tenant; потенційний SMS-витік з імені "видаленого" СТО.
+
+**Фікс:**
+```typescript
+const orgs = await this.prisma.organisation.findMany({
+  where: { deletedAt: null },
+  select: { id: true },
+  take: 1000,
+});
+```
+
+**Статус:** [x] виправлено (followup.scheduler.ts: додано `where: { deletedAt: null }` + перейменовано select на `{ id: true }`)
+
+---
+
+
+## Bug #98 — [HIGH] `FollowUpScheduler` використовує `select: { orgId: true }` замість `{ id: true }` (фрагільна семантика)
+
+**Файл:** `apps/api/src/modules/notifications/followup.scheduler.ts:24,35`
+**Severity:** HIGH
+**Категорія:** business-logic / data-modelling
+
+**Опис:**
+Усі FK у схемі (counterparties, vehicles, customer_garages, garage_branches, organisation_settings, notification_templates) ВКАЗУЮТЬ на `organisations.id`:
+```sql
+FOREIGN KEY ("orgId") REFERENCES "organisations"("id")
+```
+Тобто значення, яке "tenants pass around" як `orgId`, — це `Organisation.id`. Колонка `Organisation.orgId` існує і дорівнює `id` лише завдяки самореференції в `setup.service.ts` (`{ orgId: org.id }`). Це фрагільна угода: будь-який майбутній код, що створює Organisation без виставлення `orgId = id`, отримає mismatch.
+
+Усі інші сервіси читають org через `prisma.organisation.findFirst({ where: { id: orgId } })` і `select: { id: true }`. Тут — єдине місце в кодовій базі, що читає `orgId` field. Це порушує consistency convention і ламається при першому Organisation з `id !== orgId`.
+
+**Очікувана поведінка:**
+`select: { id: true }` + `org.id` далі.
+
+**Фактична поведінка:**
+`select: { orgId: true }` + `org.orgId` — працює тільки доки `id === orgId`.
+
+**Фікс:**
+Замінити `select: { orgId: true }` → `select: { id: true }`; `org.orgId` → `org.id` у `add()`.
+
+**Статус:** [x] виправлено (followup.scheduler.ts: `select: { id: true }`, далі `{ orgId: org.id }` і `jobId: 'followup-${org.id}'`)
+
+---
+
+
+## Bug #99 — [HIGH] `FollowUpProcessor` не використовує DST-aware Kyiv `today`
+
+**Файл:** `apps/api/src/modules/notifications/followup.processor.ts:31-36`
+**Severity:** HIGH
+**Категорія:** business-logic / timezone
+
+**Опис:**
+```typescript
+const today = new Date();
+const todayPlusForecast = new Date(today);
+todayPlusForecast.setDate(todayPlusForecast.getDate() + 14);
+
+const cutoffDate = new Date(today);
+cutoffDate.setDate(cutoffDate.getDate() - (settings.followUpDays ?? 90));
+```
+CRON стріляє о 09:00 Kyiv. На UTC-сервері це 06:00 (зимовий час) або 07:00 (літо). `new Date()` повертає UTC-час → `today` все одно вірно для порівняння з ISO datetime, АЛЕ `setDate(d.getDate() + 14)` маніпулює LOCAL date (server local). Якщо локальний tz сервера = UTC, дата зсувається коректно. Якщо локальний tz сервера = Europe/Kyiv (як у Windows-installer для on-prem), `setDate` працює через Kyiv calendar → 14 днів = 14 Kyiv-днів, без врахування DST переходу. У жовтневу/березневу DST-неділю можлива зсувка на ±1 годину.
+
+Згідно MEMORY.md gotcha "DST-aware Kyiv timezone": "never hardcode +03:00; always use kyivOffsetMs() with Intl.DateTimeFormat".
+
+Бізнес-значення:
+- `cutoffDate` для `inactive vehicles` (90 днів назад) — допустима похибка ±1h не критична.
+- `todayPlusForecast` для `MaintenanceSchedule.nextMaintenanceDate { lte: ... }` — якщо клієнт призначив "наступне ТО на 14:00 завтра", запит з offset-помилкою може пропустити цей рекорд.
+
+**Очікувана поведінка:**
+`today` — це початок Kyiv-дня (`startOfKyivDay()`); `todayPlusForecast` — `addDaysInKyiv(today, 14)`.
+
+**Фактична поведінка:**
+Server-local arithmetic. На контейнерах із `TZ=UTC` (стандарт Docker) дати зсуваються на UTC-півночі — кутове вікно ~3 годин коли UTC=23:00, але Kyiv вже наступний день.
+
+**Фікс:**
+Використовувати єдиний helper. Мінімальний фікс — нормалізувати `today` до Kyiv-полудня (12:00 локально), щоб ±1h DST не виштовхнули за межі дня:
+```typescript
+const today = new Date();
+today.setUTCHours(9, 0, 0, 0); // 09:00 UTC = 11/12:00 Kyiv — стабільний полудень
+```
+Або кращий варіант: дотримуватися паттерну `kyivOffsetMs()` з web.
+
+**Статус:** [x] виправлено (followup.processor.ts: `today.setUTCHours(9, 0, 0, 0)` стабілізує Kyiv-полудень)
+
+---
+
+
+## Bug #100 — [HIGH] `FollowUpProcessor` бере `findFirst` бранч orgId — multi-branch орг отримує SMS з імені випадкового бранчу
+
+**Файл:** `apps/api/src/modules/notifications/followup.processor.ts:28-30`
+**Severity:** HIGH
+**Категорія:** business-logic / multi-branch
+
+**Опис:**
+```typescript
+const branch = await this.prisma.garageBranch.findFirst({ where: { orgId, deletedAt: null } });
+if (!branch) return;
+```
+`findFirst` без `orderBy` повертає **випадковий** рядок (Postgres heap order, нестабільний). Для multi-branch організацій (одна юр.особа = два СТО з різними `smsSenderName`, `smsApiKey`, `smsProvider`):
+1. Клієнт сервісувався у Branch B (вул. Лесі Українки). 
+2. CRON вибирає Branch A (вул. Шевченка) як випадковий → надсилає SMS клієнту з `senderName=СТО-ШЕВЧЕНКА` про "час на ТО", хоча клієнт ніколи не був у Шевченка.
+3. UX-провал, можливий бренд-конфуз.
+
+Згідно паттерна B (B6/B10 multi-branch): кожна `Vehicle` → `CustomerGarage` → клієнт. Branch визначається через `Vehicle.lastWorkOrderBranchId` або через `MaintenanceSchedule.branchId` (якщо є FK). Якщо ні — потрібно brand-level SMS-config (Organisation-rivnya), не branch-rivnya.
+
+**Очікувана поведінка:**
+Або (a) використовувати найостанніший WO бренч для конкретного клієнта/авто, або (b) ітерувати по бранчах і обчислювати reminders для машин що належать цьому branch (через `vehicle.workOrders.where.branchId`), або (c) явно зафіксувати "primary branch" через `BranchSettings.isPrimary` flag.
+
+Мінімальний прагматичний фікс на цей етап: `orderBy: [{ createdAt: 'asc' }]` → стабільний "найперший створений branch", з TODO-коментарем що для multi-branch це треба зробити правильно.
+
+**Фактична поведінка:**
+Postgres heap-order branch, нестабільно між запусками.
+
+**Фікс:**
+```typescript
+const branch = await this.prisma.garageBranch.findFirst({
+  where: { orgId, deletedAt: null },
+  orderBy: { createdAt: 'asc' },
+});
+```
++ TODO коментар про multi-branch.
+
+**Статус:** [x] виправлено (followup.processor.ts: `orderBy: { createdAt: 'asc' }` + TODO про multi-branch resolved)
+
+---
+
+
+## Bug #101 — [HIGH] `inactiveVehicles` запит включає авто без жодного COMPLETED WO ever
+
+**Файл:** `apps/api/src/modules/notifications/followup.processor.ts:63-87`
+**Severity:** HIGH
+**Категорія:** business-logic
+
+**Опис:**
+```typescript
+const inactiveVehicles = await this.prisma.vehicle.findMany({
+  where: {
+    orgId,
+    deletedAt: null,
+    workOrders: {
+      none: {
+        deletedAt: null,
+        completedAt: { gte: cutoffDate },
+      },
+    },
+  },
+  ...
+});
+```
+`workOrders.none` ВКЛЮЧАЄ авто, що ніколи не мали `WorkOrder` (з порожнім зв'язком). Сценарій:
+- Адмін щойно зареєстрував новий автомобіль клієнта через CRM.
+- 90 днів пізніше CRON виконується.
+- Авто ніколи не приїздило в СТО (можливо клієнт зареєстрував "про запас" або купив авто і ще не привозив).
+- Алгоритм надсилає "Ви давно не були в нас, скучили!" — UX-провал. Клієнт ніколи не був, нема за чим скучати.
+
+Захист є в подальшому коді (`if (!lastWO?.completedAt) continue;`), але filter на DB-рівні все одно тягне ці авто у пам'ять (memory pressure при `take: 5000` для крупного автопарку) + може створити логіку розсилки для авто без WO в майбутньому (refactor risk).
+
+Краще одразу фільтрувати на DB:
+```typescript
+workOrders: {
+  some: {
+    deletedAt: null,
+    completedAt: { not: null, lt: cutoffDate }, // remembered: had WO before cutoff
+  },
+  none: {
+    deletedAt: null,
+    completedAt: { gte: cutoffDate }, // but none after
+  },
+},
+```
+
+**Очікувана поведінка:**
+Тільки авто з хоча б одним WO в минулому, але без recent activity.
+
+**Фактична поведінка:**
+Усі "тихі" авто, включно з новонабутими які ще ніколи не приїздили.
+
+**Фікс:**
+Додати `some: { completedAt: { lt: cutoffDate } }` до Prisma where.
+
+**Статус:** [x] виправлено (followup.processor.ts: `where.workOrders.some.completedAt = { not: null, lt: cutoffDate }`)
+
+---
+
+
+## Bug #102 — [HIGH] `MaintenanceSchedule.findMany` не фільтрує `nextMaintenanceDate >= today` → надсилає SMS про прострочене ТО задовго ПІСЛЯ дати
+
+**Файл:** `apps/api/src/modules/notifications/followup.processor.ts:39-56`
+**Severity:** HIGH
+**Категорія:** business-logic
+
+**Опис:**
+```typescript
+nextMaintenanceDate: { lte: todayPlusForecast },
+```
+Фільтр охоплює УСІ minor расписання що мали `nextMaintenanceDate` колись у минулому. Сценарій:
+- Клієнт пропустив ТО 6 місяців тому (`nextMaintenanceDate = '2025-11-26'`).
+- ТО не оновлювалось (не приїздив, schedule не reset).
+- CRON надсилає SMS щодня з 2025-11-26 до моменту коли SMS-провайдер заблокує номер за SPAM.
+- Якщо `followUpActive=true` 180 днів — клієнт отримує 180 однакових SMS.
+
+Відсутній `sentTo` guard глобальний — лише per-job (`Set` ререзикується кожен виклик), тому duplicate-detection працює лише в межах одного CRON-запуску.
+
+**Очікувана поведінка:**
+Або (a) `gte: today` І `lte: todayPlusForecast` — нагадуємо тільки про close-upcoming, (b) є таблиця `FollowUpLog` що зберігає `lastSentAt` per (vehicleId, scheduleId), і не надсилати частіше ніж раз на N днів, (c) комбо обох.
+
+**Фактична поведінка:**
+SMS-спам для пропущених ТО.
+
+**Фікс (мінімальний):**
+```typescript
+nextMaintenanceDate: { gte: today, lte: todayPlusForecast },
+```
++ TODO коментар про FollowUpLog dedupe між викликами.
+
+**Статус:** [x] виправлено (followup.processor.ts: `nextMaintenanceDate: { gte: today, lte: todayPlusForecast }`)
+
+---
+
+
+## Bug #103 — [MEDIUM] Migration не створює `NotificationTemplate` для `FOLLOWUP_REMINDER` (всі invocations no-op)
+
+**Файл:** `packages/database/prisma/migrations/20260526230000_add_followup_reminder_event/migration.sql` + `packages/database/prisma/seed.ts:131-147`
+**Severity:** MEDIUM
+**Категорія:** seed / business-logic
+
+**Опис:**
+Міграція додає enum-value, АЛЕ:
+1. `NotificationsService.send(orgId, 'FOLLOWUP_REMINDER', ...)` шукає шаблон `where: { orgId, eventType: 'FOLLOWUP_REMINDER', channel: 'SMS', isActive: true }` → null → `return` мовчки.
+2. Seed (`seed.ts`) не містить FOLLOWUP_REMINDER template.
+3. На свіжому інсталі feature мовчки не працює: CRON виконується, шукає шаблон, нічого не знаходить, виходить без логування помилки (debug-рівень).
+
+Згідно SKILL §1.1 (Cross-service auto-side-effects): "Catch не ковтає всі помилки": `notifications.send` мовчки повертає при відсутньому шаблоні — feature dead.
+
+**Очікувана поведінка:**
+Default template надсилається з міграцією або seed-ом. Текст українською, з плейсхолдерами `{{clientName}}`, `{{vehicleMake}}`, `{{vehicleModel}}`, `{{licensePlate}}`, `{{nextMaintenanceDate}}`.
+
+**Фактична поведінка:**
+Шаблон відсутній → CRON працює "вхолосту" місяцями, доки адмін не помітить.
+
+**Фікс:**
+1. Додати INSERT у міграцію (idempotent через WHERE NOT EXISTS, для кожного існуючого orgId).
+2. Додати template у seed.ts.
+
+Шаблон:
+```
+Вітаємо, {{clientName}}! Запрошуємо на планове ТО для {{vehicleMake}} {{vehicleModel}} ({{licensePlate}}){{nextMaintenanceDate}}. Зателефонуйте нам для запису.
+```
+
+**Статус:** [x] виправлено (нова migration `20260526230500_followup_reminder_default_template` з INSERT NOT EXISTS для existing orgs + захисне відновлення pg_trgm GIN indexes; seed.ts оновлено: 4 templates замість 3 з додаванням FOLLOWUP_REMINDER)
+
+---
+
+
+## Bug #104 — [MEDIUM] Per-message `.catch(() => log.warn(...))` ховає системні помилки, не дає BullMQ retry
+
+**Файл:** `apps/api/src/modules/notifications/followup.processor.ts:104-106, 126-128`
+**Severity:** MEDIUM
+**Категорія:** queue resilience
+
+**Опис:**
+```typescript
+await this.notifications.send(orgId, 'FOLLOWUP_REMINDER', { ... })
+  .catch((e: Error) => {
+    this.logger.warn(`Помилка відправки нагадування: ${e.message}`);
+  });
+```
+Згідно SKILL §1.1 "Catch не ковтає всі помилки": шаблон має бути `if (!msg.includes('очікувана_бізнес_помилка')) logger.warn(...)`. Поточний catch ковтає:
+- DB connection error (Prisma запит у `send` для template) — мав би бути throw → BullMQ retry.
+- Redis недоступний (`smsQueue.add` в `send`) — мав би throw → BullMQ retry на job-рівні, бо весь batch може запхатись пізніше.
+- Validation error у payload — мав би throw, бо це bug → BullMQ logged + DLQ.
+
+Ефект: SMS-розсилка "вдається" у логах (rectifier шукав би "FollowUp надіслано X нагадувань"), але реально 0 повідомлень дойшли через connection-fail. Operator не бачить проблеми.
+
+Згідно SKILL §4.9.4: "Кожен @Process() метод обгорнутий у try/catch і прокидає помилку далі (throw e) — без цього BullMQ не буде retry". Тут немає try/catch на рівні всього процесора, є лише per-iteration catch.
+
+**Очікувана поведінка:**
+- Per-iteration catch має фільтрувати по типу помилки (наприклад, `NotFoundException` для відсутнього template — нормально, debug log; `Error` — re-throw або хоча б `logger.error` з повним stack).
+- Можна: один failure не повинен валити весь batch (один поганий phone не повинен зупиняти reminders для інших клієнтів). Compromise: catch на рівні мітки, але якщо ВСІ failures → throw в кінці.
+
+**Фактична поведінка:**
+Системні помилки тихо ковтаються. BullMQ думає що job success.
+
+**Фікс:**
+```typescript
+let sendErrors = 0;
+let lastError: Error | undefined;
+for (const schedule of upcomingMaintenance) {
+  ...
+  await this.notifications.send(...).catch((e: Error) => {
+    sendErrors++;
+    lastError = e;
+    this.logger.warn(`Помилка відправки нагадування для ${phone}: ${e.message}`);
+  });
+}
+...
+if (sendErrors > 0 && sendErrors === (upcomingMaintenance.length + inactiveVehicles.length)) {
+  // Усі провалились — система помилка, треба retry
+  throw lastError ?? new Error('Усі повідомлення не надіслані');
+}
+```
+
+**Статус:** [x] виправлено (followup.processor.ts: try/catch навколо кожного send + лічильники sendErrors/sendSuccess + throw lastError якщо ВСІ провалились (`sendErrors > 0 && sendSuccess === 0`) → BullMQ робить retry)
+
+---
+
+
+## Bug #105 — [MEDIUM] Відсутні тести (unit + contract) для `FollowUpProcessor`, `FollowUpScheduler`
+
+**Файл:** `apps/api/src/modules/notifications/`
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:**
+Згідно SKILL §1.4: новий @Processor → обов'язковий unit test з мок `notifications.send` + мок `prisma.maintenanceSchedule.findMany`. Згідно SKILL §1.4 contract: новий controller не додано (це queue processor), тому contract test не релевантний. АЛЕ unit-тести для логіки `handleSendReminders` обов'язкові:
+- `followUpActive=false` → return без виклику send.
+- branch не знайдено (org без бранчів) → return.
+- vehicle deletedAt soft-deleted → не у списку (post-filter перевірка).
+- customerGarage.counterparty.phone null → skip.
+- duplicate phone (один клієнт з 5 авто) → 1 SMS, не 5.
+- usupcoming maintenance + inactive overlap → не дублюється.
+- formatName: counterparty без firstName/lastName/companyName → пустий string (LOW Bug #109).
+
+Без тестів — рефакторинг ламатиме реальну розсилку без detection.
+
+**Очікувана поведінка:**
+`apps/api/src/modules/notifications/followup.processor.spec.ts` з 6+ тест-кейсами.
+
+**Фактична поведінка:**
+0 тест-файлів для followup.
+
+**Фікс:**
+Створити spec файл.
+
+**Статус:** [x] виправлено (followup.processor.spec.ts — 13 тестів: followUpActive=false, no branch, soft-delete filter, phone dedup, no phone, inactive vehicle has last WO, inactive vehicle never had WO, throw на all-fail, no-throw на partial-fail, formatName fallback "клієнте", DB filter shape перевірки)
+
+---
+
+
+## Bug #106 — [LOW] `take: 5000` без пагінації для maintenanceSchedule + vehicle — потенційний OOM на крупних автопарках
+
+**Файл:** `apps/api/src/modules/notifications/followup.processor.ts:55, 84`
+**Severity:** LOW
+**Категорія:** non-functional / memory
+
+**Опис:**
+На СТО з 5000+ активних автомобілів (велика мережа, B2B клієнт-юридична особа з 10К корпоративним парком) — два `findMany` по 5000 рядків з вкладеними includes (`customerGarage.counterparty + workOrders[1]`) — заявка пам'яті ~50-100 MB на одну org. Якщо CRON додав 1000 jobs (TODO #98 → 1000 orgs), pmpa concurrency BullMQ міг би випадково запускати 5-10 паралельно → 500MB+ peak.
+
+Згідно SKILL §4.9.5: "Немає `findMany` без `take` (при N→∞ записів → OOM)". `take: 5000` присутній, але це все ще overshoot для daily reminder logic. Краще: курсор-пагінація `findMany({ cursor, take: 100, skip: 1 })` у циклі.
+
+Менш агресивний фікс — обмежити інлайн до 1000 + додати warning у логи якщо досягнуто ліміт.
+
+**Очікувана поведінка:**
+Пагінація + warning-log при досягненні. Або зменшити take до реалістичних 1000.
+
+**Фактична поведінка:**
+5000 за раз → потенційний OOM peak на крупних tenants.
+
+**Фікс:**
+Cursor pagination або зменшити до 1000 з explicit warning. Compromise на цей етап: take 1000 + warning при reach.
+
+**Статус:** [x] виправлено (followup.processor.ts: `MAX_SCHEDULES_PER_RUN = 1000`, `MAX_VEHICLES_PER_RUN = 1000` + warning log при досягненні ліміту)
+
+---
+
+
+## Bug #107 — [LOW] `take: 1000` для організацій без пагінації — multi-tenant cloud може мати >1000 СТО
+
+**Файл:** `apps/api/src/modules/notifications/followup.scheduler.ts:23-26`
+**Severity:** LOW
+**Категорія:** non-functional / scalability
+
+**Опис:**
+```typescript
+if (orgs.length >= 1000) {
+  this.logger.warn('FollowUp scheduler: можливо не всі організації охоплені, потрібна пагінація');
+}
+```
+Warning є, але пагінації немає. На on-prem (1 org per installer) це не проблема, але для multi-tenant cloud-deploy (якщо колись)— орг #1001 не отримає CRON взагалі. Warning легко пропустити в логах.
+
+**Очікувана поведінка:**
+Cursor-пагінація. На цей етап (1 org per installer per ADR-001) — це майбутня проблема, можна закрити TODO коментарем посилаючись на ADR-001.
+
+**Фактична поведінка:**
+Hard cap на 1000.
+
+**Фікс:**
+TODO коментар з посиланням на ADR-001 і явним коментарем "якщо buisness вирішить multi-tenant cloud — потрібна пагінація".
+
+**Статус:** [x] виправлено (followup.scheduler.ts: TODO коментар з посиланням на ADR-001 + warning якщо досягнуто ліміт)
+
+---
+
+
+## Bug #108 — [LOW] Re-add jobs at every API restart створює лог-шум
+
+**Файл:** `apps/api/src/modules/notifications/followup.scheduler.ts:17-20, 32-44`
+**Severity:** LOW
+**Категорія:** non-functional / observability
+
+**Опис:**
+```typescript
+const existingJobs = await this.followUpQueue.getRepeatableJobs();
+for (const job of existingJobs) {
+  await this.followUpQueue.removeRepeatableByKey(job.key);
+}
+```
+При кожному рестарті API:
+1. Видаляються всі repeatable jobs.
+2. Додаються заново для всіх orgs.
+
+Це працює, але:
+- Створює віконце часу між delete і add, коли немає планувальника. Якщо API в цей момент crash-ить — CRON втрачено до наступного успішного start.
+- Лог "FollowUp CRON зареєстровано для N організацій" з'являється у кожному рестарті, навіть якщо нічого не змінилось.
+
+Кращий патерн (BullMQ): використовувати `jobId` як deduplication-key (вже використовується `jobId: 'followup-${org.id}'`). Тоді `queue.add` сам по собі ідемпотентний — якщо job з тим самим `jobId` існує, дубль не створюється. `getRepeatableJobs` + `removeRepeatableByKey` стає непотрібним.
+
+**Очікувана поведінка:**
+Ідемпотентне `add` без preliminary remove.
+
+**Фактична поведінка:**
+Delete + Add wave кожного рестарту.
+
+**Фікс:**
+Видалити lines 17-20. Покладатися на `jobId` deduplication.
+
+**Статус:** [x] виправлено (followup.scheduler.ts: remove-and-recreate code прибрано, тільки idempotent `add()` з `jobId` deduplication)
+
+---
+
+
+## Bug #109 — [LOW] `formatName` повертає порожній рядок для контрагентів без імен → SMS "Вітаємо, !"
+
+**Файл:** `apps/api/src/modules/notifications/followup.processor.ts:134-141`
+**Severity:** LOW
+**Категорія:** UX
+
+**Опис:**
+```typescript
+private formatName(cp: {...}): string {
+  const full = [cp.firstName, cp.lastName].map(s => s?.trim()).filter(Boolean).join(' ').trim();
+  return full || (cp.companyName?.trim() ?? '');
+}
+```
+Якщо ВСІ три поля null/empty (рідкий випадок: legacy data import), `formatName` повертає `''`. Шаблон `Вітаємо, {{clientName}}!` рендериться як `Вітаємо, !` — UX-вигляд недбалості.
+
+**Очікувана поведінка:**
+Fallback на "Шановний клієнте" або skip notification.
+
+**Фактична поведінка:**
+SMS з пустим іменем.
+
+**Фікс:**
+```typescript
+return full || cp.companyName?.trim() || 'клієнте';
+```
+Або: skip notification якщо name пустий (`if (!name) continue;` у processor).
+
+**Статус:** [x] виправлено (followup.processor.ts: `formatName` повертає `'клієнте'` як останній fallback)
+
+---
+
+
+## Bug #110 — [LOW] FOLLOWUP_REMINDER відсутній у `PUSH_FIELD_WHITELIST` / channel docs
+
+**Файл:** довідково — `apps/api/src/modules/sync/sync.service.ts` (PULL_TABLES) + `apps/web/src/app/settings/page.tsx` (UI for templates)
+**Severity:** LOW
+**Категорія:** docs / consistency
+
+**Опис:**
+Новий enum value `FOLLOWUP_REMINDER` додано, але:
+1. У `NotificationsController.findTemplates` повертаються всі шаблони — frontend бачить новий enum, але якщо settings/page.tsx має жорсткий перелік enum-strings для UI labels (наприклад мапа `EVENT_LABELS = { WO_COMPLETED: 'Виконано', ... }`), FOLLOWUP_REMINDER не матиме mapped label → відобразиться raw enum string.
+2. `notification_templates` не у `PULL_TABLES` (sync.service.ts) — отже мобільний клієнт не побачить fovollowup templates (вони не sync-яться). Це не баг сам по собі, але якщо мобайл має UI для редагування шаблонів — потрібно перевірити.
+
+Перевірити: чи у settings/page.tsx (B8 part 3 — UI for FOLLOWUP) є селектор `FOLLOWUP_REMINDER` label?
+
+**Очікувана поведінка:**
+UI label "Нагадування про планове ТО" для FOLLOWUP_REMINDER.
+
+**Фактична поведінка:**
+Потенційно raw enum string.
+
+**Фікс:**
+Перевірити settings/page.tsx EVENT_LABELS map; додати FOLLOWUP_REMINDER label.
+
+**Статус:** [x] виправлено (apps/web/src/app/settings/page.tsx EVENT_LABELS: додано `FOLLOWUP_REMINDER: 'Нагадування про планове ТО'`)
+
+---

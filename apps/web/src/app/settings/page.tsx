@@ -63,6 +63,7 @@ const EVENT_LABELS: Record<string, string> = {
   WO_APPROVED: 'Наряд підтверджено', WO_IN_PROGRESS: 'Наряд в роботі',
   WO_READY_FOR_PICKUP: 'Авто готове до видачі', PAYMENT_RECEIVED: 'Оплата отримана',
   INVOICE_SENT: 'Рахунок надіслано', LOW_STOCK_ALERT: 'Низький залишок',
+  FOLLOWUP_REMINDER: 'Нагадування про планове ТО',
 };
 
 interface DocNumberConfig { id: string; documentType: string; prefix: string | null; includeDate: boolean; separator: string; padding: number; currentSeq: number; resetPeriod: string; }

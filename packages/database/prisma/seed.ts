@@ -144,6 +144,11 @@ async function main() {
       channel:   NotificationChannel.SMS,
       body:      'Дякуємо! Оплата {{totalAmount}} ₴ по наряду {{woNumber}} отримана. {{branchName}}',
     },
+    {
+      eventType: NotificationEventType.FOLLOWUP_REMINDER,
+      channel:   NotificationChannel.SMS,
+      body:      'Вітаємо, {{clientName}}! Запрошуємо на планове ТО для {{vehicleMake}} {{vehicleModel}} ({{licensePlate}}){{nextMaintenanceDate}}. Зателефонуйте нам для запису.',
+    },
   ];
   for (const t of templates) {
     await prisma.notificationTemplate.upsert({
@@ -152,7 +157,7 @@ async function main() {
       create: { orgId: ORG_ID, isActive: true, ...t },
     });
   }
-  console.warn('  NotificationTemplates: 3 записи');
+  console.warn('  NotificationTemplates: 4 записи');
 
   // ─── Zones & Lifts ───────────────────────────────────────
   const ZONE_MECH_ID = '00000000-0000-0000-0000-000000000010';

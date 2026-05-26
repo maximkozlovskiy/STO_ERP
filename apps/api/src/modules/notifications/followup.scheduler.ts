@@ -13,31 +13,33 @@ export class FollowUpScheduler implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Remove existing repeating jobs to avoid duplicates on restart
-    const existingJobs = await this.followUpQueue.getRepeatableJobs();
-    for (const job of existingJobs) {
-      await this.followUpQueue.removeRepeatableByKey(job.key);
-    }
-
-    // Fires at 09:00 Kyiv time (BullMQ respects DST via tz: 'Europe/Kyiv')
+    // Only active (non-soft-deleted) organisations need CRON.
+    // ADR-001: on-prem installer = 1 org per deployment. Multi-tenant cloud
+    // would require cursor pagination here (Bug #107).
     const orgs = await this.prisma.organisation.findMany({
-      select: { orgId: true },
+      where: { deletedAt: null },
+      select: { id: true },
       take: 1000,
     });
 
     if (orgs.length >= 1000) {
-      this.logger.warn('FollowUp scheduler: можливо не всі організації охоплені, потрібна пагінація');
+      this.logger.warn(
+        'FollowUp scheduler: досягнуто ліміту 1000 організацій, можливо не всі охоплені — потрібна пагінація',
+      );
     }
 
+    // BullMQ deduplicates repeatable jobs by `jobId`, so add() is idempotent —
+    // no need to delete-and-recreate on every restart (Bug #108).
+    // Fires at 09:00 Kyiv time (BullMQ respects DST via tz: 'Europe/Kyiv').
     for (const org of orgs) {
       await this.followUpQueue.add(
         'send-reminders',
-        { orgId: org.orgId },
+        { orgId: org.id },
         {
           repeat: { cron: '0 9 * * *', tz: 'Europe/Kyiv' },
           attempts: 10,
           backoff: { type: 'exponential', delay: 60_000 },
-          jobId: `followup-${org.orgId}`,
+          jobId: `followup-${org.id}`,
           removeOnComplete: true,
         },
       );
