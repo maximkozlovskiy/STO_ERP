@@ -195,9 +195,17 @@ export class SettingsService {
     allowPartialPayment: boolean;
     brandTheme: string;
     costMethod: BatchCostMethod;
+    followUpActive: boolean;
+    followUpDays: number;
     uiFeatures: unknown;
+    loyaltyEnabled: boolean;
+    loyaltyEarnPer: { toNumber(): number } | number;
+    loyaltyEarnPoints: { toNumber(): number } | number;
+    loyaltyRedeemRate: { toNumber(): number } | number;
     updatedAt: Date;
   }): OrganisationSettingsResponseDto {
+    const toNum = (v: { toNumber(): number } | number) =>
+      typeof v === 'object' ? v.toNumber() : v;
     return {
       orgId: s.orgId,
       currency: s.currency,
@@ -210,7 +218,13 @@ export class SettingsService {
       allowPartialPayment: s.allowPartialPayment,
       brandTheme: s.brandTheme,
       costMethod: s.costMethod,
+      followUpActive: s.followUpActive,
+      followUpDays: s.followUpDays,
       uiFeatures: this.parseUiFeatures(s.uiFeatures),
+      loyaltyEnabled: s.loyaltyEnabled,
+      loyaltyEarnPer: toNum(s.loyaltyEarnPer),
+      loyaltyEarnPoints: toNum(s.loyaltyEarnPoints),
+      loyaltyRedeemRate: toNum(s.loyaltyRedeemRate),
       updatedAt: s.updatedAt,
     };
   }

@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -90,10 +91,48 @@ export class UpdateOrganisationSettingsDto {
   @IsEnum(BatchCostMethod)
   costMethod?: BatchCostMethod;
 
+  // B8: follow-up reminder settings. Bug #84 — Schema/DB had these fields, but
+  // DTO/whitelist silently dropped them on PATCH and they never came back on GET.
+  @ApiPropertyOptional({ description: 'Активувати follow-up нагадування' })
+  @IsOptional()
+  @IsBoolean()
+  followUpActive?: boolean;
+
+  @ApiPropertyOptional({ minimum: 30, maximum: 365, description: 'Поріг днів без візиту' })
+  @IsOptional()
+  @IsInt()
+  @Min(30)
+  @Max(365)
+  followUpDays?: number;
+
   @ApiPropertyOptional({ description: 'UI feature flags (partial update supported)' })
   @IsOptional()
   @IsObject()
   uiFeatures?: Partial<UiFeatures>;
+
+  // B4: Loyalty program
+  @ApiPropertyOptional({ description: 'Увімкнути програму лояльності' })
+  @IsOptional()
+  @IsBoolean()
+  loyaltyEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Нараховувати бали за кожні N грн', minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  loyaltyEarnPer?: number;
+
+  @ApiPropertyOptional({ description: 'Кількість балів за N грн', minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  loyaltyEarnPoints?: number;
+
+  @ApiPropertyOptional({ description: '1 бал = N грн знижки', minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  loyaltyRedeemRate?: number;
 }
 
 export class UpdateBranchSettingsDto {
@@ -172,7 +211,14 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty() allowPartialPayment!: boolean;
   @ApiProperty() brandTheme!: string;
   @ApiProperty({ enum: BatchCostMethod }) costMethod!: BatchCostMethod;
+  @ApiProperty() followUpActive!: boolean;
+  @ApiProperty() followUpDays!: number;
   @ApiProperty({ description: 'UI feature flags' }) uiFeatures!: UiFeatures;
+  // B4: Loyalty
+  @ApiProperty() loyaltyEnabled!: boolean;
+  @ApiProperty() loyaltyEarnPer!: number;
+  @ApiProperty() loyaltyEarnPoints!: number;
+  @ApiProperty() loyaltyRedeemRate!: number;
   @ApiProperty() updatedAt!: Date;
 }
 

@@ -1,0 +1,135 @@
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
+import { PrismaService } from '../../prisma/prisma.service';
+
+@Injectable()
+export class LoyaltyService {
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue('loyalty') private readonly loyaltyQueue: Queue,
+  ) {}
+
+  async getOrCreateAccount(orgId: string, counterpartyId: string) {
+    return this.prisma.loyaltyAccount.upsert({
+      where: { counterpartyId },
+      update: {},
+      create: { orgId, counterpartyId, balance: 0 },
+    });
+  }
+
+  async getBalance(orgId: string, counterpartyId: string): Promise<{ balance: number; counterpartyId: string }> {
+    const acc = await this.prisma.loyaltyAccount.findFirst({
+      where: { counterpartyId, orgId },
+    });
+    return { balance: acc ? Number(acc.balance) : 0, counterpartyId };
+  }
+
+  async getTransactions(orgId: string, counterpartyId: string) {
+    const acc = await this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } });
+    if (!acc) return { items: [], total: 0 };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.loyaltyTransaction.findMany({
+        where: { accountId: acc.id },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      this.prisma.loyaltyTransaction.count({ where: { accountId: acc.id } }),
+    ]);
+    return {
+      items: items.map(t => ({
+        id: t.id,
+        type: t.type,
+        points: Number(t.points),
+        documentId: t.documentId,
+        documentType: t.documentType,
+        notes: t.notes,
+        createdAt: t.createdAt.toISOString(),
+      })),
+      total,
+    };
+  }
+
+  /** Додати в чергу нарахування балів після оплати (BullMQ-safe: attempts=10) */
+  async queueEarn(
+    orgId: string,
+    counterpartyId: string,
+    paymentAmount: number,
+    documentId?: string,
+  ): Promise<void> {
+    await this.loyaltyQueue.add(
+      'earn',
+      { orgId, counterpartyId, paymentAmount, documentId },
+      { attempts: 10, backoff: { type: 'exponential', delay: 30_000 } },
+    );
+  }
+
+  /** Нарахувати бали за оплату (виконується процесором з черги) */
+  async earn(
+    orgId: string,
+    counterpartyId: string,
+    paymentAmount: number,
+    documentId?: string,
+  ): Promise<void> {
+    const settings = await this.prisma.organisationSettings.findFirst({ where: { orgId } });
+    if (!settings?.loyaltyEnabled) return;
+
+    const earnPer = Number(settings.loyaltyEarnPer ?? 100);
+    const earnPoints = Number(settings.loyaltyEarnPoints ?? 1);
+    if (earnPer <= 0) return;
+
+    const points = Math.floor(paymentAmount / earnPer) * earnPoints;
+    if (points <= 0) return;
+
+    const acc = await this.getOrCreateAccount(orgId, counterpartyId);
+    await this.prisma.$transaction([
+      this.prisma.loyaltyAccount.update({
+        where: { id: acc.id },
+        data: { balance: { increment: points } },
+      }),
+      this.prisma.loyaltyTransaction.create({
+        data: {
+          accountId: acc.id,
+          type: 'EARN',
+          points,
+          documentId: documentId ?? null,
+          documentType: documentId ? 'Payment' : null,
+        },
+      }),
+    ]);
+  }
+
+  /** Списати бали (повертає суму знижки у гривнях) */
+  async redeem(
+    orgId: string,
+    counterpartyId: string,
+    points: number,
+  ): Promise<{ discountAmount: number }> {
+    if (points <= 0) throw new BadRequestException('Кількість балів має бути > 0');
+
+    const settings = await this.prisma.organisationSettings.findFirst({ where: { orgId } });
+    const redeemRate = Number(settings?.loyaltyRedeemRate ?? 1);
+    const discountAmount = points * redeemRate;
+
+    const acc = await this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } });
+    if (!acc) throw new NotFoundException('Рахунок лояльності не знайдено');
+    if (Number(acc.balance) < points) throw new BadRequestException('Недостатньо балів');
+
+    await this.prisma.$transaction([
+      this.prisma.loyaltyAccount.update({
+        where: { id: acc.id },
+        data: { balance: { decrement: points } },
+      }),
+      this.prisma.loyaltyTransaction.create({
+        data: {
+          accountId: acc.id,
+          type: 'REDEEM',
+          points,
+          notes: `Списання ${points} балів = ${discountAmount} грн знижки`,
+        },
+      }),
+    ]);
+
+    return { discountAmount };
+  }
+}

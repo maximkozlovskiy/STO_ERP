@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useRequireAuth, useAuth, TOKEN_KEY } from '@/lib/auth';
-import { apiFetch, apiBlobFetch } from '@/lib/api-client';
+import { useRequireAuth, useAuth } from '@/lib/auth';
+import { apiFetch, apiBlobFetch, apiMultipartFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -20,7 +20,8 @@ import { toast } from '@/lib/toast';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface WorkOrderMedia {
-  id: string; workOrderId: string; fileKey: string; filename: string;
+  // Bug #93: `fileKey` removed — backend no longer leaks the internal MinIO path.
+  id: string; workOrderId: string; filename: string;
   mimeType: string; sizeBytes: number; uploadedBy: string;
   signedUrl: string; createdAt: string;
 }
@@ -68,6 +69,15 @@ interface Work { id: string; name: string; normoHours: number; price: number; }
 interface Employee { id: string; firstName: string; lastName: string; }
 interface Good { id: string; name: string; salePrice: number; }
 interface Warehouse { id: string; name: string; isMain: boolean; }
+
+// ─── Inspection ───────────────────────────────────────────────────────────────
+interface InspectionPoint {
+  name: string; value: string; unit: string; status: 'OK' | 'WARN' | 'CRITICAL'; notes?: string;
+}
+interface InspectionReport {
+  id: string; mileage?: number | null; points: InspectionPoint[];
+  createdAt: string; autoCreatedLines?: number;
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -149,6 +159,13 @@ export default function WorkOrderCardPage() {
   const [commentBody, setCommentBody] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
 
+  // Inspection state
+  const [inspection, setInspection] = useState<InspectionReport | null>(null);
+  const [inspectionPoints, setInspectionPoints] = useState<InspectionPoint[]>([]);
+  const [showInspection, setShowInspection] = useState(false);
+  const [savingInspection, setSavingInspection] = useState(false);
+  const [inspMileage, setInspMileage] = useState('');
+
   const [media, setMedia] = useState<WorkOrderMedia[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -194,6 +211,9 @@ export default function WorkOrderCardPage() {
         if (data.items.length > 0) setCompletionAct(data.items[0]);
       })
       .catch((e: unknown) => console.warn('[CompletionAct] load failed:', e));
+    apiFetch<InspectionReport | null>(`/work-orders/${id}/inspection`)
+      .then(d => { if (mountedRef.current) setInspection(d); })
+      .catch(() => {});
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
@@ -223,26 +243,29 @@ export default function WorkOrderCardPage() {
 
   useEffect(() => { loadAudit(); }, [loadAudit]);
 
+  // Bug #89: Escape closes lightbox + a11y. Without this keyboard users can't
+  // dismiss the photo preview at all.
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxUrl(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [lightboxUrl]);
+
   const handleMediaUpload = async (files: FileList) => {
     setUploadingMedia(true);
     setError('');
-    // Канонічна env-змінна узгоджена з api-client / auth (`NEXT_PUBLIC_API_URL`),
-    // токен зберігається під `TOKEN_KEY = 'sto_access_token'`. Раніше тут було
-    // hardcoded 'sto_token' і URL без `/api` префіксу — обидва ламали upload.
-    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-    const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
+    // Bug #85: використовуємо apiMultipartFetch для silent refresh при 401.
+    // Раніше native fetch з прямим Bearer ламався після того як access token закінчувався (~15 хв)
+    // і користувач отримував абстрактне "Не вдалося завантажити N файл(ів)" без auto-recovery.
     let failures = 0;
     for (const file of Array.from(files)) {
       const fd = new FormData();
       fd.append('file', file);
       try {
-        const res = await fetch(`${apiBase}/api/work-orders/${id}/media`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: fd,
-        });
-        if (!res.ok) failures += 1;
+        await apiMultipartFetch(`/work-orders/${id}/media`, fd);
       } catch {
         failures += 1;
       }
@@ -316,7 +339,10 @@ export default function WorkOrderCardPage() {
         if (mainW) setPartForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
       })
       .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
-  }, []);
+    apiFetch<InspectionPoint[]>(`/work-orders/${id}/inspection/default-points`)
+      .then(d => { if (mountedRef.current) setInspectionPoints(d); })
+      .catch(() => {});
+  }, [id]);
 
   const selectWork = (workId: string) => {
     const w = works.find(x => x.id === workId);
@@ -433,17 +459,30 @@ export default function WorkOrderCardPage() {
   const transition = async (newStatus: string) => {
     const label = STATUS_LABELS[newStatus];
     if (!confirm(`Перевести наряд у статус "${label}"?`)) return;
+    if (!wo) return;
+
+    const previousStatus = wo.status;
+
+    // Optimistic update — одразу показуємо новий статус у UI
+    setWo(prev => prev ? { ...prev, status: newStatus } : prev);
     setTransitioning(true); setError('');
     try {
-      await apiFetch<WorkOrderDetail>(`/work-orders/${id}/transition`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
+      const updated = await apiFetch<WorkOrderDetail>(
+        `/work-orders/${id}/transition`,
+        { method: 'POST', body: JSON.stringify({ status: newStatus }) },
+      );
+      // Sync з сервером — отримуємо повні дані
+      setWo(updated);
       if (features.toastEnabled) toast.success(`Статус змінено: ${label}`);
-      load();
     } catch (e: unknown) {
+      // Rollback
+      setWo(prev => prev ? { ...prev, status: previousStatus } : prev);
       const msg = e instanceof Error ? e.message : 'Помилка переходу';
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setTransitioning(false);
     }
-    finally { setTransitioning(false); }
   };
 
   const generateAct = async () => {
@@ -515,6 +554,32 @@ export default function WorkOrderCardPage() {
       setCompletionAct(act);
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка підписання акту'); }
     finally { setSigningAct(false); }
+  };
+
+  const saveInspection = async () => {
+    setSavingInspection(true);
+    try {
+      const result = await apiFetch<InspectionReport & { autoCreatedLines: number }>(
+        `/work-orders/${id}/inspection`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            mileage: inspMileage ? Number(inspMileage) : undefined,
+            points: inspectionPoints,
+          }),
+        },
+      );
+      setInspection(result);
+      setShowInspection(false);
+      if (result.autoCreatedLines > 0) {
+        load();
+      }
+      if (features.toastEnabled) toast.success('Огляд збережено');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка збереження огляду');
+    } finally {
+      setSavingInspection(false);
+    }
   };
 
   if (!wo) return (
@@ -721,6 +786,88 @@ export default function WorkOrderCardPage() {
           )}
       </div>
 
+      {/* Inspection section */}
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
+          <h3 className="font-semibold text-foreground text-sm">Огляд авто</h3>
+          {!inspection && (
+            <Button variant="outline" size="sm" onClick={() => setShowInspection(v => !v)}>
+              {showInspection ? 'Згорнути' : 'Провести огляд'}
+            </Button>
+          )}
+        </div>
+
+        {inspection ? (
+          <div className="p-4 space-y-2">
+            <div className="text-[12px] text-muted-foreground mb-3">
+              {new Date(inspection.createdAt).toLocaleString('uk-UA')}
+              {inspection.mileage != null && ` · ${inspection.mileage.toLocaleString('uk-UA')} км`}
+            </div>
+            {inspection.points.map((p, i) => (
+              <div key={i} className="flex items-center gap-3 text-sm">
+                <span className={cn(
+                  'w-2 h-2 rounded-full shrink-0',
+                  p.status === 'OK' ? 'bg-success' : p.status === 'WARN' ? 'bg-warning' : 'bg-destructive',
+                )} />
+                <span className="flex-1 text-foreground">{p.name}</span>
+                <span className="text-muted-foreground">{p.value}{p.unit ? ' ' + p.unit : ''}</span>
+                {p.status === 'CRITICAL' && (
+                  <span className="text-[11px] text-destructive-text bg-destructive-subtle px-1.5 py-0.5 rounded">Критично</span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : showInspection ? (
+          <div className="p-4 space-y-3">
+            <Input
+              label="Пробіг (км)"
+              type="number"
+              value={inspMileage}
+              onChange={e => setInspMileage(e.target.value)}
+              placeholder="Поточний пробіг"
+            />
+            <div className="space-y-2">
+              {inspectionPoints.map((point, i) => (
+                <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                  <div className="col-span-4 text-[13px] text-foreground">{point.name}</div>
+                  <div className="col-span-3">
+                    <Input
+                      value={point.value}
+                      onChange={e => {
+                        const pts = [...inspectionPoints];
+                        pts[i] = { ...pts[i], value: e.target.value };
+                        setInspectionPoints(pts);
+                      }}
+                      placeholder={point.unit || 'значення'}
+                    />
+                  </div>
+                  <div className="col-span-5">
+                    <select
+                      value={point.status}
+                      onChange={e => {
+                        const pts = [...inspectionPoints];
+                        pts[i] = { ...pts[i], status: e.target.value as 'OK' | 'WARN' | 'CRITICAL' };
+                        setInspectionPoints(pts);
+                      }}
+                      className="w-full h-9 rounded-lg border border-border bg-input px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="OK">✓ OK</option>
+                      <option value="WARN">⚠ Увага</option>
+                      <option value="CRITICAL">✗ Критично</option>
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button onClick={() => void saveInspection()} loading={savingInspection} className="w-full">
+              Зберегти огляд
+            </Button>
+          </div>
+        ) : (
+          <div className="p-4 text-center text-muted-foreground text-[13px]">Огляд не проводився</div>
+        )}
+      </div>
+
       {/* Comments */}
       <div className="bg-surface rounded-xl border border-border p-5">
         <h2 className="font-semibold text-foreground mb-4">Коментарі</h2>
@@ -814,9 +961,15 @@ export default function WorkOrderCardPage() {
         </div>
       </div>
 
-      {/* Lightbox */}
+      {/* Lightbox — Bug #89: a11y (role/aria-modal/aria-label) + Escape handled in useEffect above */}
       {lightboxUrl && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onClick={() => setLightboxUrl(null)}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Перегляд фото"
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
+          onClick={() => setLightboxUrl(null)}
+        >
           <img src={lightboxUrl} alt="Фото" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
         </div>
       )}

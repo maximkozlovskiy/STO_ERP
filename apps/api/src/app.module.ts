@@ -44,6 +44,8 @@ import { WorkOrderMediaModule } from './modules/work-order-media/work-order-medi
 import { AuditModule } from './modules/audit/audit.module';
 import { WarrantiesModule } from './modules/warranties/warranties.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
+import { InspectionModule } from './modules/inspection/inspection.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -100,6 +102,8 @@ import { LoyaltyModule } from './modules/loyalty/loyalty.module';
     AuditModule,
     WarrantiesModule,
     LoyaltyModule,
+    InspectionModule,
+    WebhooksModule,
   ],
 })
 export class AppModule {}

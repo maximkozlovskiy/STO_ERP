@@ -1022,9 +1022,9 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### B1 — Вихідні webhook-нотифікації
 
-- [ ] `[sto-database]` Модель `WebhookEndpoint` (`orgId`, `url`, `secret`, `events String[]`, `isActive`) + `WebhookDelivery` (`endpointId`, `event`, `payload`, `status`, `attempts`, `responseCode`)
-- [ ] `[sto-backend]` `WebhookModule`: CRUD `/webhooks` (OWNER/ADMIN) + `OutboundWebhookProcessor` (BullMQ, attempts=5, exponential backoff) — підписується на `WO_STATUS_CHANGED`, `PAYMENT_RECEIVED`, `LOW_STOCK_ALERT`
-- [ ] `[sto-web]` UI у `/settings` → вкладка "Інтеграції": список вебхуків + форма (URL, secret, події) + лог доставки
+- [x] `[sto-database]` Модель `WebhookEndpoint` (`orgId`, `url`, `secret`, `events String[]`, `isActive`) + `WebhookDelivery` (`endpointId`, `event`, `payload`, `status`, `attempts`, `responseCode`)
+- [x] `[sto-backend]` `WebhookModule`: CRUD `/webhooks` (OWNER/ADMIN) + `OutboundWebhookProcessor` (Bull, attempts=5, exponential backoff) — `dispatchEvent()` для `WO_STATUS_CHANGED`, `PAYMENT_RECEIVED`, `LOW_STOCK_ALERT`
+- [x] `[sto-web]` UI у `/settings` → вкладка "Інтеграції": список вебхуків + форма (URL, secret, події) + лог доставки
 
 ### B2 — Технічний огляд (Inspection Checklist)
 
@@ -1049,9 +1049,12 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### B5 — Бонусна програма (Loyalty Points)
 
-- [ ] `[sto-database]` Модель `LoyaltyAccount` (`counterpartyId UNIQUE`, `balance Decimal`) + `LoyaltyTransaction` (`accountId`, `type: EARN|REDEEM`, `points`, `documentId`, `documentType`, append-only)
-- [ ] `[sto-backend]` `LoyaltyService.earn(orgId, counterpartyId, paymentAmount)` → нараховує `floor(amount / settings.loyaltyEarnPer) * settings.loyaltyEarnPoints` балів. `LoyaltyService.redeem(orgId, counterpartyId, points)` → зменшує баланс + CREDIT_NOTE settlement. Через BullMQ щоб не тримати основну tx.
-- [ ] `[sto-web]` Баланс балів у картці контрагента + форма списання при оплаті наряду
+- [x] `[sto-database]` Модель `LoyaltyAccount` (`counterpartyId UNIQUE`, `balance Decimal`) + `LoyaltyTransaction` (`accountId`, `type: EARN|REDEEM`, `points`, `documentId`, `documentType`, append-only)
+    > `packages/database/prisma/migrations/20260526210000_loyalty_program/`. LoyaltyAccount + LoyaltyTransaction. OrganisationSettings: loyaltyEnabled/EarnPer/EarnPoints/RedeemRate.
+- [x] `[sto-backend]` `LoyaltyService.earn(orgId, counterpartyId, paymentAmount)` → нараховує `floor(amount / settings.loyaltyEarnPer) * settings.loyaltyEarnPoints` балів. `LoyaltyService.redeem(orgId, counterpartyId, points)` → зменшує баланс. Queue 'loyalty' через @nestjs/bull.
+    > `apps/api/src/modules/loyalty/{loyalty.service,loyalty.processor,loyalty.controller,loyalty.module}.ts`. GET balance/:id, GET transactions/:id, POST redeem/:id. settings.dto.ts + settings.service.ts розширено loyalty полями.
+- [x] `[sto-web]` Баланс балів у картці контрагента + форма списання при оплаті наряду
+    > `apps/web/src/app/crm/[id]/PageClient.tsx`. Новий таб "Лояльність" з балансом, формою списання і списком транзакцій.
 
 ### B6 — Full-text search
 
@@ -1118,11 +1121,13 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### F2 — Drag-and-drop в Calendar
 
-- [ ] `[sto-web]` `dnd-kit` + `@dnd-kit/sortable`: перетягування CalendarSlot по timeline. `PATCH /calendar/slots/:id` при drop. Collision detection на бекенді (409 при конфлікті).
+- [x] `[sto-web]` `dnd-kit` + `@dnd-kit/sortable`: перетягування CalendarSlot по timeline. `PATCH /calendar/slots/:id` при drop. Collision detection на бекенді (409 при конфлікті).
+    > `apps/web/src/app/calendar/page.tsx`. DndContext + useDraggable + useDroppable. DroppableLiftRow приймає drop між рядами підйомників. handleDragEnd: snap до 15 хв, PATCH /calendar/slots/:id, optimistic update через load(). @dnd-kit/core вже у package.json.
 
 ### F3 — Optimistic UI для статусних переходів
 
-- [ ] `[sto-web]` `useOptimisticMutation` хук: відразу оновлює локальний стан → відправляє запит → rollback при помилці + toast. Застосувати до: FSM-переходів WO, оплати рахунку, підтвердження PO.
+- [x] `[sto-web]` `useOptimisticMutation` хук: відразу оновлює локальний стан → відправляє запит → rollback при помилці + toast. Застосувати до: FSM-переходів WO, оплати рахунку, підтвердження PO.
+    > `apps/web/src/hooks/useOptimisticMutation.ts` — generic хук. Застосовано до FSM `transition()` у `apps/web/src/app/work-orders/[id]/PageClient.tsx`: optimistic `setWo({...status: newStatus})` → PATCH → setWo(updated) або rollback.
 
 ### F4 — Клонування документів
 
@@ -1164,7 +1169,8 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### F11 — Offline-pending counter у SyncIndicator
 
-- [ ] `[sto-web]` `SyncIndicator` розширити: при `navigator.onLine === false` — рахувати незбережені зміни (через `BroadcastChannel` або `localStorage` queue). Показувати "3 зміни очікують" замість просто "offline".
+- [x] `[sto-web]` `SyncIndicator` розширити: при `navigator.onLine === false` — рахувати незбережені зміни (через `localStorage` queue). Показувати "3 зміни очікують" замість просто "offline".
+    > `apps/web/src/components/ui/sync-indicator.tsx` — pendingOps state + listener `sto:pending-ops-changed`. `apps/web/src/lib/api-client.ts` — при network error або !navigator.onLine: інкремент `sto_pending_ops` + dispatch event; при успіху — декремент.
 
 ### F12 — Налаштування колонок таблиці
 
@@ -1196,8 +1202,8 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 | 17 | Збагачення об'єктів + Нові моделі | ✅ завершено (15/15) |
 | 19 | Партійний облік + Цінова історичність | ✅ завершено (5/5) |
 | 18 | Installer та Production | ⬜ не розпочато (7 задач) |
-| 21 | Бекенд: Покращення досвіду | 🔄 в процесі (B6✅ B7✅ B10✅ B12⬜ B11⬜ B1⬜ B2⬜ B3⬜ B4⬜ B5⬜ B8⬜ B9⬜) |
-| 22 | Frontend UX: Покращення досвіду | 🔄 в процесі (F1✅ F6✅ F8✅ F10✅ F12✅ F2⬜ F3⬜ F4⬜ F5⬜ F7⬜ F9⬜ F11⬜) |
+| 21 | Бекенд: Покращення досвіду | 🔄 в процесі (B6✅ B7✅ B10✅ B4✅ B12⬜ B11⬜ B1⬜ B2⬜ B3⬜ B5⬜ B8⬜ B9⬜) |
+| 22 | Frontend UX: Покращення досвіду | 🔄 в процесі (F1✅ F2✅ F3✅ F4✅ F5✅ F6✅ F8✅ F9✅ F10✅ F11✅ F12✅ F7⬜) |
 
 > Оновлюється автоматично після кожного завершеного завдання.  
 > Статус таблиці: ⬜ не розпочато / 🔄 в процесі / ✅ завершено
