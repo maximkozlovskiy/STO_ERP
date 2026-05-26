@@ -122,6 +122,7 @@ export class WorkOrderResponseDto {
   @ApiProperty() paidAmount!: number;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional({ description: 'Є активна гарантія' }) hasActiveWarranty?: boolean;
 }
 
 export class PaginatedWorkOrdersDto {

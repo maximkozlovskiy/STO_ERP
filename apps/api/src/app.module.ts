@@ -42,6 +42,8 @@ import { WorkOrderTemplatesModule } from './modules/work-order-templates/work-or
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { WorkOrderMediaModule } from './modules/work-order-media/work-order-media.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { WarrantiesModule } from './modules/warranties/warranties.module';
+import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 
 @Module({
   imports: [
@@ -96,6 +98,8 @@ import { AuditModule } from './modules/audit/audit.module';
     DashboardModule,
     WorkOrderMediaModule,
     AuditModule,
+    WarrantiesModule,
+    LoyaltyModule,
   ],
 })
 export class AppModule {}

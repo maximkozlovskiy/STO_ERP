@@ -39,8 +39,20 @@ interface MaintenanceSchedule {
 }
 interface Transaction { id: string; type: string; amount: number; description: string | null; createdAt: string; }
 interface WorkOrder { id: string; number: string; status: string; vehicleMake: string; vehicleModel: string; createdAt: string; totalAmount: number; }
+interface LoyaltyTransaction { id: string; type: string; points: number; createdAt: string; notes?: string | null; }
+interface Warranty {
+  id: string;
+  workOrderId: string;
+  workOrderNumber?: string;
+  expiresAt: string;
+  description: string;
+  claimedAt?: string | null;
+  claimWoId?: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
 
-type CrmTab = 'info' | 'garages' | 'settlements' | 'work-orders';
+type CrmTab = 'info' | 'garages' | 'settlements' | 'work-orders' | 'warranties' | 'loyalty';
 
 const TYPE_LABELS: Record<string, string> = { CLIENT: 'Клієнт', SUPPLIER: 'Постачальник', BOTH: 'Клієнт / Постачальник' };
 const LEGAL_FORM_LABELS: Record<string, string> = {
@@ -100,6 +112,18 @@ export default function CounterpartyCardPage() {
   // Work orders
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [woLoading, setWoLoading] = useState(false);
+
+  // Loyalty
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0);
+  const [loyaltyTxs, setLoyaltyTxs] = useState<LoyaltyTransaction[]>([]);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+  const [redeemPoints, setRedeemPoints] = useState('');
+  const [redeemSaving, setRedeemSaving] = useState(false);
+  const [loyaltyError, setLoyaltyError] = useState('');
+
+  // Warranties
+  const [warranties, setWarranties] = useState<Warranty[]>([]);
+  const [warrantiesLoading, setWarrantiesLoading] = useState(false);
 
   // Editing info
   const [editing, setEditing] = useState(false);
@@ -176,13 +200,40 @@ export default function CounterpartyCardPage() {
       .finally(() => setWoLoading(false));
   }, [id]);
 
+  const loadWarranties = useCallback(() => {
+    let cancelled = false;
+    setWarrantiesLoading(true);
+    apiFetch<{ items: Warranty[] }>(`/warranties/by-counterparty/${id}`)
+      .then(d => { if (!cancelled) setWarranties(d.items ?? []); })
+      .catch(() => { if (!cancelled) setWarranties([]); })
+      .finally(() => { if (!cancelled) setWarrantiesLoading(false); });
+    return () => { cancelled = true; };
+  }, [id]);
+
+  const loadLoyalty = useCallback(() => {
+    setLoyaltyLoading(true);
+    setLoyaltyError('');
+    Promise.all([
+      apiFetch<{ balance: number }>(`/loyalty/balance/${id}`),
+      apiFetch<{ items: LoyaltyTransaction[] }>(`/loyalty/transactions/${id}`),
+    ])
+      .then(([bal, txs]) => {
+        setLoyaltyBalance(bal.balance);
+        setLoyaltyTxs(txs.items ?? []);
+      })
+      .catch((e: unknown) => setLoyaltyError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .finally(() => setLoyaltyLoading(false));
+  }, [id]);
+
   useEffect(() => { loadCp(); }, [loadCp]);
 
   useEffect(() => {
     if (tab === 'garages') loadGarages();
     if (tab === 'settlements') loadSettlements();
     if (tab === 'work-orders') loadWorkOrders();
-  }, [tab, loadGarages, loadSettlements, loadWorkOrders]);
+    if (tab === 'warranties') loadWarranties();
+    if (tab === 'loyalty') loadLoyalty();
+  }, [tab, loadGarages, loadSettlements, loadWorkOrders, loadWarranties, loadLoyalty]);
 
   const addGarage = async () => {
     if (!garageName.trim()) return;
@@ -248,6 +299,8 @@ export default function CounterpartyCardPage() {
     { key: 'garages', label: 'Гаражі та авто' },
     { key: 'settlements', label: 'Взаєморозрахунки' },
     { key: 'work-orders', label: 'Наряди' },
+    { key: 'warranties', label: 'Гарантії' },
+    { key: 'loyalty', label: 'Лояльність' },
   ];
 
   return (
@@ -649,6 +702,139 @@ export default function CounterpartyCardPage() {
                   </div>
                 </button>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 5: Warranties */}
+      {tab === 'warranties' && (
+        <div className="space-y-4">
+          {warrantiesLoading ? (
+            <div className="flex justify-center py-8"><Spinner size="md" /></div>
+          ) : (
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+              <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
+                <h3 className="font-medium text-foreground text-sm">Гарантії</h3>
+                <span className="text-xs text-muted-foreground">{warranties.length} записів</span>
+              </div>
+              {warranties.length === 0 ? (
+                <div className="p-4 text-center text-muted-foreground text-[13px]">Гарантій немає</div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {warranties.map(w => (
+                    <div key={w.id} className="px-5 py-3 flex items-center justify-between gap-3 text-sm">
+                      <div className="flex-1">
+                        <div className="font-medium text-foreground">
+                          Наряд №{w.workOrderNumber ?? w.workOrderId.slice(0, 8)}
+                        </div>
+                        {w.description && (
+                          <div className="text-[12px] text-muted-foreground">{w.description}</div>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-[12px] text-muted-foreground">
+                          до {new Date(w.expiresAt).toLocaleDateString('uk-UA')}
+                        </div>
+                        {w.isActive ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-success/10 text-success">
+                            Активна
+                          </span>
+                        ) : w.claimedAt ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-warning/10 text-warning">
+                            {"Пред'явлена"}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground">
+                            Закінчилась
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 6: Loyalty */}
+      {tab === 'loyalty' && (
+        <div className="space-y-4">
+          {loyaltyError && (
+            <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{loyaltyError}</div>
+          )}
+          {loyaltyLoading ? (
+            <div className="flex justify-center py-8"><Spinner size="md" /></div>
+          ) : (
+            <div className="bg-surface rounded-xl border border-border p-4 space-y-4">
+              {/* Balance + redeem */}
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <div className="text-[13px] text-muted-foreground">Бали лояльності</div>
+                  <div className="text-2xl font-bold text-foreground">
+                    {loyaltyBalance.toLocaleString('uk-UA')} балів
+                  </div>
+                </div>
+                <div className="flex gap-2 items-center">
+                  <Input
+                    value={redeemPoints}
+                    onChange={e => setRedeemPoints(e.target.value)}
+                    placeholder="Кількість балів"
+                    type="number"
+                    className="w-36"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    loading={redeemSaving}
+                    disabled={!redeemPoints || Number(redeemPoints) <= 0 || Number(redeemPoints) > loyaltyBalance}
+                    onClick={async () => {
+                      setRedeemSaving(true);
+                      setLoyaltyError('');
+                      try {
+                        await apiFetch(`/loyalty/redeem/${id}`, {
+                          method: 'POST',
+                          body: JSON.stringify({ points: Number(redeemPoints) }),
+                        });
+                        setRedeemPoints('');
+                        loadLoyalty();
+                      } catch (e: unknown) {
+                        setLoyaltyError(e instanceof Error ? e.message : 'Помилка списання');
+                      } finally {
+                        setRedeemSaving(false);
+                      }
+                    }}
+                  >
+                    Списати
+                  </Button>
+                </div>
+              </div>
+
+              {/* Transaction history */}
+              {loyaltyTxs.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Немає транзакцій</p>
+              ) : (
+                <div className="divide-y divide-border max-h-60 overflow-y-auto">
+                  {loyaltyTxs.map(t => (
+                    <div key={t.id} className="flex items-center justify-between py-2 text-[12px]">
+                      <span className="text-muted-foreground">
+                        {new Date(t.createdAt).toLocaleDateString('uk-UA')}
+                      </span>
+                      <span className="text-foreground flex-1 px-3 truncate">
+                        {t.notes ?? (t.type === 'EARN' ? 'Нарахування балів' : 'Списання балів')}
+                      </span>
+                      <span className={cn(
+                        'font-medium',
+                        t.type === 'EARN' ? 'text-success' : 'text-destructive',
+                      )}>
+                        {t.type === 'EARN' ? '+' : '-'}{t.points}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

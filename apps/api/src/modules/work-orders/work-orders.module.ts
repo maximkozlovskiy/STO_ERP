@@ -8,9 +8,21 @@ import { MaintenanceSchedulesModule } from '../maintenance-schedules/maintenance
 import { PdfModule } from '../pdf/pdf.module';
 import { DocumentNumberModule } from '../document-number/document-number.module';
 import { AuditModule } from '../audit/audit.module';
+import { WarrantiesModule } from '../warranties/warranties.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [InventoryModule, SettlementsModule, NotificationsModule, MaintenanceSchedulesModule, PdfModule, DocumentNumberModule, AuditModule],
+  imports: [
+    InventoryModule,
+    SettlementsModule,
+    NotificationsModule,
+    MaintenanceSchedulesModule,
+    PdfModule,
+    DocumentNumberModule,
+    AuditModule,
+    WarrantiesModule,
+    SettingsModule,
+  ],
   controllers: [WorkOrdersController],
   providers: [WorkOrdersService],
   exports: [WorkOrdersService],

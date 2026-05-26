@@ -11,6 +11,8 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { PdfService } from '../pdf/pdf.service';
 import { WORK_ORDER_TRANSITIONS, CLOSED_STATUSES, DELETABLE_STATUSES, RESERVATION_ACTIVE_STATUSES, EDITABLE_STATUSES } from './work-orders.fsm';
 import { AuditService } from '../audit/audit.service';
+import { WarrantiesService } from '../warranties/warranties.service';
+import { SettingsService } from '../settings/settings.service';
 import {
   CreateWorkOrderDto, UpdateWorkOrderDto, WorkOrderQueryDto,
   WorkOrderResponseDto, WorkOrderDetailDto, PaginatedWorkOrdersDto,
@@ -31,6 +33,8 @@ export class WorkOrdersService {
     private readonly maintenanceSchedules: MaintenanceSchedulesService,
     private readonly pdf: PdfService,
     private readonly audit: AuditService,
+    private readonly warranties: WarrantiesService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
@@ -70,6 +74,13 @@ export class WorkOrdersService {
           vehicle: { select: { make: true, model: true, licensePlate: true } },
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           branch: { select: { name: true } },
+          _count: {
+            select: {
+              warranties: {
+                where: { deletedAt: null, claimedAt: null, expiresAt: { gt: new Date() } },
+              },
+            },
+          },
         },
       }),
       this.prisma.workOrder.count({ where }),
@@ -150,12 +161,25 @@ export class WorkOrdersService {
     return this.toDto(wo);
   }
 
-  async update(orgId: string, id: string, dto: UpdateWorkOrderDto): Promise<WorkOrderResponseDto> {
+  async update(orgId: string, id: string, dto: UpdateWorkOrderDto, userId?: string): Promise<WorkOrderResponseDto> {
     const wo = await this.prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (CLOSED_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Не можна редагувати закритий наряд');
     }
+
+    // Bug #86: capture old field-values BEFORE update so AuditEvent.diff is meaningful.
+    // Only include fields user actually attempted to change (dto.X !== undefined).
+    const oldData: Record<string, unknown> = {};
+    const newData: Record<string, unknown> = {};
+    const trackField = <K extends keyof UpdateWorkOrderDto>(key: K) => {
+      if (dto[key] !== undefined) {
+        oldData[key as string] = (wo as Record<string, unknown>)[key as string];
+        newData[key as string] = dto[key];
+      }
+    };
+    (['description', 'inMileage', 'outMileage', 'priority', 'repairCategory', 'clientApproval', 'plannedAt', 'dueDate'] as const)
+      .forEach(trackField);
 
     const updated = await this.prisma.workOrder.update({
       where: { id, orgId },
@@ -180,6 +204,12 @@ export class WorkOrdersService {
       },
     });
 
+    // Bug #86: AuditEvent for field-level updates (only if something actually changed)
+    if (userId && Object.keys(newData).length > 0) {
+      this.audit.record(orgId, 'WorkOrder', id, 'UPDATE', userId, oldData, newData)
+        .catch((e: unknown) => this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`));
+    }
+
     return this.toDto(updated);
   }
 
@@ -196,9 +226,7 @@ export class WorkOrdersService {
     }
   }
 
-  // _userId reserved for future audit logging of clone events; kept in signature
-  // so controller can pass user context without breaking when audit hook is added.
-  async clone(orgId: string, id: string, _userId: string): Promise<WorkOrderResponseDto> {
+  async clone(orgId: string, id: string, userId: string): Promise<WorkOrderResponseDto> {
     // 1. Find original WO with lines and parts
     const original = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
@@ -221,10 +249,28 @@ export class WorkOrdersService {
     });
     if (!original) throw new NotFoundException('Наряд не знайдено');
 
+    // Bug #90: validate FK references still exist (not soft-deleted) BEFORE create.
+    // Without this, FK violation surfaces as Prisma P2003 (HTTP 500) instead of a
+    // friendly 404 with a clear message in Ukrainian.
+    const [vehicle, counterparty, branch] = await Promise.all([
+      this.prisma.vehicle.findFirst({ where: { id: original.vehicleId, orgId, deletedAt: null }, select: { id: true } }),
+      this.prisma.counterparty.findFirst({ where: { id: original.counterpartyId, orgId, deletedAt: null }, select: { id: true } }),
+      this.prisma.garageBranch.findFirst({ where: { id: original.branchId, orgId, deletedAt: null }, select: { id: true } }),
+    ]);
+    if (!vehicle) throw new NotFoundException('Автомобіль було видалено — клонування неможливе');
+    if (!counterparty) throw new NotFoundException('Контрагента було видалено — клонування неможливе');
+    if (!branch) throw new NotFoundException('Філію було видалено — клонування неможливе');
+
     // 2. Get new number
     const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
 
-    // 3. Create cloned WO as DRAFT
+    // 3. Pre-compute totals from the original's lines/parts so the cloned WO
+    // ships consistent totalLabor/totalParts/totalAmount (Bug #81). Without this,
+    // Prisma defaults leave them at 0 while lines[].amount has real values.
+    const totalLabor = original.lines.reduce((s, l) => s + Number(l.amount), 0);
+    const totalParts = original.parts.reduce((s, p) => s + Number(p.amount), 0);
+
+    // 4. Create cloned WO as DRAFT
     const cloned = await this.prisma.workOrder.create({
       data: {
         orgId,
@@ -238,7 +284,12 @@ export class WorkOrdersService {
         priority: original.priority,
         repairCategory: original.repairCategory,
         dueDate: original.dueDate,
+        totalLabor,
+        totalParts,
+        totalAmount: totalLabor + totalParts,
         lines: {
+          // Bug #94: clones are DRAFT — actualHours must reset to null. Copying the
+          // original's value misleads "factual labour" reports for the new visit.
           create: original.lines.map((l) => ({
             orgId,
             workId: l.workId,
@@ -246,7 +297,7 @@ export class WorkOrdersService {
             liftId: l.liftId ?? undefined,
             price: l.price,
             normoHours: l.normoHours,
-            actualHours: l.actualHours ?? null,
+            actualHours: null,
             notes: l.notes ?? null,
             amount: l.amount,
           })),
@@ -268,6 +319,18 @@ export class WorkOrdersService {
         branch: { select: { name: true } },
       },
     });
+
+    // Bug #96: AuditEvent for clone — without this the "Журнал змін" tab of the
+    // cloned WO is empty, hiding who/when created the duplicate.
+    if (userId) {
+      this.audit.record(orgId, 'WorkOrder', cloned.id, 'CREATE', userId, undefined, {
+        status: cloned.status,
+        number: cloned.number,
+        clonedFromId: id,
+        clonedFromNumber: original.number,
+      })
+        .catch((e: unknown) => this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`));
+    }
 
     return this.toDto(cloned);
   }
@@ -335,6 +398,18 @@ export class WorkOrdersService {
       this.maintenanceSchedules.updateAfterWorkOrder(
         orgId, wo.vehicleId, updates.completedAt!, wo.outMileage ?? undefined,
       ).catch((e: unknown) => this.logger.warn(`Помилка оновлення ТО: ${e instanceof Error ? e.message : e}`));
+    }
+
+    // Auto-create warranty after COMPLETED if warrantyDays > 0
+    if (newStatus === 'COMPLETED') {
+      this.settingsService.getOrganisationSettings(orgId)
+        .then(settings => {
+          const warrantyDays = settings.defaultWarrantyDays ?? 0;
+          if (warrantyDays > 0) {
+            return this.warranties.autoCreate(orgId, id, warrantyDays);
+          }
+        })
+        .catch((e: unknown) => this.logger.warn(`Warranty auto-create failed: ${e instanceof Error ? e.message : e}`));
     }
 
     // Send notifications (fire-and-forget via BullMQ queue — offline safe)
@@ -630,6 +705,7 @@ export class WorkOrdersService {
     branch?: { name: string } | null;
     vehicle?: { make: string; model: string; licensePlate: string | null } | null;
     counterparty?: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
+    _count?: { warranties?: number } | null;
   }): WorkOrderResponseDto {
     const cp = wo.counterparty;
     const cpName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || undefined;
@@ -647,6 +723,7 @@ export class WorkOrdersService {
       totalLabor: Number(wo.totalLabor), totalParts: Number(wo.totalParts),
       totalAmount: Number(wo.totalAmount), paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,
       createdAt: wo.createdAt, updatedAt: wo.updatedAt,
+      hasActiveWarranty: (wo._count?.warranties ?? 0) > 0,
     };
   }
 

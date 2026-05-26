@@ -36,6 +36,7 @@ interface WorkOrder {
   priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
   repairCategory?: 'MAINTENANCE' | 'CURRENT_REPAIR' | 'MAJOR_REPAIR' | 'BODY_REPAIR' | 'DIAGNOSTICS' | 'WARRANTY' | 'SEASONAL' | null;
   dueDate?: string | null;
+  hasActiveWarranty?: boolean;
 }
 interface Paginated { items: WorkOrder[]; total: number; page: number; limit: number; }
 interface Branch { id: string; name: string; }
@@ -555,7 +556,14 @@ export default function WorkOrdersPage() {
                   {colVisible.has('number') && (
                     <TableCell>
                       <div className="space-y-1">
-                        <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
+                          {wo.hasActiveWarranty && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20">
+                              Гарантія
+                            </span>
+                          )}
+                        </div>
                         {wo.repairCategory && (
                           <p className="text-[11px] text-muted-foreground">
                             {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}

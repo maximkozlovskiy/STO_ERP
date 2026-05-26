@@ -1040,9 +1040,12 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ### B4 — Гарантійний облік
 
-- [ ] `[sto-database]` Модель `Warranty` (`orgId`, `workOrderId`, `workOrderLineId?`, `workOrderPartId?`, `expiresAt`, `description`, `claimedAt?`, `claimWoId?`)
-- [ ] `[sto-backend]` `POST /work-orders/:id/warranties` (авто після COMPLETED за `OrganisationSettings.warrantyDays`) + `GET /warranties/expiring?days=30` + `POST /warranties/:id/claim` (прив'язує новий WO)
-- [ ] `[sto-web]` Вкладка "Гарантії" у картці контрагента + badge "Гарантія" у WO list для активних гарантій
+- [x] `[sto-database]` Модель `Warranty` (`orgId`, `workOrderId`, `workOrderLineId?`, `workOrderPartId?`, `expiresAt`, `description`, `claimedAt?`, `claimWoId?`)
+    > `packages/database/prisma/schema.prisma` + migration `20260526200000_warranty_inspection_webhook`. Поля: orgId, workOrderId, counterpartyId, expiresAt, claimedAt, claimWoId. Relations до WorkOrder (×2), Counterparty, Organisation.
+- [x] `[sto-backend]` `POST /work-orders/:id/warranties` (авто після COMPLETED за `OrganisationSettings.warrantyDays`) + `GET /warranties/expiring?days=30` + `POST /warranties/:id/claim` (прив'язує новий WO)
+    > `apps/api/src/modules/warranties/`. WarrantiesModule + CRUD endpoints + autoCreate у work-orders.service.ts transition COMPLETED handler. defaultWarrantyDays з SettingsService.
+- [x] `[sto-web]` Вкладка "Гарантії" у картці контрагента + badge "Гарантія" у WO list для активних гарантій
+    > `apps/web/src/app/crm/[id]/PageClient.tsx` — вкладка warranties + UI секція. `apps/web/src/app/work-orders/page.tsx` — hasActiveWarranty badge у таблиці.
 
 ### B5 — Бонусна програма (Loyalty Points)
 

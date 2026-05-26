@@ -267,6 +267,10 @@ model Organisation {
   workOrderTemplates    WorkOrderTemplate[]
   workOrderMedia        WorkOrderMedia[]
   auditEvents           AuditEvent[]
+  warranties            Warranty[]
+  inspectionReports     InspectionReport[]
+  webhookEndpoints      WebhookEndpoint[]
+  loyaltyAccounts       LoyaltyAccount[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -424,6 +428,7 @@ model Employee {
   comments               Comment[]
   uploadedMedia          WorkOrderMedia[]
   auditEvents            AuditEvent[]
+  inspectionReports      InspectionReport[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -544,12 +549,14 @@ model Counterparty {
   org               Organisation       @relation(fields: [orgId], references: [id])
   customerGarages   CustomerGarage[]
   settlementAccount SettlementAccount?
+  loyaltyAccount    LoyaltyAccount?
   purchaseOrders    PurchaseOrder[]
   invoices          Invoice[]
   workOrders        WorkOrder[]
   payments          Payment[]
   reconciliationActs ReconciliationAct[]
   goodsAsSupplier   Good[]             @relation("GoodSupplier")
+  warranties        Warranty[]
 
   @@index([orgId, type, deletedAt])
   @@index([orgId, syncVersion])
@@ -852,7 +859,10 @@ model WorkOrder {
   invoices        Invoice[]
   calendarSlots   CalendarSlot[]
   completionActs  CompletionAct[]
-  media           WorkOrderMedia[]
+  media             WorkOrderMedia[]
+  warranties        Warranty[]
+  claimWarranties   Warranty[]        @relation("WarrantyClaim")
+  inspectionReport  InspectionReport?
 
   @@index([orgId, status, deletedAt])
   @@index([orgId, syncVersion])
@@ -1213,6 +1223,11 @@ model OrganisationSettings {
   followUpActive        Boolean         @default(false)
   followUpDays          Int             @default(90)
   uiFeatures            Json            @default("{}")
+  // B4: Loyalty program settings
+  loyaltyEnabled        Boolean         @default(false)
+  loyaltyEarnPer        Decimal         @default(100) @db.Decimal(10, 2)
+  loyaltyEarnPoints     Decimal         @default(1) @db.Decimal(10, 2)
+  loyaltyRedeemRate     Decimal         @default(1) @db.Decimal(10, 2)
   syncVersion           BigInt          @default(0)
   updatedAt             DateTime        @updatedAt
 
@@ -1538,6 +1553,36 @@ model WorkOrderMedia {
   @@map("work_order_media")
 }
 
+// ─── WARRANTY (B3) ───────────────────────────────────────
+
+model Warranty {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String    @db.Uuid
+  workOrderId       String    @db.Uuid
+  workOrderLineId   String?   @db.Uuid
+  workOrderPartId   String?   @db.Uuid
+  counterpartyId    String    @db.Uuid
+  expiresAt         DateTime
+  description       String    @default("")
+  claimedAt         DateTime?
+  claimWoId         String?   @db.Uuid
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  syncVersion       BigInt    @default(0)
+
+  org          Organisation @relation(fields: [orgId], references: [id])
+  workOrder    WorkOrder    @relation(fields: [workOrderId], references: [id])
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+  claimWo      WorkOrder?   @relation("WarrantyClaim", fields: [claimWoId], references: [id])
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@index([orgId, counterpartyId, deletedAt])
+  @@index([orgId, expiresAt, deletedAt])
+  @@map("warranties")
+}
+
 // ─── AUDIT EVENTS (B11) ──────────────────────────────────
 
 model AuditEvent {
@@ -1556,6 +1601,67 @@ model AuditEvent {
   @@index([orgId, entityType, entityId])
   @@index([orgId, createdAt])
   @@map("audit_events")
+}
+
+// ─── INSPECTION REPORT (B1) ──────────────────────────────
+
+model InspectionReport {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String   @db.Uuid
+  workOrderId String   @db.Uuid
+  mileage     Int?
+  points      Json     @default("[]")
+  createdBy   String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  syncVersion BigInt   @default(0)
+
+  org       Organisation @relation(fields: [orgId], references: [id])
+  workOrder WorkOrder    @relation(fields: [workOrderId], references: [id])
+  employee  Employee     @relation(fields: [createdBy], references: [id])
+
+  @@unique([workOrderId])
+  @@index([orgId, syncVersion])
+  @@map("inspection_reports")
+}
+
+// ─── WEBHOOKS (B5) ───────────────────────────────────────
+
+model WebhookEndpoint {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  url         String
+  secret      String    @default("")
+  events      String[]
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  syncVersion BigInt    @default(0)
+
+  org        Organisation      @relation(fields: [orgId], references: [id])
+  deliveries WebhookDelivery[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, isActive])
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  endpointId   String   @db.Uuid
+  event        String
+  payload      Json
+  status       String   @default("PENDING")
+  attempts     Int      @default(0)
+  responseCode Int?
+  responseBody String?
+  createdAt    DateTime @default(now())
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id])
+
+  @@index([endpointId, createdAt])
+  @@map("webhook_deliveries")
 }
 
 // ─── CLOUD SYNC ──────────────────────────────────────────
@@ -1584,4 +1690,41 @@ model SyncJob {
   @@index([orgId, status])
   @@index([orgId, tableName, syncVersion])
   @@map("sync_jobs")
+}
+
+// ─── LOYALTY PROGRAM (B4) ────────────────────────────────
+
+model LoyaltyAccount {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  counterpartyId String   @unique @db.Uuid
+  balance        Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  syncVersion    BigInt   @default(0)
+
+  org          Organisation         @relation(fields: [orgId], references: [id])
+  counterparty Counterparty         @relation(fields: [counterpartyId], references: [id])
+  transactions LoyaltyTransaction[]
+
+  @@index([orgId])
+  @@index([orgId, syncVersion])
+  @@map("loyalty_accounts")
+}
+
+// Append-only — ніколи не редагується
+model LoyaltyTransaction {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId    String   @db.Uuid
+  type         String   // EARN | REDEEM
+  points       Decimal  @db.Decimal(12, 2)
+  documentId   String?  @db.Uuid
+  documentType String?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, createdAt])
+  @@map("loyalty_transactions")
 }
