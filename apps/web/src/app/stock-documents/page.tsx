@@ -18,7 +18,7 @@ import {
 import { cn } from '@/lib/utils';
 
 interface Branch { id: string; name: string; }
-interface Warehouse { id: string; name: string; }
+interface Warehouse { id: string; name: string; isMain: boolean; }
 interface Good { id: string; name: string; sku: string | null; unit: string; }
 interface DocLine {
   id?: string; goodId: string; goodName?: string; goodSku?: string | null;
@@ -104,9 +104,14 @@ export default function StockDocumentsPage() {
         apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses'),
         apiFetch<{ items: Good[] } | Good[]>('/goods?limit=200'),
       ]).then(([b, w, g]) => {
-        setBranches(Array.isArray(b) ? b : b.items);
-        setWarehouses(Array.isArray(w) ? w : w.items);
+        const bList = Array.isArray(b) ? b : b.items;
+        const wList = Array.isArray(w) ? w : w.items;
+        setBranches(bList);
+        setWarehouses(wList);
         setGoods(Array.isArray(g) ? g : g.items);
+        if (bList.length === 1) setForm(f => ({ ...f, branchId: bList[0].id }));
+        const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
+        if (mainW) setForm(f => ({ ...f, warehouseId: mainW.id }));
       }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
     }
   }, [showCreate]);

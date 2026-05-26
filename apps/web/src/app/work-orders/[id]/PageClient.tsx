@@ -55,7 +55,7 @@ interface CompletionActSummary {
 interface Work { id: string; name: string; normoHours: number; price: number; }
 interface Employee { id: string; firstName: string; lastName: string; }
 interface Good { id: string; name: string; salePrice: number; }
-interface Warehouse { id: string; name: string; }
+interface Warehouse { id: string; name: string; isMain: boolean; }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -241,7 +241,12 @@ export default function WorkOrderCardPage() {
       .then(r => { if (mountedRef.current) setGoods(r.items); })
       .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
     apiFetch<Warehouse[]>('/warehouses')
-      .then(data => { if (mountedRef.current) setWarehouses(data); })
+      .then(data => {
+        if (!mountedRef.current) return;
+        setWarehouses(data);
+        const mainW = data.find(x => x.isMain) ?? (data.length === 1 ? data[0] : null);
+        if (mainW) setPartForm(f => ({ ...f, warehouseId: mainW.id }));
+      })
       .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
   }, []);
 

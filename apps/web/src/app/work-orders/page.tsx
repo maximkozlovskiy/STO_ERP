@@ -216,8 +216,10 @@ export default function WorkOrdersPage() {
   });
 
   useEffect(() => {
-    apiFetch<Branch[]>('/branches').then(setBranches)
-      .catch((e: unknown) => setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити філії'));
+    apiFetch<Branch[]>('/branches').then(bs => {
+      setBranches(bs);
+      if (bs.length === 1) setForm(f => ({ ...f, branchId: bs[0].id }));
+    }).catch((e: unknown) => setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити філії'));
     apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200')
       .then(r => setCounterparties(r.items))
       .catch((e: unknown) => setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити контрагентів'));
@@ -301,7 +303,11 @@ export default function WorkOrdersPage() {
           ),
         );
       })
-      .then(results => setVehicles(results.flat()))
+      .then(results => {
+        const allVehicles = results.flat();
+        setVehicles(allVehicles);
+        if (allVehicles.length === 1) setForm(f => ({ ...f, vehicleId: allVehicles[0].id }));
+      })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження автомобілів'));
   };
 

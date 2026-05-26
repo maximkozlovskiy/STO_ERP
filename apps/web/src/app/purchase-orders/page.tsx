@@ -18,7 +18,7 @@ import {
 import { cn } from '@/lib/utils';
 
 interface Supplier { id: string; firstName?: string; lastName?: string; companyName?: string; }
-interface Warehouse { id: string; name: string; }
+interface Warehouse { id: string; name: string; isMain: boolean; }
 interface Good { id: string; name: string; sku: string | null; unit: string; purchasePrice: number | null; }
 interface POLine {
   id?: string; goodId: string; goodName?: string; goodSku?: string | null; unit?: string;
@@ -111,9 +111,12 @@ export default function PurchaseOrdersPage() {
         apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses'),
         apiFetch<{ items: Good[] } | Good[]>('/goods?limit=200'),
       ]).then(([s, w, g]) => {
+        const wList = Array.isArray(w) ? w : w.items;
         setSuppliers(Array.isArray(s) ? s : s.items);
-        setWarehouses(Array.isArray(w) ? w : w.items);
+        setWarehouses(wList);
         setGoods(Array.isArray(g) ? g : g.items);
+        const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
+        if (mainW) setForm(f => ({ ...f, warehouseId: mainW.id }));
       }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
     }
   }, [showCreate]);

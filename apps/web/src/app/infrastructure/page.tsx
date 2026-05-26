@@ -33,7 +33,7 @@ interface Lift {
   lastMaintenanceDate?: string | null;
   nextMaintenanceDate?: string | null;
 }
-interface Warehouse { id: string; branchId: string; name: string; type: string; }
+interface Warehouse { id: string; branchId: string; name: string; type: string; isMain: boolean; }
 
 type Tab = 'branches' | 'zones' | 'lifts' | 'warehouses';
 
@@ -125,7 +125,7 @@ export default function InfrastructurePage() {
           }),
         });
       } else if (modal === 'warehouse') {
-        await apiFetch<Warehouse>('/warehouses', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
+        await apiFetch<Warehouse>('/warehouses', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type, isMain: form.isMain === 'true' }) });
       }
       closeModal();
       loadAll();
@@ -286,6 +286,7 @@ export default function InfrastructurePage() {
                   <TableHead>Назва</TableHead>
                   <TableHead>Тип</TableHead>
                   <TableHead>Філія</TableHead>
+                  <TableHead>Основний</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -295,6 +296,24 @@ export default function InfrastructurePage() {
                     <TableCell className="font-medium text-foreground">{w.name}</TableCell>
                     <TableCell className="text-muted-foreground">{WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}</TableCell>
                     <TableCell className="text-muted-foreground">{branches.find(b => b.id === w.branchId)?.name ?? '—'}</TableCell>
+                    <TableCell>
+                      <button
+                        type="button"
+                        title={w.isMain ? 'Основний склад' : 'Зробити основним'}
+                        onClick={async () => {
+                          if (w.isMain) return;
+                          setSaving(true); setError('');
+                          try {
+                            await apiFetch(`/warehouses/${w.id}`, { method: 'PATCH', body: JSON.stringify({ isMain: true }) });
+                            loadAll();
+                          } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+                          finally { setSaving(false); }
+                        }}
+                        className={cn('w-4 h-4 rounded border-2 flex items-center justify-center', w.isMain ? 'bg-primary border-primary' : 'border-border hover:border-primary/60')}
+                      >
+                        {w.isMain && <span className="block w-2 h-2 rounded-sm bg-white" />}
+                      </button>
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => remove('/warehouses', w.id)} className="text-destructive/60 hover:text-destructive">
                         <Trash2 className="h-3.5 w-3.5" />
@@ -389,6 +408,15 @@ export default function InfrastructurePage() {
           <Select label="Тип" required value={form.type ?? 'MAIN'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
             {Object.entries(WAREHOUSE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.isMain === 'true'}
+              onChange={e => setForm(f => ({ ...f, isMain: e.target.checked ? 'true' : '' }))}
+              className="w-4 h-4 accent-primary"
+            />
+            <span className="text-foreground">Основний склад</span>
+          </label>
         </div>
       </Modal>
     </div>
