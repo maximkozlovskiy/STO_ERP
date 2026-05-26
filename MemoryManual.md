@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+18598d7 fix(review): costMethod UI enum value + literal-union type + regression tests
+c8ce19a feat(settings): add costMethod (FIFO/LIFO/AVERAGE) selector to org settings
 da68955 docs(tester): record Bug #73 from /sto-tester session on isMain feature
 dd37d69 fix(tester): Bug #73 — pre-existing failing command-palette empty-state test
 354cb51 test(warehouses): contract + service specs for isMain + P2002 mapping
@@ -23,19 +25,22 @@ eb48186 fix(tester): Bug #72 — preserve manual vehicleId in loadVehicles (MEDI
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 138/138 passed  (was 120 → +18: 10 warehouses contract + 8 warehouses service)
-Contract:        ✅ inside 138 (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4, settings: 6, warehouses: 10)
-Property:        ✅ inside 138 (fsm: 11, inventory: 7, settlements: 8)
-Components:      ✅ 139/139 passed  (was 138 — Bug #73 unblocked command-palette empty-state test)
+Unit:            ✅ 142/142 passed  (was 138 → +4 settings contract: costMethod GET/PATCH/AVG_COST/regression)
+Contract:        ✅ inside 142 (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4, settings: 10, warehouses: 10)
+Property:        ✅ inside 142 (fsm: 11, inventory: 7, settlements: 8)
+Components:      ✅ 139/139 passed
 E2E:             ✅ 16/16 passed    (playwright on running dev-server)
 Build:           ✅ @sto/api + @sto/web tsc clean
-Tester sweep:    /sto-tester FULL on 7a08623+83921d2 — 5 bugs found (1 CRITICAL data integrity, 1 HIGH role, 3 MEDIUM)
-Critical fixes:  Bug #69 partial unique index `warehouses(orgId) WHERE isMain=true AND deletedAt IS NULL`
-                 Bug #70 MECHANIC added to GET /warehouses @Roles (was blocking WO part modal)
-                 Bug #71 addPart() preserves warehouseId (was losing main on every save)
-                 Bug #72 loadVehicles preserves manual vehicleId pick (consistent with branch/warehouse patron)
-                 Bug #73 command-palette test mocks apiFetch + uses findByText (had been silently failing)
+Review sweep:    /sto-review on c8ce19a (costMethod feature) — 1 CRITICAL + 2 IMPORTANT + 1 SUGGESTION
+Critical fix:    18598d7 — UI sent 'AVERAGE' (not Prisma enum); enum is AVG_COST. FEFO option was missing.
+                 Tightened web type to literal union `'FIFO' | 'FEFO' | 'LIFO' | 'AVG_COST'`.
+                 Added regression contract tests + radio-group a11y.
 ```
+
+### Gotcha — /sto-review costMethod selector (2026-05-26, commit 18598d7)
+- **Frontend enum literal drift from Prisma enum** (settings/page.tsx costMethod selector): Prisma enum `BatchCostMethod = { FIFO, FEFO, LIFO, AVG_COST }`. New UI shipped `[['FIFO', ...], ['LIFO', ...], ['AVERAGE', ...]]` — `AVERAGE` is not in the enum and `FEFO` is missing entirely. Backend `@IsEnum(BatchCostMethod)` returns 400 on any "Середній" pick → user can never change the default. Канон: when an enum is shared across the boundary, declare a literal-union type on the frontend (`type CostMethod = 'FIFO' | 'FEFO' | 'LIFO' | 'AVG_COST'`) and derive the option list from that single source of truth. NEVER let the field be typed `string` in the frontend `interface` — that defeats TS as a safety net for enum drift. Also: every Prisma enum that surfaces in UI needs a contract test that PATCHes each valid value AND asserts an invalid string 400s (regression guard).
+- **List/option arrays in JSX should be `const OPTIONS = [...]` at module top, not inline `[as [string,string,string][]]`** — the inline tuple-literal cast hides typos behind verbose syntax. Canonical pattern: `const X_OPTIONS: { value: X; label: string; hint: string }[] = [...]; X_OPTIONS.map(...)`. Also makes the labels accessible to future i18n extraction.
+- **Radio-group semantics on segmented buttons**: a vertically/horizontally stacked group of mutually exclusive `<button>`s is functionally a radio group. Wrap in `role="radiogroup"` with `aria-label`, give each option `role="radio"` and `aria-checked={selected}` — otherwise screen readers announce "10 buttons" without conveying mutual exclusivity.
 
 ### Gotcha — /sto-tester FULL on warehouse isMain feature (2026-05-26, baгs #69-#73)
 
