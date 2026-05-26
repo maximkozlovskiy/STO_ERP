@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type Redis from 'ioredis';
-import { VatMode } from '@prisma/client';
+import { VatMode, BatchCostMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import {
@@ -194,6 +194,7 @@ export class SettingsService {
     requireClientApproval: boolean;
     allowPartialPayment: boolean;
     brandTheme: string;
+    costMethod: BatchCostMethod;
     uiFeatures: unknown;
     updatedAt: Date;
   }): OrganisationSettingsResponseDto {
@@ -208,6 +209,7 @@ export class SettingsService {
       requireClientApproval: s.requireClientApproval,
       allowPartialPayment: s.allowPartialPayment,
       brandTheme: s.brandTheme,
+      costMethod: s.costMethod,
       uiFeatures: this.parseUiFeatures(s.uiFeatures),
       updatedAt: s.updatedAt,
     };

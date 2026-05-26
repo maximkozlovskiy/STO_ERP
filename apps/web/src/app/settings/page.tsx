@@ -23,6 +23,7 @@ interface OrgSettings {
   requireClientApproval: boolean;
   allowPartialPayment: boolean;
   brandTheme: string;
+  costMethod: string;
   uiFeatures?: UiFeatures;
   updatedAt: string;
 }
@@ -139,6 +140,7 @@ export default function SettingsPage() {
           requireClientApproval: orgSettings.requireClientApproval,
           allowPartialPayment: orgSettings.allowPartialPayment,
           brandTheme: orgSettings.brandTheme,
+          costMethod: orgSettings.costMethod,
         }),
       });
       applyTheme(updated.brandTheme);
@@ -271,6 +273,29 @@ export default function SettingsPage() {
               checked={orgSettings.allowPartialPayment}
               onChange={(v) => setOrgSettings({ ...orgSettings, allowPartialPayment: v })}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Метод списання партій</label>
+            <p className="text-xs text-muted-foreground mb-2">Визначає порядок списання запчастин з партійного обліку при виконанні нарядів</p>
+            <div className="flex gap-2">
+              {([['FIFO', 'FIFO', 'Перший прийшов — перший пішов'], ['LIFO', 'LIFO', 'Останній прийшов — перший пішов'], ['AVERAGE', 'Середній', 'За середньозваженою собівартістю']] as [string, string, string][]).map(([value, label, hint]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setOrgSettings({ ...orgSettings, costMethod: value })}
+                  className={cn(
+                    'flex-1 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors text-left',
+                    orgSettings.costMethod === value
+                      ? 'border-primary bg-primary-subtle text-primary'
+                      : 'border-border bg-surface text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                  )}
+                >
+                  <div className="font-semibold">{label}</div>
+                  <div className="text-xs mt-0.5 opacity-70">{hint}</div>
+                </button>
+              ))}
+            </div>
           </div>
 
           <Button onClick={saveOrgSettings} loading={saving} className="w-full">

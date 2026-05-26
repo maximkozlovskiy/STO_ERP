@@ -10,7 +10,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
-import { VatMode } from '@prisma/client';
+import { VatMode, BatchCostMethod } from '@prisma/client';
 
 export interface UiFeatures {
   toastEnabled: boolean;
@@ -84,6 +84,11 @@ export class UpdateOrganisationSettingsDto {
   @IsOptional()
   @IsString()
   brandTheme?: string;
+
+  @ApiPropertyOptional({ enum: BatchCostMethod })
+  @IsOptional()
+  @IsEnum(BatchCostMethod)
+  costMethod?: BatchCostMethod;
 
   @ApiPropertyOptional({ description: 'UI feature flags (partial update supported)' })
   @IsOptional()
@@ -166,6 +171,7 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty() requireClientApproval!: boolean;
   @ApiProperty() allowPartialPayment!: boolean;
   @ApiProperty() brandTheme!: string;
+  @ApiProperty({ enum: BatchCostMethod }) costMethod!: BatchCostMethod;
   @ApiProperty({ description: 'UI feature flags' }) uiFeatures!: UiFeatures;
   @ApiProperty() updatedAt!: Date;
 }
