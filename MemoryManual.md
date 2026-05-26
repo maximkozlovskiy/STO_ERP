@@ -9,8 +9,13 @@
 ## Останній commit
 
 ```
-83921d2 fix(review): warehouse auto-select — restore dropped trgm GIN indexes + race-safe pickers
-7a08623 feat: auto-select default values for single-entry reference data
+da68955 docs(tester): record Bug #73 from /sto-tester session on isMain feature
+dd37d69 fix(tester): Bug #73 — pre-existing failing command-palette empty-state test
+354cb51 test(warehouses): contract + service specs for isMain + P2002 mapping
+eb48186 fix(tester): Bug #72 — preserve manual vehicleId in loadVehicles (MEDIUM UX)
+7da9160 fix(tester): Bug #71 — preserve warehouseId across part additions (MEDIUM UX)
+4b49453 fix(tester): Bug #70 — MECHANIC GET /warehouses access (HIGH role gap)
+317723a fix(tester): Bug #69 — partial unique index on warehouses.isMain (CRITICAL)
 ```
 
 Дата: 2026-05-26
@@ -18,19 +23,28 @@
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 120/120 passed  (warehouse changes covered by existing infra/inventory specs)
-Contract:        ✅ inside 120 (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4, settings: 6)
-Property:        ✅ inside 120 (fsm: 11, inventory: 7, settlements: 8)
-Components:      ⏭ web testing-library не запускали (review focused on diff)
-E2E:             ⏭ playwright не запускали (server not running this session)
-Build:           ✅ @sto/api nest build clean
-Review sweep:    /sto-review on 7a08623 — 1 CRITICAL (migration dropped trgm GINs) + 3 IMPORTANT fixed
-Critical fixes:  warehouse_is_main migration rewritten to NOT drop trgm GIN indexes (restored idempotently)
-                 trgm GIN indexes re-created in dev DB after detection; checksum row updated
-                 loadVehicles in work-orders/page.tsx now race-safe via vehicleReqRef counter
-                 auto-select effects in stock-docs/PO/WO preserve user's manual choice on remount
-                 warehouses findAll now orders isMain desc → name asc (consistent default)
+Unit:            ✅ 138/138 passed  (was 120 → +18: 10 warehouses contract + 8 warehouses service)
+Contract:        ✅ inside 138 (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4, settings: 6, warehouses: 10)
+Property:        ✅ inside 138 (fsm: 11, inventory: 7, settlements: 8)
+Components:      ✅ 139/139 passed  (was 138 — Bug #73 unblocked command-palette empty-state test)
+E2E:             ✅ 16/16 passed    (playwright on running dev-server)
+Build:           ✅ @sto/api + @sto/web tsc clean
+Tester sweep:    /sto-tester FULL on 7a08623+83921d2 — 5 bugs found (1 CRITICAL data integrity, 1 HIGH role, 3 MEDIUM)
+Critical fixes:  Bug #69 partial unique index `warehouses(orgId) WHERE isMain=true AND deletedAt IS NULL`
+                 Bug #70 MECHANIC added to GET /warehouses @Roles (was blocking WO part modal)
+                 Bug #71 addPart() preserves warehouseId (was losing main on every save)
+                 Bug #72 loadVehicles preserves manual vehicleId pick (consistent with branch/warehouse patron)
+                 Bug #73 command-palette test mocks apiFetch + uses findByText (had been silently failing)
 ```
+
+### Gotcha — /sto-tester FULL on warehouse isMain feature (2026-05-26, baгs #69-#73)
+
+- **Service-layer `updateMany; create` для single-flag-per-org НЕ є атомарним** (Bug #69, warehouses.service.ts): паттерн `await tx.warehouse.updateMany({ isMain: false }); await tx.warehouse.create({ isMain: true })` в одній `$transaction` НЕ дає DB-рівневого інваріанту. `updateMany` бере row-locks на EXISTING рядки; `create` додає новий — не конфліктує. Дві паралельні транзакції в `READ COMMITTED` обидві проходять. Результат: 2+ `isMain=true` в одній org. Канон: для будь-якого "тільки одна-Х-на-org/branch/контекст" — **partial unique index** на DB рівні: `CREATE UNIQUE INDEX ... ON tbl (orgId) WHERE flag = true AND deletedAt IS NULL`. Service-guard лишається для UX (миттєвий toggle), але інваріант — у БД. У сервісі обернути `Prisma.P2002` у `ConflictException` з UI-friendly повідомленням. Прийом застосуємо також до: `Counterparty.isPrimaryContact`, `Branch.isHeadquarters` (якщо з'явиться), `PaymentMethodConfig.isDefault` — будь-який "primary/default/main" flag.
+- **MECHANIC-доступ до reference endpoints, які потрібні для WO parts** (Bug #70, warehouses.controller.ts): `WorkOrdersController.@Roles('OWNER','ADMIN','RECEPTIONIST','MECHANIC')` на POST /work-orders/:id/parts дозволяє MECHANIC додавати запчастини; модалка "Додати запчастину" викликає `GET /warehouses` для заповнення dropdown; `WarehousesController.findAll` мав `@Roles('OWNER','ADMIN','RECEPTIONIST','STOREKEEPER')` — без MECHANIC. Запит повертає 403, dropdown порожній, MECHANIC не може додати запчастину. Канон: коли роль X отримує WRITE на доменну сутність Y, перевірити що X має READ на ВСІ reference resources які UI використовує у формі для Y. Grep: `apiFetch.*/<resource>` у компонентах де можливі MECHANIC/role-X — porівняти з `@Roles` у відповідних контролерах.
+- **`useEffect([])` для one-shot auto-fill не виконається після form reset** (Bug #71, work-orders/[id]/PageClient.tsx): `useEffect(() => { apiFetch('/warehouses').then(d => setPartForm(f => f.warehouseId ? f : {...f, warehouseId: mainW.id})) }, [])` спрацьовує лише раз. Якщо handler-saver обнуляє форму `setPartForm({...empty})`, наступне відкриття модалки покаже порожній dropdown — useEffect не re-fire. Канон: при reset форми зберегти "sticky" defaults: `setPartForm(f => ({ goodId:'', warehouseId: f.warehouseId, quantity:'1', price:'' }))` — explicitly preserve fields що мають "залипати" між послідовними інстансами модалки. Не використовувати `setForm({...empty})` для форм, що auto-fill-яться через mount-only useEffect.
+- **Race-patron consistency: `f.x ? f : {...}` має бути ВСЮДИ де auto-select** (Bug #72, work-orders/page.tsx loadVehicles): review-фікс 83921d2 додав цей patron у branchId і warehouseId auto-selects, але пропустив `loadVehicles` (там guard є тільки на reqId staleness — а не на user's manual pick). Канон: при додаванні auto-select feature робити **сplit-screen sweep** — знайти grep-ом всі `setForm(f => ({ ...f, X: result }))` і застосувати один і той же patron `f.X ? f : {...}` синхронно. Pre-existing auto-selects, які приймають patron в окремому commit, ризик регресії.
+- **Pre-existing failing tests маскуються у CI-output** (Bug #73, command-palette.test.tsx): тест `показує "Нічого не знайдено"` ламається тиху і безшумно після `feat(phases21-22)` що додав `apiFetch('/search')` debounce у компонент — у jsdom нема fetch, `dataLoading` лишається true, "empty state" не рендериться. 12/13 passed виглядає здорово для людини що дивиться лише на summary, але реально це регресія яка пройшла кілька commit-ів. Канон: будь-який тест що використовує `screen.getByText(...)` після `userEvent.type` має або (a) `vi.mock('@/lib/api-client', ...)` у файлі-тесті щоб контрольовано resolved-ить API виклики, або (b) `findByText` (async) — синхронні assertion-и проти post-debounce UI = flaky timer-залежність. `/sto-tester` тепер ЗАВЖДИ запускає `pnpm --filter @sto/web exec vitest run` у FULL mode і блокує на 0 failures, навіть якщо помилка не у файлах diff.
+
 
 ### Gotcha — /sto-review warehouse auto-select cycle (2026-05-26, commit fix(review): warehouse auto-select)
 - **`prisma migrate dev` drops raw-SQL "drift" indexes silently** (migrations/20260526113130_warehouse_is_main): the trgm GIN indexes from `20260526061209_b6_trgm_gin_indexes` are created by hand-written `CREATE INDEX IF NOT EXISTS ...` *outside* schema.prisma. When the next `migrate dev` was generated for the unrelated `Warehouse.isMain` column, Prisma saw 6 indexes present in DB but not in schema → emitted `DROP INDEX` statements at the top of the auto-generated migration. This silently killed B6 fuzzy search (HTTP 200 still, just sequential scans on every search). Канон: every raw-SQL migration MUST be paired with **either** a corresponding schema.prisma directive (`@@index([...], type: Gin, ops: ...)` for trgm if supported) **or** the next auto-generated migration MUST be reviewed line-by-line for unexpected DROPs. The fix re-creates indexes idempotently inside the same migration, and updates the recorded checksum in `_prisma_migrations` so future `migrate dev` does not warn about drift.
