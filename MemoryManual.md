@@ -9,18 +9,35 @@
 ## Останній commit
 
 ```
-fix(review): Phases 21-22 — TDZ in WO page, broken pdfmake API, employeeId filter, polymorphic entityType mismatch, comment DELETE auth, SSR-unsafe localStorage, search ordering
+fix(tester): Bugs #61-#67 — Phases 21-22 follow-up (reservedQty, /branches shape, invoice PDF, employees filters, palette deep-link, template prefill)
 ```
 
 Дата: 2026-05-26
 
 ## Поточний стан проєкту
 ```
-TypeScript:      ✅ 0 errors        (apps/web + apps/api)
-Review sweep:    Phases 21-22 (B6/B7/B10/F1/F2/F6/F8/F10/F12) — 12 проблем, всі виправлено
-Critical fixes:  WO page TDZ, pdfmake server API, F6 employeeId DTO, F8 entityType casing, PDF blob download w/ Bearer
-Important fixes: comments DELETE без auth, useTableColumns SSR-unsafe, search ordering non-deterministic, branch guard not wired
+TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
+Unit:            ✅ 117/117 passed
+Contract:        ✅ inside 117 (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4, settings: 6)
+Property:        ✅ inside 117 (fsm: 11, inventory: 7, settlements: 8)
+Components:      ⏭ web testing-library не запускали (FULL pass focused on regression)
+E2E:             ⏭ playwright не запускали (server not running this session)
+Tester sweep:    Phases 21-22 follow-up — 7 нових багів знайдено + виправлено
+Critical fixes:  search reservedQty→reserved (Postgres column did not exist), invoice PDF blob+Bearer
+High-impact:     /branches shape mismatch in employees page, employees filters were no-ops, command palette deep-link
+Important:       WO template names overrode description silently, WO templates update/remove missing orgId
 ```
+
+### Gotcha — /sto-tester follow-up 2026-05-26 (commit fix(tester): Bugs #61-#67)
+
+- **Raw SQL must mirror Prisma column names exactly**: schema field `StockItem.reserved` becomes Postgres column `"reserved"` (camelCase, double-quoted). Search service had `si."reservedQty"` which does not exist → `/search` 500 for every query (Promise.all rejected took down WO and counterparty buckets too). Also added missing `LEFT JOIN ... AND si."orgId" = ...` predicate plus GROUP BY g.id to prevent row multiplication when a good is in N warehouses.
+- **`/branches` shape is `Branch[]` (plain array)** — NOT `{ items, total }`. employees/page.tsx assumed pagination envelope, fell back to `[]`, blocked B10 branch assignment. work-orders/page.tsx had the correct typing. Lesson: every contract refactor needs a sweep across ALL consumers, not just the one being edited.
+- **NestJS `@Query()` without DTO silently drops params**: `forbidNonWhitelisted` only applies when a class is provided. `EmployeesController.findAll` accepted no DTO, so frontend's q/role/showDeleted were never read — UI filters looked working but did nothing. Pattern fix: every `findAll` that takes filters MUST have a typed `*QueryDto` annotation.
+- **PDF endpoints need fetch+Bearer+Blob**, never bare `<a href>`. WO/PageClient had been fixed in the previous pass; invoices/page.tsx was missed and still used `<a href>` PLUS a bogus baseURL (`'http://localhost:3000/api'` fallback didn't match the env var convention used everywhere else).
+- **Command palette data results need detail routes**: `r.push('/crm')` for a counterparty result loses the click context. Mapped each type to `{ list, detail?: (id) => string }` so `/crm/${id}` and `/work-orders/${id}` route correctly; goods still hit list (no detail page yet).
+- **Tenant defense-in-depth even after findOne()**: `WorkOrderTemplatesService.update/remove` used `where: { id }` only. The preceding `findOne(orgId, id)` mitigated cross-tenant access, but any future refactor that drops findOne would silently leak. Pattern: always `where: { id, orgId }` for update/delete, regardless of preceding guards.
+- **Template select that overwrites description**: setting `form.description = tpl.name` was confusing (looked like a noop, the user thought template feature was broken). Prefix with «Створено за шаблоном «...»» until full lines/parts auto-apply is implemented in a follow-up sprint.
+
 
 ### Gotcha — /sto-review Phases 21-22 cycle (2026-05-26, commit fix(review): ...)
 - **TDZ у `useEffect` що читає `useRef`/`useState` оголошені нижче** (work-orders/page.tsx): рефакторинг "auto-init my-orders chip" зсунув `myOrdersInitRef = useRef(false)` нижче `useEffect` що його читає → `ReferenceError: Cannot access 'myOrdersInitRef' before initialization` при першому render для всіх ролей. Канон: ВСІ `useRef`/`useState` декларації йдуть ПЕРЕД будь-яким `useEffect`/`useCallback`/`useMemo` що їх читає. Не покладатися на JS hoisting — `let`/`const` не hoisted, виконання падає на стрічці `useEffect(...)`. Той самий ризик при додаванні нових ефектів зверху файлу під час інкрементальних feature builds.
@@ -737,6 +754,9 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `pending` | fix(tester): Bugs #61-#67 — search reservedQty column, /branches shape mismatch, invoice PDF Bearer fetch, employees filter DTO, palette deep-link, WO template orgId scope + description prefix |
+| `4cc4e6f` | fix(review): Phases 21-22 — TDZ, broken pdfmake, employeeId filter, polymorphic entityType, comment DELETE auth, SSR-unsafe localStorage, search ordering |
+| `ef146d3` | feat(phases21-22): B6 search, B7 PDF, B10 branch ACL, F1-F2-F6-F8-F10-F12 UX features |
 | `c938dc0` | fix(review): invoices page — mountedRef guards on all setState-after-await, selectTokenRef to drop stale detail responses on fast row-switching |
 | `a60d3d3` | fix(review): Group 3 — SSR safety (useSavedFilters), a11y (Check/X onClick), nullable dueDate, uncontrolled priority select |
 | `aed69c3` | fix(review): Command Palette + keyboard shortcuts — 7 issues (shift+/, useMemo deps, focus trap, a11y) |

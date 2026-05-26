@@ -1610,3 +1610,232 @@ Prisma defaults `totalWithoutVat/totalVat/totalWithVat = 0`. Для рахунк
 
 ---
 
+## Session 2026-05-26 — /sto-tester FULL pass on Phases 21-22 (B6/B7/B10/F1-F12)
+
+Контекст: Перевірка змін з commit `ef146d3` (feat) + `4cc4e6f` (12 fixes після review).
+Тестер шукає те, що review-агент НЕ виявив.
+
+---
+
+## Bug #61 — [CRITICAL] `SearchService.searchGoods` посилається на неіснуючу колонку `si.reservedQty`
+
+**Файл:** `apps/api/src/modules/search/search.service.ts:103`
+**Severity:** CRITICAL
+**Категорія:** business-logic / raw SQL
+
+**Опис:**
+Прямий запит:
+```sql
+SELECT g.id, g.name, g.sku,
+       si.quantity - COALESCE(si."reservedQty", 0) AS available
+FROM goods g
+LEFT JOIN stock_items si ON si."goodId" = g.id AND si."deletedAt" IS NULL
+```
+
+Колонка в schema.prisma:
+```
+model StockItem {
+  reserved    Float     @default(0)
+}
+```
+
+Prisma без `@map` створює Postgres колонку double-quoted **camelCase**: `"reserved"`, а не `"reservedQty"`. Postgres повертає `column si."reservedQty" does not exist`, і весь endpoint `/search?q=...` падає 500-ою при дефолтному `types=[wo, counterparty, good]` (Promise.all → один rejected → loss всього buckets) для будь-якого пошуку.
+
+**Очікувана поведінка:**
+`si.quantity - COALESCE(si."reserved", 0) AS available`
+
+**Фактична поведінка:**
+`/search` endpoint 500 для будь-якого запиту користувача — F1 Command Palette взагалі не повертає результатів типу `good`. У dev-режимі також може зашкодити WO та counterparty results через `Promise.all` rejected.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #62 — [HIGH] `employees/page.tsx` запитує `/branches` як `{ items: Branch[] }`, а API повертає голий масив
+
+**Файл:** `apps/web/src/app/employees/page.tsx:143`
+**Severity:** HIGH
+**Категорія:** API contract mismatch / frontend
+
+**Опис:**
+```typescript
+apiFetch<{ items: Branch[] }>('/branches').then(r => setBranches(r.items ?? [])),
+```
+
+Контролер `BranchesController.findAll` повертає `BranchResponseDto[]` (плоский масив). У результаті `r.items === undefined`, `?? []` дає `setBranches([])`. Multi-select «Доступ до філій» у модальці присвоєння **завжди порожній** — користувач не може призначити співробітнику жодної філії, що ламає всю B10 функціональність призначення філій.
+
+`work-orders/page.tsx:219` запитує той самий endpoint правильно: `apiFetch<Branch[]>('/branches').then(setBranches)`.
+
+**Очікувана поведінка:**
+```typescript
+apiFetch<Branch[]>('/branches').then(setBranches)
+```
+
+**Фактична поведінка:**
+Multi-select філій порожній, B10 призначення філій непрацездатне.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #63 — [CRITICAL] Invoice PDF download без Bearer токена — 401 + неконсистентний baseURL
+
+**Файл:** `apps/web/src/app/invoices/page.tsx:482`
+**Severity:** CRITICAL
+**Категорія:** security / frontend / API contract
+
+**Опис:**
+```typescript
+const url = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api'}/invoices/${selectedInv.id}/pdf`;
+const a = document.createElement('a');
+a.href = url;
+a.download = `invoice-...`;
+```
+
+Дві проблеми:
+1. **Bare `<a href>`** не приєднує `Authorization: Bearer …`. JWT-guarded ендпоінт `/invoices/:id/pdf` повертає 401 — користувач отримує сторінку «Сесія недійсна» замість PDF.
+2. **Неконсистентний baseURL**: fallback `'http://localhost:3000/api'` має суфікс `/api`, а env var `NEXT_PUBLIC_API_URL` (за конвенцією WO PageClient) — БЕЗ `/api`. Якщо env var встановлено (production), шлях стане `http(s)://api.example.com/invoices/...` без префіксу `/api` → 404.
+
+Цей самий клас бага виправляли в WO PageClient (через fetch + Bearer + Blob URL), але invoices/page.tsx не отримав того ж лікування.
+
+**Очікувана поведінка:**
+Завантаження через `fetch` + Bearer token + Blob URL (як у `work-orders/[id]/PageClient.tsx:380-404`).
+
+**Фактична поведінка:**
+PDF не завантажується (401), плюс некоректний URL у production.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #64 — [HIGH] `EmployeesController.findAll` ігнорує query параметри `q/role/showDeleted` — фільтри німі
+
+**Файл:** `apps/api/src/modules/employees/employees.controller.ts:24` + `apps/api/src/modules/employees/employees.service.ts:14`
+**Severity:** HIGH
+**Категорія:** business-logic / API contract
+
+**Опис:**
+Frontend `employees/page.tsx:128-145` будує параметри `q`, `role`, `showDeleted` і шле їх до `/employees?q=...&role=ADMIN`. Але контролер:
+```typescript
+findAll(@OrgContext() orgId: string) {
+  return this.service.findAll(orgId);
+}
+```
+Жодного `@Query()` параметра не визначено. Service фільтрує лише `orgId, deletedAt: null`. Параметри тихо ігноруються (NestJS ValidationPipe `forbidNonWhitelisted` не діє на @Query без DTO).
+
+Результат: пошук, фільтр посади, перемикач «Показати видалені» **нічого не роблять** — список не змінюється.
+
+**Очікувана поведінка:**
+Контролер приймає `EmployeesQueryDto` з полями `q?, role?, showDeleted?` + сервіс будує `where` динамічно (OR на firstName/lastName/phone, role match, deletedAt: null чи без фільтру).
+
+**Фактична поведінка:**
+Фільтри в UI німі — користувач думає, що пошук працює, але результат завжди один і той самий.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #65 — [HIGH] Command Palette: data results для `counterparty/good` навігують на список, а не на деталі
+
+**Файл:** `apps/web/src/components/ui/command-palette.tsx:76-79`
+**Severity:** HIGH
+**Категорія:** frontend (UX)
+
+**Опис:**
+```typescript
+perform: ({ router: r }) => {
+  const basePath = DATA_ROUTE[item.type] ?? '/';
+  r.push(item.type === 'wo' ? `/work-orders/${item.id}` : basePath);
+},
+```
+
+Для `wo` навігація працює (`/work-orders/${id}`). Для `counterparty` йде на `/crm` (список, втрачаючи контекст). Для `good` йде на `/catalog` (список).
+
+`/crm/[id]/page.tsx` існує — рішення є. `/catalog` (без [id]) — теж є, тому goods приймаємо як виняток (deeplink не існує, поки що залишаємо `/catalog`).
+
+**Очікувана поведінка:**
+- `wo` → `/work-orders/${item.id}` (вже працює)
+- `counterparty` → `/crm/${item.id}` (детальна сторінка)
+- `good` → `/catalog` (deeplink не існує)
+
+**Фактична поведінка:**
+Клік по «ТОВ Альфа» з палітри відкриває список усіх контрагентів — користувач має знову шукати.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #66 — [MEDIUM] `WorkOrderTemplatesService.update/remove` не передає `orgId` у Prisma `where` (tenant defense-in-depth)
+
+**Файл:** `apps/api/src/modules/work-order-templates/work-order-templates.service.ts:49, 62`
+**Severity:** MEDIUM
+**Категорія:** security / tenant isolation
+
+**Опис:**
+```typescript
+async update(orgId, id, dto) {
+  await this.findOne(orgId, id);
+  const t = await this.prisma.workOrderTemplate.update({
+    where: { id },  // ← без orgId
+    ...
+  });
+}
+async remove(orgId, id) {
+  await this.findOne(orgId, id);
+  await this.prisma.workOrderTemplate.update({
+    where: { id },  // ← без orgId
+    data: { deletedAt: new Date() },
+  });
+}
+```
+
+Решта сервісів проєкту (work-orders, invoices, employees, branches) використовують `where: { id, orgId }` — захист на рівні SQL від випадкових багів у findOne (наприклад, забути await, або refactoring що випадково пропускає check).
+
+`findOne` тут діє як guard, але це лише defense-in-depth — будь-який рефакторинг, що обіймає лише `update()`, втратить tenant ізоляцію.
+
+**Очікувана поведінка:**
+```typescript
+where: { id, orgId }
+```
+
+**Фактична поведінка:**
+Зараз tenant ізоляція тримається лише на guarding findOne — fragile до regressions.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #67 — [MEDIUM] WO template select pre-fills `description` з ІМЕНЕМ шаблону, а не корисним описом
+
+**Файл:** `apps/web/src/app/work-orders/page.tsx:774-787`
+**Severity:** MEDIUM
+**Категорія:** frontend (UX) / business-logic
+
+**Опис:**
+```tsx
+<Select ...
+  onChange={e => {
+    const tpl = templates.find(t => t.id === e.target.value);
+    if (tpl) setForm(f => ({ ...f, description: tpl.name }));
+  }}
+>
+```
+
+Обіцянка фічі F10 (per commit message): «select on create pre-fills description». Поточна реалізація:
+1. Записує `template.name` у поле опису — тобто опис стає назвою шаблону.
+2. **Не використовує `lines`/`parts` шаблону взагалі** — frontend їх не завантажує (запит `/work-order-templates?limit=100` повертає `{ name, id }` шейп, а lines/parts відкидаються).
+
+Без створення WO + застосування lines/parts (через подальші `POST /work-orders/:id/lines`) функція F10 «застосувати шаблон» дає лише дублювання назви — нульова цінність.
+
+**Очікувана поведінка:**
+Мінімум: prefill description полем «Створено за шаблоном «<name>»» (явно вказати джерело + натяк, що користувач має дописати специфіку).
+
+Краще: після створення WO застосувати lines/parts шаблону (потребує fetch detail з API + after-create flow). Залишається для майбутнього спринту.
+
+**Фактична поведінка:**
+Користувач вибирає «Заміна масла» у dropdown шаблонів — у полі опису з'являється «Заміна масла» (як plain text), нічого більше. Користувач думає, що шаблон не працює.
+
+**Статус:** [x] виправлено (мінімальний фікс: prefill «Створено за шаблоном «...»»)
+
+---
+
