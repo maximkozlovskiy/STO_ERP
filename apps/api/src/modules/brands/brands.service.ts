@@ -6,13 +6,16 @@ import { BrandResponseDto, CreateBrandDto, UpdateBrandDto } from './brands.dto';
 export class BrandsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(orgId: string): Promise<BrandResponseDto[]> {
-    const items = await this.prisma.brand.findMany({
-      where: { orgId, deletedAt: null },
-      orderBy: { name: 'asc' },
-      take: 1000,
-    });
-    return items.map(item => this.toDto(item));
+  async findAll(orgId: string): Promise<{ items: BrandResponseDto[]; total: number }> {
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.brand.findMany({
+        where: { orgId, deletedAt: null },
+        orderBy: { name: 'asc' },
+        take: 1000,
+      }),
+      this.prisma.brand.count({ where: { orgId, deletedAt: null } }),
+    ]);
+    return { items: items.map(item => this.toDto(item)), total };
   }
 
   async findOne(orgId: string, id: string): Promise<BrandResponseDto> {

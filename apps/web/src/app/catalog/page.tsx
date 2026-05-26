@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Pencil, Search, Trash2, BookOpen, Package, Layers, Star, Barcode, Ruler } from 'lucide-react';
+import { Plus, Pencil, Search, Trash2, BookOpen, Package, Layers, Star, Barcode, Ruler, Tag } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ interface Service { id: string; name: string; description: string | null; price:
 interface PaginatedServices { items: Service[]; total: number; page: number; limit: number; }
 interface GoodBarcode { id: string; barcode: string; type: string; isPrimary: boolean; }
 
-type Tab = 'works' | 'goods' | 'services' | 'units';
+type Tab = 'works' | 'goods' | 'services' | 'units' | 'brands';
 type GoodDetailTab = 'info' | 'barcodes' | 'batches';
 
 const GOOD_TYPE_LABELS: Record<string, string> = {
@@ -446,7 +446,7 @@ function GoodsTab() {
   const [batchViewerGoodId, setBatchViewerGoodId] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<Brand[]>('/brands').catch(() => []).then(v => { if (Array.isArray(v)) setBrands(v); });
+    apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200').catch(() => ({ items: [], total: 0 })).then(r => setBrands(r.items));
     apiFetch<Unit[]>('/units').catch(() => []).then(v => { if (Array.isArray(v)) setUnits(v); });
     apiFetch<{ items: Supplier[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200')
       .catch(() => ({ items: [] }))
@@ -1445,6 +1445,142 @@ function UnitsTab() {
   );
 }
 
+// ─── Brands Tab ───────────────────────────────────────────────────────────────
+
+function BrandsTab() {
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [editBrand, setEditBrand] = useState<Brand | null>(null);
+  const [form, setForm] = useState({ name: '' });
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200')
+      .then(r => setBrands(r.items))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openCreate = () => { setEditBrand(null); setForm({ name: '' }); setError(''); setModal(true); };
+  const openEdit = (b: Brand) => { setEditBrand(b); setForm({ name: b.name }); setError(''); setModal(true); };
+
+  const save = async () => {
+    if (!form.name.trim()) { setError('Назва є обов\'язковою'); return; }
+    setSaving(true); setError('');
+    try {
+      if (editBrand) {
+        await apiFetch<Brand>(`/brands/${editBrand.id}`, { method: 'PATCH', body: JSON.stringify({ name: form.name.trim() }) });
+      } else {
+        await apiFetch<Brand>('/brands', { method: 'POST', body: JSON.stringify({ name: form.name.trim() }) });
+      }
+      setModal(false);
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка збереження'); }
+    finally { setSaving(false); }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm('Видалити бренд? Товари з цим брендом не будуть видалені.')) return;
+    setDeletingId(id);
+    try {
+      await apiFetch<void>(`/brands/${id}`, { method: 'DELETE' });
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    finally { setDeletingId(null); }
+  };
+
+  return (
+    <div>
+      {!modal && error && (
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
+      )}
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <p className="text-[13px] text-muted-foreground">Бренди та виробники запчастин і товарів</p>
+        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
+          Бренд
+        </Button>
+      </div>
+
+      <div className="border border-border rounded-xl bg-surface overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Назва бренду</TableHead>
+              <TableHead className="text-right">Дії</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading && (
+              <TableRow>
+                <TableCell colSpan={2} className="py-10 text-center">
+                  <div className="flex justify-center"><Spinner size="md" /></div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && brands.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={2} className="p-0">
+                  <EmptyState icon={Tag} title="Бренди відсутні" description="Додайте перший бренд" />
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && brands.map(b => (
+              <TableRow key={b.id}>
+                <TableCell className="font-medium text-foreground">{b.name}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => openEdit(b)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      loading={deletingId === b.id}
+                      onClick={() => remove(b.id)}
+                      className="text-destructive/60 hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <Modal
+        open={modal}
+        onClose={() => setModal(false)}
+        title={editBrand ? 'Редагувати бренд' : 'Новий бренд'}
+        footer={
+          <Button onClick={save} loading={saving} disabled={!form.name.trim()} className="w-full">
+            Зберегти
+          </Button>
+        }
+      >
+        {error && (
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{error}</div>
+        )}
+        <Input
+          label="Назва бренду"
+          required
+          value={form.name}
+          onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+          placeholder="наприклад: Bosch, NGK, Brembo"
+          autoFocus
+        />
+      </Modal>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const TABS: { key: Tab; label: string }[] = [
@@ -1452,6 +1588,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'goods', label: 'Товари та запчастини' },
   { key: 'services', label: 'Комплексні послуги' },
   { key: 'units', label: 'Одиниці виміру' },
+  { key: 'brands', label: 'Бренди' },
 ];
 
 export default function CatalogPage() {
@@ -1478,6 +1615,7 @@ export default function CatalogPage() {
       {tab === 'goods' && <GoodsTab />}
       {tab === 'services' && <ServicesTab />}
       {tab === 'units' && <UnitsTab />}
+      {tab === 'brands' && <BrandsTab />}
     </div>
   );
 }
