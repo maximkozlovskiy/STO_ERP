@@ -9,9 +9,9 @@
 ## Останній commit
 
 ```
+4df6ef0 fix(tester): B8 FollowUp CRON — bugs #97-#110
 fab5fd1 fix(review): B8 followup — soft-delete filters, cron 09:00 Kyiv, take 5000, retry 10
 3c6d233 feat(B8): FollowUp CRON — followup.processor + scheduler + FOLLOWUP_REMINDER enum
-0bb2334 feat(B3): Warranty model + CRUD API + auto-create on WO COMPLETED + counterparty tab + WO badge
 ```
 
 Дата: 2026-05-26
@@ -19,14 +19,44 @@ fab5fd1 fix(review): B8 followup — soft-delete filters, cron 09:00 Kyiv, take 
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 151/151 passed  (17 файлів — додано audit.contract.spec.ts (5) + 4 followUp regression тести у settings.contract)
+Unit:            ✅ 164/164 passed  (18 файлів — +followup.processor.spec.ts: 13 тестів для B8 CRON)
 Contract:        ✅ 17 файлів covered (auth, audit, batches, invoices/pricing-rules, settings, warehouses, work-orders)
 Property-based:  ✅ inventory + settlements + work-orders.fsm invariants (3 файли)
 Components:      ✅ 139/139 passed  (13 файлів — Button, Modal, Select, CommandPalette, etc.)
 E2E (Playwright): ✅ 4/4 smoke passed (dev сервер живий, http://localhost:3001)
 Build:           ✅ @sto/api + @sto/web tsc clean (incremental:false)
-Tester fixes:    13 bugs виправлено (#0a, #81-90, #91-96 крім #95-LOW)
+Tester fixes:    14 нових багів знайдено / 13 виправлено (#97-#110)
 ```
+
+### Gotcha — /sto-tester FULL on 3c6d233..fab5fd1 (2026-05-26, bugs #97-#110, B8 FollowUp CRON)
+
+- **BullMQ scheduler + soft-deleted org = щоденне будіння мертвих tenants** (Bug #97, followup.scheduler.ts): `prisma.organisation.findMany({ select: { orgId: true } })` без `where: { deletedAt: null }` означає CRON-job для кожного клонованого/видаленого tenant'а. Канон: КОЖЕН `organisation.findMany` має `where: { deletedAt: null }` — нема жодного use-case коли потрібні deleted orgs (audit-trail використовує `findFirst` без soft-delete фільтра, не findMany).
+
+- **`Organisation.id` vs `Organisation.orgId` — convention яка чекає першого розробника що зламає її** (Bug #98): Schema має ДВА UUID колонки на Organisation: `id` (PK) і `orgId` (sibling). Усі FK у проекті (counterparties, vehicles, garage_branches, organisation_settings, ...) REFERENCES `organisations(id)`. Колонка `orgId` дорівнює `id` лише завдяки конвенції в `setup.service.ts` де `update({ orgId: org.id })`. Канон: ВСЯ кодова база читає org через `findFirst({ where: { id: orgId } })` і `select: { id: true }` (підтверджено grep — `followup.scheduler.ts` був єдиним consumer-ом field `orgId`). Майбутньому розробнику зрозуміліше було б видалити `orgId` колонку взагалі і використовувати тільки `id`, але це міграційний ризик. На зараз — DEV-rule: ніколи не читати `Organisation.orgId`, тільки `Organisation.id`.
+
+- **`new Date()` у CRON-processor + server-local arithmetic = DST/timezone landmines** (Bug #99, followup.processor.ts): На UTC-сервері (Docker default) і Kyiv-сервері (Windows on-prem) `setDate(d.getDate() + N)` поводиться по-різному біля DST-границь і опівночі. Канон для CRON-обчислень дат: завжди прив'язувати "today" anchor до фіксованого UTC-часу всередині Kyiv-дня: `today.setUTCHours(9, 0, 0, 0)` дає 11/12:00 Kyiv (стабільний полудень, ±1h DST не виштовхує за межі дня). Це найдешевший фікс — без `Intl.DateTimeFormat('Europe/Kyiv')` чи `kyivOffsetMs()`.
+
+- **`findFirst` без `orderBy` для "primary" branch = non-deterministic SMS sender в multi-branch орг** (Bug #100): Postgres heap-order для `findFirst` нестабільний між запусками. У multi-branch орг (типовий продакшен-кейс — мережа СТО з 2-5 точками) це означає що ранкові SMS клієнтам можуть йти з імені різних branch-ів день у день. Канон: ЗАВЖДИ `orderBy` для будь-якого "primary/main/default" findFirst — мінімум `{ createdAt: 'asc' }` для "найперший створений", краще explicit `isMain/isPrimary` flag з partial unique index (див. Bug #69 для прикладу).
+
+- **Prisma `none: { completedAt: { gte: cutoff } }` ВКЛЮЧАЄ авто з порожнім зв'язком** (Bug #101): SQL semantics `NOT EXISTS (subquery)` true коли SUBQUERY RESULT IS EMPTY. Тобто vehicle з 0 WO підпадає під `workOrders: { none: {...} }`. Для "тихих клієнтів" треба пара: `some: { completedAt: { lt: cutoff } }` (мав WO в минулому) + `none: { completedAt: { gte: cutoff } }` (нічого недавно). Інакше нагадування "ми скучили" летить новому клієнту що тільки зареєстрував авто.
+
+- **`MaintenanceSchedule.nextMaintenanceDate { lte }` без `{ gte: today }` = SMS-спам на роки** (Bug #102): Якщо клієнт пропустив ТО 6 місяців тому і schedule не reset, CRON надсилав однакову SMS щодня з тієї дати. Канон для будь-яких reminder-CRON: `{ gte: today, lte: today + forecastDays }` — нагадуємо тільки про "скоро настане", не "давно пропущено". Для overdue maintenance — окремий процес/notification (escalation campaign), не той самий CRON.
+
+- **Прихована залежність: feature вимагає `NotificationTemplate` яка не у migration/seed** (Bug #103): B8 додав FOLLOWUP_REMINDER enum, але `NotificationsService.send()` шукає `findFirst({ eventType, channel, isActive: true })` → null → return мовчки. Канон для будь-якого нового NotificationEventType: ОБОВ'ЯЗКОВО парна міграція з `INSERT NOT EXISTS` для існуючих orgs + seed.ts оновлення. Без template feature dead на свіжому інсталі.
+
+- **`.catch()` per-iteration без re-throw на ВСІ-fail = BullMQ ніколи не retry-ть** (Bug #104): Класичний анти-pattern з SKILL §4.9.4. Per-message catch (один поганий phone не валить batch) — OK, але потрібен лічильник: якщо `sendErrors > 0 && sendSuccess === 0` → `throw lastError`. Інакше Redis-fail виглядає як success у логах, операційники не знають що щось зламано.
+
+- **Migration SQL що містить ALTER TYPE + USE того TYPE в одному файлі краще розбити** (Bug #103 fix): Postgres вимагає commit-у ENUM-value перед використанням. Канон: ALTER TYPE у migration N, INSERT з новим value — у migration N+1. Інакше CI може фейлити з `ERROR: unsafe use of new value`.
+
+- **`take: 5000` для CRON-batch на per-org — peak memory bomb** (Bug #106): 5000 records × {include vehicle, counterparty, workOrders[1]} ≈ 100MB heap per org. Multi-org concurrent execution (BullMQ default concurrency 5) = 500MB peak. Канон для periodic batches: explicit `MAX_*_PER_RUN` константи на топі файлу + warning при reach + TODO про cursor pagination. Дешевший за full pagination на цей етап.
+
+- **`getRepeatableJobs` + `removeRepeatableByKey` + `add` = race window на кожен restart** (Bug #108): На API-рестарті віконце між delete і add (~50ms) — CRON втрачено якщо crash. BullMQ `jobId` сам дедуплікує — `add({ jobId: 'fixed-key' })` ідемпотентний. Канон: НЕ робити preliminary remove у onModuleInit, лише `add` з фіксованим jobId.
+
+- **Migration без захисного `CREATE INDEX IF NOT EXISTS` для pg_trgm GIN — Prisma migrate dev мовчки drop-не** (зв'язок з gotcha від commit 7b899e4): `prisma migrate dev` додає `DROP INDEX` для raw-SQL trgm GIN indexes з `20260526061209_b6_trgm_gin_indexes` коли генерується НОВА міграція. Канон: новий міграція = пара `CREATE INDEX IF NOT EXISTS "idx_*_trgm"` block наприкінці для defense. Без цього B6 search падає на seq scan після КОЖНОЇ schema-change міграції. Тут — додано у `20260526230500_followup_reminder_default_template/migration.sql`.
+
+- **Per-tenant SMS sender = per-branch — який branch обрати?** (Bug #100 deep dive): Multi-branch architecture B10 створила питання яке B8 не вирішила: SMS-sender (`senderName`, `smsApiKey`) живе на `BranchSettings`, але FollowUp реагує вище — на orgId-rivni. Tier-1 фікс: oldest branch. Tier-2 правильне рішення: або per-vehicle resolve через `lastWorkOrderBranchId` (потрібен новий FK), або brand-level SMS config окрема таблиця `OrganisationSmsConfig`. Розглянути для майбутньої feature.
+
+- **CRON-processor unit-тести: 13 кейсів які стоять писати** (Bug #105, followup.processor.spec.ts шаблон): (1) followUpActive=false → no send, (2) no branch → no send, (3) soft-deleted vehicle/garage/counterparty фільтруються, (4) phone dedup один клієнт → 1 SMS, (5) no phone skip, (6) inactive vehicle з минулим WO → send, (7) vehicle never had WO → no send (defensive), (8) all-fail → throw для retry, (9) partial-fail → no throw, (10) formatName fallback, (11)-(13) DB-filter shape assertions (`expect.objectContaining({ where: ... })` для critical filters). Це baseline для будь-якого нового @Processor.
 
 ### Gotcha — /sto-tester FULL on e7e0c83..0aa4cb3 (2026-05-26, bugs #0a + #91-#96)
 
