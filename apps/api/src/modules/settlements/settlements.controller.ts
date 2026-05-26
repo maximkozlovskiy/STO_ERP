@@ -44,9 +44,9 @@ export class SettlementsController {
     @OrgContext() orgId: string,
     @Param('counterpartyId') counterpartyId: string,
     @Body() dto: CreateReconciliationActDto,
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.createReconciliationAct(orgId, counterpartyId, dto, user?.sub);
+    return this.service.createReconciliationAct(orgId, counterpartyId, dto, user?.id);
   }
 
   @Get('reconciliation-acts')

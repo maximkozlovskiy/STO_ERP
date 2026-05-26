@@ -37,7 +37,7 @@ interface MaintenanceSchedule {
   nextMaintenanceDate?: string | null; nextMaintenanceMileage?: number | null;
   isActive: boolean; notes?: string | null;
 }
-interface Transaction { id: string; type: string; amount: number; description: string | null; createdAt: string; }
+interface Transaction { id: string; type: string; amount: number; documentType: string | null; documentId: string | null; notes: string | null; createdAt: string; }
 interface WorkOrder { id: string; number: string; status: string; vehicleMake: string; vehicleModel: string; createdAt: string; totalAmount: number; }
 interface LoyaltyTransaction { id: string; type: string; points: number; createdAt: string; notes?: string | null; }
 interface Warranty {
@@ -186,8 +186,8 @@ export default function CounterpartyCardPage() {
 
   const loadSettlements = useCallback(() => {
     setSettlementsLoading(true);
-    apiFetch<Transaction[]>(`/settlements?counterpartyId=${id}&limit=50`)
-      .then(setTransactions)
+    apiFetch<{ items: Transaction[]; total: number }>(`/counterparties/${id}/transactions?page=1&limit=50`)
+      .then(r => setTransactions(r.items ?? []))
       .catch(() => setTransactions([]))
       .finally(() => setSettlementsLoading(false));
   }, [id]);
@@ -652,14 +652,14 @@ export default function CounterpartyCardPage() {
               {transactions.map(t => (
                 <div key={t.id} className="flex items-center justify-between px-4 py-3">
                   <div>
-                    <p className="text-sm text-foreground">{t.description ?? t.type}</p>
+                    <p className="text-sm text-foreground">{t.notes ?? t.documentType ?? t.type}</p>
                     <p className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleDateString('uk-UA')}</p>
                   </div>
                   <span className={cn(
                     'text-sm font-semibold',
-                    t.type === 'PAYMENT' ? 'text-success' : 'text-destructive',
+                    ['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type) ? 'text-success' : 'text-destructive-text',
                   )}>
-                    {t.type === 'PAYMENT' ? '+' : '-'}{Math.abs(t.amount).toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                    {['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type) ? '-' : '+'}{Math.abs(t.amount).toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
                   </span>
                 </div>
               ))}
