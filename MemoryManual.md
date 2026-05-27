@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+2bf6c3b fix(tester): Bug #135 — add @fastify/helmet for security headers
+0920428 docs(memory): record /sto-review on 8c1a760 (ReactNode in inline-edit-cell)
 8c1a760 fix(review): React.ReactNode -> ReactNode in inline-edit-cell
 2c8ffe0 docs(memory): record /sto-tester FULL session a262d1a (bugs #132-#134)
 a262d1a docs(tester): record bugs #132-#134 from /sto-tester FULL session 2026-05-27
@@ -17,8 +19,6 @@ d544706 fix(tester): Bug #132 — explicit $transaction timeouts in 11 more serv
 13c65bd fix(tester): Bug #130 — explicit $transaction timeouts in 5 services
 4adb65d fix(tester): Bug #129 — inventory inline HSL → text-warning-text token
 f2b6a80 fix(tester): Bug #127+#128 — Prisma errors mapped to 4xx in HttpExceptionFilter
-d5ec61e docs(memory): record /sto-review on f2e8182 (React imports + auth cancel guard)
-f2e8182 fix(review): React namespace imports + AuthProvider cancel guard
 ```
 
 Дата: 2026-05-27
@@ -30,14 +30,23 @@ Unit:            ✅ 271/271 passed     (23 файли)
 Contract:        ✅ 9 contract spec files (auth, work-orders, warehouses, counterparties,
                                        sync, settings, audit, pricing-rules, batches)
 Property-based:  ✅ 26 invariants passed (inventory, settlements, FSM)
-Components:      ✅ ще не запускались у цій сесії (@testing-library встановлений)
-E2E (Playwright):✅ 41/41 passed (console-errors 22, smoke 7, inventory 4, api-errors 8)
+Components:      ✅ 139/139 passed     (13 файлів, @testing-library/react)
+E2E (Playwright):✅ 42/42 passed (console-errors 22, smoke 8, inventory 4, api-errors 8)
                   • console-errors: 0 flaky після serial + warm-up (Bug #134)
+                  • +1 новий smoke-тест Bug #135: security headers на /api/health
 Build:           ✅ @sto/api build OK (webpack 10.5s)
-API smoke:       ✅ 15/15 endpoints 200 (<200ms each), всі список / dashboard / sync
+API smoke:       ✅ 15/15 endpoints 200 (<200ms each)
+Security headers:✅ X-Content-Type-Options, X-Frame-Options, HSTS, CORP через @fastify/helmet@11 (Bug #135)
 Latest review:   2026-05-27 (8c1a760) — React.ReactNode → ReactNode in inline-edit-cell
-Latest tester:   2026-05-27 (a262d1a) — FULL sweep, 3 bugs (#132 MEDIUM timeouts, #133 LOW FEFO, #134 LOW E2E flake); + закрив #131; всі виправлені
+Latest tester:   2026-05-27 (2bf6c3b) — FULL sweep #2: знайдено 1 bug (#135 HIGH security headers); виправлений
 ```
+
+### Gotcha — /sto-tester FULL 2026-05-27 (commit 2bf6c3b, Bug #135)
+
+- **NestJS Fastify adapter за замовчуванням НЕ повертає security headers** — `helmet` не auto-registers. `curl -I /api/health` показував тільки CORS + content-type, жодного `X-Content-Type-Options`, `X-Frame-Options`, HSTS, CORP. Per skill checklist §4.9.2 це обов'язкові поля для prod. Канон: `pnpm --filter @sto/api add @fastify/helmet@11` (Fastify 4 line; helmet 12+/13 потребують Fastify 5 — у нас 4.28.1), потім `await app.register(fastifyHelmet, { contentSecurityPolicy: false, crossOriginEmbedderPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } })`. CSP і COEP вимкнено: CSP блокує Swagger UI inline scripts, COEP перешкоджає MinIO presigned downloads.
+- **CORP must be `cross-origin` в dev** — інакше веб з порту 3001 не може фетчити з API на 3000 (CORP за замовчуванням `same-origin`). Це не security regression: CORS залишається обмеженим `WEB_ORIGIN`, CORP лише дозволяє ресурсу бути embedded.
+- **Contract test не годиться для helmet headers** — `Test.createTestingModule(...).compile().createNestApplication()` викликає `app.init()` (Test fixture), не bootstrap. Helmet реєструється в `main.ts::bootstrap()`. Перевіряти через **E2E** проти живого dev API (`apps/web/e2e/smoke.spec.ts` describe "Smoke — API security headers (Bug #135)").
+- **Helmet версія залежить від версії Fastify** — `@fastify/helmet@13.x` → Fastify 5; `@fastify/helmet@11.x` → Fastify 4. Помилкова версія = `FST_ERR_PLUGIN_VERSION_MISMATCH` при bootstrap і API не стартує. Перевіряти `tail /tmp/sto-api-dev.log`.
 
 ### Gotcha — /sto-review (2026-05-27, commit 8c1a760)
 
