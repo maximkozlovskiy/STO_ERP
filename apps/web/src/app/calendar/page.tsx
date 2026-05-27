@@ -162,12 +162,20 @@ export default function CalendarPage() {
   const prevDay = () => { const d = new Date(date); d.setDate(d.getDate() - 1); setDate(toDateString(d)); };
   const nextDay = () => { const d = new Date(date); d.setDate(d.getDate() + 1); setDate(toDateString(d)); };
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   const addSlot = async () => {
     if (!form.startAt || !form.endAt) {
       setError('Вкажіть час початку та завершення'); return;
     }
     if (form.endAt <= form.startAt) {
       setError('Час завершення повинен бути після часу початку'); return;
+    }
+    if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
+      setError('ID наряду має бути у форматі UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)'); return;
+    }
+    if (form.employeeId && !UUID_RE.test(form.employeeId)) {
+      setError('ID співробітника має бути у форматі UUID'); return;
     }
     setSaving(true); setError('');
     try {
@@ -368,11 +376,11 @@ export default function CalendarPage() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Номер наряду (ID)</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">ID наряду <span className="font-normal opacity-60">(необов'язково)</span></label>
               <Input
                 value={form.workOrderId}
-                onChange={e => setForm(f => ({ ...f, workOrderId: e.target.value }))}
-                placeholder="UUID наряду (необов'язково)"
+                onChange={e => setForm(f => ({ ...f, workOrderId: e.target.value.trim() }))}
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
               />
             </div>
             <div>

@@ -84,8 +84,9 @@ export async function apiFetch<T>(
       localStorage.setItem('sto_pending_ops', String(count + 1));
       window.dispatchEvent(new CustomEvent('sto:pending-ops-changed'));
     }
-    const error = await res.json().catch(() => ({ message: res.statusText })) as { message: string };
-    throw new Error(error.message);
+    const error = await res.json().catch(() => ({ message: res.statusText })) as { message: string | string[] };
+    const msg = Array.isArray(error.message) ? error.message.join('; ') : (error.message ?? res.statusText);
+    throw new Error(msg);
   }
 
   // Successful request — decrement pending counter if any were queued

@@ -334,6 +334,20 @@ grep -n "SentryProvider" apps/web/src/app/layout.tsx
 - [ ] Немає прямих `fetch`/`axios` у компонентах — тільки через `apiClient` або TanStack Query hooks
 - [ ] Форми не блокують submit під час завантаження (кнопка `loading` стан)
 - [ ] `errorMessage` або toast показується при помилці API
+- [ ] **Free-text `<Input>` що приймає UUID** (наприклад, workOrderId) — має клієнтську UUID-валідацію ПЕРЕД submit. Надсилати на сервер non-UUID рядок через поле з `@IsOptional() @IsUUID()` → 400 з оманливим ім'ям поля (якщо перше поле в DTO теж UUID — його ім'я з'являється в помилці). Шаблон:
+  ```typescript
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
+    setError('ID наряду має бути у форматі UUID'); return;
+  }
+  ```
+  ```bash
+  # Знайти всі free-text Input з UUID-семантикою (не Select!)
+  grep -rn "workOrderId\|vehicleId\|employeeId\|counterpartyId\|liftId" apps/web/src/app --include="*.tsx" \
+    | grep "onChange.*e\.target\.value\|value=\{form\." | grep -v "Select\|<select"
+  # Для кожного результату — перевірити чи це <Input> (не <Select>). Якщо Input — потрібна UUID-валідація.
+  ```
+- [ ] **`apiFetch` error array join**: сервер повертає `{ message: string[] }` при validation errors. `apiFetch` має join: `Array.isArray(msg) ? msg.join('; ') : msg`. Без цього `new Error(['Поле "x"...'])` → message = перший елемент через `.toString()`, але може відрізнятись по браузерах.
 
 #### Стан
 - [ ] Loading стан є на кожній сторінці з даними (`<Spinner />` або skeleton)
