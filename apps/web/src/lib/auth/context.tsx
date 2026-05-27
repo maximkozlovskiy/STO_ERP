@@ -6,6 +6,14 @@ import type { AuthEmployee, AuthState } from './types';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 const TOKEN_KEY = 'sto_access_token';
 
+// Bug #131: публічні роути НЕ повинні робити refresh-запит на mount —
+// браузер логує 401 у console, що ламає console-errors.spec.ts і шумить у Sentry.
+const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403', '/booking'];
+
+function isPublicPathname(pathname: string): boolean {
+  return PUBLIC_ROUTES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 // ─── State ───────────────────────────────────────────────
 
 type Action =
@@ -69,10 +77,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [state.employee]);
 
-  // On mount — try to restore session via refresh cookie
+  // On mount — try to restore session via refresh cookie.
+  // Bug #131: пропускаємо refresh на публічних роутах щоб не отримувати 401 console.error
+  // коли користувач свідомо відкрив /login або /setup без сесії.
   useEffect(() => {
     let cancelled = false;
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+    const isPublic = isPublicPathname(pathname);
     const stored = sessionStorage.getItem(TOKEN_KEY);
+
+    if (isPublic && !stored) {
+      // Публічна сторінка + немає stored token — користувач не авторизований і це OK.
+      // Просто завершуємо loading без HTTP запиту.
+      dispatch({ type: 'LOGOUT' });
+      return () => { cancelled = true; };
+    }
+
     if (stored) {
       // Token in sessionStorage — still need to get employee info via refresh
       refreshToken().then((ok) => {
