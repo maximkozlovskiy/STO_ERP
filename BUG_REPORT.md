@@ -4282,7 +4282,7 @@ NestJS class-validator повертає `{ message: string[] }` при 400. `api
 **Фікс:**
 Винести спільний хелпер `extractErrorMessage(body: unknown): string` або повторити inline `Array.isArray` join.
 
-**Статус:** [ ] відкритий
+**Статус:** [x] виправлено (commit 4953500 — `auth/context.tsx:127-129` та `booking/page.tsx:23-26` тепер `Array.isArray ? join('; ') : msg`)
 
 ---
 
@@ -4310,7 +4310,7 @@ Bug #130 + #132 додали `{ timeout: 5_000 }` до критичних тра
 **Фікс:**
 Додати `}, { timeout: 5_000 });` у кінець кожної.
 
-**Статус:** [ ] відкритий
+**Статус:** [x] виправлено — 6 у work-orders.service.ts (попередні цикли) + 2 у warehouses.service.ts (Bug #141, цикл #136-#137 follow-up).
 
 ---
 
@@ -4363,6 +4363,71 @@ Cosmetic dead code; функціонально працює, але дивно �
 Якщо `!!value && !displayValue` — показати disabled input з текстом `Завантаження...` або skeleton.
 
 **Статус:** [ ] відкритий
+
+---
+
+## Session 2026-05-27 — Full sto-tester run after commits 2822912 → 4953500
+
+**Контекст:** FULL `/sto-tester` запуск після 3 останніх комітів (full-text search combobox + UoM columns + infrastructure edit + auth/booking message join + WAI-ARIA combobox).
+**Стан до сесії:** TS 0 errors (web/api/shared), 271 unit/contract tests passed.
+**Що перевірялось:**
+- Bug #136 (infrastructure PATCH) — підтверджено виправлено в commit 15e451e
+- Bug #137 (login/booking publicFetch `message: string[]`) — підтверджено виправлено в commit 4953500
+- Bug #138 (work-orders.service `$transaction` timeout) — підтверджено виправлено для work-orders, warehouses залишається
+- units.service `update()` Prisma `where: { id, orgId }` — це валідний Prisma 5+ extended unique-where pattern, не баг
+- SearchCombobox `showSelected` w/o `displayValue` — це Bug #140, потребує fix у поточній сесії
+- Frontend TS — 0 помилок
+- Backend tests — 271/271 passed
+
+---
+
+## Bug #141 — [MEDIUM] warehouses.service.ts: 2 `$transaction(async)` без явного `{ timeout }` — create/update (продовження Bug #138)
+
+**Файл:** `apps/api/src/modules/warehouses/warehouses.service.ts:33, 54`
+**Severity:** MEDIUM
+**Категорія:** non-functional / database resilience
+
+**Опис:**
+Bug #138 виправило 6 transactions у work-orders.service, але пропустило 2 у warehouses.service. Кожна транзакція робить:
+1. `updateMany({ where: { orgId, deletedAt: null, ...maybeNotId }, data: { isMain: false } })` — touch всі warehouses організації
+2. `create` або `update`
+
+При великій кількості warehouses (рідко >100 на одну організацію, але можливо в franchise scenarios) — без timeout deadlock може зависнути на default 5s. Краще explicit `{ timeout: 5_000 }`.
+
+**Очікувана поведінка:**
+Обидві транзакції мають `{ timeout: 5_000 }` як інші critical-path transactions.
+
+**Фактична поведінка:**
+Без timeout, default 5s, але не явний — порушує консистентність з Bug #130/#132/#138 політикою.
+
+**Фікс:**
+Додати `}, { timeout: 5_000 });` у кінець обох transactions.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #142 — [LOW] units.controller / zones.controller / lifts.controller / warehouses.controller — відсутній `ParseUUIDPipe` для `:id` параметрів
+
+**Файл:** `apps/api/src/modules/units/units.controller.ts:29, 45, 53` (та інші 15 контролерів — див. grep)
+**Severity:** LOW (раніше CRITICAL — після Bug #127/#128 знижено)
+**Категорія:** api-quality
+
+**Опис:**
+SKILL §4.8.4 вимагає `ParseUUIDPipe` для кожного `:id` параметра. Зараз `units` контролер (та 19 інших — див. grep `apps/api/src --include="*.controller.ts"` без `ParseUUIDPipe`) приймає будь-який рядок.
+
+Раніше це було CRITICAL: invalid UUID → Prisma P2023 → 500. Після Bug #127/#128 `HttpExceptionFilter` маппить P2023 → 400 ('Некоректний формат ідентифікатора'). Тому це більше LOW (повідомлення менш точне ніж стандартний "Validation failed (uuid is expected)").
+
+**Очікувана поведінка:**
+`@Param('id', new ParseUUIDPipe({ version: '4' })) id: string` — точна валідація на рівні pipe з повідомленням `ValidationError`.
+
+**Фактична поведінка:**
+Невалідний UUID → P2023 → 400 generic 'Некоректний формат ідентифікатора' (працює, але менш специфічно).
+
+**Фікс:**
+Оскільки 20 контролерів — це широка рефакторинг операція. Не виправляти у поточній сесії — лишити як documented LOW. Можна додати у `/sto-dev` як стандарт.
+
+**Статус:** [ ] відкритий (deferred — broader refactor)
 
 ---
 

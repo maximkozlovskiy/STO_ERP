@@ -35,7 +35,7 @@ export class WarehousesService {
           await tx.warehouse.updateMany({ where: { orgId, deletedAt: null }, data: { isMain: false } });
         }
         return tx.warehouse.create({ data: { ...dto, orgId } });
-      });
+      }, { timeout: 5_000 }); // Bug #141: explicit timeout — updateMany + create (parity with #130/#132/#138)
       return this.toDto(item);
     } catch (e) {
       // Partial unique index `warehouses_orgId_isMain_unique` enforces single-main invariant.
@@ -56,7 +56,7 @@ export class WarehousesService {
           await tx.warehouse.updateMany({ where: { orgId, deletedAt: null, id: { not: id } }, data: { isMain: false } });
         }
         return tx.warehouse.update({ where: { id, orgId }, data: dto });
-      });
+      }, { timeout: 5_000 }); // Bug #141: explicit timeout — updateMany + update (parity with #130/#132/#138)
       return this.toDto(item);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
