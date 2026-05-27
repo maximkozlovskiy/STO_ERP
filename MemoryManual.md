@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+6ecc7a1 fix(review): SearchCombobox a11y + cleanup + modal close resets display name
+2822912 feat: full-text search combobox, UoM columns, infrastructure edit
 0c3b661 fix(review): apply string[] message join to apiBlobFetch/apiMultipartFetch + hoist UUID_RE
 0af89fd fix(calendar): UUID validation for workOrderId input + apiFetch array message join
 2bf6c3b fix(tester): Bug #135 — add @fastify/helmet for security headers
@@ -17,8 +19,6 @@
 2c8ffe0 docs(memory): record /sto-tester FULL session a262d1a (bugs #132-#134)
 a262d1a docs(tester): record bugs #132-#134 from /sto-tester FULL session 2026-05-27
 ae7d51d fix(tester): Bugs #131 + #134 — auth PUBLIC_ROUTES + console-errors flakiness
-d544706 fix(tester): Bug #132 — explicit $transaction timeouts in 11 more services
-13c65bd fix(tester): Bug #130 — explicit $transaction timeouts in 5 services
 ```
 
 Дата: 2026-05-27
@@ -37,9 +37,17 @@ E2E (Playwright):✅ 42/42 passed (console-errors 22, smoke 8, inventory 4, api-
 Build:           ✅ @sto/api build OK (webpack 10.5s)
 API smoke:       ✅ 15/15 endpoints 200 (<200ms each)
 Security headers:✅ X-Content-Type-Options, X-Frame-Options, HSTS, CORP через @fastify/helmet@11 (Bug #135)
-Latest review:   2026-05-27 (0c3b661) — string[] join applied to apiBlobFetch/apiMultipartFetch + UUID_RE hoisted to module scope
+Latest review:   2026-05-27 (6ecc7a1) — SearchCombobox: ARIA combobox wiring + setTimeout cleanup + display name resets on modal close
 Latest tester:   2026-05-27 (2bf6c3b) — FULL sweep #2: знайдено 1 bug (#135 HIGH security headers); виправлений
 ```
+
+### Gotcha — /sto-review 2026-05-27 (commit 6ecc7a1, after 2822912)
+
+- **`React.ChangeEvent<...>` всередині нового UI компонента — TS-plugin error** (search-combobox.tsx:86). У файлі вже був `import { type KeyboardEvent } from 'react'`, але обробник `handleInputChange` потайки використовував `React.ChangeEvent` через namespace, який не імпортувався. plain tsc проходить (next-env.d.ts), але VSCode Next.js плагін червонить. Канон: при додаванні нового `*.tsx` файлу — імпортувати ВСІ React types через named import (`type ChangeEvent, type KeyboardEvent, type MouseEvent`), ніколи через `React.X`. Перевіряти grep `React\.` після кожного нового UI компонента.
+- **`setTimeout` debounce у custom hook/component без `clearTimeout` у cleanup** — типовий патерн "пишу debounce, mountedRef ловить setState після unmount, готово". НЕ готово: коли unmount стається між keystroke і fire-timer, setTimeout усе одно виконує callback, який ініціює `fetchItems()` (HTTP запит). MountedRef ловить setState, але мережевий round-trip уже відбувся. Канон: у `return () => { ... }` cleanup'і useEffect, що тримає `mountedRef`, ОБОВ'ЯЗКОВО додавати `if (debounceRef.current) clearTimeout(debounceRef.current)`. Та сама вимога стосується `pollRef`, `idleRef` тощо.
+- **Custom combobox без WAI-ARIA wiring** = screen-reader users бачать порожній `<input>` без feedback що це combobox, чи показаний listbox, який option зараз active. Канон для будь-якого свого autocomplete/combobox: input має `role="combobox"`, `aria-expanded`, `aria-controls={listboxId}`, `aria-autocomplete="list"`, `aria-activedescendant={optionId(activeIndex)}`; listbox `<ul>` має фіксований `id={listboxId}`; кожен `<li>` опція має `id={optionId(idx)}` + `role="option"` + `aria-selected`. Використовувати `useId()` для базового префіксу — стабільний між server і client paint.
+- **Display name state ≠ form state — треба синхронно скидати обидва** на modal close/create success. Якщо `counterpartyId: ''` але `counterpartyDisplayName: 'ТОВ Старий клієнт'` — наступне відкриття modal покаже stale ім'я в полі без id, заплутає користувача. Фікс: будь-який handler що скидає FK ID у формі (`onClose`, after successful POST, on `onClear`) повинен також скидати парний `*DisplayName` стейт. Шаблон для self-check: grep `setForm(.*counterpartyId|supplierId|goodId): ''` — кожен match має поряд `set*DisplayName('')`.
+- **TS чистий** після всіх фіксів (`apps/web tsc --noEmit --incremental false` і `apps/api` — 0 errors).
 
 ### Gotcha — /sto-review 2026-05-27 (commit 0c3b661, after 0af89fd)
 
