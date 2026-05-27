@@ -92,6 +92,14 @@ function WorksTab() {
     apiFetch<Category[]>('/work-categories').then(setCategories).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження категорій'));
   }, []);
 
+  // Sync categoryId when categories load after modal is already open (race condition fix)
+  useEffect(() => {
+    const first = flatCategories(categories)[0];
+    if (!first) return;
+    if (modal && !form.categoryId) setForm(f => ({ ...f, categoryId: first.id }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories, modal]);
+
   const load = useCallback(() => {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });

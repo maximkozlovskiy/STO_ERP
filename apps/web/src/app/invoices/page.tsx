@@ -128,6 +128,20 @@ export default function InvoicesPage() {
     return () => { cancelled = true; };
   }, [showPayment]);
 
+  // Bug #143: async-init Select race condition. payForm.method defaults to 'cash'
+  // and the payment modal can open BEFORE /payment-methods resolves. If 'cash' is
+  // deactivated (admin can disable it via PaymentMethodConfig), the loaded list
+  // won't contain it — the Select visually jumps to the first active method
+  // while state still holds 'cash'. POST /payments would then submit an inactive
+  // method code. Sync payForm.method to payMethods[0].code when the current
+  // value is missing from the loaded list.
+  useEffect(() => {
+    if (!showPayment || payMethods.length === 0) return;
+    if (!payMethods.some(m => m.code === payForm.method)) {
+      setPayForm(f => ({ ...f, method: payMethods[0].code }));
+    }
+  }, [payMethods, showPayment, payForm.method]);
+
   const handleCreate = async () => {
     const amt = parseFloat(form.amount);
     if (!Number.isFinite(amt) || amt <= 0) { setError('Введіть коректну суму'); return; }

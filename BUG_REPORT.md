@@ -4435,4 +4435,93 @@ Updated `work-orders.contract.spec.ts` — замінено `'wo-1'` на вал
 
 ---
 
+## Session 2026-05-27 — Async-init Select race condition sweep
+
+Тригер: фікс catalog/page.tsx WorksTab — `<Select value={form.categoryId}>` показував першу опцію візуально, але `form.categoryId === ''` (категорії завантажуються асинхронно ПІСЛЯ відкриття модалки). Користувач не змінював селект → submit з `categoryId: ''` → 400 "має бути UUID".
+
+Систематичний пошук виявив один інший випадок з тим самим патерном.
+
+### Аудит решти сторінок (всі чисті)
+
+| Сторінка | Async-loaded options | Patern безпечний? | Чому |
+|---|---|---|---|
+| `calendar/page.tsx` (lift) | `lifts` | ✅ | `<option value="">— будь-який —</option>` placeholder; backend приймає `liftId: undefined` |
+| `purchase-orders/page.tsx` | `warehouses` | ✅ | `placeholder="Оберіть склад"` рендерить `<option value="" disabled>`; `disabled={!form.warehouseId}` блокує submit |
+| `stock-documents/page.tsx` | `branches`, `warehouses` | ✅ | Усі Select мають `placeholder`; submit disabled на пусті ID |
+| `work-orders/page.tsx` | `branches`, `vehicles` | ✅ | Усі мають `<option value="">— Оберіть —</option>`; `disabled={!form.branchId || !form.vehicleId || !form.counterpartyId}` |
+| `work-orders/[id]/PageClient.tsx` | `works`, `employees`, `warehouses` | ✅ | Усі мають `<option value="">— Оберіть —</option>`; submit disabled |
+| `infrastructure/page.tsx` (zone/lift/warehouse) | `branches`, `zones` | ✅ | `loading` блокує рендер кнопок до завершення `Promise.all([…])`; race window закрите |
+| `pricing-rules/PricingRulesClient.tsx` | `goods` | ✅ | `goodId` опціональний; defaults `'PERCENT'` для type — hardcoded enum |
+| `employees/page.tsx` | (hardcoded enums) | ✅ | Statyсhні `ROLE_LABELS`/`STATUS_LABELS`/`RATE_LABELS` — не async |
+| `vehicles/new/PageClient.tsx` | (hardcoded enums) | ✅ | Усі IDs опціональні; submit перевіряє `make` + `model` only |
+| `crm/page.tsx` | (hardcoded enum) | ✅ | `type: 'CLIENT'` — hardcoded |
+
+### Знайдено: 1 баг
+
+---
+
+## Bug #143 — [HIGH] Invoices payment modal — async-init Select race condition for payForm.method
+
+**Файл:** `apps/web/src/app/invoices/page.tsx:83, 636-650`
+**Severity:** HIGH
+**Категорія:** frontend / business-logic
+
+**Опис:**
+Той самий патерн що catalog/page.tsx WorksTab (виправлений у попередній сесії):
+
+```ts
+const [payForm, setPayForm] = useState({ method: 'cash', amount: '', notes: '' });
+// ...
+useEffect(() => {
+  if (!showPayment) return;
+  apiFetch<{ code: string; name: string; isActive: boolean }[]>('/payment-methods')
+    .then(d => { ...setPayMethods(d.filter(m => m.isActive)); });
+}, [showPayment]);
+// ...
+<Select value={payForm.method} onChange={...}>
+  {payMethods.length > 0
+    ? payMethods.map(m => <option key={m.code} value={m.code}>{m.name}</option>)
+    : <>
+      <option value="cash">Готівка</option>
+      <option value="card_terminal">Термінал</option>
+      <option value="bank_transfer">Банківський переказ</option>
+    </>
+  }
+</Select>
+```
+
+Race window:
+1. Модалка відкривається → `payMethods = []` → fallback `<option value="cash">` рендериться → state `'cash'`, візуально `'Готівка'` — узгоджено.
+2. `apiFetch('/payment-methods')` resolves → `payMethods` оновлюється до активних методів організації.
+3. Якщо адмін **деактивував `cash`** через `PaymentMethodConfig` (UI у /settings) — `payMethods` не містить `'cash'`:
+   - Select візуально стрибає на **першу** активну опцію (наприклад, `'card_terminal'`).
+   - state все ще містить `payForm.method = 'cash'`.
+4. Користувач натискає "Підтвердити оплату" → POST /payments з `method: 'cash'`.
+5. Backend `PaymentsService` приймає (валідація на whitelist кодів, а не активність) АБО валідує і відхиляє з 400 "Метод оплати неактивний" — суперечливий UX (екран показує "Термінал", помилка про "Готівка").
+
+**Очікувана поведінка:**
+Коли `payMethods` завантажується і поточний `payForm.method` відсутній у списку — синхронізувати state на `payMethods[0].code`.
+
+**Фактична поведінка (до фіксу):**
+State розходиться з UI; submit надсилає попередній (можливо неактивний) метод незалежно від того що бачить користувач.
+
+**Фікс:**
+Додано `useEffect` що синхронізує `payForm.method` з `payMethods[0].code` коли модалка відкрита, `payMethods` непорожні, а поточний `method` не входить у список:
+
+```ts
+useEffect(() => {
+  if (!showPayment || payMethods.length === 0) return;
+  if (!payMethods.some(m => m.code === payForm.method)) {
+    setPayForm(f => ({ ...f, method: payMethods[0].code }));
+  }
+}, [payMethods, showPayment, payForm.method]);
+```
+
+**Регресія:**
+Той самий патерн, що Bug у catalog/page.tsx — фікс симетричний. Новий чек у `sto-review` SKILL.md §8 (Web Frontend, "Форми") і grep команда виявлять майбутні випадки.
+
+**Статус:** [x] виправлено
+
+---
+
 

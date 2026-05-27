@@ -853,6 +853,39 @@ grep -rn "types=\|statuses=\|roles=" apps/web/src/ --include="*.tsx" --include="
   grep -rnE "DisplayName.*useState\(['\"]['\"]" apps/web/src/app --include="*.tsx"
   ```
 
+### 8.2.1 Форми — Select / dropdown patterns
+
+- [ ] **Async-init Select race condition**: якщо `<Select value={form.xxxId}>` ініціалізується зі стейту що завантажується асинхронно (через `apiFetch` у `useEffect`), і модалка може відкритись до завершення fetch — `<select>` браузером показує першу `<option>` візуально, але state залишається `''` (або початковим валідним значенням, якого нема у новому списку). Користувач не змінює селект → submit з невалідним/неактивним value → 400 від backend "має бути UUID" / "метод неактивний" / silently submits stale value. Потрібен `useEffect` що синхронізує value коли options завантажились:
+  ```typescript
+  // Шаблон 1: form.xxxId === '' → перший варіант
+  useEffect(() => {
+    if (!modal || !options[0]) return;
+    if (!form.xxxId) setForm(f => ({ ...f, xxxId: options[0].id }));
+  }, [options, modal]);
+
+  // Шаблон 2: поточне значення відсутнє у новому списку (наприклад дефолт 'cash' але cash деактивовано)
+  useEffect(() => {
+    if (!modal || options.length === 0) return;
+    if (!options.some(o => o.code === form.method)) {
+      setForm(f => ({ ...f, method: options[0].code }));
+    }
+  }, [options, modal, form.method]);
+  ```
+  Винятки (не баг):
+  - `<Select>` має `placeholder="..."` проп → рендериться `<option value="" disabled>` → користувач явно бачить що нічого не обрано, і `disabled={!form.xxxId}` блокує submit.
+  - `<Select>` має явний `<option value="">— Оберіть —</option>` як першу опцію + submit `disabled` на пусті ID.
+  - Поле опціональне на backend (`{ xxxId: form.xxxId || undefined }` без required validation).
+  - `SearchCombobox` (НЕ Select) — має explicit `value`/`displayValue`/`onClear`, дизайн для async.
+  ```bash
+  # Знайти кандидатів: setForm з xxxId: '' де options приходять асинхронно
+  grep -rnE "setForm.*[a-zA-Z]+Id:\s*['\"]['\"]|useState\(\{[^}]*[a-zA-Z]+Id:\s*['\"]['\"]" \
+    apps/web/src/app --include="*.tsx" | grep -v "SearchCombobox"
+  # Для кожного збігу — перевірити пару:
+  # 1) Чи Select має placeholder/перший <option value=""> placeholder?
+  # 2) Чи submit `disabled={!form.xxxId}` блокує?
+  # Якщо обидва ні — потрібен sync useEffect.
+  ```
+
 ### 8.3 Hydration Safety (SSR)
 
 ```bash
