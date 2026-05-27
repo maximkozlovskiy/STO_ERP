@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+0c3b661 fix(review): apply string[] message join to apiBlobFetch/apiMultipartFetch + hoist UUID_RE
+0af89fd fix(calendar): UUID validation for workOrderId input + apiFetch array message join
 2bf6c3b fix(tester): Bug #135 — add @fastify/helmet for security headers
 0920428 docs(memory): record /sto-review on 8c1a760 (ReactNode in inline-edit-cell)
 8c1a760 fix(review): React.ReactNode -> ReactNode in inline-edit-cell
@@ -17,8 +19,6 @@ a262d1a docs(tester): record bugs #132-#134 from /sto-tester FULL session 2026-0
 ae7d51d fix(tester): Bugs #131 + #134 — auth PUBLIC_ROUTES + console-errors flakiness
 d544706 fix(tester): Bug #132 — explicit $transaction timeouts in 11 more services
 13c65bd fix(tester): Bug #130 — explicit $transaction timeouts in 5 services
-4adb65d fix(tester): Bug #129 — inventory inline HSL → text-warning-text token
-f2b6a80 fix(tester): Bug #127+#128 — Prisma errors mapped to 4xx in HttpExceptionFilter
 ```
 
 Дата: 2026-05-27
@@ -37,9 +37,15 @@ E2E (Playwright):✅ 42/42 passed (console-errors 22, smoke 8, inventory 4, api-
 Build:           ✅ @sto/api build OK (webpack 10.5s)
 API smoke:       ✅ 15/15 endpoints 200 (<200ms each)
 Security headers:✅ X-Content-Type-Options, X-Frame-Options, HSTS, CORP через @fastify/helmet@11 (Bug #135)
-Latest review:   2026-05-27 (8c1a760) — React.ReactNode → ReactNode in inline-edit-cell
+Latest review:   2026-05-27 (0c3b661) — string[] join applied to apiBlobFetch/apiMultipartFetch + UUID_RE hoisted to module scope
 Latest tester:   2026-05-27 (2bf6c3b) — FULL sweep #2: знайдено 1 bug (#135 HIGH security headers); виправлений
 ```
+
+### Gotcha — /sto-review 2026-05-27 (commit 0c3b661, after 0af89fd)
+
+- **`message: string[]` fix мусить покривати ВСІ http helpers, не лише `apiFetch`** — попередній commit 0af89fd залатав `apiFetch` (NestJS class-validator повертає `{ message: string[] }` на 400), але `apiBlobFetch` і `apiMultipartFetch` у тому ж файлі залишились на старій сигнатурі `{ message?: string }`. Симптом для користувача: при 400 з валідатором на PDF download (invoices/settlements/work-orders) або multipart upload (work-orders media) фронт показує `[object Object]` або тільки перший елемент масиву через implicit `Array.prototype.toString`. Канон: фіксити **всі три** функції в `api-client.ts` синхронно одним коммітом. Урок для review: коли бачиш fix у `apiFetch` — обов'язково grep'ни сусідні helpers того ж файлу (`apiBlobFetch`, `apiMultipartFetch`).
+- **Regex/Set literals у render body — re-allocation на кожен render**. `const UUID_RE = /.../` всередині component body (calendar/page.tsx) створює нову RegExp instance щоразу. Сам по собі не bug, але noise GC + не canonical стиль файлу (поряд лежить module-level `KYIV_TZ`). Канон: всі stateless конст��нти — module-level (поза `export default function`).
+- **TS чистий** (`apps/web tsc --noEmit --incremental false` 0 errors) — після виправлень.
 
 ### Gotcha — /sto-tester FULL 2026-05-27 (commit 2bf6c3b, Bug #135)
 
