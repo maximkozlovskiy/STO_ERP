@@ -24,7 +24,7 @@ export class CommentsController {
   findAll(
     @OrgContext() orgId: string,
     @Query('entityType') entityType: string,
-    @Query('entityId') entityId: string,
+    @Query('entityId', new ParseUUIDPipe()) entityId: string,
   ): Promise<CommentsListResponseDto> {
     return this.service.findAll(orgId, entityType, entityId);
   }

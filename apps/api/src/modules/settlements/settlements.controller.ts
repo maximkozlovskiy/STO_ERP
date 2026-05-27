@@ -19,7 +19,7 @@ export class SettlementsController {
   @Get('balance')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Баланс контрагента' })
-  getBalance(@OrgContext() orgId: string, @Param('counterpartyId') counterpartyId: string) {
+  getBalance(@OrgContext() orgId: string, @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string) {
     return this.service.getBalance(orgId, counterpartyId);
   }
 
@@ -30,7 +30,7 @@ export class SettlementsController {
   @ApiQuery({ name: 'limit', required: false })
   getTransactions(
     @OrgContext() orgId: string,
-    @Param('counterpartyId') counterpartyId: string,
+    @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '50',
   ) {
@@ -42,7 +42,7 @@ export class SettlementsController {
   @ApiOperation({ summary: 'Створити акт звірки' })
   createAct(
     @OrgContext() orgId: string,
-    @Param('counterpartyId') counterpartyId: string,
+    @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string,
     @Body() dto: CreateReconciliationActDto,
     @CurrentUser() user: { id: string },
   ) {
@@ -52,7 +52,7 @@ export class SettlementsController {
   @Get('reconciliation-acts')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Акти звірки контрагента' })
-  getActs(@OrgContext() orgId: string, @Param('counterpartyId') counterpartyId: string) {
+  getActs(@OrgContext() orgId: string, @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string) {
     return this.service.getReconciliationActs(orgId, counterpartyId);
   }
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Param, ParseUUIDPipe, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiConsumes } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
 import { MultipartFile } from '@fastify/multipart';
@@ -223,7 +223,7 @@ export class XlsxController {
   @ApiConsumes('multipart/form-data')
   async importPOLines(
     @OrgContext() orgId: string,
-    @Param('poId') poId: string,
+    @Param('poId', ParseUUIDPipe) poId: string,
     @Request() req: FastifyRequest,
   ): Promise<ImportResult> {
     const file = await this.getUploadedFile(req);
@@ -237,7 +237,7 @@ export class XlsxController {
   @ApiConsumes('multipart/form-data')
   async importSDLines(
     @OrgContext() orgId: string,
-    @Param('docId') docId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
     @Request() req: FastifyRequest,
   ): Promise<ImportResult> {
     const file = await this.getUploadedFile(req);
@@ -251,7 +251,7 @@ export class XlsxController {
   @ApiConsumes('multipart/form-data')
   async importWOParts(
     @OrgContext() orgId: string,
-    @Param('woId') woId: string,
+    @Param('woId', ParseUUIDPipe) woId: string,
     @Request() req: FastifyRequest,
   ): Promise<ImportResult> {
     const file = await this.getUploadedFile(req);

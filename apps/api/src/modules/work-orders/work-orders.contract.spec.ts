@@ -204,8 +204,11 @@ describe('WorkOrders — HTTP Contract', () => {
   describe('GET /work-orders/:id', () => {
     it('повертає 200 з детальним DTO', async () => {
       jwtAllow = true;
+      // Bug #142: ParseUUIDPipe тепер валідує `:id` — використовуємо реальний UUID,
+      // не довільний рядок типу 'wo-1', інакше отримаємо 400 до сервісу.
+      const WO_ID = '00000000-0000-0000-0000-000000000001';
       serviceMock.findOne.mockResolvedValueOnce({
-        id: 'wo-1', orgId: 'org-1', number: 'WO-2026-0001', status: 'DRAFT',
+        id: WO_ID, orgId: 'org-1', number: 'WO-2026-0001', status: 'DRAFT',
         branchId: 'b-1', vehicleId: 'v-1', counterpartyId: 'c-1',
         totalLabor: 0, totalParts: 0, totalAmount: 0, paidAmount: 0,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
@@ -213,7 +216,7 @@ describe('WorkOrders — HTTP Contract', () => {
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
-        url: '/work-orders/wo-1',
+        url: `/work-orders/${WO_ID}`,
       });
       expect(res.statusCode).toBe(200);
       const body = res.json();

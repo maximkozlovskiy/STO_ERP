@@ -30,7 +30,7 @@ export class MaintenanceSchedulesController {
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER, UserRole.MECHANIC)
   @ApiOperation({ summary: 'List maintenance schedules' })
   @ApiResponse({ status: 200, type: [MaintenanceScheduleResponseDto] })
-  findAll(@OrgContext() orgId: string, @Query('vehicleId') vehicleId?: string) {
+  findAll(@OrgContext() orgId: string, @Query('vehicleId', new ParseUUIDPipe({ optional: true })) vehicleId?: string) {
     return this.service.findAll(orgId, vehicleId);
   }
 

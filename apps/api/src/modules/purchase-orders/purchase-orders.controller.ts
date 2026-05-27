@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query,
+  Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
@@ -39,7 +39,7 @@ export class PurchaseOrdersController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Замовлення постачальнику по ID' })
-  findOne(@OrgContext() orgId: string, @Param('id') id: string) {
+  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
@@ -55,7 +55,7 @@ export class PurchaseOrdersController {
   @ApiOperation({ summary: 'Оновити чернетку замовлення' })
   update(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePurchaseOrderDto,
   ) {
     return this.service.update(orgId, id, dto);
@@ -65,7 +65,7 @@ export class PurchaseOrdersController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити чернетку замовлення' })
-  remove(@OrgContext() orgId: string, @Param('id') id: string) {
+  remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
 
@@ -74,7 +74,7 @@ export class PurchaseOrdersController {
   @ApiOperation({ summary: 'Змінити статус замовлення (FSM)' })
   transition(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionPurchaseOrderDto,
   ) {
     return this.service.transition(orgId, id, dto.status);
@@ -85,7 +85,7 @@ export class PurchaseOrdersController {
   @ApiOperation({ summary: 'Прийняти товари по замовленню' })
   receive(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReceivePurchaseOrderDto,
     @CurrentUser() user: { id: string },
   ) {

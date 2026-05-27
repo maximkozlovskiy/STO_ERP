@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe, Query, Res, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -30,7 +30,7 @@ export class WorkOrdersController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Деталі наряду' })
-  findOne(@OrgContext() orgId: string, @Param('id') id: string) {
+  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
@@ -46,7 +46,7 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Оновити наряд' })
   update(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateWorkOrderDto,
     @CurrentUser() user: { id: string },
   ) {
@@ -59,7 +59,7 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Завантажити наряд у PDF' })
   async downloadPdf(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const buffer = await this.service.generatePdf(orgId, id);
@@ -73,7 +73,7 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити чернетку наряду' })
-  remove(@OrgContext() orgId: string, @CurrentUser() user: { id: string }, @Param('id') id: string) {
+  remove(@OrgContext() orgId: string, @CurrentUser() user: { id: string }, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id, user.id);
   }
 
@@ -82,7 +82,7 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Змінити статус наряду (FSM)' })
   transition(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionWorkOrderDto,
     @CurrentUser() user: { id: string },
   ) {
@@ -98,7 +98,7 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Дублювати наряд' })
   clone(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: { id: string },
   ) {
     return this.service.clone(orgId, id, user.id);
@@ -109,7 +109,7 @@ export class WorkOrdersController {
   @Post(':id/lines')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Додати роботу до наряду' })
-  addLine(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: CreateWorkOrderLineDto) {
+  addLine(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateWorkOrderLineDto) {
     return this.service.addLine(orgId, id, dto);
   }
 
@@ -118,8 +118,8 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Оновити рядок роботи' })
   updateLine(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
-    @Param('lineId') lineId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('lineId', ParseUUIDPipe) lineId: string,
     @Body() dto: UpdateWorkOrderLineDto,
   ) {
     return this.service.updateLine(orgId, id, lineId, dto);
@@ -129,7 +129,7 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити рядок роботи' })
-  removeLine(@OrgContext() orgId: string, @Param('id') id: string, @Param('lineId') lineId: string) {
+  removeLine(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Param('lineId', ParseUUIDPipe) lineId: string) {
     return this.service.removeLine(orgId, id, lineId);
   }
 
@@ -138,7 +138,7 @@ export class WorkOrdersController {
   @Post(':id/parts')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Додати запчастину до наряду' })
-  addPart(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: CreateWorkOrderPartDto) {
+  addPart(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateWorkOrderPartDto) {
     return this.service.addPart(orgId, id, dto);
   }
 
@@ -147,8 +147,8 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Оновити запчастину наряду' })
   updatePart(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
-    @Param('partId') partId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('partId', ParseUUIDPipe) partId: string,
     @Body() dto: UpdateWorkOrderPartDto,
   ) {
     return this.service.updatePart(orgId, id, partId, dto);
@@ -158,7 +158,7 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити запчастину наряду' })
-  removePart(@OrgContext() orgId: string, @Param('id') id: string, @Param('partId') partId: string) {
+  removePart(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Param('partId', ParseUUIDPipe) partId: string) {
     return this.service.removePart(orgId, id, partId);
   }
 }

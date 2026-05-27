@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, HttpCode,
+  Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe, UseGuards, HttpCode,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -86,7 +86,7 @@ export class PricingRulesController {
   @ApiOperation({ summary: 'Оновити правило ціноутворення' })
   async update(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePricingRuleDto,
   ) {
     const existing = await this.prisma.pricingRule.findFirst({
@@ -140,7 +140,7 @@ export class PricingRulesController {
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @HttpCode(204)
   @ApiOperation({ summary: 'Видалити правило ціноутворення' })
-  async remove(@OrgContext() orgId: string, @Param('id') id: string) {
+  async remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     const existing = await this.prisma.pricingRule.findFirst({
       where: { id, orgId, deletedAt: null },
     });
@@ -154,7 +154,7 @@ export class PricingRulesController {
   @Post(':id/apply-all')
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Застосувати правило до всіх відповідних товарів' })
-  async applyAll(@OrgContext() orgId: string, @Param('id') id: string) {
+  async applyAll(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     const existing = await this.prisma.pricingRule.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true },

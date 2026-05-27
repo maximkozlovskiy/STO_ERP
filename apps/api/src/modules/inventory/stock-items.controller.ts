@@ -30,8 +30,8 @@ export class StockItemsController {
   @ApiQuery({ name: 'q', required: false })
   findAll(
     @OrgContext() orgId: string,
-    @Query('warehouseId') warehouseId?: string,
-    @Query('goodId') goodId?: string,
+    @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
+    @Query('goodId', new ParseUUIDPipe({ optional: true })) goodId?: string,
     @Query('q') q?: string,
   ) {
     return this.inventory.findStockItems(orgId, warehouseId, goodId, q);

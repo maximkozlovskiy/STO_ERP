@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -23,7 +23,7 @@ export class ReportsController {
     @OrgContext() orgId: string,
     @Query('from') from: string,
     @Query('to') to: string,
-    @Query('branchId') branchId?: string,
+    @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
   ) {
     return this.service.revenue(orgId, from, to, branchId);
   }
@@ -38,7 +38,7 @@ export class ReportsController {
     @OrgContext() orgId: string,
     @Query('from') from: string,
     @Query('to') to: string,
-    @Query('employeeId') employeeId?: string,
+    @Query('employeeId', new ParseUUIDPipe({ optional: true })) employeeId?: string,
   ) {
     return this.service.workOrders(orgId, from, to, employeeId);
   }
@@ -51,7 +51,7 @@ export class ReportsController {
   @ApiQuery({ name: 'to', required: false })
   stock(
     @OrgContext() orgId: string,
-    @Query('warehouseId') warehouseId?: string,
+    @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
@@ -77,7 +77,7 @@ export class ReportsController {
   @ApiQuery({ name: 'counterpartyId', required: false })
   settlements(
     @OrgContext() orgId: string,
-    @Query('counterpartyId') counterpartyId?: string,
+    @Query('counterpartyId', new ParseUUIDPipe({ optional: true })) counterpartyId?: string,
   ) {
     return this.service.settlements(orgId, counterpartyId);
   }
@@ -90,7 +90,7 @@ export class ReportsController {
   @ApiQuery({ name: 'to', required: true })
   load(
     @OrgContext() orgId: string,
-    @Query('branchId') branchId: string | undefined,
+    @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId: string | undefined,
     @Query('from') from: string,
     @Query('to') to: string,
   ) {

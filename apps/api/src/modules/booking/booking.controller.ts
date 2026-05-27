@@ -38,7 +38,7 @@ export class BookingController {
   @ApiOperation({ summary: 'Вільні слоти для запису (публічний)' })
   async getAvailability(
     @Query('date') date: string,
-    @Query('branchId') branchId: string,
+    @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId: string,
     @Query('serviceIds') serviceIds?: string,
   ) {
     // Bug #119: lightweight runtime validation (avoid Prisma P2023 → 500 on bad UUID/date)

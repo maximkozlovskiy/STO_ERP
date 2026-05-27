@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, ParseUUIDPipe, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -23,8 +23,8 @@ export class CalendarController {
   findSlots(
     @OrgContext() orgId: string,
     @Query('date') date: string,
-    @Query('branchId') branchId?: string,
-    @Query('employeeId') employeeId?: string,
+    @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
+    @Query('employeeId', new ParseUUIDPipe({ optional: true })) employeeId?: string,
   ) {
     return this.service.findSlots(orgId, date, branchId, employeeId);
   }
@@ -40,7 +40,7 @@ export class CalendarController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити слот' })
-  removeSlot(@OrgContext() orgId: string, @Param('id') id: string) {
+  removeSlot(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.removeSlot(orgId, id);
   }
 }

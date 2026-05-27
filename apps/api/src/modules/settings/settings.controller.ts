@@ -99,7 +99,7 @@ export class SettingsController {
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Налаштування філії' })
   @ApiResponse({ status: 200, type: BranchSettingsResponseDto })
-  getBranch(@OrgContext() orgId: string, @Param('branchId') branchId: string) {
+  getBranch(@OrgContext() orgId: string, @Param('branchId', ParseUUIDPipe) branchId: string) {
     return this.service.getBranchSettings(orgId, branchId);
   }
 
@@ -109,7 +109,7 @@ export class SettingsController {
   @ApiResponse({ status: 200, type: BranchSettingsResponseDto })
   updateBranch(
     @OrgContext() orgId: string,
-    @Param('branchId') branchId: string,
+    @Param('branchId', ParseUUIDPipe) branchId: string,
     @Body() dto: UpdateBranchSettingsDto,
   ) {
     return this.service.updateBranchSettings(orgId, branchId, dto);

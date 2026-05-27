@@ -19,7 +19,7 @@ export class CompletionActsController {
   @Get()
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER, UserRole.ACCOUNTANT)
   @ApiResponse({ status: 200, type: PaginatedCompletionActsDto })
-  findAll(@OrgContext() orgId: string, @Query('workOrderId') workOrderId?: string) {
+  findAll(@OrgContext() orgId: string, @Query('workOrderId', new ParseUUIDPipe({ optional: true })) workOrderId?: string) {
     return this.service.findAll(orgId, workOrderId);
   }
 

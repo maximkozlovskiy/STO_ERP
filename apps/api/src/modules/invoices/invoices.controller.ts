@@ -37,7 +37,7 @@ export class InvoicesController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Рахунок по ID' })
-  findOne(@OrgContext() orgId: string, @Param('id') id: string) {
+  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
@@ -59,7 +59,7 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Виставити рахунок з наряду' })
   createFromWorkOrder(
     @OrgContext() orgId: string,
-    @Param('workOrderId') workOrderId: string,
+    @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
     @CurrentUser() user: { id: string },
   ) {
     return this.service.createFromWorkOrder(orgId, workOrderId, user?.id);
@@ -70,7 +70,7 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Оновити рахунок (тільки DRAFT)' })
   update(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateInvoiceDto,
   ) {
     return this.service.update(orgId, id, dto);
@@ -81,7 +81,7 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Змінити статус рахунку (FSM)' })
   transition(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionInvoiceDto,
   ) {
     return this.service.transition(orgId, id, dto.status as InvTransitionStatus);
@@ -93,7 +93,7 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Дублювати рахунок' })
   clone(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.service.clone(orgId, id);
   }
@@ -103,7 +103,7 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Завантажити рахунок у PDF' })
   async downloadPdf(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const buffer = await this.service.generatePdf(orgId, id);
@@ -117,7 +117,7 @@ export class InvoicesController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити рахунок (тільки DRAFT)' })
-  remove(@OrgContext() orgId: string, @Param('id') id: string) {
+  remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
 

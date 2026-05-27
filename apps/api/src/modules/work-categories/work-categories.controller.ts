@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -24,7 +24,7 @@ export class WorkCategoriesController {
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
-  findOne(@OrgContext() orgId: string, @Param('id') id: string) {
+  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
@@ -38,7 +38,7 @@ export class WorkCategoriesController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
-  update(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: UpdateWorkCategoryDto) {
+  update(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateWorkCategoryDto) {
     return this.service.update(orgId, id, dto);
   }
 
@@ -46,7 +46,7 @@ export class WorkCategoriesController {
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити категорію та всіх нащадків (soft delete)' })
-  remove(@OrgContext() orgId: string, @Param('id') id: string) {
+  remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
 }

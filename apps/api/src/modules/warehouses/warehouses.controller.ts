@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -22,13 +22,13 @@ export class WarehousesController {
   @ApiOperation({ summary: 'Список складів' })
   @ApiQuery({ name: 'branchId', required: false })
   @ApiResponse({ status: 200, type: [WarehouseResponseDto] })
-  findAll(@OrgContext() orgId: string, @Query('branchId') branchId?: string) {
+  findAll(@OrgContext() orgId: string, @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string) {
     return this.service.findAll(orgId, branchId);
   }
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  findOne(@OrgContext() orgId: string, @Param('id') id: string) {
+  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
@@ -42,14 +42,14 @@ export class WarehousesController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
-  update(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: UpdateWarehouseDto) {
+  update(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateWarehouseDto) {
     return this.service.update(orgId, id, dto);
   }
 
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@OrgContext() orgId: string, @Param('id') id: string) {
+  remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
 }

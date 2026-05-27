@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Body, Param, UseGuards, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Patch, Body, Param, ParseUUIDPipe, UseGuards, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { IsString, IsBoolean, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -33,7 +33,7 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Оновити шаблон сповіщення' })
   update(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTemplateDto,
   ) {
     return this.notifications.updateTemplate(orgId, id, dto);

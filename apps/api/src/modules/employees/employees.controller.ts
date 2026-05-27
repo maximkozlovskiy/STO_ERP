@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -29,7 +29,7 @@ export class EmployeesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Картка співробітника' })
   @ApiResponse({ status: 200, type: EmployeeResponseDto })
-  findOne(@OrgContext() orgId: string, @Param('id') id: string) {
+  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
@@ -45,7 +45,7 @@ export class EmployeesController {
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Оновити співробітника' })
   @ApiResponse({ status: 200, type: EmployeeResponseDto })
-  update(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: UpdateEmployeeDto) {
+  update(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEmployeeDto) {
     return this.service.update(orgId, id, dto);
   }
 
@@ -53,7 +53,7 @@ export class EmployeesController {
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити співробітника (soft delete)' })
-  remove(@OrgContext() orgId: string, @Param('id') id: string) {
+  remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
 
@@ -61,7 +61,7 @@ export class EmployeesController {
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Призначити зони співробітнику (замінює поточні)' })
   @ApiResponse({ status: 200, type: EmployeeResponseDto })
-  assignZones(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: AssignZonesDto) {
+  assignZones(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignZonesDto) {
     return this.service.assignZones(orgId, id, dto);
   }
 
@@ -69,7 +69,7 @@ export class EmployeesController {
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Призначити підйомники співробітнику (замінює поточні)' })
   @ApiResponse({ status: 200, type: EmployeeResponseDto })
-  assignLifts(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: AssignLiftsDto) {
+  assignLifts(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignLiftsDto) {
     return this.service.assignLifts(orgId, id, dto);
   }
 
@@ -79,7 +79,7 @@ export class EmployeesController {
   @ApiResponse({ status: 200, type: EmployeeResponseDto })
   assignWorkCategories(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AssignWorkCategoriesDto,
   ) {
     return this.service.assignWorkCategories(orgId, id, dto);
@@ -91,7 +91,7 @@ export class EmployeesController {
   @ApiResponse({ status: 200, type: EmployeeResponseDto })
   assignBranches(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AssignBranchesDto,
   ) {
     return this.service.assignBranches(orgId, id, dto);

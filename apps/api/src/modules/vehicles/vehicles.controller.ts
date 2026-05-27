@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -19,13 +19,13 @@ export class VehiclesController {
   @ApiOperation({ summary: 'Список авто' })
   @ApiQuery({ name: 'customerGarageId', required: false })
   @ApiResponse({ status: 200, type: [VehicleResponseDto] })
-  findAll(@OrgContext() orgId: string, @Query('customerGarageId') garageId?: string) {
+  findAll(@OrgContext() orgId: string, @Query('customerGarageId', new ParseUUIDPipe({ optional: true })) garageId?: string) {
     return this.service.findAll(orgId, garageId);
   }
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
-  findOne(@OrgContext() orgId: string, @Param('id') id: string) {
+  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
@@ -39,14 +39,14 @@ export class VehiclesController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
-  update(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: UpdateVehicleDto) {
+  update(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateVehicleDto) {
     return this.service.update(orgId, id, dto);
   }
 
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@OrgContext() orgId: string, @Param('id') id: string) {
+  remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
 
@@ -54,7 +54,7 @@ export class VehiclesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Вузли автомобіля' })
   @ApiResponse({ status: 200, type: [VehicleNodeResponseDto] })
-  findNodes(@OrgContext() orgId: string, @Param('id') id: string) {
+  findNodes(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findNodes(orgId, id);
   }
 
@@ -62,14 +62,14 @@ export class VehiclesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Додати вузол' })
   @ApiResponse({ status: 201, type: VehicleNodeResponseDto })
-  createNode(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: CreateVehicleNodeDto) {
+  createNode(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateVehicleNodeDto) {
     return this.service.createNode(orgId, id, dto);
   }
 
   @Delete(':id/nodes/:nodeId')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  removeNode(@OrgContext() orgId: string, @Param('id') id: string, @Param('nodeId') nodeId: string) {
+  removeNode(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Param('nodeId', ParseUUIDPipe) nodeId: string) {
     return this.service.removeNode(orgId, id, nodeId);
   }
 }

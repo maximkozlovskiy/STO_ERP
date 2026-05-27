@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   UseGuards,
@@ -46,7 +47,7 @@ export class PaymentMethodsController {
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Метод оплати' })
   @ApiResponse({ status: 200, type: PaymentMethodResponseDto })
-  findOne(@OrgContext() orgId: string, @Param('id') id: string) {
+  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
@@ -64,7 +65,7 @@ export class PaymentMethodsController {
   @ApiResponse({ status: 200, type: PaymentMethodResponseDto })
   update(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePaymentMethodDto,
   ) {
     return this.service.update(orgId, id, dto);
@@ -75,7 +76,7 @@ export class PaymentMethodsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити метод оплати' })
   @ApiResponse({ status: 204 })
-  remove(@OrgContext() orgId: string, @Param('id') id: string) {
+  remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
 }

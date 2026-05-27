@@ -1,4 +1,4 @@
-﻿import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
+﻿import { Controller, Get, Post, Body, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -25,7 +25,7 @@ export class PaymentsController {
     @OrgContext() orgId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
-    @Query('counterpartyId') counterpartyId?: string,
+    @Query('counterpartyId', new ParseUUIDPipe({ optional: true })) counterpartyId?: string,
   ) {
     return this.service.findAll(orgId, +page, +limit, counterpartyId);
   }

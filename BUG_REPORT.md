@@ -4425,9 +4425,13 @@ SKILL §4.8.4 вимагає `ParseUUIDPipe` для кожного `:id` пар�
 Невалідний UUID → P2023 → 400 generic 'Некоректний формат ідентифікатора' (працює, але менш специфічно).
 
 **Фікс:**
-Оскільки 20 контролерів — це широка рефакторинг операція. Не виправляти у поточній сесії — лишити як documented LOW. Можна додати у `/sto-dev` як стандарт.
+Додано `ParseUUIDPipe` (для required `@Param`) та `new ParseUUIDPipe({ optional: true })` (для optional `@Query`) до всіх UUID параметрів у 20+ контролерах: `branches`, `brands`, `units`, `zones`/`lifts`, `work-categories`, `works`, `services`, `warehouses`, `vehicles`, `employees`, `counterparties`, `payment-methods`, `invoices`, `purchase-orders`, `stock-documents`, `work-orders`, `inventory/pricing-rules`, `inventory/stock-items`, `calendar`, `comments`, `completion-acts`, `notifications`, `settings`, `settlements`, `goods`, `payments`, `reports`, `xlsx`, `audit`, `batches`, `booking`, `maintenance-schedules`.
 
-**Статус:** [ ] відкритий (deferred — broader refactor)
+Без `version: '4'` — тести використовують UUIDs з інших версій (включно з nil UUID `00000000-...`).
+
+Updated `work-orders.contract.spec.ts` — замінено `'wo-1'` на валідний UUID `00000000-0000-0000-0000-000000000001`, бо ParseUUIDPipe тепер відхиляє довільні рядки до сервісу.
+
+**Статус:** [x] виправлено
 
 ---
 

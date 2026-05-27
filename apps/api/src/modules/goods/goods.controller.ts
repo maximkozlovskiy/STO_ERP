@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe, Query, UseGuards, HttpCode, HttpStatus, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -31,7 +31,7 @@ export class GoodsController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC')
   @ApiOperation({ summary: 'Отримати товар' })
-  findOne(@OrgContext() orgId: string, @Param('id') id: string) {
+  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
@@ -45,7 +45,7 @@ export class GoodsController {
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Оновити товар' })
-  update(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: UpdateGoodDto) {
+  update(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateGoodDto) {
     return this.service.update(orgId, id, dto);
   }
 
@@ -53,7 +53,7 @@ export class GoodsController {
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити товар' })
-  remove(@OrgContext() orgId: string, @Param('id') id: string) {
+  remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
 
@@ -62,7 +62,7 @@ export class GoodsController {
   @Get(':goodId/barcodes')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Штрихкоди товару' })
-  getBarcodes(@OrgContext() orgId: string, @Param('goodId') goodId: string) {
+  getBarcodes(@OrgContext() orgId: string, @Param('goodId', ParseUUIDPipe) goodId: string) {
     return this.service.getBarcodes(orgId, goodId);
   }
 
@@ -71,7 +71,7 @@ export class GoodsController {
   @ApiOperation({ summary: 'Додати штрихкод' })
   createBarcode(
     @OrgContext() orgId: string,
-    @Param('goodId') goodId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
     @Body() dto: CreateGoodBarcodeDto,
   ): Promise<GoodBarcodeResponseDto> {
     return this.service.createBarcode(orgId, goodId, dto);
@@ -83,8 +83,8 @@ export class GoodsController {
   @ApiOperation({ summary: 'Видалити штрихкод' })
   deleteBarcode(
     @OrgContext() orgId: string,
-    @Param('goodId') goodId: string,
-    @Param('barcodeId') barcodeId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+    @Param('barcodeId', ParseUUIDPipe) barcodeId: string,
   ) {
     return this.service.deleteBarcode(orgId, goodId, barcodeId);
   }
@@ -103,8 +103,8 @@ export class GoodsController {
   @ApiOperation({ summary: 'Партії товару' })
   async getBatches(
     @OrgContext() orgId: string,
-    @Param('id') id: string,
-    @Query('warehouseId') warehouseId?: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
   ) {
     const good = await this.prisma.good.findFirst({
       where: { id, orgId, deletedAt: null },
@@ -123,7 +123,7 @@ export class GoodsController {
   @Get(':id/price-history')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Цінова історія товару' })
-  async getPriceHistory(@OrgContext() orgId: string, @Param('id') id: string) {
+  async getPriceHistory(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     const good = await this.prisma.good.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true },
