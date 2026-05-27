@@ -28,6 +28,7 @@ interface CalendarSlot {
 interface Lift { id: string; name: string; }
 
 const KYIV_TZ = 'Europe/Kyiv';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
 function toDateString(d: Date) { return new Intl.DateTimeFormat('sv-SE', { timeZone: KYIV_TZ }).format(d); }
@@ -161,8 +162,6 @@ export default function CalendarPage() {
 
   const prevDay = () => { const d = new Date(date); d.setDate(d.getDate() - 1); setDate(toDateString(d)); };
   const nextDay = () => { const d = new Date(date); d.setDate(d.getDate() + 1); setDate(toDateString(d)); };
-
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   const addSlot = async () => {
     if (!form.startAt || !form.endAt) {
