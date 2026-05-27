@@ -59,7 +59,8 @@ export class SettlementsService {
     if (tx) {
       await run(tx);
     } else {
-      await this.prisma.$transaction(run);
+      // Bug #132: explicit timeout — викликається з work-orders COMPLETED flow, де можуть бути додаткові writes
+      await this.prisma.$transaction(run, { timeout: 5_000 });
     }
   }
 

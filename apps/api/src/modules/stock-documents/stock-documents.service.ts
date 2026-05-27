@@ -119,7 +119,7 @@ export class StockDocumentsService {
           lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
 
     return this.toDto(doc);
   }
@@ -154,7 +154,7 @@ export class StockDocumentsService {
           lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
 
     return this.toDto(updated);
   }
@@ -223,7 +223,7 @@ export class StockDocumentsService {
           where: { id, orgId },
           data: { status: 'CONFIRMED', confirmedAt: new Date(), confirmedBy: userId ?? null },
         });
-      });
+      }, { timeout: 15_000 }); // Bug #132: explicit timeout — N rows × createMovement (батч-tracking + StockMovement + upsert stockItem)
     } else {
       await this.prisma.stockDocument.update({ where: { id, orgId }, data: { status: newStatus } });
     }

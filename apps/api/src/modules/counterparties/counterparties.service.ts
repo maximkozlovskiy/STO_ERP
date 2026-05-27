@@ -80,7 +80,7 @@ export class CounterpartiesService {
         where: { id: cp.id, orgId, deletedAt: null },
         include: { settlementAccount: { select: { balance: true } } },
       });
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
     return this.toDto(item);
   }
 

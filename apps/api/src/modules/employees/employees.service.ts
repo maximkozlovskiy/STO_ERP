@@ -118,7 +118,7 @@ export class EmployeesService {
       if (dto.zoneIds.length) {
         await tx.employeeZone.createMany({ data: dto.zoneIds.map(zoneId => ({ employeeId: id, zoneId })) });
       }
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
 
@@ -138,7 +138,7 @@ export class EmployeesService {
       if (dto.liftIds.length) {
         await tx.employeeLift.createMany({ data: dto.liftIds.map(liftId => ({ employeeId: id, liftId })) });
       }
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
 
@@ -162,7 +162,7 @@ export class EmployeesService {
       if (dto.workCategoryIds.length) {
         await tx.employeeWorkCategory.createMany({ data: dto.workCategoryIds.map(workCategoryId => ({ employeeId: id, workCategoryId })) });
       }
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
 
@@ -191,7 +191,7 @@ export class EmployeesService {
       if (dto.allBranches !== undefined) {
         await tx.employee.update({ where: { id }, data: { allBranches: dto.allBranches } });
       }
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
 

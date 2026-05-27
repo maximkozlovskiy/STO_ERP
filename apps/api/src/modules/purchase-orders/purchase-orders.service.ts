@@ -92,7 +92,7 @@ export class PurchaseOrdersService {
           lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
 
     return this.toDto(po);
   }
@@ -126,7 +126,7 @@ export class PurchaseOrdersService {
           lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
         },
       });
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
 
     return this.toDto(updated);
   }
@@ -142,7 +142,7 @@ export class PurchaseOrdersService {
       }
 
       await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
 
@@ -201,7 +201,7 @@ export class PurchaseOrdersService {
       const anyReceived = updatedLines.some(l => l.receivedQty > 0);
       const newStatus = allReceived ? PurchaseOrderStatus.RECEIVED : anyReceived ? PurchaseOrderStatus.PARTIAL : po.status;
       await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
-    });
+    }, { timeout: 15_000 }); // Bug #132: explicit timeout — N lines × createMovement (батч-tracking)
     return this.findOne(orgId, id);
   }
 

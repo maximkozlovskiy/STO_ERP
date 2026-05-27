@@ -148,7 +148,7 @@ export class SetupService {
       });
 
       return { org, branch, warehouse, employee };
-    });
+    }, { timeout: 15_000 }); // Bug #132: bootstrap creates 14+ rows; default 5s може недостатньо на повільному disk
 
     const accessToken = this.authService.generateAccessToken({
       sub: result.employee.id,

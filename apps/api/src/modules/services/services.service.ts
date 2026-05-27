@@ -71,7 +71,7 @@ export class ServicesService {
           serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } }, take: 1000 },
         },
       });
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
 
     return this.toDto(item);
   }
@@ -121,7 +121,7 @@ export class ServicesService {
           serviceGoods: { include: { good: { select: { name: true, unit: true, salePrice: true } } }, take: 1000 },
         },
       });
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout
 
     return this.toDto(item);
   }

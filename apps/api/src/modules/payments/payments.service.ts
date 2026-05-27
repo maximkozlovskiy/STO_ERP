@@ -111,7 +111,7 @@ export class PaymentsService {
       }
 
       return created;
-    });
+    }, { timeout: 5_000 }); // Bug #132: explicit timeout — payment + settlement + invoice/WO updates
 
     // Apply FSM transition INVOICED→PAID via WorkOrdersService (outside tx — has its own transaction)
     // This is safe because: payment record + settlement are already committed above;

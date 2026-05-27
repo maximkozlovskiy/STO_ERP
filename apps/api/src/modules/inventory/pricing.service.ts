@@ -117,25 +117,30 @@ export class PricingService {
     }
 
     // Batch in chunks of 100 to keep transactions short (< 5s)
+    // Bug #132: для interactive callback можна задати timeout; array-form $transaction його не приймає.
+    // Тому перетворюємо array на callback, щоб мати explicit { timeout } і не покладатись на default 5s.
     const CHUNK = 100;
     for (let i = 0; i < updates.length; i += CHUNK) {
       const chunk = updates.slice(i, i + CHUNK);
-      await this.prisma.$transaction([
-        ...chunk.map(u =>
-          this.prisma.good.update({ where: { id: u.goodId }, data: { salePrice: u.newPrice } }),
-        ),
-        this.prisma.priceHistory.createMany({
-          data: chunk.map(u => ({
-            orgId,
-            goodId: u.goodId,
-            oldPrice: u.oldPrice,
-            newPrice: u.newPrice,
-            costPrice: u.costPrice,
-            reason: `PricingRule: ${rule.name}`,
-            pricingRuleId: rule.id,
-          })),
-        }),
-      ]);
+      await this.prisma.$transaction(
+        async (tx) => {
+          for (const u of chunk) {
+            await tx.good.update({ where: { id: u.goodId }, data: { salePrice: u.newPrice } });
+          }
+          await tx.priceHistory.createMany({
+            data: chunk.map(u => ({
+              orgId,
+              goodId: u.goodId,
+              oldPrice: u.oldPrice,
+              newPrice: u.newPrice,
+              costPrice: u.costPrice,
+              reason: `PricingRule: ${rule.name}`,
+              pricingRuleId: rule.id,
+            })),
+          });
+        },
+        { timeout: 10_000 },
+      );
     }
     return updates.length;
   }

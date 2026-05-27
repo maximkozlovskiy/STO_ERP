@@ -134,8 +134,11 @@ export class BatchService {
     tx?: Prisma.TransactionClient,
   ): Promise<BatchConsumeResult[]> {
     if (!tx) {
-      return this.prisma.$transaction(innerTx =>
-        this.consumeBatch(orgId, goodId, warehouseId, qty, documentType, documentId, documentLineId, costMethod, innerTx),
+      // Bug #132: explicit timeout — batch consume може touchнути 10+ батчів
+      return this.prisma.$transaction(
+        innerTx =>
+          this.consumeBatch(orgId, goodId, warehouseId, qty, documentType, documentId, documentLineId, costMethod, innerTx),
+        { timeout: 10_000 },
       );
     }
     const db = tx;
@@ -147,9 +150,10 @@ export class BatchService {
     }
 
     // Find batches by method
+    // Bug #133: FEFO має explicit `nulls: 'last'` — товари без терміну йдуть В КІНЦІ (не випадково через Postgres default).
     const orderBy: Prisma.StockBatchOrderByWithRelationInput[] =
       costMethod === 'LIFO' ? [{ createdAt: 'desc' }] :
-      costMethod === 'FEFO' ? [{ expiryDate: 'asc' }, { createdAt: 'asc' }] :
+      costMethod === 'FEFO' ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }] :
       [{ createdAt: 'asc' }]; // FIFO default
 
     const batches = await db.stockBatch.findMany({
@@ -263,8 +267,10 @@ export class BatchService {
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
     if (!tx) {
-      await this.prisma.$transaction(innerTx =>
-        this.returnToBatch(orgId, batchId, qty, documentType, documentId, innerTx),
+      // Bug #132: explicit timeout
+      await this.prisma.$transaction(
+        innerTx => this.returnToBatch(orgId, batchId, qty, documentType, documentId, innerTx),
+        { timeout: 5_000 },
       );
       return;
     }
