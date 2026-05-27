@@ -258,6 +258,7 @@ export function TopShell({ children }: { children: ReactNode }) {
       <Link
         key={item.href}
         href={item.href}
+        prefetch={false}
         title={collapsed ? item.label : undefined}
         className={cn(
           'group relative flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',
@@ -348,7 +349,7 @@ export function TopShell({ children }: { children: ReactNode }) {
           </button>
         ) : (
           <>
-            <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0">
+            <Link href="/dashboard" prefetch={false} className="flex items-center gap-2.5 min-w-0">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
                 <Wrench className="h-4 w-4 text-white" />
               </div>
@@ -475,7 +476,7 @@ export function TopShell({ children }: { children: ReactNode }) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <Link href="/dashboard" className="flex items-center gap-2">
+          <Link href="/dashboard" prefetch={false} className="flex items-center gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
               <Wrench className="h-3.5 w-3.5 text-white" />
             </div>
