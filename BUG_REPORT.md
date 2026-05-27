@@ -3537,3 +3537,184 @@ async getAvailability(
 **Статус:** [x] виправлено (apps/api/src/modules/booking/booking.controller.ts.getAvailability: додано runtime regex-валідацію branchId (UUID) і date (YYYY-MM-DD) з BadRequestException замість Prisma P2023 → 500)
 
 ---
+
+## Session 2026-05-27 — /sto-tester cycle-2 (post review cycle-2)
+
+Фокус: верифікація cycle-2 fixes (url-guard IPv6, webhooks redirect SSRF, booking hydration) + повторна перевірка `total: items.length` патерну.
+
+---
+
+## Bug #120 — [HIGH] `GoodsController.getBatches` повертає `total: items.length` після `take: 200`
+
+**Файл:** `apps/api/src/modules/goods/goods.controller.ts:99-114`
+**Severity:** HIGH
+**Категорія:** business-logic / api-contract
+
+**Опис:**
+```typescript
+async getBatches(...) {
+  const items = await this.batchService.getBatchesForGood(orgId, id, warehouseId);
+  return { items, total: items.length };  // ← BUG
+}
+```
+`batchService.getBatchesForGood` робить `take: 200` (batch.service.ts:231). Якщо у товару понад 200 партій (легко при тривалому використанні з частими RECEIPT-ами), `total` дорівнюватиме саме 200 — а не реальній кількості. Класичний Bug #88 регрес.
+
+**Очікувана поведінка:**
+`$transaction([findMany, count])` — реальний COUNT без `take/skip/orderBy`.
+
+**Фактична поведінка:**
+Frontend (наприклад, `batch-viewer-modal.tsx` коли його розширять для historical view) бачить max 200, а не реальну кількість.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #121 — [HIGH] `GoodsController.getPriceHistory` повертає `total: items.length` після `take: 100`
+
+**Файл:** `apps/api/src/modules/goods/goods.controller.ts:116-139`
+**Severity:** HIGH
+**Категорія:** business-logic / api-contract
+
+**Опис:**
+Те ж саме що Bug #120, але для price history. `take: 100` означає `items.length ≤ 100` назавжди, реальний count у БД може бути значно більший.
+
+**Очікувана поведінка:**
+`$transaction([findMany, count])` де count — без `take/skip/orderBy`.
+
+**Фактична поведінка:**
+"Цінова історія" UI коли отримає pagination — буде показувати `total: 100` назавжди.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #122 — [LOW] `SearchController` повертає `total: items.length` після `LIMIT perType`
+
+**Файл:** `apps/api/src/modules/search/search.controller.ts:39-40`
+**Severity:** LOW
+**Категорія:** api-contract
+
+**Опис:**
+`SearchService.search` робить `LIMIT perType` всередині `searchByType` + `slice(0, limit)`. Тому `items.length ≤ limit`. Якщо в БД є 1000 матчів для query "Toyota" — UI бачить `total: 10`. Frontend command-palette використовує тільки `items` (не `total`), тому фактичного багу немає, але API contract — `total: number` — обіцяє реальний total.
+
+**Очікувана поведінка:**
+Задокументувати у `SearchResponseDto.total` що це capped-total — `@ApiProperty({ description: 'Кількість повернутих результатів (capped at limit)' })`.
+
+**Фактична поведінка:**
+DTO `total!: number` без коментаря — потенційно вводить в оману.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #123 — [MEDIUM] `validatePublicUrl` не блокує IPv4-compatible IPv6 (`::a.b.c.d` / hex-encoded)
+
+**Файл:** `apps/api/src/common/utils/url-guard.ts:74-94`
+**Severity:** MEDIUM
+**Категорія:** security / SSRF
+
+**Опис:**
+Helper перевіряє тільки IPv4-mapped IPv6 (`::ffff:a.b.c.d`), але існує ще IPv4-compatible IPv6 (`::a.b.c.d`, deprecated RFC 4291) яка може резолвитись. URL `http://[::127.0.0.1]/` пройде:
+- `host.includes(':')` → true (IPv6 branch)
+- ULA regex `/^f[cd]/` → false
+- link-local regex `/^fe[89ab]/` → false
+- IPv4-mapped `/^::ffff:/` → false (нема `ffff`)
+- Кінець → повертає null (SAFE)
+
+Атакер може налаштувати webhook на `http://[::127.0.0.1]/` (IPv4-compatible IPv6) або `http://[::7f00:1]/` (hex-encoded loopback `127.0.0.1`) — пройде як публічна адреса.
+
+**Очікувана поведінка:**
+Додати regex/check для IPv4-compatible IPv6 (`::dotted-quad`) + блок-лист для IPv6 що ВЗАГАЛІ містять embedded IPv4 (deprecated, нема legitimate use-case) + хвостова перевірка hex loopback `::7f00:*` тощо.
+
+**Фактична поведінка:**
+SSRF bypass через IPv4-compatible IPv6 / hex-encoded loopback.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #124 — [MEDIUM] `validatePublicUrl` helper не має unit-тестів
+
+**Файл:** `apps/api/src/common/utils/url-guard.ts` (відсутній `url-guard.spec.ts`)
+**Severity:** MEDIUM
+**Категорія:** test-coverage / security
+
+**Опис:**
+SSRF-захист `validatePublicUrl` — критичний security helper. Cycle-1 (PR base) мав попередню regex що мовчки пропускала IPv6 ULA через brackets — баг знайдений тільки на cycle-2 review (через візуальний static analysis). Без unit-тестів regress майже гарантований при будь-якій майбутній зміні regex/literal-листа.
+
+Потрібні тест-кейси:
+- ALLOW: `https://example.com`, `http://api.public.io:8080/path`, `https://www.google.com`
+- BLOCK loopback: `http://127.0.0.1`, `http://localhost`, `http://[::1]`, `http://0.0.0.0`
+- BLOCK RFC1918: `http://10.1.2.3`, `http://172.16.0.1`, `http://172.31.255.254`, `http://192.168.1.1`
+- BLOCK link-local: `http://169.254.169.254` (AWS metadata), `http://[fe80::1]`, `http://[febf::1]`
+- BLOCK ULA: `http://[fc00::1]`, `http://[fd00::abcd]`
+- BLOCK CGNAT: `http://100.64.0.1`, `http://100.127.255.254`
+- BLOCK IPv4-mapped: `http://[::ffff:127.0.0.1]`, `http://[::ffff:10.0.0.1]`
+- BLOCK schemes: `file:///etc/passwd`, `gopher://x`, `ftp://x`
+- ALLOW edge: `http://172.15.0.1` (not in 172.16/12), `http://172.32.0.1`, `http://169.253.1.1`
+
+**Очікувана поведінка:**
+Файл `url-guard.spec.ts` з ≥30 кейсів.
+
+**Фактична поведінка:**
+0 тестів.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #126 — [MEDIUM] `OutboundWebhookProcessor` 3xx redirect path пише `webhookDelivery` ДВА рази
+
+**Файл:** `apps/api/src/modules/webhooks/webhooks.processor.ts:93-117` (до фіксу)
+**Severity:** MEDIUM
+**Категорія:** business-logic / data-integrity
+
+**Опис:**
+Виявлено під час написання unit-тестів для Bug #125. Cycle-2 fix для redirect SSRF додав явний `await prisma.webhookDelivery.create(...)` всередині `if (res.status >= 300 && res.status < 400)` блоку **+** `throw deliveryError`. Проблема: throw ловиться зовнішнім `try/catch` (line 126), який встановлює `deliveryError = err` і `status = 'FAILED'`, після чого виконання продовжується ПОЗА блоком try і доходить до загального delivery-log (line 137-147), який ВЖЕ був написаний у redirect-блоці.
+
+Результат: для кожного 302/301 створювалось 2 однакових `webhookDelivery` рядки. У логах виглядає як два failed delivery-ями на ту саму атаку → подвоюються counters і `attempts` accounting може зламатись.
+
+**Очікувана поведінка:**
+Один webhookDelivery record на одну спробу доставки незалежно від типу помилки.
+
+**Фактична поведінка:**
+- 2xx success: 1 запис (OK)
+- 5xx fail: 1 запис (OK)
+- 3xx redirect: 2 записи (BUG)
+- network error: 1 запис (OK)
+
+**Фікс:** замість `try { write } throw` у redirect-блоці — просто встановити `status/responseCode/responseBody/deliveryError` змінні, дозволити виконанню дійти до загального write-блоку, який зробить ОДИН запис на основі тих самих змінних.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #125 — [MEDIUM] `OutboundWebhookProcessor` не має unit-тестів
+
+**Файл:** `apps/api/src/modules/webhooks/webhooks.processor.ts` (відсутній `*.spec.ts`)
+**Severity:** MEDIUM
+**Категорія:** test-coverage / security
+
+**Опис:**
+Webhook processor містить дві critical-security перевірки cycle-2:
+1. `validatePublicUrl(url)` defense-in-depth перед `fetch` (захист від DNS rebinding)
+2. `redirect: 'manual'` + явна обробка 3xx (захист від SSRF через redirect)
+
+Жоден з цих критичних шляхів не тестується. Якщо майбутній рефакторинг видалить `redirect: 'manual'` (бо "Node fetch стандартно follows") — SSRF буде відкритий.
+
+Потрібні тест-кейси:
+- блокує SSRF URL на pre-flight check + пише FAILED delivery + не throw
+- 200 → status='DELIVERED' + body trimmed to 4000 chars
+- 302 → status='FAILED' + responseBody містить "Redirect to ... blocked" + delivery throw для retry
+- 500 → status='FAILED' + delivery throw для BullMQ retry
+- HMAC signature розраховується коректно при наявності secret
+
+**Очікувана поведінка:**
+`webhooks.processor.spec.ts` з ≥5 кейсів через `vi.spyOn(global, 'fetch')`.
+
+**Фактична поведінка:**
+0 тестів.
+
+**Статус:** [x] виправлено
+
+---

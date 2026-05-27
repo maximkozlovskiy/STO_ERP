@@ -89,39 +89,23 @@ export class OutboundWebhookProcessor {
       }
 
       // Treat any redirect (3xx with Location) as failure — Webhook receivers
-      // must publish a stable URL, not bounce through redirectors.
+      // must publish a stable URL, not bounce through redirectors. Set the
+      // outcome variables and let the SINGLE delivery-log block below record
+      // them (avoiding the earlier double-write where this branch wrote its
+      // own row AND then the outer log wrote a second row via the catch path).
       if (res.status >= 300 && res.status < 400) {
         deliveryError = new Error(`Redirect not allowed (HTTP ${res.status})`);
         status = 'FAILED';
         responseCode = res.status;
         responseBody = `Redirect to ${res.headers.get('location') ?? '?'} blocked`;
-        // Skip the rest of success-path handling.
-        try {
-          await this.prisma.webhookDelivery.create({
-            data: {
-              endpointId,
-              event,
-              payload: payload as Prisma.InputJsonValue,
-              status,
-              attempts: (job.attemptsMade ?? 0) + 1,
-              responseCode,
-              responseBody,
-            },
-          });
-        } catch (logErr) {
-          this.logger.error(
-            `Failed to record webhook delivery for endpoint ${endpointId}: ${String(logErr)}`,
-          );
+      } else {
+        responseCode = res.status;
+        responseBody = (await res.text().catch(() => '')).slice(0, 4000);
+        status = res.ok ? 'DELIVERED' : 'FAILED';
+
+        if (!res.ok) {
+          deliveryError = new Error(`HTTP ${res.status}`);
         }
-        throw deliveryError;
-      }
-
-      responseCode = res.status;
-      responseBody = (await res.text().catch(() => '')).slice(0, 4000);
-      status = res.ok ? 'DELIVERED' : 'FAILED';
-
-      if (!res.ok) {
-        deliveryError = new Error(`HTTP ${res.status}`);
       }
     } catch (err) {
       status = 'FAILED';

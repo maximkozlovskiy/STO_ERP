@@ -95,6 +95,8 @@ export class GoodsController {
   // відповідності API-контракту STO ERP (frontend всюди очікує `data.items.length`).
   // Bug #31: перед запитом валідуємо існування Good у поточній org → 404 інакше
   // силует "Немає партій" приховує помилковий goodId.
+  // Bug #120/#121: `total` повинен бути реальним COUNT з БД, а не `items.length`
+  // (яке cap-ується `take` у service/query). Інакше повторюємо Bug #88 регрес.
 
   @Get(':id/batches')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST')
@@ -109,8 +111,13 @@ export class GoodsController {
       select: { id: true },
     });
     if (!good) throw new NotFoundException('Товар не знайдено');
-    const items = await this.batchService.getBatchesForGood(orgId, id, warehouseId);
-    return { items, total: items.length };
+    const [items, total] = await Promise.all([
+      this.batchService.getBatchesForGood(orgId, id, warehouseId),
+      this.prisma.stockBatch.count({
+        where: { orgId, goodId: id, ...(warehouseId ? { warehouseId } : {}) },
+      }),
+    ]);
+    return { items, total };
   }
 
   @Get(':id/price-history')
@@ -122,11 +129,14 @@ export class GoodsController {
       select: { id: true },
     });
     if (!good) throw new NotFoundException('Товар не знайдено');
-    const rows = await this.prisma.priceHistory.findMany({
-      where: { orgId, goodId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.priceHistory.findMany({
+        where: { orgId, goodId: id },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      this.prisma.priceHistory.count({ where: { orgId, goodId: id } }),
+    ]);
     const items = rows.map(h => ({
       id: h.id,
       oldPrice: h.oldPrice != null ? Number(h.oldPrice) : null,
@@ -135,6 +145,6 @@ export class GoodsController {
       reason: h.reason,
       createdAt: h.createdAt,
     }));
-    return { items, total: items.length };
+    return { items, total };
   }
 }

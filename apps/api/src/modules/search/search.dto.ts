@@ -29,5 +29,14 @@ export class SearchResultItemDto {
 
 export class SearchResponseDto {
   @ApiProperty({ type: [SearchResultItemDto] }) items!: SearchResultItemDto[];
-  @ApiProperty() total!: number;
+  // Bug #122: cap-ed total — equals `items.length` (≤ limit). NOT the real DB
+  // match count: every per-type query is `LIMIT perType` so a full COUNT would
+  // require N extra heavy similarity scans for no UI benefit (command-palette
+  // only consumes `items`). Documented here so consumers do not interpret it
+  // as paginated total.
+  @ApiProperty({
+    description:
+      'Кількість повернутих результатів (capped at limit). НЕ є реальною кількістю матчів у БД.',
+  })
+  total!: number;
 }

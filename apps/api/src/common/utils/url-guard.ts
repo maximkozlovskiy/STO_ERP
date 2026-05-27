@@ -71,25 +71,58 @@ export function validatePublicUrl(raw: string): string | null {
   }
 
   // IPv6 literal (brackets already stripped above).
+  // Important: Node's URL parser NORMALIZES IPv6 to lowercase hex compressed
+  // form (RFC 5952). So `[::ffff:127.0.0.1]` arrives here as `::ffff:7f00:1`
+  // (no dotted-quad), `[::10.0.0.1]` arrives as `::a00:1` (leading zero
+  // stripped). All checks below assume that normalized form.
   if (host.includes(':')) {
     // ::1, :: handled above by literal match.
     // fc00::/7 — ULA (any address with first byte fc-fd)
     if (/^f[cd][0-9a-f]{0,2}:/i.test(host)) return 'Недозволена IPv6 (ULA)';
     // fe80::/10 — link-local (fe80-febf in first hextet)
     if (/^fe[89ab][0-9a-f]?:/i.test(host)) return 'Недозволена IPv6 (link-local)';
-    // ::ffff:a.b.c.d — IPv4-mapped — re-check IPv4 part
-    const v4MappedMatch = /^::ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/i.exec(host);
-    if (v4MappedMatch) {
-      const parts = v4MappedMatch.slice(1, 5).map(Number);
-      if (parts.some(p => p < 0 || p > 255)) return 'Некоректна IPv4 (mapped)';
-      const [a, b] = parts;
-      if (a === 127) return 'Недозволена IPv4-mapped (loopback)';
-      if (a === 10) return 'Недозволена IPv4-mapped (10.0.0.0/8)';
-      if (a === 172 && b >= 16 && b <= 31) return 'Недозволена IPv4-mapped (172.16.0.0/12)';
-      if (a === 192 && b === 168) return 'Недозволена IPv4-mapped (192.168.0.0/16)';
-      if (a === 169 && b === 254) return 'Недозволена IPv4-mapped (link-local)';
-      if (a === 0) return 'Недозволена IPv4-mapped (0.0.0.0/8)';
-      if (a === 100 && b >= 64 && b <= 127) return 'Недозволена IPv4-mapped (CGNAT)';
+
+    // Bug #123: IPv6 with embedded IPv4 has TWO legacy forms — IPv4-mapped
+    // (`::ffff:a.b.c.d`, RFC 4291 §2.5.5.2) and IPv4-compatible (`::a.b.c.d`,
+    // deprecated §2.5.5.1). After Node URL normalization both become the
+    // pure-hex compressed form (e.g. `::ffff:7f00:1`, `::7f00:1`).
+    //
+    // The robust approach: any IPv6 that compresses to `::*:*` (i.e. only the
+    // last two hextets carry data, with the leading bits all zero) is an
+    // address whose lower 32 bits are interpreted as IPv4 by historical
+    // routing stacks. Decode the last two hextets as an IPv4 address and
+    // run it through the IPv4 blocklist.
+    //
+    // Pattern matches:
+    //   `::XXXX:YYYY`            — IPv4-compatible (`::a.b.c.d`)
+    //   `::ffff:XXXX:YYYY`       — IPv4-mapped (`::ffff:a.b.c.d`)
+    //   `::ffff:0:XXXX:YYYY`     — IPv4-translated (RFC 2765, less common)
+    const embedded = /^(?:::|::ffff:|::ffff:0:)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(host);
+    if (embedded) {
+      const high = parseInt(embedded[1], 16);
+      const low = parseInt(embedded[2], 16);
+      const a = (high >> 8) & 0xff;
+      const b = high & 0xff;
+      const c = (low >> 8) & 0xff;
+      const d = low & 0xff;
+      // 127.0.0.0/8 — loopback
+      if (a === 127) return 'Недозволена IPv6 з вбудованим IPv4 (loopback)';
+      // 10.0.0.0/8 — RFC1918
+      if (a === 10) return 'Недозволена IPv6 з вбудованим IPv4 (10.0.0.0/8)';
+      // 172.16.0.0/12 — RFC1918
+      if (a === 172 && b >= 16 && b <= 31) return 'Недозволена IPv6 з вбудованим IPv4 (172.16.0.0/12)';
+      // 192.168.0.0/16 — RFC1918
+      if (a === 192 && b === 168) return 'Недозволена IPv6 з вбудованим IPv4 (192.168.0.0/16)';
+      // 169.254.0.0/16 — link-local
+      if (a === 169 && b === 254) return 'Недозволена IPv6 з вбудованим IPv4 (link-local)';
+      // 0.0.0.0/8 — `::` itself was handled earlier; here cover `::0.x.y.z`.
+      if (a === 0) return 'Недозволена IPv6 з вбудованим IPv4 (0.0.0.0/8)';
+      // 100.64.0.0/10 — CGNAT
+      if (a === 100 && b >= 64 && b <= 127) return 'Недозволена IPv6 з вбудованим IPv4 (CGNAT)';
+      // Silence unused warning while keeping the parse explicit for future
+      // sanity checks (e.g. logging the resolved IPv4 in dev diagnostics).
+      void c;
+      void d;
     }
   }
 
