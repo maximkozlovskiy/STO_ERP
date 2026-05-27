@@ -4362,7 +4362,7 @@ Cosmetic dead code; функціонально працює, але дивно �
 **Фікс:**
 Якщо `!!value && !displayValue` — показати disabled input з текстом `Завантаження...` або skeleton.
 
-**Статус:** [ ] відкритий
+**Статус:** [x] виправлено — додано `showLoadingPill` гілку зі spinner+`Завантаження…` коли `value` встановлено а `displayValue` ще порожній. `role="status"` + `aria-busy="true"` для screen readers.
 
 ---
 
