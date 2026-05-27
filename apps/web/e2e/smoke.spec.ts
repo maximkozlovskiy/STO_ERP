@@ -43,3 +43,24 @@ test.describe('Smoke — auth guard', () => {
     await expect(page).toHaveURL(/\/(login|setup)/, { timeout: 15_000 });
   });
 });
+
+// Bug #135: security headers повинні бути на API (через @fastify/helmet).
+// E2E перевіряє це проти живого API (не unit) бо helmet — Fastify plugin
+// рівня bootstrap, а тестовий NestJS context використовує app.init() без bootstrap().
+test.describe('Smoke — API security headers (Bug #135)', () => {
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+
+  test('GET /api/health повертає X-Content-Type-Options і X-Frame-Options', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/health`);
+    expect(res.status()).toBe(200);
+    const headers = res.headers();
+    // Захист від MIME-sniffing
+    expect(headers['x-content-type-options']).toBe('nosniff');
+    // Захист від clickjacking
+    expect(headers['x-frame-options']).toMatch(/^(DENY|SAMEORIGIN)$/i);
+    // HSTS — критично для prod, але helmet встановлює і для dev
+    expect(headers['strict-transport-security']).toBeTruthy();
+    // CORP — потрібен 'cross-origin' щоб веб з порту 3001 міг споживати API на 3000
+    expect(headers['cross-origin-resource-policy']).toBe('cross-origin');
+  });
+});

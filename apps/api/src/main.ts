@@ -8,6 +8,7 @@ import {
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import fastifyCookie from '@fastify/cookie';
+import fastifyHelmet from '@fastify/helmet';
 import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -20,6 +21,15 @@ async function bootstrap() {
   );
 
   // Register Fastify plugins
+  // Bug #135: security headers must be set first so they apply to ALL responses (including error paths).
+  // - contentSecurityPolicy disabled: Swagger UI uses inline scripts and would otherwise refuse to load.
+  // - crossOriginEmbedderPolicy disabled: avoids breaking PDF/file downloads that come from MinIO with COEP-free headers.
+  // - crossOriginResourcePolicy 'cross-origin' so web app on port 3001 can fetch resources from API on 3000 in dev.
+  await app.register(fastifyHelmet, {
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  });
   await app.register(fastifyCookie);
   await app.register(fastifyMultipart, { limits: { fileSize: 10 * 1024 * 1024 } });
 

@@ -4137,4 +4137,85 @@ costMethod === 'FEFO' ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { creat
 
 ---
 
+## Session 2026-05-27 — FULL tester sweep #2 (security headers regression)
+
+### Baseline
+- TypeScript web/api/shared — ✅ 0 errors
+- Unit/contract/property tests — ✅ 271/271 passed (23 files)
+- Component tests (web) — ✅ 139/139 passed (13 files)
+- E2E (Playwright) — ✅ 41/41 passed (smoke + console-errors + api-errors + inventory)
+- Dev servers: API:3000 ✅ WEB:3001 ✅
+
+### Scope of analysis
+Повний прохід §1.1–§1.5 + §4.9 (нефункціональне). Знайшов 1 новий баг рівня HIGH: відсутні security headers на API. Решта checklist'ів — clean (FSM, інвентар, settlements, tenant isolation, soft delete, raw SQL casing, blob URL revoke, EventSource SSE, pricing formulas, FEFO ordering — все виправлено попередніми сесіями).
+
+---
+
+## Bug #135 — [HIGH] API не повертає security headers (X-Content-Type-Options, X-Frame-Options)
+
+**Файл:** `apps/api/src/main.ts`
+**Severity:** HIGH
+**Категорія:** security / non-functional
+
+**Опис:**
+`curl -I http://localhost:3000/api/health` повертає тільки CORS + content-type. Відсутні:
+- `X-Content-Type-Options: nosniff` — захист від MIME sniffing атак (старі браузери інтерпретують `text/plain` як HTML, виконують inline JS)
+- `X-Frame-Options: DENY` — захист від clickjacking (зловмисник embed-ить API responses в iframe для UI redress attack)
+- `Strict-Transport-Security` — не критично у dev, але потрібно у prod
+- `Content-Security-Policy` — defense-in-depth для випадків коли HTML потрапляє у response
+
+Per skill checklist §4.9.2 — `X-Content-Type-Options: nosniff` і `X-Frame-Options: DENY|SAMEORIGIN` обов'язкові.
+
+`apps/api/package.json` не містить `@fastify/helmet`. NestJS Fastify adapter не додає security headers за замовчуванням (на відміну від Express + helmet).
+
+**Очікувана поведінка:**
+```
+HTTP/1.1 200 OK
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Strict-Transport-Security: max-age=15552000; includeSubDomains
+Cross-Origin-Resource-Policy: same-site
+```
+
+**Фактична поведінка:**
+```
+HTTP/1.1 200 OK
+access-control-allow-origin: http://localhost:3001
+access-control-allow-credentials: true
+content-type: application/json; charset=utf-8
+```
+Жодних security headers.
+
+**Фікс:**
+1. `pnpm --filter @sto/api add @fastify/helmet`
+2. У `apps/api/src/main.ts`: `await app.register((await import('@fastify/helmet')).default, { contentSecurityPolicy: false, crossOriginEmbedderPolicy: false });` — CSP вимкнено бо Swagger UI використовує inline scripts
+3. Додати E2E smoke-тест у `apps/web/e2e/smoke.spec.ts` що `GET /api/health` повертає security headers (contract test не годиться — helmet реєструється у `bootstrap()`, не у `app.init()` що використовується тестами).
+
+**Фактичний фікс:**
+- `apps/api/package.json`: додано `@fastify/helmet@^11.1.1` (версія 11 для Fastify 4; 12+/13 потребують Fastify 5)
+- `apps/api/src/main.ts`: `await app.register(fastifyHelmet, { contentSecurityPolicy: false, crossOriginEmbedderPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } })` — CSP та COEP вимкнено щоб не ламати Swagger UI і файлові завантаження
+- `apps/web/e2e/smoke.spec.ts`: новий describe "Smoke — API security headers (Bug #135)" перевіряє `x-content-type-options`, `x-frame-options`, `strict-transport-security`, `cross-origin-resource-policy` проти живого API
+
+**Перевірка після фіксу:**
+```
+$ curl -I http://localhost:3000/api/health
+HTTP/1.1 200 OK
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: cross-origin
+Origin-Agent-Cluster: ?1
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=15552000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-DNS-Prefetch-Control: off
+X-Download-Options: noopen
+X-Frame-Options: SAMEORIGIN
+X-Permitted-Cross-Domain-Policies: none
+X-XSS-Protection: 0
+...
+```
+
+**Статус:** [x] виправлено
+
+---
+
 
