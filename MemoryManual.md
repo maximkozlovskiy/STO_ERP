@@ -9,16 +9,16 @@
 ## Останній commit
 
 ```
+f8c97d8 fix(tester): Bug #139 — displayCounterpartyName helper replaces dead `?? ''` in 6 places
+be9eb58 fix(tester): Bug #140 — SearchCombobox shows loading pill when value w/o displayValue
+fc3d15d fix(tester): Bug #141 — explicit $transaction timeouts in warehouses.service
+4953500 fix(tester): Bug #137 — auth login + booking publicFetch join string[] message
+15e451e fix(tester): Bug #136 — infrastructure PATCH strips immutable relation FKs
+f9b781b docs(skills): add WAI-ARIA combobox + setTimeout cleanup + displayName desync checks to sto-review
+43c9435 docs(memory): record /sto-review on 6ecc7a1 (SearchCombobox a11y + cleanup)
 6ecc7a1 fix(review): SearchCombobox a11y + cleanup + modal close resets display name
 2822912 feat: full-text search combobox, UoM columns, infrastructure edit
 0c3b661 fix(review): apply string[] message join to apiBlobFetch/apiMultipartFetch + hoist UUID_RE
-0af89fd fix(calendar): UUID validation for workOrderId input + apiFetch array message join
-2bf6c3b fix(tester): Bug #135 — add @fastify/helmet for security headers
-0920428 docs(memory): record /sto-review on 8c1a760 (ReactNode in inline-edit-cell)
-8c1a760 fix(review): React.ReactNode -> ReactNode in inline-edit-cell
-2c8ffe0 docs(memory): record /sto-tester FULL session a262d1a (bugs #132-#134)
-a262d1a docs(tester): record bugs #132-#134 from /sto-tester FULL session 2026-05-27
-ae7d51d fix(tester): Bugs #131 + #134 — auth PUBLIC_ROUTES + console-errors flakiness
 ```
 
 Дата: 2026-05-27
@@ -26,20 +26,36 @@ ae7d51d fix(tester): Bugs #131 + #134 — auth PUBLIC_ROUTES + console-errors fl
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors           (apps/web + apps/api + shared)
-Unit:            ✅ 271/271 passed     (23 файли)
+Unit:            ✅ 271/271 passed     (23 файли — backend)
 Contract:        ✅ 9 contract spec files (auth, work-orders, warehouses, counterparties,
                                        sync, settings, audit, pricing-rules, batches)
 Property-based:  ✅ 26 invariants passed (inventory, settlements, FSM)
 Components:      ✅ 139/139 passed     (13 файлів, @testing-library/react)
-E2E (Playwright):✅ 42/42 passed (console-errors 22, smoke 8, inventory 4, api-errors 8)
+E2E (Playwright):✅ 42/42 passed (smoke 8, console-errors 22, inventory 4, api-errors 8)
                   • console-errors: 0 flaky після serial + warm-up (Bug #134)
-                  • +1 новий smoke-тест Bug #135: security headers на /api/health
-Build:           ✅ @sto/api build OK (webpack 10.5s)
-API smoke:       ✅ 15/15 endpoints 200 (<200ms each)
+                  • smoke включає Bug #135 security headers test
+Build:           ✅ @sto/api build OK
 Security headers:✅ X-Content-Type-Options, X-Frame-Options, HSTS, CORP через @fastify/helmet@11 (Bug #135)
+$transaction timeouts: ✅ всі 8 interactive callbacks мають explicit { timeout } (work-orders 6 + warehouses 2; Bug #138/#141)
+Latest tester:   2026-05-27 (f8c97d8) — FULL sweep #3: виправлено Bug #139 (displayCounterpartyName), #140 (SearchCombobox loading pill), #141 (warehouses $transaction timeouts); deferred #142 (ParseUUIDPipe broader refactor)
 Latest review:   2026-05-27 (6ecc7a1) — SearchCombobox: ARIA combobox wiring + setTimeout cleanup + display name resets on modal close
-Latest tester:   2026-05-27 (2bf6c3b) — FULL sweep #2: знайдено 1 bug (#135 HIGH security headers); виправлений
 ```
+
+### Gotcha — /sto-tester FULL 2026-05-27 (commits fc3d15d, be9eb58, f8c97d8 — bugs #139, #140, #141)
+
+- **`$transaction(async)` timeout coverage MUST бути 100%, не "більшість"** (Bug #141, warehouses.service). Bug #130/#132/#138 додали explicit `{ timeout: 5_000 }` майже всюди — але warehouses.service:33,54 потрапили у "non-critical service" категорію і пропустилися. Кожен interactive callback що робить `updateMany` (зачіпає несколько рядків) + `create`/`update` ризикує lock contention при race з паралельною транзакцією. Канон: grep `prisma.\$transaction(async` ОБОВ'ЯЗКОВО проганяти у кожному tester sweep і порівнювати з `grep -c "timeout:"` для тих самих файлів. Сполучення `\d+ matches` для transactions і `< той же\d+` matches для timeout = bug.
+  ```bash
+  # Регресія-grep:
+  for f in $(grep -rl "\$transaction(async" apps/api/src --include="*.ts" | grep -v spec); do
+    tx=$(grep -c "\$transaction(async" "$f")
+    to=$(grep -c "timeout:" "$f")
+    if [ "$tx" -gt "$to" ]; then echo "MISMATCH $f: $tx transactions, $to timeouts"; fi
+  done
+  ```
+- **SearchCombobox: `value` без `displayValue` → empty input → "втратив вибір"** (Bug #140). Стара логіка `showSelected = !!value && !!displayValue && !query` падала у edge-case: форма Edit відкривається з server-state → `goodId` встановлено одразу, але `goodDisplayName` тільки після окремого fetch. На мить combobox показував порожній search input замість selected pill — користувач думав що дані не завантажилися. Канон: для будь-якого combobox/autocomplete з зовнішнім `value` контролером, потрібен **третій візуальний стан**: `value && !displayValue && !query` → loading pill (spinner + "Завантаження…" з `role="status"` + `aria-busy="true"`). Це сидить між selected pill і empty search input. Для screen readers це сигналізує що вибір НЕ скинутий — просто display lookup ще йде.
+- **`?? ''` як третій fallback після `.join(' ')` — dead code, але hides UX bug** (Bug #139). `cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ') ?? ''` — третій `?? ''` ніколи не спрацьовує бо `Array.join` завжди повертає `string` (можливо `''`). АЛЕ той порожній рядок є справжнім UX-багом: combobox primary text для анонімного контрагента (companyName/firstName/lastName всі null) → порожній dropdown row. Користувач бачить що список не порожній (є rows), але не може зрозуміти що вибрати. Канон: помістити дисплейну логіку у helper `displayCounterpartyName(cp)` у `lib/utils.ts` з fallback `'(без імені)'`. Той самий fallback застосувати у `primary` (для combobox) і `displayValue` (для selected pill). Помітники: повторення 6 разів inline patterm — це **завжди** сигнал що helper потрібен; коли захочеться додати 7-й сайт використання, винесення вже мусить бути зроблене.
+- **Bug #136 / #137 уже були виправлені до запуску tester'а** — попередні commits 15e451e/4953500 закрили infrastructure PATCH FK strip і auth/booking message[] join. Tester повинен СПОЧАТКУ грепнути BUG_REPORT для відкритих [ ] і верифікувати чи фікс уже в коді (`git log --grep="Bug #N"`), потім перевіряти статус — інакше можна випадково "повторно виправити" вже закритий баг.
+- **`where: { id, orgId }` у Prisma 5 update — це OK, не баг.** Prisma 5+ підтримує extended unique-where з додатковими filter полями. `id` є primary unique → satisfies `WhereUniqueInput`; `orgId` діє як AND-filter і запис не оновиться якщо belongs до іншої org. Старий стиль (`where: { id }` + previous `findFirst` check by orgId) теж працює, але explicit `{ id, orgId }` дає атомарну multi-tenant guard в одному виклику.
 
 ### Gotcha — /sto-review 2026-05-27 (commit 6ecc7a1, after 2822912)
 
