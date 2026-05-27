@@ -10,8 +10,9 @@ model: claude-sonnet-4-6
 ## Before Starting
 
 1. Read `sto-context` — understand domain and roles
-2. Check existing similar page/component for patterns
-3. Confirm API endpoint exists (or run `sto-backend` first)
+2. Read `sto-dev` — coding standards (Next.js, Tailwind 4, React patterns) — prevents sto-review findings
+3. Check existing similar page/component for patterns
+4. Confirm API endpoint exists (or run `sto-backend` first)
 
 ---
 

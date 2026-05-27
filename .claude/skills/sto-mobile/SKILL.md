@@ -7,6 +7,14 @@ model: claude-sonnet-4-6
 
 # sto-mobile — Expo Mechanic App Skill
 
+## Before Starting
+
+1. Read `sto-context` — understand domain and offline-first requirements
+2. Read `sto-dev` — coding standards (React, Tailwind patterns) — prevents sto-review findings
+3. Check existing similar screen for patterns
+
+---
+
 ## Context
 
 The mobile app is used by **mechanics on tablets** in the workshop. Key requirements:

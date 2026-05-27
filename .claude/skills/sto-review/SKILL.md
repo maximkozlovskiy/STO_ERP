@@ -30,7 +30,7 @@ model: claude-opus-4-7
 | Новий `*.service.ts` | §1, §4 Arch, §5 Business Rules, §6 DB, §7 Perf | §2, §8, §12 |
 | Нова Prisma модель | §1, §6 DB, §9 Sync | §2, §3, §5, §7, §8 |
 | Зміна `toResponseDto` | §1, §13 Contract | всі інші |
-| Нова `page.tsx` | §1, §3 Memory, §8 Web Frontend, §12 a11y | §2, §4, §5, §6, §9 |
+| Нова `page.tsx` | §1, §3 Memory, §8 Web Frontend | §2, §4, §5, §6, §9 |
 | Новий `*.dto.ts` | §1, §2.3 Validation, §2.4 Data Leaks | §3, §4, §5, §6 |
 | Зміна BullMQ | §1, §2.5 Queue Safety, §10 Offline | §3, §4, §6, §8 |
 | Новий UX хук (`use*.ts`) | §1, §3.1 Memory Leaks | §2, §4, §5, §6, §9 |
@@ -1212,15 +1212,18 @@ interface WorkOrder { createdAt: string }
 
 > "Цей баг був охоплений існуючим пунктом чекліста?"
 
-Якщо **НІ** — одразу оновити цей файл (`SKILL.md`):
-1. Додати новий checklist item у відповідну секцію (§1–§13)
-2. Якщо баг виявляється grep'ом — додати bash команду до секції
-3. Якщо це повторюваний anti-pattern — додати приклад `❌ BAD` / `✅ GOOD`
-4. Якщо специфічний для STO ERP (FSM, інвентар, sync) — у §5 Business Rules
-5. Якщо новий тип файлу → оновити таблицю "Пріоритет перевірок по типу змін"
-6. Commit: `docs(skills): add <назва патерну> check to sto-review`
+Якщо **НІ** — оновити відповідний файл:
+- **Цей файл (sto-review)** якщо баг виявляється статично (grep, tsc, код-аналіз):
+  1. Додати checklist item у секцію §1–§13
+  2. Якщо виявляється grep'ом — додати bash команду
+  3. Якщо повторюваний anti-pattern — додати `❌ BAD` / `✅ GOOD`
+  4. FSM, інвентар, sync — у §5 Business Rules
+  5. Новий тип файлу → оновити матрицю
+- **sto-tester** якщо баг виявляється тільки динамічно (runtime, browser, a11y, i18n):
+  - frontend UX, accessibility, Ukrainian strings → §1.3 / §1.6 / §1.7 у sto-tester
+- Commit: `docs(skills): add <назва патерну> check to sto-review`
 
-**Мета:** скіл має відображати реальні баги що траплялись у цьому проекті — не гіпотетичні.
+**Мета:** sto-review = статичний аналіз backend. sto-tester = динамічні баги + frontend. Не змішувати.
 
 ---
 

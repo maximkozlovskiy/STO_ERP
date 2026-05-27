@@ -11,7 +11,8 @@ model: claude-sonnet-4-6
 
 1. Read `packages/database/schema.prisma` — know the models
 2. Read `sto-context` — understand domain rules
-3. Check existing similar module for patterns
+3. Read `sto-dev` — coding standards (TS, NestJS, Prisma patterns) — prevents sto-review findings
+4. Check existing similar module for patterns
 
 ---
 

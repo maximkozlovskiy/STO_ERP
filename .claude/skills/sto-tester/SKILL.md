@@ -37,15 +37,17 @@ model: claude-opus-4-7
 
 **Матриця AUTO: тип зміни → що перевіряти**
 
-| Тип зміни | Секції Кроку 1 |
-|---|---|
-| Новий `@Controller` або endpoint | §1.1 (tenant, soft delete, api contract), §1.2 (TS), §1.4 (contract spec) |
-| Змінений `*.service.ts` | §1.1 (business logic, FSM, inventory, settlements) |
-| Нова `page.tsx` або зміна UI | §1.3 (стани, hydration, routing, Tailwind) |
-| Новий `*.dto.ts` | §1.2 (API якість), §1.1 (validation guards) |
-| Зміна `prisma/schema.prisma` | §1.1 (soft delete fields, orgId, deletedAt), §1.2 |
-| UI-only (тільки `components/ui/`) | §1.3 (компоненти, Tailwind), §1.2 (TS), §1.6 (a11y) |
-| Config/docs/тести | §0 (tsc) — більше нічого |
+> Нумерація §1.x — це розділи Кроку 1 цього файлу. Відповідні секції sto-review вказані в дужках.
+
+| Тип зміни | Секції Кроку 1 | sto-review еквівалент |
+|---|---|---|
+| Новий `@Controller` або endpoint | §1.1 (tenant, soft delete, api contract), §1.2 (TS), §1.4 (contract spec) | §2, §4, §5, §13 |
+| Змінений `*.service.ts` | §1.1 (business logic, FSM, inventory, settlements) | §5, §6 |
+| Нова `page.tsx` або зміна UI | §1.3 → sto-review §8 (стани, hydration, routing, Tailwind) | §8 |
+| Новий `*.dto.ts` | §1.2 (API якість), §1.1 (validation guards) | §2.3, §2.4 |
+| Зміна `prisma/schema.prisma` | §1.1 (soft delete fields, orgId, deletedAt), §1.2 | §6, §9 |
+| UI-only (тільки `components/ui/`) | §1.3 → sto-review §8, §1.2 (TS), §1.6 (a11y) | §8 |
+| Config/docs/тести | §0 (tsc) — більше нічого | §1 |
 
 ## FULL режим — алгоритм (явний виклик)
 
@@ -2407,12 +2409,19 @@ it('рендерить placeholder як disabled option', () => {
 
 Після виправлення кожного Bug #N — запитай себе:
 
-> "Цей баг був передбачений існуючим пунктом у §1.1–§1.4?"
+> "Цей баг був передбачений існуючим пунктом у §1.1–§1.7?"
 
 Якщо **НІ** — одразу оновити цей файл (`SKILL.md`):
-1. Додати новий пункт у відповідний підрозділ (§1.1 Backend, §1.2 TS, §1.3 Frontend, §1.4 Tests, §1.6 a11y, §1.7 i18n)
-2. Якщо баг пов'язаний з бізнес-логікою STO ERP (нова FSM умова, новий інвентарний guard, sync edge case) → §1.1
-3. Якщо патерн повторювався в кількох місцях → додати grep команду для виявлення
-4. Commit разом з фіксом або окремо: `docs(skills): add <баг> to sto-tester checklist`
+1. Додати новий пункт у відповідний підрозділ:
+   - `§1.1` — бізнес-логіка backend (FSM, інвентар, settlements, tenant isolation)
+   - `§1.2` — TypeScript / API якість
+   - `§1.3` — frontend-специфічні динамічні баги (async race, UUID validation)
+   - `§1.4` — покриття backend тестами
+   - `§1.5` — покриття frontend тестами
+   - `§1.6` — accessibility (aria, keyboard, screen reader)
+   - `§1.7` — i18n / Ukrainian UI consistency
+   - якщо баг стосується статичного аналізу коду → **оновлювати sto-review** (§1–§13), не тестер
+2. Якщо патерн виявляється grep'ом → додати bash команду
+3. Commit: `docs(skills): add <баг> to sto-tester checklist`
 
 **Мета:** кожен баг що пройшов непомічений — робить наступний запуск розумнішим.
