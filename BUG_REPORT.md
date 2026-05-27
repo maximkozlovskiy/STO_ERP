@@ -3951,7 +3951,7 @@ grep -rn "@Param('id'" apps/api/src --include="*.controller.ts" | grep ParseUUID
 **Фактична поведінка:**
 Hardcoded HSL → у dark mode стає погано читаним (контраст fail з темним фоном).
 
-**Статус:** [ ] відкритий
+**Статус:** [x] виправлено — замінено на `text-warning-text` у двох місцях (`inventory/page.tsx:199, 255`).
 
 ---
 

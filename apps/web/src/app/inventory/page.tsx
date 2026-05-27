@@ -196,7 +196,7 @@ export default function InventoryPage() {
                   <TableCell className="text-muted-foreground font-mono text-xs">{item.goodSku ?? '—'}</TableCell>
                   <TableCell className="text-foreground-muted">{item.warehouseName}</TableCell>
                   <TableCell className="text-right font-medium">{item.quantity} {item.unit}</TableCell>
-                  <TableCell className="text-right text-[hsl(25_95%_53%)]">{item.reserved > 0 ? item.reserved : '—'}</TableCell>
+                  <TableCell className="text-right text-warning-text">{item.reserved > 0 ? item.reserved : '—'}</TableCell>
                   <TableCell className={cn('text-right font-semibold', item.available <= 0 ? 'text-destructive' : 'text-success')}>
                     {item.available} {item.unit}
                   </TableCell>
@@ -252,7 +252,7 @@ export default function InventoryPage() {
                   <span className="text-muted-foreground">Резерв</span>
                   <span className={cn(
                     'font-medium tabular-nums',
-                    selectedItem.reserved > 0 ? 'text-[hsl(25_95%_53%)]' : 'text-muted-foreground',
+                    selectedItem.reserved > 0 ? 'text-warning-text' : 'text-muted-foreground',
                   )}>
                     {selectedItem.reserved > 0 ? `${selectedItem.reserved} ${selectedItem.unit}` : '—'}
                   </span>
