@@ -1422,6 +1422,162 @@ test.describe('API error resilience', () => {
 });
 ```
 
+### E2E — Console errors & Next.js Dev Toolbar (ОБОВ'ЯЗКОВО)
+
+> Next.js Dev Toolbar показує помилки у вигляді червоного overlay (error boundary popup).  
+> Playwright перехоплює їх через `page.on('console')` і `page.on('pageerror')`.  
+> **Кожна `console.error` у браузері є потенційним багом** — 401, 500, hydration mismatch, unhandled rejection.
+
+#### Файл: `apps/web/e2e/console-errors.spec.ts`
+
+Якщо файл **не існує** — створити:
+
+```typescript
+// apps/web/e2e/console-errors.spec.ts
+// Перехоплює console.error і page errors на кожній сторінці.
+// Запускається з auth state щоб перевіряти авторизований контент.
+import { test, expect } from '@playwright/test';
+
+// Шуми браузерних розширень та non-actionable повідомлення — ігноруємо
+const IGNORE_PATTERNS = [
+  /message channel closed/i,
+  /ResizeObserver loop/i,
+  /chrome-extension:\/\//i,
+  /moz-extension:\/\//i,
+  /Failed to fetch dynamically imported module/i,
+  // React DevTools suggestion — не баг
+  /Download the React DevTools/i,
+  // Next.js HMR — dev-only, не баг
+  /\[Fast Refresh\]/i,
+  /\[HMR\]/i,
+];
+
+function isIgnored(msg: string): boolean {
+  return IGNORE_PATTERNS.some(p => p.test(msg));
+}
+
+// Сторінки для перевірки (авторизовані)
+const AUTH_PAGES = [
+  '/work-orders',
+  '/calendar',
+  '/crm',
+  '/inventory',
+  '/catalog',
+  '/employees',
+  '/invoices',
+  '/settlements',
+  '/settings',
+  '/dashboard',
+];
+
+// Публічні сторінки (без auth)
+const PUBLIC_PAGES = [
+  '/login',
+  '/setup',
+];
+
+test.describe('Console errors — авторизовані сторінки', () => {
+  test.use({ storageState: 'e2e/.auth/admin.json' });
+
+  for (const route of AUTH_PAGES) {
+    test(`${route} — немає console.error`, async ({ page }) => {
+      const errors: string[] = [];
+
+      page.on('console', msg => {
+        if (msg.type() === 'error' && !isIgnored(msg.text())) {
+          errors.push(`[console.error] ${msg.text()}`);
+        }
+      });
+
+      page.on('pageerror', err => {
+        if (!isIgnored(err.message)) {
+          errors.push(`[pageerror] ${err.message}`);
+        }
+      });
+
+      await page.goto(route, { waitUntil: 'networkidle' });
+
+      // Дати компонентам час на ефекти
+      await page.waitForTimeout(1500);
+
+      expect(errors, `Помилки на ${route}:\n${errors.join('\n')}`).toHaveLength(0);
+    });
+  }
+});
+
+test.describe('Console errors — публічні сторінки', () => {
+  for (const route of PUBLIC_PAGES) {
+    test(`${route} — немає console.error`, async ({ page }) => {
+      const errors: string[] = [];
+
+      page.on('console', msg => {
+        if (msg.type() === 'error' && !isIgnored(msg.text())) {
+          errors.push(`[console.error] ${msg.text()}`);
+        }
+      });
+
+      page.on('pageerror', err => {
+        if (!isIgnored(err.message)) {
+          errors.push(`[pageerror] ${err.message}`);
+        }
+      });
+
+      await page.goto(route, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1000);
+
+      expect(errors, `Помилки на ${route}:\n${errors.join('\n')}`).toHaveLength(0);
+    });
+  }
+});
+
+test.describe('Next.js error overlay — немає відкритого', () => {
+  test.use({ storageState: 'e2e/.auth/admin.json' });
+
+  for (const route of AUTH_PAGES) {
+    test(`${route} — overlay відсутній`, async ({ page }) => {
+      await page.goto(route, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1500);
+
+      // Next.js dev error overlay — shadow DOM елемент або iframe
+      const overlay = page.locator('nextjs-portal, [data-nextjs-dialog], iframe[src*="__nextjs"]');
+      await expect(overlay).not.toBeVisible();
+    });
+  }
+});
+```
+
+#### Запуск
+
+```bash
+pnpm --filter @sto/web exec playwright test e2e/console-errors.spec.ts --reporter=list 2>&1 | tail -50
+```
+
+#### Інтерпретація результатів
+
+| Помилка у console | Що це означає | Severity |
+|---|---|---|
+| `GET /api/xxx 401` | Запит до API до завершення авторизації | HIGH |
+| `GET /api/xxx 400` | Невалідні params — баг у фронт-валідації | HIGH |
+| `GET /api/xxx 500` | Внутрішня помилка сервера | CRITICAL |
+| `GET /api/xxx 404` | Неіснуючий endpoint — розбіжність контракту | HIGH |
+| `Cannot read properties of undefined` | Null-safety проблема у компоненті | MEDIUM |
+| `Hydration failed` | SSR/CSR mismatch | HIGH |
+| `Warning: Each child in a list should have a unique "key"` | Missing key prop | LOW |
+
+#### Автоматичний фікс після знайдених помилок
+
+Кожна `console.error` → Bug в `BUG_REPORT.md` → виправити одразу:
+
+```
+для кожного URL де є console.error:
+  1. Визначити тип: 4xx/5xx → бекенд/контракт; JS error → компонент
+  2. Зафіксувати в BUG_REPORT.md з severity
+  3. Виправити мінімальним diff
+  4. Перезапустити console-errors.spec.ts для цієї сторінки — має бути зелений
+```
+
+---
+
 ### Що робити якщо E2E тест падає
 
 1. Зробити скріншот: `pnpm --filter @sto/web exec playwright test --screenshot=on`
