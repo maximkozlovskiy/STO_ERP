@@ -3990,3 +3990,151 @@ Default 5s, не задокументовано в коді.
 
 ---
 
+## Bug #131 — [LOW] AuthProvider робить запит `/api/auth/refresh` на `/login` і `/setup` → 401 console.error
+
+**Файл:** `apps/web/src/lib/auth/context.tsx:87-92`
+**Severity:** LOW
+**Категорія:** frontend / console-noise
+
+**Опис:**
+`AuthProvider.useEffect` на mount беззастережно викликає `refreshToken()` →
+`POST /api/auth/refresh`. Якщо користувач щойно прийшов на `/login` або `/setup`
+(чистий браузер без refresh-cookie), API повертає 401 → браузер логує:
+```
+Failed to load resource: the server responded with a status of 401 (Unauthorized)
+```
+
+Це не JS exception, але:
+- E2E тест `console-errors.spec.ts` падає на цій помилці для `/login` і `/setup`
+- Sentry може фіксувати network errors з браузера
+- Користувач (відкривши DevTools) бачить помилку → виглядає як баг
+
+**Очікувана поведінка:**
+На публічних роутах (`/login`, `/setup`, `/`, `/403`, `/booking`) refresh
+не повинен викликатись. Якщо токен/cookie немає — одразу `dispatch({ type: 'LOGOUT' })`
+без HTTP запиту.
+
+**Фактична поведінка:**
+Завжди робиться `fetch /api/auth/refresh` → 401 на публічних роутах.
+
+**Статус:** [x] виправлено (PUBLIC_ROUTES guard у `apps/web/src/lib/auth/context.tsx`)
+
+---
+
+## Session 2026-05-27 — FULL `/sto-tester` sweep (audit-after-Bug-#130)
+
+### Baseline
+- TypeScript api/web/shared — ✅ 0 errors
+- Unit + contract tests — ✅ 271/271 passed (23 files)
+- Dev servers: API:3000 ✅ (всі 15 smoke endpoints 200, <200ms), WEB:3001 ✅
+- Console-errors E2E (22 tests) — ✅ green when run again (3 flaky на cold parallel load — `Bug #134`)
+- Property-based invariants (inventory, settlements, FSM, pricing, batch, totals) — ✅ all passing
+- Static-asset, BigInt serialization, tenant isolation, soft delete — ✅ no regressions
+- Sentry instrument.ts + filter + frontend `enabled` guard + `SentryProvider` у root layout — ✅ OK
+
+### Bugs found this session: 3 (1 MEDIUM, 2 LOW)
+
+---
+
+## Bug #132 — [MEDIUM] $transaction interactive callbacks без `{ timeout }` у 11 сервісах (продовження Bug #130)
+
+**Файли:** (без `{ timeout: ... }` опції)
+- `apps/api/src/modules/setup/setup.service.ts:29` — bootstrap 14+ writes (CRITICAL якщо timeout=5s default — інсталяція може провалитись)
+- `apps/api/src/modules/settlements/settlements.service.ts:62` — створення транзакції + update балансу (викликається з WO COMPLETED)
+- `apps/api/src/modules/inventory/batch.service.ts:137,266` — consumeBatch / returnToBatch у standalone-режимі (без outer tx)
+- `apps/api/src/modules/inventory/pricing.service.ts:123` — array `$transaction` на CHUNK=100 good.update + createMany
+- `apps/api/src/modules/loyalty/loyalty.service.ts:132` — REDEEM з atomic check-and-decrement
+- `apps/api/src/modules/payments/payments.service.ts:66` — створення оплати + side effects
+- `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:78,108,135,161` — receivePartial loop по складських партіях
+- `apps/api/src/modules/stock-documents/stock-documents.service.ts:97,132,179` — `post()` запускає `inventoryService.createMovement` для кожної лінії
+- `apps/api/src/modules/employees/employees.service.ts:116,136,160,184` — заміна зон/підйомників/категорій/філій (deleteMany + createMany)
+- `apps/api/src/modules/services/services.service.ts:42,82` — створення/оновлення послуги з works/goods linkage
+- `apps/api/src/modules/counterparties/counterparties.service.ts:62` — create контрагента + settlement account
+
+**Severity:** MEDIUM (CRITICAL для setup.service.ts)
+**Категорія:** non-functional / database-resilience
+
+**Опис:**
+Bug #130 додав `{ timeout: ... }` до 5 найкритичніших сервісів (work-orders, inspection, calendar, completion-acts, document-number). Решта 16 викликів `prisma.$transaction(callback)` досі без explicit timeout → Prisma 5 використовує default `5000ms`.
+
+Найбільш ризикові:
+1. **setup.service.ts** — 14+ INSERT-ів за одну транзакцію (Organisation → OrganisationSettings → 8× DocumentNumberConfig → 5× PaymentMethodConfig → 3× TaxRate → Branch → BranchSettings → Warehouse → Employee → AuthAccount). На повільному диску першого запуску може перевищити 5s → інсталятор покаже помилку при першому setup.
+2. **stock-documents post()** — викликає `inventoryService.createMovement` для **кожної лінії** у документі. 50-рядковий приймальний документ → 50 батчевих створень → ризик timeout.
+3. **purchase-orders receivePartial** — loop по lines з `consumeBatch` + `createMovement`.
+
+**Очікувана поведінка:**
+Кожен `$transaction(callback, { timeout: N })` має явний timeout відповідний до обсягу роботи:
+- Setup (одноразово, ~14 INSERTs): `{ timeout: 15_000 }`
+- Складські документи з N лініями: `{ timeout: 10_000 }`
+- Інші взаємодії (1-3 write): `{ timeout: 5_000 }`
+
+**Фактична поведінка:**
+Default 5s — на повільних дисках / під навантаженням транзакції можуть провалюватись з `Transaction API error: Transaction already closed`.
+
+**Фікс:**
+Додати `{ timeout: N }` як другий аргумент `$transaction(callback, { timeout: N })`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #133 — [LOW] FEFO ordering без explicit `nulls: 'last'` у `batch.service.ts:152`
+
+**Файл:** `apps/api/src/modules/inventory/batch.service.ts:152`
+**Severity:** LOW
+**Категорія:** business-logic / inventory
+
+**Опис:**
+Поточний код:
+```ts
+costMethod === 'FEFO' ? [{ expiryDate: 'asc' }, { createdAt: 'asc' }] :
+```
+SKILL §1.1 (FEFO): `[{ expiryDate: 'asc', nulls: 'last' }, { createdAt: 'asc' }]` — товари без терміну йдуть В КІНЦІ, не на початку.
+
+Хоча Postgres ASC за замовчуванням ставить NULLS LAST, це **database-specific** поведінка. У майбутній міграції на іншу БД або при ввімкненні `NULLS FIRST` режиму це може дати silent regression: партії без терміну будуть споживатись першими, а партії що скоро прострочаться — залишатись на складі.
+
+**Очікувана поведінка:**
+Явний `{ expiryDate: 'asc', nulls: 'last' }`. Якщо є партія без `expiryDate` і партія що прострочається завтра — спочатку списується "завтрашня".
+
+**Фактична поведінка:**
+Працює коректно випадково через дефолт Postgres, але контракт не зафіксований у коді.
+
+**Фікс:**
+```ts
+costMethod === 'FEFO' ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }] :
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #134 — [LOW] Console-errors E2E test flaky під `fullyParallel: true` + cold Next.js dev
+
+**Файл:** `apps/web/e2e/console-errors.spec.ts`, `apps/web/playwright.config.ts:9`
+**Severity:** LOW
+**Категорія:** test-coverage / e2e
+
+**Опис:**
+При першому запуску після cold-start Next.js dev сервера (компіляція on-demand для нових routes) — Playwright інколи ловить `[pageerror] Invalid or unexpected token` на сторінках `/crm`, `/employees`, `/settlements`. Це Next.js dev-mode race: браузер починає виконувати JS chunk до того як webpack завершив його збірку, ловить partial JS.
+
+При повторному запуску (chunks вже у `.next/cache`) — все зелене.
+
+Поточний `playwright.config.ts`: `retries: 1` ловить це у retry (тест помічений "flaky"), але CI може провалитись якщо повторно цей паттерн з'явиться у різних тестах одночасно.
+
+**Очікувана поведінка:**
+Тест чекає поки браузер реально завантажить всі ESM chunks (а не лише поки `networkidle`). Або console-errors test running serial (за `workers: 1`) щоб уникнути parallel compile load.
+
+**Фактична поведінка:**
+3/22 тестів flaky при cold cache; всі passing при warm cache. CI flake rate ~5-10%.
+
+**Фікс:**
+1. Додати `workers: 1` для `console-errors.spec.ts` через `test.describe.configure({ mode: 'serial' })` — тести однієї describe-групи запускаються послідовно (інші тести залишаються паралельними).
+2. Або (агресивніше) — побудувати prod build перед запуском console-errors (`next build` + `next start`), щоб chunks були готові.
+
+Обираємо варіант 1 (мінімальна зміна).
+
+**Статус:** [x] виправлено
+
+---
+
+
