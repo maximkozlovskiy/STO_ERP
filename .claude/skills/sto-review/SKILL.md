@@ -352,6 +352,7 @@ useEffect(() => {
 
 - [ ] Кожен `useEffect` з `addEventListener` має `return () => removeEventListener`
 - [ ] Кожен `useEffect` з `setInterval` має `return () => clearInterval`
+- [ ] **Custom `debounceRef`/`pollRef`/`idleRef` setTimeout — обов'язково `clearTimeout` у cleanup**. `mountedRef` ловить setState після unmount, але якщо `setTimeout` встигне fire — `fetchItems()`/`apiFetch()` усе одно стартує HTTP запит (network waste + dangling Promise). Канон: у `return () => { mountedRef.current = false; if (debounceRef.current) clearTimeout(debounceRef.current); }`. Стосується всіх debounce-патернів у нових combobox/autocomplete/search компонентах.
 - [ ] **Dead useEffect listeners (no-op `() => {}` handler)** — видаляти повністю; виглядає невинно, але алокує DOM-listener і плутає reviewer. Шукати: `addEventListener\([^,]+,\s*\(\)\s*=>\s*\{\s*\}\s*\)`.
 - [ ] **Імперативне оновлення DOM-property (`indeterminate`, `selectionStart`, ...) через інлайн `ref={el => ...}` callback** — працює в React 19 (новий identity callback re-fires), але крихко (React Compiler / memo можуть стабілізувати identity). Канон: `useRef` + `useEffect([dep])`:
   ```typescript
@@ -844,6 +845,13 @@ grep -rn "types=\|statuses=\|roles=" apps/web/src/ --include="*.tsx" --include="
 - [ ] `loading` ініціалізується `true` якщо дані завантажуються при mount
 - [ ] Форм data load errors → `formError` (не перезаписує page-level `error`)
 - [ ] Per-row actions → `savingId: string | null` (не глобальний `saving: boolean`)
+- [ ] **Paired display-name stateful FK input — скидаються разом**. Коли форма має `counterpartyId: ''` у `setForm({...})` + парний `counterpartyDisplayName: ''` стейт (для SearchCombobox/autocomplete) — обидва ОБОВ'ЯЗКОВО скидаються синхронно на: (a) `Modal.onClose`, (b) after successful POST, (c) `onClear`. Інакше при повторному відкритті modal: form порожня (`counterpartyId === ''`), але UI показує stale `displayValue: 'ТОВ Старий клієнт'` → користувач думає що клієнт вже обраний, натискає "Створити" — `disabled` блокує submit, користувач не розуміє чому. Шаблон self-check:
+  ```bash
+  # Кожен setForm(... id: '') має мати поряд set*DisplayName('')
+  grep -rnE "setForm\(.*Id: ['\"]['\"]" apps/web/src/app --include="*.tsx"
+  # Файли, що містять *DisplayName useState — перевірити що ВСІ onClose/POST/onClear скидають обидва
+  grep -rnE "DisplayName.*useState\(['\"]['\"]" apps/web/src/app --include="*.tsx"
+  ```
 
 ### 8.3 Hydration Safety (SSR)
 
@@ -1158,6 +1166,12 @@ grep -rn "onClick" apps/web/src/ --include="*.tsx" | grep -E "<div |<span |<td "
 - [ ] **`opacity-0 hover:opacity-100` на тому ж елементі = unreachable**: невидима кнопка з нульовою hover-площею ніколи не показується. Канон: hover на батьку через `group` + `group-hover:opacity-100` на дитині + `focus:opacity-100` для клавіатури. Grep:
   ```bash
   grep -rnE "opacity-0\s+hover:opacity-100" apps/web/src/ --include="*.tsx"
+  ```
+- [ ] **Custom combobox/autocomplete — WAI-ARIA combobox wiring обов'язковий**. Будь-який свій search-input + dropdown listbox потребує: на `<input>` — `role="combobox"`, `aria-expanded={open && items.length > 0}`, `aria-controls={listboxId}`, `aria-autocomplete="list"`, `aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}`, `autoComplete="off"`. На `<ul>` listbox — стабільний `id={listboxId}`. На кожному `<li>` option — `id={optionId(idx)}` + `role="option"` + `aria-selected={idx === activeIndex}`. Базовий префікс через `useId()` (стабільний між server і client paint). Без цього screen-reader users бачать порожній input і не дізнаються що відкрився dropdown. Grep:
+  ```bash
+  # Знайти власні комбобокси (input + listbox в одному файлі)
+  grep -rln "role=\"listbox\"\|role='listbox'" apps/web/src/components --include="*.tsx"
+  # Для кожного: переконатись що поряд є role="combobox" на input + aria-controls + aria-activedescendant
   ```
 
 ```typescript
