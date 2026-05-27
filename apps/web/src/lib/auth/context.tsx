@@ -106,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json() as { accessToken: string; employee: AuthEmployee };
     sessionStorage.setItem(TOKEN_KEY, data.accessToken);
     dispatch({ type: 'LOGIN', employee: data.employee, accessToken: data.accessToken });
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('sto:login'));
   }, []);
 
   const logout = useCallback(async (): Promise<void> => {

@@ -39,6 +39,11 @@ const FAILURE_TTL_MS = 60_000; // 1 minute — short enough to recover after rol
 
 async function loadFeatures(): Promise<UiFeatures> {
   if (cache && Date.now() < cacheExpiresAt) return cache;
+  // No token → unauthenticated render; return defaults without making a request.
+  // After login the sto:ui-features-change event will trigger a real fetch.
+  if (typeof window !== 'undefined' && !sessionStorage.getItem('sto_access_token')) {
+    return DEFAULTS;
+  }
   if (!pending) {
     pending = apiFetch<Partial<UiFeatures>>('/settings/ui-features')
       .then(features => {
@@ -83,12 +88,18 @@ export function useUiFeatures(): UiFeatures {
       invalidateUiFeaturesCache();
       if (!cancelled) setFeatures(DEFAULTS);
     };
+    const onLogin = () => {
+      invalidateUiFeaturesCache();
+      loadFeatures().then(f => { if (!cancelled) setFeatures(f); });
+    };
     window.addEventListener('sto:ui-features-change', refresh);
     window.addEventListener('sto:logout', onLogout);
+    window.addEventListener('sto:login', onLogin);
     return () => {
       cancelled = true;
       window.removeEventListener('sto:ui-features-change', refresh);
       window.removeEventListener('sto:logout', onLogout);
+      window.removeEventListener('sto:login', onLogin);
     };
   }, []);
 
