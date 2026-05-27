@@ -9,12 +9,13 @@
 ## Останній commit
 
 ```
+b51e2dd docs(skills): add BigInt syncVersion + manifest static asset checks to sto-review
+ea8f5a6 fix(notifications): serialize BigInt syncVersion before JSON response
+5c2e39d test(contract): add limit=200 regression tests + counterparties contract + static asset smoke
+cbc0a97 fix(api): raise query limit @Max 100→200 for work-orders and counterparties
+ae6e403 perf(web): disable Next.js prefetch on nav links — prevents fetch storm on sidebar hover
 c30c38c fix(tester): cycle-2 — total: items.length regress + url-guard IPv4-in-IPv6 + webhook double-write
 487f0c2 fix(review): cycle-2 — IPv6 SSRF bypass + redirect SSRF + booking hydration
-cdaf506 docs(memory): record /sto-tester cycle-2 gotchas (bugs #111-#119)
-f11f028 fix(tester): cycle-2 — booking public widget, webhooks SSRF, inspection DoS
-d484866 docs(memory): record /sto-review cycle-1 gotchas (commit e4ce8b1)
-e4ce8b1 fix(review): cycle-1 — @CurrentUser sub→id, loyalty race, migrations trgm defense
 ```
 
 Дата: 2026-05-27
@@ -22,14 +23,23 @@ e4ce8b1 fix(review): cycle-1 — @CurrentUser sub→id, loyalty race, migrations
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 240/240 passed  (20 файлів)   (+76 нових: 62 url-guard + 14 webhooks.processor)
-Contract:        ✅ 18 файлів covered
+Unit:            ✅ 249/249 passed  (21 файл — +counterparties.contract + work-orders.contract)
+Contract:        ✅ 19 файлів covered
 Property-based:  ✅ inventory + settlements + work-orders.fsm invariants (3 файли)
 Components:      ✅ 139/139 passed  (13 файлів — Button, Modal, Select, CommandPalette, etc.)
-E2E (Playwright): ⏭ skipped (dev сервер offline на момент запуску)
+E2E (Playwright): ⏭ smoke.spec.ts (static assets + auth guard) — ready, dev offline на момент запуску
 Build:           ✅ @sto/api build OK (webpack 9.3s)
-Tester cycle-2 post-review: 7 багів (3 HIGH, 3 MEDIUM, 1 LOW) — виправлено
+Static assets:   ✅ favicon.ico + icons/icon-192.png + icons/icon-512.png існують у public/
+Latest review:   2026-05-27 — 0 нових проблем (sweep BigInt+static assets чист); skill оновлено
 ```
+
+### Gotcha — /sto-review 2026-05-27 (commit b51e2dd)
+
+- **BigInt у JSON.stringify крашить endpoint з 500** — будь-який Prisma model з `syncVersion BigInt @default(0)` що повертається з ендпоінта **без** `toResponseDto()`/`toDto()`/explicit `Number()` cast викликає `TypeError: Do not know how to serialize a BigInt`. Real bug: `NotificationsService.findTemplates()` повертав `findMany()` напряму (commit ea8f5a6). Канон: `rows.map(r => ({ ...r, syncVersion: Number(r.syncVersion) }))` або `select` без syncVersion або повний DTO mapper. Sweep по всіх services + check у `/sto-review` §13.
+
+- **Manifest icons мають фізично існувати** — `apps/web/public/manifest.json` посилається на `/icons/icon-192.png` + `/icons/icon-512.png`; якщо файлів немає, PWA install падає + браузер пише 404 в логи + service worker не може кешувати. Канон: smoke-тест у `apps/web/e2e/smoke.spec.ts` робить GET на кожен static asset і чекає 200.
+
+- **`@Max(200)` для list query limits** — frontend часто запитує `limit=200` для dropdown-списків (counterparties, work-orders); попередній `@Max(100)` тихо повертав 400. Підняли до 200 у обох DTO; додали contract test що захищає від регресу (приймає 200, відхиляє 201).
 
 ### Gotcha — /sto-tester cycle-2 post-review (2026-05-27, commit c30c38c, bugs #120-#126)
 
