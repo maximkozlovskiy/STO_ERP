@@ -9,9 +9,9 @@
 ## Останній commit
 
 ```
+f11f028 fix(tester): cycle-2 — booking public widget, webhooks SSRF, inspection DoS
+d484866 docs(memory): record /sto-review cycle-1 gotchas (commit e4ce8b1)
 e4ce8b1 fix(review): cycle-1 — @CurrentUser sub→id, loyalty race, migrations trgm defense
-d242e6a docs(memory): record /sto-tester B8 FollowUp CRON gotchas (bugs #97-#110)
-4df6ef0 fix(tester): B8 FollowUp CRON — bugs #97-#110
 ```
 
 Дата: 2026-05-27
@@ -20,13 +20,37 @@ d242e6a docs(memory): record /sto-tester B8 FollowUp CRON gotchas (bugs #97-#110
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
 Unit:            ✅ 164/164 passed  (18 файлів)
-Contract:        ✅ 18 файлів covered (+audit.contract.spec.ts: 5 тестів для Bug #88 regression)
+Contract:        ✅ 18 файлів covered
 Property-based:  ✅ inventory + settlements + work-orders.fsm invariants (3 файли)
 Components:      ✅ 139/139 passed  (13 файлів — Button, Modal, Select, CommandPalette, etc.)
-E2E (Playwright): ✅ 4/4 smoke passed (dev сервер живий, http://localhost:3001)
-Build:           ✅ @sto/api + @sto/web tsc clean (incremental:false)
-Review cycle-1:  9 проблем виправлено (4 Critical, 4 Important, 1 Suggestion)
+E2E (Playwright): ⏭ skipped (dev сервер offline на момент запуску)
+Build:           ✅ @sto/api build OK (webpack 14.7s)
+Tester cycle-2:  9 багів виправлено (3 CRITICAL, 1 HIGH, 2 MEDIUM, 3 LOW)
 ```
+
+### Gotcha — /sto-tester cycle-2 (2026-05-27, commit f11f028, bugs #111-#119)
+
+- **Public widget pages ЗА ЖОДНИХ умов не повинні використовувати `apiFetch`** (Bug #111, booking/page.tsx). `apiFetch` на 401 робить `window.location.replace('/login')` що смертельно для публічної сторінки (`/booking` був у PUBLIC_ROUTES але викликав auth-guarded `/branches`). Канон: для будь-якої сторінки у TopShell `PUBLIC_ROUTES` — створити окремий `publicFetch` хелпер (звичайний `fetch` без token + без redirect) АБО окремий public endpoint `/api/booking/branches` під @Public (без JwtAuthGuard). Перевірити: grep `apiFetch` в усіх сторінках з PUBLIC_ROUTES — `/login`, `/setup`, `/booking`, `/403`. Якщо знаходить — це BUG.
+
+- **`service['prisma']` bracket access обходить TS private** (Bug #112, booking.controller.ts). TS private — compile-time only; `service['prisma']` працює на рантаймі і компайл-чек проходить. Це anti-pattern бо: (1) circumvents API design (контролер мав би використовувати public метод сервісу), (2) делає рефакторинг ризиковим (приватний `prisma` field — internal contract, при заміні на DI чи repository pattern зламається). Канон: ВСІ controller→data звернення йдуть ТІЛЬКИ через public методи сервісу. grep `service\['` або `\['prisma'\]` — code smell, потребує refactor у service-level public API.
+
+- **Soft-deleted `findFirst({ where: { id } })` без `deletedAt: null` — повторюваний шаблон** (Bug #112). Це Bug #95-pattern (Soft-deleted FK pre-check на clone), але у новому контексті — public lookups. Канон: ЖОДЕН `findFirst`/`findUnique`/`findMany` на soft-deletable моделі НЕ обходиться без `deletedAt: null` (виняток — admin tools/audit). grep `findFirst.*where:\s*\{\s*id` без `deletedAt` — кандидат на bug.
+
+- **UTC "T...Z" hardcode для робочих годин — DST-naïve booking slots** (Bug #113, booking.service.ts). `new Date('2026-05-27T09:00:00.000Z')` = 12:00 Київ влітку, 11:00 Київ взимку. Канон для робочих годин: ISO offset з timezone-aware обчислення. `kyivOffsetForDate(date)` — мінімальний хелпер через `Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Kyiv' })` + `toLocaleString` round-trip обчислює `+02:00`/`+03:00`. Не покладатись на `new Date()` (server-local) і не на `Z` (UTC). Це 3-й DST-related баг у проекті (B8 followup processor, dst_kyiv feedback, тепер booking).
+
+- **`@IsUrl({ require_tld: false })` = SSRF vector** (Bug #114, webhooks.dto.ts). `require_tld: false` дозволяє `localhost`, `192.168.*`, `10.*`, `169.254.*`, `[::1]`. Класичний SSRF на внутрішні Redis/Postgres/cloud-metadata. Канон: для ЛЮБОГО user-supplied URL що server потім fetch-ить — окремий `validatePublicUrl()` helper з блок-листом RFC1918/loopback/link-local/ULA/non-http(s). `apps/api/src/common/utils/url-guard.ts` — single source of truth. Defense-in-depth: ВАЛІДАЦІЯ І при create/update DTO, І в processor перед fetch (DNS rebinding mitigation). У processor для SSRF — НЕ re-throw (retry безглуздий, це config bug, не transient).
+
+- **`@IsArray()` БЕЗ `@ArrayMaxSize(N)` = OOM DoS** (Bug #115, inspection.dto.ts). `class-validator` пропустить будь-який розмір; `ValidateNested({ each: true })` валідує **КОЖЕН** елемент → 1M елементів = 1M validation iterations + 1M heap allocations. Канон: для КОЖНОГО `@IsArray()` поля у DTO — `@ArrayMaxSize(N)` де N — реалістичний бізнес-потолок (50 inspection points, 100 WO parts, 500 invoice lines). grep `@IsArray()` без `@ArrayMaxSize` — патерн.
+
+- **MinIO/S3 delete порядок: DB-row FIRST, then external** (Bug #116, work-order-media.service.ts). Інверсний порядок (file→row) при MinIO fail дає orphan DB record що в findAll генерує broken signedUrl → 404 для користувача. Правильно: row first (transient DB fail → file лишається, можна повторити), file second (transient MinIO fail → garbage у MinIO, але DB consistent, batch-cleanup пізніше). Те ж для будь-якої external storage: avatar deletion, audit log archival, external email service.
+
+- **`@MaxLength` без `@MinLength` для search-style полів = short-query DoS** (Bug #117, search.dto.ts). `q='a'` тригерить `similarity(text, 'a') > 0.1` — match-ить майже все, але кожен match — heavy GIN-scan. Frontend filter `q.length >= 2` не достатньо — atacker може robust HTTP curl. Канон: `@MinLength(2)` обов'язково для search/filter/autocomplete полів.
+
+- **Auth/refresh dup-ed у per-component fetch helpers** (Bug #118, xlsx-import-button.tsx). Це класична regression-risk: ОДНА change в `tryRefresh()` (cookie semantics, retry policy, redirect target) — БУДЕ забута у дублі. Канон: ЄДИНІ помічники — `apiFetch`, `apiBlobFetch`, `apiMultipartFetch` з `lib/api-client.ts`. grep `function tryRefresh\|async function fetchWithAuth` у `apps/web/src` поза `lib/api-client.ts` — code smell.
+
+- **`@Query('xxxId') id: string` без `ParseUUIDPipe` на public endpoint = 500 spam** (Bug #119, booking.controller.ts). Невалідний UUID → P2023 → 500. На auth-guarded endpoint це internal log noise; на public endpoint — будь-хто може спамити 500-помилками і wear alerting. Канон для ВСІХ public endpoints (`@Public` декоратор або controller без JwtAuthGuard): runtime regex-validation (UUID, date YYYY-MM-DD) перед service call. ParseUUIDPipe як швидкий drop-in для UUID; для date — `@Matches` у DTO або inline regex.
+
+- **`validatePublicUrl` helper** (apps/api/src/common/utils/url-guard.ts): нова canonical utility для SSRF defense. Блокує: loopback (127.0.0.0/8, ::1), RFC1918 (10/8, 172.16/12, 192.168/16), link-local (169.254/16, fe80::/10), ULA (fc00::/7), CGNAT (100.64/10), 0.0.0.0/8, "localhost"-style hostnames, non-http(s) schemes. Використовувати для будь-якого user-supplied URL що server потім touch-не: webhooks, image proxies, external API integrations, OAuth callbacks (whitelist домени).
 
 ### Gotcha — /sto-review cycle-1 (2026-05-27, commit e4ce8b1)
 
