@@ -17,7 +17,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
-import { cn } from '@/lib/utils';
+import { cn, displayCounterpartyName } from '@/lib/utils';
 
 interface Counterparty { id: string; firstName?: string; lastName?: string; companyName?: string; }
 interface InvoiceLine {
@@ -589,14 +589,14 @@ export default function InvoicesPage() {
             value={form.counterpartyId}
             displayValue={counterpartyDisplayName}
             onSelect={c => {
-              const name = c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ') ?? '';
-              setCounterpartyDisplayName(name);
+              // Bug #139: helper повертає '(без імені)' fallback замість порожнього рядка.
+              setCounterpartyDisplayName(displayCounterpartyName(c));
               setForm(f => ({ ...f, counterpartyId: c.id }));
             }}
             onClear={() => { setCounterpartyDisplayName(''); setForm(f => ({ ...f, counterpartyId: '' })); }}
             fetchItems={q => apiFetch<{ items: Counterparty[] }>(`/counterparties?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(c => ({
               ...c,
-              primary: c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ') ?? '',
+              primary: displayCounterpartyName(c),
             })))}
           />
           <Input

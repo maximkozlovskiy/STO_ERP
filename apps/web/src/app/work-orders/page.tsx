@@ -28,7 +28,7 @@ import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { toast } from '@/lib/toast';
-import { cn } from '@/lib/utils';
+import { cn, displayCounterpartyName } from '@/lib/utils';
 
 interface WorkOrder {
   id: string; number: string; status: string;
@@ -847,8 +847,8 @@ export default function WorkOrdersPage() {
             value={form.counterpartyId}
             displayValue={counterpartyDisplayName}
             onSelect={cp => {
-              const name = cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ') ?? '';
-              setCounterpartyDisplayName(name);
+              // Bug #139: helper повертає '(без імені)' fallback замість порожнього рядка.
+              setCounterpartyDisplayName(displayCounterpartyName(cp));
               setForm(f => ({ ...f, counterpartyId: cp.id, vehicleId: '' }));
               loadVehicles(cp.id);
             }}
@@ -859,7 +859,7 @@ export default function WorkOrdersPage() {
             }}
             fetchItems={q => apiFetch<{ items: Counterparty[] }>(`/counterparties?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(c => ({
               ...c,
-              primary: c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ') ?? '',
+              primary: displayCounterpartyName(c),
             })))}
           />
 

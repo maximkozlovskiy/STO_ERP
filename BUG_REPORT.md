@@ -4335,7 +4335,7 @@ Cosmetic dead code; функціонально працює, але дивно �
 **Фікс:**
 Винести helper `displayCounterpartyName(cp)`. Поки що — мінімально: змінити `... ?? ''` → fallback `'(без імені)'`.
 
-**Статус:** [ ] відкритий
+**Статус:** [x] виправлено — додано `displayCounterpartyName(cp)` у `apps/web/src/lib/utils.ts` з fallback `(без імені)`. Застосовано у 6 місцях у `work-orders/page.tsx`, `invoices/page.tsx`, `purchase-orders/page.tsx`.
 
 ---
 

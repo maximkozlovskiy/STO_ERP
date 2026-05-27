@@ -16,7 +16,7 @@ import { DetailPanel } from '@/components/ui/detail-panel';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
+import { cn, displayCounterpartyName } from '@/lib/utils';
 
 interface Supplier { id: string; firstName?: string; lastName?: string; companyName?: string; }
 interface Warehouse { id: string; name: string; isMain: boolean; }
@@ -420,14 +420,14 @@ export default function PurchaseOrdersPage() {
             value={form.supplierId}
             displayValue={supplierDisplayName}
             onSelect={s => {
-              const name = s.companyName ?? [s.lastName, s.firstName].filter(Boolean).join(' ') ?? '';
-              setSupplierDisplayName(name);
+              // Bug #139: helper повертає '(без імені)' fallback замість порожнього рядка.
+              setSupplierDisplayName(displayCounterpartyName(s));
               setForm(f => ({ ...f, supplierId: s.id }));
             }}
             onClear={() => { setSupplierDisplayName(''); setForm(f => ({ ...f, supplierId: '' })); }}
             fetchItems={q => apiFetch<{ items: Supplier[] }>(`/counterparties?type=SUPPLIER&q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(s => ({
               ...s,
-              primary: s.companyName ?? [s.lastName, s.firstName].filter(Boolean).join(' ') ?? '',
+              primary: displayCounterpartyName(s),
             })))}
           />
           <Select
