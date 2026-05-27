@@ -2,10 +2,8 @@
 
 import { useState, useRef, type ChangeEvent } from 'react';
 import { Download, Upload } from 'lucide-react';
-import { TOKEN_KEY } from '@/lib/auth';
+import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 interface ImportResult {
   created: number;
@@ -20,53 +18,14 @@ interface XlsxImportButtonProps {
   className?: string;
 }
 
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return sessionStorage.getItem(TOKEN_KEY);
+interface TemplateResponse {
+  file: string;
+  filename: string;
 }
 
-function setToken(token: string): void {
-  sessionStorage.setItem(TOKEN_KEY, token);
-}
-
-function clearToken(): void {
-  sessionStorage.removeItem(TOKEN_KEY);
-}
-
-async function tryRefresh(): Promise<string | null> {
-  try {
-    const res = await fetch(`${API_URL}/api/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as { accessToken: string };
-    setToken(data.accessToken);
-    return data.accessToken;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchWithAuth(input: string, init: RequestInit): Promise<Response> {
-  const token = getToken();
-  const headers = new Headers(init.headers as HeadersInit | undefined);
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-
-  const res = await fetch(input, { ...init, headers });
-  if (res.status !== 401) return res;
-
-  const newToken = await tryRefresh();
-  if (!newToken) {
-    clearToken();
-    window.location.href = '/login';
-    return res;
-  }
-
-  headers.set('Authorization', `Bearer ${newToken}`);
-  return fetch(input, { ...init, headers });
-}
-
+// Bug #118: previously this file dup-ed getToken/setToken/tryRefresh/fetchWithAuth
+// from lib/api-client.ts. Use the shared helpers — apiFetch for JSON, apiMultipartFetch
+// for FormData uploads — so silent refresh + redirect-on-logout drift is impossible.
 export function XlsxImportButton({
   templateType,
   importUrl,
@@ -83,14 +42,7 @@ export function XlsxImportButton({
     setDownloading(true);
     setError('');
     try {
-      const res = await fetchWithAuth(`${API_URL}/api/xlsx/templates/${templateType}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: res.statusText })) as { message: string };
-        throw new Error(err.message);
-      }
-      const data = await res.json() as { file: string; filename: string };
+      const data = await apiFetch<TemplateResponse>(`/xlsx/templates/${templateType}`);
       const bytes = Uint8Array.from(atob(data.file), c => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
@@ -118,20 +70,11 @@ export function XlsxImportButton({
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetchWithAuth(`${API_URL}/api${importUrl}`, {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: res.statusText })) as { message: string };
-        throw new Error(err.message);
-      }
-      const data = await res.json() as ImportResult;
+      const data = await apiMultipartFetch<ImportResult>(importUrl, formData);
       setResult(data);
       onImportComplete?.(data);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка імпорту');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Помилка імпорту');
     } finally {
       setImporting(false);
     }
@@ -159,25 +102,37 @@ export function XlsxImportButton({
         <input
           ref={fileRef}
           type="file"
-          accept=".xlsx,.xls"
-          className="hidden"
+          accept=".xlsx"
           onChange={handleFileChange}
+          className="hidden"
         />
       </div>
 
       {error && (
-        <p className="text-[12px] text-destructive">{error}</p>
+        <div className="text-[12px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded px-2 py-1">
+          {error}
+        </div>
       )}
 
       {result && (
-        <div className="text-[12px] rounded-lg bg-success-subtle border border-success/20 px-3 py-2">
-          <span className="text-success font-medium">
-            Створено: {result.created} / Оновлено: {result.updated}
-          </span>
+        <div className="text-[12px] bg-secondary border border-border rounded px-2 py-1.5">
+          <div className="font-medium text-foreground">
+            Імпорт: створено {result.created}, оновлено {result.updated}
+          </div>
           {result.errors.length > 0 && (
-            <ul className="mt-1 text-destructive list-disc list-inside">
-              {result.errors.map((e, i) => <li key={i}>{e}</li>)}
-            </ul>
+            <details className="mt-1">
+              <summary className="cursor-pointer text-destructive-text">
+                Помилки: {result.errors.length}
+              </summary>
+              <ul className="mt-1 list-disc list-inside text-muted-foreground space-y-0.5">
+                {result.errors.slice(0, 10).map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+                {result.errors.length > 10 && (
+                  <li>...та ще {result.errors.length - 10}</li>
+                )}
+              </ul>
+            </details>
           )}
         </div>
       )}

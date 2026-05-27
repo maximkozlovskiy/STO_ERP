@@ -3293,3 +3293,247 @@ UI label "Нагадування про планове ТО" для FOLLOWUP_REM
 **Статус:** [x] виправлено (apps/web/src/app/settings/page.tsx EVENT_LABELS: додано `FOLLOWUP_REMINDER: 'Нагадування про планове ТО'`)
 
 ---
+
+## Session 2026-05-27 — cycle 2 FULL: booking + webhooks + inspection sweep
+
+**Baseline:** ✅ tsc clean (api+web+shared), ✅ 164/164 API unit/contract, ✅ 139/139 web component tests.
+Перевірено: loyalty redeem race-condition fix (cycle-1), @CurrentUser user.id fixes у auth/purchase-orders/stock-documents/payments, followup.processor.spec.ts (13 tests passing). Усе працює коректно.
+
+Нові знахідки нижче.
+
+---
+
+## Bug #111 — [CRITICAL] /booking публічна сторінка викликає `/branches` (auth-protected) → 401 → redirect-loop
+
+**Файл:** `apps/web/src/app/booking/page.tsx:25-35`, `apps/api/src/modules/branches/branches.controller.ts:12`
+**Severity:** CRITICAL
+**Категорія:** business-logic / security
+
+**Опис:**
+Сторінка `/booking` додана до `PUBLIC_ROUTES` у `TopShell.tsx:141` (доступна без логіну — Online Booking widget для клієнтів). АЛЕ всередині `useEffect` робить:
+```typescript
+apiFetch<Branch[]>('/branches').then(...)
+```
+`/branches` — захищений controller-рівневим `@UseGuards(JwtAuthGuard, RolesGuard)`. Для неавторизованого користувача:
+1. `apiFetch` додає Bearer (null) → 401
+2. Силент-refresh падає (немає refresh cookie)
+3. `apiFetch` робить `window.location.replace('/login')`
+
+В результаті public booking widget **миттєво redirect-ить на /login** при першому завантаженні. Жоден клієнт не може записатись.
+
+**Очікувана поведінка:**
+- Публічний endpoint `GET /booking/branches` повертає мінімальну інфу (id, name, address) без auth
+- Сторінка `/booking` використовує `fetch` напряму (без `apiFetch`) для всіх booking endpoints
+
+**Фактична поведінка:**
+401 на /branches → redirect на /login.
+
+**Статус:** [x] виправлено (apps/web/src/app/booking/page.tsx: замінено apiFetch на raw publicFetch; apps/api/src/modules/booking/booking.controller.ts: новий GET /booking/branches public endpoint + booking.service.ts.listBranchesForBooking)
+
+---
+
+## Bug #112 — [CRITICAL] BookingController: hard-coded access до `service['prisma']` обходить інкапсуляцію + soft-deleted branches не фільтруються
+
+**Файл:** `apps/api/src/modules/booking/booking.controller.ts:28-29, 42-43`
+**Severity:** CRITICAL
+**Категорія:** business-logic / security / soft-delete
+
+**Опис:**
+```typescript
+async getAvailability(...) {
+  const branch = await this.service['prisma'].garageBranch.findFirst({ where: { id: branchId } });
+  if (!branch) return [];
+  ...
+}
+```
+Два дефекти:
+1. **Інкапсуляція**: `service['prisma']` — bracket-access до приватного поля. TS НЕ ловить це бо `prisma` — `private readonly`, але `service['prisma']` обходить access modifier. Канон: інжектувати `PrismaService` напряму в controller АБО додати explicit public method `service.findBranchForBooking(branchId)`.
+2. **Soft delete**: `findFirst({ where: { id: branchId } })` — НЕ фільтрує `deletedAt: null`. Видалена філія все одно повертає `branchId`, public widget показує slots для неіснуючої філії, SMS відправляється з імені видаленої філії.
+
+**Очікувана поведінка:**
+Soft-deleted філії невидимі для public booking. Доступ до prisma — через service, не через bracket notation.
+
+**Статус:** [x] виправлено (booking.service.ts.findBranchForBooking з `deletedAt: null` фільтром; booking.controller.ts викликає service-метод замість service['prisma'])
+
+---
+
+## Bug #113 — [HIGH] Booking availability використовує UTC замість Києва — слоти зміщені на 2-3 години
+
+**Файл:** `apps/api/src/modules/booking/booking.service.ts:48-72`
+**Severity:** HIGH
+**Категорія:** business-logic / timezone
+
+**Опис:**
+```typescript
+for (let hour = 9; hour < 18; hour++) {
+  for (const min of [0, 30]) {
+    const slotStart = new Date(`${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00.000Z`);
+    ...
+  }
+}
+```
+Літерал `Z` робить дату UTC. Тобто `2026-05-27T09:00:00.000Z` = **09:00 UTC = 12:00 Київ (літо)**. Сторінка `/booking` показує `new Date(s.startAt).toLocaleTimeString('uk-UA', {...})` — конвертує назад у local Київ → показує 12:00. Але користувач очікує що сервіс відкривається о 09:00 Київ (= 06:00 UTC).
+
+Очікувані робочі години Києва (09:00–18:00 Київ) маппяться на 06:00–15:00 UTC влітку, 07:00–16:00 UTC взимку. Поточний код фіксує 09:00 UTC = 12:00/11:00 Київ → користувачі бачать слоти з ОБІДУ і пізно ввечері.
+
+Окрім UX-плутанини, це порушує bookking-логіку: сервіс приймає клієнтів пізніше ніж сам очікує, в часи коли реально вже закритий.
+
+**Очікувана поведінка:**
+Робочі години — Київ-локальні (`Europe/Kyiv`). DST-aware (літо/зима +0300/+0200).
+
+**Фактична поведінка:**
+UTC хардкоднено → 12:00 Київ замість 09:00 Київ.
+
+**Статус:** [x] виправлено (booking.service.ts.kyivOffsetForDate() обчислює DST-aware offset через Intl + toLocaleString; getAvailability будує slot timestamps з ISO offset Києва замість 'Z')
+
+---
+
+## Bug #114 — [HIGH] WebhookEndpoint URL дозволяє SSRF на внутрішні сервіси (localhost, RFC1918)
+
+**Файл:** `apps/api/src/modules/webhooks/webhooks.dto.ts:22, 41`
+**Severity:** HIGH
+**Категорія:** security
+
+**Опис:**
+```typescript
+@IsUrl({ require_tld: false })
+url!: string;
+```
+`require_tld: false` дозволяє `http://localhost:6379`, `http://192.168.0.1`, `http://10.0.0.1`, `http://[::1]`. Атакувальник (скомпрометований OWNER/ADMIN акаунт) може створити webhook що пайпає payload-и (з payment data, WO інфою) на:
+- Redis admin port (`6379`)
+- Postgres (`5432`)
+- Local services (sidecars)
+- Cloud metadata (`169.254.169.254`) у разі deploy у Cloud
+
+Outbound webhook processor (`webhooks.processor.ts:46`) просто робить `fetch(url, {...})` без перевірки destination — SSRF успішний.
+
+**Очікувана поведінка:**
+URL валідується через blocklist: `Net.isPrivate(parsed.hostname)` reject (RFC1918, localhost, link-local 169.254.0.0/16, IPv6 fe80::/10, fc00::/7).
+
+**Фактична поведінка:**
+`http://localhost:6379` приймається. Webhook постить туди raw JSON.
+
+**Статус:** [x] виправлено (apps/api/src/common/utils/url-guard.ts: validatePublicUrl блокує loopback/RFC1918/link-local/ULA/non-http(s); webhooks.service.ts: create+update валідують URL; webhooks.processor.ts: defense-in-depth перевірка перед fetch — не re-throw для SSRF, бо retry безглуздий)
+
+---
+
+## Bug #115 — [MEDIUM] InspectionPointDto[] без ArrayMaxSize — DoS вектор
+
+**Файл:** `apps/api/src/modules/inspection/inspection.dto.ts:21-25`
+**Severity:** MEDIUM
+**Категорія:** security
+
+**Опис:**
+```typescript
+export class CreateInspectionDto {
+  @ApiProperty({ type: [InspectionPointDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => InspectionPointDto)
+  points!: InspectionPointDto[];
+}
+```
+Немає `@ArrayMaxSize(N)`. POST `{ points: Array(1_000_000).fill({...}) }` — `ValidationPipe` пройде, потім `InspectionService.create` запише ВЕСЬ масив у `points: dto.points as InputJsonValue`. Postgres JSON column обмежений ~1GB row size, але raw heap allocation на 1M об'єктів задихне Node-процес ще до Prisma.
+
+**Очікувана поведінка:**
+`@ArrayMaxSize(50)` (типовий inspection — 8 точок, з запасом 50).
+
+**Статус:** [x] виправлено (apps/api/src/modules/inspection/inspection.dto.ts: додано @ArrayMaxSize(50, { message: 'Не більше 50 точок огляду' }))
+
+---
+
+## Bug #116 — [MEDIUM] WorkOrderMedia.remove: видалення з MinIO ПЕРЕД prisma.delete → orphan DB record при MinIO fail
+
+**Файл:** `apps/api/src/modules/work-order-media/work-order-media.service.ts:122-130`
+**Severity:** MEDIUM
+**Категорія:** business-logic / data-consistency
+
+**Опис:**
+```typescript
+async remove(orgId, workOrderId, mediaId) {
+  const record = await this.prisma.workOrderMedia.findFirst({...});
+  if (!record) throw new NotFoundException(...);
+  await this.files.deleteObject(record.fileKey);   // ← може кинути на MinIO fail
+  await this.prisma.workOrderMedia.delete({ where: { id: mediaId } });  // ← НЕ викликається
+}
+```
+Якщо `deleteObject` падає (network, MinIO down), DB-запис залишається але fileKey вже не валідний. Наступний `findAll` намагатиметься `getSignedUrl(record.fileKey)` для неіснуючого об'єкту → 404 або signed URL який не працює.
+
+**Очікувана поведінка:**
+DB-операція **перед** MinIO. Якщо DB fail → файл лишився, можна повторити. Якщо DB success але MinIO fail → DB-record немає, файл лишився як garbage у MinIO (Logger.warn для batch-cleanup).
+
+**Статус:** [x] виправлено (apps/api/src/modules/work-order-media/work-order-media.service.ts.remove: prisma.delete тепер ПЕРЕД files.deleteObject; MinIO fail логується як warning без user-facing помилки)
+
+---
+
+## Bug #117 — [LOW] SearchQueryDto.q без @MinLength — короткі запити (1 символ) тригерять heavy similarity scan
+
+**Файл:** `apps/api/src/modules/search/search.dto.ts:5-8`
+**Severity:** LOW
+**Категорія:** non-functional / performance
+
+**Опис:**
+```typescript
+@IsString()
+@MaxLength(100)
+q!: string;
+```
+`@ApiProperty({ minLength: 2 })` — лише документація, не валідація. `q='a'` пройде → `similarity(g.name, 'a') > 0.1` буде match-ити майже все. Pg_trgm GIN-індекс не оптимізований для 1-char queries. Power user або scraper може намагатися enumerate all WO/counterparties/goods через short-query DoS.
+
+**Очікувана поведінка:**
+`@MinLength(2)` обов'язково. Сторінки фронта вже filter `q.length >= 2`, але серверу треба захист.
+
+**Статус:** [x] виправлено (apps/api/src/modules/search/search.dto.ts: додано @MinLength(2) до SearchQueryDto.q)
+
+---
+
+## Bug #118 — [LOW] xlsx-import-button дублює auth/refresh логіку замість використання apiBlobFetch + apiMultipartFetch
+
+**Файл:** `apps/web/src/components/ui/xlsx-import-button.tsx:23-68, 82-138`
+**Severity:** LOW
+**Категорія:** typescript / code-quality
+
+**Опис:**
+Файл дублює `getToken`, `setToken`, `clearToken`, `tryRefresh`, `fetchWithAuth` логіку (lines 23-68) — це повна копія коду з `apps/web/src/lib/api-client.ts`. Канон з MemoryManual gotcha (Bug #85): три helpers — `apiFetch`, `apiBlobFetch`, `apiMultipartFetch` — ВСІ роблять silent-refresh + redirect-on-logout. xlsx-import-button має використовувати `apiFetch` для template download (це JSON з base64) і `apiMultipartFetch` для upload.
+
+Ризик: при майбутній зміні `tryRefresh()` логіки — забудеться оновити copy → silent auth failures у XLSX import flow.
+
+**Очікувана поведінка:**
+Використати наявний `apiFetch`/`apiMultipartFetch` з `lib/api-client.ts`.
+
+**Фактична поведінка:**
+Дублікат коду з drift-ризиком.
+
+**Статус:** [x] виправлено (apps/web/src/components/ui/xlsx-import-button.tsx: видалено локальні getToken/setToken/clearToken/tryRefresh/fetchWithAuth (60+ lines); замінено на apiFetch (download) і apiMultipartFetch (upload) з lib/api-client.ts)
+
+---
+
+## Bug #119 — [LOW] BookingController.getAvailability приймає branchId без ParseUUIDPipe
+
+**Файл:** `apps/api/src/modules/booking/booking.controller.ts:23-36`
+**Severity:** LOW
+**Категорія:** typescript / api-quality
+
+**Опис:**
+```typescript
+@Get('availability')
+async getAvailability(
+  @Query('date') date: string,
+  @Query('branchId') branchId: string,
+  @Query('serviceIds') serviceIds?: string,
+) { ... }
+```
+Невалідний UUID (`?branchId=abc`) → Prisma P2023 → HTTP 500 замість 400. Це endpoint **public** — будь-хто може тригерити 500 errors у logs (log noise + alerting fatigue).
+
+Те ж саме для `@Query('date')` без `@IsISO8601()` — `?date=not-a-date` → service попробує `new Date('not-a-date T00:00:00.000Z')` → Invalid Date → 500.
+
+**Очікувана поведінка:**
+- `@Query('branchId', new ParseUUIDPipe())` → 400 при невалідному
+- `@Query('date')` через DTO з `@Matches(/^\d{4}-\d{2}-\d{2}$/)` → 400
+
+**Фактична поведінка:**
+500 замість 400 для невалідного input.
+
+**Статус:** [x] виправлено (apps/api/src/modules/booking/booking.controller.ts.getAvailability: додано runtime regex-валідацію branchId (UUID) і date (YYYY-MM-DD) з BadRequestException замість Prisma P2023 → 500)
+
+---

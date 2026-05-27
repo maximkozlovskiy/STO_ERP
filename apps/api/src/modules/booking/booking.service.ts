@@ -11,6 +11,48 @@ export class BookingService {
     @InjectQueue('sms') private readonly smsQueue: Queue,
   ) {}
 
+  /**
+   * Bug #112: Public booking widget needs branch info without auth.
+   * Single source of truth for branch lookup — soft-deleted branches must NEVER
+   * leak to public booking, otherwise customers see slots for a closed location.
+   */
+  async findBranchForBooking(branchId: string): Promise<{ id: string; orgId: string; name: string } | null> {
+    return this.prisma.garageBranch.findFirst({
+      where: { id: branchId, deletedAt: null },
+      select: { id: true, orgId: true, name: true },
+    });
+  }
+
+  /** Public list of branches for booking widget (no auth required). */
+  async listBranchesForBooking(): Promise<{ id: string; name: string; address: string | null; orgId: string }[]> {
+    return this.prisma.garageBranch.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true, address: true, orgId: true },
+      orderBy: { name: 'asc' },
+      take: 100,
+    });
+  }
+
+  /**
+   * Bug #113: Working hours are LOCAL to Europe/Kyiv (09:00–18:00 Kyiv time),
+   * not UTC. Use `+02:00`/`+03:00` ISO offset depending on DST so slots are
+   * produced in real Kyiv time. We derive the offset from a `toLocaleString`
+   * round-trip on the requested date to handle DST transition days correctly.
+   */
+  private kyivOffsetForDate(date: string): string {
+    // Convert the date's noon-UTC moment to Kyiv local time and read the offset.
+    // Using noon (not midnight) avoids issues with DST transition at 03:00 local.
+    const probe = new Date(`${date}T12:00:00.000Z`);
+    const kyivStr = probe.toLocaleString('en-US', { timeZone: 'Europe/Kyiv', hour12: false });
+    const kyivDate = new Date(kyivStr + ' UTC');
+    const offsetMin = (kyivDate.getTime() - probe.getTime()) / 60_000;
+    const sign = offsetMin >= 0 ? '+' : '-';
+    const abs = Math.abs(offsetMin);
+    const h = String(Math.floor(abs / 60)).padStart(2, '0');
+    const m = String(abs % 60).padStart(2, '0');
+    return `${sign}${h}:${m}`;
+  }
+
   async getAvailability(orgId: string, branchId: string, date: string, serviceIds?: string[]): Promise<AvailabilitySlotDto[]> {
     // Find all lifts in the branch (lifts belong to zones, zones belong to branches)
     const lifts = await this.prisma.lift.findMany({
@@ -22,9 +64,11 @@ export class BookingService {
       take: 50,
     });
 
-    // Occupied slots for this day
-    const dayStart = new Date(`${date}T00:00:00.000Z`);
-    const dayEnd = new Date(`${date}T23:59:59.999Z`);
+    // Bug #113: day boundaries must be Kyiv-local, not UTC, otherwise a slot
+    // requested for "2026-05-27 in Kyiv" would search a misaligned UTC window.
+    const offset = this.kyivOffsetForDate(date);
+    const dayStart = new Date(`${date}T00:00:00.000${offset}`);
+    const dayEnd = new Date(`${date}T23:59:59.999${offset}`);
     const busySlots = await this.prisma.calendarSlot.findMany({
       where: { orgId, startAt: { gte: dayStart, lte: dayEnd }, deletedAt: null },
       select: { liftId: true, startAt: true, endAt: true },
@@ -43,14 +87,19 @@ export class BookingService {
       totalMinutes = Math.ceil(totalHours * 60);
     }
 
-    // Working hours 09:00–18:00, 30-min steps
+    // Working hours 09:00–18:00 LOCAL (Europe/Kyiv), 30-min steps.
+    // We construct timestamps in Kyiv local with explicit ISO offset.
+    const endLimitMinutes = 18 * 60; // 18:00 Kyiv local
     const slots: AvailabilitySlotDto[] = [];
     for (const lift of lifts) {
       for (let hour = 9; hour < 18; hour++) {
         for (const min of [0, 30]) {
-          const slotStart = new Date(`${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00.000Z`);
+          const startKyiv = `${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00.000${offset}`;
+          const slotStart = new Date(startKyiv);
           const slotEnd = new Date(slotStart.getTime() + totalMinutes * 60_000);
-          if (slotEnd.getUTCHours() > 18 || (slotEnd.getUTCHours() === 18 && slotEnd.getUTCMinutes() > 0)) continue;
+          // Reject slots that would end after 18:00 Kyiv local.
+          const endMinutes = hour * 60 + min + totalMinutes;
+          if (endMinutes > endLimitMinutes) continue;
 
           const isBusy = busySlots.some(
             (b) =>

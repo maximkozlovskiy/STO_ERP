@@ -4,6 +4,7 @@ import { createHmac } from 'crypto';
 import { Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { validatePublicUrl } from '../../common/utils/url-guard';
 
 @Processor('outbound-webhook')
 export class OutboundWebhookProcessor {
@@ -20,6 +21,32 @@ export class OutboundWebhookProcessor {
       event: string;
       payload: unknown;
     };
+
+    // Bug #114: defense-in-depth SSRF check at delivery time. The URL was validated
+    // at create/update, but DNS rebinding or a stale endpoint config could still
+    // route to an internal target. We refuse to even open the connection.
+    const urlError = validatePublicUrl(url);
+    if (urlError) {
+      this.logger.warn(`Webhook ${endpointId}: blocked SSRF candidate — ${urlError}`);
+      // Log failed delivery, then mark job as permanently failed (no retry — config bug).
+      try {
+        await this.prisma.webhookDelivery.create({
+          data: {
+            endpointId,
+            event,
+            payload: payload as Prisma.InputJsonValue,
+            status: 'FAILED',
+            attempts: (job.attemptsMade ?? 0) + 1,
+            responseCode: null,
+            responseBody: `Blocked: ${urlError}`,
+          },
+        });
+      } catch (logErr) {
+        this.logger.error(`Failed to record blocked delivery for ${endpointId}: ${String(logErr)}`);
+      }
+      // Do NOT re-throw — retrying makes no sense for a config-level block.
+      return;
+    }
 
     const body = JSON.stringify({
       event,

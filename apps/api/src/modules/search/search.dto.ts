@@ -1,9 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class SearchQueryDto {
   @ApiProperty({ description: 'Пошуковий запит', minLength: 2, maxLength: 100 })
   @IsString()
+  // Bug #117: trigram similarity becomes meaningless and CPU-heavy below 2 chars.
+  @MinLength(2, { message: 'Запит має містити мінімум 2 символи' })
   @MaxLength(100)
   q!: string;
 

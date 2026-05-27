@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -41,6 +41,8 @@ function sanitizeFilename(raw: string): string {
 
 @Injectable()
 export class WorkOrderMediaService {
+  private readonly logger = new Logger(WorkOrderMediaService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly files: FilesService,
@@ -125,8 +127,19 @@ export class WorkOrderMediaService {
     });
     if (!record) throw new NotFoundException('Медіа не знайдено');
 
-    await this.files.deleteObject(record.fileKey);
+    // Bug #116: delete the DB row FIRST. If MinIO deletion fails (network,
+    // remote 5xx), we want zero rows pointing at a missing object — the alternative
+    // (file gone, DB row stays) is worse because findAll would generate broken
+    // signedUrls forever. Failed MinIO cleanup becomes garbage that a batch
+    // job can sweep later — we surface it as a warning, not a user error.
     await this.prisma.workOrderMedia.delete({ where: { id: mediaId } });
+    try {
+      await this.files.deleteObject(record.fileKey);
+    } catch (e) {
+      this.logger.warn(
+        `Не вдалось видалити об'єкт MinIO ${record.fileKey} після видалення media-запису: ${String(e)}`,
+      );
+    }
   }
 
   private toDto(

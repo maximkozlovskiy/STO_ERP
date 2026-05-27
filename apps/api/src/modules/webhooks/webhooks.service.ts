@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
+import { validatePublicUrl } from '../../common/utils/url-guard';
 import {
   CreateWebhookDto,
   UpdateWebhookDto,
@@ -38,6 +39,13 @@ export class WebhooksService {
     orgId: string,
     dto: CreateWebhookDto,
   ): Promise<WebhookEndpointResponseDto> {
+    // Bug #114: SSRF defense — reject loopback/private/link-local URLs.
+    // @IsUrl({ require_tld: false }) on the DTO accepts `http://localhost:6379`
+    // which would let a compromised admin pipe webhook payloads to internal
+    // Redis/Postgres/cloud-metadata endpoints.
+    const urlError = validatePublicUrl(dto.url);
+    if (urlError) throw new BadRequestException(urlError);
+
     const e = await this.prisma.webhookEndpoint.create({
       data: {
         orgId,
@@ -72,6 +80,11 @@ export class WebhooksService {
       where: { id, orgId, deletedAt: null },
     });
     if (!e) throw new NotFoundException('Вебхук не знайдено');
+    // Bug #114: re-validate URL on update (same SSRF defense as create).
+    if (dto.url !== undefined) {
+      const urlError = validatePublicUrl(dto.url);
+      if (urlError) throw new BadRequestException(urlError);
+    }
     const updated = await this.prisma.webhookEndpoint.update({
       where: { id },
       data: dto,

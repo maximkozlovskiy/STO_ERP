@@ -1,14 +1,31 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 
-interface Branch { id: string; name: string; address?: string; }
+interface Branch { id: string; name: string; address?: string | null; }
 interface AvailabilitySlot { startAt: string; endAt: string; liftId: string; liftName: string; available: boolean; }
+
+// Bug #111: public booking widget must NOT use `apiFetch` — that helper redirects
+// to /login on any 401, which would happen the moment we try to hit auth-guarded
+// endpoints. Use raw `fetch` against the dedicated public `/api/booking/*` routes.
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+
+async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_URL}/api${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({ message: res.statusText }))) as { message?: string };
+    throw new Error(body.message ?? `HTTP ${res.status}`);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
 
 export default function BookingPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -23,27 +40,28 @@ export default function BookingPage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    apiFetch<Branch[]>('/branches')
+    let cancelled = false;
+    publicFetch<Branch[]>('/booking/branches')
       .then(d => {
-        // handle both array and paginated envelope
+        if (cancelled) return;
         if (Array.isArray(d)) setBranches(d);
-        else if (d && typeof d === 'object' && Array.isArray((d as { items?: Branch[] }).items)) {
-          setBranches((d as { items: Branch[] }).items);
-        }
       })
-      .catch(() => {});
+      .catch(() => { /* widget shows "Завантаження..." until branches arrive; failure is silent */ });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!date || !selectedBranch) return;
+    let cancelled = false;
     setSlotsLoading(true);
     setSelectedSlot(null);
-    apiFetch<AvailabilitySlot[]>(
+    publicFetch<AvailabilitySlot[]>(
       `/booking/availability?branchId=${selectedBranch.id}&date=${date}`,
     )
-      .then(d => setSlots(Array.isArray(d) ? d.filter(s => s.available) : []))
-      .catch(() => setSlots([]))
-      .finally(() => setSlotsLoading(false));
+      .then(d => { if (!cancelled) setSlots(Array.isArray(d) ? d.filter(s => s.available) : []); })
+      .catch(() => { if (!cancelled) setSlots([]); })
+      .finally(() => { if (!cancelled) setSlotsLoading(false); });
+    return () => { cancelled = true; };
   }, [date, selectedBranch]);
 
   const handleSubmit = async () => {
@@ -51,7 +69,7 @@ export default function BookingPage() {
     setSaving(true);
     setError('');
     try {
-      await apiFetch('/booking/request', {
+      await publicFetch('/booking/request', {
         method: 'POST',
         body: JSON.stringify({
           branchId: selectedBranch.id,
