@@ -2,7 +2,7 @@
 name: sto-dev
 description: >
   STO ERP coding standards — applied DURING code writing, not after. Covers TypeScript quality rules, NestJS patterns, Next.js 15 patterns, Tailwind 4 canonical syntax, Prisma 5 patterns, and domain-specific invariants. Use as a reference while implementing sto-backend, sto-web, sto-database tasks. Prevents the bugs that sto-review and sto-tester catch.
-model: claude-sonnet-4-6
+model: claude-haiku-4-5-20251001
 ---
 
 # sto-dev — Coding Standards
