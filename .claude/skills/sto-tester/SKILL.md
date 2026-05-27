@@ -356,6 +356,26 @@ grep -n "Number(l\.\|Number(p\.\|totalLabor\|totalParts" apps/api/src/modules/wo
   # Винятки: badge.tsx purple, inventory reserved orange, button.tsx destructive-hover, input/select destructive focus-ring
   ```
 
+#### SSE / EventSource (застосовується до useDashboardStream та інших SSE hooks)
+- [ ] При `es.onerror` — перевіряти `isTokenExpired(token)` перед reconnect: якщо токен прострочений → `tryRefresh()` → перепідключитись зі свіжим токеном (НЕ зі старим).
+- [ ] Максимум `MAX_REFRESH_ATTEMPTS = 3` щоб уникнути infinite loop при невалідному refresh token.
+- [ ] Закривати попереднє `EventSource` перед відкриттям нового (`es.close()`) — інакше паралельні з'єднання накопичуються.
+- [ ] `isTokenExpired` читає `exp` з JWT payload (base64 decode) — не покладатись на 401 статус від EventSource (EventSource не дає HTTP статус в onerror).
+  ```bash
+  grep -rn "EventSource\|useDashboardStream\|SSE\|onerror" apps/web/src/hooks/ --include="*.ts"
+  # Перевір: tryRefresh + MAX_REFRESH_ATTEMPTS + isTokenExpired
+  ```
+
+#### Query params — масиви enum
+- [ ] Якщо фронтенд передає `?types=SUPPLIER,BOTH` (comma-separated) — DTO має `@Transform` для розбиття по коми: `String(value).split(',').map(s => s.trim())`.
+- [ ] Fastify multi-value syntax: `?types=CLIENT&types=SUPPLIER` (без `[]`) — `@Transform` має підтримувати і масив і рядок.
+- [ ] `?types=INVALID` → 400; `?types=SUPPLIER,BOTH` → 200.
+  ```bash
+  # Знайти фронтенд виклики з comma-separated enum filters
+  grep -rn "types=" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "node_modules\|.next\|content-type"
+  # Для кожного — перевірити що backend DTO підтримує
+  ```
+
 #### Роутинг
 - [ ] Захищені сторінки мають redirect якщо не авторизований
 - [ ] `/setup` доступний без авторизації (перший запуск)

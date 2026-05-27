@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min, Max } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { CounterpartyType, LegalForm } from '@prisma/client';
 
 // ─── Counterparty ────────────────────────────────────────
@@ -47,7 +47,26 @@ export class UpdateCounterpartyDto {
 
 export class CounterpartyQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
-  @ApiPropertyOptional({ enum: CounterpartyType }) @IsOptional() @IsEnum(CounterpartyType) type?: CounterpartyType;
+
+  @ApiPropertyOptional({ enum: CounterpartyType })
+  @IsOptional()
+  @IsEnum(CounterpartyType)
+  type?: CounterpartyType;
+
+  // Multi-type filter: ?types=SUPPLIER,BOTH  or  ?types[]=SUPPLIER&types[]=BOTH
+  @ApiPropertyOptional({ enum: CounterpartyType, isArray: true })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    // Accept comma-separated string OR array
+    const arr = Array.isArray(value) ? value : String(value).split(',').map(s => s.trim());
+    return arr.filter(Boolean);
+  })
+  @IsArray()
+  @IsEnum(CounterpartyType, { each: true })
+  @ArrayMaxSize(10)
+  types?: CounterpartyType[];
+
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) page: number = 1;
   @ApiPropertyOptional({ default: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit: number = 20;
 }

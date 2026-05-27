@@ -11,9 +11,16 @@ export class CounterpartiesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(orgId: string, query: CounterpartyQueryDto): Promise<PaginatedCounterpartiesDto> {
+    // types[] wins over type (single), supports ?types=SUPPLIER,BOTH
+    const typeFilter = query.types?.length
+      ? { type: { in: query.types } }
+      : query.type
+        ? { type: query.type }
+        : {};
+
     const where = {
       orgId, deletedAt: null,
-      ...(query.type ? { type: query.type } : {}),
+      ...typeFilter,
       ...(query.q ? {
         OR: [
           { firstName: { contains: query.q, mode: 'insensitive' as const } },

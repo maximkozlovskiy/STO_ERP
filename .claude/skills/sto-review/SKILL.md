@@ -772,6 +772,35 @@ grep -rn "fetch(" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "ap
   ```
   Перевірка через E2E: smoke-тест має GET `/favicon.ico`, `/icons/icon-192.png`, `/icons/icon-512.png` і очікувати 200 (див. `apps/web/e2e/smoke.spec.ts`).
 
+### 8.1.1 SSE Hooks (EventSource з JWT query param)
+
+```bash
+# Знайти всі SSE hooks
+grep -rn "EventSource\|onerror.*SSE\|dashboard/stream" apps/web/src/hooks/ --include="*.ts"
+```
+
+- [ ] **Token refresh при 401/onerror**: `es.onerror` не дає HTTP статус — перевіряй `isTokenExpired(token)` (decode JWT exp). Якщо прострочений → `tryRefresh()` → новий `EventSource` зі свіжим токеном. Без цього SSE назавжди мертвий після 15хв (~час life access token).
+- [ ] **MAX_REFRESH_ATTEMPTS guard**: `if (refreshAttemptsRef.current >= 3) { setError('Сесія завершена'); return; }` — запобігає infinite refresh loop при невалідному refresh token.
+- [ ] **Закривати старий EventSource** перед відкриттям нового: `esRef.current?.close()` → `esRef.current = null` → `new EventSource(url)`. Без цього накопичуються паралельні з'єднання.
+- [ ] `reconnect` через `setTimeout(5000)` для network errors (не 401) — не треба refresh, просто retry з поточним токеном.
+
+### 8.1.2 Query params — масиви enum у DTO
+
+```bash
+# Фронтенд: знайти comma-separated або multi-value enum query params
+grep -rn "types=\|statuses=\|roles=" apps/web/src/ --include="*.tsx" --include="*.ts" | grep "apiFetch\|fetch(" | grep -v "node_modules\|.next\|content-type"
+```
+
+- [ ] `?types=SUPPLIER,BOTH` — фронтенд використовує comma-separated → DTO **обов'язково** має `@Transform` для split: `Array.isArray(v) ? v : String(v).split(',').map(s => s.trim())`
+- [ ] `forbidNonWhitelisted: true` у ValidationPipe відхилить будь-який невідомий query param (`types`) якщо DTO не оголошує його → **400 без @Transform** ≠ коректна обробка
+- [ ] DTO pattern для multi-enum:
+  ```typescript
+  @Transform(({ value }) => Array.isArray(value) ? value : String(value).split(',').map(s=>s.trim()).filter(Boolean))
+  @IsArray() @IsEnum(MyEnum, { each: true }) @ArrayMaxSize(10)
+  types?: MyEnum[];
+  ```
+- [ ] Contract тест: `?types=VAL1,VAL2` → 200; `?types=INVALID` → 400
+
 ### 8.2 UI Стани
 
 - [ ] Кожна сторінка з async даними: `loading` стан (`<PageSpinner />` або skeleton)

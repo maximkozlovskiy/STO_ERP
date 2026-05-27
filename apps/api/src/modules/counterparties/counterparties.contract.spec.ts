@@ -96,6 +96,35 @@ describe('Counterparties — HTTP Contract', () => {
       expect(res.statusCode).toBe(400);
     });
 
+    it('приймає ?types=SUPPLIER,BOTH (comma-separated) без 400', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 200 });
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/counterparties?types=SUPPLIER,BOTH&limit=200',
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('приймає ?types=CLIENT&types=SUPPLIER (Fastify multi-value syntax)', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/counterparties?types=CLIENT&types=SUPPLIER',
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('відхиляє ?types=INVALID_TYPE з 400', async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/counterparties?types=INVALID_TYPE',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
     it('повертає 403 без авторизації', async () => {
       jwtAllow = false;
       const res = await (app as NestFastifyApplication).inject({
