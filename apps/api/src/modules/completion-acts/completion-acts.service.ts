@@ -142,7 +142,8 @@ export class CompletionActsService {
         });
       }
       workOrderId = act.workOrder?.id ?? null;
-    });
+    }, { timeout: 5_000 }); // Bug #130: explicit 5s timeout
+
 
     if (workOrderId) {
       try {

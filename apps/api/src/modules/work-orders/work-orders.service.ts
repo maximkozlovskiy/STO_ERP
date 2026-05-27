@@ -352,7 +352,9 @@ export class WorkOrdersService {
     const updates: { status: WorkOrderStatus; completedAt?: Date } = { status: newStatus };
     if (newStatus === 'COMPLETED') updates.completedAt = new Date();
 
-    // All side-effects + status update run in one transaction to prevent partial state
+    // All side-effects + status update run in one transaction to prevent partial state.
+    // Bug #130: явний timeout 10s — COMPLETED транзакція робить N writeoff + N release + 1 charge
+    // у циклі через workOrderPart; при 50+ запчастинах це може зайняти > 5s default.
     const updated = await this.prisma.$transaction(async (tx) => {
       if (newStatus === 'IN_PROGRESS') {
         await this.reserveParts(orgId, id, userId, tx);
@@ -375,7 +377,7 @@ export class WorkOrdersService {
           branch: { select: { name: true } },
         },
       });
-    });
+    }, { timeout: 10_000 });
 
     // Sync Vehicle.currentMileage from outMileage when WO completes.
     // Bug #75: Prisma `lt` filter EXCLUDES NULL rows — vehicles created without

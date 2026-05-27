@@ -90,6 +90,8 @@ export class InspectionService {
       ?? null;
 
     // All side effects in a single transaction to avoid partial state.
+    // Bug #130: явний timeout 10s — loop з N workOrderLine.create на critical points
+    // (DEFAULT_INSPECTION_POINTS може мати 50+ точок) → потребує більше за 5s default.
     const { report, autoCreatedLines } = await this.prisma.$transaction(async (tx) => {
       const created = await tx.inspectionReport.create({
         data: {
@@ -141,7 +143,7 @@ export class InspectionService {
       }
 
       return { report: created, autoCreatedLines: createdLines };
-    });
+    }, { timeout: 10_000 });
 
     return this.toDto(report, autoCreatedLines);
   }

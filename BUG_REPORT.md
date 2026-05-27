@@ -3981,7 +3981,12 @@ Hardcoded HSL → у dark mode стає погано читаним (контр�
 **Фактична поведінка:**
 Default 5s, не задокументовано в коді.
 
-**Статус:** [ ] відкритий
+**Статус:** [x] виправлено — додано явні timeouts:
+- `work-orders.service.ts:380`: `{ timeout: 10_000 }` (WRITEOFF + RESERVE_RELEASE loop)
+- `inspection.service.ts:148`: `{ timeout: 10_000 }` (workOrderLine.create loop)
+- `calendar.service.ts:101`: `{ timeout: 5_000 }` (conflict checks + create)
+- `completion-acts.service.ts:146`: `{ timeout: 5_000 }`
+- `document-number.service.ts:84`: `{ timeout: 5_000 }` (SELECT FOR UPDATE)
 
 ---
 

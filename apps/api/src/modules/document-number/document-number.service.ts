@@ -80,6 +80,6 @@ export class DocumentNumberService {
 
       const prefix = cfg.prefix ? `${cfg.prefix}${cfg.separator}` : '';
       return `${prefix}${seqStr}`;
-    });
+    }, { timeout: 5_000 }); // Bug #130: explicit 5s timeout — SELECT FOR UPDATE + UPDATE in one row
   }
 }

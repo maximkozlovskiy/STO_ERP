@@ -97,7 +97,8 @@ export class CalendarService {
       },
       include: { workOrder: { select: { number: true } } },
     });
-    });
+    // Bug #130: explicit 5s timeout (2 conflict checks + 1 create — well below default).
+    }, { timeout: 5_000 });
 
     return this.toDto(slot);
   }
