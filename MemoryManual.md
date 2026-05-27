@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-<PENDING> fix(review): cycle-2 — IPv6 SSRF bypass + redirect SSRF + booking hydration
+487f0c2 fix(review): cycle-2 — IPv6 SSRF bypass + redirect SSRF + booking hydration
 cdaf506 docs(memory): record /sto-tester cycle-2 gotchas (bugs #111-#119)
 f11f028 fix(tester): cycle-2 — booking public widget, webhooks SSRF, inspection DoS
 d484866 docs(memory): record /sto-review cycle-1 gotchas (commit e4ce8b1)
