@@ -50,6 +50,7 @@ export class UpdateWebhookDto {
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(10)
   @IsIn(WEBHOOK_EVENTS, { each: true })
   events?: string[];
 

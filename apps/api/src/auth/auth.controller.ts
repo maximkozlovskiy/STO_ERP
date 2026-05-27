@@ -41,8 +41,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Поточний користувач' })
-  getMe(@CurrentUser() user: { sub: string }, @OrgContext() orgId: string) {
-    return this.authService.getMe(orgId, user.sub);
+  getMe(@CurrentUser() user: { id: string }, @OrgContext() orgId: string) {
+    // jwt.strategy.ts повертає { id, orgId, role } — `sub` поле НЕ існує у runtime user.
+    return this.authService.getMe(orgId, user.id);
   }
 
   @Post('change-password')
@@ -50,8 +51,8 @@ export class AuthController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Змінити пароль' })
-  changePassword(@CurrentUser() user: { sub: string }, @OrgContext() orgId: string, @Body() dto: ChangePasswordDto) {
-    return this.authService.changePassword(orgId, user.sub, dto.currentPassword, dto.newPassword);
+  changePassword(@CurrentUser() user: { id: string }, @OrgContext() orgId: string, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(orgId, user.id, dto.currentPassword, dto.newPassword);
   }
 
   @Post('login')

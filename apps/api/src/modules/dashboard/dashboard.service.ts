@@ -54,15 +54,23 @@ export class DashboardService {
           },
         }),
 
-        // Низькі залишки: товари де quantity < minStock (minStock зберігається в Good)
-        // `take` не має ефекту на count() — використовується умовний фільтр.
-        this.prisma.stockItem.count({
-          where: {
-            orgId,
-            // `quantity < good.minStock` неможливо виразити декларативно у Prisma where —
-            // повертаємо загальний count; деталізована логіка в /stock-items/low.
-          },
-        }),
+        // Низькі залишки: StockItem де `quantity <= minStock` (per-warehouse minStock).
+        // Bug #83: попередня версія повертала ВСЮ кількість stock_items (без фільтра),
+        // дашборд показував misleading number. Узгоджуємо з /stock-items/low —
+        // через raw COUNT (Prisma не підтримує cross-field порівняння у where).
+        // Schema без @map → колонки camelCase у Postgres → подвійні лапки обов'язкові.
+        this.prisma.$queryRaw<Array<{ count: bigint }>>`
+          SELECT COUNT(*)::bigint AS count
+          FROM stock_items si
+          JOIN goods g ON g.id = si."goodId"
+          JOIN warehouses w ON w.id = si."warehouseId"
+          WHERE si."orgId" = ${orgId}::uuid
+            AND si."deletedAt" IS NULL
+            AND g."deletedAt" IS NULL
+            AND w."deletedAt" IS NULL
+            AND si."minStock" IS NOT NULL
+            AND si.quantity <= si."minStock"
+        `,
       ]);
 
     if (activeWoCount.status === 'rejected') this.logger.warn(`activeWo failed: ${activeWoCount.reason}`);
@@ -85,7 +93,12 @@ export class DashboardService {
         ? pendingInvoiceCount.value
         : 0;
 
-    const lowStock = lowStockCount.status === 'fulfilled' ? lowStockCount.value : 0;
+    // `$queryRaw` returns Array<{ count: bigint }>; extract the single row.
+    // `Number(bigint)` is safe — low-stock counts are far below 2^53.
+    const lowStock =
+      lowStockCount.status === 'fulfilled' && lowStockCount.value.length > 0
+        ? Number(lowStockCount.value[0].count)
+        : 0;
 
     return {
       activeWo,

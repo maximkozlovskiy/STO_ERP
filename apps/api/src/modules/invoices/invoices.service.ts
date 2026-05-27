@@ -159,17 +159,41 @@ export class InvoicesService {
     });
     if (!original) throw new NotFoundException('Рахунок не знайдено');
 
+    // Bug #90: validate counterparty still exists (not soft-deleted) BEFORE create.
+    // Otherwise Prisma P2003 surfaces as HTTP 500 instead of a friendly 404.
+    const counterparty = await this.prisma.counterparty.findFirst({
+      where: { id: original.counterpartyId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!counterparty) throw new NotFoundException('Контрагента було видалено — клонування неможливе');
+
     // 2. Get new number
     const number = await this.docNumbers.next(orgId, 'INVOICE');
 
-    // 3. Create cloned invoice as DRAFT
+    // 3. Pre-compute VAT totals from original's lines so the cloned invoice
+    // ships consistent totalWithoutVat/totalVat/totalWithVat (Bug #82). Without
+    // this, Prisma defaults leave them at 0 while lines[].priceWithVat has real values.
+    const totalWithoutVat = original.lines.reduce((s, l) => s + Number(l.priceWithoutVat), 0);
+    const totalVat = original.lines.reduce((s, l) => s + Number(l.vatAmount), 0);
+    const totalWithVat = original.lines.reduce((s, l) => s + Number(l.priceWithVat), 0);
+
+    // 4. Create cloned invoice as DRAFT
+    // Bug #91: clone is a standalone invoice — must NOT inherit workOrderId,
+    // otherwise the same WO accumulates duplicate invoices and the WO→Invoice
+    // 1:1 invariant breaks (auto-invoice on completion would create a 3rd).
     const cloned = await this.prisma.invoice.create({
       data: {
         orgId,
         counterpartyId: original.counterpartyId,
-        workOrderId: original.workOrderId,
+        workOrderId: null,
         number,
-        amount: original.amount,
+        // When the invoice has line items, sync `amount` with their total to
+        // avoid mismatch between `amount` and recalculated VAT breakdown.
+        // Fall back to `original.amount` when there are no lines.
+        amount: original.lines.length > 0 ? totalWithVat : original.amount,
+        totalWithoutVat,
+        totalVat,
+        totalWithVat,
         dueDate: original.dueDate,
         notes: original.notes,
         status: InvoiceStatus.DRAFT,

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { DayPicker } from 'react-day-picker';
+import { useState, useRef, useEffect, type ChangeEvent } from 'react';
+import { DayPicker, type Matcher } from 'react-day-picker';
 import { uk } from 'date-fns/locale';
 import { format, parse, isValid } from 'date-fns';
 import { Calendar } from 'lucide-react';
@@ -33,7 +33,8 @@ function displayDate(value: string): string {
 }
 
 export function DatePickerInput({
-  value, onChange, label, hint, errorMessage, required, disabled, placeholder = 'ДД.ММ.РРРР', className
+  value, onChange, label, hint, errorMessage, required, disabled, placeholder = 'ДД.ММ.РРРР', className,
+  min, max,
 }: DatePickerInputProps) {
   const [open, setOpen] = useState(false);
   const [inputText, setInputText] = useState(displayDate(value));
@@ -54,13 +55,25 @@ export function DatePickerInput({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Bug #87: parse min/max bounds and enforce them in both manual typing and DayPicker.
+  const minDate = parseApiDate(min ?? '');
+  const maxDate = parseApiDate(max ?? '');
+
+  const isWithinBounds = (d: Date): boolean => {
+    if (minDate && d < minDate) return false;
+    if (maxDate && d > maxDate) return false;
+    return true;
+  };
+
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value;
     setInputText(text);
     // Try to parse DD.MM.YYYY manually typed input
     if (text.length === 10) {
       const parsed = parse(text, 'dd.MM.yyyy', new Date());
-      if (isValid(parsed)) {
+      // Bug #87: reject out-of-range dates (silently — UI shows raw text, but
+      // onChange does not fire so parent's `value` stays valid).
+      if (isValid(parsed) && isWithinBounds(parsed)) {
         onChange(format(parsed, 'yyyy-MM-dd'));
       }
     }
@@ -69,11 +82,17 @@ export function DatePickerInput({
 
   const handleDaySelect = (day: Date | undefined) => {
     if (!day) return;
+    if (!isWithinBounds(day)) return;
     onChange(format(day, 'yyyy-MM-dd'));
     setOpen(false);
   };
 
   const selected = parseApiDate(value);
+
+  // Bug #87: react-day-picker `disabled` accepts an array of matchers.
+  const disabledMatchers: Matcher[] = [];
+  if (minDate) disabledMatchers.push({ before: minDate });
+  if (maxDate) disabledMatchers.push({ after: maxDate });
 
   return (
     <div ref={containerRef} className={cn('relative', className)}>
@@ -115,6 +134,7 @@ export function DatePickerInput({
             locale={uk}
             weekStartsOn={1}
             showOutsideDays
+            disabled={disabledMatchers.length > 0 ? disabledMatchers : undefined}
             classNames={{
               root: 'rdp-root',
               month_caption: 'flex justify-center items-center mb-2 font-medium text-sm text-foreground',

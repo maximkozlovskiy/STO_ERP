@@ -44,8 +44,14 @@ export class WorkOrdersController {
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Оновити наряд' })
-  update(@OrgContext() orgId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderDto) {
-    return this.service.update(orgId, id, dto);
+  update(
+    @OrgContext() orgId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkOrderDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    // Bug #86: pass user.id so update() writes a per-field AuditEvent.
+    return this.service.update(orgId, id, dto, user.id);
   }
 
   @Get(':id/pdf')

@@ -77,8 +77,9 @@ export class StockDocumentsController {
     @OrgContext() orgId: string,
     @Param('id') id: string,
     @Body() dto: TransitionStockDocumentDto,
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.transition(orgId, id, dto.status as DocTransitionStatus, user?.sub);
+    // jwt.strategy.ts повертає { id, orgId, role }. Поле `sub` живе тільки у JWT payload, не в request.user.
+    return this.service.transition(orgId, id, dto.status as DocTransitionStatus, user?.id);
   }
 }

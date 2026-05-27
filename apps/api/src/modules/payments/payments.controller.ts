@@ -36,8 +36,9 @@ export class PaymentsController {
   create(
     @OrgContext() orgId: string,
     @Body() dto: CreatePaymentDto,
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.create(orgId, dto, user?.sub);
+    // jwt.strategy.ts повертає { id, orgId, role }. Поле `sub` живе тільки у JWT payload, не в request.user.
+    return this.service.create(orgId, dto, user?.id);
   }
 }

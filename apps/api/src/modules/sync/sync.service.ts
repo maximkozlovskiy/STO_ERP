@@ -25,6 +25,8 @@ const PULL_TABLES = [
   'calendar_slots',
   'maintenance_schedules', 'completion_acts',
   'pricing_rules',
+  // B3: warranties — mobile mechanics need to see which work is under warranty
+  'warranties',
 ] as const;
 
 // Tables safe for push — excludes append-only logs and FSM-controlled models

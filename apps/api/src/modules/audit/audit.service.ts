@@ -43,14 +43,21 @@ export class AuditService {
     entityType: string,
     entityId: string,
   ): Promise<{ items: AuditEventItem[]; total: number }> {
-    const items = await this.prisma.auditEvent.findMany({
-      where: { orgId, entityType, entityId },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: {
-        user: { select: { firstName: true, lastName: true } },
-      },
-    });
+    // Bug #88: previously returned `total: items.length` which capped at the take=100
+    // limit and silently hid extra events from the UI. Use a real $transaction count
+    // so the frontend knows the actual number of events for this entity.
+    const where = { orgId, entityType, entityId };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.auditEvent.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: {
+          user: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.auditEvent.count({ where }),
+    ]);
     return {
       items: items.map((ev) => ({
         id: ev.id,
@@ -59,7 +66,7 @@ export class AuditService {
         createdAt: ev.createdAt.toISOString(),
         user: { firstName: ev.user.firstName, lastName: ev.user.lastName },
       })),
-      total: items.length,
+      total,
     };
   }
 }

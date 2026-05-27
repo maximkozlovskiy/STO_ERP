@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateWarrantyDto, ClaimWarrantyDto, WarrantyResponseDto, WarrantyListDto } from './warranties.dto';
 
@@ -51,6 +51,32 @@ export class WarrantiesService {
     const cp = await this.prisma.counterparty.findFirst({ where: { id: dto.counterpartyId, orgId, deletedAt: null } });
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
 
+    // Tenant FK validation: workOrderLineId/workOrderPartId must belong to the same WO
+    // (and therefore same org). Without this, an attacker could attach a warranty to
+    // a line/part from a different work order — possibly cross-tenant — through the
+    // global UUID FK.
+    if (dto.workOrderLineId) {
+      const line = await this.prisma.workOrderLine.findFirst({
+        where: { id: dto.workOrderLineId, orgId, workOrderId: dto.workOrderId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!line) throw new NotFoundException('Рядок наряду не знайдено');
+    }
+    if (dto.workOrderPartId) {
+      const part = await this.prisma.workOrderPart.findFirst({
+        where: { id: dto.workOrderPartId, orgId, workOrderId: dto.workOrderId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!part) throw new NotFoundException('Запчастину наряду не знайдено');
+    }
+
+    // expiresAt must be in the future — past-dated warranties make no business sense
+    // and would immediately appear as expired in /warranties/expiring.
+    const expiresAt = new Date(dto.expiresAt);
+    if (expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Дата завершення гарантії має бути в майбутньому');
+    }
+
     const w = await this.prisma.warranty.create({
       data: {
         orgId,
@@ -58,7 +84,7 @@ export class WarrantiesService {
         workOrderLineId: dto.workOrderLineId,
         workOrderPartId: dto.workOrderPartId,
         counterpartyId: dto.counterpartyId,
-        expiresAt: new Date(dto.expiresAt),
+        expiresAt,
         description: dto.description ?? '',
       },
       include: {
@@ -98,6 +124,15 @@ export class WarrantiesService {
   }
 
   async findByCounterparty(orgId: string, counterpartyId: string): Promise<WarrantyListDto> {
+    // Verify counterparty belongs to org BEFORE returning warranties — otherwise a
+    // probe with a foreign UUID would always return an empty list (200 OK), letting
+    // an attacker enumerate which UUIDs exist by timing/log differences.
+    const cp = await this.prisma.counterparty.findFirst({
+      where: { id: counterpartyId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.warranty.findMany({
         where: { orgId, counterpartyId, deletedAt: null },
@@ -133,6 +168,12 @@ export class WarrantiesService {
   }
 
   async findByWorkOrder(orgId: string, workOrderId: string): Promise<WarrantyListDto> {
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id: workOrderId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.warranty.findMany({
         where: { orgId, workOrderId, deletedAt: null },
@@ -151,6 +192,16 @@ export class WarrantiesService {
   async claim(orgId: string, id: string, dto: ClaimWarrantyDto): Promise<WarrantyResponseDto> {
     const w = await this.prisma.warranty.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!w) throw new NotFoundException('Гарантію не знайдено');
+
+    // Business rule: a warranty can be claimed exactly once. Re-claiming would silently
+    // overwrite the previous claim metadata and break the warranty journal.
+    if (w.claimedAt) {
+      throw new BadRequestException('Гарантія вже використана');
+    }
+    // Business rule: cannot claim an expired warranty.
+    if (w.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Термін гарантії минув');
+    }
 
     // Validate claimWo belongs to same org
     const claimWo = await this.prisma.workOrder.findFirst({ where: { id: dto.claimWoId, orgId, deletedAt: null } });

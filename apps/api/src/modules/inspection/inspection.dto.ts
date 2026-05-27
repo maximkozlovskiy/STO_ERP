@@ -1,13 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsInt, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsOptional, IsString, MaxLength, Max, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
+export const INSPECTION_STATUSES = ['OK', 'WARN', 'CRITICAL'] as const;
+export type InspectionStatus = (typeof INSPECTION_STATUSES)[number];
+
 export class InspectionPointDto {
-  @ApiProperty() @IsString() name!: string;
-  @ApiProperty() @IsString() value!: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() unit?: string;
-  @ApiProperty({ enum: ['OK', 'WARN', 'CRITICAL'] }) @IsString() status!: 'OK' | 'WARN' | 'CRITICAL';
-  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  @ApiProperty() @IsString() @MaxLength(200) name!: string;
+  @ApiProperty() @IsString() @MaxLength(200) value!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) unit?: string;
+  // Whitelist enum values — @IsString() alone would accept any string.
+  @ApiProperty({ enum: INSPECTION_STATUSES })
+  @IsIn(INSPECTION_STATUSES)
+  status!: InspectionStatus;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) notes?: string;
 }
 
 export class CreateInspectionDto {

@@ -149,7 +149,9 @@ export class WebhooksService {
           payload: data,
         },
         {
-          attempts: 5,
+          // Offline-first: ≥10 retries with exponential backoff so transient
+          // network outages or remote 5xx errors do not lose webhook events.
+          attempts: 10,
           backoff: { type: 'exponential', delay: 60_000 },
           removeOnComplete: 100,
           removeOnFail: 200,

@@ -23,6 +23,10 @@ let orgRow: {
   allowPartialPayment: boolean;
   brandTheme: string;
   costMethod: 'FIFO' | 'FEFO' | 'LIFO' | 'AVG_COST';
+  // Bug #0a / #84: ці поля додані у схему і DTO, але мапінг service.mapOrgSettings
+  // тимчасово їх не повертав. Зберігати їх у мок-рядку — і верифікувати у тестах нижче.
+  followUpActive: boolean;
+  followUpDays: number;
   uiFeatures: Record<string, unknown>;
   updatedAt: Date;
 };
@@ -40,6 +44,8 @@ function freshOrgRow() {
     allowPartialPayment: true,
     brandTheme: 'blue',
     costMethod: 'FIFO',
+    followUpActive: false,
+    followUpDays: 90,
     uiFeatures: { ...UI_FEATURES_DEFAULTS },
     updatedAt: new Date('2026-01-01T00:00:00Z'),
   };
@@ -252,6 +258,52 @@ describe('Settings — HTTP Contract', () => {
         method: 'PATCH',
         url: '/settings/organisation',
         payload: { costMethod: 'AVERAGE' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
+  // Bug #0a / #84 regression: schema/DTO/service must agree on followUp fields end-to-end.
+  // Previously the DTO had the fields, but mapOrgSettings shape did not — TS build broke
+  // AND GET returned `undefined` even though DB had real values.
+  describe('Bug #84 regression: followUp fields end-to-end', () => {
+    it('GET /settings/organisation повертає followUpActive і followUpDays', async () => {
+      const res = await app.inject({ method: 'GET', url: '/settings/organisation' });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Record<string, unknown>;
+      expect(body).toHaveProperty('followUpActive');
+      expect(body).toHaveProperty('followUpDays');
+      expect(typeof body.followUpActive).toBe('boolean');
+      expect(typeof body.followUpDays).toBe('number');
+    });
+
+    it('PATCH /settings/organisation приймає followUpActive=true, followUpDays=120', async () => {
+      redisMock.get.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { followUpActive: true, followUpDays: 120 },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { followUpActive: boolean; followUpDays: number };
+      expect(body.followUpActive).toBe(true);
+      expect(body.followUpDays).toBe(120);
+    });
+
+    it('PATCH відхиляє followUpDays < 30 (поза межами @Min/@Max)', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { followUpDays: 5 },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('PATCH відхиляє followUpDays > 365', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { followUpDays: 999 },
       });
       expect(res.statusCode).toBe(400);
     });

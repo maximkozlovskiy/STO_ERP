@@ -98,11 +98,16 @@ export class WorkOrderMediaService {
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
 
-    const records = await this.prisma.workOrderMedia.findMany({
-      where: { orgId, workOrderId },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
+    // Bug #88 pattern: total must reflect actual count in DB, not the take-capped length —
+    // otherwise UI thinks the user is seeing everything when 51+ items exist.
+    const [records, total] = await this.prisma.$transaction([
+      this.prisma.workOrderMedia.findMany({
+        where: { orgId, workOrderId },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      this.prisma.workOrderMedia.count({ where: { orgId, workOrderId } }),
+    ]);
 
     const items = await Promise.all(
       records.map(async (r) => {
@@ -111,7 +116,7 @@ export class WorkOrderMediaService {
       }),
     );
 
-    return { items, total: items.length };
+    return { items, total };
   }
 
   async remove(orgId: string, workOrderId: string, mediaId: string): Promise<void> {
@@ -128,7 +133,6 @@ export class WorkOrderMediaService {
     r: {
       id: string;
       workOrderId: string;
-      fileKey: string;
       filename: string;
       mimeType: string;
       sizeBytes: number;
@@ -137,10 +141,10 @@ export class WorkOrderMediaService {
     },
     signedUrl: string,
   ): WorkOrderMediaResponseDto {
+    // Bug #93: fileKey stays internal — exposed only via the time-limited signedUrl.
     return {
       id: r.id,
       workOrderId: r.workOrderId,
-      fileKey: r.fileKey,
       filename: r.filename,
       mimeType: r.mimeType,
       sizeBytes: r.sizeBytes,

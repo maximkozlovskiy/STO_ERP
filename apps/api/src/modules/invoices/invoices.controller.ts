@@ -47,9 +47,11 @@ export class InvoicesController {
   create(
     @OrgContext() orgId: string,
     @Body() dto: CreateInvoiceDto,
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.create(orgId, dto, user?.sub);
+    // Bug #92: @CurrentUser повертає { id, orgId, role } (jwt.strategy.ts), не { sub }.
+    // user.sub був завжди undefined → creator/audit info втрачено.
+    return this.service.create(orgId, dto, user?.id);
   }
 
   @Post('from-work-order/:workOrderId')
@@ -58,9 +60,9 @@ export class InvoicesController {
   createFromWorkOrder(
     @OrgContext() orgId: string,
     @Param('workOrderId') workOrderId: string,
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.createFromWorkOrder(orgId, workOrderId, user?.sub);
+    return this.service.createFromWorkOrder(orgId, workOrderId, user?.id);
   }
 
   @Patch(':id')

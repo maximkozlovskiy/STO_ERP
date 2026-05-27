@@ -87,8 +87,9 @@ export class PurchaseOrdersController {
     @OrgContext() orgId: string,
     @Param('id') id: string,
     @Body() dto: ReceivePurchaseOrderDto,
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.receive(orgId, id, dto, user?.sub);
+    // jwt.strategy.ts повертає { id, orgId, role }. Поле `sub` живе тільки у JWT payload, не в request.user.
+    return this.service.receive(orgId, id, dto, user?.id);
   }
 }

@@ -10,7 +10,17 @@ export class LoyaltyService {
     @InjectQueue('loyalty') private readonly loyaltyQueue: Queue,
   ) {}
 
+  /** Тенант-валідація: counterparty має належати org */
+  private async assertCounterparty(orgId: string, counterpartyId: string): Promise<void> {
+    const cp = await this.prisma.counterparty.findFirst({
+      where: { id: counterpartyId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+  }
+
   async getOrCreateAccount(orgId: string, counterpartyId: string) {
+    await this.assertCounterparty(orgId, counterpartyId);
     return this.prisma.loyaltyAccount.upsert({
       where: { counterpartyId },
       update: {},
@@ -19,6 +29,7 @@ export class LoyaltyService {
   }
 
   async getBalance(orgId: string, counterpartyId: string): Promise<{ balance: number; counterpartyId: string }> {
+    await this.assertCounterparty(orgId, counterpartyId);
     const acc = await this.prisma.loyaltyAccount.findFirst({
       where: { counterpartyId, orgId },
     });
@@ -26,6 +37,7 @@ export class LoyaltyService {
   }
 
   async getTransactions(orgId: string, counterpartyId: string) {
+    await this.assertCounterparty(orgId, counterpartyId);
     const acc = await this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } });
     if (!acc) return { items: [], total: 0 };
     const [items, total] = await this.prisma.$transaction([
@@ -106,30 +118,43 @@ export class LoyaltyService {
     points: number,
   ): Promise<{ discountAmount: number }> {
     if (points <= 0) throw new BadRequestException('Кількість балів має бути > 0');
+    await this.assertCounterparty(orgId, counterpartyId);
 
     const settings = await this.prisma.organisationSettings.findFirst({ where: { orgId } });
     const redeemRate = Number(settings?.loyaltyRedeemRate ?? 1);
     const discountAmount = points * redeemRate;
 
-    const acc = await this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } });
-    if (!acc) throw new NotFoundException('Рахунок лояльності не знайдено');
-    if (Number(acc.balance) < points) throw new BadRequestException('Недостатньо балів');
+    // Atomic check-and-decrement guards against double-spend when two redeem
+    // requests race. We use `updateMany` with `balance >= points` so the SQL
+    // `UPDATE ... WHERE balance >= N` is evaluated atomically by Postgres —
+    // two concurrent updates cannot both succeed against the same row.
+    // If `count === 0`, either the account doesn't exist or balance was too low.
+    const result = await this.prisma.$transaction(async (tx) => {
+      const acc = await tx.loyaltyAccount.findFirst({
+        where: { counterpartyId, orgId },
+        select: { id: true },
+      });
+      if (!acc) throw new NotFoundException('Рахунок лояльності не знайдено');
 
-    await this.prisma.$transaction([
-      this.prisma.loyaltyAccount.update({
-        where: { id: acc.id },
+      const updated = await tx.loyaltyAccount.updateMany({
+        where: { id: acc.id, balance: { gte: points } },
         data: { balance: { decrement: points } },
-      }),
-      this.prisma.loyaltyTransaction.create({
+      });
+      if (updated.count === 0) {
+        throw new BadRequestException('Недостатньо балів');
+      }
+
+      await tx.loyaltyTransaction.create({
         data: {
           accountId: acc.id,
           type: 'REDEEM',
           points,
           notes: `Списання ${points} балів = ${discountAmount} грн знижки`,
         },
-      }),
-    ]);
+      });
+      return discountAmount;
+    });
 
-    return { discountAmount };
+    return { discountAmount: result };
   }
 }
