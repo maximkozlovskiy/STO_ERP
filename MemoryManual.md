@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+<pending> fix(tester): cycle-5 — sync/status 500 + sync/pull BigInt payload (Bugs #127, #128)
+2c43b6a docs(memory): record /sto-review on cbc0a97..b51e2dd (BigInt+static assets sweep)
 b51e2dd docs(skills): add BigInt syncVersion + manifest static asset checks to sto-review
 ea8f5a6 fix(notifications): serialize BigInt syncVersion before JSON response
 5c2e39d test(contract): add limit=200 regression tests + counterparties contract + static asset smoke
@@ -23,15 +25,23 @@ c30c38c fix(tester): cycle-2 — total: items.length regress + url-guard IPv4-in
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 249/249 passed  (21 файл — +counterparties.contract + work-orders.contract)
-Contract:        ✅ 19 файлів covered
+Unit:            ✅ 255/255 passed  (22 файли — +sync.contract.spec.ts)
+Contract:        ✅ 20 файлів covered (added sync HTTP contract)
 Property-based:  ✅ inventory + settlements + work-orders.fsm invariants (3 файли)
 Components:      ✅ 139/139 passed  (13 файлів — Button, Modal, Select, CommandPalette, etc.)
 E2E (Playwright): ⏭ smoke.spec.ts (static assets + auth guard) — ready, dev offline на момент запуску
 Build:           ✅ @sto/api build OK (webpack 9.3s)
 Static assets:   ✅ favicon.ico + icons/icon-192.png + icons/icon-512.png існують у public/
-Latest review:   2026-05-27 — 0 нових проблем (sweep BigInt+static assets чист); skill оновлено
+Latest tester:   2026-05-27 — 2 CRITICAL bugs (#127 sync plural-model, #128 sync BigInt payload); both fixed + regression spec
 ```
+
+### Gotcha — /sto-tester cycle-5 (2026-05-27, commit pending, bugs #127, #128)
+
+- **CRITICAL — Prisma plural-table → singular-model lookup trap (Bug #127, sync.service.ts).** Прісма client експонує моделі **тільки в СІНГУЛЯР camelCase** (`prisma.workOrder`, `prisma.counterparty`, `prisma.warranty`), але Postgres таблиці через `@@map` — ПЛЮРАЛ (`work_orders`, `counterparties`, `warranties`). `SyncService.model()` робив наївний `snake_to_camel('work_orders') → 'workOrders'` → `prisma.workOrders === undefined` → `TypeError: Cannot read properties of undefined (reading 'aggregate')` синхронно при доступі до методу. `.catch()` на async не ловить це бо помилка кидається ДО створення Promise. У `getStatus()` через `Promise.all([...PULL_TABLES.map(t => this.model(t).aggregate(...).catch(...))])` весь Promise.all падає з 500. У `pull()` ховається `try/catch` всередині `.map()` — кожна таблиця тихо скіпається і клієнт завжди отримує `[]`. **Канон:** для будь-якого dynamic `(prisma as any)[modelName]` треба **explicit `TABLE_TO_MODEL: Record<string,string>` мапінг** + `if (!model) throw new Error(...)` (швидке провалення замість тихого undefined). Hairy bit: код проходив TSC бо `(this.prisma as unknown as Record<string, DynamicPrismaModel>)` — тип hides що ключ може не існувати. Регресія: `sync.contract.spec.ts` робить Prisma мок з ТІЛЬКИ сингулярами — якщо хтось знову додасть plural, мок не матиме методу і тест впаде.
+
+- **CRITICAL — Sync pull payload spread BigInt → JSON.stringify 500 (Bug #128, sync.service.ts).** Після фіксу #127 `pull` почав реально знаходити рядки. `payload = { ...row }` копіює row.syncVersion (BigInt) у payload. Outer `syncVersion: Number(row.syncVersion)` сконвертовано, але payload-копія залишається BigInt. Fastify робить `JSON.stringify(response)` → `TypeError: Do not know how to serialize a BigInt`. Окремий патерн від звичайного DTO-mapper: тут BigInt сидить ВСЕРЕДИНІ payload-об'єкту (вкладений рівень), не у top-level response. **Канон:** для sync/pull-like ендпоінтів робити ручний прохід по полях — `if (typeof v === 'bigint') Number(v); else if ('toNumber' in v) v.toNumber()`. Об'єднати з PULL_FIELD_BLACKLIST в один цикл (одна ітерація замість двох). Регресія: `sync.contract.spec.ts` мокає `findMany` з `syncVersion: 5n` і перевіряє `typeof body.payload.syncVersion === 'number'`.
+
+- **Why cycle-4 sweep missed it:** попередні sweep'и перевіряли `findAll` що повертають bare arrays, BigInt у top-level response, raw SQL casing. Але dynamic model lookup і payload-spread — нові патерни що проявилися тільки після того як sync почав використовуватись через WEB (settings/sync page). Pull endpoint завжди повертав `[]` через silent try/catch — баг сидів місяцями і ніхто не бачив. Знайдено тільки тому що **тестувальник curl-нув кожен endpoint** із list із SKILL §1 і перевірив 200/500 на всі шляхи включно з `/sync/status`. Канон: regression sweep MUST включати `/sync/status` + `/sync/pull` як обов'язкові ендпоінти для smoke check.
 
 ### Gotcha — /sto-review 2026-05-27 (commit b51e2dd)
 
