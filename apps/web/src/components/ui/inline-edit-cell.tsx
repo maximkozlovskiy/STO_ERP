@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -86,7 +86,7 @@ interface InlineViewCellProps {
   enabled?: boolean;
   onClick: () => void;
   className?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
   /**
    * Override the default aria-label. When omitted, screen readers announce
    * "Редагувати: <value>" — required because `title` alone is unreliable
