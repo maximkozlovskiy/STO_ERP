@@ -10,6 +10,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { SearchCombobox } from '@/components/ui/search-combobox';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -147,7 +148,7 @@ export default function WorkOrdersPage() {
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
+  const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
   const [templates, setTemplates] = useState<WOTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<WOTemplate | null>(null);
 
@@ -224,9 +225,6 @@ export default function WorkOrdersPage() {
       // Auto-select single branch but preserve user's manual pick (race-safe on remount).
       if (bs.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: bs[0].id }));
     }).catch((e: unknown) => setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити філії'));
-    apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200')
-      .then(r => setCounterparties(r.items))
-      .catch((e: unknown) => setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити контрагентів'));
     apiFetch<{ items: WOTemplate[] }>('/work-order-templates?limit=100')
       .then(r => setTemplates(r.items))
       .catch(() => {});
@@ -330,9 +328,6 @@ export default function WorkOrdersPage() {
         setError(e instanceof Error ? e.message : 'Помилка завантаження автомобілів');
       });
   };
-
-  const cpName = (cp: Counterparty) =>
-    cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ') ?? '';
 
   const create = async () => {
     const mileage = form.inMileage ? Number(form.inMileage) : undefined;
@@ -834,20 +829,28 @@ export default function WorkOrdersPage() {
             </div>
           )}
 
-          <Select
+          <SearchCombobox<Counterparty>
             label="Клієнт"
             required
+            placeholder="Ім'я, телефон, держ. номер авто..."
             value={form.counterpartyId}
-            onChange={e => {
-              setForm(f => ({ ...f, counterpartyId: e.target.value, vehicleId: '' }));
-              loadVehicles(e.target.value);
+            displayValue={counterpartyDisplayName}
+            onSelect={cp => {
+              const name = cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ') ?? '';
+              setCounterpartyDisplayName(name);
+              setForm(f => ({ ...f, counterpartyId: cp.id, vehicleId: '' }));
+              loadVehicles(cp.id);
             }}
-          >
-            <option value="">— Оберіть —</option>
-            {counterparties.map(c => (
-              <option key={c.id} value={c.id}>{cpName(c)}</option>
-            ))}
-          </Select>
+            onClear={() => {
+              setCounterpartyDisplayName('');
+              setForm(f => ({ ...f, counterpartyId: '', vehicleId: '' }));
+              setVehicles([]);
+            }}
+            fetchItems={q => apiFetch<{ items: Counterparty[] }>(`/counterparties?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(c => ({
+              ...c,
+              primary: c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ') ?? '',
+            })))}
+          />
 
           <Select
             label="Автомобіль"

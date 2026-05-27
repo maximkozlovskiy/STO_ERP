@@ -19,7 +19,7 @@ export class UnitsService {
     const item = await this.prisma.unitOfMeasure.findFirst({
       where: { id, orgId, deletedAt: null },
     });
-    if (!item) throw new NotFoundException('Одиниця вимірю не знайдена');
+    if (!item) throw new NotFoundException('Одиниця виміру не знайдена');
     return this.toDto(item);
   }
 
@@ -39,9 +39,9 @@ export class UnitsService {
 
   async update(orgId: string, id: string, dto: UpdateUnitDto): Promise<UnitResponseDto> {
     const existing = await this.prisma.unitOfMeasure.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!existing) throw new NotFoundException('Одиниця вимірю не знайдена');
+    if (!existing) throw new NotFoundException('Одиниця виміру не знайдена');
 
-    if (existing.shortName !== dto.shortName) {
+    if (dto.shortName && existing.shortName !== dto.shortName) {
       const duplicate = await this.prisma.unitOfMeasure.findFirst({
         where: { orgId, shortName: dto.shortName, deletedAt: null, NOT: { id } },
       });
@@ -59,19 +59,25 @@ export class UnitsService {
 
   async remove(orgId: string, id: string): Promise<void> {
     const existing = await this.prisma.unitOfMeasure.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!existing) throw new NotFoundException('Одиниця вимірю не знайдена');
+    if (!existing) throw new NotFoundException('Одиниця виміру не знайдена');
     await this.prisma.unitOfMeasure.update({
       where: { id, orgId },
       data: { deletedAt: new Date() },
     });
   }
 
-  private toDto(item: {
-    id: string; orgId: string; name: string; shortName: string; isSystem: boolean; createdAt: Date; updatedAt: Date;
+  toDto(item: {
+    id: string; orgId: string; name: string; shortName: string; isSystem: boolean;
+    coefficient: number; width: number | null; height: number | null;
+    depth: number | null; volume: number | null; weight: number | null;
+    createdAt: Date; updatedAt: Date;
   }): UnitResponseDto {
     return {
       id: item.id, orgId: item.orgId, name: item.name,
       shortName: item.shortName, isSystem: item.isSystem,
+      coefficient: item.coefficient,
+      width: item.width, height: item.height, depth: item.depth,
+      volume: item.volume, weight: item.weight,
       createdAt: item.createdAt, updatedAt: item.updatedAt,
     };
   }

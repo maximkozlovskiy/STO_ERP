@@ -107,7 +107,7 @@ export class WorkOrdersService {
         parts: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
-          include: { good: { select: { name: true } } },
+          include: { good: { select: { name: true, unit: true, unitOfMeasure: { select: { shortName: true, coefficient: true } } } } },
         },
       },
     });
@@ -243,7 +243,7 @@ export class WorkOrdersService {
         },
         parts: {
           where: { deletedAt: null },
-          include: { good: { select: { name: true } } },
+          include: { good: { select: { name: true, unit: true, unitOfMeasure: { select: { shortName: true, coefficient: true } } } } },
         },
       },
     });
@@ -578,7 +578,7 @@ export class WorkOrdersService {
     const part = await this.prisma.$transaction(async (tx) => {
       const created = await tx.workOrderPart.create({
         data: { orgId, workOrderId, goodId: dto.goodId, warehouseId: dto.warehouseId, quantity: dto.quantity, price, amount },
-        include: { good: { select: { name: true } } },
+        include: { good: { select: { name: true, unit: true, unitOfMeasure: { select: { shortName: true, coefficient: true } } } } },
       });
       await this.recalcTotals(workOrderId, tx, orgId);
       return created;
@@ -600,7 +600,7 @@ export class WorkOrdersService {
       const result = await tx.workOrderPart.update({
         where: { id: partId, orgId },
         data: { quantity, price, amount },
-        include: { good: { select: { name: true } } },
+        include: { good: { select: { name: true, unit: true, unitOfMeasure: { select: { shortName: true, coefficient: true } } } } },
       });
       await this.recalcTotals(workOrderId, tx, orgId);
       return result;
@@ -659,7 +659,7 @@ export class WorkOrdersService {
           },
           parts: {
             where: { deletedAt: null },
-            include: { good: { select: { name: true } } },
+            include: { good: { select: { name: true, unit: true, unitOfMeasure: { select: { shortName: true, coefficient: true } } } } },
             take: 500,
           },
         },
@@ -750,11 +750,14 @@ export class WorkOrdersService {
   private toPartDto(part: {
     id: string; workOrderId: string; goodId: string; warehouseId: string;
     quantity: number; price: Prisma.Decimal; amount: Prisma.Decimal; createdAt: Date;
-    good?: { name: string } | null;
+    good?: { name: string; unit: string; unitOfMeasure: { shortName: string; coefficient: number } | null } | null;
   }): WorkOrderPartResponseDto {
+    const uom = part.good?.unitOfMeasure;
     return {
       id: part.id, workOrderId: part.workOrderId,
       goodId: part.goodId, goodName: part.good?.name,
+      unitShortName: uom?.shortName ?? part.good?.unit,
+      coefficient: uom?.coefficient ?? 1,
       warehouseId: part.warehouseId,
       quantity: part.quantity, price: Number(part.price), amount: Number(part.amount),
       createdAt: part.createdAt,

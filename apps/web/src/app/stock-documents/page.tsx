@@ -9,6 +9,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { SearchCombobox } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel } from '@/components/ui/detail-panel';
@@ -67,12 +68,10 @@ export default function StockDocumentsPage() {
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [goods, setGoods] = useState<Good[]>([]);
-
   const [form, setForm] = useState({
     type: 'WRITEOFF', branchId: '', warehouseId: '', targetWarehouseId: '', notes: '',
   });
-  const [lines, setLines] = useState<{ goodId: string; quantity: string; price: string }[]>([]);
+  const [lines, setLines] = useState<{ goodId: string; goodName: string; quantity: string; price: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   const limit = 20;
@@ -102,13 +101,11 @@ export default function StockDocumentsPage() {
       Promise.all([
         apiFetch<Branch[] | { items: Branch[] }>('/branches'),
         apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses'),
-        apiFetch<{ items: Good[] } | Good[]>('/goods?limit=200'),
-      ]).then(([b, w, g]) => {
+      ]).then(([b, w]) => {
         const bList = Array.isArray(b) ? b : b.items;
         const wList = Array.isArray(w) ? w : w.items;
         setBranches(bList);
         setWarehouses(wList);
-        setGoods(Array.isArray(g) ? g : g.items);
         // Auto-select defaults only if user hasn't already picked one — avoids
         // overriding manual choice if modal re-opens during a slow fetch, and
         // also collapses two sequential setForm calls into one render-safe update.
@@ -170,7 +167,7 @@ export default function StockDocumentsPage() {
     finally { setSaving(false); }
   };
 
-  const addLine = () => setLines(l => [...l, { goodId: '', quantity: '1', price: '' }]);
+  const addLine = () => setLines(l => [...l, { goodId: '', goodName: '', quantity: '1', price: '' }]);
   const updateLine = (i: number, field: string, value: string) =>
     setLines(l => l.map((x, idx) => idx === i ? { ...x, [field]: value } : x));
   const removeLine = (i: number) => setLines(l => l.filter((_, idx) => idx !== i));
@@ -479,15 +476,17 @@ export default function StockDocumentsPage() {
             </div>
             <div className="space-y-2">
               {lines.map((l, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <select
-                    value={l.goodId}
-                    onChange={e => updateLine(i, 'goodId', e.target.value)}
-                    className="flex-1 px-2 py-1.5 border border-border rounded text-xs bg-surface text-foreground"
-                  >
-                    <option value="">Товар</option>
-                    {goods.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
+                <div key={i} className="flex gap-2 items-start">
+                  <div className="flex-1">
+                    <SearchCombobox<Good>
+                      placeholder="Товар..."
+                      value={l.goodId}
+                      displayValue={l.goodName}
+                      onSelect={g => setLines(ls => ls.map((x, idx) => idx === i ? { ...x, goodId: g.id, goodName: g.name } : x))}
+                      onClear={() => setLines(ls => ls.map((x, idx) => idx === i ? { ...x, goodId: '', goodName: '' } : x))}
+                      fetchItems={q => apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(g => ({ ...g, primary: g.name, secondary: g.sku ?? undefined })))}
+                    />
+                  </div>
                   <Input
                     type="number"
                     value={l.quantity}

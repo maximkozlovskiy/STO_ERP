@@ -9,6 +9,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { SearchCombobox } from '@/components/ui/search-combobox';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -76,9 +77,9 @@ export default function InvoicesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showPayment, setShowPayment] = useState<Invoice | null>(null);
 
-  const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [payMethods, setPayMethods] = useState<{ code: string; name: string }[]>([]);
   const [form, setForm] = useState({ counterpartyId: '', amount: '', dueDate: '' });
+  const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
   const [payForm, setPayForm] = useState({ method: 'cash', amount: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -113,18 +114,6 @@ export default function InvoicesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    if (!showCreate) return;
-    let cancelled = false;
-    apiFetch<{ items: Counterparty[] }>('/counterparties?limit=200')
-      .then(d => { if (!cancelled && mountedRef.current) setCounterparties(d.items); })
-      .catch((e: unknown) => {
-        if (!cancelled && mountedRef.current) {
-          setError(e instanceof Error ? e.message : 'Помилка завантаження контрагентів');
-        }
-      });
-    return () => { cancelled = true; };
-  }, [showCreate]);
 
   useEffect(() => {
     if (!showPayment) return;
@@ -588,19 +577,23 @@ export default function InvoicesPage() {
         }
       >
         <div className="space-y-4">
-          <Select
+          <SearchCombobox<Counterparty>
             label="Контрагент"
             required
+            placeholder="Ім'я, телефон, держ. номер авто..."
             value={form.counterpartyId}
-            onChange={e => setForm(f => ({ ...f, counterpartyId: e.target.value }))}
-            placeholder="Оберіть контрагента"
-          >
-            {counterparties.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ')}
-              </option>
-            ))}
-          </Select>
+            displayValue={counterpartyDisplayName}
+            onSelect={c => {
+              const name = c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ') ?? '';
+              setCounterpartyDisplayName(name);
+              setForm(f => ({ ...f, counterpartyId: c.id }));
+            }}
+            onClear={() => { setCounterpartyDisplayName(''); setForm(f => ({ ...f, counterpartyId: '' })); }}
+            fetchItems={q => apiFetch<{ items: Counterparty[] }>(`/counterparties?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(c => ({
+              ...c,
+              primary: c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ') ?? '',
+            })))}
+          />
           <Input
             label="Сума, ₴"
             required

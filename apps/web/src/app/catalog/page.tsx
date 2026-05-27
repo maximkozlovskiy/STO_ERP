@@ -24,7 +24,7 @@ interface Category { id: string; name: string; children: Category[]; }
 interface Work { id: string; categoryId: string; categoryName: string; name: string; normoHours: number; price: number; description: string | null; isWarranty: boolean; }
 interface PaginatedWorks { items: Work[]; total: number; page: number; limit: number; }
 interface Brand { id: string; name: string; }
-interface Unit { id: string; name: string; shortName: string; isSystem: boolean; }
+interface Unit { id: string; name: string; shortName: string; isSystem: boolean; coefficient: number; width?: number | null; height?: number | null; depth?: number | null; volume?: number | null; weight?: number | null; }
 interface Good { id: string; sku: string | null; name: string; unit: string; unitId: string | null; purchasePrice: number | null; salePrice: number; category: string | null; barcode: string | null; brandId: string | null; notes: string | null; goodType?: string | null; preferredSupplierId?: string | null; preferredSupplierName?: string | null; }
 interface Supplier { id: string; firstName: string | null; lastName: string | null; companyName: string | null; }
 interface PaginatedGoods { items: Good[]; total: number; page: number; limit: number; }
@@ -1313,7 +1313,7 @@ function UnitsTab() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ name: '', shortName: '' });
+  const [form, setForm] = useState({ name: '', shortName: '', coefficient: '1', width: '', height: '', depth: '', volume: '', weight: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -1333,10 +1333,19 @@ function UnitsTab() {
     try {
       await apiFetch<Unit>('/units', {
         method: 'POST',
-        body: JSON.stringify({ name: form.name.trim(), shortName: form.shortName.trim() }),
+        body: JSON.stringify({
+          name: form.name.trim(),
+          shortName: form.shortName.trim(),
+          coefficient: form.coefficient ? Number(form.coefficient) : undefined,
+          width: form.width ? Number(form.width) : undefined,
+          height: form.height ? Number(form.height) : undefined,
+          depth: form.depth ? Number(form.depth) : undefined,
+          volume: form.volume ? Number(form.volume) : undefined,
+          weight: form.weight ? Number(form.weight) : undefined,
+        }),
       });
       setModal(false);
-      setForm({ name: '', shortName: '' });
+      setForm({ name: '', shortName: '', coefficient: '1', width: '', height: '', depth: '', volume: '', weight: '' });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
@@ -1439,6 +1448,23 @@ function UnitsTab() {
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="штука"
           />
+          <Input
+            label="Коефіцієнт"
+            type="number"
+            value={form.coefficient}
+            onChange={e => setForm(f => ({ ...f, coefficient: e.target.value }))}
+            placeholder="1"
+            hint="Коефіцієнт перерахунку до базової одиниці"
+          />
+          <div className="grid grid-cols-3 gap-2">
+            <Input label="Ширина, м" type="number" value={form.width} onChange={e => setForm(f => ({ ...f, width: e.target.value }))} placeholder="0.0" />
+            <Input label="Висота, м" type="number" value={form.height} onChange={e => setForm(f => ({ ...f, height: e.target.value }))} placeholder="0.0" />
+            <Input label="Глибина, м" type="number" value={form.depth} onChange={e => setForm(f => ({ ...f, depth: e.target.value }))} placeholder="0.0" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input label="Об'єм, м³" type="number" value={form.volume} onChange={e => setForm(f => ({ ...f, volume: e.target.value }))} placeholder="0.0" />
+            <Input label="Вага, кг" type="number" value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} placeholder="0.0" />
+          </div>
         </div>
       </Modal>
     </div>

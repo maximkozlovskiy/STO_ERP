@@ -28,6 +28,20 @@ export class CounterpartiesService {
           { companyName: { contains: query.q, mode: 'insensitive' as const } },
           { phone: { contains: query.q } },
           { edrpou: { contains: query.q } },
+          // Search by vehicle license plate — user looks up client by car number
+          {
+            garages: {
+              some: {
+                deletedAt: null,
+                vehicles: {
+                  some: {
+                    deletedAt: null,
+                    licensePlate: { contains: query.q, mode: 'insensitive' as const },
+                  },
+                },
+              },
+            },
+          },
         ],
       } : {}),
     };

@@ -184,6 +184,8 @@ export class WorkOrderPartResponseDto {
   @ApiProperty() workOrderId!: string;
   @ApiProperty() goodId!: string;
   @ApiPropertyOptional() goodName?: string;
+  @ApiPropertyOptional() unitShortName?: string;
+  @ApiPropertyOptional() coefficient?: number;
   @ApiProperty() warehouseId!: string;
   @ApiProperty() quantity!: number;
   @ApiProperty() price!: number;

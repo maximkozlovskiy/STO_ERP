@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -68,6 +68,7 @@ export default function InfrastructurePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modal, setModal] = useState<'branch' | 'zone' | 'lift' | 'warehouse' | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState<Record<string, string>>({});
@@ -88,12 +89,20 @@ export default function InfrastructurePage() {
   useEffect(() => { loadAll(); }, []);
 
   const openModal = (type: typeof modal, defaults: Record<string, string> = {}) => {
+    setEditingId(null);
     setForm(defaults);
     setError('');
     setModal(type);
   };
 
-  const closeModal = () => { setModal(null); setError(''); };
+  const openEditModal = (type: typeof modal, id: string, defaults: Record<string, string>) => {
+    setEditingId(id);
+    setForm(defaults);
+    setError('');
+    setModal(type);
+  };
+
+  const closeModal = () => { setModal(null); setEditingId(null); setError(''); };
 
   const save = async () => {
     if (modal === 'lift' && form.maxWeightKg) {
@@ -102,16 +111,20 @@ export default function InfrastructurePage() {
     }
     setSaving(true);
     setError('');
+    const method = editingId ? 'PATCH' : 'POST';
     try {
       if (modal === 'branch') {
-        await apiFetch<Branch>('/branches', { method: 'POST', body: JSON.stringify({ name: form.name, address: form.address }) });
+        const url = editingId ? `/branches/${editingId}` : '/branches';
+        await apiFetch<Branch>(url, { method, body: JSON.stringify({ name: form.name, address: form.address }) });
       } else if (modal === 'zone') {
-        await apiFetch<Zone>('/zones', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
+        const url = editingId ? `/zones/${editingId}` : '/zones';
+        await apiFetch<Zone>(url, { method, body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
       } else if (modal === 'lift') {
         const w = form.maxWeightKg ? Number(form.maxWeightKg) : undefined;
         const interval = form.maintenanceIntervalDays ? Number(form.maintenanceIntervalDays) : undefined;
-        await apiFetch<Lift>('/lifts', {
-          method: 'POST',
+        const url = editingId ? `/lifts/${editingId}` : '/lifts';
+        await apiFetch<Lift>(url, {
+          method,
           body: JSON.stringify({
             zoneId: form.zoneId,
             name: form.name,
@@ -126,7 +139,8 @@ export default function InfrastructurePage() {
           }),
         });
       } else if (modal === 'warehouse') {
-        await apiFetch<Warehouse>('/warehouses', { method: 'POST', body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type, isMain: form.isMain === 'true' }) });
+        const url = editingId ? `/warehouses/${editingId}` : '/warehouses';
+        await apiFetch<Warehouse>(url, { method, body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type, isMain: form.isMain === 'true' }) });
       }
       closeModal();
       loadAll();
@@ -208,9 +222,14 @@ export default function InfrastructurePage() {
                     <TableCell className="text-muted-foreground">{b.address}</TableCell>
                     <TableCell className="text-muted-foreground">{b.timezone}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => remove('/branches', b.id)} className="text-destructive/60 hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal('branch', b.id, { name: b.name, address: b.address })} className="text-muted-foreground hover:text-foreground">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => remove('/branches', b.id)} className="text-destructive/60 hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -240,9 +259,14 @@ export default function InfrastructurePage() {
                     <TableCell className="text-muted-foreground">{ZONE_TYPE_LABELS[z.type] ?? z.type}</TableCell>
                     <TableCell className="text-muted-foreground">{branches.find(b => b.id === z.branchId)?.name ?? '—'}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => remove('/zones', z.id)} className="text-destructive/60 hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal('zone', z.id, { branchId: z.branchId, name: z.name, type: z.type })} className="text-muted-foreground hover:text-foreground">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => remove('/zones', z.id)} className="text-destructive/60 hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -269,7 +293,23 @@ export default function InfrastructurePage() {
               </TableHeader>
               <TableBody>
                 {lifts.map(l => (
-                  <LiftRow key={l.id} lift={l} zoneName={zones.find(z => z.id === l.zoneId)?.name ?? '—'} onRemove={() => remove('/lifts', l.id)} nowMs={nowMs} />
+                  <LiftRow
+                    key={l.id}
+                    lift={l}
+                    zoneName={zones.find(z => z.id === l.zoneId)?.name ?? '—'}
+                    onEdit={() => openEditModal('lift', l.id, {
+                      zoneId: l.zoneId, name: l.name, type: l.type,
+                      maxWeightKg: l.maxWeightKg != null ? String(l.maxWeightKg) : '',
+                      status: l.status,
+                      serialNumber: l.serialNumber ?? '',
+                      purchaseDate: l.purchaseDate ? l.purchaseDate.slice(0, 10) : '',
+                      warrantyUntil: l.warrantyUntil ? l.warrantyUntil.slice(0, 10) : '',
+                      maintenanceIntervalDays: l.maintenanceIntervalDays != null ? String(l.maintenanceIntervalDays) : '',
+                      lastMaintenanceDate: l.lastMaintenanceDate ? l.lastMaintenanceDate.slice(0, 10) : '',
+                    })}
+                    onRemove={() => remove('/lifts', l.id)}
+                    nowMs={nowMs}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -316,9 +356,14 @@ export default function InfrastructurePage() {
                       </button>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => remove('/warehouses', w.id)} className="text-destructive/60 hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal('warehouse', w.id, { branchId: w.branchId, name: w.name, type: w.type, isMain: w.isMain ? 'true' : '' })} className="text-muted-foreground hover:text-foreground">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => remove('/warehouses', w.id)} className="text-destructive/60 hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -332,7 +377,7 @@ export default function InfrastructurePage() {
       <Modal
         open={modal === 'branch'}
         onClose={closeModal}
-        title="Нова філія"
+        title={editingId ? 'Редагувати філію' : 'Нова філія'}
         footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.address} className="w-full">Зберегти</Button>}
       >
         {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
@@ -346,7 +391,7 @@ export default function InfrastructurePage() {
       <Modal
         open={modal === 'zone'}
         onClose={closeModal}
-        title="Нова зона"
+        title={editingId ? 'Редагувати зону' : 'Нова зона'}
         footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.branchId} className="w-full">Зберегти</Button>}
       >
         {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
@@ -365,7 +410,7 @@ export default function InfrastructurePage() {
       <Modal
         open={modal === 'lift'}
         onClose={closeModal}
-        title="Новий підйомник"
+        title={editingId ? 'Редагувати підйомник' : 'Новий підйомник'}
         footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.zoneId} className="w-full">Зберегти</Button>}
       >
         {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
@@ -397,7 +442,7 @@ export default function InfrastructurePage() {
       <Modal
         open={modal === 'warehouse'}
         onClose={closeModal}
-        title="Новий склад"
+        title={editingId ? 'Редагувати склад' : 'Новий склад'}
         footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.branchId} className="w-full">Зберегти</Button>}
       >
         {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
@@ -441,7 +486,7 @@ function isWithin14Days(value: string | null | undefined, nowMs: number): boolea
   return diffMs >= 0 && diffMs <= 14 * 24 * 60 * 60 * 1000;
 }
 
-function LiftRow({ lift, zoneName, onRemove, nowMs }: { lift: Lift; zoneName: string; onRemove: () => void; nowMs: number }) {
+function LiftRow({ lift, zoneName, onEdit, onRemove, nowMs }: { lift: Lift; zoneName: string; onEdit: () => void; onRemove: () => void; nowMs: number }) {
   const [expanded, setExpanded] = useState(false);
   const hasDetail = lift.nextMaintenanceDate ?? lift.lastMaintenanceDate;
   const nextSoon = isWithin14Days(lift.nextMaintenanceDate, nowMs);
@@ -462,14 +507,19 @@ function LiftRow({ lift, zoneName, onRemove, nowMs }: { lift: Lift; zoneName: st
         <TableCell className="text-muted-foreground">{lift.maxWeightKg ?? '—'}</TableCell>
         <TableCell className="text-muted-foreground">{zoneName}</TableCell>
         <TableCell className="text-right">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={e => { e.stopPropagation(); onRemove(); }}
-            className="text-destructive/60 hover:text-destructive"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center justify-end gap-1">
+            <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); onEdit(); }} className="text-muted-foreground hover:text-foreground">
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={e => { e.stopPropagation(); onRemove(); }}
+              className="text-destructive/60 hover:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </TableCell>
       </TableRow>
       {expanded && hasDetail && (

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
+import { SearchCombobox, type ComboboxItem } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
@@ -39,6 +40,7 @@ interface WorkOrderLine {
 }
 interface WorkOrderPart {
   id: string; goodId: string; goodName?: string;
+  unitShortName?: string; coefficient?: number;
   warehouseId: string; quantity: number; price: number; amount: number;
 }
 interface WorkOrderDetail {
@@ -67,7 +69,7 @@ interface CompletionActSummary {
 }
 interface Work { id: string; name: string; normoHours: number; price: number; }
 interface Employee { id: string; firstName: string; lastName: string; }
-interface Good { id: string; name: string; salePrice: number; }
+interface Good { id: string; name: string; sku?: string; salePrice: number; }
 interface Warehouse { id: string; name: string; isMain: boolean; }
 
 // ─── Inspection ───────────────────────────────────────────────────────────────
@@ -132,7 +134,6 @@ export default function WorkOrderCardPage() {
   const [wo, setWo] = useState<WorkOrderDetail | null>(null);
   const [works, setWorks] = useState<Work[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [goods, setGoods] = useState<Good[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
   const [completionAct, setCompletionAct] = useState<CompletionActSummary | null>(null);
@@ -152,6 +153,7 @@ export default function WorkOrderCardPage() {
 
   const [lineForm, setLineForm] = useState({ workId: '', employeeId: '', normoHours: '', actualHours: '', price: '', notes: '' });
   const [partForm, setPartForm] = useState({ goodId: '', warehouseId: '', quantity: '1', price: '' });
+  const [goodDisplayName, setGoodDisplayName] = useState('');
   const [stockAvailable, setStockAvailable] = useState<number | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
 
@@ -326,9 +328,6 @@ export default function WorkOrderCardPage() {
     apiFetch<{ items: Employee[] }>('/employees?limit=200')
       .then((r: { items?: Employee[] } | Employee[]) => { if (mountedRef.current) setEmployees(Array.isArray(r) ? r : r.items ?? []); })
       .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
-    apiFetch<{ items: Good[] }>('/goods?limit=200')
-      .then(r => { if (mountedRef.current) setGoods(r.items); })
-      .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
     apiFetch<Warehouse[]>('/warehouses')
       .then(data => {
         if (!mountedRef.current) return;
@@ -350,9 +349,9 @@ export default function WorkOrderCardPage() {
     lineDirty.markDirty();
   };
 
-  const selectGood = (goodId: string) => {
-    const g = goods.find(x => x.id === goodId);
-    setPartForm(f => ({ ...f, goodId, price: g ? String(g.salePrice) : f.price }));
+  const selectGood = (item: Good) => {
+    setGoodDisplayName(item.name);
+    setPartForm(f => ({ ...f, goodId: item.id, price: item.salePrice ? String(item.salePrice) : f.price }));
     partDirty.markDirty();
   };
 
@@ -365,6 +364,7 @@ export default function WorkOrderCardPage() {
   const closePartModal = () => {
     if (!partDirty.confirmClose()) return;
     setPartModal(false);
+    setGoodDisplayName('');
     partDirty.resetDirty();
   };
 
@@ -429,6 +429,7 @@ export default function WorkOrderCardPage() {
       // only on mount; without this, MECHANIC adding 3-5 parts would have
       // to re-pick the same warehouse every time — defeating the feature.
       setPartForm(f => ({ goodId: '', warehouseId: f.warehouseId, quantity: '1', price: '' }));
+      setGoodDisplayName('');
       partDirty.resetDirty();
       if (features.toastEnabled) toast.success('Запчастину додано');
       load();
@@ -774,7 +775,7 @@ export default function WorkOrderCardPage() {
                         <Layers className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     </div>
-                    <p className="text-xs text-muted-foreground">{p.quantity} шт × {p.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+                    <p className="text-xs text-muted-foreground">{p.quantity} {p.unitShortName ?? 'шт'} × {p.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
                   </div>
                   <div className="text-right mr-3">
                     <p className="text-sm font-medium text-foreground">{p.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
@@ -1058,13 +1059,16 @@ export default function WorkOrderCardPage() {
       <Modal open={partModal} onClose={closePartModal} title="Додати запчастину">
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Товар <span className="text-destructive">*</span></label>
-            <Select value={partForm.goodId} onChange={e => selectGood(e.target.value)}>
-              <option value="">— Оберіть —</option>
-              {goods.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </Select>
-          </div>
+          <SearchCombobox<Good>
+            label="Товар"
+            required
+            placeholder="Назва, артикул, штрих-код..."
+            value={partForm.goodId}
+            displayValue={goodDisplayName}
+            onSelect={selectGood}
+            onClear={() => { setPartForm(f => ({ ...f, goodId: '', price: '' })); setGoodDisplayName(''); partDirty.markDirty(); }}
+            fetchItems={q => apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(g => ({ ...g, primary: g.name, secondary: g.sku })))}
+          />
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">Склад <span className="text-destructive">*</span></label>
             <Select value={partForm.warehouseId} onChange={e => { setPartForm(f => ({ ...f, warehouseId: e.target.value })); partDirty.markDirty(); }}>

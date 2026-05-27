@@ -9,6 +9,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { SearchCombobox } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel } from '@/components/ui/detail-panel';
@@ -73,11 +74,10 @@ export default function PurchaseOrdersPage() {
   const [showDetail, setShowDetail] = useState<PurchaseOrder | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
 
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [goods, setGoods] = useState<Good[]>([]);
+  const [supplierDisplayName, setSupplierDisplayName] = useState('');
   const [form, setForm] = useState({ supplierId: '', warehouseId: '', notes: '' });
-  const [lines, setLines] = useState<{ goodId: string; quantity: string; price: string }[]>([]);
+  const [lines, setLines] = useState<{ goodId: string; goodName: string; quantity: string; price: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   const [receiveLines, setReceiveLines] = useState<{ lineId: string; receivedQty: string }[]>([]);
@@ -106,20 +106,15 @@ export default function PurchaseOrdersPage() {
 
   useEffect(() => {
     if (showCreate) {
-      Promise.all([
-        apiFetch<{ items: Supplier[] } | Supplier[]>('/counterparties?type=SUPPLIER&limit=100'),
-        apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses'),
-        apiFetch<{ items: Good[] } | Good[]>('/goods?limit=200'),
-      ]).then(([s, w, g]) => {
-        const wList = Array.isArray(w) ? w : w.items;
-        setSuppliers(Array.isArray(s) ? s : s.items);
-        setWarehouses(wList);
-        setGoods(Array.isArray(g) ? g : g.items);
-        const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
-        // Auto-select main warehouse only if the user hasn't already picked one
-        // (e.g. modal re-opened after a slow fetch — preserves manual choice).
-        if (mainW) setForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
-      }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
+      apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
+        .then(w => {
+          const wList = Array.isArray(w) ? w : w.items;
+          setWarehouses(wList);
+          const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
+          // Auto-select main warehouse only if the user hasn't already picked one
+          // (e.g. modal re-opened after a slow fetch — preserves manual choice).
+          if (mainW) setForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
+        }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
     }
   }, [showCreate]);
 
@@ -187,7 +182,7 @@ export default function PurchaseOrdersPage() {
     finally { setSaving(false); }
   };
 
-  const addLine = () => setLines(l => [...l, { goodId: '', quantity: '1', price: '' }]);
+  const addLine = () => setLines(l => [...l, { goodId: '', goodName: '', quantity: '1', price: '' }]);
   const updateLine = (i: number, field: string, value: string) =>
     setLines(l => l.map((x, idx) => idx === i ? { ...x, [field]: value } : x));
   const removeLine = (i: number) => setLines(l => l.filter((_, idx) => idx !== i));
@@ -412,19 +407,23 @@ export default function PurchaseOrdersPage() {
         }
       >
         <div className="space-y-4">
-          <Select
+          <SearchCombobox<Supplier>
             label="Постачальник"
             required
+            placeholder="Назва компанії, телефон..."
             value={form.supplierId}
-            onChange={e => setForm(f => ({ ...f, supplierId: e.target.value }))}
-            placeholder="Оберіть постачальника"
-          >
-            {suppliers.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.companyName ?? [s.lastName, s.firstName].filter(Boolean).join(' ')}
-              </option>
-            ))}
-          </Select>
+            displayValue={supplierDisplayName}
+            onSelect={s => {
+              const name = s.companyName ?? [s.lastName, s.firstName].filter(Boolean).join(' ') ?? '';
+              setSupplierDisplayName(name);
+              setForm(f => ({ ...f, supplierId: s.id }));
+            }}
+            onClear={() => { setSupplierDisplayName(''); setForm(f => ({ ...f, supplierId: '' })); }}
+            fetchItems={q => apiFetch<{ items: Supplier[] }>(`/counterparties?type=SUPPLIER&q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(s => ({
+              ...s,
+              primary: s.companyName ?? [s.lastName, s.firstName].filter(Boolean).join(' ') ?? '',
+            })))}
+          />
           <Select
             label="Склад"
             required
@@ -449,19 +448,17 @@ export default function PurchaseOrdersPage() {
             </div>
             <div className="space-y-2">
               {lines.map((l, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <select
-                    value={l.goodId}
-                    onChange={e => {
-                      const g = goods.find(g => g.id === e.target.value);
-                      updateLine(i, 'goodId', e.target.value);
-                      if (g?.purchasePrice) updateLine(i, 'price', String(g.purchasePrice));
-                    }}
-                    className="flex-1 px-2 py-1.5 border border-border rounded text-xs bg-surface text-foreground"
-                  >
-                    <option value="">Товар</option>
-                    {goods.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
+                <div key={i} className="flex gap-2 items-start">
+                  <div className="flex-1">
+                    <SearchCombobox<Good>
+                      placeholder="Товар..."
+                      value={l.goodId}
+                      displayValue={l.goodName}
+                      onSelect={g => setLines(ls => ls.map((x, idx) => idx === i ? { ...x, goodId: g.id, goodName: g.name, price: g.purchasePrice ? String(g.purchasePrice) : x.price } : x))}
+                      onClear={() => setLines(ls => ls.map((x, idx) => idx === i ? { ...x, goodId: '', goodName: '' } : x))}
+                      fetchItems={q => apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(g => ({ ...g, primary: g.name, secondary: g.sku ?? undefined })))}
+                    />
+                  </div>
                   <Input
                     type="number"
                     value={l.quantity}

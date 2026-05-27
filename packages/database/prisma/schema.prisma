@@ -771,6 +771,12 @@ model UnitOfMeasure {
   name        String
   shortName   String
   isSystem    Boolean   @default(false)
+  coefficient Float     @default(1)
+  width       Float?
+  height      Float?
+  depth       Float?
+  volume      Float?
+  weight      Float?
   syncVersion BigInt    @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
