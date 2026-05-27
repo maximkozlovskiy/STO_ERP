@@ -17,6 +17,23 @@ test.describe('Smoke — публічні сторінки', () => {
   });
 });
 
+test.describe('Smoke — статичні ресурси (не повинні давати 404)', () => {
+  test('favicon.ico повертає 200', async ({ request }) => {
+    const res = await request.get('/favicon.ico');
+    expect(res.status()).toBe(200);
+  });
+
+  test('icon-192.png повертає 200', async ({ request }) => {
+    const res = await request.get('/icons/icon-192.png');
+    expect(res.status()).toBe(200);
+  });
+
+  test('icon-512.png повертає 200', async ({ request }) => {
+    const res = await request.get('/icons/icon-512.png');
+    expect(res.status()).toBe(200);
+  });
+});
+
 test.describe('Smoke — auth guard', () => {
   // Окремий describe з fresh context — гарантує що жодних кросс-test cookies немає
   test.use({ storageState: { cookies: [], origins: [] } });

@@ -106,6 +106,25 @@ describe('WorkOrders — HTTP Contract', () => {
       });
     });
 
+    it('приймає limit=200 без помилки 400 (для dropdown-списків)', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 200 });
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/work-orders?limit=200',
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('відхиляє limit=201 з 400', async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/work-orders?limit=201',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
     it('повертає 403 коли guard не пропустив (mock canActivate=false)', async () => {
       jwtAllow = false;
       const res = await (app as NestFastifyApplication).inject({
