@@ -78,109 +78,71 @@ cat .claude/memory/MEMORY.md
 
 ## Крок 2 — Реалізація
 
+> Правила написання коду — в окремих скілах. Читай їх перед написанням, не дублюй тут.
+
 ### 2.1 Database (якщо є `[sto-database]` задача)
 
-```
-1. Прочитай packages/database/prisma/schema.prisma — перевір чи модель вже існує
-2. Якщо не існує — додай модель дотримуючись обов'язкових полів:
-   - id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-   - orgId String @db.Uuid
-   - createdAt DateTime @default(now())
-   - updatedAt DateTime @updatedAt  ← тільки якщо не append-only
-   - deletedAt DateTime?  ← тільки якщо soft-delete потрібен
-   - syncVersion BigInt @default(0)  ← тільки якщо sync-ready
-3. Додай @@index([orgId, deletedAt]) і @@index([orgId, syncVersion])
-4. pnpm --filter @sto/database prisma migrate dev --name <block-name>
-5. ПЕРЕВІР: міграція не дропає GIN-індекси (grep "DROP INDEX" migration.sql)
-   Якщо дропає — ВИДАЛИ DROP команди з migration.sql і додай CREATE INDEX IF NOT EXISTS
-```
+→ Читай **`sto-database`** скіл для повних правил.
 
-**Append-only таблиці** (без `updatedAt`, `deletedAt`, `syncVersion`): `AuditEvent`, `LoyaltyTransaction`, `WebhookDelivery`.
-
-**Обов'язкові sync поля** тільки для таблиць що синхронізуються з мобільним: `WorkOrder`, `Good`, `Counterparty`, `Vehicle`, `Employee` тощо. Нові таблиці `WorkOrderMedia`, `Comment`, `Warranty` тощо — **теж sync-ready**.
+Швидкий чеклист:
+```
+1. Прочитай schema.prisma — перевір чи модель вже існує
+2. Додай модель з обов'язковими полями (id UUID, orgId, createdAt, updatedAt, deletedAt, syncVersion)
+3. pnpm --filter @sto/database prisma migrate dev --name <block-name>
+4. ПЕРЕВІР: grep "DROP INDEX" migration.sql — якщо є GIN-індекси, видали DROP команди
+```
 
 ### 2.2 Backend (якщо є `[sto-backend]` задача)
 
-Дотримуйся структури модуля:
+→ Читай **`sto-backend`** + **`sto-dev`** скіли для повних правил.
 
+Швидкий чеклист:
 ```
-apps/api/src/modules/{domain}/
-├── {domain}.module.ts
-├── {domain}.controller.ts
-├── {domain}.service.ts
-├── {domain}.dto.ts
-└── {domain}.spec.ts
-```
-
-**Обов'язкові правила:**
-
-```typescript
-// Controller
-@Controller('{domain}')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@ApiTags('{domain}')
-export class XController {
-  // @Roles завжди на кожному методі
-  // orgId: string = req['user'].orgId — через @CurrentUser()
-  // Повертає тільки Dto, ніколи Prisma-об'єкт напряму
-}
-
-// Service
-// findMany завжди з: where: { orgId, deletedAt: null }, take: N
-// Soft delete: { deletedAt: new Date() }, ніколи .delete()
-// Append-only таблиці: ніколи .update() або .delete()
-// List endpoint: завжди { items, total } — ніколи bare array
+1. Структура: {domain}.module.ts / .controller.ts / .service.ts / .dto.ts / .spec.ts
+2. Controller: @UseGuards + @Roles на кожному методі, повертає тільки Dto
+3. Service: findMany з orgId + deletedAt: null + take: N; soft delete; { items, total }
+4. Зареєструй модуль у app.module.ts
 ```
 
-**Спеціальні правила по блоках:**
+**Специфіка блоків** (критичні деталі яких немає в sto-backend):
 
-| Блок | Критичні правила |
+| Блок | Критичні деталі |
 |---|---|
-| B12 WorkOrderMedia | MinIO через `FilesService.upload()` (вже є); signed URL через `FilesService.getSignedUrl(key, 3600)`; multipart через `@nestjs/platform-fastify` `req.file()`; max 10MB перевіряти; JPEG/PNG/HEIC/PDF |
-| B11 AuditEvent | Append-only (без updatedAt/deletedAt/syncVersion); `diff` = JSON.stringify({ old: pick(oldData, changed), new: pick(newData, changed) }); викликати з WO/Invoice/Employee service через `.record()` — не через interceptor |
-| B9 SSE Dashboard | `@Sse('/stream')` + `Observable` + `interval(30000)` pipe; JWT guard через query param `token` (EventSource не підтримує headers); fallback endpoint `GET /dashboard/summary` для polling |
-| B8 FollowUp | BullMQ CRON `{ repeat: { cron: '0 9 * * *', tz: 'Europe/Kyiv' } }`; читати `followUpDays` з `OrganisationSettings`; SMS через `NotificationService.send()` з шаблоном `FOLLOWUP_REMINDER` |
-| B5 Webhooks | `OutboundWebhookProcessor` підписується на NestJS events через `@OnEvent()`; HMAC-SHA256 підпис payload в `X-STO-Signature` header; attempts=5, exponential backoff |
-| B4 Loyalty | `earn()` і `redeem()` через BullMQ — не в основній tx; `redeem()` створює `SettlementsService.createTransaction(CREDIT_NOTE)` |
-| B3 Warranty | Auto-create при WO `COMPLETED` у `work-orders.service.ts` transition handler; `warrantyDays` читати з `SettingsService.get(orgId)` |
-| B2 Booking | `GET /booking/availability` — `@Public()`; `POST /booking/request` — `@Public()`; SMS підтвердження через BullMQ |
-| B1 Inspection | `POST /work-orders/:id/inspection` — якщо CRITICAL point → `prisma.workOrderLine.createMany()` з відповідними Work з каталогу |
-| F4 Clone WO | Клонувати лінії і запчастини, але БЕЗ: payments, reservations, media, completion acts; новий статус = DRAFT; новий номер через `DocumentNumberService.next()` |
+| B12 WorkOrderMedia | MinIO через `FilesService.upload()`; signed URL `getSignedUrl(key, 3600)`; multipart `req.file()`; max 10MB; JPEG/PNG/HEIC/PDF |
+| B11 AuditEvent | Append-only; `diff` = JSON.stringify({old, new}); викликати через `.record()` — не через interceptor |
+| B9 SSE Dashboard | `@Sse('/stream')` + `Observable`; JWT через query param `token`; fallback `GET /dashboard/summary` |
+| B8 FollowUp | BullMQ CRON `'0 9 * * *'` + `tz: 'Europe/Kyiv'`; `followUpDays` з OrganisationSettings |
+| B5 Webhooks | `@OnEvent()` + HMAC-SHA256 в `X-STO-Signature`; attempts=5 |
+| B4 Loyalty | `earn()` і `redeem()` через BullMQ; `redeem()` → `SettlementsService.createTransaction(CREDIT_NOTE)` |
+| B3 Warranty | Auto-create при WO `COMPLETED`; `warrantyDays` з `SettingsService.get(orgId)` |
+| B2 Booking | `/availability` + `/request` — `@Public()`; SMS через BullMQ |
+| B1 Inspection | CRITICAL point → `prisma.workOrderLine.createMany()` з каталогу |
+| F4 Clone WO | БЕЗ: payments, reservations, media; статус=DRAFT; номер через `DocumentNumberService.next()` |
 
 ### 2.3 Frontend (якщо є `[sto-web]` задача)
 
-**Обов'язкові правила:**
+→ Читай **`sto-web`** + **`sto-dev`** скіли для повних правил.
 
-```typescript
-// Кожна сторінка/секція:
-// - loading стан: <Spinner />
-// - empty стан: "Немає даних" або <EmptyState />
-// - error стан: div з text-destructive-text bg-destructive-subtle
-// - cancelled flag pattern для useEffect з fetch:
-useEffect(() => {
-  let cancelled = false;
-  apiFetch('/endpoint').then(d => { if (!cancelled) setState(d); });
-  return () => { cancelled = true; };
-}, []);
+Швидкий чеклист:
+```
+1. loading / empty / error стани на кожній сторінці
+2. useEffect з fetch → cancelled flag або AbortController
+3. Tailwind: тільки canonical токени, без inline HSL, без (--color-X)
+4. URL.revokeObjectURL → setTimeout(..., 100)
 ```
 
-**Tailwind:**
-- Тільки canonical токени: `bg-surface`, `border-border`, `text-foreground`, `text-muted-foreground`
-- НЕ inline HSL: `text-[hsl(...)]` — тільки `text-destructive-text`, `text-success`, `text-warning`
-- НЕ `(--color-X)` shorthand — тільки `bg-primary`, `border-primary` тощо
+**Специфіка блоків** (критичні деталі яких немає в sto-web):
 
-**Спеціальні правила по блоках:**
-
-| Блок | Критичні правила |
+| Блок | Критичні деталі |
 |---|---|
-| B12 Media Gallery | drag-and-drop: `<input type="file" accept="image/*" multiple />` + onDrop handler; lightbox через simple state (показувати повне фото); `URL.revokeObjectURL` після завантаження |
-| B11 Audit | Стрічка у DetailPanel під коментарями; формат: "Іван змінив статус DRAFT → IN_PROGRESS о 14:32 21.05.2026" |
-| B9 SSE | `EventSource` у `useEffect` з cleanup `es.close()`; reconnect через `es.onerror` + setTimeout 5s; fallback polling якщо `!window.EventSource` |
-| F9 DatePicker | `react-day-picker` v9 + `date-fns` uk locale; popover через `@headlessui/react` Popover або власний; тиждень з понеділка `weekStartsOn: 1`; формат display `DD.MM.YYYY`, value `YYYY-MM-DD` для API |
-| F4 Clone | Після clone — `router.push('/work-orders/' + newId)` |
-| F5 Print | `@media print { .no-print { display: none !important; } .print-full { width: 100% !important; } }` в globals.css; кнопка "Друк" у картці WO і Invoice |
-| F3 Optimistic | `useOptimisticMutation<T>(mutationFn, { onOptimisticUpdate, onRollback })` хук; застосувати до FSM-кнопок у WO card + оплата Invoice |
-| F2 Calendar DnD | `@dnd-kit/core` + `@dnd-kit/sortable`; при drop → `PATCH /calendar/slots/:id { startAt, endAt }`; показати ghost slot під час drag |
+| B12 Media Gallery | `<input type="file" accept="image/*" multiple />` + onDrop; lightbox через state; `URL.revokeObjectURL` |
+| B11 Audit | Стрічка під коментарями; формат: "Іван змінив статус DRAFT → IN_PROGRESS о 14:32 21.05.2026" |
+| B9 SSE | `EventSource` з cleanup `es.close()`; reconnect onerror + setTimeout 5s; fallback якщо `!window.EventSource` |
+| F9 DatePicker | `react-day-picker` v9 + `date-fns` uk; `weekStartsOn: 1`; display `DD.MM.YYYY`, value `YYYY-MM-DD` |
+| F4 Clone | Після clone → `router.push('/work-orders/' + newId)` |
+| F5 Print | `@media print` в globals.css; кнопка "Друк" у WO і Invoice |
+| F3 Optimistic | `useOptimisticMutation<T>` хук; FSM-кнопки WO + оплата Invoice |
+| F2 Calendar DnD | `@dnd-kit/core`; drop → `PATCH /calendar/slots/:id`; ghost slot під час drag |
 
 ---
 

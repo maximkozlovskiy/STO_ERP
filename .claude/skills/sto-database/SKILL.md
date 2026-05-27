@@ -9,9 +9,10 @@ model: claude-sonnet-4-6
 
 ## Before Starting
 
-1. Read `packages/database/schema.prisma` — know current state
-2. Read `sto-context` if not loaded — understand domain model
-3. Identify which Bounded Context you're modifying
+1. Read `MemoryManual.md` — current project state, gotchas, last migration
+2. Read `packages/database/schema.prisma` — know current state
+3. Read `sto-context` if not loaded — understand domain model
+4. Identify which Bounded Context you're modifying
 
 ---
 

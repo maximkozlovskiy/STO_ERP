@@ -9,9 +9,10 @@ model: claude-sonnet-4-6
 
 ## Before Starting
 
-1. Read `sto-context` — understand domain and offline-first requirements
-2. Read `sto-dev` — coding standards (React, Tailwind patterns) — prevents sto-review findings
-3. Check existing similar screen for patterns
+1. Read `MemoryManual.md` — current project state, gotchas, recent changes
+2. Read `sto-context` — understand domain and offline-first requirements
+3. Read `sto-dev` — coding standards (React, Tailwind patterns) — prevents sto-review findings
+4. Check existing similar screen for patterns
 
 ---
 
