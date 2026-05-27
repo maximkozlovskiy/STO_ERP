@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+c30c38c fix(tester): cycle-2 — total: items.length regress + url-guard IPv4-in-IPv6 + webhook double-write
 487f0c2 fix(review): cycle-2 — IPv6 SSRF bypass + redirect SSRF + booking hydration
 cdaf506 docs(memory): record /sto-tester cycle-2 gotchas (bugs #111-#119)
 f11f028 fix(tester): cycle-2 — booking public widget, webhooks SSRF, inspection DoS
@@ -21,14 +22,28 @@ e4ce8b1 fix(review): cycle-1 — @CurrentUser sub→id, loyalty race, migrations
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 164/164 passed  (18 файлів)
+Unit:            ✅ 240/240 passed  (20 файлів)   (+76 нових: 62 url-guard + 14 webhooks.processor)
 Contract:        ✅ 18 файлів covered
 Property-based:  ✅ inventory + settlements + work-orders.fsm invariants (3 файли)
 Components:      ✅ 139/139 passed  (13 файлів — Button, Modal, Select, CommandPalette, etc.)
 E2E (Playwright): ⏭ skipped (dev сервер offline на момент запуску)
-Build:           ✅ @sto/api build OK (webpack 14.7s)
-Review cycle-2:  4 проблеми (2 CRITICAL, 2 IMPORTANT) — виправлено
+Build:           ✅ @sto/api build OK (webpack 9.3s)
+Tester cycle-2 post-review: 7 багів (3 HIGH, 3 MEDIUM, 1 LOW) — виправлено
 ```
+
+### Gotcha — /sto-tester cycle-2 post-review (2026-05-27, commit c30c38c, bugs #120-#126)
+
+- **`total: items.length` після `take: N` — повторюваний шаблон, що проростає у нові endpoints** (Bug #120, #121, goods.controller.getBatches/getPriceHistory). Це 4-й інстанс цього патерну (попередні: #88 audit, #28 batches list, #83 dashboard low-stock). Канон: будь-який `findMany` з `take`-обмеженням MUST бути парою з `count()` без обмежень через `$transaction([findMany, count])` (або `Promise.all` для cross-table). `total: items.length` ВСЕРЕДИНІ controller з explicit `take` — це **завжди** баг навіть якщо frontend не використовує `total`. Документувати у MockResponseDto через `@ApiProperty({ description: 'Capped total (≤ limit)' })` тільки коли count умисно дорогий (search-like).
+  ```bash
+  # Регулярний grep для регресу (3+ інстансів за 2 тижні):
+  grep -rn "total: items.length\|total: .*\\.length" apps/api/src --include="*.ts" | grep -v spec | grep -v "Capped"
+  ```
+
+- **Node URL parser НОРМАЛІЗУЄ IPv6 hostname до hex compressed form** (Bug #123, url-guard IPv4-in-IPv6). `new URL('http://[::ffff:127.0.0.1]').hostname` повертає `'[::ffff:7f00:1]'`, НЕ `'[::ffff:127.0.0.1]'`. Те ж саме для `[::10.0.0.1]` → `'[::a00:1]'`. Будь-який SSRF check написаний для dotted-quad формату (`::ffff:a.b.c.d`) тихо пропускає всі URL що користувач ввів — Node нормалізує до того як ваш regex побачить адресу. **Канон: пишіть regex/check проти НОРМАЛІЗОВАНИХ форм (`/^(?:::ffff:)?7f[0-9a-f]{0,2}:/` для loopback)**. Кращий підхід: парсити останні два хекстети як uint16+uint16 = 4 байти IPv4 і прогнати через звичайний IPv4 блок-лист. Це покриває `::ffff:` (IPv4-mapped), `::` (IPv4-compatible deprecated, але resolvable), і `::ffff:0:` (IPv4-translated RFC 2765). Помилка cycle-2 була "написати regex для dotted-quad що ніколи не з'явиться", правильно — "розпарсити нормалізовану compressed-hex форму як IPv4". Тестувати `validatePublicUrl(x)` ОБОВ'ЯЗКОВО через `new URL(x)` round-trip, не через hardcoded strings.
+
+- **Двоступеневий `try/catch` з write-on-fail-path створює double-write** (Bug #126, webhooks.processor 3xx redirect path). Inner block (`if (res.status >= 300)`) робить explicit `await prisma.webhookDelivery.create(...) + throw deliveryError`. Throw escape-ить до outer `catch (err)` що robить `status='FAILED'; deliveryError=err`. Виконання продовжується ПОЗА try і доходить до загального delivery-log блоку (line 137) який пише ДРУГИЙ запис. Замість 1 webhookDelivery на 1 спробу — отримуємо 2 для кожного 302/301. Канон: коли processor має 2+ failure-paths що логуються в одну таблицю, ВСІ paths повинні встановлювати **тільки змінні** (status/responseCode/responseBody/deliveryError) і дозволити ЄДИНОМУ write-блоку наприкінці зробити одне `create`. Знайдено тільки тому що написали тести (Bug #125) — без них регрес сидів би у production створюючи штучний counter inflation і подвоєний log-spam.
+
+- **Жоден security-helper не йде у main без unit-тестів** (Bug #124, url-guard.spec.ts). Cycle-1 helper мав регрес з IPv6 brackets (cycle-2 review знайшов). Cycle-2 helper мав регрес з IPv4-compatible IPv6 (цикл тестера знайшов). Без тестів кожен майбутній рефакторинг буде новим регресом. Канон: ЛЮБИЙ security utility (SSRF guard, sanitizer, validator) MUST мати щонайменше 30 тест-кейсів, що покривають: всі ALLOW edge-cases (sanity), всі BLOCK ranges (1 case per CIDR), всі scheme-types, всі normalization-quirks (URL constructor, encoding, case). Якщо тести треба переписати на кожному фіксі — це сигнал що канон правил у helper-і не виражений у тестах правильно.
 
 ### Gotcha — /sto-review cycle-2 (2026-05-27)
 
