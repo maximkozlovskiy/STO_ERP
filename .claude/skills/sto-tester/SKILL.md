@@ -302,6 +302,32 @@ grep -n "Number(l\.\|Number(p\.\|totalLabor\|totalParts" apps/api/src/modules/wo
 - [ ] `pnpm --filter @sto/web exec tsc --noEmit` — 0 errors
 - [ ] `pnpm --filter @sto/api exec tsc --noEmit` — 0 errors
 
+### 1.2.1 — Sentry інтеграція
+
+```bash
+# Перевірити що instrument.ts є першим імпортом у main.ts
+head -3 apps/api/src/main.ts | grep "instrument"
+
+# Перевірити що Sentry.captureException викликається тільки для 5xx
+grep -n "captureException\|captureMessage" apps/api/src/common/filters/http-exception.filter.ts
+
+# Перевірити що enabled: false у development
+grep -n "enabled" apps/api/src/instrument.ts
+grep -n "enabled" apps/web/src/lib/sentry.ts
+
+# Перевірити що SentryProvider є у root layout
+grep -n "SentryProvider" apps/web/src/app/layout.tsx
+```
+
+- [ ] `apps/api/src/instrument.ts` існує і є першим `import` у `main.ts` (до `@nestjs/core`)
+- [ ] `Sentry.init({ enabled: process.env.NODE_ENV === 'production' && !!dsn })` — у development Sentry вимкнений
+- [ ] `HttpExceptionFilter` — `captureException`/`captureMessage` тільки коли `status >= 500`; 4xx НЕ надсилаються
+- [ ] `beforeSend` у `instrument.ts` — додатковий фільтр: відхиляє events з `status_code < 500`
+- [ ] `apps/web/src/lib/sentry.ts` — `initSentry()` з `enabled: NODE_ENV === 'production' && !!dsn`
+- [ ] `SentryProvider` присутній у `apps/web/src/app/layout.tsx` (НЕ у setup layout)
+- [ ] У `apps/web/src/app/(setup)/layout.tsx` — `SentryProvider` **відсутній** (setup ізольований)
+- [ ] `NEXT_PUBLIC_SENTRY_DSN` і `SENTRY_DSN` є у `.env.example` (з placeholder, не реальним DSN)
+
 ### 1.3 — Frontend (Next.js)
 
 #### Форми

@@ -278,6 +278,31 @@ grep -rn "@Controller" apps/api/src/ -l | xargs grep -L "Throttle\|SkipThrottle"
 - [ ] Публічні endpoints (`/setup/*`) мають throttle
 - [ ] `@SkipThrottle()` використовується тільки для внутрішніх health-check endpoints
 
+### 2.8 Sentry інтеграція
+
+```bash
+# instrument.ts — перший імпорт у main.ts
+head -3 apps/api/src/main.ts | grep "instrument"
+
+# enabled тільки в production
+grep -n "enabled" apps/api/src/instrument.ts apps/web/src/lib/sentry.ts
+
+# captureException тільки для 5xx
+grep -n "captureException\|captureMessage\|status >= 500" apps/api/src/common/filters/http-exception.filter.ts
+
+# SentryProvider у root layout (не setup layout)
+grep -n "SentryProvider" apps/web/src/app/layout.tsx apps/web/src/app/\(setup\)/layout.tsx 2>/dev/null
+```
+
+- [ ] `instrument.ts` — перший `import` у `main.ts`, до будь-яких NestJS/Fastify модулів
+- [ ] `Sentry.init({ enabled: NODE_ENV === 'production' && !!dsn })` — у dev/test завжди `false`
+- [ ] `HttpExceptionFilter`: `Sentry.captureException` захищений `if (status >= 500)` — 4xx (400/401/403/404) **ніколи** не потрапляють у Sentry
+- [ ] `beforeSend` у `instrument.ts` — backup фільтр який відхиляє `status_code < 500`
+- [ ] `@sentry/browser` у web, `@sentry/nestjs` у api — НЕ `@sentry/nextjs` (несумісний з `output: 'export'`)
+- [ ] `SentryProvider` є у `apps/web/src/app/layout.tsx` — `<SentryProvider>` огортає все дерево
+- [ ] У `apps/web/src/app/(setup)/layout.tsx` — `SentryProvider` **відсутній** (setup ізольований від AuthProvider/TopShell)
+- [ ] `NEXT_PUBLIC_SENTRY_DSN` і `SENTRY_DSN` є у `.env.example` з placeholder, не реальним DSN
+
 ---
 
 ## 3. Memory Leaks (Витоки пам'яті)

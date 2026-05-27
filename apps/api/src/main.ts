@@ -1,3 +1,5 @@
+// Sentry MUST be the very first import — before any other module
+import './instrument';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,

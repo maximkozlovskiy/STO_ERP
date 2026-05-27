@@ -4,6 +4,7 @@ import { AuthProvider } from '@/lib/auth';
 import { TopShell } from '@/components/TopShell';
 import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import { ColorModeProvider } from '@/components/ColorModeProvider';
+import { SentryProvider } from '@/components/SentryProvider';
 import './globals.css';
 
 const geistSans = Geist({
@@ -39,11 +40,13 @@ export default function RootLayout({
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ServiceWorkerRegistrar />
-        <ColorModeProvider>
-          <AuthProvider>
-            <TopShell>{children}</TopShell>
-          </AuthProvider>
-        </ColorModeProvider>
+        <SentryProvider>
+          <ColorModeProvider>
+            <AuthProvider>
+              <TopShell>{children}</TopShell>
+            </AuthProvider>
+          </ColorModeProvider>
+        </SentryProvider>
       </body>
     </html>
   );

@@ -23,6 +23,7 @@
     "@nestjs/platform-fastify": "^10.4.0",
     "@nestjs/swagger": "^8.0.0",
     "@prisma/client": "^5.22.0",
+    "@sentry/nestjs": "^10.53.1",
     "@sto/database": "workspace:*",
     "@sto/shared": "workspace:*",
     "@types/express-fileupload": "^1.5.1",
