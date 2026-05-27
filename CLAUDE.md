@@ -58,11 +58,23 @@ sto-erp/
 >
 > Це правило НЕ стосується: дрібних фіксів (1–2 файли), виправлення багів, оновлення документації.
 
+> **ПРАВИЛО: dev-сервер обов'язковий при будь-яких змінах коду**
+> Перед початком реалізації — переконатись що запущені **всі три сервери**:
+> ```bash
+> docker-compose -f docker-compose.dev.yml up -d   # БД + Redis + MinIO
+> pnpm --filter @sto/api dev                        # API  → http://localhost:3000
+> pnpm --filter @sto/web dev                        # Web  → http://localhost:3001
+> ```
+> Після кожної зміни UI — **перевірити у браузері** (не тільки tsc). Якщо сервер впав — перезапустити перед наступним кроком.
+>
+> Це правило стосується: нові сторінки, зміни компонентів, нові API endpoints, будь-які зміни що впливають на UI.
+
 ```
 /plan (EnterPlanMode)
   ↓ узгодження
 ExitPlanMode
-  ↓ реалізація
+  ↓ запуск dev-серверів
+  ↓ реалізація + перевірка у браузері після кожного кроку
 /sto-context -> /sto-analyst -> /sto-feature -> /sto-database -> /sto-dev -> /sto-backend -> /sto-web -> /sto-review -> /sto-tester
 ```
 
