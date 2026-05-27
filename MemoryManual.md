@@ -9,24 +9,33 @@
 ## Останній commit
 
 ```
+e4ce8b1 fix(review): cycle-1 — @CurrentUser sub→id, loyalty race, migrations trgm defense
+d242e6a docs(memory): record /sto-tester B8 FollowUp CRON gotchas (bugs #97-#110)
 4df6ef0 fix(tester): B8 FollowUp CRON — bugs #97-#110
-fab5fd1 fix(review): B8 followup — soft-delete filters, cron 09:00 Kyiv, take 5000, retry 10
-3c6d233 feat(B8): FollowUp CRON — followup.processor + scheduler + FOLLOWUP_REMINDER enum
 ```
 
-Дата: 2026-05-26
+Дата: 2026-05-27
 
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 164/164 passed  (18 файлів — +followup.processor.spec.ts: 13 тестів для B8 CRON)
-Contract:        ✅ 17 файлів covered (auth, audit, batches, invoices/pricing-rules, settings, warehouses, work-orders)
+Unit:            ✅ 164/164 passed  (18 файлів)
+Contract:        ✅ 18 файлів covered (+audit.contract.spec.ts: 5 тестів для Bug #88 regression)
 Property-based:  ✅ inventory + settlements + work-orders.fsm invariants (3 файли)
 Components:      ✅ 139/139 passed  (13 файлів — Button, Modal, Select, CommandPalette, etc.)
 E2E (Playwright): ✅ 4/4 smoke passed (dev сервер живий, http://localhost:3001)
 Build:           ✅ @sto/api + @sto/web tsc clean (incremental:false)
-Tester fixes:    14 нових багів знайдено / 13 виправлено (#97-#110)
+Review cycle-1:  9 проблем виправлено (4 Critical, 4 Important, 1 Suggestion)
 ```
+
+### Gotcha — /sto-review cycle-1 (2026-05-27, commit e4ce8b1)
+
+- **`@CurrentUser() user: { sub: string }` антипатерн — НЕ обмежується одним контролером, повторюється** (4 нових інстанси в auth/purchase-orders/stock-documents/payments). Bug #92 виправили лише для invoices та work-orders, проте grep `@CurrentUser.*sub` показав ще 4 controller-и де `user.sub` був тихо `undefined` (downstream `findFirst({ where: { id: undefined, orgId } })` повертає БУДЬ-який запис у org — у getMe користувач міг побачити іншого employee). Канон: ПІСЛЯ кожного fix цього патерну ОБОВ'ЯЗКОВО зробити global grep `@CurrentUser.*sub` і поправити всі — частковий fix залишає latent silent bugs. Додано до §1 grep-ів. Майбутній попереджувач: pre-commit hook `! grep -rn "@CurrentUser.*sub" apps/api/src --include="*.ts"`.
+- **`@IsString()` на union-string type — `'OK' | 'WARN' | 'CRITICAL'` приймає будь-який рядок** (inspection.dto InspectionPointDto.status): TS-тип у DTO `'OK' | 'WARN' | 'CRITICAL'` — fiction для runtime. `class-validator` бачить тільки декоратори; `@IsString()` пропускає `'EVIL'`. Канон: для будь-якого `field!: 'A' | 'B' | 'C'` обов'язково `@IsIn(['A','B','C'])` (або генерувати const tuple + type from it). Додавати `@MaxLength` для всіх вільних `@IsString` полів — анти-DoS захист (без нього `notes: '...'.repeat(1_000_000)` стискає API request body).
+- **Loyalty redeem race — `findFirst + balance check + decrement` всередині $transaction НЕ є атомарним** (loyalty.service.ts redeem): READ COMMITTED isolation дозволяє двом одночасним redeem-ам обидвом прочитати `balance=100`, обидвом передати check `balance >= 100`, обидвом decrement → final balance = -100. Канон для check-and-decrement на лічильниках/рахунках: `updateMany({ where: { id, balance: { gte: points } }, data: { balance: { decrement: points } } })` → Postgres UPDATE ... WHERE balance >= N — атомарний. Якщо `count === 0` — або записа немає, або балансу не вистачило (унифікований error path). Те ж стосується: stock decrement, loyalty wallet, prepayment redemption.
+- **`total: items.length` після `take: N` — шаблонний баг #88 з пам'яті, повторюється в new code** (work-order-media.service.ts findAll): На media review був пропущений під час review #93 (фокус на `fileKey` витоці). Канон: grep `total: items.length` пробігати на КОЖНОМУ /sto-review циклі — це повторюваний шаблон з 4+ задокументованих інцидентів.
+- **`React.ChangeEvent<...>` без імпорту `import type React` — VSCode помилка, tsc може мовчати** (date-picker-input.tsx): додано до §1 SKILL.md як одна з типових помилок. Канон: ЗАВЖДИ `import type { ChangeEvent } from 'react'` + use `ChangeEvent<HTMLInputElement>` без префікса. Те ж для `HTMLAttributes`, `SVGAttributes`, `MouseEvent`, `FormEvent`, `ReactNode`.
+- **Migration без trgm-defense block — Prisma migrate dev silently DROPs B6 indexes** (4 нових міграції). Це 3-й цикл з тією ж проблемою (per Memory: 20260526113130, 20260526124850, тепер +4). Канон CRITICAL: КОЖНА нова `migration.sql` має ЗАКІНЧУВАТИСЬ `CREATE INDEX IF NOT EXISTS idx_*_trgm` блоком (повний список з 20260526061209_b6_trgm_gin_indexes). Без виключень — навіть для міграцій що не торкаються `goods`/`counterparties`/`work_orders`. Запропонувати pre-commit: `for m in $(git diff --name-only --cached | grep migration.sql$); do grep -q "idx_work_orders_number_trgm" "$m" || exit 1; done`.
 
 ### Gotcha — /sto-tester FULL on 3c6d233..fab5fd1 (2026-05-26, bugs #97-#110, B8 FollowUp CRON)
 
