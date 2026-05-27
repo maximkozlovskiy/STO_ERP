@@ -31,6 +31,10 @@ export default function BookingPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [date, setDate] = useState('');
+  // Bug (cycle-2): `new Date()` in render is a hydration mismatch (server vs
+  // client TZ may straddle midnight). Compute today's local date in an effect
+  // so SSR sees an empty string.
+  const [minDate, setMinDate] = useState('');
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -38,6 +42,14 @@ export default function BookingPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    setMinDate(`${yyyy}-${mm}-${dd}`);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,7 +153,7 @@ export default function BookingPage() {
                 label="Бажана дата"
                 value={date}
                 onChange={setDate}
-                min={new Date().toISOString().split('T')[0]}
+                min={minDate || undefined}
               />
             )}
 
@@ -157,20 +169,29 @@ export default function BookingPage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
-                    {slots.map((s, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setSelectedSlot(s)}
-                        className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
-                          selectedSlot === s
-                            ? 'border-primary bg-primary/10 text-foreground font-medium'
-                            : 'border-border bg-input text-foreground hover:bg-secondary'
-                        }`}
-                      >
-                        {new Date(s.startAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
-                      </button>
-                    ))}
+                    {slots.map((s) => {
+                      // Stable per-slot key (liftId + startAt) — using array
+                      // index causes React to retain focus/style on the wrong
+                      // button when slots re-render after a filter change.
+                      const slotKey = `${s.liftId}-${s.startAt}`;
+                      const isSelected = !!selectedSlot
+                        && selectedSlot.liftId === s.liftId
+                        && selectedSlot.startAt === s.startAt;
+                      return (
+                        <button
+                          key={slotKey}
+                          type="button"
+                          onClick={() => setSelectedSlot(s)}
+                          className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
+                            isSelected
+                              ? 'border-primary bg-primary/10 text-foreground font-medium'
+                              : 'border-border bg-input text-foreground hover:bg-secondary'
+                          }`}
+                        >
+                          {new Date(s.startAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+<PENDING> fix(review): cycle-2 — IPv6 SSRF bypass + redirect SSRF + booking hydration
+cdaf506 docs(memory): record /sto-tester cycle-2 gotchas (bugs #111-#119)
 f11f028 fix(tester): cycle-2 — booking public widget, webhooks SSRF, inspection DoS
 d484866 docs(memory): record /sto-review cycle-1 gotchas (commit e4ce8b1)
 e4ce8b1 fix(review): cycle-1 — @CurrentUser sub→id, loyalty race, migrations trgm defense
@@ -25,8 +27,15 @@ Property-based:  ✅ inventory + settlements + work-orders.fsm invariants (3 ф�
 Components:      ✅ 139/139 passed  (13 файлів — Button, Modal, Select, CommandPalette, etc.)
 E2E (Playwright): ⏭ skipped (dev сервер offline на момент запуску)
 Build:           ✅ @sto/api build OK (webpack 14.7s)
-Tester cycle-2:  9 багів виправлено (3 CRITICAL, 1 HIGH, 2 MEDIUM, 3 LOW)
+Review cycle-2:  4 проблеми (2 CRITICAL, 2 IMPORTANT) — виправлено
 ```
+
+### Gotcha — /sto-review cycle-2 (2026-05-27)
+
+- **CRITICAL — `validatePublicUrl` IPv6 regex не враховує квадратні дужки**: `URL.hostname` для IPv6 повертає рядок з брекетами (`'[fc00::1]'`, `'[fe80::1]'`). Cycle-1 helper порівнював `host === '[::1]'` напряму, але паралельні regex'и `/^f[cd][0-9a-f]{2}:/i` і `/^fe[89ab][0-9a-f]:/i` ПАДАЛИ на брекетах — будь-яка ULA/link-local IPv6 адреса проходила як "безпечна". Атакер міг налаштувати webhook на `http://[fc00::1]:6379/` (внутрішній Redis) або `http://[fe80::1]/` і обійти весь SSRF захист, незважаючи на існування url-guard. **Канон: завжди розпаковуй IPv6 brackets ОДРАЗУ через `host.startsWith('[') ? host.slice(1,-1) : host` ДО будь-яких regex/literal-порівнянь**. Також додано перевірку `::ffff:127.0.0.1` IPv4-mapped адрес — без неї `http://[::ffff:127.0.0.1]/` (loopback переплетений) обходив би IPv4 блок-лист. Це 2-й SSRF-related баг за тиждень — недостатньо валідатор-функцію написати; треба unit-тестувати з реальними URL constructors `(new URL(x)).hostname`.
+- **CRITICAL — `fetch(url)` без `redirect: 'manual'` повністю нівелює SSRF guard через redirect**: cycle-1 додав `validatePublicUrl` у processor перед `fetch`, але `fetch` за замовчуванням `redirect: 'follow'`. Якщо attacker контролює зовнішній endpoint (`https://attacker.com/webhook`), він повертає `302 Location: http://localhost:6379/FLUSHDB` — Node `fetch` тихо переходить, надсилає POST з webhook payload на внутрішній Redis. URL валідація на оригіналі вже пройшла. **Канон для будь-якого server-side fetch на user-controlled URL: `redirect: 'manual'` + явна перевірка `res.status` 3xx → reject. Не `redirect: 'follow'` ніколи. Не `redirect: 'error'` (бо тоді 3xx стає мережевим errror без логування статусу).** Логуємо 3xx як FAILED webhookDelivery з `Redirect to <Location> blocked` body — оператор бачить що endpoint redirect-ить, не вгадує "чому не доставляється".
+- **IMPORTANT — `new Date().toISOString().split('T')[0]` у render path** (booking/page.tsx min date): SSR prerender на UTC сервері дає одну дату, клієнт у Kyiv після UTC midnight дає іншу → hydration mismatch + `min` attribute на DatePicker блокує сьогоднішню дату для частини користувачів. **Канон: будь-яке `new Date()` що читається у JSX (`min`, `max`, default value, formatted strings) — `useState('')` + `useEffect(() => setX(format(new Date())), [])`**. Це 4-й рецидив hydration-mismatch патерну з minor variations (попередні: `useState(new Date())`, `useState(() => localStorage.get())`, `useState(() => new Date()...)`).
+- **IMPORTANT — `key={i}` у list з фільтрами/sort/refetch** (booking page slots): React reuses DOM nodes by key; з `key={i}` після фільтру slots `[A, C]` → `[B, C]` слот B дістає DOM індекс A, slot C дістає індекс C. Якщо button мав focus, hover, або animation state — переходить на не той slot. Канон: для будь-якого list з можливою re-order/filter операцією — stable per-item key (`item.id` для DB-сутностей, derived hash для синтетичних об'єктів типу `${liftId}-${startAt}` для slots без id).
 
 ### Gotcha — /sto-tester cycle-2 (2026-05-27, commit f11f028, bugs #111-#119)
 

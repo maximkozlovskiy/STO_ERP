@@ -70,6 +70,10 @@ export class OutboundWebhookProcessor {
 
       let res: Response;
       try {
+        // SSRF defense-in-depth (cycle-2): refuse to follow redirects so a
+        // malicious endpoint cannot 302 the request to an internal target
+        // (e.g. http://localhost:6379, http://169.254.169.254) after we've
+        // already passed validatePublicUrl on the original URL.
         res = await fetch(url, {
           method: 'POST',
           headers: {
@@ -78,9 +82,38 @@ export class OutboundWebhookProcessor {
           },
           body,
           signal: controller.signal,
+          redirect: 'manual',
         });
       } finally {
         clearTimeout(timer);
+      }
+
+      // Treat any redirect (3xx with Location) as failure — Webhook receivers
+      // must publish a stable URL, not bounce through redirectors.
+      if (res.status >= 300 && res.status < 400) {
+        deliveryError = new Error(`Redirect not allowed (HTTP ${res.status})`);
+        status = 'FAILED';
+        responseCode = res.status;
+        responseBody = `Redirect to ${res.headers.get('location') ?? '?'} blocked`;
+        // Skip the rest of success-path handling.
+        try {
+          await this.prisma.webhookDelivery.create({
+            data: {
+              endpointId,
+              event,
+              payload: payload as Prisma.InputJsonValue,
+              status,
+              attempts: (job.attemptsMade ?? 0) + 1,
+              responseCode,
+              responseBody,
+            },
+          });
+        } catch (logErr) {
+          this.logger.error(
+            `Failed to record webhook delivery for endpoint ${endpointId}: ${String(logErr)}`,
+          );
+        }
+        throw deliveryError;
       }
 
       responseCode = res.status;

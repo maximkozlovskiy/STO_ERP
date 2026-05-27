@@ -24,7 +24,17 @@ export function validatePublicUrl(raw: string): string | null {
     return 'Дозволені тільки http:// та https:// URL';
   }
 
-  const host = parsed.hostname.toLowerCase();
+  // Node URL parser keeps the surrounding brackets on IPv6 hostnames
+  // (e.g. `new URL('http://[fc00::1]/').hostname === '[fc00::1]'`). Earlier
+  // versions of this helper compared `host` directly against `[::1]`/`[::]`
+  // AND ran the ULA/link-local regexes against the bracketed value — which
+  // silently bypassed every IPv6 block because `[fc00::1]` does not start
+  // with `f`. Strip brackets once up-front so all comparisons see the bare
+  // address.
+  const hostnameRaw = parsed.hostname.toLowerCase();
+  const host = hostnameRaw.startsWith('[') && hostnameRaw.endsWith(']')
+    ? hostnameRaw.slice(1, -1)
+    : hostnameRaw;
 
   // Hostname-based blocklist (no DNS lookup — caller may also re-validate
   // after DNS resolution if defense-in-depth is required).
@@ -32,8 +42,6 @@ export function validatePublicUrl(raw: string): string | null {
     host === 'localhost'
     || host.endsWith('.localhost')
     || host === '0.0.0.0'
-    || host === '[::]'
-    || host === '[::1]'
     || host === '::'
     || host === '::1'
   ) {
@@ -62,12 +70,27 @@ export function validatePublicUrl(raw: string): string | null {
     if (a === 100 && b >= 64 && b <= 127) return 'Недозволена IPv4 (CGNAT)';
   }
 
-  // IPv6 literal (URL strips brackets in .hostname)
+  // IPv6 literal (brackets already stripped above).
   if (host.includes(':')) {
-    // fc00::/7 — ULA
-    if (/^f[cd][0-9a-f]{2}:/i.test(host)) return 'Недозволена IPv6 (ULA)';
-    // fe80::/10 — link-local
-    if (/^fe[89ab][0-9a-f]:/i.test(host)) return 'Недозволена IPv6 (link-local)';
+    // ::1, :: handled above by literal match.
+    // fc00::/7 — ULA (any address with first byte fc-fd)
+    if (/^f[cd][0-9a-f]{0,2}:/i.test(host)) return 'Недозволена IPv6 (ULA)';
+    // fe80::/10 — link-local (fe80-febf in first hextet)
+    if (/^fe[89ab][0-9a-f]?:/i.test(host)) return 'Недозволена IPv6 (link-local)';
+    // ::ffff:a.b.c.d — IPv4-mapped — re-check IPv4 part
+    const v4MappedMatch = /^::ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/i.exec(host);
+    if (v4MappedMatch) {
+      const parts = v4MappedMatch.slice(1, 5).map(Number);
+      if (parts.some(p => p < 0 || p > 255)) return 'Некоректна IPv4 (mapped)';
+      const [a, b] = parts;
+      if (a === 127) return 'Недозволена IPv4-mapped (loopback)';
+      if (a === 10) return 'Недозволена IPv4-mapped (10.0.0.0/8)';
+      if (a === 172 && b >= 16 && b <= 31) return 'Недозволена IPv4-mapped (172.16.0.0/12)';
+      if (a === 192 && b === 168) return 'Недозволена IPv4-mapped (192.168.0.0/16)';
+      if (a === 169 && b === 254) return 'Недозволена IPv4-mapped (link-local)';
+      if (a === 0) return 'Недозволена IPv4-mapped (0.0.0.0/8)';
+      if (a === 100 && b >= 64 && b <= 127) return 'Недозволена IPv4-mapped (CGNAT)';
+    }
   }
 
   return null;
