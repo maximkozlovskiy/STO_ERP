@@ -1,5 +1,130 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-05-27 — Sync service full sweep + BigInt/static-asset/limit regression
+
+### Baseline
+
+- TypeScript web/api/shared — ✅ 0 errors
+- Unit + contract tests — ✅ 249/249 passed (21 files) before fixes; **255/255** after (+6 new sync contract tests)
+- Dev servers: API:3000 ✅ WEB:3001 ✅
+- Static assets (favicon.ico, icon-192.png, icon-512.png) — ✅ valid PNG headers, served 200
+- manifest.json — ✅ valid JSON, all `icons[].src` files exist in public/
+- Limit=200 regression — ✅ both `work-orders` and `counterparties` accept `?limit=200` (200), reject `?limit=300` (400)
+- BigInt serialization (full endpoint sweep, 25 endpoints) — ✅ no 500s on any list endpoint
+- Tenant isolation, soft delete, raw SQL casing, blob URL revoke, hard-delete-on-mutable — ✅ no regressions found
+
+### Bugs found this session: 2 (both CRITICAL — 500 on production endpoints used by /settings/sync page)
+
+---
+
+## Bug #127 — [CRITICAL] SyncService plural-table → singular-model mismatch crashes /sync/status with 500
+
+**Файл:** `apps/api/src/modules/sync/sync.service.ts:59-62` (раніше)
+**Severity:** CRITICAL
+**Категорія:** business-logic / sync
+
+**Опис:**
+`SyncService.model(tableName)` робив наївний `snake_to_camel`: `work_orders → workOrders`, `counterparties → counterparties`, `warranties → warranties`. Але Prisma client експонує моделі у **СІНГУЛЯР** camelCase: `prisma.workOrder`, `prisma.counterparty`, `prisma.warranty`. Тобто `this.model('work_orders')` повертав `undefined`.
+
+У `getStatus()`:
+```ts
+...PULL_TABLES.map(table =>
+  this.model(table).aggregate({...}).catch(...)  // ← .aggregate of undefined → TypeError
+)
+```
+`.catch()` ловить тільки rejected Promise, а синхронне читання `.aggregate` на `undefined` кидає `TypeError` до того як Promise створюється — це не ловиться `Promise.all` catch, і виходить **HTTP 500**.
+
+У `pull()` помилка ховається `try/catch` всередині `.map()` — кожна таблиця "тихо скіпалась" і клієнт отримував завжди порожній масив, маскуючи факт що sync взагалі не працює.
+
+**Очікувана поведінка:**
+- `GET /api/sync/status` → 200 з `{ pendingJobs, failedJobs, lastSyncAt, maxSyncVersion }`
+- `GET /api/sync/pull?since=0` → 200 зі справжніми записами PULL_TABLES, а не порожнім масивом
+
+**Фактична поведінка (до фіксу):**
+- `GET /api/sync/status` → 500 `Внутрішня помилка сервера`
+- `GET /api/sync/pull` → 200 `[]` (завжди порожньо, незалежно від стану БД)
+- /settings/sync сторінка повністю зламана для всіх користувачів
+
+**Фікс:**
+Додано явний `TABLE_TO_MODEL: Record<string, string>` мапінг `work_orders → workOrder`, `counterparties → counterparty`, `warranties → warranty`, etc. (всі 15 PULL_TABLES). `model()` тепер:
+1. Спершу шукає в `TABLE_TO_MODEL` (для snake_case table names з sync).
+2. Fallback на `toCamel()` для прямих camelCase model names (`lift`, `employee`, `workOrder`) з `validateForeignKeys`.
+3. Кидає `Error('Невідома модель Prisma для таблиці: ...')` якщо нічого не знайдено — швидше провалюється на dev, ніж тихо повертає `undefined`.
+
+**Регресія:**
+Додано `apps/api/src/modules/sync/sync.contract.spec.ts` — Prisma мок з ТІЛЬКИ сингулярними іменами (`workOrder`, `counterparty`, ...). Якщо хтось у майбутньому повторно введе `workOrders` плюрал — мок не матиме цього методу, тест впаде.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #128 — [CRITICAL] SyncService.pull() returns BigInt syncVersion in payload — JSON.stringify crash → 500
+
+**Файл:** `apps/api/src/modules/sync/sync.service.ts:107-124` (раніше)
+**Severity:** CRITICAL
+**Категорія:** typescript / business-logic
+
+**Опис:**
+Після фіксу Bug #127 (`pull` тепер реально знаходить рядки), endpoint впав з новою 500. Причина:
+```ts
+payload = { ...row };  // ← row.syncVersion is BigInt
+// ...
+return { table, id, operation, syncVersion: Number(row.syncVersion), payload };
+```
+Outer `syncVersion` сконвертовано через `Number()`, але `payload` все ще містить BigInt-копію поля. Fastify/Nest робить `JSON.stringify(response)` → `TypeError: Do not know how to serialize a BigInt`.
+
+**Очікувана поведінка:**
+- `GET /api/sync/pull?since=0` → 200 з масивом записів де **всі** BigInt / Decimal поля конвертовані у `number`.
+
+**Фактична поведінка (до фіксу):**
+- `GET /api/sync/pull?since=0` → 500 `Внутрішня помилка сервера`
+
+**Фікс:**
+Замість `payload = { ...row }` робимо ручний прохід по полях:
+```ts
+payload = {};
+for (const [k, v] of Object.entries(row)) {
+  if (blacklist?.has(k)) continue;
+  if (typeof v === 'bigint') {
+    payload[k] = Number(v);
+  } else if (v !== null && typeof v === 'object' && 'toNumber' in v && typeof v.toNumber === 'function') {
+    // Prisma.Decimal
+    payload[k] = v.toNumber();
+  } else {
+    payload[k] = v;
+  }
+}
+```
+Також об'єднано з PULL_FIELD_BLACKLIST (PII filter для counterparties), щоб не робити два проходи.
+
+**Регресія:**
+У `sync.contract.spec.ts`:
+- "повертає 200 і коректно серіалізує BigInt syncVersion у payload" — мокає `findMany` з `syncVersion: 5n` і перевіряє, що в response `body.payload.syncVersion === 5` (число).
+
+**Статус:** [x] виправлено
+
+---
+
+## Перевірки які НЕ знайшли багів (verified clean)
+
+| Категорія | Покриття | Результат |
+|---|---|---|
+| BigInt sync version у findAll list endpoints (25 шт.) | `/notification-templates`, `/settings/organisation`, `/payment-methods`, `/brands`, `/work-categories`, `/works`, `/services`, `/settings/tax-rates`, `/warehouses`, `/branches`, `/employees`, `/vehicles`, `/goods`, `/counterparties`, `/work-orders`, `/invoices`, `/purchase-orders`, `/stock-documents`, `/stock-items`, `/completion-acts`, `/maintenance-schedules`, `/payments`, `/work-order-templates`, `/lifts`, `/zones` | ✅ all 200 |
+| limit=200 regression | `/work-orders?limit=200`, `/counterparties?limit=200`, `/goods?limit=200`, `/stock-items?limit=200`, `/vehicles?limit=200`, `/invoices?limit=200` | ✅ all 200 |
+| limit=300 still rejected | `/work-orders?limit=300`, `/counterparties?limit=300` | ✅ both 400 |
+| Static assets validity | `favicon.ico` (99 b PNG-as-ico), `icons/icon-192.png` (547 b), `icons/icon-512.png` (1881 b) | ✅ PNG magic headers correct |
+| Manifest icon refs exist | `/manifest.json` icons → `/icons/icon-192.png`, `/icons/icon-512.png` | ✅ both 200 |
+| Hard-delete on soft-deletable | grep `prisma.X.delete(`: 4 found (Comment, GoodBarcode, InvoiceLine, WorkOrderMedia) | ✅ all 4 are line-items/append-only without `deletedAt` field — intentional |
+| Tenant isolation | `findMany`/`findFirst`/`update`/`delete` with `orgId` | ✅ random sample of 30 endpoints OK |
+| Soft delete | `deletedAt: null` filters on all soft-deletable | ✅ |
+| Raw SQL identifier casing | `search.service.ts`, `inventory.service.ts`, `document-number.service.ts`, `dashboard.service.ts` | ✅ all use `"orgId"`/`"deletedAt"`/`"goodId"`/`"reserved"` camelCase double-quoted |
+| Blob URL revoke | invoices/page, reports/page, settlements/page, work-orders/[id]/PageClient (x2), xlsx-import-button | ✅ all 6 have `setTimeout(() => URL.revokeObjectURL(url), 100)` |
+| Inline HSL semantic colors | new files | ✅ no new regressions (documented exceptions in badge/button/input/select остались) |
+| Direct fetch/axios in components | only `/booking/page.tsx` (documented intentional pre-auth) | ✅ |
+| Hydration `new Date()` in render | all wrapped in `useEffect`/handlers or vehicle year placeholder (immutable on mount) | ✅ |
+
+---
+
 Дата: 2026-05-25
 Сесія: tester cycle 4 (Phase 17 final sweep — completion-acts, maintenance-schedules, work-orders FSM + priority/repairCategory)
 

@@ -1023,6 +1023,35 @@ grep -rn "toResponseDto\|toDto\|toDetailDto" apps/api/src/modules/ --include="*.
   # Порівняти зі списком у *.dto.ts
   grep -rn "ENTITY_TYPES\s*=" apps/api/src/modules/ --include="*.dto.ts"
   ```
+- [ ] **Динамічний `(prisma as any)[tableName]` lookup — Plural→Singular trap (Bug #127).** Prisma client моделі завжди **СІНГУЛЯР camelCase**: `prisma.workOrder`, `prisma.counterparty`, `prisma.warranty`. Postgres таблиці через `@@map` — ПЛЮРАЛ. Наївний `snake_to_camel('work_orders')` повертає `workOrders` плюрал → `prisma.workOrders === undefined` → синхронний `TypeError: Cannot read properties of undefined (reading 'aggregate' / 'findMany')` при доступі до методу. Async `.catch()` НЕ ловить це (помилка кидається до того як Promise створюється). Симптом: ендпоінт повертає 500 АБО `try/catch` всередині `.map()` тихо ковтає кожну таблицю і клієнт отримує завжди `[]`.
+  ```bash
+  # Знайти всі dynamic-model lookup patterns
+  grep -rn "as unknown as Record" apps/api/src --include="*.ts" | grep -i "prisma"
+  grep -rn "toCamel\|snakeToCamel\|snake_to_camel" apps/api/src --include="*.ts" | grep -v spec
+  # Для кожного: переконатись що є explicit table→model `Record<string,string>` map
+  # АБО fallback з `if (!model) throw new Error(...)` (швидке провалення замість undefined)
+  ```
+- [ ] **Sync/pull payload spread BigInt/Decimal крах (Bug #128).** Якщо ендпоінт повертає Prisma rows напряму у JSON (`payload = { ...row }`), BigInt `syncVersion` і Decimal-поля **кидають** `TypeError: Do not know how to serialize a BigInt` → HTTP 500. Це окремий випадок від pure-DTO mappers: тут payload є **частиною** SyncRecord, не результатом fetch endpoint.
+  ```bash
+  # Знайти sync payload patterns
+  grep -rn "payload.*=.*{\s*\.\.\.row" apps/api/src/modules --include="*.ts"
+  grep -rn "payload:\s*row\s*}" apps/api/src/modules --include="*.ts"
+  # Кожен match має поряд або normalize loop (BigInt → Number, Decimal → toNumber()) або select без BigInt полів
+  ```
+  Фікс-шаблон:
+  ```typescript
+  payload = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (blacklist?.has(k)) continue;
+    if (typeof v === 'bigint') payload[k] = Number(v);
+    else if (v !== null && typeof v === 'object' && 'toNumber' in v
+             && typeof (v as { toNumber?: unknown }).toNumber === 'function') {
+      payload[k] = (v as { toNumber: () => number }).toNumber();
+    } else {
+      payload[k] = v;
+    }
+  }
+  ```
 
 ```typescript
 // ❌ BAD — фронт очікує number, API повертає Decimal об'єкт

@@ -35,6 +35,31 @@ const PUSH_SAFE_TABLES = new Set([
   'calendar_slots',
 ]);
 
+// Bug #127: Prisma client exposes models in SINGULAR camelCase form (e.g. `prisma.workOrder`),
+// while Postgres tables (via `@@map`) are PLURAL. A naive `snake_to_camel` of the table name
+// produces a plural identifier (`workOrders`) which is `undefined` on PrismaClient, causing
+// `TypeError: Cannot read properties of undefined` at `getStatus` (the `.catch` only catches
+// the aggregate promise rejection, not the synchronous property access). Pull/push were also
+// affected but the try/catch silently swallowed every table — making the bug invisible.
+// Keep this map in sync with `PULL_TABLES` and any new tables added to sync.
+const TABLE_TO_MODEL: Record<string, string> = {
+  work_orders: 'workOrder',
+  work_order_lines: 'workOrderLine',
+  work_order_parts: 'workOrderPart',
+  counterparties: 'counterparty',
+  vehicles: 'vehicle',
+  customer_garages: 'customerGarage',
+  stock_items: 'stockItem',
+  stock_batches: 'stockBatch',
+  invoices: 'invoice',
+  payments: 'payment',
+  calendar_slots: 'calendarSlot',
+  maintenance_schedules: 'maintenanceSchedule',
+  completion_acts: 'completionAct',
+  pricing_rules: 'pricingRule',
+  warranties: 'warranty',
+};
+
 // Fields stripped from pull payloads to protect sensitive data sent to mobile clients
 const PULL_FIELD_BLACKLIST: Record<string, Set<string>> = {
   counterparties: new Set(['phone', 'edrpou', 'email']),
@@ -57,8 +82,16 @@ export class SyncService {
   constructor(private readonly prisma: PrismaService) {}
 
   private model(tableName: string): DynamicPrismaModel {
-    const camel = toCamel(tableName);
-    return (this.prisma as unknown as Record<string, DynamicPrismaModel>)[camel];
+    // First, try the explicit table → singular-camelCase map (covers all PULL_TABLES).
+    // Fall back to naive camel conversion so that direct calls with already-camelCase
+    // model names (e.g. `validateForeignKeys` passing 'lift', 'employee', 'workOrder',
+    // 'customerGarage') continue to work without an additional map.
+    const mapped = TABLE_TO_MODEL[tableName] ?? toCamel(tableName);
+    const model = (this.prisma as unknown as Record<string, DynamicPrismaModel>)[mapped];
+    if (!model) {
+      throw new Error(`Невідома модель Prisma для таблиці: ${tableName}`);
+    }
+    return model;
   }
 
   async pull(orgId: string, since: bigint): Promise<SyncRecord[]> {
@@ -78,8 +111,21 @@ export class SyncService {
               // For deleted records, only send the id — no PII in tombstone payloads
               payload = { id: row.id };
             } else {
-              payload = { ...row };
-              if (blacklist) for (const field of blacklist) delete payload[field];
+              // Bug #128: Prisma rows contain BigInt `syncVersion` (and Decimal fields).
+              // Both crash `JSON.stringify` and trigger a 500. Normalise each value:
+              // BigInt → number (sync version fits in 2^53 for decades), Decimal → number.
+              payload = {};
+              for (const [k, v] of Object.entries(row)) {
+                if (blacklist?.has(k)) continue;
+                if (typeof v === 'bigint') {
+                  payload[k] = Number(v);
+                } else if (v !== null && typeof v === 'object' && 'toNumber' in (v as object) && typeof (v as { toNumber?: unknown }).toNumber === 'function') {
+                  // Prisma.Decimal
+                  payload[k] = (v as { toNumber: () => number }).toNumber();
+                } else {
+                  payload[k] = v;
+                }
+              }
             }
             return {
               table,

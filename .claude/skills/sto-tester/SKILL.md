@@ -245,6 +245,20 @@ until curl -s http://localhost:3001 > /dev/null 2>&1; do sleep 3; done && echo "
 - [ ] Номери генеруються через `DocumentNumberService.next(orgId, type)` — не хардкодяться у форматі
 - [ ] `DocumentNumberConfig` читається по `orgId` — не по глобальному конфігу
 
+#### Prisma model name lookup (snake_case table → camelCase model)
+- [ ] **Plural table → singular model** — Prisma client експонує моделі **тільки у СІНГУЛЯР camelCase** (`prisma.workOrder`, `prisma.counterparty`, `prisma.warranty`). Postgres таблиці через `@@map` — **ПЛЮРАЛ** (`work_orders`, `counterparties`, `warranties`). Наївний `snake_to_camel` дає `workOrders` плюрал → `prisma.workOrders === undefined` → `TypeError: Cannot read properties of undefined`. Catch навколо async-функції НЕ ловить синхронний `.method` access на `undefined`. Bug #127.
+  ```bash
+  # Знайти підозрілі patternи snake_case → camelCase
+  grep -rn "toCamel\|snake.*camel\|snakeCase" apps/api/src --include="*.ts" | grep -v spec
+  # Для кожного — переконатись що є явний table→model map, або викликається лише з singular forms
+  ```
+- [ ] Якщо знайдено динамічний `(prisma as any)[modelName]` — мати **explicit table→model Record** + `if (!model) throw new Error(...)` (швидше провалюватись на dev ніж тихо повертати undefined).
+- [ ] **Pull/push/sync що повертають Prisma rows напряму у response** — кожне `BigInt` поле (`syncVersion`) і `Decimal` поле має бути конвертоване через `Number()`/`.toNumber()`. `payload = { ...row }` → 500 на JSON.stringify. Bug #128.
+  ```bash
+  # Знайти sync/payload patterns
+  grep -rn "payload.*\.\.\.row\|payload.*= row\|{ \.\.\.row }" apps/api/src/modules --include="*.ts" | grep -v spec
+  ```
+
 #### Алгоритми та формули (ОБОВ'ЯЗКОВО при змінах у pricing/batch/work-orders)
 
 ```bash
