@@ -9,15 +9,16 @@
 ## Останній commit
 
 ```
-<pending> fix(tester): cycle-5 — sync/status 500 + sync/pull BigInt payload (Bugs #127, #128)
+f2e8182 fix(review): React namespace imports + AuthProvider cancel guard
+6035b8e feat(tester): console-errors.spec.ts — перехоплення Next.js DevTools помилок
+61f096e fix(ui): 3 console errors — ui-features 401, calendar slots 400, login event
+610a74c feat(sentry): інтеграція Sentry для моніторингу 5xx помилок
+1f41400 fix: counterparties types filter + SSE token refresh + skill checks
+87b190e chore(web): commit favicon.ico and PWA icons referenced by manifest.json
+52fbd02 fix(tester): cycle-5 — sync/status 500 + sync/pull BigInt payload (Bugs #127, #128)
 2c43b6a docs(memory): record /sto-review on cbc0a97..b51e2dd (BigInt+static assets sweep)
 b51e2dd docs(skills): add BigInt syncVersion + manifest static asset checks to sto-review
 ea8f5a6 fix(notifications): serialize BigInt syncVersion before JSON response
-5c2e39d test(contract): add limit=200 regression tests + counterparties contract + static asset smoke
-cbc0a97 fix(api): raise query limit @Max 100→200 for work-orders and counterparties
-ae6e403 perf(web): disable Next.js prefetch on nav links — prevents fetch storm on sidebar hover
-c30c38c fix(tester): cycle-2 — total: items.length regress + url-guard IPv4-in-IPv6 + webhook double-write
-487f0c2 fix(review): cycle-2 — IPv6 SSRF bypass + redirect SSRF + booking hydration
 ```
 
 Дата: 2026-05-27
@@ -32,8 +33,17 @@ Components:      ✅ 139/139 passed  (13 файлів — Button, Modal, Select,
 E2E (Playwright): ⏭ smoke.spec.ts (static assets + auth guard) — ready, dev offline на момент запуску
 Build:           ✅ @sto/api build OK (webpack 9.3s)
 Static assets:   ✅ favicon.ico + icons/icon-192.png + icons/icon-512.png існують у public/
+Latest review:   2026-05-27 (f2e8182) — React namespace cleanup + AuthProvider cancel guard
 Latest tester:   2026-05-27 — 2 CRITICAL bugs (#127 sync plural-model, #128 sync BigInt payload); both fixed + regression spec
 ```
+
+### Gotcha — /sto-review (2026-05-27, commit f2e8182)
+
+- **`React.ReactNode` / `React.CSSProperties` / `import('react').ReactNode` без іменованих імпортів** — Next.js TS-plugin суворіший за plain tsc; форма `React.X` (з global namespace) проходить tsc через `next-env.d.ts`, але це антипатерн skill §1. Канон: `import type { ReactNode, CSSProperties } from 'react'`. Виправлено у `apps/web/src/app/calendar/page.tsx`, `apps/web/src/app/layout.tsx`, `apps/web/src/components/SentryProvider.tsx`. Інші файли (наприклад `inline-edit-cell.tsx`) залишені бо не в скоупі поточних змін — фікс відбудеться коли файл наступного разу торкнеться.
+- **AuthProvider on-mount `refreshToken().then(...)` без `cancelled` flag** — типовий патерн "useEffect з апі-викликом і []-deps". React не варнить про setState на unmounted у виробництві, але:
+  1) Якщо користувач залишить root layout (повний reload) до завершення мережевого запиту — `dispatch` все одно виконається після unmount.
+  2) Skill §3.1: `useEffect з apiFetch і [] deps на сторінках з навігацією — теж потребує let cancelled=false`.
+  Канон: `let cancelled = false; ...then((ok) => { if (cancelled) return; ...dispatch(...) }); return () => { cancelled = true }`. Виправлено в `apps/web/src/lib/auth/context.tsx`.
 
 ### Gotcha — /sto-tester cycle-5 (2026-05-27, commit pending, bugs #127, #128)
 
