@@ -3843,3 +3843,145 @@ Webhook processor містить дві critical-security перевірки cyc
 **Статус:** [x] виправлено
 
 ---
+## Session 2026-05-27 — /sto-tester FULL pass (post-Sentry integration)
+
+Запущено `/sto-tester` FULL після інтеграції Sentry + console-errors E2E + SSE auth fixes.
+Baseline: tsc green (api+web+shared), 258/258 unit tests passed.
+
+---
+
+## Bug #127 — [HIGH] 86 endpoints без `ParseUUIDPipe` для `@Param('id')` → 500 замість 400 при некоректному UUID
+
+**Файл:** систематично у `apps/api/src/modules/*/`*`.controller.ts` (86 endpoints)
+**Severity:** HIGH
+**Категорія:** security / api-contract / sentry-noise
+
+**Опис:**
+Більшість контролерів використовують `@Param('id') id: string` без `ParseUUIDPipe`. Коли клієнт надсилає некоректний UUID (`not-a-uuid`, `abc`, тощо), сервіс передає його у Prisma `findFirst({ where: { id: 'not-a-uuid', orgId, deletedAt: null } })`, що кидає `PrismaClientKnownRequestError P2023` ("Inconsistent column data: invalid input syntax for type uuid"). Ця помилка НЕ є `HttpException`, тому глобальний `HttpExceptionFilter` повертає 500 + `Sentry.captureException` (з прод-середовища).
+
+Підтверджено live:
+```
+$ curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/branches/not-a-uuid
+Status: 500
+{"statusCode":500,"message":"Внутрішня помилка сервера",...}
+
+$ curl ... /api/counterparties/not-uuid → 500
+$ curl ... /api/work-orders/not-uuid     → 500
+$ curl ... /api/invoices/not-uuid        → 500
+```
+
+Перевірка по всіх файлах:
+```bash
+grep -rn "@Param('id')" apps/api/src --include="*.controller.ts" | grep -v ParseUUIDPipe | wc -l  # 86
+grep -rn "@Param('id'" apps/api/src --include="*.controller.ts" | grep ParseUUIDPipe | wc -l      # 23 (правильно)
+```
+
+**Очікувана поведінка:**
+- Некоректний UUID → `400 Bad Request` (валідація на рівні pipe)
+- Sentry НЕ отримує false-positive 5xx алерту
+
+**Фактична поведінка:**
+- Некоректний UUID → `500 Internal Server Error`
+- `Sentry.captureException(prismaError)` спрацьовує у проді → шум у моніторингу
+- Користувач бачить generic "Внутрішня помилка сервера" замість змістовного 400
+
+**Фікс:** додати handling до `HttpExceptionFilter` для `Prisma.PrismaClientKnownRequestError`:
+- P2023 (malformed UUID/data) → 400 Bad Request з повідомленням "Некоректний формат ідентифікатора"
+- P2025 (record not found in update/delete) → 404 NotFound
+- P2002 (unique constraint) → 409 Conflict
+- P2003 (foreign key) → 400
+- P2000 (value too long) → 400
+- P2011 (null constraint) → 400
+- `PrismaClientValidationError` → 400 "Некоректні дані запиту"
+- НЕ надсилати у Sentry (це 4xx, очікувана клієнтська помилка)
+
+Це системний фікс — закриває всі 86 endpoints одним коммітом + плюс будь-які майбутні. Підтверджено live: 4 endpoints (/branches, /work-orders, /counterparties, /invoices) тепер повертають 400 з українським повідомленням замість 500. Додано 13 unit-тестів у `http-exception.filter.spec.ts`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #128 — [MEDIUM] `HttpExceptionFilter` не конвертує Prisma errors → 5xx Sentry alerts для очікуваних 4xx
+
+**Файл:** `apps/api/src/common/filters/http-exception.filter.ts`
+**Severity:** MEDIUM
+**Категорія:** sentry-noise / api-contract
+
+**Опис:**
+`HttpExceptionFilter.catch()` обробляє тільки `instanceof HttpException`. Будь-який не-HTTP exception (включно з `PrismaClientKnownRequestError` для P2002/P2023/P2025) потрапляє у `else` гілку, де:
+1. Логується як unhandled exception
+2. Повертається status 500
+3. **Відправляється у Sentry** через `if (status >= 500)` блок
+
+Сервіси як `WarehousesService` мають локальний catch для P2002 → ConflictException — але це **defensive duplication**. Системно цей конверт повинен бути у filter.
+
+Поточні наслідки:
+- Кожен `prisma.X.update({ where: { id: 'wrong-uuid' } })` → 500 → Sentry alert
+- Дубльоване створення (unique constraint) у будь-якій моделі без локального catch → 500 → Sentry
+- update неіснуючого запису → 500 замість 404
+
+**Очікувана поведінка:**
+Глобальний filter розпізнає Prisma errors і повертає правильні HTTP статуси БЕЗ Sentry alerts (4xx — не баг).
+
+**Статус:** [x] виправлено разом з Bug #127
+
+---
+
+## Bug #129 — [LOW] `inventory/page.tsx` inline `text-[hsl(25_95%_53%)]` для "reserved" замість токена
+
+**Файл:** `apps/web/src/app/inventory/page.tsx:199, 255`
+**Severity:** LOW
+**Категорія:** frontend / a11y / dark-mode
+
+**Опис:**
+Колонка "Резерв" та поле у DetailPanel використовують inline HSL:
+```tsx
+<TableCell className="text-right text-[hsl(25_95%_53%)]">
+```
+Це orange колір (#F58817), який:
+- **Не перемикається у dark mode** — у темній темі залишається той самий тон
+- Не відповідає Tailwind 4 канонічному стилю проекту
+- Не входить у виключення з `/sto-tester` SKILL.md §1.3 (виключення: `badge.tsx purple`, `button.tsx destructive-hover`, `input.tsx`/`select.tsx` focus-ring)
+
+`apps/web/src/app/globals.css` має готовий токен `--color-warning-text` (HSL 26 83% 30% / 38 92% 65% dark) — точно для warning/orange акценту.
+
+**Очікувана поведінка:**
+`text-warning-text` замість `text-[hsl(25_95%_53%)]` — автоматично адаптується до dark mode і пасує семантично ("reserved = warning state").
+
+**Фактична поведінка:**
+Hardcoded HSL → у dark mode стає погано читаним (контраст fail з темним фоном).
+
+**Статус:** [ ] відкритий
+
+---
+
+## Bug #130 — [LOW] `$transaction` interactive callbacks без явного `timeout` опції
+
+**Файли:**
+- `apps/api/src/modules/work-orders/work-orders.service.ts:356`
+- `apps/api/src/modules/inspection/inspection.service.ts:93`
+- `apps/api/src/modules/calendar/calendar.service.ts:62`
+- `apps/api/src/modules/completion-acts/completion-acts.service.ts:117`
+- `apps/api/src/modules/document-number/document-number.service.ts:14`
+
+**Severity:** LOW
+**Категорія:** performance / database-resilience
+
+**Опис:**
+Жоден `$transaction(async (tx) => {...})` callback в коді не має явного `timeout: N`. Prisma 5 default = 5000ms, що адекватно, але:
+- При navigation/FK queries у callback час може зрости (особливо work-orders.transition COMPLETED — write-off + reserve-release + settlement в одній)
+- Без явного timeout складніше моніторити які транзакції повільні
+- Best practice (§4.9.3 SKILL.md) — явний `{ timeout: 5000 }` для документації invariant
+
+Особливо ризиковано: `inspection.service.ts:93` — loop з N inserts на critical points. При seed з 50+ inspection points (DEFAULT_INSPECTION_POINTS) → 50+ workOrderLine.create в одній транзакції.
+
+**Очікувана поведінка:**
+Кожен interactive `$transaction(async ... => ...)` має `, { timeout: 8000 }` (work-orders/inspection) або `{ timeout: 5000 }` (calendar/completion-acts).
+
+**Фактична поведінка:**
+Default 5s, не задокументовано в коді.
+
+**Статус:** [ ] відкритий
+
+---
+
