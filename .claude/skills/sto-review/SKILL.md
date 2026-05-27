@@ -385,6 +385,11 @@ grep -rn "saving\b" apps/web/src/app/ --include="*.tsx" | grep "useState(false)"
 - [ ] `loading` ініціалізується `true` якщо дані завантажуються одразу при mount (не `false`)
 - [ ] `error` сторінки не перезаписується помилками завантаження форм — окремий `formError`
 - [ ] Немає об'єктів/масивів що створюються inline в JSX як пропи → кожен ре-рендер створює нову референцію
+- [ ] **Stateless константи (RegExp, Set, Map literals) — module-level, НЕ всередині component body**. `const UUID_RE = /^.../` всередині `export default function PageX()` створює нову `RegExp` instance кожен render. Канон: винести поряд із module-level константами файлу (`const KYIV_TZ = 'Europe/Kyiv'` патерн). Grep:
+  ```bash
+  # RegExp / new Set / new Map декларовані після `export default function`
+  grep -rnE "^\s+const [A-Z_]+\s*=\s*(\/|new (Set|Map|RegExp))" apps/web/src/app --include="*.tsx" --include="*.ts"
+  ```
 
 ### 3.3 Backend — NestJS / Node.js
 
@@ -785,6 +790,11 @@ grep -rn "fetch(" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "ap
 
 - [ ] Всі API виклики через `apiFetch` (не прямий `fetch`) — забезпечує auto token refresh
 - [ ] Немає `axios` або `XMLHttpRequest`
+- [ ] **`api-client.ts` error message parsing узгоджений у ВСІХ трьох helpers** (`apiFetch`, `apiBlobFetch`, `apiMultipartFetch`) — NestJS class-validator на 400 повертає `{ message: string[] }`, а решта exceptions `{ message: string }`. Кожен helper мусить мати `Array.isArray(body.message) ? body.message.join('; ') : (body.message ?? fallback)`. Симптом якщо забути: користувач бачить `[object Object]` або тільки перший елемент масиву через implicit `Array.prototype.toString`. Коли fix падає у `apiFetch` — обов'язково grep сусідні helpers того ж файлу:
+  ```bash
+  grep -n "message?: string\b\|message: string\b" apps/web/src/lib/api-client.ts
+  # Кожен match має поряд бути Array.isArray guard або типізацію string | string[]
+  ```
 - [ ] **Статичні ресурси з `manifest.json` фізично існують у `apps/web/public/`** — кожен `icons[].src` (`/icons/icon-192.png`, `/icons/icon-512.png` тощо), `favicon.ico`, `offline.html` мають бути присутні на диску, інакше встановлення PWA, recovery worker та статичні запити дають 404 (засмічують логи + ламають install prompt).
   ```bash
   # Звірити маніфест із вмістом public/
