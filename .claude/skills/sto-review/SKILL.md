@@ -760,6 +760,17 @@ grep -rn "fetch(" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "ap
 
 - [ ] Всі API виклики через `apiFetch` (не прямий `fetch`) — забезпечує auto token refresh
 - [ ] Немає `axios` або `XMLHttpRequest`
+- [ ] **Статичні ресурси з `manifest.json` фізично існують у `apps/web/public/`** — кожен `icons[].src` (`/icons/icon-192.png`, `/icons/icon-512.png` тощо), `favicon.ico`, `offline.html` мають бути присутні на диску, інакше встановлення PWA, recovery worker та статичні запити дають 404 (засмічують логи + ламають install prompt).
+  ```bash
+  # Звірити маніфест із вмістом public/
+  cat apps/web/public/manifest.json
+  ls apps/web/public/ apps/web/public/icons/
+
+  # Кожен src з manifest має існувати
+  jq -r '.icons[].src' apps/web/public/manifest.json 2>/dev/null \
+    | while read p; do [ -f "apps/web/public${p}" ] || echo "MISSING: apps/web/public${p}"; done
+  ```
+  Перевірка через E2E: smoke-тест має GET `/favicon.ico`, `/icons/icon-192.png`, `/icons/icon-512.png` і очікувати 200 (див. `apps/web/e2e/smoke.spec.ts`).
 
 ### 8.2 UI Стани
 
@@ -970,6 +981,41 @@ grep -rn "toResponseDto\|toDto\|toDetailDto" apps/api/src/modules/ --include="*.
 - [ ] Optional поля захищені guard-ом: `data?.field` або `{data.field && ...}`
 - [ ] Числові поля з Prisma `Decimal` → `Number(x)` у `toResponseDto()` — не повертається як об'єкт
 - [ ] `createdAt`, `updatedAt` → передаються як `string` (JSON серіалізація) — фронтенд-тип має `string`, не `Date`
+- [ ] **`syncVersion BigInt` НІКОЛИ не серіалізується напряму** — `JSON.stringify(bigint)` кидає `TypeError: Do not know how to serialize a BigInt` → endpoint падає з HTTP 500. Будь-який Prisma model що має `syncVersion BigInt @default(0)` і повертається з ендпоінта **без** `toResponseDto()`/`toDto()` — це CRITICAL bug. Фікс: `{ ...row, syncVersion: Number(row.syncVersion) }` АБО явний `select` без `syncVersion` АБО full `toDto()` mapper.
+  ```bash
+  # 1) Усі моделі що мають syncVersion BigInt у schema
+  grep -n "syncVersion BigInt" packages/database/prisma/schema.prisma
+
+  # 2) Сервіси що повертають Prisma результат напряму без toDto (high-signal grep)
+  grep -rn "return\s*(?:await\s*)?(?:this\\.)?prisma\\.\\w+\\.(findFirst|findUnique|findMany|create|update|upsert)" \
+    apps/api/src/modules --include="*.service.ts"
+  # Для кожного match — переконатись що або (а) є select без syncVersion,
+  # або (б) результат не виходить за межі сервісу (internal helper),
+  # або (в) caller обгортає в toDto.
+
+  # 3) Find list endpoints that spread row directly into items[] (без toDto)
+  grep -rn "items:\s*rows\\.map\\(r\\s*=>\\s*(\\{\\s*\\.\\.\\.r\\s*\\}|r)\\)" apps/api/src/modules --include="*.service.ts"
+  ```
+  ```typescript
+  // ❌ BAD — syncVersion BigInt дійде до JSON.stringify → 500
+  async findTemplates(orgId: string) {
+    return this.prisma.notificationTemplate.findMany({ where: { orgId } });
+  }
+
+  // ✅ GOOD — конвертувати у Number перед серіалізацією
+  async findTemplates(orgId: string) {
+    const rows = await this.prisma.notificationTemplate.findMany({ where: { orgId } });
+    return rows.map(r => ({ ...r, syncVersion: Number(r.syncVersion) }));
+  }
+
+  // ✅ ALSO GOOD — явно вилучити syncVersion через select
+  async findTemplates(orgId: string) {
+    return this.prisma.notificationTemplate.findMany({
+      where: { orgId },
+      select: { id: true, eventType: true, channel: true, body: true, isActive: true },
+    });
+  }
+  ```
 - [ ] **Polymorphic `entityType`/`kind` string fields** мають **одну** канонічну форму у DTO whitelist (`IsIn(['WorkOrder', ...])`). Фронтенд повинен використовувати **точно ту саму** форму (PascalCase vs snake_case) у POST та GET query — інакше POST падає `400 BadRequest` і GET повертає 0 записів. Шаблон: експортувати `COMMENT_ENTITY_TYPES` (або аналог) з DTO і імпортувати константи у фронт замість магічних рядків.
   ```bash
   # Знайти всі polymorphic entityType виклики на фронті
