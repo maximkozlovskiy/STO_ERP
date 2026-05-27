@@ -4218,4 +4218,152 @@ X-XSS-Protection: 0
 
 ---
 
+## Session 2026-05-27 (вечір) — Infrastructure edit PATCH + SearchCombobox + string[] message
+
+### Baseline
+
+- TypeScript web/api/shared — ✅ 0 errors
+- Unit + contract tests — ✅ 271/271 passed (23 files)
+- Recent changes: SearchCombobox<T> reusable, replaced selects on 5 pages, UnitOfMeasure dimensions API, Infrastructure Pencil edit buttons + PATCH
+
+### Bugs found this session: 5 (CRITICAL: 1 / MEDIUM: 2 / LOW: 2)
+
+---
+
+## Bug #136 — [CRITICAL] Infrastructure edit зон/підйомників/складів повертає 400 — PATCH body містить непідтримувані поля
+
+**Файл:** `apps/web/src/app/infrastructure/page.tsx:121, 129, 143`
+**Severity:** CRITICAL
+**Категорія:** business-logic / frontend-backend contract
+
+**Опис:**
+Новий функціонал "Pencil edit buttons + PATCH for all 4 tabs" зламаний — фронтенд `save()` надсилає в PATCH body поля, яких **немає** у `UpdateZoneDto` / `UpdateLiftDto` / `UpdateWarehouseDto`. У `main.ts` ValidationPipe налаштовано з `forbidNonWhitelisted: true`, тому будь-яке невідоме поле → 400 `property X should not exist`.
+
+Конкретно:
+- Edit Zone: PATCH body містить `branchId` (рядок 121), але `UpdateZoneDto` має лише `name?`, `type?`.
+- Edit Lift: PATCH body містить `zoneId` (рядок 129), але `UpdateLiftDto` не дозволяє `zoneId`.
+- Edit Warehouse: PATCH body містить `branchId` (рядок 143), але `UpdateWarehouseDto` має лише `name?`, `type?`, `isMain?`.
+
+Це означає: натиснути Pencil → змінити назву → Зберегти → **зразу 400 з оманливою помилкою** (`property branchId should not exist`). Користувач не може редагувати інфраструктуру.
+
+**Очікувана поведінка:**
+PATCH /zones/:id, /lifts/:id, /warehouses/:id з мінімальним body (тільки змінювані поля) → 200 + оновлений запис.
+
+**Фактична поведінка:**
+PATCH → 400 з повідомленням про "недозволені" поля. Edit на 3 з 4 вкладок зламано.
+
+**Фікс:**
+Розгалужити body на CREATE (POST) і UPDATE (PATCH): для PATCH прибрати незмінні relation FK (`branchId` / `zoneId`), залишити тільки реально редаговані поля.
+
+**Статус:** [ ] відкритий
+
+---
+
+## Bug #137 — [MEDIUM] AuthProvider.login та booking publicFetch не join'ять `message: string[]` з валідаційних 400
+
+**Файл:** `apps/web/src/lib/auth/context.tsx:126-127`, `apps/web/src/app/booking/page.tsx:23-24`
+**Severity:** MEDIUM
+**Категорія:** frontend / api-client
+
+**Опис:**
+NestJS class-validator повертає `{ message: string[] }` при 400. `apiFetch` (line 87-88 в `api-client.ts`) це обробляє через `Array.isArray(error.message) ? error.message.join('; ') : ...`. Але:
+
+1. `auth/context.tsx:126` — `err.message` приведено до `string` без перевірки масиву. `new Error([...])` дає `Error.message = "msg1,msg2"` (Array.toString joins by `,` без пробілу), користувач бачить нечитабельний текст.
+2. `booking/page.tsx:23` — `body.message ?? 'HTTP'` — той самий патерн без `Array.isArray` join.
+
+Те саме питання було виправлено для `apiFetch`/`apiBlobFetch`/`apiMultipartFetch` (cycle-2 review), але **два** залишкових місця не оновлено: login (auth context) та booking widget (бо обидва обходять `apiFetch`).
+
+**Очікувана поведінка:**
+При 400 з валідаційного `message: string[]` — `'; '`-joined рядок як в `apiFetch`.
+
+**Фактична поведінка:**
+Користувач бачить comma-glued повідомлення без пробілу: `"Поле X не може бути порожнім,Поле Y має бути UUID"`.
+
+**Фікс:**
+Винести спільний хелпер `extractErrorMessage(body: unknown): string` або повторити inline `Array.isArray` join.
+
+**Статус:** [ ] відкритий
+
+---
+
+## Bug #138 — [MEDIUM] work-orders.service.ts: 6 `$transaction(async)` без явного `{ timeout }` — addLine/updateLine/removeLine/addPart/updatePart/removePart
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:520, 541, 558, 578, 599, 616`
+**Severity:** MEDIUM
+**Категорія:** non-functional / database resilience
+
+**Опис:**
+Bug #130 + #132 додали `{ timeout: 5_000 }` до критичних транзакцій. Але 6 інтерактивних callback transactions у work-orders.service для CRUD ліній і запчастин не отримали timeout. Кожна з них:
+- 1 mutation (create/update/soft-delete)
+- `recalcTotals(workOrderId, tx, orgId)` — 2 findMany з `take: 1000` + reduce + workOrder.update
+
+При наряді з 500+ ліній + 500+ запчастин (рідко, але можливо для довгих ремонтів), default 5000ms може закінчитися raw transaction lock + N+1 effect. Краще явно поставити timeout.
+
+Те саме стосується `warehouses.service.ts:33, 54` — create/update мають updateMany + create/update, без timeout.
+
+**Очікувана поведінка:**
+Усі `$transaction(async (tx) => {...})` мають `{ timeout: 5_000 }` (або більше для важких) — узгоджено з #130/#132 політикою.
+
+**Фактична поведінка:**
+6 в work-orders + 2 у warehouses досі без явного timeout (Bug #130/#132 їх пропустили).
+
+**Фікс:**
+Додати `}, { timeout: 5_000 });` у кінець кожної.
+
+**Статус:** [ ] відкритий
+
+---
+
+## Bug #139 — [LOW] Dead nullish-coalescing `.filter(Boolean).join(' ') ?? ''` у 6 місцях
+
+**Файл:** `apps/web/src/app/work-orders/page.tsx:850, 862`, `apps/web/src/app/invoices/page.tsx:592, 599`, `apps/web/src/app/purchase-orders/page.tsx:423, 430`
+**Severity:** LOW
+**Категорія:** typescript / dead code
+
+**Опис:**
+Патерн `cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ') ?? ''` має зайвий другий `?? ''`. `Array.prototype.join` повертає завжди `string` (не `null`/`undefined`), тому третій fallback є dead code.
+
+Але важливіше — коли `companyName === null` і обидва `lastName/firstName === null` — `filter(Boolean).join(' ')` повертає `''` (порожній рядок). У комбобоксі `primary: ''` → рядок з порожнім текстом, користувач бачить порожній dropdown item.
+
+**Очікувана поведінка:**
+1. Прибрати dead `?? ''` (cosmetic).
+2. Якщо всі імена null — fallback на `'(без імені)'` для UI.
+
+**Фактична поведінка:**
+Cosmetic dead code; функціонально працює, але дивно у разі anonymous counterparty.
+
+**Фікс:**
+Винести helper `displayCounterpartyName(cp)`. Поки що — мінімально: змінити `... ?? ''` → fallback `'(без імені)'`.
+
+**Статус:** [ ] відкритий
+
+---
+
+## Bug #140 — [LOW] SearchCombobox: коли `value` встановлено але `displayValue` порожній — selected pill не рендериться, користувач бачить порожнє поле
+
+**Файл:** `apps/web/src/components/ui/search-combobox.tsx:137`
+**Severity:** LOW
+**Категорія:** frontend / UX
+
+**Опис:**
+`const showSelected = !!value && !!displayValue && !query;` — якщо `value` (id) задано, але `displayValue` (відображувана назва) ще не завантажилась (асинхронний fetch), компонент рендерить пустий combobox замість selected pill. Користувач думає що вибір втрачено.
+
+Сценарій:
+1. Користувач завантажує сторінку Edit Work Order — `partForm.goodId` встановлено з server response.
+2. `goodDisplayName` встановлюється пізніше (з того ж response, але можливо у іншому ефекті).
+3. На мить combobox показує порожній input замість вибраного товару.
+
+**Очікувана поведінка:**
+Якщо `value` встановлено, але `displayValue` порожній — показати loading state (skeleton/spinner) замість пустого input. Або як мінімум — показати `value` (id) як placeholder.
+
+**Фактична поведінка:**
+Користувач бачить порожній search input до моменту коли `displayValue` завантажиться.
+
+**Фікс:**
+Якщо `!!value && !displayValue` — показати disabled input з текстом `Завантаження...` або skeleton.
+
+**Статус:** [ ] відкритий
+
+---
+
 

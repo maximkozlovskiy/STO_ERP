@@ -118,29 +118,36 @@ export default function InfrastructurePage() {
         await apiFetch<Branch>(url, { method, body: JSON.stringify({ name: form.name, address: form.address }) });
       } else if (modal === 'zone') {
         const url = editingId ? `/zones/${editingId}` : '/zones';
-        await apiFetch<Zone>(url, { method, body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type }) });
+        // Bug #136: UpdateZoneDto не дозволяє branchId — relation FK immutable у PATCH.
+        const body = editingId
+          ? { name: form.name, type: form.type }
+          : { branchId: form.branchId, name: form.name, type: form.type };
+        await apiFetch<Zone>(url, { method, body: JSON.stringify(body) });
       } else if (modal === 'lift') {
         const w = form.maxWeightKg ? Number(form.maxWeightKg) : undefined;
         const interval = form.maintenanceIntervalDays ? Number(form.maintenanceIntervalDays) : undefined;
         const url = editingId ? `/lifts/${editingId}` : '/lifts';
-        await apiFetch<Lift>(url, {
-          method,
-          body: JSON.stringify({
-            zoneId: form.zoneId,
-            name: form.name,
-            type: form.type,
-            maxWeightKg: w,
-            status: form.status || 'ACTIVE',
-            serialNumber: form.serialNumber || undefined,
-            purchaseDate: form.purchaseDate || undefined,
-            warrantyUntil: form.warrantyUntil || undefined,
-            maintenanceIntervalDays: interval,
-            lastMaintenanceDate: form.lastMaintenanceDate || undefined,
-          }),
-        });
+        // Bug #136: UpdateLiftDto не дозволяє zoneId — relation FK immutable у PATCH.
+        const commonFields = {
+          name: form.name,
+          type: form.type,
+          maxWeightKg: w,
+          status: form.status || 'ACTIVE',
+          serialNumber: form.serialNumber || undefined,
+          purchaseDate: form.purchaseDate || undefined,
+          warrantyUntil: form.warrantyUntil || undefined,
+          maintenanceIntervalDays: interval,
+          lastMaintenanceDate: form.lastMaintenanceDate || undefined,
+        };
+        const body = editingId ? commonFields : { zoneId: form.zoneId, ...commonFields };
+        await apiFetch<Lift>(url, { method, body: JSON.stringify(body) });
       } else if (modal === 'warehouse') {
         const url = editingId ? `/warehouses/${editingId}` : '/warehouses';
-        await apiFetch<Warehouse>(url, { method, body: JSON.stringify({ branchId: form.branchId, name: form.name, type: form.type, isMain: form.isMain === 'true' }) });
+        // Bug #136: UpdateWarehouseDto не дозволяє branchId — relation FK immutable у PATCH.
+        const body = editingId
+          ? { name: form.name, type: form.type, isMain: form.isMain === 'true' }
+          : { branchId: form.branchId, name: form.name, type: form.type, isMain: form.isMain === 'true' };
+        await apiFetch<Warehouse>(url, { method, body: JSON.stringify(body) });
       }
       closeModal();
       loadAll();
