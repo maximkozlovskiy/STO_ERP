@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+8c1a760 fix(review): React.ReactNode -> ReactNode in inline-edit-cell
+2c8ffe0 docs(memory): record /sto-tester FULL session a262d1a (bugs #132-#134)
 a262d1a docs(tester): record bugs #132-#134 from /sto-tester FULL session 2026-05-27
 ae7d51d fix(tester): Bugs #131 + #134 — auth PUBLIC_ROUTES + console-errors flakiness
 d544706 fix(tester): Bug #132 — explicit $transaction timeouts in 11 more services
@@ -17,8 +19,6 @@ d544706 fix(tester): Bug #132 — explicit $transaction timeouts in 11 more serv
 f2b6a80 fix(tester): Bug #127+#128 — Prisma errors mapped to 4xx in HttpExceptionFilter
 d5ec61e docs(memory): record /sto-review on f2e8182 (React imports + auth cancel guard)
 f2e8182 fix(review): React namespace imports + AuthProvider cancel guard
-6035b8e feat(tester): console-errors.spec.ts — перехоплення Next.js DevTools помилок
-610a74c feat(sentry): інтеграція Sentry для моніторингу 5xx помилок
 ```
 
 Дата: 2026-05-27
@@ -35,9 +35,14 @@ E2E (Playwright):✅ 41/41 passed (console-errors 22, smoke 7, inventory 4, api-
                   • console-errors: 0 flaky після serial + warm-up (Bug #134)
 Build:           ✅ @sto/api build OK (webpack 10.5s)
 API smoke:       ✅ 15/15 endpoints 200 (<200ms each), всі список / dashboard / sync
-Latest review:   2026-05-27 (f2e8182) — React namespace cleanup + AuthProvider cancel guard
+Latest review:   2026-05-27 (8c1a760) — React.ReactNode → ReactNode in inline-edit-cell
 Latest tester:   2026-05-27 (a262d1a) — FULL sweep, 3 bugs (#132 MEDIUM timeouts, #133 LOW FEFO, #134 LOW E2E flake); + закрив #131; всі виправлені
 ```
+
+### Gotcha — /sto-review (2026-05-27, commit 8c1a760)
+
+- **Залишковий `React.ReactNode` у `inline-edit-cell.tsx:89`** — попередній review (f2e8182) свідомо пропустив цей файл як "не в скоупі поточних змін". Цикл review після додаткових тестерських фіксів виявив його: grep `React\.` стабільно повертає його щоразу. Виправлено: `import { ..., type ReactNode } from 'react'` + `children?: ReactNode`. Урок: коли grep знаходить старий патерн у файлі поза скоупом — все одно виправляти, бо повторні запуски review повторно його піднімають і марнують контекст. Web `tsc --noEmit --incremental false` чистий (0 errors).
+- **Файли цього скоупу review (24 файли з f2e8182..HEAD) — TS чистий**: api services з explicit `$transaction` timeouts (#130/#132), batch FEFO `nulls: 'last'` (#133), HttpExceptionFilter Prisma mapping (#127/#128), auth context PUBLIC_ROUTES (#131), console-errors serial mode + warm-up (#134), inventory text-warning-text (#129). Всі патерни консистентні; жодних повторних порушень skill §1/§2/§3/§5/§13.
 
 ### Gotcha — /sto-tester FULL 2026-05-27 (commits d544706, ae7d51d, a262d1a, bugs #132-#134)
 
@@ -50,14 +55,6 @@ Latest tester:   2026-05-27 (a262d1a) — FULL sweep, 3 bugs (#132 MEDIUM timeou
   - Решта (employees×4, services×2, payments, loyalty, counterparties, settlements, purchase-orders crud, stock-documents.create/update): 5s
 - **FEFO ordering без explicit `nulls: 'last'` — silent dependency on Postgres ASC default** (Bug #133, batch.service.ts:152). Postgres ASC ORDER BY за замовчуванням ставить NULLs LAST, але це **database-specific**. Якщо хтось зробить `nulls: 'first'` migration або переключиться на іншу БД — партії без `expiryDate` стануть FIRST → товари що скоро прострочаться лежатимуть на складі. Канон: для FEFO ВСІ orderBy на nullable date поля повинні мати explicit `{ sort: 'asc', nulls: 'last' }`. Прісма 5 syntax: `[{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }]`.
 - **Playwright `fullyParallel: true` + Next.js dev = "Invalid or unexpected token" race** (Bug #134, console-errors.spec.ts). 8 workers одночасно навігують на різні routes; Next.js dev компілює chunks on-demand для кожного route; повертає браузеру partial JS до завершення webpack. Браузер ловить SyntaxError. Фікси: (1) `test.describe.configure({ mode: 'serial' })` — тести одного describe виконуються послідовно (інші файли паралельно); (2) `beforeAll` warm-up на /dashboard щоб скомпілювати layout + vendor chunks до першого реального тесту. Канон: для будь-якого e2e файлу що навігує >5 routes у Next.js dev → mode 'serial' + beforeAll warm-up. Альтернатива — `next build` перед тестами (повільніше, але без race).
-
-### Gotcha — /sto-review (2026-05-27, commit f2e8182)
-
-- **`React.ReactNode` / `React.CSSProperties` / `import('react').ReactNode` без іменованих імпортів** — Next.js TS-plugin суворіший за plain tsc; форма `React.X` (з global namespace) проходить tsc через `next-env.d.ts`, але це антипатерн skill §1. Канон: `import type { ReactNode, CSSProperties } from 'react'`. Виправлено у `apps/web/src/app/calendar/page.tsx`, `apps/web/src/app/layout.tsx`, `apps/web/src/components/SentryProvider.tsx`. Інші файли (наприклад `inline-edit-cell.tsx`) залишені бо не в скоупі поточних змін — фікс відбудеться коли файл наступного разу торкнеться.
-- **AuthProvider on-mount `refreshToken().then(...)` без `cancelled` flag** — типовий патерн "useEffect з апі-викликом і []-deps". React не варнить про setState на unmounted у виробництві, але:
-  1) Якщо користувач залишить root layout (повний reload) до завершення мережевого запиту — `dispatch` все одно виконається після unmount.
-  2) Skill §3.1: `useEffect з apiFetch і [] deps на сторінках з навігацією — теж потребує let cancelled=false`.
-  Канон: `let cancelled = false; ...then((ok) => { if (cancelled) return; ...dispatch(...) }); return () => { cancelled = true }`. Виправлено в `apps/web/src/lib/auth/context.tsx`.
 
 ### Gotcha — /sto-review (2026-05-27, commit f2e8182)
 
