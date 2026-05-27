@@ -49,7 +49,7 @@ export class CounterpartyQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
   @ApiPropertyOptional({ enum: CounterpartyType }) @IsOptional() @IsEnum(CounterpartyType) type?: CounterpartyType;
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) page: number = 1;
-  @ApiPropertyOptional({ default: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit: number = 20;
+  @ApiPropertyOptional({ default: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit: number = 20;
 }
 
 export class CounterpartyResponseDto {
