@@ -9,33 +9,55 @@
 ## Останній commit
 
 ```
+a262d1a docs(tester): record bugs #132-#134 from /sto-tester FULL session 2026-05-27
+ae7d51d fix(tester): Bugs #131 + #134 — auth PUBLIC_ROUTES + console-errors flakiness
+d544706 fix(tester): Bug #132 — explicit $transaction timeouts in 11 more services
+13c65bd fix(tester): Bug #130 — explicit $transaction timeouts in 5 services
+4adb65d fix(tester): Bug #129 — inventory inline HSL → text-warning-text token
+f2b6a80 fix(tester): Bug #127+#128 — Prisma errors mapped to 4xx in HttpExceptionFilter
+d5ec61e docs(memory): record /sto-review on f2e8182 (React imports + auth cancel guard)
 f2e8182 fix(review): React namespace imports + AuthProvider cancel guard
 6035b8e feat(tester): console-errors.spec.ts — перехоплення Next.js DevTools помилок
-61f096e fix(ui): 3 console errors — ui-features 401, calendar slots 400, login event
 610a74c feat(sentry): інтеграція Sentry для моніторингу 5xx помилок
-1f41400 fix: counterparties types filter + SSE token refresh + skill checks
-87b190e chore(web): commit favicon.ico and PWA icons referenced by manifest.json
-52fbd02 fix(tester): cycle-5 — sync/status 500 + sync/pull BigInt payload (Bugs #127, #128)
-2c43b6a docs(memory): record /sto-review on cbc0a97..b51e2dd (BigInt+static assets sweep)
-b51e2dd docs(skills): add BigInt syncVersion + manifest static asset checks to sto-review
-ea8f5a6 fix(notifications): serialize BigInt syncVersion before JSON response
 ```
 
 Дата: 2026-05-27
 
 ## Поточний стан проєкту
 ```
-TypeScript:      ✅ 0 errors        (apps/web + apps/api + shared)
-Unit:            ✅ 255/255 passed  (22 файли — +sync.contract.spec.ts)
-Contract:        ✅ 20 файлів covered (added sync HTTP contract)
-Property-based:  ✅ inventory + settlements + work-orders.fsm invariants (3 файли)
-Components:      ✅ 139/139 passed  (13 файлів — Button, Modal, Select, CommandPalette, etc.)
-E2E (Playwright): ⏭ smoke.spec.ts (static assets + auth guard) — ready, dev offline на момент запуску
-Build:           ✅ @sto/api build OK (webpack 9.3s)
-Static assets:   ✅ favicon.ico + icons/icon-192.png + icons/icon-512.png існують у public/
+TypeScript:      ✅ 0 errors           (apps/web + apps/api + shared)
+Unit:            ✅ 271/271 passed     (23 файли)
+Contract:        ✅ 9 contract spec files (auth, work-orders, warehouses, counterparties,
+                                       sync, settings, audit, pricing-rules, batches)
+Property-based:  ✅ 26 invariants passed (inventory, settlements, FSM)
+Components:      ✅ ще не запускались у цій сесії (@testing-library встановлений)
+E2E (Playwright):✅ 41/41 passed (console-errors 22, smoke 7, inventory 4, api-errors 8)
+                  • console-errors: 0 flaky після serial + warm-up (Bug #134)
+Build:           ✅ @sto/api build OK (webpack 10.5s)
+API smoke:       ✅ 15/15 endpoints 200 (<200ms each), всі список / dashboard / sync
 Latest review:   2026-05-27 (f2e8182) — React namespace cleanup + AuthProvider cancel guard
-Latest tester:   2026-05-27 — 2 CRITICAL bugs (#127 sync plural-model, #128 sync BigInt payload); both fixed + regression spec
+Latest tester:   2026-05-27 (a262d1a) — FULL sweep, 3 bugs (#132 MEDIUM timeouts, #133 LOW FEFO, #134 LOW E2E flake); + закрив #131; всі виправлені
 ```
+
+### Gotcha — /sto-tester FULL 2026-05-27 (commits d544706, ae7d51d, a262d1a, bugs #132-#134)
+
+- **`prisma.$transaction([array], { timeout })` НЕ ПІДТРИМУЄТЬСЯ Prisma 5** (Bug #132, pricing.service.ts). Тільки interactive callback-form приймає `{ timeout }` як другий аргумент: `prisma.$transaction(async (tx) => {...}, { timeout: N })`. Array-form `prisma.$transaction([promises], { isolationLevel })` приймає **тільки** `isolationLevel`. TS-помилка: "Object literal may only specify known properties, and 'timeout' does not exist in type '{ isolationLevel?: TransactionIsolationLevel }'". Канон: якщо потрібен timeout — переписати array на callback-form (loop замість `[...arr.map(p)]`). Перевірено в `apps/api/src/modules/inventory/pricing.service.ts:119` — переписаний з `$transaction([...100 promises])` на `$transaction(async tx => { for ... })`.
+- **Bug #130 не покрив усі transaction callbacks — 11 з 16 залишались** (Bug #132). Перевірка кожного `$transaction(async ... =>)` після Bug #130:
+  - `setup.service.ts`: 15s (одноразовий bootstrap 14+ writes — Inno Setup перший запуск може бути повільним)
+  - `stock-documents.transition CONFIRMED` + `purchase-orders.receive`: 15s (N лін×createMovement з батч-tracking + StockBatch update + BatchConsumption create + StockMovement create + stockItem upsert = 5 writes/лінія)
+  - `inventory/pricing.applyRuleToGoods`: 10s (CHUNK=100)
+  - `batch.consumeBatch` standalone tx: 10s (loop по партіях)
+  - Решта (employees×4, services×2, payments, loyalty, counterparties, settlements, purchase-orders crud, stock-documents.create/update): 5s
+- **FEFO ordering без explicit `nulls: 'last'` — silent dependency on Postgres ASC default** (Bug #133, batch.service.ts:152). Postgres ASC ORDER BY за замовчуванням ставить NULLs LAST, але це **database-specific**. Якщо хтось зробить `nulls: 'first'` migration або переключиться на іншу БД — партії без `expiryDate` стануть FIRST → товари що скоро прострочаться лежатимуть на складі. Канон: для FEFO ВСІ orderBy на nullable date поля повинні мати explicit `{ sort: 'asc', nulls: 'last' }`. Прісма 5 syntax: `[{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }]`.
+- **Playwright `fullyParallel: true` + Next.js dev = "Invalid or unexpected token" race** (Bug #134, console-errors.spec.ts). 8 workers одночасно навігують на різні routes; Next.js dev компілює chunks on-demand для кожного route; повертає браузеру partial JS до завершення webpack. Браузер ловить SyntaxError. Фікси: (1) `test.describe.configure({ mode: 'serial' })` — тести одного describe виконуються послідовно (інші файли паралельно); (2) `beforeAll` warm-up на /dashboard щоб скомпілювати layout + vendor chunks до першого реального тесту. Канон: для будь-якого e2e файлу що навігує >5 routes у Next.js dev → mode 'serial' + beforeAll warm-up. Альтернатива — `next build` перед тестами (повільніше, але без race).
+
+### Gotcha — /sto-review (2026-05-27, commit f2e8182)
+
+- **`React.ReactNode` / `React.CSSProperties` / `import('react').ReactNode` без іменованих імпортів** — Next.js TS-plugin суворіший за plain tsc; форма `React.X` (з global namespace) проходить tsc через `next-env.d.ts`, але це антипатерн skill §1. Канон: `import type { ReactNode, CSSProperties } from 'react'`. Виправлено у `apps/web/src/app/calendar/page.tsx`, `apps/web/src/app/layout.tsx`, `apps/web/src/components/SentryProvider.tsx`. Інші файли (наприклад `inline-edit-cell.tsx`) залишені бо не в скоупі поточних змін — фікс відбудеться коли файл наступного разу торкнеться.
+- **AuthProvider on-mount `refreshToken().then(...)` без `cancelled` flag** — типовий патерн "useEffect з апі-викликом і []-deps". React не варнить про setState на unmounted у виробництві, але:
+  1) Якщо користувач залишить root layout (повний reload) до завершення мережевого запиту — `dispatch` все одно виконається після unmount.
+  2) Skill §3.1: `useEffect з apiFetch і [] deps на сторінках з навігацією — теж потребує let cancelled=false`.
+  Канон: `let cancelled = false; ...then((ok) => { if (cancelled) return; ...dispatch(...) }); return () => { cancelled = true }`. Виправлено в `apps/web/src/lib/auth/context.tsx`.
 
 ### Gotcha — /sto-review (2026-05-27, commit f2e8182)
 
