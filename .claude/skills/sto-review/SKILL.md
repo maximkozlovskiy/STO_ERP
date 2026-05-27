@@ -27,14 +27,14 @@ model: claude-opus-4-7
 | Тип зміни | Обов'язкові § | Пропустити |
 |---|---|---|
 | Новий `@Controller` | §1, §2.1 Auth, §2.2 Tenant, §2.3 Validation, §4 Arch, §13 Contract | §3, §6, §9, §10, §11 |
-| Новий `*.service.ts` | §1, §4 Arch, §5 Business Rules, §6 DB, §7 Perf | §2, §8, §12, §14 |
+| Новий `*.service.ts` | §1, §4 Arch, §5 Business Rules, §6 DB, §7 Perf | §2, §8, §12 |
 | Нова Prisma модель | §1, §6 DB, §9 Sync | §2, §3, §5, §7, §8 |
 | Зміна `toResponseDto` | §1, §13 Contract | всі інші |
 | Нова `page.tsx` | §1, §3 Memory, §8 Web Frontend, §12 a11y | §2, §4, §5, §6, §9 |
 | Новий `*.dto.ts` | §1, §2.3 Validation, §2.4 Data Leaks | §3, §4, §5, §6 |
 | Зміна BullMQ | §1, §2.5 Queue Safety, §10 Offline | §3, §4, §6, §8 |
 | Новий UX хук (`use*.ts`) | §1, §3.1 Memory Leaks | §2, §4, §5, §6, §9 |
-| Новий UI компонент (`components/ui/`) | §1, §8.5 UX Features, §14 a11y | §2, §4, §5, §6, §9 |
+| Новий UI компонент (`components/ui/`) | §1, §8.5 UX Features | §2, §4, §5, §6, §9 |
 | Зміна `TopShell.tsx` | §1, §3.1 listeners, §8.4 Auth guard, §8.5 useUiFeatures | §2, §4, §5, §6 |
 | `bulkActions` / `bulkSelect` | §1, §8.5 bulk patterns | §2, §4, §5, §6, §9 |
 | Config/docs-only зміни | §1 TS — тільки | всі інші |
@@ -1175,75 +1175,6 @@ interface WorkOrder { createdAt: string }
 
 ---
 
-## 14. Accessibility (a11y)
-
-> Стосується тільки змінених `*.tsx` файлів. Не перевіряй весь проект кожен раз.
-
-```bash
-# Кнопки-іконки без aria-label
-grep -rn "<button" apps/web/src/ --include="*.tsx" -A 2 | grep -B 1 "Icon\|icon\|svg" | grep "<button" | grep -v "aria-label"
-
-# img без alt
-grep -rn "<img " apps/web/src/ --include="*.tsx" | grep -v "alt="
-
-# onClick на не-інтерактивних елементах (без role)
-grep -rn "onClick" apps/web/src/ --include="*.tsx" | grep -E "<div |<span |<td " | grep -v "role=" | head -10
-```
-
-- [ ] `<button>` без видимого тексту має `aria-label` або `title`
-- [ ] `<img>` завжди має `alt=""` (декоративне) або `alt="опис"` (змістовне)
-- [ ] `onClick` на `<div>`/`<span>` → замінити на `<button>` або додати `role="button"` + `tabIndex={0}` + `onKeyDown`
-- [ ] Форми: кожен `<input>`/`<select>`/`<textarea>` має `<label>` або `aria-label`
-- [ ] Модальні вікна: `role="dialog"` + `aria-modal="true"` + `aria-labelledby` (вже у `Modal` компоненті — перевір що використовується `title` проп)
-- [ ] Статус-Badge не покладається лише на колір — є текстова мітка або `aria-label`
-- [ ] **`opacity-0 hover:opacity-100` на тому ж елементі = unreachable**: невидима кнопка з нульовою hover-площею ніколи не показується. Канон: hover на батьку через `group` + `group-hover:opacity-100` на дитині + `focus:opacity-100` для клавіатури. Grep:
-  ```bash
-  grep -rnE "opacity-0\s+hover:opacity-100" apps/web/src/ --include="*.tsx"
-  ```
-- [ ] **Custom combobox/autocomplete — WAI-ARIA combobox wiring обов'язковий**. Будь-який свій search-input + dropdown listbox потребує: на `<input>` — `role="combobox"`, `aria-expanded={open && items.length > 0}`, `aria-controls={listboxId}`, `aria-autocomplete="list"`, `aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}`, `autoComplete="off"`. На `<ul>` listbox — стабільний `id={listboxId}`. На кожному `<li>` option — `id={optionId(idx)}` + `role="option"` + `aria-selected={idx === activeIndex}`. Базовий префікс через `useId()` (стабільний між server і client paint). Без цього screen-reader users бачать порожній input і не дізнаються що відкрився dropdown. Grep:
-  ```bash
-  # Знайти власні комбобокси (input + listbox в одному файлі)
-  grep -rln "role=\"listbox\"\|role='listbox'" apps/web/src/components --include="*.tsx"
-  # Для кожного: переконатись що поряд є role="combobox" на input + aria-controls + aria-activedescendant
-  ```
-
-```typescript
-// ❌ BAD — іконка-кнопка без доступного імені
-<button onClick={handleClose}>
-  <XIcon className="w-4 h-4" />
-</button>
-
-// ✅ GOOD
-<button onClick={handleClose} aria-label="Закрити">
-  <XIcon className="w-4 h-4" aria-hidden="true" />
-</button>
-```
-
----
-
-## 15. i18n & Ukrainian UI Consistency
-
-```bash
-# Англійські рядки-кнопки та заголовки (не className/href/src)
-grep -rn ">[A-Z][a-z][a-z ]" apps/web/src/app/ --include="*.tsx" | grep -v "className=\|href=\|src=\|data-\|aria-\|//\|import\|export\|\.ts\b" | grep -v "[А-ЯҐЄІЇа-яґєії]" | head -20
-
-# Англійські повідомлення про помилки в API
-grep -rn "throw new.*Exception" apps/api/src/modules/ --include="*.ts" | grep -v "spec" | grep -E "['\"][A-Z][a-z ]{3,}" | grep -v "[А-ЯҐЄІЇа-яґєії]" | head -10
-
-# Дати виведені через toISOString або toString (не форматовані)
-grep -rn "\.toISOString()\b\|\.toString()" apps/web/src/app/ --include="*.tsx" | grep -v "useEffect\|spec\|JSON\|url\|id"
-```
-
-- [ ] Всі видимі рядки у JSX — кирилицею (uk-UA)
-- [ ] Повідомлення про помилки API — українською (`throw new NotFoundException('Запис не знайдено')`)
-- [ ] Дати у форматі `DD.MM.YYYY`, час `HH:mm` (24-год) — не ISO строки напряму в UI
-- [ ] Валюта: `1 250,00 ₴` (пробіл-роздільник тисяч, кома-десяткова)
-- [ ] Порожні стани (`<EmptyState>`) мають текст українською
-- [ ] Placeholder у полях — українська: `placeholder="Введіть назву..."`
-- [ ] Validation messages у Zod/class-validator — українські
-
----
-
 ## Output Format
 
 Структуруй результат:
@@ -1282,7 +1213,7 @@ grep -rn "\.toISOString()\b\|\.toString()" apps/web/src/app/ --include="*.tsx" |
 > "Цей баг був охоплений існуючим пунктом чекліста?"
 
 Якщо **НІ** — одразу оновити цей файл (`SKILL.md`):
-1. Додати новий checklist item у відповідну секцію (§1–§15)
+1. Додати новий checklist item у відповідну секцію (§1–§13)
 2. Якщо баг виявляється grep'ом — додати bash команду до секції
 3. Якщо це повторюваний anti-pattern — додати приклад `❌ BAD` / `✅ GOOD`
 4. Якщо специфічний для STO ERP (FSM, інвентар, sync) — у §5 Business Rules
@@ -1310,5 +1241,5 @@ grep -rn "\.toISOString()\b\|\.toString()" apps/web/src/app/ --include="*.tsx" |
 | 11 | Configuration | api/ — magic numbers, hardcoded templates |
 | 12 | Tests | api/*.spec.ts coverage |
 | 13 | API Contract | web/page.tsx ↔ api/toResponseDto() |
-| 14 | Accessibility | web/*.tsx — aria, keyboard nav |
-| 15 | i18n / Ukrainian | web/*.tsx + api errors — кирилиця, формати |
+
+> §14 Accessibility та §15 i18n перенесено до sto-tester (§1.6, §1.7)

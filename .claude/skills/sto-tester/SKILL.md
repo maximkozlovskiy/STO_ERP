@@ -44,7 +44,7 @@ model: claude-opus-4-7
 | Нова `page.tsx` або зміна UI | §1.3 (стани, hydration, routing, Tailwind) |
 | Новий `*.dto.ts` | §1.2 (API якість), §1.1 (validation guards) |
 | Зміна `prisma/schema.prisma` | §1.1 (soft delete fields, orgId, deletedAt), §1.2 |
-| UI-only (тільки `components/ui/`) | §1.3 (компоненти, Tailwind), §1.2 (TS) |
+| UI-only (тільки `components/ui/`) | §1.3 (компоненти, Tailwind), §1.2 (TS), §1.6 (a11y) |
 | Config/docs/тести | §0 (tsc) — більше нічого |
 
 ## FULL режим — алгоритм (явний виклик)
@@ -330,11 +330,11 @@ grep -n "SentryProvider" apps/web/src/app/layout.tsx
 
 ### 1.3 — Frontend (Next.js)
 
-#### Форми
-- [ ] Немає прямих `fetch`/`axios` у компонентах — тільки через `apiClient` або TanStack Query hooks
-- [ ] Форми не блокують submit під час завантаження (кнопка `loading` стан)
-- [ ] `errorMessage` або toast показується при помилці API
-- [ ] **Free-text `<Input>` що приймає UUID** (наприклад, workOrderId) — має клієнтську UUID-валідацію ПЕРЕД submit. Надсилати на сервер non-UUID рядок через поле з `@IsOptional() @IsUUID()` → 400 з оманливим ім'ям поля (якщо перше поле в DTO теж UUID — його ім'я з'являється в помилці). Шаблон:
+→ Виконати всі перевірки **§8 Web Frontend** зі `sto-review/SKILL.md` (UI стани, hydration, routing, SSE, Tailwind, async-init Select, UX features).
+
+Додатково перевірити у контексті тестування:
+
+- [ ] **Free-text `<Input>` що приймає UUID** (наприклад, workOrderId) — має клієнтську UUID-валідацію ПЕРЕД submit.
   ```typescript
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
@@ -342,92 +342,14 @@ grep -n "SentryProvider" apps/web/src/app/layout.tsx
   }
   ```
   ```bash
-  # Знайти всі free-text Input з UUID-семантикою (не Select!)
   grep -rn "workOrderId\|vehicleId\|employeeId\|counterpartyId\|liftId" apps/web/src/app --include="*.tsx" \
     | grep "onChange.*e\.target\.value\|value=\{form\." | grep -v "Select\|<select"
-  # Для кожного результату — перевірити чи це <Input> (не <Select>). Якщо Input — потрібна UUID-валідація.
   ```
-- [ ] **`apiFetch` error array join**: сервер повертає `{ message: string[] }` при validation errors. `apiFetch` має join: `Array.isArray(msg) ? msg.join('; ') : msg`. Без цього `new Error(['Поле "x"...'])` → message = перший елемент через `.toString()`, але може відрізнятись по браузерах.
-
-#### Стан
-- [ ] Loading стан є на кожній сторінці з даними (`<Spinner />` або skeleton)
-- [ ] Empty стан є — `<EmptyState />` коли список порожній
-- [ ] Error стан є — `<EmptyState />` з повідомленням при помилці fetch
-
-#### API/Frontend type contract
-- [ ] Для кожного `interface` у page.tsx — перевір відповідний `toResponseDto()` або `toDto()` у сервісі. Кожне **обов'язкове** поле у фронтенд-типі повинно реально повертатись API.
+- [ ] **`apiFetch` error array join**: сервер повертає `{ message: string[] }` при validation errors. `apiFetch` має `Array.isArray(msg) ? msg.join('; ') : msg`.
+- [ ] **Async-init Select race**: `<Select value={form.xxxId}>` ініціалізується `''` → опції завантажуються async → перший option показується візуально але `form.xxxId = ''` → API 400. Фікс: `useEffect(() => { if (modal && !form.xxxId && options[0]) setForm(f => ({...f, xxxId: options[0].id})); }, [options, modal])`.
   ```bash
-  # Знайти всі interface у page.tsx файлах — звірити з toResponseDto у сервісах
-  grep -rn "^interface " apps/web/src/app/ --include="*.tsx"
-  ```
-- [ ] Якщо API навмисно опускає поле (security, роль) — тип у frontend має бути `field?: Type` (optional), не обов'язковим. Приклад: `rateScheme` omitted in `findAll` → `rateScheme?: {...}` у Employee interface.
-- [ ] Всі звернення до optional полів захищені guard-ом: `emp.rateScheme?.type`, або умовним рендером `{emp.rateScheme && ...}`.
-
-#### Blob URL / memory leaks
-- [ ] `URL.createObjectURL(blob)` — обов'язково `setTimeout(() => URL.revokeObjectURL(url), 100)` після `a.click()`
-  ```bash
-  grep -rn "URL.createObjectURL" apps/web/src --include="*.tsx"
-  # Для кожного — перевір що поруч є revokeObjectURL
-  ```
-
-#### Hydration (SSR/CSR mismatch)
-- [ ] Якщо є hydration помилка — першим кроком видаляй `.next` кеш (`rm -rf apps/web/.next`). Stale chunks є #1 причиною "клієнт рендерить щось зовсім інше".
-- [ ] `new Date()`, `localStorage`, `window.*`, `document.*` — тільки в `useEffect` або `'use client'` компонентах з `mounted` guard.
-- [ ] `createPortal` — обов'язково перевірити наявність `mounted` state (`useEffect(() => setMounted(true), [])`).
-- [ ] Сторінки з `(auth)` або іншими folder groups в Next.js App Router — перевірити окремий `layout.tsx` без `AuthProvider` (щоб уникнути circular redirect при SSR).
-  ```bash
-  grep -rn "new Date()\|localStorage\|window\.\|document\." apps/web/src/app/ --include="*.tsx" | grep -v "useEffect"
-  ```
-
-#### Компоненти
-- [ ] `Button variant="default"` існує у `Variant` union
-- [ ] `Select placeholder` — рендериться як `<option value="" disabled>`
-- [ ] `Input`, `Select` мають `label`, `errorMessage`, `hint` пропи
-- [ ] `Modal` кнопки передані через `footer` проп, не всередині `children`
-
-#### Tailwind 4 canonical classes
-- [ ] `border-border` — не `border-(--color-border)` (якщо токен є в `@theme`)
-- [ ] `ring-brand-100` — не `ring-(--color-brand-100)`
-- [ ] `hover:border-border-hover` — не `hover:border-(--color-border-hover)`
-- [ ] `bg-secondary` — не `bg-(--color-secondary)` (якщо є в `@theme`)
-- [ ] **Жодних inline `text-[hsl(...)]` / `border-[hsl(...)]` / `bg-[hsl(...)]` для семантичних кольорів** — використовуй токени: `text-destructive-text`, `border-destructive-border`, `text-success-text`, `text-warning-text`, `text-info-text`. Inline HSL не перемикається в dark mode → WCAG контраст fail.
-  ```bash
-  grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app apps/web/src/components --include="*.tsx"
-  # Винятки: badge.tsx purple, inventory reserved orange, button.tsx destructive-hover, input/select destructive focus-ring
-  ```
-
-#### SSE / EventSource (застосовується до useDashboardStream та інших SSE hooks)
-- [ ] При `es.onerror` — перевіряти `isTokenExpired(token)` перед reconnect: якщо токен прострочений → `tryRefresh()` → перепідключитись зі свіжим токеном (НЕ зі старим).
-- [ ] Максимум `MAX_REFRESH_ATTEMPTS = 3` щоб уникнути infinite loop при невалідному refresh token.
-- [ ] Закривати попереднє `EventSource` перед відкриттям нового (`es.close()`) — інакше паралельні з'єднання накопичуються.
-- [ ] `isTokenExpired` читає `exp` з JWT payload (base64 decode) — не покладатись на 401 статус від EventSource (EventSource не дає HTTP статус в onerror).
-  ```bash
-  grep -rn "EventSource\|useDashboardStream\|SSE\|onerror" apps/web/src/hooks/ --include="*.ts"
-  # Перевір: tryRefresh + MAX_REFRESH_ATTEMPTS + isTokenExpired
-  ```
-
-#### Query params — масиви enum
-- [ ] Якщо фронтенд передає `?types=SUPPLIER,BOTH` (comma-separated) — DTO має `@Transform` для розбиття по коми: `String(value).split(',').map(s => s.trim())`.
-- [ ] Fastify multi-value syntax: `?types=CLIENT&types=SUPPLIER` (без `[]`) — `@Transform` має підтримувати і масив і рядок.
-- [ ] `?types=INVALID` → 400; `?types=SUPPLIER,BOTH` → 200.
-  ```bash
-  # Знайти фронтенд виклики з comma-separated enum filters
-  grep -rn "types=" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "node_modules\|.next\|content-type"
-  # Для кожного — перевірити що backend DTO підтримує
-  ```
-
-#### Роутинг
-- [ ] Захищені сторінки мають redirect якщо не авторизований
-- [ ] `/setup` доступний без авторизації (перший запуск)
-- [ ] **`useRequireAuth` НЕ блокує рендер** — тільки запускає useEffect. Layout/Shell (`TopShell`) повинен мати **render-blocking guard** для не-публічних роутів: якщо `!employee && !isLoading` → return spinner + `router.replace('/login')`. Інакше дочірня сторінка показує власний UI скелетон неавторизованому користувачу (витік структури функціоналу).
-  ```typescript
-  // ✅ TopShell guard
-  const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403'];
-  const isPublic = PUBLIC_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
-  useEffect(() => {
-    if (!isPublic && !isLoading && !employee) router.replace('/login');
-  }, [isPublic, isLoading, employee, router]);
-  if (!isPublic && (isLoading || !employee)) return <Spinner />;
+  grep -rn "value=\{form\." apps/web/src/app --include="*.tsx" | grep -v "//\|onChange"
+  # Для кожного — перевірити чи опції завантажуються async і чи є sync useEffect
   ```
 
 ### 1.4 — Тести Backend _(AUTO: тільки якщо змінено *.spec.ts або service; FULL: завжди)_
@@ -504,6 +426,74 @@ find apps/web/src -name "*.test.tsx" | sort
 find apps/web/e2e -name "*.spec.ts" | sort
 # smoke.spec.ts — обов'язковий, решта — рекомендовані
 ```
+
+### 1.6 — Accessibility (a11y) _(тільки FULL режим)_
+
+```bash
+# Кнопки з onClick на не-інтерактивних елементах
+grep -rn "onClick" apps/web/src/ --include="*.tsx" | grep -E "<div|<span|<p " | grep -v "role="
+
+# Зображення без alt
+grep -rn "<img" apps/web/src/ --include="*.tsx" | grep -v "alt="
+
+# aria-label на іконкових кнопках
+grep -rn "<Button" apps/web/src/ --include="*.tsx" | grep -E "(<[A-Z][a-z]+Icon|lucide)" | grep -v "aria-label\|aria-describedby\|title"
+
+# SearchCombobox / combobox — WAI-ARIA wiring
+grep -rn "role=\"combobox\"\|role=\"listbox\"\|aria-expanded" apps/web/src/ --include="*.tsx" | head -20
+```
+
+- [ ] Кожен `onClick` на `<div>` / `<span>` — додати `role="button"` та `tabIndex={0}` + `onKeyDown` handler
+- [ ] Всі `<img>` мають `alt` (описовий для контентних, `alt=""` для декоративних)
+- [ ] Іконкові кнопки (без тексту) мають `aria-label` або `<span className="sr-only">`
+- [ ] `<SearchCombobox>` або combobox pattern: `role="combobox"` + `aria-expanded` + `aria-controls` → `role="listbox"` + `role="option"` на кожному елементі
+- [ ] Modal закривається по `Escape` — `onKeyDown` handler у `<Modal>` компоненті
+- [ ] Форми мають `<label htmlFor>` або `aria-label` на кожному `<input>` / `<select>`
+- [ ] **opacity-0 pattern**: `opacity-0 pointer-events-none` для приховання контенту — переконатись що `aria-hidden="true"` теж присутній (screen readers читають opacity-0 елементи)
+  ```bash
+  grep -rn "opacity-0" apps/web/src/ --include="*.tsx" | grep -v "aria-hidden\|transition\|group-hover"
+  ```
+- [ ] Focus order логічний — tab переміщується у порядку DOM (нема `tabIndex > 0`)
+  ```bash
+  grep -rn "tabIndex=[^{]0}" apps/web/src/ --include="*.tsx" | grep -v "tabIndex={0}"
+  ```
+
+### 1.7 — i18n & Ukrainian UI Consistency _(тільки FULL режим)_
+
+```bash
+# Англійські рядки у JSX (підозрілі — може бути умисно для власних назв)
+grep -rn ">[A-Z][a-z]* [A-Z][a-z]*<\|>[A-Z][a-z]* [a-z]* [A-Z][a-z]*<" apps/web/src/app/ --include="*.tsx" \
+  | grep -v "className\|import\|//\|{" | head -30
+
+# Англійські повідомлення про помилки в API
+grep -rn "throw new.*Exception\|throw new.*Error" apps/api/src/modules/ --include="*.ts" \
+  | grep -E "['\"](Cannot|Invalid|Not found|Already|Forbidden|Unauthorized|Failed)" | grep -v "spec"
+
+# Логування без перекладу (ок — але перевірити що user-facing messages — не лог-рядки)
+grep -rn "message:.*['\"].*[A-Z][a-z]" apps/api/src/modules/ --include="*.ts" \
+  | grep "NotFoundException\|BadRequestException\|ForbiddenException" | grep -v "spec" | head -20
+```
+
+- [ ] Всі user-facing рядки у JSX — кирилицею (`uk-UA`)
+- [ ] Всі `throw new XxxException('...')` у сервісах — повідомлення українською
+- [ ] Дати відображаються у форматі `DD.MM.YYYY` — не `YYYY-MM-DD` або `MM/DD/YYYY`
+  ```bash
+  grep -rn "toLocaleDateString\|toISOString\|new Date.*toStr" apps/web/src/app/ --include="*.tsx" | grep -v "useEffect\|api"
+  # Перевірити що використовується форматування з локаллю uk-UA або date-fns uk
+  ```
+- [ ] Валюта відображається як `1 250,00 ₴` — не `UAH 1250.00` або `$1250`
+  ```bash
+  grep -rn "toFixed\|toLocaleString\|UAH\|грн" apps/web/src/ --include="*.tsx" | grep -v "//\|import" | head -20
+  ```
+- [ ] Час — `HH:mm` (24-год), не `12:30 PM`
+- [ ] Тиждень починається з понеділка (`weekStartsOn: 1` у date-fns / react-day-picker)
+  ```bash
+  grep -rn "weekStartsOn\|startOfWeek\|getDay" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "node_modules"
+  ```
+- [ ] Placeholder тексти — кирилицею (`Введіть назву...`, не `Enter name...`)
+  ```bash
+  grep -rn "placeholder=" apps/web/src/ --include="*.tsx" | grep -E '"[A-Z][a-z]' | head -20
+  ```
 
 ---
 
@@ -2420,7 +2410,7 @@ it('рендерить placeholder як disabled option', () => {
 > "Цей баг був передбачений існуючим пунктом у §1.1–§1.4?"
 
 Якщо **НІ** — одразу оновити цей файл (`SKILL.md`):
-1. Додати новий пункт у відповідний підрозділ (§1.1 Backend, §1.2 TS, §1.3 Frontend, §1.4 Tests)
+1. Додати новий пункт у відповідний підрозділ (§1.1 Backend, §1.2 TS, §1.3 Frontend, §1.4 Tests, §1.6 a11y, §1.7 i18n)
 2. Якщо баг пов'язаний з бізнес-логікою STO ERP (нова FSM умова, новий інвентарний guard, sync edge case) → §1.1
 3. Якщо патерн повторювався в кількох місцях → додати grep команду для виявлення
 4. Commit разом з фіксом або окремо: `docs(skills): add <баг> to sto-tester checklist`
