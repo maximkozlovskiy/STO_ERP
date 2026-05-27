@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import type { ReactNode } from 'react';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth';
 import { TopShell } from '@/components/TopShell';
@@ -31,7 +32,7 @@ export const viewport: Viewport = {
 export default function RootLayout({
   children,
 }: {
-  children: import('react').ReactNode;
+  children: ReactNode;
 }) {
   return (
     <html lang="uk" suppressHydrationWarning>

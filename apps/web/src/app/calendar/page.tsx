@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, type CSSProperties } from 'react';
 import { Plus, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -61,7 +61,7 @@ function DraggableSlot({ slot, onRemove }: DraggableSlotProps) {
   const width = ((endH - startH)     / TOTAL_HOURS) * 100;
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: slot.id, data: { slot } });
-  const style: React.CSSProperties = {
+  const style: CSSProperties = {
     left:      `${left}%`,
     width:     `${width}%`,
     transform: CSS.Translate.toString(transform),

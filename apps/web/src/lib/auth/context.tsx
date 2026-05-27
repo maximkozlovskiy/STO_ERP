@@ -71,10 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // On mount — try to restore session via refresh cookie
   useEffect(() => {
+    let cancelled = false;
     const stored = sessionStorage.getItem(TOKEN_KEY);
     if (stored) {
       // Token in sessionStorage — still need to get employee info via refresh
       refreshToken().then((ok) => {
+        if (cancelled) return;
         if (!ok) {
           sessionStorage.removeItem(TOKEN_KEY);
           dispatch({ type: 'LOGOUT' });
@@ -84,9 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       // Try silent refresh (cookie might still be valid)
       refreshToken().then((ok) => {
+        if (cancelled) return;
         if (!ok) dispatch({ type: 'LOGOUT' });
       });
     }
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
