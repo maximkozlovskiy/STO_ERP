@@ -144,6 +144,7 @@ export default function InvoicesPage() {
       if (!mountedRef.current) return;
       setShowCreate(false);
       setForm({ counterpartyId: '', amount: '', dueDate: '' });
+      setCounterpartyDisplayName('');
       load();
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка збереження');
@@ -563,7 +564,11 @@ export default function InvoicesPage() {
       {/* Create modal */}
       <Modal
         open={showCreate}
-        onClose={() => setShowCreate(false)}
+        onClose={() => {
+          setShowCreate(false);
+          setForm({ counterpartyId: '', amount: '', dueDate: '' });
+          setCounterpartyDisplayName('');
+        }}
         title="Новий рахунок"
         footer={
           <Button

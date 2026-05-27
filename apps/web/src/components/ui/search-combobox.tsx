@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react';
+import { useId, useState, useRef, useEffect, useCallback, type ChangeEvent, type KeyboardEvent } from 'react';
 import { Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Spinner } from './spinner';
@@ -43,9 +43,21 @@ export function SearchCombobox<T extends { id: string }>({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
+  // Stable IDs for ARIA wiring (combobox ↔ listbox ↔ active option)
+  const reactId = useId();
+  const listboxId = `${reactId}-listbox`;
+  const optionId = (idx: number) => `${reactId}-option-${idx}`;
+
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      // Cancel any pending debounce so the fetch is not fired after unmount.
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
   }, []);
 
   // Close dropdown when clicking outside
@@ -83,7 +95,7 @@ export function SearchCombobox<T extends { id: string }>({
     }, 300);
   }, [fetchItems]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value;
     setQuery(q);
     search(q);
@@ -154,10 +166,16 @@ export function SearchCombobox<T extends { id: string }>({
           </div>
         ) : (
           <>
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <input
               ref={inputRef}
               type="text"
+              role="combobox"
+              aria-expanded={open && items.length > 0}
+              aria-controls={listboxId}
+              aria-autocomplete="list"
+              aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}
+              autoComplete="off"
               value={query}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
@@ -185,12 +203,14 @@ export function SearchCombobox<T extends { id: string }>({
         {open && items.length > 0 && (
           <ul
             ref={listRef}
+            id={listboxId}
             className="absolute z-50 mt-1 w-full bg-surface border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto"
             role="listbox"
           >
             {items.map((item, idx) => (
               <li
                 key={item.id}
+                id={optionId(idx)}
                 role="option"
                 aria-selected={idx === activeIndex}
                 onMouseDown={(e) => { e.preventDefault(); handleSelect(item); }}

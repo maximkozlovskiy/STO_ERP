@@ -140,6 +140,7 @@ export default function PurchaseOrdersPage() {
       });
       setShowCreate(false);
       setForm({ supplierId: '', warehouseId: '', notes: '' });
+      setSupplierDisplayName('');
       setLines([]);
       load();
     } catch (e: unknown) {
@@ -392,7 +393,12 @@ export default function PurchaseOrdersPage() {
       {/* Create modal */}
       <Modal
         open={showCreate}
-        onClose={() => setShowCreate(false)}
+        onClose={() => {
+          setShowCreate(false);
+          setForm({ supplierId: '', warehouseId: '', notes: '' });
+          setSupplierDisplayName('');
+          setLines([]);
+        }}
         title="Нове замовлення постачальнику"
         size="lg"
         footer={

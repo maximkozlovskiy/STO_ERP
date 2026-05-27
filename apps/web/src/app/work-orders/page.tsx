@@ -778,7 +778,18 @@ export default function WorkOrdersPage() {
       {/* Create modal */}
       <Modal
         open={modal}
-        onClose={() => { setModal(false); setSelectedTemplate(null); }}
+        onClose={() => {
+          setModal(false);
+          setSelectedTemplate(null);
+          setCounterpartyDisplayName('');
+          setVehicles([]);
+          setForm(f => ({
+            ...f,
+            counterpartyId: '', vehicleId: '',
+            description: '', inMileage: '', plannedAt: '',
+            priority: 'NORMAL', repairCategory: '', dueDate: '',
+          }));
+        }}
         title="Новий наряд"
         description="Заповніть дані для створення наряду"
         footer={
