@@ -60,11 +60,12 @@ export class NotificationsService {
   }
 
   async findTemplates(orgId: string) {
-    return this.prisma.notificationTemplate.findMany({
+    const rows = await this.prisma.notificationTemplate.findMany({
       where: { orgId },
       orderBy: [{ eventType: 'asc' }, { channel: 'asc' }],
       take: 100,
     });
+    return rows.map(r => ({ ...r, syncVersion: Number(r.syncVersion) }));
   }
 
   async updateTemplate(orgId: string, id: string, dto: { body: string; subject?: string; isActive: boolean }) {
@@ -72,10 +73,11 @@ export class NotificationsService {
       where: { id, orgId },
     });
     if (!template) throw new NotFoundException('Шаблон не знайдено');
-    return this.prisma.notificationTemplate.update({
+    const updated = await this.prisma.notificationTemplate.update({
       where: { id, orgId },
       data: { body: dto.body, subject: dto.subject, isActive: dto.isActive },
     });
+    return { ...updated, syncVersion: Number(updated.syncVersion) };
   }
 
   private renderTemplate(template: string, vars: Record<string, unknown>): string {
