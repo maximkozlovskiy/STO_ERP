@@ -4,6 +4,7 @@ description: >
   Git workflow for STO ERP: commit with conventional messages, branch management, status overview,
   and changelog generation. Use when the user says "закомітити", "зроби commit", "покажи статус",
   "створи гілку", "що змінилось", "зроби changelog", "git", або будь-що пов'язане з git.
+  NOTE: for changelog/release notes tasks use claude-sonnet-4-6 instead of haiku.
 model: claude-haiku-4-5-20251001
 ---
 
@@ -13,13 +14,15 @@ model: claude-haiku-4-5-20251001
 
 Залежно від запиту користувача виконай одну з дій нижче:
 
-| Запит | Дія |
-|-------|-----|
-| "закомітити", "зроби commit", "commit changes" | → [Commit Flow](#commit-flow) |
-| "покажи статус", "що змінилось", "git status" | → [Status Overview](#status-overview) |
-| "створи гілку", "нова гілка", "checkout" | → [Branch Management](#branch-management) |
-| "зроби changelog", "що нового", "release notes" | → [Changelog](#changelog) |
-| "покажи лог", "git log", "що було зроблено" | → [Log Overview](#log-overview) |
+| Запит | Дія | Модель |
+|-------|-----|--------|
+| "закомітити", "зроби commit", "commit changes" | → [Commit Flow](#commit-flow) | haiku |
+| "покажи статус", "що змінилось", "git status" | → [Status Overview](#status-overview) | haiku |
+| "створи гілку", "нова гілка", "checkout" | → [Branch Management](#branch-management) | haiku |
+| "зроби changelog", "що нового", "release notes" | → [Changelog](#changelog) | **sonnet** — складний аналіз |
+| "покажи лог", "git log", "що було зроблено" | → [Log Overview](#log-overview) | haiku |
+
+> **Changelog/Release Notes** — єдина задача де складності недостатньо для haiku: потрібно кластеризувати commit-и за темами, вибрати найважливіше, написати human-readable summary. Для решти git-операцій haiku достатньо.
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: sto-phase
 description: >
-  Phase review and implementation skill for STO ERP. Reads PHASES.md, finds the next unchecked [ ] task group (by block: B1, B2, F3, etc.), implements all sub-tasks (database → backend → frontend), marks them [x], then runs QA. Use when the user says "реалізуй фазу", "наступний блок", "реалізуй все", "продовжуємо", or when resuming work after a session break. Automatically chains: sto-database → sto-backend → sto-web → sto-review-agent → sto-tester-agent.
+  Phase review and implementation skill for STO ERP. Reads PHASES.md, finds the next unchecked [ ] task group (by block: B1, B2, F3, etc.), implements all sub-tasks (database → backend → frontend), marks them [x], then runs QA. Use when the user says "реалізуй фазу", "наступний блок", "реалізуй все", "продовжуємо", or when resuming work after a session break. Automatically chains: sto-database → sto-backend → sto-web → sto-sync-agent (if both backend+frontend changed) → sto-review-agent → sto-tester-agent.
 model: claude-sonnet-4-6
 ---
 
@@ -30,7 +30,7 @@ model: claude-sonnet-4-6
 Паралельно читай:
 
 ```bash
-# 1. Поточний стан коду
+# 1. Поточний стан коду (MemoryManual.md читається ТУТ — sub-skills його не перечитують)
 cat MemoryManual.md
 
 # 2. Прогрес фаз — знайти першу [ ] групу
@@ -39,6 +39,8 @@ grep -n "\[ \]\|\[x\]" docs/PHASES.md | head -100
 # 3. User preferences
 cat .claude/memory/MEMORY.md
 ```
+
+> **Sub-skills (sto-database, sto-backend, sto-web)** мають у своїх Before Starting "Read MemoryManual.md". При виклику з sto-phase **пропускай цей крок в sub-skills** — він вже виконаний тут. Це зменшує подвійне читання одного файлу.
 
 Виведи статус-блок перед початком роботи:
 
@@ -146,76 +148,13 @@ cat .claude/memory/MEMORY.md
 
 ---
 
-## Крок S — Синхронізація фронт ↔ бек (запускати окремо або після Кроку 2)
+## Крок S — Синхронізація фронт ↔ бек
 
-> Виклик: `/sto-phase sync` або якщо юзер каже "синхронізуй фронт з беком".
+> Деталі і чеклист — у **`sto-sync`** скілі: `.claude/skills/sto-sync/SKILL.md`
+> Або запусти агент: `Agent(subagent_type="sto-sync-agent")`
 
-### Алгоритм
-
-```
-1. Скласти матрицю: backend modules ↔ frontend pages/tabs
-2. Перевірити Direction 1: бек→фронт (є API — немає UI)
-3. Перевірити Direction 2: фронт→бек (фронт кличе неіснуючий/неправильний endpoint)
-4. Перевірити Direction 3: контракт типів (interface vs toResponseDto())
-5. Виправити всі знайдені розбіжності
-6. pnpm tsc --noEmit — 0 errors
-7. git commit -m "fix(sync): ..."
-```
-
-### Direction 1 — Бек → Фронт (відсутній UI)
-
-```bash
-# Список модулів без відповідної сторінки/вкладки
-ls apps/api/src/modules/
-ls apps/web/src/app/
-```
-
-Для кожного модуля без UI — визначити куди додати:
-- Нова сторінка → якщо це основна сутність (список + деталі)
-- Нова вкладка → якщо це підлегла сутність (вкладка у деталях батьківської сторінки)
-- Вкладка в налаштуваннях → якщо це довідник (payment-methods, tax-rates, notification-templates, brands)
-
-### Direction 2 — Фронт → Бек (неправильні endpoint URLs)
-
-```bash
-# Знайти всі apiFetch виклики
-grep -rn "apiFetch(" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "lib/api-client"
-
-# Звірити кожен URL з реальними @Controller + @Get/@Post маршрутами
-grep -rn "@Controller\|@Get\|@Post\|@Patch\|@Delete\|@Put" apps/api/src/modules/ --include="*.controller.ts"
-```
-
-**Критичні патерни:**
-- `@Controller('counterparties/:counterpartyId')` → URL = `/counterparties/${id}/transactions`, **НЕ** `/settlements?counterpartyId=...`
-- Nested controllers завжди мають складний URL: `/parent/:parentId/child`
-- `{ items, total }` на всіх list endpoints — фронт ніколи не очікує bare array
-
-### Direction 3 — Контракт типів
-
-```bash
-# Знайти всі interface у page.tsx / PageClient.tsx
-grep -rn "^interface " apps/web/src/app/ --include="*.tsx"
-
-# Знайти відповідні toResponseDto() у сервісах
-grep -rn "toResponseDto\|toDto\|mapToDto" apps/api/src/modules/ --include="*.service.ts" --include="*.ts" | grep -v "spec"
-```
-
-**Часті розбіжності:**
-- `user.sub` у backend — завжди `user.id` (AuthenticatedUser interface)
-- `description` у фронтенді → може бути `notes` у бекенді (перевіряй Prisma schema)
-- Сума як `number` у фронтенді → `Decimal` у Prisma → `Number(t.amount)` при серіалізації
-- `PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE` = зменшення балансу (зелений), `CHARGE` = борг (червоний)
-
-### Чеклист синхронізації
-
-- [ ] Кожен backend модуль має відповідний UI (сторінка / вкладка / секція)
-- [ ] Кожен `apiFetch(url)` у фронтенді відповідає реальному endpoint у контролері
-- [ ] Nested controller URLs використовуються правильно (не query params замість path params)
-- [ ] Всі `interface` у page.tsx відповідають `toResponseDto()` полям (назви + типи)
-- [ ] `user.sub` → `user.id` у всіх контролерах
-- [ ] List endpoints: `{ items, total }` (не bare array) — фронт використовує `r.items`
-- [ ] Знаки транзакцій: PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE = '-' (виплата), CHARGE = '+' (борг)
-- [ ] `pnpm tsc --noEmit --incremental false` — 0 errors після всіх виправлень
+Виклик: `/sto-phase sync` або `/sto-sync`, або юзер каже "синхронізуй фронт з беком".
+Запускається автоматично у Кроці 4 коли блок містить і backend і frontend задачі.
 
 ---
 
@@ -245,9 +184,15 @@ git commit -m "feat(<block>): <назва блоку> — <коротко що �
 Після коміту — **без запиту** запустити послідовно:
 
 ```python
-# Code review
+# 1. Синхронізація фронт ↔ бек (перед QA — щоб review/tester бачили вже виправлений контракт)
+# Запустити /sto-sync автоматично якщо блок містив і backend і frontend зміни
+# Ознака: є [sto-backend] І [sto-web] задачі у тому самому блоці
+Agent(subagent_type="sto-sync-agent", description="sync after <block>")  # якщо є і backend і frontend
+
+# 2. Code review
 Agent(subagent_type="sto-review-agent", description="review after <block>")
-# після завершення:
+
+# 3. Bug hunt
 Agent(subagent_type="sto-tester-agent", description="test after <block>")
 ```
 

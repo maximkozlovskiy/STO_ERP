@@ -1,7 +1,13 @@
 ---
 name: sto-feature
 description: >
-  Plan and break down a new feature for STO ERP from scratch. Use when the user says "додай фічу", "реалізуй", "потрібна функціональність", "implement", or describes a new capability. Produces a complete feature plan: requirements, DB changes, API endpoints, web screens, mobile impact, tasks, and acceptance criteria — before any code is written. Use as the FIRST step in any feature development.
+  Feature planning skill for STO ERP. Answers "HOW" — breaks down a feature into concrete
+  implementation tasks. Use when the user says "додай фічу", "реалізуй", "потрібна функціональність",
+  "implement", "розбий на задачі", or after sto-analyst produced requirements.
+  Produces: DB model changes, API endpoints list, web pages/components list, task breakdown with
+  skill assignments (sto-database/sto-backend/sto-web) and time estimates.
+  Output is an IMPLEMENTATION PLAN — not a requirements document.
+  Run AFTER sto-analyst (or directly for simple features where requirements are clear).
 model: claude-sonnet-4-6
 ---
 

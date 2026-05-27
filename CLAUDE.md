@@ -33,20 +33,26 @@ sto-erp/
 ## Скіли — завантажувати на початку сесії
 ```
 /sto-context    <- ЗАВЖДИ ПЕРШИМ
-/sto-analyst    <- для вимог та бізнес-процесів
-/sto-feature    <- для планування фічей
-/sto-architect  <- для архітектурних рішень (ADR)
-/sto-database   <- для змін Prisma schema
-/sto-backend    <- для NestJS модулів (читай /sto-dev перед написанням)
-/sto-web        <- для Next.js UI (читай /sto-dev перед написанням)
-/sto-mobile     <- для Expo додатку
+/sto-analyst    <- "що" потрібно: user stories, business rules, процеси (до планування)
+/sto-feature    <- "як" реалізувати: DB/API/UI tasks, файли, endpoints (після analyst)
+/sto-architect  <- архітектурні рішення (ADR), вибір технологій
+/sto-database   <- зміни Prisma schema, міграції
+/sto-backend    <- NestJS модулі (читай /sto-dev перед написанням)
+/sto-web        <- Next.js UI (читай /sto-dev перед написанням)
+/sto-mobile     <- Expo додаток
 /sto-dev        <- стандарти написання коду: TS, NestJS, Next.js, Tailwind, Prisma
-/sto-review     <- для code review (перевіряє що /sto-dev дотриманий)
-/sto-tester     <- для тестування: знаходить баги, фіксує, виправляє
-/sto-installer  <- для Windows installer
-/sto-git        <- для git: commit, branch, changelog, статус
-/sto-phase      <- реалізує наступний блок фаз (database→backend→frontend→QA), автоматично
+/sto-sync       <- синхронізація API ↔ Frontend: відсутній UI, неправильні URL, типи
+/sto-review     <- code review (перевіряє що /sto-dev дотриманий)
+/sto-tester     <- тестування: знаходить баги, фіксує, виправляє
+/sto-installer  <- Windows installer
+/sto-git        <- git: commit, branch, changelog, статус
+/sto-phase      <- реалізує наступний блок фаз (database→backend→frontend→sync→QA), автоматично
 ```
+
+> **Різниця sto-analyst vs sto-feature:**
+> - `sto-analyst` = відповідає на "ЩО": формалізує вимоги, user stories, business rules, acceptance criteria. Вихід — документ вимог.
+> - `sto-feature` = відповідає на "ЯК": розкладає на конкретні задачі (DB модель, API endpoint, web page), файли, оцінки. Вихід — план реалізації.
+> Типово: спочатку analyst, потім feature — але для простих змін можна одразу feature.
 
 ## Типовий workflow нової фічі
 
@@ -75,7 +81,7 @@ sto-erp/
 ExitPlanMode
   ↓ запуск dev-серверів
   ↓ реалізація + перевірка у браузері після кожного кроку
-/sto-context -> /sto-analyst -> /sto-feature -> /sto-database -> /sto-dev -> /sto-backend -> /sto-web -> /sto-review -> /sto-tester
+/sto-context -> /sto-analyst -> /sto-feature -> /sto-database -> /sto-dev -> /sto-backend -> /sto-web -> /sto-sync -> /sto-review -> /sto-tester
 ```
 
 > `/sto-dev` читається **перед** `/sto-backend` і `/sto-web` — задає стандарти написання,  
@@ -94,6 +100,7 @@ ExitPlanMode
 | Новий Next.js компонент / сторінка | `/sto-web` SKILL.md + `/sto-dev` SKILL.md |
 | Зміна Expo / mobile | `/sto-mobile` SKILL.md |
 | Новий Inno Setup / PowerShell скрипт | `/sto-installer` SKILL.md |
+| Після змін і backend і frontend одночасно | → запустити `Agent(subagent_type="sto-sync-agent")` перед review |
 
 > Не чекай на `/sto-backend`, `/sto-web` тощо від користувача — якщо пишеш бекенд, сам читай скіл.  
 > Виняток: якщо сам запит є скіл-командою (наприклад `/sto-database`) — скіл вже завантажений, не читай повторно.
@@ -103,20 +110,23 @@ ExitPlanMode
 `.claude/agents/` містить готових агентів з власними системними промптами:
 
 ```
+sto-sync-agent     ← API/Frontend sync: відсутній UI, неправильні URL, типи (auto, після backend+web)
 sto-review-agent   ← code review + авто-фікс (завжди через Agent tool)
 sto-tester-agent   ← bug hunt + авто-фікс (завжди через Agent tool)
 ```
 
-**ПРАВИЛО:** `/sto-review` і `/sto-tester` ЗАВЖДИ запускати через `Agent(subagent_type="sto-review-agent")` і `Agent(subagent_type="sto-tester-agent")` — НЕ як inline скіли. Це захищає основний контекст від переповнення і дозволяє паралельний запуск.
+**ПРАВИЛО:** `sto-sync`, `sto-review`, `sto-tester` ЗАВЖДИ запускати через `Agent(subagent_type=...)` — НЕ як inline скіли. Захищає основний контекст від переповнення.
 
 ```python
-# Послідовно (review → tester)
+# Повний QA ланцюжок після backend+frontend змін:
+Agent(subagent_type="sto-sync-agent", description="sync after <block>")
+# після завершення:
 Agent(subagent_type="sto-review-agent", description="code review cycle N")
 # після завершення:
 Agent(subagent_type="sto-tester-agent", description="bug hunt cycle N")
 
-# Паралельно (якщо review і tester незалежні):
-# Надіслати обидва Agent() виклики в одному повідомленні
+# Якщо тільки backend АБО тільки frontend — sto-sync-agent пропускається
+# Паралельно: review і tester НІКОЛИ не паралельно — tester потребує результатів review
 ```
 
 ## Автоматичне QA після кожного завдання (ОБОВ'ЯЗКОВО)

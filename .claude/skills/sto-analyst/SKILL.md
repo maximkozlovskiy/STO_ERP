@@ -1,7 +1,12 @@
 ---
 name: sto-analyst
 description: >
-  Business analyst skill for STO ERP. Use when the user says "опиши процес", "user story", "вимоги", "бізнес процес", "acceptance criteria", "як повинно працювати", "що потрібно для фічі", or needs to formalize a business requirement. Produces structured requirements, user stories, process flows, and acceptance criteria before development begins.
+  Business analyst skill for STO ERP. Answers "WHAT" — formalizes business requirements before
+  any implementation planning. Use when the user says "опиши процес", "user story", "вимоги",
+  "бізнес процес", "acceptance criteria", "як повинно працювати", "що потрібно для фічі".
+  Produces: user stories, process flows, business rules catalogue (BR-XXX-NNN), acceptance criteria.
+  Output is a REQUIREMENTS DOCUMENT — not a task list.
+  Run BEFORE sto-feature (which answers "HOW").
 model: claude-sonnet-4-6
 ---
 

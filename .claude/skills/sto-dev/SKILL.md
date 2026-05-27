@@ -10,6 +10,26 @@ model: claude-haiku-4-5-20251001
 > Цей скіл застосовується **під час написання** — не після.  
 > Мета: щоб `/sto-review` знаходив 0 проблем.
 
+## Зміст
+
+| § | Секція | Для кого |
+|---|--------|---------|
+| §1 | [TypeScript](#typescript) | Всі файли `.ts`/`.tsx` |
+| §2 | [NestJS / API](#nestjs--api) | `*.controller.ts`, `*.service.ts`, `*.dto.ts` |
+| §3 | [Next.js 15 / Web](#nextjs-15--web) | `apps/web/src/**` |
+| §4 | [UX/UI Features System](#uxui-features-system-phase-20) | Хуки та компоненти UI |
+| §5 | [Tailwind 4 — Canonical Syntax](#tailwind-4--canonical-syntax) | Будь-який `.tsx` з className |
+| §6 | [Prisma 5](#prisma-5) | `schema.prisma`, `*.service.ts` з Prisma |
+| §7 | [SSE — Real-time](#sse-server-sent-events--real-time-дані-без-websocket) | Streaming endpoints, EventSource |
+| §8 | [Optimistic UI](#optimistic-ui--миттєвий-відгук-без-очікування-api) | FSM кнопки, форми з негайним відгуком |
+| §9 | [Polymorphic entities](#polymorphic-entities--comments-auditlog-media) | Comments, AuditLog, Media |
+| §10 | [Webhook pattern](#webhook-pattern--вихідні-нотифікації) | Outbound webhooks |
+| §11 | [Offline-first / BullMQ](#offline-first--bullmq) | Зовнішні API, SMS, ПРРО |
+| §12 | [Безпека](#безпека) | Auth guards, tenant isolation |
+| §13 | [Checklist перед здачею](#checklist-перед-здачею-коду) | Всі зміни перед комітом |
+
+> **Швидкий старт:** для нового контролера → §1 + §2 + §12. Для нової сторінки → §1 + §3 + §5. Для Prisma моделі → §1 + §6.
+
 ---
 
 ## TypeScript
