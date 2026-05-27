@@ -20,8 +20,10 @@ async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({ message: res.statusText }))) as { message?: string };
-    throw new Error(body.message ?? `HTTP ${res.status}`);
+    // Bug #137: NestJS class-validator повертає `message: string[]` при 400 — join з '; '.
+    const body = (await res.json().catch(() => ({ message: res.statusText }))) as { message?: string | string[] };
+    const msg = Array.isArray(body.message) ? body.message.join('; ') : (body.message ?? `HTTP ${res.status}`);
+    throw new Error(msg);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

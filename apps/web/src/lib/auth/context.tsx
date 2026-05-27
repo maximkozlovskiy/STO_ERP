@@ -123,8 +123,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Помилка входу' })) as { message: string };
-      throw new Error(err.message);
+      // Bug #137: NestJS class-validator повертає `message: string[]` при 400 — join з '; '.
+      const err = await res.json().catch(() => ({ message: 'Помилка входу' })) as { message: string | string[] };
+      const msg = Array.isArray(err.message) ? err.message.join('; ') : (err.message ?? 'Помилка входу');
+      throw new Error(msg);
     }
 
     const data = await res.json() as { accessToken: string; employee: AuthEmployee };
