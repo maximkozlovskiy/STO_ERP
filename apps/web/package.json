@@ -14,7 +14,6 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^3.10.0",
-    "@sentry/browser": "^10.53.1",
     "@sto/shared": "workspace:*",
     "@sto/ui": "workspace:*",
     "@tanstack/react-query": "^5.64.0",

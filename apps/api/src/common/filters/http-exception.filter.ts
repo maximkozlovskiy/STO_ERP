@@ -7,7 +7,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import * as Sentry from '@sentry/nestjs';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 /**
@@ -92,24 +91,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
         `Unhandled exception on ${request.method} ${request.url}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
-    }
-
-    // Надсилати в Sentry тільки 5xx — 4xx є очікуваною поведінкою (не баги).
-    // Enabled guard у instrument.ts гарантує що у development нічого не летить.
-    if (status >= 500) {
-      Sentry.withScope((scope) => {
-        scope.setTag('url', request.url);
-        scope.setTag('method', request.method);
-        scope.setContext('response', { status_code: status });
-        if (exception instanceof Error) {
-          Sentry.captureException(exception);
-        } else {
-          Sentry.captureMessage(
-            `HTTP ${status}: ${message}`,
-            'error',
-          );
-        }
-      });
     }
 
     reply.status(status).send({

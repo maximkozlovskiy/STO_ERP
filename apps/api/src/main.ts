@@ -1,6 +1,3 @@
-// Sentry MUST be the very first import — before any other module
-import './instrument';
-
 // BigInt → string serialization for JSON.stringify (Fastify serializer throws on BigInt otherwise)
 (BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
   return this.toString();
