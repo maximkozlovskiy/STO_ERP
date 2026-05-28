@@ -9,14 +9,15 @@
 ## Останній commit
 
 ```
+9e3fa77 docs(memory): record /sto-review verify pass on HEAD aa5aefd (catalog modules — 0 issues)
+aa5aefd fix(settings): explicit select on org queries to exclude BigInt syncVersion
+8b3b64c fix(shell): public routes always render without sidebar
+338c0ee fix(settings): bank-account/cash-register modals — Select dropdowns + inline validation
+bd02c9a fix(settings): BigInt JSON serialization + logo upload multipart
 27a7063 test(tester): contract specs for currencies/exchange-rates/bank-accounts
 bb26737 fix(tester): Bug #145 — loading/error states on 5 new settings tabs
 ebbf746 fix(review): narrow currency includes to select + widen exchange-rate precision
 4ff6454 feat(catalog): currencies, exchange-rates, bank-accounts, cash-registers
-fb99cab fix(tester): Bug #144 — explicit $transaction timeouts in work-orders line/part CRUD
-13c65bd fix(tester): Bug #130 — explicit $transaction timeouts in 5 services
-4adb65d fix(tester): Bug #129 — inventory inline HSL → text-warning-text token
-f2b6a80 fix(tester): Bug #127+#128 — Prisma errors mapped to 4xx in HttpExceptionFilter
 ```
 
 Дата: 2026-05-28
