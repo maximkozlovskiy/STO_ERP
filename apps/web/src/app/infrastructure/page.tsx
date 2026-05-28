@@ -45,7 +45,7 @@ const ZONE_TYPE_LABELS: Record<string, string> = {
 };
 const LIFT_TYPE_LABELS: Record<string, string> = {
   TWO_POST: '2-стійковий', FOUR_POST: '4-стійковий', ALIGNMENT: 'Розвал-сход',
-  STENCIL: 'Стапель', STAND: 'Стенд', OTHER: 'Інший',
+  STENCIL: 'Стапель', STAND: 'Стенд', PIT: 'Яма', RAMP: 'Естакада', OTHER: 'Інший',
 };
 const LIFT_STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Активний', MAINTENANCE: 'ТО', BROKEN: 'Несправний', DECOMMISSIONED: 'Списаний',
@@ -188,7 +188,7 @@ export default function InfrastructurePage() {
   const TABS: { key: Tab; label: string }[] = [
     { key: 'branches', label: 'Філії' },
     { key: 'zones', label: 'Зони' },
-    { key: 'lifts', label: 'Підйомники' },
+    { key: 'lifts', label: 'Пости' },
     { key: 'warehouses', label: 'Склади' },
   ];
 
@@ -299,7 +299,7 @@ export default function InfrastructurePage() {
 
       {/* LIFTS */}
       {!loading && tab === 'lifts' && (
-        <Section title="Підйомники" onAdd={() => openModal('lift', { zoneId: zones[0]?.id ?? '', name: '', type: 'TWO_POST', maxWeightKg: '', status: 'ACTIVE', serialNumber: '', purchaseDate: '', warrantyUntil: '', maintenanceIntervalDays: '', lastMaintenanceDate: '' })}>
+        <Section title="Пости" onAdd={() => openModal('lift', { zoneId: zones[0]?.id ?? '', name: '', type: 'TWO_POST', maxWeightKg: '', status: 'ACTIVE', serialNumber: '', purchaseDate: '', warrantyUntil: '', maintenanceIntervalDays: '', lastMaintenanceDate: '' })}>
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
@@ -431,7 +431,7 @@ export default function InfrastructurePage() {
       <Modal
         open={modal === 'lift'}
         onClose={closeModal}
-        title={editingId ? 'Редагувати підйомник' : 'Новий підйомник'}
+        title={editingId ? 'Редагувати пост' : 'Новий пост'}
         footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.zoneId} className="w-full">Зберегти</Button>}
       >
         {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
@@ -439,7 +439,7 @@ export default function InfrastructurePage() {
           <Select label="Зона" required value={form.zoneId ?? ''} onChange={e => setForm(f => ({ ...f, zoneId: e.target.value }))}>
             {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
           </Select>
-          <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Підйомник №1" />
+          <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Пост №1" />
           <Select label="Тип" required value={form.type ?? 'TWO_POST'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
             {Object.entries(LIFT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>

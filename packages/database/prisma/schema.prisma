@@ -48,6 +48,8 @@ enum LiftType {
   ALIGNMENT
   STENCIL
   STAND
+  PIT
+  RAMP
   OTHER
 }
 
