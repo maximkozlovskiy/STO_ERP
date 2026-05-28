@@ -4,7 +4,7 @@ import {
   useEffect, useState, useCallback, useMemo, useRef, memo,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -35,7 +35,10 @@ interface CalendarSlot {
 interface Lift { id: string; name: string; }
 interface WorkOrderOption { id: string; number: string; counterpartyName?: string; }
 
-// Ghost while drawing a new slot on the grid
+// Pending (not yet saved) slot drawn on the grid
+interface PendingSlot { liftId: string; startH: number; endH: number; }
+
+// Ghost while actively drawing (finger still down)
 interface GhostSlot { liftId: string; startH: number; endH: number; }
 
 // Resize state for dragging slot edges
@@ -48,15 +51,23 @@ interface ResizeState {
   liftId: string | null;
 }
 
+// Resize state for pending slot edges
+interface PendingResizeState {
+  edge: 'start' | 'end';
+  origStartH: number;
+  origEndH: number;
+  pointerStartX: number;
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const KYIV_TZ = 'Europe/Kyiv';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 8); // 08:00–19:00
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 8);
 const TOTAL_HOURS = HOURS.length;
-const SIDEBAR_W = 160; // px — lift label column width
-const WINDOW_START = HOURS[0];                 // 8 — earliest valid hour
-const WINDOW_END   = HOURS[HOURS.length - 1] + 1; // 20 — latest valid hour (end of last column)
+const SIDEBAR_W = 160;
+const WINDOW_START = HOURS[0];
+const WINDOW_END   = HOURS[HOURS.length - 1] + 1;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -77,13 +88,10 @@ function fmtTime(iso: string) {
 }
 
 function decimalHoursToHHMM(h: number): string {
-  // Clamp to a valid 24h window so callers never build an invalid "24:30"/"-1:00" time.
   const totalMin = Math.min(24 * 60, Math.max(0, Math.round(h * 60)));
   return `${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}`;
 }
 
-// Build an ISO timestamp from a calendar date (YYYY-MM-DD) + decimal hours.
-// Parsed in the runtime timezone (Kyiv-pinned deployment), matching addSlot.
 function decimalHoursToISO(date: string, h: number): string {
   return new Date(`${date}T${decimalHoursToHHMM(h)}:00`).toISOString();
 }
@@ -92,7 +100,6 @@ function snapTo15(h: number): number {
   return Math.round(h * 4) / 4;
 }
 
-// Convert pixel delta → hour shift given timeline container width
 function pxToHours(px: number, timelineW: number): number {
   return (px / timelineW) * TOTAL_HOURS;
 }
@@ -134,7 +141,6 @@ const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onResizeStar
       className="absolute top-1 bottom-1 bg-primary rounded text-white text-xs flex items-center overflow-hidden group select-none"
       title={label}
     >
-      {/* Left resize handle */}
       <div
         className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-white/20 rounded-l flex items-center justify-center"
         onPointerDown={e => { e.stopPropagation(); onResizeStart(e, slot.id, 'start'); }}
@@ -143,7 +149,6 @@ const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onResizeStar
         <div className="w-0.5 h-4 bg-white/50 rounded" />
       </div>
 
-      {/* Slot label — draggable area */}
       <div
         className="flex-1 flex items-center px-3 cursor-grab active:cursor-grabbing min-w-0"
         {...listeners}
@@ -152,7 +157,6 @@ const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onResizeStar
         <span className="truncate">{label}</span>
       </div>
 
-      {/* Delete button */}
       <button
         onPointerDown={e => e.stopPropagation()}
         onClick={() => onRemove(slot.id)}
@@ -162,7 +166,6 @@ const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onResizeStar
         <Trash2 className="h-3 w-3" />
       </button>
 
-      {/* Right resize handle */}
       <div
         className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-white/20 rounded-r flex items-center justify-center"
         onPointerDown={e => { e.stopPropagation(); onResizeStart(e, slot.id, 'end'); }}
@@ -174,24 +177,89 @@ const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onResizeStar
   );
 });
 
+// ─── PendingSlotBlock — saved on grid, clickable to open form ────────────────
+
+interface PendingSlotBlockProps {
+  pending: PendingSlot;
+  onOpen: () => void;
+  onCancel: () => void;
+  onPendingResizeStart: (e: ReactPointerEvent<HTMLDivElement>, edge: 'start' | 'end') => void;
+}
+
+const PendingSlotBlock = memo(function PendingSlotBlock({
+  pending, onOpen, onCancel, onPendingResizeStart,
+}: PendingSlotBlockProps) {
+  const left  = ((pending.startH - HOURS[0]) / TOTAL_HOURS) * 100;
+  const width = ((pending.endH - pending.startH) / TOTAL_HOURS) * 100;
+
+  return (
+    <div
+      data-pending-slot
+      className="absolute top-1 bottom-1 bg-primary/20 border-2 border-primary rounded flex items-center overflow-hidden group select-none cursor-pointer z-10"
+      style={{ left: `${left}%`, width: `${width}%` }}
+      onClick={onOpen}
+      title="Натисніть щоб зберегти"
+    >
+      {/* Left resize handle */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-primary/20 rounded-l flex items-center justify-center"
+        onPointerDown={e => { e.stopPropagation(); onPendingResizeStart(e, 'start'); }}
+        aria-label="Змінити початок"
+      >
+        <div className="w-0.5 h-4 bg-primary/60 rounded" />
+      </div>
+
+      <span className="flex-1 text-xs text-primary font-medium px-3 truncate">
+        {decimalHoursToHHMM(pending.startH)}–{decimalHoursToHHMM(pending.endH)}
+      </span>
+
+      {/* Cancel button */}
+      <button
+        onPointerDown={e => e.stopPropagation()}
+        onClick={e => { e.stopPropagation(); onCancel(); }}
+        className="mr-1 opacity-0 group-hover:opacity-100 text-primary/70 hover:text-primary shrink-0"
+        aria-label="Скасувати"
+      >
+        <X className="h-3 w-3" />
+      </button>
+
+      {/* Right resize handle */}
+      <div
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-primary/20 rounded-r flex items-center justify-center"
+        onPointerDown={e => { e.stopPropagation(); onPendingResizeStart(e, 'end'); }}
+        aria-label="Змінити кінець"
+      >
+        <div className="w-0.5 h-4 bg-primary/60 rounded" />
+      </div>
+    </div>
+  );
+});
+
 // ─── DroppableLiftRow ────────────────────────────────────────────────────────
 
 interface DroppableLiftRowProps {
   liftId: string;
   liftSlots: CalendarSlot[];
   ghost: GhostSlot | null;
+  pending: PendingSlot | null;
   onRemove: (id: string) => void;
   onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
+  onPendingOpen: () => void;
+  onPendingCancel: () => void;
+  onPendingResizeStart: (e: ReactPointerEvent<HTMLDivElement>, edge: 'start' | 'end') => void;
 }
 
 const DroppableLiftRow = memo(function DroppableLiftRow({
-  liftId, liftSlots, ghost, onRemove, onResizeStart,
+  liftId, liftSlots, ghost, pending,
+  onRemove, onResizeStart,
+  onPendingOpen, onPendingCancel, onPendingResizeStart,
 }: DroppableLiftRowProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `lift-${liftId}`, data: { liftId } });
 
   const showGhost = ghost?.liftId === liftId && ghost.endH > ghost.startH;
   const ghostLeft  = showGhost ? ((ghost!.startH - HOURS[0]) / TOTAL_HOURS) * 100 : 0;
   const ghostWidth = showGhost ? ((ghost!.endH - ghost!.startH) / TOTAL_HOURS) * 100 : 0;
+  const showPending = pending?.liftId === liftId;
 
   return (
     <div
@@ -200,14 +268,13 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
       style={{ gridColumn: `2 / span ${TOTAL_HOURS}` }}
       data-lift-id={liftId}
     >
-      {/* Hour grid lines */}
       <div className="flex h-full pointer-events-none">
         {HOURS.map(h => (
           <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-12" />
         ))}
       </div>
 
-      {/* Ghost slot while drawing */}
+      {/* Ghost while actively drawing */}
       {showGhost && (
         <div
           className="absolute top-1 bottom-1 bg-primary/30 border-2 border-primary border-dashed rounded pointer-events-none z-5"
@@ -219,7 +286,16 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
         </div>
       )}
 
-      {/* Existing slots */}
+      {/* Pending slot — stays on grid until saved or cancelled */}
+      {showPending && (
+        <PendingSlotBlock
+          pending={pending!}
+          onOpen={onPendingOpen}
+          onCancel={onPendingCancel}
+          onPendingResizeStart={onPendingResizeStart}
+        />
+      )}
+
       {liftSlots.map(s => (
         <DraggableSlot key={s.id} slot={s} onRemove={onRemove} onResizeStart={onResizeStart} />
       ))}
@@ -244,14 +320,23 @@ export default function CalendarPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Drawing new slot by dragging on empty grid
+  // Ghost while finger is down drawing
   const [ghost, setGhost] = useState<GhostSlot | null>(null);
   const drawingRef = useRef<{ liftId: string; startH: number } | null>(null);
 
-  // Resizing existing slot edges
+  // Pending slot: drawn, stays on grid, awaiting form submit
+  const [pendingSlot, setPendingSlot] = useState<PendingSlot | null>(null);
+  const pendingSlotRef = useRef<PendingSlot | null>(null);
+  pendingSlotRef.current = pendingSlot;
+
+  // Resizing existing saved slot
   const [resizing, setResizing] = useState<ResizeState | null>(null);
-  // Live preview of resized slot (local optimistic copy)
   const [resizePreview, setResizePreview] = useState<{ id: string; startH: number; endH: number } | null>(null);
+
+  // Resizing pending slot
+  const [pendingResizing, setPendingResizing] = useState<PendingResizeState | null>(null);
+  const pendingResizingRef = useRef<PendingResizeState | null>(null);
+  pendingResizingRef.current = pendingResizing;
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const mountedRef  = useRef(true);
@@ -265,7 +350,6 @@ export default function CalendarPage() {
 
   useEffect(() => { setDate(toDateString(new Date())); }, []);
 
-  // Load lifts (with sessionStorage cache)
   useEffect(() => {
     const cached = getCached<Lift[]>('cache:lifts');
     if (cached && mountedRef.current) setLifts(cached);
@@ -288,9 +372,6 @@ export default function CalendarPage() {
   const prevDay = () => { const d = new Date(date); d.setDate(d.getDate() - 1); setDate(toDateString(d)); };
   const nextDay = () => { const d = new Date(date); d.setDate(d.getDate() + 1); setDate(toDateString(d)); };
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
-
-  // Convert pointer clientX → decimal hours on the timeline
   const pxToDecimalHours = useCallback((clientX: number): number => {
     const rect = timelineRef.current?.getBoundingClientRect();
     if (!rect) return HOURS[0];
@@ -303,8 +384,28 @@ export default function CalendarPage() {
   const showAddRef = useRef(showAdd);
   showAddRef.current = showAdd;
 
+  // ── Open form from pending slot ───────────────────────────────────────────
 
-  // ── Resize existing slot ─────────────────────────────────────────────────────
+  const openFormFromPending = useCallback(() => {
+    const p = pendingSlotRef.current;
+    if (!p) return;
+    setForm(f => ({
+      ...f,
+      liftId: p.liftId,
+      startAt: decimalHoursToHHMM(p.startH),
+      endAt:   decimalHoursToHHMM(p.endH),
+      normoHours: String(+(p.endH - p.startH).toFixed(2)),
+    }));
+    setShowAdd(true);
+  }, []);
+
+  const cancelPending = useCallback(() => {
+    setPendingSlot(null);
+    setShowAdd(false);
+    setError('');
+  }, []);
+
+  // ── Resize existing saved slot ────────────────────────────────────────────
 
   const handleResizeStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => {
     e.stopPropagation();
@@ -320,52 +421,86 @@ export default function CalendarPage() {
     setResizePreview({ id: slotId, startH: kyivHours(slot.startAt), endH: kyivHours(slot.endAt) });
   }, [slots]);
 
-  // ── Global window listeners (pointermove / pointerup) ────────────────────────
-  // Using window instead of timelineRef handlers because setPointerCapture on
-  // a child element (DroppableLiftRow / resize handle) redirects all pointer
-  // events to that element — parent onPointerMove/Up never fire.
+  // ── Resize pending slot ───────────────────────────────────────────────────
+
+  const handlePendingResizeStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, edge: 'start' | 'end') => {
+    e.stopPropagation();
+    const p = pendingSlotRef.current;
+    if (!p) return;
+    setPendingResizing({
+      edge,
+      origStartH: p.startH,
+      origEndH:   p.endH,
+      pointerStartX: e.clientX,
+    });
+  }, []);
+
+  // ── Global refs ───────────────────────────────────────────────────────────
 
   const resizingRef = useRef(resizing);
   resizingRef.current = resizing;
   const resizePreviewRef = useRef(resizePreview);
   resizePreviewRef.current = resizePreview;
-  const ghostRef = useRef(ghost);
-  ghostRef.current = ghost;
   const dateRef = useRef(date);
   dateRef.current = date;
 
+  // ── Global window listeners ───────────────────────────────────────────────
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      if (showAddRef.current) return;
       const target = e.target as HTMLElement;
-      // Must be inside timeline grid and NOT on an existing slot / resize handle
       if (!timelineRef.current?.contains(target)) return;
+      // Clicks on existing saved slots or pending slot resize handles — handled elsewhere
       if (target.closest('[data-calendar-slot]')) return;
-
-      // Find which lift row was clicked by matching the DOM row element
+      if (target.closest('[data-pending-slot]')) return;
+      // If form is open — a click on grid discards pending and closes form
+      if (showAddRef.current) {
+        setPendingSlot(null);
+        setShowAdd(false);
+        setError('');
+        return;
+      }
+      // Start drawing only on lift rows
       const liftRow = target.closest('[data-lift-id]') as HTMLElement | null;
       const liftId = liftRow?.dataset.liftId;
       if (!liftId) return;
 
+      // Discard previous pending slot when starting a new draw
+      setPendingSlot(null);
+
       const startH = snapTo15(pxToDecimalHours(e.clientX));
       drawingRef.current = { liftId, startH };
-      // eslint-disable-next-line no-console
-      console.log('[drawStart-global]', { liftId, startH });
       setGhost({ liftId, startH, endH: startH + 1 });
     };
 
     const onMove = (e: PointerEvent) => {
-      const curH = pxToDecimalHours(e.clientX);
-
+      // Drawing ghost
       if (drawingRef.current) {
+        const curH = pxToDecimalHours(e.clientX);
         const { startH } = drawingRef.current;
         const endH = snapTo15(Math.max(curH, startH + 0.25));
         setGhost(g => g ? { ...g, endH } : null);
         return;
       }
 
+      // Resizing pending slot
+      const pr = pendingResizingRef.current;
+      if (pr) {
+        const rect = timelineRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const deltaH = pxToHours(e.clientX - pr.pointerStartX, rect.width - SIDEBAR_W);
+        if (pr.edge === 'start') {
+          const newStartH = snapTo15(Math.max(WINDOW_START, Math.min(pr.origStartH + deltaH, pr.origEndH - 0.25)));
+          setPendingSlot(p => p ? { ...p, startH: newStartH } : null);
+        } else {
+          const newEndH = snapTo15(Math.min(WINDOW_END, Math.max(pr.origEndH + deltaH, pr.origStartH + 0.25)));
+          setPendingSlot(p => p ? { ...p, endH: newEndH } : null);
+        }
+        return;
+      }
+
+      // Resizing existing saved slot
       const res = resizingRef.current;
       if (res) {
         const rect = timelineRef.current?.getBoundingClientRect();
@@ -382,30 +517,35 @@ export default function CalendarPage() {
     };
 
     const onUp = async (e: PointerEvent) => {
-      // eslint-disable-next-line no-console
-      console.log('[onUp]', { drawing: !!drawingRef.current, resizing: !!resizingRef.current, target: (e.target as HTMLElement)?.tagName });
-      // ── Finish drawing → open form ──────────────────────────────────────
+      // ── Finish drawing → create pending slot ───────────────────────────
       if (drawingRef.current) {
         const { liftId, startH } = drawingRef.current;
         const endH = snapTo15(Math.max(pxToDecimalHours(e.clientX), startH + 0.25));
         drawingRef.current = null;
         setGhost(null);
-
         if (endH - startH >= 0.25) {
-          setGhost(null); // ensure ghost is cleared before form opens
-          setForm(f => ({
-            ...f,
-            liftId,
-            startAt: decimalHoursToHHMM(startH),
-            endAt:   decimalHoursToHHMM(endH),
-            normoHours: String(+(endH - startH).toFixed(2)),
-          }));
-          setShowAdd(true);
+          setPendingSlot({ liftId, startH, endH });
         }
         return;
       }
 
-      // ── Finish resizing → PATCH ─────────────────────────────────────────
+      // ── Finish pending resize ──────────────────────────────────────────
+      if (pendingResizingRef.current) {
+        setPendingResizing(null);
+        // Update form times if form is already open
+        const p = pendingSlotRef.current;
+        if (p && showAddRef.current) {
+          setForm(f => ({
+            ...f,
+            startAt: decimalHoursToHHMM(p.startH),
+            endAt:   decimalHoursToHHMM(p.endH),
+            normoHours: String(+(p.endH - p.startH).toFixed(2)),
+          }));
+        }
+        return;
+      }
+
+      // ── Finish saved slot resize → PATCH ──────────────────────────────
       const res = resizingRef.current;
       const preview = resizePreviewRef.current;
       if (res && preview) {
@@ -413,9 +553,7 @@ export default function CalendarPage() {
         const { startH, endH } = preview;
         setResizing(null);
         setResizePreview(null);
-
         if (Math.abs(startH - origStartH) < 0.01 && Math.abs(endH - origEndH) < 0.01) return;
-
         try {
           await apiFetch(`/calendar/slots/${slotId}`, {
             method: 'PATCH',
@@ -431,6 +569,7 @@ export default function CalendarPage() {
 
     const onCancel = () => {
       if (drawingRef.current) { drawingRef.current = null; setGhost(null); }
+      if (pendingResizingRef.current) setPendingResizing(null);
       if (resizingRef.current) { setResizing(null); setResizePreview(null); }
     };
 
@@ -446,32 +585,24 @@ export default function CalendarPage() {
     };
   }, [pxToDecimalHours, load]);
 
-  // ── Drag-and-drop move (existing behaviour + now PATCH actually works) ───────
+  // ── Drag-and-drop (move existing slot) ───────────────────────────────────
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, delta, over } = event;
     if (!active || !delta) return;
-
     const slot = slots.find(s => s.id === active.id);
     if (!slot) return;
-
     const newLiftId: string | null = over?.data?.current?.liftId ?? slot.liftId ?? null;
-
     const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
     if (!containerWidth) return;
-
     const timelineWidth = containerWidth - SIDEBAR_W;
     const shiftHours = (delta.x / timelineWidth) * TOTAL_HOURS;
-
     if (Math.abs(shiftHours) < 0.08 && newLiftId === slot.liftId) return;
-
     const origStart = new Date(slot.startAt);
     const origEnd   = new Date(slot.endAt);
     const shiftMs   = Math.round(shiftHours * 3600_000 / (15 * 60_000)) * (15 * 60_000);
-
-    const newStart = new Date(origStart.getTime() + shiftMs);
-    const newEnd   = new Date(origEnd.getTime()   + shiftMs);
-
+    const newStart  = new Date(origStart.getTime() + shiftMs);
+    const newEnd    = new Date(origEnd.getTime()   + shiftMs);
     try {
       await apiFetch(`/calendar/slots/${slot.id}`, {
         method: 'PATCH',
@@ -487,14 +618,12 @@ export default function CalendarPage() {
     }
   }, [slots, load]);
 
-  // ── Add slot (manual form submit) ────────────────────────────────────────────
+  // ── Add slot (form submit) ────────────────────────────────────────────────
 
   const addSlot = async () => {
     if (!form.startAt || !form.endAt) { setError('Вкажіть час початку та завершення'); return; }
     if (form.endAt <= form.startAt)    { setError('Час завершення повинен бути після часу початку'); return; }
-    if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
-      setError('Оберіть наряд зі списку'); return;
-    }
+    if (form.workOrderId && !UUID_RE.test(form.workOrderId)) { setError('Оберіть наряд зі списку'); return; }
     setSaving(true); setError('');
     try {
       await apiFetch<CalendarSlot>('/calendar/slots', {
@@ -509,6 +638,7 @@ export default function CalendarPage() {
         }),
       });
       setShowAdd(false);
+      setPendingSlot(null);
       setForm({ liftId: '', employeeId: '', workOrderId: '', workOrderDisplay: '', startAt: '', endAt: '', notes: '', normoHours: '' });
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
@@ -521,7 +651,7 @@ export default function CalendarPage() {
     catch (e: unknown) { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка видалення'); }
   }, [load]);
 
-  // ── Work-order search ─────────────────────────────────────────────────────────
+  // ── Work-order search ─────────────────────────────────────────────────────
 
   const [woSearch, setWoSearch] = useState('');
   const [woOptions, setWoOptions] = useState<WorkOrderOption[]>([]);
@@ -541,12 +671,7 @@ export default function CalendarPage() {
       try {
         const data = await apiFetch<{ items: WorkOrderOption[] }>(`/work-orders?q=${encodeURIComponent(q)}&limit=10`);
         if (mountedRef.current) { setWoOptions(data.items); setShowWoDropdown(true); }
-      } catch (err: unknown) {
-        if (mountedRef.current) {
-          setWoOptions([]); setShowWoDropdown(false);
-          setError(err instanceof Error ? err.message : 'Помилка пошуку наряду');
-        }
-      }
+      } catch { /* ignore */ }
       finally { if (mountedRef.current) setWoLoading(false); }
     }, 300);
   }, []);
@@ -555,18 +680,17 @@ export default function CalendarPage() {
     return () => { if (woTimeoutRef.current) clearTimeout(woTimeoutRef.current); };
   }, []);
 
-  // ── Memoized grouping ────────────────────────────────────────────────────────
+  // ── Memoized grouping ─────────────────────────────────────────────────────
 
-  // Apply resize preview to slots for optimistic rendering
   const slotsWithPreview = useMemo(() => {
     if (!resizePreview) return slots;
     return slots.map(s => {
       if (s.id !== resizePreview.id) return s;
-      return {
-        ...s,
-        startAt: decimalHoursToISO(date, resizePreview.startH),
-        endAt: decimalHoursToISO(date, resizePreview.endH),
+      const toISO = (h: number) => {
+        const totalMin = Math.round(h * 60);
+        return new Date(`${date}T${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}:00`).toISOString();
       };
+      return { ...s, startAt: toISO(resizePreview.startH), endAt: toISO(resizePreview.endH) };
     });
   }, [slots, resizePreview, date]);
 
@@ -588,14 +712,13 @@ export default function CalendarPage() {
     return new Date(ds).toLocaleDateString('uk-UA', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: KYIV_TZ });
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="page-container">
-      {/* Header */}
       <div className="page-header mb-6">
         <h1 className="page-title">Календар</h1>
-        <Button onClick={() => setShowAdd(v => !v)}>
+        <Button onClick={() => { setPendingSlot(null); setShowAdd(v => !v); }}>
           <Plus className="h-4 w-4" />
           Слот
         </Button>
@@ -624,14 +747,15 @@ export default function CalendarPage() {
         </Button>
       </div>
 
-      {/* Add slot form */}
+      {/* Add / edit form */}
       {showAdd && (
         <div className="bg-surface border border-border rounded-xl p-5 mb-6 space-y-3">
-          <h3 className="font-semibold text-foreground text-sm">Новий слот на {date}</h3>
+          <h3 className="font-semibold text-foreground text-sm">
+            {pendingSlot ? `Новий слот ${decimalHoursToHHMM(pendingSlot.startH)}–${decimalHoursToHHMM(pendingSlot.endH)} на ${date}` : `Новий слот на ${date}`}
+          </h3>
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
 
           <div className="grid grid-cols-4 gap-3">
-            {/* Lift */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Підйомник</label>
               <Select value={form.liftId} onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}>
@@ -639,13 +763,10 @@ export default function CalendarPage() {
                 {lifts.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </Select>
             </div>
-
-            {/* Start time */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Початок</label>
               <Input
-                type="time"
-                value={form.startAt}
+                type="time" value={form.startAt}
                 onChange={e => {
                   const start = e.target.value;
                   setForm(f => {
@@ -659,15 +780,12 @@ export default function CalendarPage() {
                 }}
               />
             </div>
-
-            {/* Normo-hours */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">
                 Норм-год <span className="font-normal text-muted-foreground/70">(авто кінець)</span>
               </label>
               <Input
-                type="number" step="0.5" min="0.5"
-                value={form.normoHours}
+                type="number" step="0.5" min="0.5" value={form.normoHours}
                 onChange={e => {
                   const nh = e.target.value;
                   setForm(f => {
@@ -682,8 +800,6 @@ export default function CalendarPage() {
                 placeholder="1.5"
               />
             </div>
-
-            {/* End time */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Кінець</label>
               <Input type="time" value={form.endAt} onChange={e => setForm(f => ({ ...f, endAt: e.target.value }))} />
@@ -691,7 +807,6 @@ export default function CalendarPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {/* Work order search */}
             <div className="relative">
               <label className="block text-xs font-medium text-muted-foreground mb-1">
                 Наряд <span className="font-normal opacity-60">(пошук по номеру / клієнту)</span>
@@ -735,8 +850,6 @@ export default function CalendarPage() {
                 </div>
               )}
             </div>
-
-            {/* Notes */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Нотатки</label>
               <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
@@ -747,11 +860,23 @@ export default function CalendarPage() {
             <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt}>
               Зберегти
             </Button>
-            <Button variant="outline" onClick={() => { setShowAdd(false); setError(''); setGhost(null); }}>
+            <Button variant="outline" onClick={() => { setShowAdd(false); setError(''); setPendingSlot(null); }}>
               Скасувати
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Hint */}
+      {!loading && lifts.length > 0 && !pendingSlot && !showAdd && (
+        <p className="text-xs text-muted-foreground mb-2">
+          Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї для зміни тривалості. Натисніть на проміжок щоб зберегти.
+        </p>
+      )}
+      {pendingSlot && !showAdd && (
+        <p className="text-xs text-primary mb-2 font-medium">
+          ↑ Налаштуйте проміжок і натисніть на нього щоб відкрити форму збереження.
+        </p>
       )}
 
       {/* Timeline grid */}
@@ -764,43 +889,37 @@ export default function CalendarPage() {
       )}
 
       {!loading && lifts.length > 0 && (
-        <>
-          <p className="text-xs text-muted-foreground mb-2">
-            Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї слоту для зміни тривалості.
-          </p>
-          <DndContext sensors={sensors} onDragEnd={e => { void handleDragEnd(e); }}>
-            <div
-              ref={timelineRef}
-              className="bg-surface border border-border rounded-xl overflow-hidden"
-            >
-              {/* Hour headers */}
-              <div className="grid border-b border-border" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
-                <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">Підйомник</div>
-                {HOURS.map(h => (
-                  <div key={h} className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0">
-                    {pad(h)}:00
-                  </div>
-                ))}
-              </div>
-
-              {/* Lift rows */}
-              {lifts.map(lift => (
-                <div key={lift.id} className="grid border-b border-border last:border-b-0" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
-                  <div className="px-3 py-3 text-sm font-medium text-foreground bg-secondary border-r border-border flex items-center">
-                    {lift.name}
-                  </div>
-                  <DroppableLiftRow
-                    liftId={lift.id}
-                    liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
-                    ghost={ghost}
-                    onRemove={removeSlot}
-                    onResizeStart={handleResizeStart}
-                  />
+        <DndContext sensors={sensors} onDragEnd={e => { void handleDragEnd(e); }}>
+          <div ref={timelineRef} className="bg-surface border border-border rounded-xl overflow-hidden">
+            <div className="grid border-b border-border" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
+              <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">Підйомник</div>
+              {HOURS.map(h => (
+                <div key={h} className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0">
+                  {pad(h)}:00
                 </div>
               ))}
             </div>
-          </DndContext>
-        </>
+
+            {lifts.map(lift => (
+              <div key={lift.id} className="grid border-b border-border last:border-b-0" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
+                <div className="px-3 py-3 text-sm font-medium text-foreground bg-secondary border-r border-border flex items-center">
+                  {lift.name}
+                </div>
+                <DroppableLiftRow
+                  liftId={lift.id}
+                  liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
+                  ghost={ghost}
+                  pending={pendingSlot}
+                  onRemove={removeSlot}
+                  onResizeStart={handleResizeStart}
+                  onPendingOpen={openFormFromPending}
+                  onPendingCancel={cancelPending}
+                  onPendingResizeStart={handlePendingResizeStart}
+                />
+              </div>
+            ))}
+          </div>
+        </DndContext>
       )}
 
       {/* Unassigned slots */}
