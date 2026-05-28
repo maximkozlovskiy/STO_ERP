@@ -84,48 +84,42 @@ export class ReportsService {
       if (!emp) throw new NotFoundException('Співробітника не знайдено');
     }
 
-    const lineWhere: {
-      orgId: string; deletedAt: null;
-      workOrder: { orgId: string; deletedAt: null; createdAt: { gte: Date; lte: Date } };
-      employeeId?: string;
-    } = {
-      orgId,
-      deletedAt: null,
-      workOrder: { orgId, deletedAt: null, createdAt: { gte: fromDate, lte: toDate } },
-    };
-    if (employeeId) lineWhere.employeeId = employeeId;
+    // Use groupBy for DB-side aggregation — avoids loading up to 10 000 raw rows into memory.
+    // groupBy requires a filter on the grouped field, so we join through workOrder via raw SQL.
+    type GroupRow = { employeeId: string; firstName: string; lastName: string; totalNormoHours: number; totalAmount: number; linesCount: bigint };
+    const rows = await this.prisma.$queryRaw<GroupRow[]>`
+      SELECT
+        wol."employeeId",
+        e."firstName",
+        e."lastName",
+        COALESCE(SUM(wol."normoHours"), 0)::float AS "totalNormoHours",
+        COALESCE(SUM(wol."amount"), 0)::float     AS "totalAmount",
+        COUNT(*)                                   AS "linesCount"
+      FROM work_order_lines wol
+      JOIN work_orders wo ON wo.id = wol."workOrderId"
+      JOIN employees e    ON e.id  = wol."employeeId"
+      WHERE wol."orgId"      = ${orgId}::uuid
+        AND wol."deletedAt"  IS NULL
+        AND wo."orgId"       = ${orgId}::uuid
+        AND wo."deletedAt"   IS NULL
+        AND wo."createdAt"   BETWEEN ${fromDate} AND ${toDate}
+        ${employeeId ? Prisma.sql`AND wol."employeeId" = ${employeeId}::uuid` : Prisma.empty}
+      GROUP BY wol."employeeId", e."firstName", e."lastName"
+      ORDER BY "totalAmount" DESC
+    `;
 
-    const lines = await this.prisma.workOrderLine.findMany({
-      where: lineWhere,
-      include: {
-        employee: { select: { firstName: true, lastName: true } },
-        workOrder: { select: { number: true, status: true } },
-      },
-      take: 10000,
-    });
-
-    // Aggregate by employee
-    const byEmp: Record<string, { employeeId: string; employeeName: string; totalNormoHours: number; totalAmount: number; linesCount: number }> = {};
-    for (const line of lines) {
-      const empId = line.employeeId;
-      if (!byEmp[empId]) {
-        byEmp[empId] = {
-          employeeId: empId,
-          employeeName: formatPersonName(line.employee.lastName, line.employee.firstName),
-          totalNormoHours: 0,
-          totalAmount: 0,
-          linesCount: 0,
-        };
-      }
-      byEmp[empId].totalNormoHours += line.normoHours;
-      byEmp[empId].totalAmount += Number(line.amount);
-      byEmp[empId].linesCount++;
-    }
+    const result = rows.map(r => ({
+      employeeId: r.employeeId,
+      employeeName: formatPersonName(r.lastName, r.firstName),
+      totalNormoHours: Number(r.totalNormoHours),
+      totalAmount: Number(r.totalAmount),
+      linesCount: Number(r.linesCount),
+    }));
 
     return {
-      rows: Object.values(byEmp),
-      totalNormoHours: lines.reduce((s, l) => s + l.normoHours, 0),
-      totalAmount: lines.reduce((s, l) => s + Number(l.amount), 0),
+      rows: result,
+      totalNormoHours: result.reduce((s, r) => s + r.totalNormoHours, 0),
+      totalAmount: result.reduce((s, r) => s + r.totalAmount, 0),
       from, to,
     };
   }
@@ -193,51 +187,47 @@ export class ReportsService {
   async profitability(orgId: string, from: string, to: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
-    const orders = await this.prisma.workOrder.findMany({
-      where: {
-        orgId, deletedAt: null,
-        status: { in: ['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED'] as WorkOrderStatus[] },
-        completedAt: { gte: fromDate, lte: toDate },
-      },
-      include: {
-        // Bug #74: cost fallback must use Good.purchasePrice — not WorkOrderPart.price (sale price)
-        parts: {
-          where: { deletedAt: null },
-          select: {
-            quantity: true,
-            price: true,
-            batchCostPrice: true,
-            good: { select: { purchasePrice: true } },
-          },
-          take: 500,
-        },
-        lines: { where: { deletedAt: null }, select: { normoHours: true, price: true, amount: true }, take: 500 },
-      },
-      take: 10000,
-    });
+    type WOAgg = { totalRevenue: number; totalLabor: number; ordersCount: bigint };
+    type PartAgg = { costParts: number; unknownCount: bigint };
 
-    let totalRevenue = 0;
-    let totalCostParts = 0;
-    let totalCostLabor = 0;
-    let unknownCostPartsCount = 0;
+    // Two aggregation queries instead of loading up to 10 000 orders × 500 parts each.
+    const [woAgg, partAgg] = await Promise.all([
+      // Aggregate revenue + labor from work orders
+      this.prisma.$queryRaw<WOAgg[]>`
+        SELECT
+          COALESCE(SUM("totalAmount"), 0)::float AS "totalRevenue",
+          COALESCE(SUM("totalLabor"),  0)::float AS "totalLabor",
+          COUNT(*)                                AS "ordersCount"
+        FROM work_orders
+        WHERE "orgId"       = ${orgId}::uuid
+          AND "deletedAt"   IS NULL
+          AND "status"      = ANY(ARRAY['COMPLETED','INVOICED','PAID','ARCHIVED']::"WorkOrderStatus"[])
+          AND "completedAt" BETWEEN ${fromDate} AND ${toDate}
+      `,
+      // Aggregate parts cost with Bug #74 fallback: batchCostPrice → good.purchasePrice
+      this.prisma.$queryRaw<PartAgg[]>`
+        SELECT
+          COALESCE(SUM(
+            wop."quantity" * COALESCE(wop."batchCostPrice", g."purchasePrice")
+          ), 0)::float AS "costParts",
+          COUNT(*) FILTER (WHERE wop."batchCostPrice" IS NULL AND g."purchasePrice" IS NULL) AS "unknownCount"
+        FROM work_order_parts wop
+        JOIN work_orders wo ON wo.id = wop."workOrderId"
+        JOIN goods g        ON g.id  = wop."goodId"
+        WHERE wop."orgId"    = ${orgId}::uuid
+          AND wop."deletedAt" IS NULL
+          AND wo."orgId"      = ${orgId}::uuid
+          AND wo."deletedAt"  IS NULL
+          AND wo."status"     = ANY(ARRAY['COMPLETED','INVOICED','PAID','ARCHIVED']::"WorkOrderStatus"[])
+          AND wo."completedAt" BETWEEN ${fromDate} AND ${toDate}
+      `,
+    ]);
 
-    for (const wo of orders) {
-      totalRevenue += Number(wo.totalAmount);
-      for (const part of wo.parts) {
-        // Bug #74: never use sale price (part.price) as cost — that flattens profit to ≈ 0
-        const cost = part.batchCostPrice ?? part.good?.purchasePrice ?? null;
-        if (cost == null) {
-          unknownCostPartsCount += 1;
-          // Treat unknown cost as 0 — better to over-report profit than under-report by using sale price
-          continue;
-        }
-        totalCostParts += part.quantity * Number(cost);
-      }
-      for (const line of wo.lines) {
-        totalCostLabor += Number(line.amount) * LABOR_COST_RATIO;
-      }
-    }
-
+    const totalRevenue = Number(woAgg[0]?.totalRevenue ?? 0);
+    const ordersCount = Number(woAgg[0]?.ordersCount ?? 0);
+    const totalCostParts = Number(partAgg[0]?.costParts ?? 0);
+    const unknownCostPartsCount = Number(partAgg[0]?.unknownCount ?? 0);
+    const totalCostLabor = Number(woAgg[0]?.totalLabor ?? 0) * LABOR_COST_RATIO;
     const totalCost = totalCostParts + totalCostLabor;
     const grossProfit = totalRevenue - totalCost;
     const margin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
@@ -245,7 +235,7 @@ export class ReportsService {
     return {
       totalRevenue, totalCost, totalCostParts, totalCostLabor,
       grossProfit, margin: Math.round(margin * 100) / 100,
-      ordersCount: orders.length,
+      ordersCount,
       unknownCostPartsCount,
       from, to,
     };
