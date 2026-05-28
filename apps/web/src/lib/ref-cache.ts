@@ -26,7 +26,9 @@ export type RefCacheKey =
   | 'cache:suppliers'
   | 'cache:lifts'
   | 'cache:zones'
-  | 'cache:wo-templates';
+  | 'cache:wo-templates'
+  | 'cache:currencies'
+  | 'cache:bank-accounts';
 
 export function getCached<T>(key: RefCacheKey): T | null {
   if (typeof window === 'undefined') return null;

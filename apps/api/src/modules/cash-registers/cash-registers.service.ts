@@ -1,15 +1,27 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 import { CashRegisterResponseDto, CreateCashRegisterDto, UpdateCashRegisterDto } from './cash-registers.dto';
+
+const TTL = 300;
+const cacheKey = (orgId: string, branchId?: string) =>
+  branchId ? `ref:cash-registers:${orgId}:${branchId}` : `ref:cash-registers:${orgId}`;
 
 @Injectable()
 export class CashRegistersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   async findAll(
     orgId: string,
     branchId?: string,
   ): Promise<{ items: CashRegisterResponseDto[]; total: number }> {
+    const key = cacheKey(orgId, branchId);
+    const cached = await this.cache.get<{ items: CashRegisterResponseDto[]; total: number }>(key);
+    if (cached) return cached;
+
     const where: Record<string, unknown> = { orgId, deletedAt: null };
     if (branchId) where['branchId'] = branchId;
 
@@ -22,7 +34,9 @@ export class CashRegistersService {
       }),
       this.prisma.cashRegister.count({ where }),
     ]);
-    return { items: items.map(i => this.toDto(i)), total };
+    const result = { items: items.map(i => this.toDto(i)), total };
+    await this.cache.set(key, result, TTL);
+    return result;
   }
 
   async findOne(orgId: string, id: string): Promise<CashRegisterResponseDto> {
@@ -35,20 +49,19 @@ export class CashRegistersService {
   }
 
   async create(orgId: string, dto: CreateCashRegisterDto): Promise<CashRegisterResponseDto> {
-    const currency = await this.prisma.currency.findFirst({
-      where: { id: dto.currencyId, orgId, deletedAt: null },
-    });
+    const [currency, branch] = await Promise.all([
+      this.prisma.currency.findFirst({ where: { id: dto.currencyId, orgId, deletedAt: null } }),
+      this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }),
+    ]);
     if (!currency) throw new NotFoundException('Валюту не знайдено');
-
-    const branch = await this.prisma.garageBranch.findFirst({
-      where: { id: dto.branchId, orgId, deletedAt: null },
-    });
     if (!branch) throw new NotFoundException('Філію не знайдено');
 
     const item = await this.prisma.cashRegister.create({
       data: { orgId, name: dto.name, currencyId: dto.currencyId, branchId: dto.branchId },
       include: { currency: { select: { code: true, symbol: true } }, branch: { select: { name: true } } },
     });
+    await this.cache.del(cacheKey(orgId));
+    await this.cache.del(cacheKey(orgId, dto.branchId));
     return this.toDto(item);
   }
 
@@ -56,24 +69,20 @@ export class CashRegistersService {
     const existing = await this.prisma.cashRegister.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!existing) throw new NotFoundException('Касу не знайдено');
 
-    if (dto.currencyId) {
-      const currency = await this.prisma.currency.findFirst({
-        where: { id: dto.currencyId, orgId, deletedAt: null },
-      });
-      if (!currency) throw new NotFoundException('Валюту не знайдено');
-    }
-    if (dto.branchId) {
-      const branch = await this.prisma.garageBranch.findFirst({
-        where: { id: dto.branchId, orgId, deletedAt: null },
-      });
-      if (!branch) throw new NotFoundException('Філію не знайдено');
-    }
+    const [currency, branch] = await Promise.all([
+      dto.currencyId ? this.prisma.currency.findFirst({ where: { id: dto.currencyId, orgId, deletedAt: null } }) : Promise.resolve(true as const),
+      dto.branchId ? this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }) : Promise.resolve(true as const),
+    ]);
+    if (dto.currencyId && !currency) throw new NotFoundException('Валюту не знайдено');
+    if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
 
     const item = await this.prisma.cashRegister.update({
       where: { id },
       data: dto,
       include: { currency: { select: { code: true, symbol: true } }, branch: { select: { name: true } } },
     });
+    await this.cache.del(cacheKey(orgId));
+    await this.cache.del(cacheKey(orgId, existing.branchId));
     return this.toDto(item);
   }
 
@@ -81,6 +90,8 @@ export class CashRegistersService {
     const existing = await this.prisma.cashRegister.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!existing) throw new NotFoundException('Касу не знайдено');
     await this.prisma.cashRegister.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.cache.del(cacheKey(orgId));
+    await this.cache.del(cacheKey(orgId, existing.branchId));
   }
 
   private toDto(item: {

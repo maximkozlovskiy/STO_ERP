@@ -15,6 +15,7 @@ import { PickerModal } from '@/components/ui/picker-modal';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useUiFeatures, invalidateUiFeaturesCache, type UiFeatures } from '@/hooks/useUiFeatures';
+import { getCached, setCache } from '@/lib/ref-cache';
 
 // Must match Prisma enum BatchCostMethod (FIFO | FEFO | LIFO | AVG_COST).
 // String-typed in the API DTO, but kept as a literal union here so an
@@ -242,34 +243,43 @@ export default function SettingsPage() {
       .catch(() => {});
   }, []);
 
-  // New financial directories — окремий effect з loading/error станами та cancelled-flag,
-  // щоб empty-state не блимав і помилки API не ковтались тихо (Bug #145).
+  // New financial directories — parallel Promise.all з loading/error станами та cancelled-flag.
+  // currencies та bank-accounts кешуються в sessionStorage (Bug #145).
   useEffect(() => {
     let cancelled = false;
     setLoadingCurrencies(true); setLoadingRates(true); setLoadingBa(true); setLoadingCr(true);
-    apiFetch<{ items: Currency[] }>('/currencies')
-      .then(d => { if (!cancelled) setCurrencies(d.items); })
-      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження валют'); })
-      .finally(() => { if (!cancelled) setLoadingCurrencies(false); });
-    apiFetch<{ items: ExchangeRate[] }>('/exchange-rates')
-      .then(d => { if (!cancelled) setExchangeRates(d.items); })
-      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження курсів валют'); })
-      .finally(() => { if (!cancelled) setLoadingRates(false); });
-    apiFetch<{ items: BankAccount[] }>('/bank-accounts')
-      .then(d => { if (!cancelled) setBankAccounts(d.items); })
-      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження банківських рахунків'); })
-      .finally(() => { if (!cancelled) setLoadingBa(false); });
-    apiFetch<{ items: CashRegister[] }>('/cash-registers')
-      .then(d => { if (!cancelled) setCashRegisters(d.items); })
-      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження кас'); })
-      .finally(() => { if (!cancelled) setLoadingCr(false); });
-    apiFetch<OrgInfo>('/settings/org-info')
-      .then(info => {
-        if (cancelled) return;
-        setOrgInfo(info);
-        setOrgInfoForm({ name: info.name, edrpou: info.edrpou ?? '', legalAddress: info.legalAddress ?? '', actualAddress: info.actualAddress ?? '', bankAccountId: info.bankAccountId ?? '', bankAccountDisplay: '' });
-      })
-      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження даних організації'); });
+
+    // Seed from sessionStorage immediately (avoid empty flash)
+    const cachedCurrencies = getCached<{ items: Currency[] }>('cache:currencies');
+    if (cachedCurrencies) { setCurrencies(cachedCurrencies.items); setLoadingCurrencies(false); }
+    const cachedBa = getCached<{ items: BankAccount[] }>('cache:bank-accounts');
+    if (cachedBa) { setBankAccounts(cachedBa.items); setLoadingBa(false); }
+
+    Promise.all([
+      apiFetch<{ items: Currency[] }>('/currencies'),
+      apiFetch<{ items: ExchangeRate[] }>('/exchange-rates'),
+      apiFetch<{ items: BankAccount[] }>('/bank-accounts'),
+      apiFetch<{ items: CashRegister[] }>('/cash-registers'),
+      apiFetch<OrgInfo>('/settings/org-info'),
+    ]).then(([currencies, rates, bankAccounts, cashRegisters, info]) => {
+      if (cancelled) return;
+      setCurrencies(currencies.items);
+      setCache('cache:currencies', currencies);
+      setLoadingCurrencies(false);
+      setExchangeRates(rates.items);
+      setLoadingRates(false);
+      setBankAccounts(bankAccounts.items);
+      setCache('cache:bank-accounts', bankAccounts);
+      setLoadingBa(false);
+      setCashRegisters(cashRegisters.items);
+      setLoadingCr(false);
+      setOrgInfo(info);
+      setOrgInfoForm({ name: info.name, edrpou: info.edrpou ?? '', legalAddress: info.legalAddress ?? '', actualAddress: info.actualAddress ?? '', bankAccountId: info.bankAccountId ?? '', bankAccountDisplay: '' });
+    }).catch((e: unknown) => {
+      if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань');
+    }).finally(() => {
+      if (!cancelled) { setLoadingCurrencies(false); setLoadingRates(false); setLoadingBa(false); setLoadingCr(false); }
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -571,10 +581,10 @@ export default function SettingsPage() {
       };
       if (editingCurrency) {
         const updated = await apiFetch<Currency>(`/currencies/${editingCurrency.id}`, { method: 'PATCH', body: JSON.stringify(body) });
-        setCurrencies(prev => prev.map(c => c.id === updated.id ? updated : c));
+        setCurrencies(prev => { const next = prev.map(c => c.id === updated.id ? updated : c); setCache('cache:currencies', { items: next }); return next; });
       } else {
         const created = await apiFetch<Currency>('/currencies', { method: 'POST', body: JSON.stringify(body) });
-        setCurrencies(prev => [...prev, created]);
+        setCurrencies(prev => { const next = [...prev, created]; setCache('cache:currencies', { items: next }); return next; });
       }
       setCurrencyModal(false);
       if (currentFeatures.toastEnabled) toast.success(editingCurrency ? 'Збережено' : 'Валюту додано');
@@ -586,7 +596,7 @@ export default function SettingsPage() {
     if (!confirm('Видалити валюту?')) return;
     try {
       await apiFetch(`/currencies/${id}`, { method: 'DELETE' });
-      setCurrencies(prev => prev.filter(c => c.id !== id));
+      setCurrencies(prev => { const next = prev.filter(c => c.id !== id); setCache('cache:currencies', { items: next }); return next; });
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
   };
 
@@ -665,10 +675,10 @@ export default function SettingsPage() {
       const body: Record<string, unknown> = { name: baForm.name, ibanUA: baForm.ibanUA, currencyId: baForm.currencyId, bankName: baForm.bankName || undefined, branchId: baForm.branchId || undefined, mfo: baForm.mfo || undefined, edrpou: baForm.edrpou || undefined, bankAddress: baForm.bankAddress || undefined };
       if (editingBa) {
         const updated = await apiFetch<BankAccount>(`/bank-accounts/${editingBa.id}`, { method: 'PATCH', body: JSON.stringify(body) });
-        setBankAccounts(prev => prev.map(b => b.id === updated.id ? updated : b));
+        setBankAccounts(prev => { const next = prev.map(b => b.id === updated.id ? updated : b); setCache('cache:bank-accounts', { items: next }); return next; });
       } else {
         const created = await apiFetch<BankAccount>('/bank-accounts', { method: 'POST', body: JSON.stringify(body) });
-        setBankAccounts(prev => [...prev, created]);
+        setBankAccounts(prev => { const next = [...prev, created]; setCache('cache:bank-accounts', { items: next }); return next; });
       }
       setBaModal(false);
       if (currentFeatures.toastEnabled) toast.success('Збережено');
@@ -680,7 +690,7 @@ export default function SettingsPage() {
     if (!confirm('Видалити банківський рахунок?')) return;
     try {
       await apiFetch(`/bank-accounts/${id}`, { method: 'DELETE' });
-      setBankAccounts(prev => prev.filter(b => b.id !== id));
+      setBankAccounts(prev => { const next = prev.filter(b => b.id !== id); setCache('cache:bank-accounts', { items: next }); return next; });
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
   };
 

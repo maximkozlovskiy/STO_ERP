@@ -1,12 +1,22 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 import { CreateCurrencyDto, CurrencyResponseDto, UpdateCurrencyDto } from './currencies.dto';
+
+const TTL = 300;
+const cacheKey = (orgId: string) => `ref:currencies:${orgId}`;
 
 @Injectable()
 export class CurrenciesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   async findAll(orgId: string): Promise<{ items: CurrencyResponseDto[]; total: number }> {
+    const cached = await this.cache.get<{ items: CurrencyResponseDto[]; total: number }>(cacheKey(orgId));
+    if (cached) return cached;
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.currency.findMany({
         where: { orgId, deletedAt: null },
@@ -15,7 +25,9 @@ export class CurrenciesService {
       }),
       this.prisma.currency.count({ where: { orgId, deletedAt: null } }),
     ]);
-    return { items: items.map(i => this.toDto(i)), total };
+    const result = { items: items.map(i => this.toDto(i)), total };
+    await this.cache.set(cacheKey(orgId), result, TTL);
+    return result;
   }
 
   async findOne(orgId: string, id: string): Promise<CurrencyResponseDto> {
@@ -39,10 +51,12 @@ export class CurrenciesService {
         where: { id: anyExisting.id },
         data: { ...dto, deletedAt: null },
       });
+      await this.cache.del(cacheKey(orgId));
       return this.toDto(restored);
     }
 
     const item = await this.prisma.currency.create({ data: { ...dto, orgId } });
+    await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }
 
@@ -58,6 +72,7 @@ export class CurrenciesService {
     }
 
     const item = await this.prisma.currency.update({ where: { id }, data: dto });
+    await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }
 
@@ -65,6 +80,7 @@ export class CurrenciesService {
     const existing = await this.prisma.currency.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!existing) throw new NotFoundException('Валюту не знайдено');
     await this.prisma.currency.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.cache.del(cacheKey(orgId));
   }
 
   private toDto(item: {

@@ -1,12 +1,22 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 import { BankAccountResponseDto, CreateBankAccountDto, UpdateBankAccountDto } from './bank-accounts.dto';
+
+const TTL = 300;
+const cacheKey = (orgId: string) => `ref:bank-accounts:${orgId}`;
 
 @Injectable()
 export class BankAccountsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   async findAll(orgId: string): Promise<{ items: BankAccountResponseDto[]; total: number }> {
+    const cached = await this.cache.get<{ items: BankAccountResponseDto[]; total: number }>(cacheKey(orgId));
+    if (cached) return cached;
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.bankAccount.findMany({
         where: { orgId, deletedAt: null },
@@ -16,7 +26,9 @@ export class BankAccountsService {
       }),
       this.prisma.bankAccount.count({ where: { orgId, deletedAt: null } }),
     ]);
-    return { items: items.map(i => this.toDto(i)), total };
+    const result = { items: items.map(i => this.toDto(i)), total };
+    await this.cache.set(cacheKey(orgId), result, TTL);
+    return result;
   }
 
   async findOne(orgId: string, id: string): Promise<BankAccountResponseDto> {
@@ -29,17 +41,12 @@ export class BankAccountsService {
   }
 
   async create(orgId: string, dto: CreateBankAccountDto): Promise<BankAccountResponseDto> {
-    const currency = await this.prisma.currency.findFirst({
-      where: { id: dto.currencyId, orgId, deletedAt: null },
-    });
+    const [currency, branch] = await Promise.all([
+      this.prisma.currency.findFirst({ where: { id: dto.currencyId, orgId, deletedAt: null } }),
+      dto.branchId ? this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }) : Promise.resolve(null),
+    ]);
     if (!currency) throw new NotFoundException('Валюту не знайдено');
-
-    if (dto.branchId) {
-      const branch = await this.prisma.garageBranch.findFirst({
-        where: { id: dto.branchId, orgId, deletedAt: null },
-      });
-      if (!branch) throw new NotFoundException('Філію не знайдено');
-    }
+    if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
 
     const item = await this.prisma.bankAccount.create({
       data: { orgId, name: dto.name, ibanUA: dto.ibanUA, currencyId: dto.currencyId,
@@ -47,6 +54,7 @@ export class BankAccountsService {
         edrpou: dto.edrpou, bankAddress: dto.bankAddress },
       include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
     });
+    await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }
 
@@ -54,25 +62,19 @@ export class BankAccountsService {
     const existing = await this.prisma.bankAccount.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!existing) throw new NotFoundException('Банківський рахунок не знайдено');
 
-    if (dto.currencyId) {
-      const currency = await this.prisma.currency.findFirst({
-        where: { id: dto.currencyId, orgId, deletedAt: null },
-      });
-      if (!currency) throw new NotFoundException('Валюту не знайдено');
-    }
-
-    if (dto.branchId) {
-      const branch = await this.prisma.garageBranch.findFirst({
-        where: { id: dto.branchId, orgId, deletedAt: null },
-      });
-      if (!branch) throw new NotFoundException('Філію не знайдено');
-    }
+    const [currency, branch] = await Promise.all([
+      dto.currencyId ? this.prisma.currency.findFirst({ where: { id: dto.currencyId, orgId, deletedAt: null } }) : Promise.resolve(true as const),
+      dto.branchId ? this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }) : Promise.resolve(true as const),
+    ]);
+    if (dto.currencyId && !currency) throw new NotFoundException('Валюту не знайдено');
+    if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
 
     const item = await this.prisma.bankAccount.update({
       where: { id },
       data: dto,
       include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
     });
+    await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }
 
@@ -80,6 +82,7 @@ export class BankAccountsService {
     const existing = await this.prisma.bankAccount.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!existing) throw new NotFoundException('Банківський рахунок не знайдено');
     await this.prisma.bankAccount.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.cache.del(cacheKey(orgId));
   }
 
   private toDto(item: {
