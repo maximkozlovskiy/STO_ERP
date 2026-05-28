@@ -1045,6 +1045,34 @@ Prisma
 | Список з CRUD | таблиця + кнопки edit/delete | `<XxxList>` або `<DataTable>` |
 | Підтвердження дії | "Видалити?", "Скасувати?" | `<ConfirmDialog>` (вже є) |
 | Бейдж статусу | кольоровий статус + лейбл | `<StatusBadge>` |
+| Бейдж терміну (прострочено/скоро) | дата + поріг днів + червоний/жовтий badge | `<ExpiryBadge>` + `daysUntil()` |
+
+### ExpiryBadge — канонічний бейдж "прострочено / скоро"
+
+> **Шлях:** `apps/web/src/components/ui/expiry-badge.tsx` + helper `daysUntil()` у `lib/utils.ts`
+> Будь-яка логіка "скільки днів до дати → червоний/жовтий бейдж" (страховка, техогляд, ТО, гарантія).
+
+```tsx
+// ✅ Один компонент — конфігуровані лейбли + поріг
+import { ExpiryBadge } from '@/components/ui/expiry-badge';
+<ExpiryBadge date={vehicle.insuranceExpiry} nowMs={today?.getTime() ?? 0} expiredLabel="Страховка прострочена" />
+<ExpiryBadge date={sc.nextMaintenanceDate} nowMs={nowMs} expiredLabel="Прострочено" soonLabel="Незабаром" soonDays={14} />
+
+// ✅ Лише обчислення без бейджа — helper
+import { daysUntil } from '@/lib/utils';
+const diff = daysUntil(date, nowMs);            // number | null (null = немає дати / nowMs=0)
+const isSoon = diff !== null && diff <= 30;
+
+// ❌ НЕ inline-IIFE: дубльована математика дати + червоний/жовтий <span> у JSX
+{today && (() => {
+  const diffDays = Math.ceil((new Date(date).getTime() - today.getTime()) / 86_400_000);
+  if (diffDays < 0) return <span className="...bg-destructive-subtle...">Прострочено</span>;
+  if (diffDays <= 30) return <span className="...bg-warning-subtle...">Скоро</span>;
+  return null;
+})()}
+```
+
+> `nowMs` завжди з `useState`/`useEffect` (SSR-safe), ніколи `new Date()` у render. `nowMs=0` → бейдж не рендериться (дані ще не готові).
 
 ### PickerModal — канонічний компонент для вибору зі списку
 

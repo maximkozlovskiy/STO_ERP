@@ -998,6 +998,38 @@ grep -rn "useUiFeatures" apps/web/src/ --include="*.tsx" | head -10
 - [ ] `onKeyDown` на `role="button"` обгортках з інтерактивними нащадками: guard `if (e.target !== e.currentTarget) return`
 - [ ] `useUiFeatures` endpoint: `GET /settings/ui-features` відкритий для всіх авторизованих ролей (не тільки OWNER/ADMIN)
 
+### 8.6 Модульність / Універсальність UI (дублювання → готові примітиви)
+
+> **Правило:** перед написанням UI перевір `apps/web/src/components/ui/`. Якщо примітив є — використовуй, не дублюй. Inline-логіка припустима лише якщо вона унікальна й одноразова.
+
+```bash
+# Inline Modal зі своїм пошуком → має бути <PickerModal<T>>
+# (Modal що містить <Input onChange={setQuery}> + .filter(...).map(item => <button)
+grep -rn "<Modal" apps/web/src/app --include="*.tsx" -l
+
+# Inline IIFE у JSX (НЕ .then/.catch/.map/.filter/.find) — витягнути в компонент/функцію
+grep -rnE "\{\(\(\) =>" apps/web/src/app --include="*.tsx"
+# Найгірший варіант — pointless wrapper: `{(() => { return arr.map(...) })()}` — прибрати IIFE напряму
+
+# Дубльована "days-until-date → badge" математика → daysUntil() + <ExpiryBadge>
+grep -rn "86_400_000\|diffDays\|daysUntil" apps/web/src/app --include="*.tsx" | grep -v "lib/utils\|expiry-badge"
+# Якщо є 2+ inline `Math.ceil((date.getTime() - nowMs) / 86_400_000)` + червоний/жовтий <span> → винести
+
+# Дубльовані helpers (та сама функція 2+ рази) → lib/utils.ts
+grep -rn "toLowerCase.*includes\|displayName\b" apps/web/src --include="*.tsx" --include="*.ts" | grep -v "node_modules\|lib/utils"
+
+# Власний picker/selector/chooser що НЕ використовує picker-modal.tsx
+grep -rn "Picker\|Selector\|Chooser" apps/web/src/app --include="*.tsx"
+```
+
+- [ ] FK-поле зі списком сутностей (готовий масив) → `<PickerModal<T>>`, не власний `<Modal>` зі своїм `query`-стейтом
+- [ ] Великий датасет із сервер-пошуком → `<SearchCombobox<T>>` (НЕ PickerModal, НЕ власний autocomplete)
+- [ ] Inline IIFE `{(() => {...})()}` у JSX → іменована функція або підкомпонент; pointless wrapper навколо `.map()` — прибрати
+- [ ] "Прострочено / скоро" бейдж за датою → `<ExpiryBadge>` + `daysUntil()` (§14 sto-dev), не inline `Math.ceil(.../86_400_000)`
+- [ ] Однаковий helper написаний 2+ рази → винести в `lib/utils.ts`; named module-level helper що дублює існуючий → переписати через спільний
+- [ ] Форма > 5 полів inline у `page.tsx` → `src/components/{domain}/{Domain}Form.tsx`
+- [ ] **Backend `toDto`/`toResponseDto`**: 1 на модуль — це норма (різні поля). НЕ виносити у спільний helper (leaky abstraction, ризик для стабільного коду). Дублювання фіксувати як MEDIUM у MemoryManual, не рефакторити.
+
 ---
 
 ## 9. Sync Readiness

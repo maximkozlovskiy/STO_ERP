@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+06e2ccb refactor(ui): replace inline pickers with PickerModal + extract duplicated helpers
 2e68a01 fix(tester): Bug #151+#152 — exchange-rate update dup-date check + soft-delete resurrection
 366c82d fix(tester): Bug #150 — aria-label on icon-only buttons in new settings tabs
 f28787d fix(tester): Bug #147+#148+#149 — client validation on currency/rate modals
@@ -40,6 +41,20 @@ $transaction timeouts: ✅ ВСІ interactive callbacks мають explicit { ti
 Latest tester:   2026-05-28 (re-run, HEAD 2e68a01) — FULL на catalog/finance modules. 2 баги: #151 MEDIUM (exchange-rates update() не перевіряв dup-date при зміні дати → P2002 generic 409 замість локалізованого ConflictException) + #152 LOW (повний DB unique index включає soft-deleted рядок → create після soft-delete падав на P2002; фікс — воскресіння un-delete у create() для currencies+exchange-rates). Додано 2 service spec (9 тестів). Решта чисте: tenant isolation скрізь, ParseUUIDPipe на :id, RolesGuard+OrgContext на всіх endpoints, IBAN regex збігається DTO↔клієнт, cash-register branchId required+FK guard, frontend 4 таб loading/empty/error states + cancelled-flag (Bug #145 канон), aria-label на іконкових кнопках, apiMultipartFetch для logo (не задає Content-Type), TopShell isPublic перед employee-check. API 302/302, TS 0 errors api+web+shared, Property 26/26, Components 139/139, E2E 42/42.
 Latest review:   2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — повний AUTO review feature surface: 4 нові модулі (currencies/exchange-rates/bank-accounts/cash-registers), settings org-info endpoint (logoUrl/legalAddress/actualAddress/bankAccountId + explicit orgSelect виключає BigInt syncVersion), web settings 4 нові вкладки + Organisation tab з logo upload (apiMultipartFetch), TopShell public-route guard перед employee-check. 0 Critical / 0 Important — код чистий (пройшов попередній review ebbf746 + tester bb26737). TS 0 errors api+web. Перевірено: tenant isolation (orgId у всіх query), cross-tenant FK guard на create+update, soft-delete, toDto Decimal→Number + syncVersion виключено, sync-ready schema (всі моделі мають id/orgId/syncVersion/timestamps + @@index orgId,deletedAt/syncVersion), PULL_TABLES обґрунтовано виключені (admin reference data, не для mobile mechanic), Select placeholder уникає async-init race (§8.2.1), SearchCombobox paired displayName reset (§8.2). Suggestion-only (не фіксовано): saveUiFeatures unguarded toast (pre-existing phase19); BankAccount/CashRegister currencyId/branchId без dedicated @@index (малі settings-таблиці take:200); combobox q-param ігнориться бекендом (client-side display, OK для малих таблиць).
 ```
+
+### Gotcha — /sto-review модульність/універсальність UI (2026-05-28, commit 06e2ccb)
+
+Спеціалізований review-прохід на дотримання `<PickerModal<T>>` (`ui/picker-modal.tsx`) + §14 модульності. Знайдено й виправлено:
+
+- **Дубльована "days-until-date → badge" логіка ×4 (винесена у `daysUntil()` + `<ExpiryBadge>`).** Однакова обчислювалка `Math.ceil((date.getTime() - nowMs) / 86_400_000)` + `if (<0) червоний badge; if (<=N) жовтий badge` була inline-IIFE у 4 місцях: `vehicles/[id]` (страховка / техогляд / наступне ТО) і `crm/[id]` (ТО "скоро"). Канон: helper `daysUntil(date, nowMs): number | null` у `lib/utils.ts` (SSR-safe: `nowMs=0` → `null`, NaN-guard) + компонент `<ExpiryBadge date nowMs expiredLabel soonLabel? soonDays?>` у `ui/expiry-badge.tsx`. `infrastructure/page.tsx isWithin14Days()` теж переписано через `daysUntil`. Лейбли різні ("Страховка прострочена" / "Техогляд прострочений" / "Прострочено") і поріг різний (30 / 14 дн) → саме тому helper + конфігурований компонент, а не один badge.
+- **Pointless wrapper IIFE `{(() => { return arr.map(...) })()}`.** У `crm/[id]` `.map()` був обгорнутий у IIFE без жодної логіки до `return`. Прибрано — `{arr.map(...)}` напряму. Запах: IIFE у JSX чий тіло одразу `return map/filter/find` — завжди зайвий wrapper.
+- **Picker-trigger IIFE у `settings/page.tsx` (рахунок банку).** `{(() => { const selected = bankAccounts.find(...); return (<...>) })()}` → `selectedBankAccount` обчислено один раз у component body перед `return`, JSX без IIFE. (Сам `<PickerModal<BankAccount>>` уже використовувався коректно — це був лише trigger-button computation.)
+
+**Чисто (порушень немає):**
+- `<PickerModal<T>>` уже коректно застосований у `settings/page.tsx` (єдина page що його потребує). Інші "selectGood" — це або `<SearchCombobox>` (work-orders part picker — server-side search, правильний примітив для великого датасету), або master-detail список (catalog) — НЕ picker-modal кейси.
+- page-level `search`/`setSearch` у crm/employees/invoices/work-orders — це фільтр списку сторінки (з пагінацією), НЕ власний modal-picker. Не плутати.
+
+**Backend (MEDIUM, НЕ рефакторено за вказівкою):** 30 сервісів мають власний `toDto()`/`toResponseDto()` мапер (по 1 на модуль). Це стандартний per-module патерн — кожен мапить різні поля, спільний helper дав би leaky abstraction. Залишено як є (ризик для стабільного коду). `syncVersion: Number(...)` cast — лише у 2 файлах (notifications, sync), не варто виносу.
 
 ### Gotcha — /sto-tester FULL 2026-05-28 (catalog modules — Bug #145 + contract specs, commits bb26737, 27a7063)
 
