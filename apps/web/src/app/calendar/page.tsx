@@ -566,9 +566,19 @@ export default function CalendarPage() {
         const endH = (rawEndH - startH) >= 0.25
           ? snapTo15(rawEndH)
           : startH + 1;
+        const clampedEnd = Math.min(endH, WINDOW_END);
         drawingRef.current = null;
         setGhost(null);
-        setPendingSlot({ liftId, startH, endH: Math.min(endH, WINDOW_END) });
+        setPendingSlot({ liftId, startH, endH: clampedEnd });
+        // Immediately open form pre-filled with drawn times
+        setForm(f => ({
+          ...f,
+          liftId,
+          startAt: decimalHoursToHHMM(startH),
+          endAt:   decimalHoursToHHMM(clampedEnd),
+          normoHours: String(+(clampedEnd - startH).toFixed(2)),
+        }));
+        setShowAdd(true);
         return;
       }
 
