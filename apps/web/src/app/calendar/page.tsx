@@ -182,11 +182,10 @@ interface DroppableLiftRowProps {
   ghost: GhostSlot | null;
   onRemove: (id: string) => void;
   onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
-  onDrawStart: (e: ReactPointerEvent<HTMLDivElement>, liftId: string) => void;
 }
 
 const DroppableLiftRow = memo(function DroppableLiftRow({
-  liftId, liftSlots, ghost, onRemove, onResizeStart, onDrawStart,
+  liftId, liftSlots, ghost, onRemove, onResizeStart,
 }: DroppableLiftRowProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `lift-${liftId}`, data: { liftId } });
 
@@ -199,7 +198,7 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
       ref={setNodeRef}
       className={`col-span-12 relative min-h-12 transition-colors ${isOver ? 'bg-primary/5' : ''}`}
       style={{ gridColumn: `2 / span ${TOTAL_HOURS}` }}
-      onPointerDown={e => onDrawStart(e, liftId)}
+      data-lift-id={liftId}
     >
       {/* Hour grid lines */}
       <div className="flex h-full pointer-events-none">
@@ -301,22 +300,9 @@ export default function CalendarPage() {
     return Math.max(HOURS[0], Math.min(HOURS[HOURS.length - 1], raw));
   }, []);
 
-  // ── Draw new slot ────────────────────────────────────────────────────────────
+  const showAddRef = useRef(showAdd);
+  showAddRef.current = showAdd;
 
-  const handleDrawStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, liftId: string) => {
-    if (e.button !== 0) return;
-    if (showAdd) return; // form is open — don't start drawing
-    const target = e.target as HTMLElement;
-    if (target.closest('[data-calendar-slot]')) return;
-
-    // Stop propagation so dnd-kit PointerSensor doesn't capture this pointerdown
-    // and interfere with our custom draw gesture (pointerup would be swallowed otherwise)
-    e.stopPropagation();
-
-    const startH = snapTo15(pxToDecimalHours(e.clientX));
-    drawingRef.current = { liftId, startH };
-    setGhost({ liftId, startH, endH: startH + 1 });
-  }, [pxToDecimalHours, showAdd]);
 
   // ── Resize existing slot ─────────────────────────────────────────────────────
 
@@ -348,7 +334,28 @@ export default function CalendarPage() {
   const dateRef = useRef(date);
   dateRef.current = date;
 
+
   useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      if (showAddRef.current) return;
+      const target = e.target as HTMLElement;
+      // Must be inside timeline grid and NOT on an existing slot / resize handle
+      if (!timelineRef.current?.contains(target)) return;
+      if (target.closest('[data-calendar-slot]')) return;
+
+      // Find which lift row was clicked by matching the DOM row element
+      const liftRow = target.closest('[data-lift-id]') as HTMLElement | null;
+      const liftId = liftRow?.dataset.liftId;
+      if (!liftId) return;
+
+      const startH = snapTo15(pxToDecimalHours(e.clientX));
+      drawingRef.current = { liftId, startH };
+      // eslint-disable-next-line no-console
+      console.log('[drawStart-global]', { liftId, startH });
+      setGhost({ liftId, startH, endH: startH + 1 });
+    };
+
     const onMove = (e: PointerEvent) => {
       const curH = pxToDecimalHours(e.clientX);
 
@@ -375,6 +382,8 @@ export default function CalendarPage() {
     };
 
     const onUp = async (e: PointerEvent) => {
+      // eslint-disable-next-line no-console
+      console.log('[onUp]', { drawing: !!drawingRef.current, resizing: !!resizingRef.current, target: (e.target as HTMLElement)?.tagName });
       // ── Finish drawing → open form ──────────────────────────────────────
       if (drawingRef.current) {
         const { liftId, startH } = drawingRef.current;
@@ -425,10 +434,12 @@ export default function CalendarPage() {
       if (resizingRef.current) { setResizing(null); setResizePreview(null); }
     };
 
+    window.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
     return () => {
+      window.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
@@ -784,7 +795,6 @@ export default function CalendarPage() {
                     ghost={ghost}
                     onRemove={removeSlot}
                     onResizeStart={handleResizeStart}
-                    onDrawStart={handleDrawStart}
                   />
                 </div>
               ))}
