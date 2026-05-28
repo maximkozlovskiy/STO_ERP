@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+634536c fix(review): remove unused IsUUID import from goods.dto
+5045007 fix(goods): add unitId + brandId to CreateGoodDto and GoodResponseDto
 63640fb perf(optimize): hoist Intl formatters + drop per-render new Date() in calendar
 d4de52a perf(optimize): parallel FK validation in calendar create/update slot
 d98a968 docs(sync): record branches bare-array gotcha in MemoryManual
@@ -46,11 +48,11 @@ f040cde perf(db): 5 composite indexes
 Дата: 2026-05-28
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web --incremental false, api, shared)
+TypeScript: ✅ 0 errors (web --incremental false, api, shared) — після 634536c
 Unit+Contract: ✅ 316/316 passed (30 файлів)
 Latest optimize: 2026-05-28 (AUTO, HEAD 63640fb) — calendar scope. Backend: createSlot 3 sequential FK findFirst → Promise.all; updateSlot 4 sequential reads (existing+3 FK) → Promise.all (error priority збережено). Frontend: kyivHours/fmtTime/toDateString new Intl.DateTimeFormat на кожен виклик → 4 module-level singletons; TimeSelect new Date().getMinutes() per-option у render → nowMs-derived minMinute prop. DB: CalendarSlot вже добре проіндексований ((orgId,deletedAt),(orgId,liftId,startAt,endAt),(orgId,employeeId,startAt)) — змін не потрібно. 14/14 calendar тестів passed.
 Latest sync: 2026-05-28 (AUTO, HEAD fbe66ad) — 1 bug fixed: branches bare-array vs {items} mismatch
-Latest review: 2026-05-28 (auto, HEAD b4068a6) — calendar scope (service+page). 0 проблем (Critical 0 / Important 0 / Suggestion 0). TS 0 errors (web --incremental false, api, shared); 316/316 тестів (14 calendar contract). Перевірено: 4 calendar endpoints мають JwtAuthGuard+RolesGuard+@Roles+ParseUUIDPipe; createSlot/updateSlot FK-валідація з orgId + conflict-check у $transaction(timeout 5s); toDto не спредить raw row → syncVersion BigInt не тече; pointer-listeners (down/move/up/cancel) парні add/remove; onCancel скидає ВСІ pointer-режими (draw+pendingResize+savedResize); WINDOW_START/END clamp у resize+drag; pxToDecimalHours clamp [8,19]; Intl.DateTimeFormat — 4 module-level singletons; new Date() лише в useEffect/handlers; SearchPickerModal error-state коректний (catch→setError, error?null блокує empty-state). Попередній review HEAD 9d454d3 — 4 виправлено (1 Critical, 2 Important, 1 Suggestion).
+Latest review: 2026-05-28 (auto, HEAD 5045007 → 634536c) — goods scope (goods.dto.ts + goods.service.ts). 1 Suggestion виправлено (unused IsUUID import). TS 0 errors (web --incremental false, api, shared); 316/316 тестів. Перевірено: unitId/brandId @Matches UUID regex (консистентно з preferredSupplierId, конвенція 4a3cdc0) + @IsOptional; UpdateGoodDto = PartialType(CreateGoodDto) успадковує всі поля; ValidationPipe whitelist:true + forbidNonWhitelisted:true → create() `{...dto, orgId}` spread безпечний (тільки DTO-поля у Prisma); brandId/unitId optional FK без explicit валідації — Prisma P2003 при невалідному ref прийнятний (як preferredSupplierId); toDto() type signature повна + повертає unitId/brandId; frontend Good interface + create/edit форми синхронні (unitId/brandId надсилаються form.X||undefined); findMany мають take; всі find* з orgId+deletedAt:null; немає BOM/any/secrets. Контролер: JwtAuthGuard+RolesGuard+@Roles на кожному методі. Попередній review HEAD b4068a6 — calendar scope, 0 проблем.
 Latest tester: 2026-05-28 (AUTO, HEAD e27cc22) — 2 баги: #159 MEDIUM /branches silent catch блокував створення наряду (порожній обов'язковий select); #160 LOW мертвий inline WO-dropdown після SearchPickerModal рефактору. Перевірено scope review-коміту 9d454d3 (@Matches не послаблює валідацію, PIT/RAMP міграція+labels синхронні, SearchPickerModal error-state коректний) — баги у суміжному calendar/page.tsx.
 
 > /sto-review (auto) на HEAD e0af6a8 (2026-05-28, infra rename + warehouse warn + validation @Matches + SearchPickerModal):
