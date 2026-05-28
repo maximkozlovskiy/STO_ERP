@@ -149,40 +149,51 @@ export default function CounterpartyCardPage() {
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
   }, [id]);
 
-  const loadGarages = useCallback(async () => {
+  const loadGarages = useCallback(() => {
+    // cancelled guard mirrors loadWarranties: prevents two concurrent staged loads
+    // (tab switch back-and-forth, or addGarage refresh racing the tab effect) from
+    // interleaving setGarageVehicles/setMaintenanceSchedules with stale data, and
+    // blocks setState after unmount.
+    let cancelled = false;
     setGaragesLoading(true);
-    try {
-      const garages = await apiFetch<Garage[]>(`/counterparties/${id}/garages`);
-      setGarages(garages);
-      setExpandedGarages(new Set(garages.map(g => g.id)));
+    void (async () => {
+      try {
+        const garages = await apiFetch<Garage[]>(`/counterparties/${id}/garages`);
+        if (cancelled) return;
+        setGarages(garages);
+        setExpandedGarages(new Set(garages.map(g => g.id)));
 
-      // Stage 1 — load all vehicles in parallel (one request per garage)
-      const vehiclesByGarage = await Promise.all(
-        garages.map(g =>
-          apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`)
-            .catch(() => [] as Vehicle[])
-        )
-      );
-      const garageMap: Record<string, Vehicle[]> = {};
-      garages.forEach((g, i) => { garageMap[g.id] = vehiclesByGarage[i]; });
-      setGarageVehicles(garageMap);
-
-      // Stage 2 — load maintenance schedules for all vehicles in parallel
-      const allVehicles = vehiclesByGarage.flat();
-      if (allVehicles.length > 0) {
-        const scheduleResults = await Promise.all(
-          allVehicles.map(v =>
-            apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${v.id}`)
-              .catch(() => [] as MaintenanceSchedule[])
+        // Stage 1 — load all vehicles in parallel (one request per garage)
+        const vehiclesByGarage = await Promise.all(
+          garages.map(g =>
+            apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`)
+              .catch(() => [] as Vehicle[])
           )
         );
-        setMaintenanceSchedules(scheduleResults.flat());
+        if (cancelled) return;
+        const garageMap: Record<string, Vehicle[]> = {};
+        garages.forEach((g, i) => { garageMap[g.id] = vehiclesByGarage[i]; });
+        setGarageVehicles(garageMap);
+
+        // Stage 2 — load maintenance schedules for all vehicles in parallel
+        const allVehicles = vehiclesByGarage.flat();
+        if (allVehicles.length > 0) {
+          const scheduleResults = await Promise.all(
+            allVehicles.map(v =>
+              apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${v.id}`)
+                .catch(() => [] as MaintenanceSchedule[])
+            )
+          );
+          if (cancelled) return;
+          setMaintenanceSchedules(scheduleResults.flat());
+        }
+      } catch (e: unknown) {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : 'Помилка гаражів');
+      } finally {
+        if (!cancelled) setGaragesLoading(false);
       }
-    } catch (e: unknown) {
-      setLoadError(e instanceof Error ? e.message : 'Помилка гаражів');
-    } finally {
-      setGaragesLoading(false);
-    }
+    })();
+    return () => { cancelled = true; };
   }, [id]);
 
   const loadSettlements = useCallback(() => {
@@ -229,10 +240,12 @@ export default function CounterpartyCardPage() {
   useEffect(() => { loadCp(); }, [loadCp]);
 
   useEffect(() => {
-    if (tab === 'garages') loadGarages();
+    // loadGarages/loadWarranties return a cancel fn — return it so switching tabs
+    // (or unmount) aborts an in-flight staged load instead of letting it overwrite state.
+    if (tab === 'garages') return loadGarages();
     if (tab === 'settlements') loadSettlements();
     if (tab === 'work-orders') loadWorkOrders();
-    if (tab === 'warranties') loadWarranties();
+    if (tab === 'warranties') return loadWarranties();
     if (tab === 'loyalty') loadLoyalty();
   }, [tab, loadGarages, loadSettlements, loadWorkOrders, loadWarranties, loadLoyalty]);
 

@@ -247,12 +247,6 @@ export default function WorkOrderCardPage() {
       .catch(() => {});
   }, [id]);
 
-  const loadAudit = useCallback(() => {
-    apiFetch<{ items: AuditEventItem[] }>(`/audit?entityType=WorkOrder&entityId=${id}`)
-      .then(d => { if (mountedRef.current) setAuditEvents(d.items ?? []); })
-      .catch(() => {});
-  }, [id]);
-
   // Bug #89: Escape closes lightbox + a11y. Without this keyboard users can't
   // dismiss the photo preview at all.
   useEffect(() => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -67,7 +67,14 @@ export default function VehicleCardPage() {
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const today = useMemo(() => new Date(), []);
+  // SSR-safe: today stays null on server + initial client paint (ExpiryBadge hidden
+  // via nowMs=0 → daysUntil returns null), then set after mount. Avoids hydration
+  // mismatch from a build-time `new Date()` baked into the static export shell.
+  const [today, setToday] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setToday(new Date());
+  }, []);
 
   const [showEdit, setShowEdit] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -259,7 +266,7 @@ export default function VehicleCardPage() {
             <p className="text-xs text-muted-foreground">Страховка до</p>
             <div className="flex items-center gap-1.5 flex-wrap">
               <p className="text-foreground">{new Date(vehicle.insuranceExpiry).toLocaleDateString('uk-UA')}</p>
-              <ExpiryBadge date={vehicle.insuranceExpiry} nowMs={today.getTime() ?? 0} expiredLabel="Страховка прострочена" />
+              <ExpiryBadge date={vehicle.insuranceExpiry} nowMs={today?.getTime() ?? 0} expiredLabel="Страховка прострочена" />
             </div>
           </div>
         )}
@@ -268,7 +275,7 @@ export default function VehicleCardPage() {
             <p className="text-xs text-muted-foreground">Техогляд до</p>
             <div className="flex items-center gap-1.5 flex-wrap">
               <p className="text-foreground">{new Date(vehicle.inspectionExpiry).toLocaleDateString('uk-UA')}</p>
-              <ExpiryBadge date={vehicle.inspectionExpiry} nowMs={today.getTime() ?? 0} expiredLabel="Техогляд прострочений" />
+              <ExpiryBadge date={vehicle.inspectionExpiry} nowMs={today?.getTime() ?? 0} expiredLabel="Техогляд прострочений" />
             </div>
           </div>
         )}
@@ -444,7 +451,7 @@ export default function VehicleCardPage() {
                     <p className="text-sm font-medium text-foreground">{sc.maintenanceType}</p>
                     {!sc.isActive && <span className="text-[11px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">Неактивний</span>}
                     {sc.nextMaintenanceDate && (
-                      <ExpiryBadge date={sc.nextMaintenanceDate} nowMs={today.getTime() ?? 0} expiredLabel="Прострочено" soonLabel="Незабаром" soonDays={14} />
+                      <ExpiryBadge date={sc.nextMaintenanceDate} nowMs={today?.getTime() ?? 0} expiredLabel="Прострочено" soonLabel="Незабаром" soonDays={14} />
                     )}
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
