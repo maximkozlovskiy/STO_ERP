@@ -18,17 +18,19 @@ function cachesAvailable() {
 }
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  if (!cachesAvailable()) return;
   event.waitUntil(
     (async () => {
-      try {
-        const cache = await caches.open(CACHE_NAME);
-        await cache.addAll(PRECACHE);
-      } catch {
-        // Disk full / quota exceeded / CacheStorage blocked — install anyway.
-        // SW will just pass requests through to the network.
+      if (cachesAvailable()) {
+        try {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.addAll(PRECACHE);
+        } catch {
+          // Disk full / quota exceeded / CacheStorage blocked — install anyway.
+          // SW will just pass requests through to the network.
+        }
       }
+      // skipWaiting AFTER precache so new SW doesn't take control mid-flight.
+      await self.skipWaiting();
     })()
   );
 });

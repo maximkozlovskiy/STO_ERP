@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, ClipboardList, Eye, EyeOff, Search, User } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -221,18 +222,14 @@ export default function WorkOrdersPage() {
 
   useEffect(() => {
     let cancelled = false;
-    // Try sessionStorage cache first (reference data rarely changes within a session)
-    const cachedBranches = sessionStorage.getItem('cache:branches');
-    const cachedTemplates = sessionStorage.getItem('cache:wo-templates');
+    // Paint instantly from typed ref-cache helpers; fall through to fetch if missing
+    const cachedBranches = getCached<Branch[]>('cache:branches');
+    const cachedTemplates = getCached<WOTemplate[]>('cache:wo-templates');
     if (cachedBranches && cachedTemplates) {
-      try {
-        const bs = JSON.parse(cachedBranches) as Branch[];
-        const tmpl = JSON.parse(cachedTemplates) as WOTemplate[];
-        setBranches(bs);
-        if (bs.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: bs[0].id }));
-        setTemplates(tmpl);
-        return;
-      } catch { /* cache corrupted — fall through to fetch */ }
+      setBranches(cachedBranches);
+      if (cachedBranches.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: cachedBranches[0].id }));
+      setTemplates(cachedTemplates);
+      return;
     }
     // Parallel fetch — branches and templates in one round trip
     Promise.all([
@@ -243,10 +240,8 @@ export default function WorkOrdersPage() {
       setBranches(bs);
       if (bs.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: bs[0].id }));
       setTemplates(tmpl.items);
-      try {
-        sessionStorage.setItem('cache:branches', JSON.stringify(bs));
-        sessionStorage.setItem('cache:wo-templates', JSON.stringify(tmpl.items));
-      } catch { /* ignore quota errors */ }
+      setCache('cache:branches', bs);
+      setCache('cache:wo-templates', tmpl.items);
     }).catch((e: unknown) => {
       if (!cancelled) setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити дані');
     });

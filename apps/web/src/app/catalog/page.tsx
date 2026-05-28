@@ -476,11 +476,10 @@ function GoodsTab() {
     ]).then(([brandsRes, unitsRes, suppliersRes]) => {
       setBrands(brandsRes.items);
       setCache('cache:brands', brandsRes.items);
-      if (Array.isArray(unitsRes)) { setUnits(unitsRes); setCache('cache:units', unitsRes); }
-      if (suppliersRes && Array.isArray(suppliersRes.items)) {
-        setSuppliers(suppliersRes.items);
-        setCache('cache:suppliers', suppliersRes.items);
-      }
+      setUnits(unitsRes);
+      setCache('cache:units', unitsRes);
+      setSuppliers(suppliersRes.items);
+      setCache('cache:suppliers', suppliersRes.items);
     });
   }, []);
 

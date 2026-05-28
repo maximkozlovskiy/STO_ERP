@@ -25,7 +25,8 @@ export type RefCacheKey =
   | 'cache:units'
   | 'cache:suppliers'
   | 'cache:lifts'
-  | 'cache:zones';
+  | 'cache:zones'
+  | 'cache:wo-templates';
 
 export function getCached<T>(key: RefCacheKey): T | null {
   if (typeof window === 'undefined') return null;
