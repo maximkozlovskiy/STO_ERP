@@ -786,6 +786,8 @@ export default function SettingsPage() {
     finally { setRemovingLogo(false); }
   };
 
+  const selectedBankAccount = bankAccounts.find(b => b.id === orgInfoForm.bankAccountId);
+
   return (
     <div className="page-container max-w-3xl">
       <h1 className="page-title mb-6">Налаштування</h1>
@@ -944,34 +946,29 @@ export default function SettingsPage() {
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Основний банківський рахунок</label>
-            {(() => {
-              const selected = bankAccounts.find(b => b.id === orgInfoForm.bankAccountId);
-              return (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBaPickerModal(true)}
-                    className="flex-1 text-left px-3 py-2 rounded-lg border border-border bg-surface hover:border-primary transition-colors text-sm"
-                  >
-                    {selected ? (
-                      <span className="text-foreground">{selected.name} <span className="text-muted-foreground font-mono">{selected.ibanUA}</span></span>
-                    ) : (
-                      <span className="text-muted-foreground">Оберіть рахунок...</span>
-                    )}
-                  </button>
-                  {orgInfoForm.bankAccountId && (
-                    <button
-                      aria-label="Очистити рахунок"
-                      type="button"
-                      onClick={() => setOrgInfoForm({ ...orgInfoForm, bankAccountId: '', bankAccountDisplay: '' })}
-                      className="text-muted-foreground hover:text-destructive-text transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setBaPickerModal(true)}
+                className="flex-1 text-left px-3 py-2 rounded-lg border border-border bg-surface hover:border-primary transition-colors text-sm"
+              >
+                {selectedBankAccount ? (
+                  <span className="text-foreground">{selectedBankAccount.name} <span className="text-muted-foreground font-mono">{selectedBankAccount.ibanUA}</span></span>
+                ) : (
+                  <span className="text-muted-foreground">Оберіть рахунок...</span>
+                )}
+              </button>
+              {orgInfoForm.bankAccountId && (
+                <button
+                  aria-label="Очистити рахунок"
+                  type="button"
+                  onClick={() => setOrgInfoForm({ ...orgInfoForm, bankAccountId: '', bankAccountDisplay: '' })}
+                  className="text-muted-foreground hover:text-destructive-text transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           <Button onClick={saveOrgInfo} loading={savingOrgInfo} className="w-full">Зберегти</Button>

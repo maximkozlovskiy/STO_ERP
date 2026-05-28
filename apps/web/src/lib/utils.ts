@@ -24,3 +24,25 @@ export function displayCounterpartyName(cp: {
   const personName = [cp.lastName, cp.firstName].filter(Boolean).join(' ').trim();
   return personName || '(без імені)';
 }
+
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * Кількість повних днів від `nowMs` до дати `date` (ceil).
+ * Від'ємний результат → дата у минулому (прострочено).
+ * `null` коли дата відсутня або `nowMs` ще не ініціалізований (SSR-safe: 0).
+ *
+ * Спільна логіка для всіх "expired/soon" бейджів (страховка, техогляд, ТО).
+ * Винесено з 4 дубльованих inline-IIFE у vehicles/[id] та crm/[id].
+ *
+ * @example
+ * daysUntil('2026-06-10', Date.parse('2026-05-28')) → 13
+ * daysUntil('2026-05-01', Date.parse('2026-05-28')) → -27 (прострочено)
+ */
+export function daysUntil(date: string | Date | null | undefined, nowMs: number): number | null {
+  if (!date || !nowMs) return null;
+  const target = typeof date === 'string' ? new Date(date) : date;
+  const t = target.getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.ceil((t - nowMs) / MS_PER_DAY);
+}

@@ -10,7 +10,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
+import { cn, daysUntil } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -590,20 +590,14 @@ export default function CounterpartyCardPage() {
                             </button>
                             {vSchedules.length > 0 && (
                               <div className="mt-2 space-y-1">
-                                {(() => {
-                                  return vSchedules.map(s => {
-                                  const nextDate = s.nextMaintenanceDate
-                                    ? new Date(s.nextMaintenanceDate)
-                                    : null;
-                                  const daysUntil = (nextDate && todayMs > 0)
-                                    ? Math.ceil((nextDate.getTime() - todayMs) / 86_400_000)
-                                    : null;
-                                  const isSoon = daysUntil !== null && daysUntil <= 30;
+                                {vSchedules.map(s => {
+                                  const diff = daysUntil(s.nextMaintenanceDate, todayMs);
+                                  const isSoon = diff !== null && diff <= 30;
                                   return (
                                     <div key={s.id} className="flex items-center gap-2 text-[12px] text-muted-foreground">
                                       <span>ТО: {s.maintenanceType}</span>
-                                      {nextDate && (
-                                        <span>· Наступне: {nextDate.toLocaleDateString('uk-UA')}</span>
+                                      {s.nextMaintenanceDate && (
+                                        <span>· Наступне: {new Date(s.nextMaintenanceDate).toLocaleDateString('uk-UA')}</span>
                                       )}
                                       {isSoon && (
                                         <span className="px-1.5 py-0.5 bg-warning-subtle text-warning rounded text-[11px] font-medium">
@@ -612,8 +606,7 @@ export default function CounterpartyCardPage() {
                                       )}
                                     </div>
                                   );
-                                  });
-                                })()}
+                                })}
                               </div>
                             )}
                           </div>

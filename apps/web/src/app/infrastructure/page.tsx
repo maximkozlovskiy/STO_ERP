@@ -14,7 +14,7 @@ import { Spinner } from '@/components/ui/spinner';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
+import { cn, daysUntil } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -486,11 +486,8 @@ function formatDate(value: string | null | undefined): string {
 }
 
 function isWithin14Days(value: string | null | undefined, nowMs: number): boolean {
-  if (!value || nowMs === 0) return false;
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return false;
-  const diffMs = d.getTime() - nowMs;
-  return diffMs >= 0 && diffMs <= 14 * 24 * 60 * 60 * 1000;
+  const diff = daysUntil(value, nowMs);
+  return diff !== null && diff >= 0 && diff <= 14;
 }
 
 function LiftRow({ lift, zoneName, onEdit, onRemove, nowMs }: { lift: Lift; zoneName: string; onEdit: () => void; onRemove: () => void; nowMs: number }) {

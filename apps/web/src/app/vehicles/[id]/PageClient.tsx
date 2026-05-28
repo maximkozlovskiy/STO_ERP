@@ -11,6 +11,7 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { Modal } from '@/components/ui/modal';
+import { ExpiryBadge } from '@/components/ui/expiry-badge';
 
 interface Vehicle {
   id: string; make: string; model: string; vin: string | null; licensePlate: string | null;
@@ -262,13 +263,7 @@ export default function VehicleCardPage() {
             <p className="text-xs text-muted-foreground">Страховка до</p>
             <div className="flex items-center gap-1.5 flex-wrap">
               <p className="text-foreground">{new Date(vehicle.insuranceExpiry).toLocaleDateString('uk-UA')}</p>
-              {today && (() => {
-                const expiry = new Date(vehicle.insuranceExpiry!);
-                const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / 86_400_000);
-                if (diffDays < 0) return <span className="text-[11px] px-1.5 py-0.5 bg-destructive-subtle text-destructive rounded font-medium">Страховка прострочена</span>;
-                if (diffDays <= 30) return <span className="text-[11px] px-1.5 py-0.5 bg-warning-subtle text-warning rounded font-medium">Закінчується</span>;
-                return null;
-              })()}
+              <ExpiryBadge date={vehicle.insuranceExpiry} nowMs={today?.getTime() ?? 0} expiredLabel="Страховка прострочена" />
             </div>
           </div>
         )}
@@ -277,13 +272,7 @@ export default function VehicleCardPage() {
             <p className="text-xs text-muted-foreground">Техогляд до</p>
             <div className="flex items-center gap-1.5 flex-wrap">
               <p className="text-foreground">{new Date(vehicle.inspectionExpiry).toLocaleDateString('uk-UA')}</p>
-              {today && (() => {
-                const expiry = new Date(vehicle.inspectionExpiry!);
-                const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / 86_400_000);
-                if (diffDays < 0) return <span className="text-[11px] px-1.5 py-0.5 bg-destructive-subtle text-destructive rounded font-medium">Техогляд прострочений</span>;
-                if (diffDays <= 30) return <span className="text-[11px] px-1.5 py-0.5 bg-warning-subtle text-warning rounded font-medium">Закінчується</span>;
-                return null;
-              })()}
+              <ExpiryBadge date={vehicle.inspectionExpiry} nowMs={today?.getTime() ?? 0} expiredLabel="Техогляд прострочений" />
             </div>
           </div>
         )}
@@ -458,13 +447,9 @@ export default function VehicleCardPage() {
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium text-foreground">{sc.maintenanceType}</p>
                     {!sc.isActive && <span className="text-[11px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">Неактивний</span>}
-                    {sc.nextMaintenanceDate && today && (() => {
-                      const next = new Date(sc.nextMaintenanceDate!);
-                      const diffDays = Math.ceil((next.getTime() - today.getTime()) / 86_400_000);
-                      if (diffDays < 0) return <span className="text-[11px] px-1.5 py-0.5 bg-destructive-subtle text-destructive rounded font-medium">Прострочено</span>;
-                      if (diffDays <= 14) return <span className="text-[11px] px-1.5 py-0.5 bg-warning-subtle text-warning rounded font-medium">Незабаром</span>;
-                      return null;
-                    })()}
+                    {sc.nextMaintenanceDate && (
+                      <ExpiryBadge date={sc.nextMaintenanceDate} nowMs={today?.getTime() ?? 0} expiredLabel="Прострочено" soonLabel="Незабаром" soonDays={14} />
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
                     {sc.intervalDays && <p className="text-xs text-muted-foreground">Кожні {sc.intervalDays} дн.</p>}
