@@ -130,22 +130,15 @@ interface TimeSelectProps {
 
 function TimeSelect({ value, onChange }: TimeSelectProps) {
   const { h, m } = value ? parseHHMM(value) : { h: HOURS[0], m: 0 };
+  const cls = 'w-1/2 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40';
   return (
     <div className="flex gap-1">
-      <select
-        className="flex-1 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-        value={h}
-        onChange={e => onChange(buildHHMM(Number(e.target.value), m))}
-      >
+      <select className={cls} value={h} onChange={e => onChange(buildHHMM(Number(e.target.value), m))}>
         {PICK_HOURS.map(hh => (
           <option key={hh} value={hh}>{pad(hh)}</option>
         ))}
       </select>
-      <select
-        className="w-16 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-        value={m}
-        onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}
-      >
+      <select className={cls} value={m} onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}>
         {PICK_MINUTES.map(mm => (
           <option key={mm} value={mm}>{pad(mm)}</option>
         ))}
@@ -821,12 +814,20 @@ export default function CalendarPage() {
                 value={form.startAt}
                 onChange={start => {
                   setForm(f => {
+                    let next = { ...f, startAt: start };
                     if (start && f.normoHours && Number(f.normoHours) > 0) {
                       const [h, m] = start.split(':').map(Number);
                       const totalMin = Math.min(h * 60 + m + Math.round(Number(f.normoHours) * 60), 23 * 60 + 59);
-                      return { ...f, startAt: start, endAt: `${pad(Math.floor(totalMin / 60))}:${pad(Math.round((totalMin % 60) / 15) * 15 >= 60 ? 0 : Math.round((totalMin % 60) / 15) * 15)}` };
+                      const em = Math.round((totalMin % 60) / 15) * 15;
+                      next = { ...next, endAt: `${pad(Math.floor(totalMin / 60))}:${pad(em >= 60 ? 0 : em)}` };
                     }
-                    return { ...f, startAt: start };
+                    // sync pending slot on grid
+                    if (pendingSlotRef.current) {
+                      const { h: sh, m: sm } = parseHHMM(start);
+                      const { h: eh, m: em } = parseHHMM(next.endAt || start);
+                      setPendingSlot(p => p ? { ...p, startH: sh + sm / 60, endH: eh + em / 60 } : p);
+                    }
+                    return next;
                   });
                 }}
               />
@@ -843,7 +844,13 @@ export default function CalendarPage() {
                     if (f.startAt && nh && Number(nh) > 0) {
                       const [h, m] = f.startAt.split(':').map(Number);
                       const totalMin = Math.min(h * 60 + m + Math.round(Number(nh) * 60), 23 * 60 + 59);
-                      return { ...f, normoHours: nh, endAt: `${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}` };
+                      const em = Math.round((totalMin % 60) / 15) * 15;
+                      const endAt = `${pad(Math.floor(totalMin / 60))}:${pad(em >= 60 ? 0 : em)}`;
+                      if (pendingSlotRef.current) {
+                        const { h: eh, m: em2 } = parseHHMM(endAt);
+                        setPendingSlot(p => p ? { ...p, endH: eh + em2 / 60 } : p);
+                      }
+                      return { ...f, normoHours: nh, endAt };
                     }
                     return { ...f, normoHours: nh };
                   });
@@ -853,7 +860,16 @@ export default function CalendarPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Кінець</label>
-              <TimeSelect value={form.endAt} onChange={endAt => setForm(f => ({ ...f, endAt }))} />
+              <TimeSelect
+                value={form.endAt}
+                onChange={endAt => {
+                  setForm(f => ({ ...f, endAt }));
+                  if (pendingSlotRef.current) {
+                    const { h, m } = parseHHMM(endAt);
+                    setPendingSlot(p => p ? { ...p, endH: h + m / 60 } : p);
+                  }
+                }}
+              />
             </div>
           </div>
 
