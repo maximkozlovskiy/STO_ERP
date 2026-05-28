@@ -411,6 +411,13 @@ grep -rn "saving\b" apps/web/src/app/ --include="*.tsx" | grep "useState(false)"
   # RegExp / new Set / new Map декларовані після `export default function`
   grep -rnE "^\s+const [A-Z_]+\s*=\s*(\/|new (Set|Map|RegExp))" apps/web/src/app --include="*.tsx" --include="*.ts"
   ```
+- [ ] **`memo()` на дочірньому компоненті НЕ працює, якщо йому передають свіжостворений масив/об'єкт-проп кожен render** (анти-патерн знайдений у calendar/page.tsx: `<MemoRow liftSlots={slots.filter(...)} />` — `.filter()` повертає нову референцію щоразу → memo завжди re-render). Канон: згрупувати дані в `useMemo` (`Map<key, T[]>`) і передавати стабільну референцію (`map.get(id) ?? EMPTY`, де `EMPTY` — module-level або `useMemo(() => [], [])`). Те саме для inline `{...}` / `[...]` props на memo-компонентах. Grep:
+  ```bash
+  # memo-компонент що отримує .filter()/.map()/.slice()/literal як проп
+  grep -rnE "memo\(" apps/web/src/app --include="*.tsx" -l
+  # для кожного — перевір що props-масиви приходять з useMemo, не з inline .filter()/.map() у JSX
+  grep -rnE "<[A-Z][A-Za-z]+[^>]*=\{[a-zA-Z.]+\.(filter|map|slice)\(" apps/web/src/app --include="*.tsx"
+  ```
 
 ### 3.3 Backend — NestJS / Node.js
 
@@ -829,6 +836,7 @@ grep -rn "fetch(" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "ap
 
 - [ ] Всі API виклики через `apiFetch` (не прямий `fetch`) — забезпечує auto token refresh
 - [ ] Немає `axios` або `XMLHttpRequest`
+- [ ] **GET-дедуплікація в `apiFetch` (in-flight Map keyed на `path`) НЕ дедупить запити з `init.signal`** — інакше shared-promise дедуп прокидає abort одного caller на проміс іншого (caller B, що не скасовував, отримує AbortError). Канон: `if (method === 'GET' && !init?.signal) { ...dedup... }`. Plain GET без signal дедупити безпечно (shared rejection — коректний intended). Map має бути module-level (один на додаток), а `.finally(() => inFlight.delete(key))` — щоб settled проміс не кешувався.
 - [ ] **`api-client.ts` error message parsing узгоджений у ВСІХ трьох helpers** (`apiFetch`, `apiBlobFetch`, `apiMultipartFetch`) — NestJS class-validator на 400 повертає `{ message: string[] }`, а решта exceptions `{ message: string }`. Кожен helper мусить мати `Array.isArray(body.message) ? body.message.join('; ') : (body.message ?? fallback)`. Симптом якщо забути: користувач бачить `[object Object]` або тільки перший елемент масиву через implicit `Array.prototype.toString`. Коли fix падає у `apiFetch` — обов'язково grep сусідні helpers того ж файлу:
   ```bash
   grep -n "message?: string\b\|message: string\b" apps/web/src/lib/api-client.ts
