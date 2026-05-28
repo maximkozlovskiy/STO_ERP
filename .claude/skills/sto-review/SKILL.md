@@ -96,6 +96,11 @@ grep -rn "findMany(" apps/api/src/ --include="*.ts" | grep -v "take:\|spec"
 for f in packages/*/package.json apps/*/package.json; do
   dir=$(dirname "$f"); [ -f "$dir/tsconfig.json" ] || echo "MISSING tsconfig: $dir"
 done
+
+# UTF-8 BOM у .ts/.tsx (Windows-редактор/PowerShell Out-File -Encoding utf8) — неконсистентно з codebase
+for f in $(git diff HEAD~10 --name-only 2>/dev/null | grep -E "\.(ts|tsx)$"); do
+  [ -f "$f" ] && [ "$(head -c 3 "$f" | od -An -tx1 | tr -d ' ')" = "efbbbf" ] && echo "BOM: $f"
+done
 ```
 
 **Автофікси:**
@@ -115,6 +120,7 @@ done
 - [ ] Немає `console.log`
 - [ ] Всі `findMany` мають `take: N`
 - [ ] Canonical Tailwind tokens (не `[var(--...)]`, не inline HSL)
+- [ ] Немає UTF-8 BOM (`ef bb bf`) у .ts/.tsx — Windows/PowerShell редактори додають мовчки; tsc толерує, але неконсистентно й ламає деякі парсери/JSON-імпорти
 
 ---
 
@@ -350,7 +356,18 @@ grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" -A 20 \
 
 # FK без @@index
 grep -rn "@db.Uuid" packages/database/prisma/schema.prisma | grep -v "id\s\|@@index\|@@unique"
+
+# schema.prisma змінено у diff — але міграція НЕ додана (Critical: schema ≠ DB)
+if git diff HEAD~10 --name-only 2>/dev/null | grep -q "schema.prisma"; then
+  echo "schema.prisma змінено — перевір що додана нова папка у migrations/:"
+  git log --oneline -10 --name-only | grep -E "schema.prisma|migrations/" | head
+fi
+# Нове enum-значення у schema (ADD VALUE) — звірити з міграцією
+git diff HEAD~10 -- packages/database/prisma/schema.prisma 2>/dev/null | grep -E "^\+\s+[A-Z_]+$"
+grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
 ```
+- [ ] **Будь-яка зміна `schema.prisma` (enum value, поле, модель) → супутня папка у `migrations/`** — інакше schema ≠ DB, runtime error при insert/select нового значення
+- [ ] Нове enum-значення → `ALTER TYPE "Enum" ADD VALUE IF NOT EXISTS 'X';` (окремий файл; Postgres не дозволяє ADD VALUE + use у одній транзакції)
 - [ ] Немає N+1: `include` або окремий `findMany({ where: { id: { in: [...] } } })`
 - [ ] `include: { vehicle: true }` → `include: { vehicle: { select: { make, model, licensePlate } } }`
 - [ ] `$queryRaw` → LIMIT N у SQL (Prisma `take:` не впливає)
@@ -733,6 +750,28 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 **Підхід до фіксу:** у leave/cancel скинути ВСІ режими: `if (drawing) {...}; if (resizing) { setResizing(null); setResizePreview(null); }`
 **Критичність:** IMPORTANT — застрягла UI-операція, фантомний preview
 **Де шукати ще:** будь-який компонент з 2+ pointer-жестами (draw + resize + drag), timeline/canvas/gantt редактори
+
+---
+
+### 2026-05-28 — schema.prisma enum/поле змінено без міграції — §6 Database
+
+**Сигнал:** diff містить зміну `schema.prisma` (нове enum-значення `+  PIT`, нове поле, нова модель) але у тому ж/сусідньому коміті НЕ додана папка у `packages/database/prisma/migrations/`
+**Причина виникнення:** розробник править schema.prisma напряму (для типів Prisma client) і забуває `prisma migrate dev` → TS компілюється (тип існує), але БД enum/колонки не має → runtime error при першому insert/select нового значення
+**Підхід до виявлення:** `git diff` на schema.prisma → для кожного `+` рядка (enum value / field / model) звірити що є відповідний migration файл; enum → grep `ALTER TYPE ... ADD VALUE`
+**Підхід до фіксу:** створити папку `YYYYMMDDHHMMSS_<desc>/migration.sql` після останнього timestamp; enum → `ALTER TYPE "Enum" ADD VALUE IF NOT EXISTS 'X';` (окремий файл — Postgres забороняє ADD VALUE + використання у одній транзакції)
+**Критичність:** CRITICAL — TS зелений, але runtime fail; найкаверзніше бо tsc мовчить
+**Де шукати ще:** будь-який feat-коміт що чіпає schema.prisma; особливо enum enrichment, нові nullable поля
+
+---
+
+### 2026-05-28 — UTF-8 BOM у .ts після Windows/PowerShell-редагування — §1 TypeScript
+
+**Сигнал:** перші 3 байти файлу = `ef bb bf`; git diff показує `+﻿import` (невидимий ﻿ перед import); тільки частина файлів того ж типу мають BOM (неконсистентно)
+**Причина виникнення:** масове редагування файлів через PowerShell `Out-File`/`Set-Content` (default UTF-16/UTF-8-BOM) або редактор що зберігає з BOM → BOM додається до кожного зачепленого файлу
+**Підхід до виявлення:** `head -c 3 "$f" | od -An -tx1` на змінених .ts/.tsx → `efbbbf` = BOM; порівняти з рештою файлів того ж каталогу
+**Підхід до фіксу:** `tail -c +4 "$f" > tmp && mv tmp "$f"` для кожного BOM-файлу; перевірити що tsc усе ще 0 errors
+**Критичність:** IMPORTANT — tsc толерує, але ламає деякі JSON/ESM парсери, забруднює git diff, неконсистентно з codebase
+**Де шукати ще:** будь-який масовий sed/replace через PowerShell; коміти що чіпають багато файлів одночасно (validation-renames, import-reorgs)
 
 ---
 

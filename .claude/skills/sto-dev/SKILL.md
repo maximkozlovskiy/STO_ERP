@@ -718,6 +718,19 @@ model AnyModel {
 }
 ```
 
+### Зміна schema.prisma ЗАВЖДИ потребує міграції
+
+> Правка `schema.prisma` оновлює лише типи Prisma client — НЕ базу. TS компілюється,
+> але runtime fail при insert/select нового значення. **Кожна зміна → нова папка у `migrations/`.**
+
+```sql
+-- ❌ Додати enum value тільки у schema.prisma (PIT/RAMP) → insert type='PIT' впаде в runtime
+-- ✅ Окремий файл migrations/YYYYMMDDHHMMSS_add_lift_type_pit_ramp/migration.sql:
+ALTER TYPE "LiftType" ADD VALUE IF NOT EXISTS 'PIT';
+ALTER TYPE "LiftType" ADD VALUE IF NOT EXISTS 'RAMP';
+-- ADD VALUE — окремий файл (Postgres забороняє ADD VALUE + використання у одній транзакції)
+```
+
 ### Заборонені операції
 
 ```typescript
