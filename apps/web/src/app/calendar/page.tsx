@@ -4,7 +4,7 @@ import {
   useEffect, useState, useCallback, useMemo, useRef, memo,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Trash2, X, UserPlus, FilePlus } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Trash2, X, UserPlus, FilePlus, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
+import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import {
   DndContext, useDraggable, useDroppable,
   type DragEndEvent, PointerSensor, useSensor, useSensors,
@@ -869,6 +870,37 @@ export default function CalendarPage() {
 
   useEffect(() => { return () => { if (woTimeoutRef.current) clearTimeout(woTimeoutRef.current); }; }, []);
 
+  // ── Picker modals ─────────────────────────────────────────────────────────
+
+  const [cpPickerOpen, setCpPickerOpen] = useState(false);
+  const [woPickerOpen, setWoPickerOpen] = useState(false);
+  // For new-WO form: counterparty picker inside it
+  const [newWoCpPickerOpen, setNewWoCpPickerOpen] = useState(false);
+
+  type CpItem = SearchPickerItem & { phone?: string | null };
+  type WoItem = SearchPickerItem;
+
+  const fetchCpItems = useCallback(async (q: string): Promise<CpItem[]> => {
+    const url = q.trim() ? `/counterparties?q=${encodeURIComponent(q)}&limit=30` : '/counterparties?limit=30';
+    const data = await apiFetch<{ items: CounterpartyOption[] }>(url);
+    return data.items.map(cp => ({
+      id: cp.id,
+      primary: displayCounterparty(cp),
+      secondary: cp.phone ?? undefined,
+      phone: cp.phone,
+    }));
+  }, []);
+
+  const fetchWoItems = useCallback(async (q: string): Promise<WoItem[]> => {
+    const url = q.trim() ? `/work-orders?q=${encodeURIComponent(q)}&limit=30` : '/work-orders?limit=30';
+    const data = await apiFetch<{ items: WorkOrderOption[] }>(url);
+    return data.items.map(wo => ({
+      id: wo.id,
+      primary: wo.number,
+      secondary: wo.counterpartyName ?? undefined,
+    }));
+  }, []);
+
   // ── Memoized grouping ─────────────────────────────────────────────────────
 
   const slotsWithPreview = useMemo(() => {
@@ -1017,177 +1049,167 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          {/* Client field */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Клієнт</label>
-                <Input
-                  value={cpSearch || cpDisplay}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setCpSearch(v);
-                    if (!v) { setCpDisplay(''); setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' })); }
-                    searchCounterparties(v);
-                  }}
-                  onFocus={() => { if (cpSearch) setShowCpDropdown(true); }}
-                  placeholder="Пошук по імені, телефону..."
-                />
-                {cpDisplay && !cpSearch && (
-                  <button className="absolute right-2 top-7 text-muted-foreground hover:text-foreground text-xs"
-                    onClick={() => { setCpDisplay(''); setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' })); }}
-                    aria-label="Очистити клієнта">✕</button>
+          {/* Client + Work-order row */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Клієнт */}
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Клієнт</label>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setCpPickerOpen(true)}
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0"
+                >
+                  <span className={form.counterpartyDisplay ? 'text-foreground truncate' : 'text-muted-foreground'}>
+                    {form.counterpartyDisplay || 'Обрати клієнта…'}
+                  </span>
+                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </button>
+                {form.counterpartyDisplay && (
+                  <button type="button" onClick={() => { setCpDisplay(''); setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' })); }}
+                    className="px-2 text-muted-foreground hover:text-foreground" aria-label="Очистити">
+                    <X className="h-4 w-4" />
+                  </button>
                 )}
-                {showCpDropdown && cpOptions.length > 0 && (
-                  <div className="absolute z-50 w-full bg-surface border border-border rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
-                    {cpLoading && <div className="p-2 text-xs text-muted-foreground">Пошук...</div>}
-                    {cpOptions.map(cp => (
-                      <button key={cp.id} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary"
-                        onClick={() => {
-                          const d = displayCounterparty(cp);
-                          setCpDisplay(d);
-                          setForm(f => ({ ...f, counterpartyId: cp.id, counterpartyDisplay: d }));
-                          setCpSearch(''); setShowCpDropdown(false);
-                        }}>
-                        <span className="font-medium">{displayCounterparty(cp)}</span>
-                        {cp.phone && <span className="ml-2 text-muted-foreground text-xs">{cp.phone}</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="mt-5">
                 <Button variant="outline" size="sm" onClick={() => setShowNewCp(v => !v)} title="Новий клієнт">
                   <UserPlus className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-            {showNewCp && (
-              <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
-                <p className="text-xs font-medium text-foreground">Новий клієнт</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Input placeholder="Ім'я" value={newCp.firstName} onChange={e => setNewCp(v => ({ ...v, firstName: e.target.value }))} />
-                  <Input placeholder="Прізвище" value={newCp.lastName} onChange={e => setNewCp(v => ({ ...v, lastName: e.target.value }))} />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Input placeholder="Телефон" value={newCp.phone} onChange={e => setNewCp(v => ({ ...v, phone: e.target.value }))} />
-                  <Input placeholder="Компанія" value={newCp.companyName} onChange={e => setNewCp(v => ({ ...v, companyName: e.target.value }))} />
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={saveNewCounterparty} loading={savingCp}
-                    disabled={!newCp.firstName && !newCp.lastName && !newCp.companyName}>
-                    Зберегти клієнта
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setShowNewCp(false)}>Скасувати</Button>
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* Work-order field */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Наряд</label>
-                <Input
-                  value={woSearch || form.workOrderDisplay}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setWoSearch(v);
-                    if (!v) setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }));
-                    searchWorkOrders(v);
-                  }}
-                  onFocus={() => { if (woSearch) setShowWoDropdown(true); }}
-                  placeholder="Пошук по номеру або клієнту..."
-                />
-                {form.workOrderDisplay && !woSearch && (
-                  <button className="absolute right-2 top-7 text-muted-foreground hover:text-foreground text-xs"
-                    onClick={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
-                    aria-label="Очистити наряд">✕</button>
+            {/* Наряд */}
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Наряд</label>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setWoPickerOpen(true)}
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0"
+                >
+                  <span className={form.workOrderDisplay ? 'text-foreground truncate' : 'text-muted-foreground'}>
+                    {form.workOrderDisplay || 'Обрати наряд…'}
+                  </span>
+                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </button>
+                {form.workOrderDisplay && (
+                  <button type="button" onClick={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
+                    className="px-2 text-muted-foreground hover:text-foreground" aria-label="Очистити">
+                    <X className="h-4 w-4" />
+                  </button>
                 )}
-                {showWoDropdown && woOptions.length > 0 && (
-                  <div className="absolute z-50 w-full bg-surface border border-border rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
-                    {woLoading && <div className="p-2 text-xs text-muted-foreground">Пошук...</div>}
-                    {woOptions.map(wo => (
-                      <button key={wo.id} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary"
-                        onClick={() => {
-                          const display = `${wo.number}${wo.counterpartyName ? ` · ${wo.counterpartyName}` : ''}`;
-                          setForm(f => ({ ...f, workOrderId: wo.id, workOrderDisplay: display }));
-                          setWoSearch(''); setShowWoDropdown(false);
-                        }}>
-                        <span className="font-medium">{wo.number}</span>
-                        {wo.counterpartyName && <span className="ml-2 text-muted-foreground">{wo.counterpartyName}</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="mt-5">
                 <Button variant="outline" size="sm" onClick={() => setShowNewWo(v => !v)} title="Новий наряд">
                   <FilePlus className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-            {showNewWo && (
-              <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
-                <p className="text-xs font-medium text-foreground">Новий наряд</p>
-                <div className="relative">
-                  <Input placeholder="Клієнт (пошук)..." value={newWo.counterpartyDisplay}
-                    onChange={e => {
-                      setNewWo(v => ({ ...v, counterpartyDisplay: e.target.value, counterpartyId: '', vehicleId: '' }));
-                      setNewWoVehicles([]);
-                      searchCounterparties(e.target.value);
-                    }}
-                    onFocus={() => setShowCpDropdown(true)}
-                  />
-                  {showCpDropdown && cpOptions.length > 0 && (
-                    <div className="absolute z-50 w-full bg-surface border border-border rounded-lg shadow-lg mt-1 max-h-36 overflow-y-auto">
-                      {cpOptions.map(cp => (
-                        <button key={cp.id} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary"
-                          onClick={async () => {
-                            const d = displayCounterparty(cp);
-                            setNewWo(v => ({ ...v, counterpartyId: cp.id, counterpartyDisplay: d, vehicleId: '' }));
-                            setShowCpDropdown(false);
-                            await loadWoVehicles(cp.id);
-                          }}>
-                          {displayCounterparty(cp)}
-                          {cp.phone && <span className="ml-2 text-muted-foreground text-xs">{cp.phone}</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Select value={newWo.vehicleId} onChange={e => setNewWo(v => ({ ...v, vehicleId: e.target.value }))}
-                    disabled={!newWo.counterpartyId}>
-                    <option value="">— Автомобіль —</option>
-                    {newWoVehicles.map(v => (
-                      <option key={v.id} value={v.id}>{v.make} {v.model} ({v.licensePlate})</option>
-                    ))}
-                  </Select>
-                  <Select value={newWo.branchId} onChange={e => setNewWo(v => ({ ...v, branchId: e.target.value }))}>
-                    <option value="">— Філія —</option>
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </Select>
-                </div>
-                <Input placeholder="Опис (необов'язково)" value={newWo.description}
-                  onChange={e => setNewWo(v => ({ ...v, description: e.target.value }))} />
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={saveNewWorkOrder} loading={savingWo}
-                    disabled={!newWo.counterpartyId || !newWo.vehicleId || !newWo.branchId}>
-                    Зберегти наряд
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setShowNewWo(false)}>Скасувати</Button>
-                </div>
-              </div>
-            )}
           </div>
+
+          {/* New counterparty mini-form */}
+          {showNewCp && (
+            <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
+              <p className="text-xs font-medium text-foreground">Новий клієнт</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Ім'я" value={newCp.firstName} onChange={e => setNewCp(v => ({ ...v, firstName: e.target.value }))} />
+                <Input placeholder="Прізвище" value={newCp.lastName} onChange={e => setNewCp(v => ({ ...v, lastName: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Телефон" value={newCp.phone} onChange={e => setNewCp(v => ({ ...v, phone: e.target.value }))} />
+                <Input placeholder="Компанія" value={newCp.companyName} onChange={e => setNewCp(v => ({ ...v, companyName: e.target.value }))} />
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={saveNewCounterparty} loading={savingCp}
+                  disabled={!newCp.firstName && !newCp.lastName && !newCp.companyName}>
+                  Зберегти клієнта
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowNewCp(false)}>Скасувати</Button>
+              </div>
+            </div>
+          )}
+
+          {/* New work-order mini-form */}
+          {showNewWo && (
+            <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
+              <p className="text-xs font-medium text-foreground">Новий наряд</p>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => setNewWoCpPickerOpen(true)}
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors">
+                  <span className={newWo.counterpartyDisplay ? 'text-foreground truncate' : 'text-muted-foreground'}>
+                    {newWo.counterpartyDisplay || 'Обрати клієнта…'}
+                  </span>
+                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Select value={newWo.vehicleId} onChange={e => setNewWo(v => ({ ...v, vehicleId: e.target.value }))}
+                  disabled={!newWo.counterpartyId}>
+                  <option value="">— Автомобіль —</option>
+                  {newWoVehicles.map(v => (
+                    <option key={v.id} value={v.id}>{v.make} {v.model} ({v.licensePlate})</option>
+                  ))}
+                </Select>
+                <Select value={newWo.branchId} onChange={e => setNewWo(v => ({ ...v, branchId: e.target.value }))}>
+                  <option value="">— Філія —</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              </div>
+              <Input placeholder="Опис (необов'язково)" value={newWo.description}
+                onChange={e => setNewWo(v => ({ ...v, description: e.target.value }))} />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={saveNewWorkOrder} loading={savingWo}
+                  disabled={!newWo.counterpartyId || !newWo.vehicleId || !newWo.branchId}>
+                  Зберегти наряд
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowNewWo(false)}>Скасувати</Button>
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Нотатки</label>
             <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
+
+          {/* Picker modals */}
+          <SearchPickerModal<CpItem>
+            open={cpPickerOpen}
+            onClose={() => setCpPickerOpen(false)}
+            title="Оберіть клієнта"
+            selectedId={form.counterpartyId}
+            fetchItems={fetchCpItems}
+            searchPlaceholder="Ім'я, телефон, компанія..."
+            emptyText="Клієнтів не знайдено"
+            onSelect={item => {
+              setCpDisplay(item.primary);
+              setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary }));
+            }}
+          />
+          <SearchPickerModal<WoItem>
+            open={woPickerOpen}
+            onClose={() => setWoPickerOpen(false)}
+            title="Оберіть наряд"
+            selectedId={form.workOrderId}
+            fetchItems={fetchWoItems}
+            searchPlaceholder="Номер наряду або клієнт..."
+            emptyText="Нарядів не знайдено"
+            onSelect={item => {
+              const display = item.secondary ? `${item.primary} · ${item.secondary}` : item.primary;
+              setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+            }}
+          />
+          <SearchPickerModal<CpItem>
+            open={newWoCpPickerOpen}
+            onClose={() => setNewWoCpPickerOpen(false)}
+            title="Клієнт для наряду"
+            selectedId={newWo.counterpartyId}
+            fetchItems={fetchCpItems}
+            searchPlaceholder="Ім'я, телефон..."
+            emptyText="Клієнтів не знайдено"
+            onSelect={async item => {
+              setNewWo(v => ({ ...v, counterpartyId: item.id, counterpartyDisplay: item.primary, vehicleId: '' }));
+              await loadWoVehicles(item.id);
+            }}
+          />
 
           <div className="flex gap-2">
             <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt}>
