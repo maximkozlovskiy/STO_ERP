@@ -4851,4 +4851,71 @@ bank-accounts), а `cash-registers` — ні. За §1.4 sto-tester новий `
 
 ---
 
+## Session 2026-05-28 (cont.) — FULL re-run on catalog/finance modules
+
+### Baseline (re-run)
+
+- TypeScript API / web / shared — ✅ 0 errors
+- Unit + contract (API) — ✅ 293/293 passed (27 files)
+
+---
+
+## Bug #151 — [MEDIUM] exchange-rates update() не перевіряє дублікат (orgId, currencyId, date)
+
+**Файл:** `apps/api/src/modules/exchange-rates/exchange-rates.service.ts:63` (`update`)
+**Severity:** MEDIUM
+**Категорія:** business-logic
+
+**Опис:**
+`create()` робить явну перевірку унікальності `(orgId, currencyId, date)` і кидає
+`ConflictException('Курс на цю дату вже існує')`. Але `update()` дозволяє змінити `date`
+БЕЗ жодної перевірки. Якщо PATCH міняє дату на ту, для якої вже існує курс цієї валюти —
+покладаємось лише на DB `@@unique`, що дає P2002 → generic 409
+`"Запис з таким значенням вже існує (...)"` замість локалізованого повідомлення.
+Непослідовно з `create()` і з `currencies.update()` (де перевірка є).
+
+**Очікувана поведінка:**
+При зміні дати (`dto.date` відрізняється від `existing.date`) — перевірити чи немає іншого
+курсу `(orgId, currencyId, нова_дата)` і кинути `ConflictException` з українським текстом.
+
+**Фактична поведінка:**
+Зміна дати на зайняту → необроблений P2002 → generic 409.
+
+**Виправлення:** у `update()` додано перевірку: якщо `dto.date` відрізняється від
+`existing.date`, шукаємо інший курс `(orgId, currencyId, нова_дата)` і кидаємо
+`ConflictException('Курс на цю дату вже існує')`. Покрито `exchange-rates.service.spec.ts`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #152 — [LOW] Soft-deleted currency/exchange-rate блокує повторне створення (full unique index)
+
+**Файл:** `apps/api/src/modules/currencies/currencies.service.ts:27` (`create`), `apps/api/src/modules/exchange-rates/exchange-rates.service.ts:44` (`create`)
+**Severity:** LOW
+**Категорія:** business-logic
+
+**Опис:**
+DB unique індекси `currencies_orgId_code_key` та `exchange_rates_orgId_currencyId_date_key`
+створені БЕЗ `WHERE "deletedAt" IS NULL` (повні, не partial). App-level перевірка дублікату
+фільтрує `deletedAt: null`, тому проходить, але потім `prisma.create` падає на DB-констрейнті
+з P2002, бо soft-deleted рядок все ще займає унікальний ключ. Сценарій: видалив валюту "USD"
+→ хочеш створити "USD" знову → 409 generic. Користувач не може повторно завести валюту/курс
+з тим самим кодом/датою після видалення.
+
+**Очікувана поведінка:**
+Повторне створення після soft-delete має воскресити (un-delete) попередній запис із новими
+даними — без помилки.
+
+**Фактична поведінка:**
+P2002 → generic 409, повторне створення неможливе.
+
+**Виправлення:** у `create()` обох сервісів після перевірки активного дубля додано пошук
+soft-deleted рядка з тим самим унікальним ключем; якщо знайдено — `update({ ...dto, deletedAt: null })`
+(воскресіння) замість `create`. Покрито `currencies.service.spec.ts` + `exchange-rates.service.spec.ts`.
+
+**Статус:** [x] виправлено
+
+---
+
 

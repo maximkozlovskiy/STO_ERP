@@ -30,6 +30,20 @@ export class CurrenciesService {
     });
     if (existing) throw new ConflictException(`Валюта з кодом "${dto.code}" вже існує`);
 
+    // Bug #152: DB unique (orgId, code) — повний, не partial. Soft-deleted рядок
+    // все ще займає ключ → prisma.create впав би на P2002. Якщо такий рядок є —
+    // воскрешаємо його (un-delete + оновлення даними), а не створюємо новий.
+    const softDeleted = await this.prisma.currency.findFirst({
+      where: { orgId, code: dto.code, NOT: { deletedAt: null } },
+    });
+    if (softDeleted) {
+      const restored = await this.prisma.currency.update({
+        where: { id: softDeleted.id },
+        data: { ...dto, deletedAt: null },
+      });
+      return this.toDto(restored);
+    }
+
     const item = await this.prisma.currency.create({ data: { ...dto, orgId } });
     return this.toDto(item);
   }

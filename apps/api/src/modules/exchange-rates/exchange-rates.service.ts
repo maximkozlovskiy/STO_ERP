@@ -53,6 +53,21 @@ export class ExchangeRatesService {
     });
     if (existing) throw new ConflictException('Курс на цю дату вже існує');
 
+    // Bug #152: DB unique (orgId, currencyId, date) — повний, не partial. Soft-deleted
+    // рядок все ще займає ключ → prisma.create впав би на P2002. Якщо такий рядок є —
+    // воскрешаємо його (un-delete + оновлення даними), а не створюємо новий.
+    const softDeleted = await this.prisma.exchangeRate.findFirst({
+      where: { orgId, currencyId: dto.currencyId, date, NOT: { deletedAt: null } },
+    });
+    if (softDeleted) {
+      const restored = await this.prisma.exchangeRate.update({
+        where: { id: softDeleted.id },
+        data: { rate: dto.rate, coefficient: dto.coefficient ?? 1, deletedAt: null },
+        include: { currency: { select: { code: true, name: true } } },
+      });
+      return this.toDto(restored);
+    }
+
     const item = await this.prisma.exchangeRate.create({
       data: { orgId, currencyId: dto.currencyId, date, rate: dto.rate, coefficient: dto.coefficient ?? 1 },
       include: { currency: { select: { code: true, name: true } } },
@@ -65,6 +80,19 @@ export class ExchangeRatesService {
       where: { id, orgId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Курс валюти не знайдено');
+
+    // Bug #151: зміна дати має поважати унікальність (orgId, currencyId, date).
+    // Інакше PATCH на зайняту дату падає на DB P2002 → generic 409 замість
+    // локалізованого повідомлення (так само як у create()).
+    if (dto.date !== undefined) {
+      const newDate = new Date(dto.date);
+      if (newDate.getTime() !== existing.date.getTime()) {
+        const duplicate = await this.prisma.exchangeRate.findFirst({
+          where: { orgId, currencyId: existing.currencyId, date: newDate, NOT: { id }, deletedAt: null },
+        });
+        if (duplicate) throw new ConflictException('Курс на цю дату вже існує');
+      }
+    }
 
     const updateData: Record<string, unknown> = {};
     if (dto.date !== undefined) updateData['date'] = new Date(dto.date);
