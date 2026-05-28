@@ -4732,4 +4732,123 @@ useEffect(() => {
 
 ---
 
+## Session 2026-05-28 — Full sto-tester on currencies/exchange-rates/bank-accounts/cash-registers + settings org-info + logo upload
+
+Тестувались: 4 нові модулі (currencies, exchange-rates, bank-accounts, cash-registers),
+розширення settings (org-info endpoint, logo upload), фронт settings page з 4 новими вкладками
++ Organisation вкладка. tsc (api/web/shared) 0 errors, 287/287 unit tests passed на старті.
+
+---
+
+## Bug #146 — [MEDIUM] cash-registers без contract-тесту (розрив у HTTP-покритті)
+
+**Файл:** `apps/api/src/modules/cash-registers/` (відсутній `cash-registers.contract.spec.ts`)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:**
+Три з чотирьох нових модулів мають `.contract.spec.ts` (currencies, exchange-rates,
+bank-accounts), а `cash-registers` — ні. За §1.4 sto-tester новий `@Controller`
+зобовʼязаний одразу мати contract-тест: 200 + `{ items, total }` shape, 401/403 без
+авторизації, 400 при невалідному payload (відсутні обовʼязкові UUID currencyId/branchId).
+Без нього розрив між `toResponseDto()` і фронтовим інтерфейсом залишається невиявленим.
+
+**Очікувана поведінка:**
+`cash-registers.contract.spec.ts` перевіряє HTTP-шар контролера.
+
+**Фактична поведінка:**
+Файл відсутній — контракт не перевіряється автоматично.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #147 — [LOW] Currency Modal — немає клієнтської валідації обовʼязкових полів
+
+**Файл:** `apps/web/src/app/settings/page.tsx:549` (`saveCurrency`)
+**Severity:** LOW
+**Категорія:** frontend
+
+**Опис:**
+Поля "Назва *" та "Код *" позначені зірочкою як обовʼязкові, але `saveCurrency`
+надсилає `currencyForm` напряму без перевірки. При порожніх полях користувач отримує
+сирий серверний 400 (`name should not be empty; code should not be empty`) у загальному
+банері `error`, а не inline-підказку біля поля. BA/CR модалі вже мають inline-валідацію
+(`baErrors`/`crErrors`) — currency модаль непослідовний.
+
+**Очікувана поведінка:**
+Перед submit — клієнтська перевірка `name`/`code`, inline errorMessage біля порожнього поля.
+
+**Фактична поведінка:**
+Порожній submit → серверний 400 у загальному банері.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #148 — [LOW] Exchange Rate Modal — немає клієнтської валідації currencyId/rate
+
+**Файл:** `apps/web/src/app/settings/page.tsx:581` (`saveRate`)
+**Severity:** LOW
+**Категорія:** frontend
+
+**Опис:**
+При створенні нового курсу `currencyId` ініціалізується `''` (SearchCombobox порожній),
+`rate` — `''`. `saveRate` робить `Number('')` = `0` → `@IsPositive()` відхиляє з 400, а
+порожній `currencyId` → 400 `"currencyId must be a UUID"`. Жодного клієнтського гейту —
+сирий серверний текст у банері.
+
+**Очікувана поведінка:**
+Перед submit — перевірка: обрана валюта (для нового курсу), `rate > 0`, `coefficient > 0`.
+
+**Фактична поведінка:**
+Порожній submit → сирий серверний 400.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #149 — [LOW] Currency optional поля надсилаються порожніми рядками замість omit
+
+**Файл:** `apps/web/src/app/settings/page.tsx:549` (`saveCurrency`)
+**Severity:** LOW
+**Категорія:** frontend
+
+**Опис:**
+`currencyForm` завжди містить `symbol`, `fullName`, `internationalName` як рядки. Якщо
+користувач не заповнив їх — у БД зберігаються `''` замість `null`. Це бруднить дані:
+`c.symbol ? ...` рендериться як truthy для `''`? Ні (`''` falsy) — але `fullName === ''`
+все одно показує порожній `<p>`. Канон: надсилати `undefined` для незаповнених optional.
+
+**Очікувана поведінка:**
+Незаповнені optional поля → `undefined` (omit), у БД `null`.
+
+**Фактична поведінка:**
+Порожні рядки зберігаються у БД.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #150 — [LOW] Іконкові кнопки edit/delete на нових вкладках без aria-label
+
+**Файл:** `apps/web/src/app/settings/page.tsx` (вкладки currencies/exchange-rates/bank-accounts/cash-registers)
+**Severity:** LOW
+**Категорія:** frontend (a11y)
+
+**Опис:**
+Кнопки редагування/видалення на 4 нових вкладках містять лише іконку (`<Pencil>`/`<Trash2>`)
+без тексту і без `aria-label`. Screen reader озвучує їх як безіменну "button". §1.6 sto-tester
+вимагає `aria-label` на іконкових кнопках.
+
+**Очікувана поведінка:**
+Кожна іконкова кнопка має `aria-label="Редагувати"` / `aria-label="Видалити"`.
+
+**Фактична поведінка:**
+Кнопки без доступної назви.
+
+**Статус:** [x] виправлено
+
+---
+
 
