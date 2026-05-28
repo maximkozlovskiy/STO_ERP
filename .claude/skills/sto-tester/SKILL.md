@@ -263,6 +263,16 @@ grep -rn "React\.\(ReactNode\|CSSProperties\|ChangeEvent\|MouseEvent\|FormEvent\
 grep -rn "decimalHoursTo\|pxToHours\|pxToDecimal\|clientX.*-.*rect\|getBoundingClientRect" apps/web/src/app --include="*.tsx" -l | head -10
 # → для кожного timeline/calendar/gantt: чи resize/drag clamp-ить результат у [WINDOW_START, WINDOW_END] ПЕРЕД new Date()
 grep -rn "new Date(\`\${.*}T\${\|toISOString()" apps/web/src/app --include="*.tsx" | grep -iE "calendar|timeline|slot|gantt|schedule" | head -10
+
+# Swallowed-fetch що годує ОБОВ'ЯЗКОВИЙ select / disabled-guard (Bug #159) — escalate severity
+grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx" -B3
+# → для кожного: чи setX(...) у .then() рендериться у <Select required> АБО у disabled={!state}?
+#   якщо так — порожня помилка блокує workflow без feedback (MEDIUM, не LOW)
+
+# Мертвий стан/handler після рефактору inline→shared-component (Bug #160)
+# для кожного useState/useCallback з префіксом фічі (woSearch/woOptions...) перевірити чи setter
+# викликається ПОЗА reset-ефектом і чи value читається у JSX. tsc без noUnusedLocals НЕ ловить.
+grep -rn "const \[\(wo\|cp\|search\|inline\)[A-Za-z]*," apps/web/src/app --include="*.tsx" | head -20
 ```
 
 - [ ] Кожен list-fetch в `useEffect` має: `let cancelled=false` + `return () => {cancelled=true}`; `setLoading(true)` перед; `.finally(() => !cancelled && setLoading(false))`; `.catch((e) => !cancelled && setError(...))`; у JSX `{loading && <Spinner/>}` + `{!loading && items.length===0 && <Empty/>}`
@@ -272,6 +282,8 @@ grep -rn "new Date(\`\${.*}T\${\|toISOString()" apps/web/src/app --include="*.ts
 - [ ] `import type { ReactNode, ChangeEvent, MouseEvent } from 'react'` (не `React.ReactNode`)
 - [ ] `setTimeout` / `setInterval` у `useEffect` → `clearTimeout` / `clearInterval` у cleanup
 - [ ] Timeline/gantt drag/resize: кожен px→decimal-hours converter clamp-ить результат у `[WINDOW_START, WINDOW_END]` ПЕРЕД побудовою `new Date(...).toISOString()` (інакше `endH>maxHour`/`startH<0` → `"24:30"`/`"-1:00"` → Invalid Date → RangeError у `toISOString()` → handler мовчки падає). Resize-гілка ОКРЕМО від draw-гілки — draw зазвичай clamp-ить через `pxToDecimalHours`, resize рахує delta і clamp-ить тільки проти протилежного краю
+- [ ] Swallowed-fetch що годує **обов'язковий** контрол → MEDIUM (не LOW): якщо `.catch(() => {})`/`.catch(noop)` ховає помилку завантаження списку, який рендериться у `<Select required>` або гейтить `disabled={!state}` submit-кнопку — порожній список = назавжди заблокований workflow без feedback. Фікс: `errorState` + inline `<p>` під контролом
+- [ ] Мертвий стан після inline→shared-component рефактору: коли inline-патерн (dropdown/picker/search) замінюють на shared-компонент (`SearchPickerModal` тощо), старі `useState`/`useCallback`/`useRef` лишаються «сиротами». Ознака: setter викликається ТІЛЬКИ в reset-ефекті (`if (!open) setX('')`), а value НІКОЛИ не читається у JSX; handler (`searchX`) визначено але не викликано. `tsc` без `noUnusedLocals` мовчить. Видалити повністю (включно з cleanup-ефектом orphaned `timeoutRef`)
 
 ---
 
@@ -582,6 +594,24 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-28 — Swallowed fetch годує обов'язковий контрол → заблокований workflow — frontend
+
+**Сигнал:** `apiFetch('/list').then(setX).catch(() => {})` де `X` рендериться у `<Select>` обов'язкового поля, а submit-кнопка має `disabled={!form.fieldFromX}`. Базовий §1.3 анти-патерн (порожній catch) присутній, АЛЕ наслідок гірший за звичайний «порожній стан»: якщо список не завантажився, користувач фізично не може заповнити обов'язкове поле → кнопка назавжди disabled, без жодного пояснення. Часто сидить поряд з іншим catch який review/tester вже виправив (двійник на тій самій сторінці).
+**Причина виникнення:** background-loader для довідника (філії, склади, валюти) додають як «другорядний» fetch і ставлять noop-catch, не усвідомлюючи що цей довідник гейтить критичний submit. Severity недооцінюють бо «список просто порожній».
+**Підхід до виявлення:** для кожного `.catch(() => {})` знайти setter у `.then()`, далі grep чи цей state рендериться у `<Select required>` або у `disabled={!...}`. Якщо так — escalate з LOW до MEDIUM. Не плутати з тру-опціональними довідниками (там LOW досить).
+**Підхід до фіксу:** окремий `xError` state (НЕ form-level `error`, бо loader спрацьовує до відкриття модалки і покаже stale-error); `.catch` встановлює повідомлення; inline `<p className="text-xs text-destructive-text">` під контролом.
+**Severity:** MEDIUM — не втрата даних, але повністю заблокований legitimate workflow без feedback.
+**Де шукати ще:** будь-яка mini-форма «створити X інлайн» (calendar new-WO, work-order new-client), будь-який екран з каскадними селектами (counterparty→vehicle→branch).
+
+### 2026-05-28 — Мертвий стан/handler після inline→shared-component рефактору — frontend
+
+**Сигнал:** після того як inline-патерн (search-dropdown, picker, autocomplete) замінили на shared-компонент (`SearchPickerModal`, `Combobox`), старі `useState`/`useCallback`/`useRef` + їх cleanup-ефекти лишаються. Ознака №1: setter (`setWoOptions`) викликається ТІЛЬКИ всередині reset-ефекту `if (!open) setX('')` і всередині самого orphaned-handler — а value (`woOptions`) НІКОЛИ не читається у JSX. Ознака №2: handler (`searchWorkOrders`) визначено через `useCallback` але жоден `onChange`/`onClick` його не викликає. Ознака №3: cleanup-ефект `return () => clearTimeout(woTimeoutRef.current)` для ref що більше нікуди не пишеться.
+**Причина виникнення:** рефактор-комміт додає новий компонент і нові fetcher-и (`fetchWoItems`), правильно перемикає JSX, але «про всяк випадок» лишає старий код. `tsc` без `noUnusedLocals` (типово для Next.js) НЕ повідомляє про unused const на рівні тіла компонента. Code review теж пропускає бо локально кожен рядок виглядає валідним.
+**Підхід до виявлення:** для кожного фіче-префіксного `useState` (`woX`, `cpX`, `searchX`) перевірити двосторонньо: (а) setter викликається десь окрім reset-ефекту? (б) value читається у JSX/computed? Якщо обидва «ні» — мертвий. Для `useCallback`-handler — grep чи його ім'я з'являється поза рядком визначення. Не покладатись на tsc.
+**Підхід до фіксу:** видалити повний кластер — стани + handler + orphaned `timeoutRef` + його cleanup-ефект; спростити reset-ефект до того що реально лишилось; зберегти спільні типи/інтерфейси якщо їх використовує новий fetcher.
+**Severity:** LOW — не runtime bug (код недосяжний), але плутає аудит (як Bug #158 що «виправив» вже-мертвий catch) і несе ризик зомбі-регресії якщо хтось випадково під'єднає назад.
+**Де шукати ще:** будь-яка сторінка де inline-autocomplete мігрував у shared picker; settings-вкладки після уніфікації; форми де select замінили на modal-picker.
 
 ### 2026-05-28 — Timeline drag/resize px→time без clamp → Invalid Date → RangeError — frontend
 
