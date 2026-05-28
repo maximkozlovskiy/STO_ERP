@@ -6,646 +6,472 @@ description: >
   резервування запчастин, розрахунки балансів, tenant isolation, soft delete.
   Запускай командою /sto-tester після реалізації фічі або перед релізом.
 model: claude-opus-4-7
+bypassPermissions: true
 ---
 
 # sto-tester — Автоматичний тестувальник STO ERP
 
-## Два режими
+## Режим Auto (ОБОВ'ЯЗКОВО)
 
-| Режим | Коли | Що виконувати |
-|---|---|---|
-| **AUTO** | Автоматично після кожного git commit (post-feature QA) | Кроки 0 → 1 (тільки змінені файли) → 2 → 3 → 4 → 4.3 |
-| **FULL** | Явний виклик `/sto-tester` користувачем | Всі кроки 0 → 1 → 2 → 3 → 4 → 4.3 → 4.4 → 4.5 → 4.6 → 4.7 → 4.8 → 4.9 → 5 |
-
-> **Як відрізнити:** якщо тестер запускається автоматично після завдання (через CLAUDE.md правило) — це AUTO. Якщо користувач явно написав `/sto-tester` або попросив протестувати — це FULL.
-
-## AUTO режим — алгоритм (post-feature QA)
+**Все виконується без питань.** Алгоритм:
 
 ```
-1. Крок 0: tsc (web + api + shared), unit tests
-2. Крок 1: статичний аналіз ТІЛЬКИ змінених файлів (git diff HEAD --name-only)
-   - api/*.ts     → §1.1 (бізнес-логіка), §1.2 (TS якість)
-   - web/*.tsx    → §1.3 (frontend)
-   - *.spec.ts    → §1.4 (тест-покриття)
-   - prisma/*.ts  → §1.1 (soft delete, tenant), §1.2 (TS)
-3. Крок 2: записати знайдені баги у BUG_REPORT.md
-4. Крок 3: виправити кожен баг (CRITICAL → HIGH → MEDIUM → LOW)
-5. Крок 4: верифікація (tsc + unit tests)
-6. Крок 4.3: contract-тести ТІЛЬКИ для нових/змінених endpoints
-7. git commit -m "fix(tester): ..." + оновити MemoryManual.md
+1. Крок 0 — підготовка (tsc + unit tests + scope)
+2. Крок 1 — статичний аналіз (7 секцій grep)
+3. Крок 2 — записати BUG_REPORT.md
+4. Крок 3 — виправити всі баги (CRITICAL → LOW)
+5. Крок 4 — верифікація (tsc + unit + contract)
+6. Крок 5 — розширені тести (property / E2E / component)
+7. Крок 6 — git commit + оновити MemoryManual.md
+8. Крок 7 — самовдосконалення: записати нові підходи
 ```
 
-**Матриця AUTO: тип зміни → що перевіряти**
+> Не питай дозволу між кроками. Фіксуй одним реченням що робиш.
 
-> Нумерація §1.x — це розділи Кроку 1 цього файлу. Відповідні секції sto-review вказані в дужках.
-
-| Тип зміни | Секції Кроку 1 | sto-review еквівалент |
-|---|---|---|
-| Новий `@Controller` або endpoint | §1.1 (tenant, soft delete, api contract), §1.2 (TS), §1.4 (contract spec) | §2, §4, §5, §13 |
-| Змінений `*.service.ts` | §1.1 (business logic, FSM, inventory, settlements) | §5, §6 |
-| Нова `page.tsx` або зміна UI | §1.3 → sto-review §8 (стани, hydration, routing, Tailwind) | §8 |
-| Новий `*.dto.ts` | §1.2 (API якість), §1.1 (validation guards) | §2.3, §2.4 |
-| Зміна `prisma/schema.prisma` | §1.1 (soft delete fields, orgId, deletedAt), §1.2 | §6, §9 |
-| UI-only (тільки `components/ui/`) | §1.3 → sto-review §8, §1.2 (TS), §1.6 (a11y) | §8 |
-| Config/docs/тести | §0 (tsc) — більше нічого | §1 |
-
-## FULL режим — алгоритм (явний виклик)
-
-```
-1.  Крок 0: tsc + unit tests + перевірка optional deps (fast-check, Playwright, testing-library)
-2.  Крок 0.1: запуск dev-серверів (для E2E)
-3.  Крок 1: повний статичний аналіз (§1.1–§1.5)
-4.  Крок 2: BUG_REPORT.md
-5.  Крок 3: авто-фікс від CRITICAL до LOW
-6.  Крок 4: верифікація (tsc + unit + build)
-7.  Крок 4.3: contract-тести (Supertest) — всі .contract.spec.ts
-8.  Крок 4.4: property-based (fast-check) — якщо встановлений
-9.  Крок 4.5: E2E (Playwright) — якщо встановлений
-10. Крок 4.6: component-тести (testing-library) — якщо встановлений
-11. Крок 4.7: функціональне тестування (happy path)
-12. Крок 4.8: негативне тестування
-13. Крок 4.9: нефункціональне тестування
-14. Крок 5: фінальний звіт
-15. git commit + оновити MemoryManual.md
-```
-
-**Optional залежності** (встановити → розблокує відповідний крок):
-
-| Залежність | Крок | Команда встановлення |
-|---|---|---|
-| `fast-check` | 4.4 Property-based | `pnpm --filter @sto/api add -D fast-check` |
-| `@playwright/test` | 4.5 E2E | `pnpm --filter @sto/web add -D @playwright/test` |
-| `@testing-library/react` | 4.6 Component | `pnpm --filter @sto/web add -D @testing-library/react @testing-library/user-event @testing-library/jest-dom jsdom` |
-
-> Якщо залежність не встановлена — позначити відповідний крок як `⏭ skipped` у звіті, не намагатись запустити.
-
-> Не питай дозволу на виправлення, коміт і оновлення MemoryManual.md — все виконується автоматично.
-> Якщо fix потребує міграції БД або змін у shared — зафіксуй як CRITICAL і повідом після завершення.
-
-### Як оновлювати MemoryManual.md
-
-Після фінального коміту — одразу (без запиту) оновити в `MemoryManual.md`:
-
-```markdown
-## Останній commit
-<hash> <commit message>
-Дата: YYYY-MM-DD
-
-## Поточний стан проєкту
-TypeScript:      ✅ 0 errors       (або ❌ N errors)
-Unit:            ✅ N/N passed     (або ❌ N failed)
-Contract:        ✅ N passed       (або ⏭ немає .contract.spec.ts)
-Property:        ✅ N passed       (або ⏭ fast-check не встановлений — install to unlock)
-Components:      ✅ N passed       (або ⏭ @testing-library не встановлений — install to unlock)
-E2E:             ✅ N passed       (або ⏭ Playwright не встановлений — install to unlock)
-Functional:      ✅ N кейсів OK   (або ⚠ N пропущено)   [тільки FULL режим]
-Negative:        ✅ N кейсів OK   (або ⚠ N відсутніх)   [тільки FULL режим]
-Non-functional:  ✅ perf/headers OK (або ⚠ N проблем)   [тільки FULL режим]
-```
-
-Якщо під час тестування виявились нові gotchas — дописати у відповідний розділ `MemoryManual.md` без запиту.
-
-## Мета
-
-Знайти **реальні баги** (не style-питання), зафіксувати їх у `BUG_REPORT.md`,
-після чого **негайно виправити** кожен знайдений баг без додаткових запитів.
+**AUTO vs FULL:**
+- **AUTO** (після кожного commit, CLAUDE.md правило) → Кроки 0–4, 6–7; Крок 1 тільки змінені файли; Крок 5 пропустити
+- **FULL** (явний `/sto-tester`) → Всі кроки 0–7; Крок 1 повний аналіз
 
 ---
 
 ## Крок 0 — Підготовка
 
 ```bash
-# 1. TypeScript — нульова точка відліку
-cd apps/web && node_modules/.bin/tsc --noEmit --incremental false 2>&1 | tail -20
+# TypeScript — нульова точка відліку
 pnpm --filter @sto/api exec tsc --noEmit
+cd apps/web && node_modules/.bin/tsc --noEmit --incremental false 2>&1 | tail -20
 pnpm --filter @sto/shared exec tsc --noEmit
 
-# 2. Запустити всі тести
+# Unit tests
 pnpm --filter @sto/api test --run 2>&1 | tail -30
+
+# Scope (AUTO: тільки змінені файли; FULL: весь проєкт)
+git diff HEAD --name-only | head -30
+cat MemoryManual.md | head -50
 ```
 
-Якщо TypeScript або тести вже червоні — зафіксуй як Bug #0 і виправ ПЕРШИМ.
+TS або unit червоні → зафіксуй як Bug #0, виправ ПЕРШИМ.
 
-### 0.1 — Перевірка optional залежностей (тільки FULL режим)
+**AUTO: матриця що перевіряти за типом зміни**
 
-```bash
-# Перевірити наявність тестових залежностей
-grep "fast-check" apps/api/package.json > /dev/null && echo "fast-check OK" || echo "fast-check MISSING — §4.4 skipped"
-grep "@testing-library/react" apps/web/package.json > /dev/null && echo "testing-library OK" || echo "testing-library MISSING — §4.6 skipped"
-test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwright MISSING — §4.5 skipped"
-```
-
-### 0.2 — Запуск dev-серверів (тільки FULL режим, тільки перед E2E)
-
-```bash
-# Перевірка стану сервісів
-docker ps --format "{{.Names}}\t{{.Status}}" | grep -E "postgres|redis|minio"
-curl -s http://localhost:3000/api/docs > /dev/null 2>&1 && echo "API:UP" || echo "API:DOWN"
-curl -s http://localhost:3001 > /dev/null 2>&1 && echo "WEB:UP" || echo "WEB:DOWN"
-```
-
-Якщо API:DOWN:
-```bash
-pnpm --filter @sto/api dev > /tmp/sto-api-dev.log 2>&1 &
-until curl -s http://localhost:3000/api/docs > /dev/null 2>&1; do sleep 3; done && echo "API ready"
-```
-
-Якщо WEB:DOWN:
-```bash
-pnpm --filter @sto/web dev > /tmp/sto-web-dev.log 2>&1 &
-until curl -s http://localhost:3001 > /dev/null 2>&1; do sleep 3; done && echo "WEB ready"
-```
-
-> Якщо після 90s сервер не піднявся — перевірити `/tmp/sto-*-dev.log`, зафіксувати як CRITICAL Bug і пропустити §4.5.
+| Тип зміни | Секції Кроку 1 |
+|---|---|
+| Новий `@Controller` / endpoint | §1.1 (tenant, soft delete), §1.2 (TS, API contract), §1.5 (contract spec) |
+| Змінений `*.service.ts` | §1.1 (business logic, FSM, inventory, settlements) |
+| Нова `page.tsx` / зміна UI | §1.3 (frontend стани, hydration, routing) |
+| Новий `*.dto.ts` | §1.2 (validation guards, @IsUUID версія) |
+| `prisma/schema.prisma` | §1.1 (soft delete fields, orgId), §1.2 (TS) |
+| `components/ui/` only | §1.3 (стани), §1.6 (a11y) |
+| Config / docs / тести | §0 (tsc) — більше нічого |
 
 ---
 
-## Крок 1 — Збір багів (статичний аналіз)
+## Крок 1 — Статичний аналіз (збір багів)
 
-> **AUTO режим:** аналізуй ТІЛЬКИ змінені файли (`git diff HEAD --name-only`). Пропускай §1.1–§1.5 для незмінених модулів.  
-> **FULL режим:** повний аналіз всіх секцій §1.1–§1.5.
+> AUTO: аналізуй ТІЛЬКИ файли з `git diff HEAD --name-only`.
+> FULL: повний аналіз всіх секцій.
 
-Кожен знайдений баг → записати в `BUG_REPORT.md`.
+Кожен знайдений баг → запиши в BUG_REPORT.md (Крок 2 — шаблон нижче).
 
-### 1.1 — Бізнес-логіка Backend
+---
 
-#### FSM нарядів (`work-orders`)
-- [ ] Перевір, що `transition()` читає з `WORK_ORDER_TRANSITIONS` — не хардкодить статуси
-- [ ] При переході → `IN_PROGRESS`: резервування запчастин через `InventoryService.createMovement(type: 'RESERVATION')`
-- [ ] При переході → `COMPLETED`: списання запчастин (`WRITEOFF`) + зняття резерву (`RESERVATION_RELEASE`) + `SettlementsService.createTransaction(type: 'CHARGE')` — у `prisma.$transaction`
-- [ ] При `CANCELLED` зі статусу де був резерв (`IN_PROGRESS`, `ON_HOLD`): зняття резерву (`RESERVATION_RELEASE`)
-- [ ] Недозволений перехід → `BadRequestException` з українським повідомленням
+### §1.1 — Бізнес-логіка Backend
 
-#### Інвентар (`inventory`)
-- [ ] Жодного прямого `prisma.stockItem.update({ data: { quantity: ... } })` поза `InventoryService`
-- [ ] При `RESERVATION`: кидає `BadRequestException` якщо `available < qty`
-- [ ] При `WRITEOFF`: кидає `BadRequestException` якщо `quantity < Math.abs(qty)`
+#### FSM нарядів
+```bash
+# FSM читається з map, не хардкодиться
+grep -rn "status.*===\|status.*==\b" apps/api/src/modules/work-orders/work-orders.service.ts | grep -v spec | grep -v "TRANSITIONS\[" | head -10
+
+# IN_PROGRESS → RESERVATION через InventoryService
+grep -rn "RESERVATION\|createMovement" apps/api/src/modules/work-orders/work-orders.service.ts | head -10
+
+# COMPLETED → WRITEOFF+CHARGE у $transaction
+grep -rn "WRITEOFF\|CHARGE\|prisma\.\$transaction" apps/api/src/modules/work-orders/work-orders.service.ts | head -10
+```
+
+- [ ] `transition()` читає з `WORK_ORDER_TRANSITIONS` map — не хардкодить статуси
+- [ ] `IN_PROGRESS` → резервування через `InventoryService.createMovement(RESERVATION)`
+- [ ] `COMPLETED` → `WRITEOFF` + `RESERVATION_RELEASE` + `SettlementsService.createTransaction(CHARGE)` у `prisma.$transaction`
+- [ ] `CANCELLED` зі статусу з резервом → `RESERVATION_RELEASE`
+- [ ] Недозволений перехід → `BadRequestException` українською
+
+#### Інвентар
+```bash
+# Прямий update stockItem (заборонено поза InventoryService)
+grep -rn "stockItem\.update\|stockItem\.upsert" apps/api/src/modules/ --include="*.ts" | grep -v "inventory.service\|spec" | head -10
+
+# Guards у InventoryService
+grep -n "available\|quantity\|BadRequestException" apps/api/src/modules/inventory/inventory.service.ts | head -20
+```
+
+- [ ] Жодного прямого `prisma.stockItem.update({ quantity })` поза `InventoryService`
+- [ ] `RESERVATION`: `available < qty` → `BadRequestException`
+- [ ] `WRITEOFF`: `quantity < Math.abs(qty)` → `BadRequestException`
 - [ ] `quantity=0` → `BadRequestException`
-- [ ] `RESERVATION_RELEASE` з позитивним qty → `BadRequestException`
 
-#### Розрахунки (`settlements`)
-- [ ] Жодного прямого `prisma.settlementAccount.update({ data: { balance: ... } })` поза `SettlementsService`
-- [ ] Тип `CHARGE` збільшує баланс (клієнт нам винен)
-- [ ] Типи `PAYMENT`, `PREPAYMENT`, `REFUND`, `CREDIT_NOTE` — зменшують баланс
-- [ ] Немає `SettlementAccount` для контрагента → `NotFoundException`
+#### Розрахунки
+```bash
+# Прямий update balance (заборонено поза SettlementsService)
+grep -rn "settlementAccount\.update\|balance.*decrement\|balance.*increment" apps/api/src/modules/ --include="*.ts" | grep -v "settlements.service\|spec" | head -5
+```
+
+- [ ] Жодного прямого `prisma.settlementAccount.update({ balance })` поза `SettlementsService`
+- [ ] `CHARGE` збільшує баланс; `PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE` — зменшують
 
 #### Tenant Isolation
-- [ ] Кожен `findFirst` / `findMany` / `update` / `delete` містить `orgId` у `where`
-- [ ] FK-валідація в синхронізації: `customerGarageId`, `liftId`, `employeeId`, `workOrderId` перевіряються по `orgId`
+```bash
+# findFirst/findMany без orgId
+grep -rn "findFirst\|findMany\|findUnique" apps/api/src/modules/ --include="*.service.ts" | grep -v "orgId\|spec\|//.*find" | head -20
+```
+
+- [ ] Кожен `findFirst` / `findMany` / `update` містить `orgId` у `where`
 
 #### Soft Delete
-- [ ] Всі `findFirst` / `findMany` містять `deletedAt: null`
-- [ ] **Виключення** (моделі без `deletedAt`): `SettlementAccount`, `SettlementTransaction`, `StockMovement`, `Payment`, `WorkOrderLineEmployee` — там `deletedAt` фільтр НЕ потрібен
-- [ ] **Relation-фільтри теж** — якщо `findMany` рендериться в UI з FK на іншу soft-deletable модель, додати `where: { relatedModel: { deletedAt: null } }`. Інакше видалені сутності з'являються у списках/widgets (наприклад: `MaintenanceSchedule.findUpcoming` має фільтрувати `vehicle: { deletedAt: null }`).
+```bash
+# findFirst без deletedAt: null
+grep -rn "findFirst\|findMany" apps/api/src/modules/ --include="*.service.ts" | grep -v "deletedAt\|spec\|StockMovement\|SettlementTransaction\|Payment\|WorkOrderLineEmployee\|EmployeeBranch" | head -20
+
+# Прямий hard delete (заборонено)
+grep -rn "prisma\.[a-zA-Z]*\.delete(" apps/api/src/modules/ --include="*.service.ts" | grep -v spec | head -10
+```
+
+- [ ] Всі `findFirst` / `findMany` мають `deletedAt: null` (окрім append-only моделей)
+- [ ] Append-only без `deletedAt`: `SettlementTransaction`, `StockMovement`, `Payment`, `WorkOrderLineEmployee`
 - [ ] Жодного `prisma.X.delete()` на бізнес-сутностях
-- [ ] **Soft-delete + повний `@@unique` = повторне створення неможливе** (Bug #152). Якщо модель має `@@unique([orgId, code])` БЕЗ partial-фільтра (`WHERE "deletedAt" IS NULL`), то soft-deleted рядок все ще займає унікальний ключ. App-level dup-check фільтрує `deletedAt: null` → проходить → `prisma.create` падає на DB P2002 → generic 409. Сценарій: видалив валюту "USD" → не можеш створити "USD" знову. Канон у `create()`: після перевірки активного дубля шукай soft-deleted рядок з тим самим ключем (`NOT: { deletedAt: null }`) і **воскрешай** через `update({ ...dto, deletedAt: null })` замість `create`.
-  ```bash
-  # Знайти повні @@unique (не partial) у schema.prisma на soft-deletable моделях
-  grep -n "@@unique" packages/database/prisma/schema.prisma
-  # Перевірити чи відповідна міграція має "WHERE ... IS NULL" — якщо НІ, а create() лише
-  # перевіряє deletedAt:null без resurrection — це баг
-  grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "WHERE"
-  ```
-- [ ] **PATCH що змінює unique-поле має re-check унікальності** (Bug #151). Якщо `create()` робить explicit dup-check по `@@unique`, то `update()` теж мусить — інакше PATCH на зайняте значення покладається на DB P2002 → generic 409 замість локалізованого `ConflictException`. Канон: `if (dto.field !== undefined && dto.field !== existing.field) { duplicate = findFirst({ ...uniqueKey, NOT: { id } }); if (duplicate) throw ConflictException }`.
 
-#### API Contract — list endpoints
-- [ ] **Кожен list endpoint повертає `{ items, total, page?, limit? }`** — frontend всюди очікує `data.items.length`. Bare-array відповіді крашать з `TypeError: Cannot read properties of undefined`. Якщо `.catch(() => {})` ховає це — баг невидимий.
-  ```bash
-  # Знайти findAll що повертають голий масив
-  grep -rn "async findAll\|Promise<.*\[\]>" apps/api/src/modules/ --include="*.service.ts" | grep -v "Paginated\|Dto\[\]>\|spec"
-  ```
-
-#### Cross-service auto-side-effects
-- [ ] **Re-read entity всередині транзакції** перед auto-FSM-transition: `tx.X.update({ status: 'NEXT' })` після читання поза tx → race vікно + FSM bypass.
-- [ ] **Catch не ковтає всі помилки**: `.catch(() => {})` після `await someService.doX()` ховає реальні баги. Шаблон: `if (!msg.includes('очікувана_бізнес_помилка')) logger.warn(...)`.
-- [ ] **PATCH selective recalc**: `const next = dto.next ?? calc(...)` затирає `existing.next` якщо calc → null. Використовуй `shouldRecalc = INPUT_FIELDS.some(f => dto[f] !== undefined)`.
-
-#### Append-only таблиці
-- [ ] `StockMovement`, `SettlementTransaction` — ніколи не оновлюються і не видаляються
-
-#### Захист на рівні сервісу (defense-in-depth)
-- [ ] `SettlementsService.createTransaction` — внутрішня перевірка `amount > 0` і `Number.isFinite(amount)` (не покладатись лише на DTO `@Min`)
-- [ ] `InventoryService.createMovement` — guards на `quantity=0`, `available < |qty|`, `RESERVATION_RELEASE > reserved`, `RESERVATION_RELEASE` з positive qty
-- [ ] Будь-який `$queryRaw`/`$executeRaw` має `LIMIT N` — Prisma `take:` не діє на raw queries
-  ```bash
-  grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" | grep -v spec
-  # Для кожного — перевір що SQL закінчується "LIMIT N"
-  ```
-- [ ] **Raw SQL identifier casing** — Prisma schema без `@map` створює Postgres колонки **double-quoted camelCase** (`"orgId"`, `"goodId"`, `"deletedAt"`, `"minStock"`). Snake_case (`org_id`, `good_id`) **НЕ ПРАЦЮЄ**. Постгрес folds unquoted identifiers to lowercase і не знаходить `"orgId"`.
-  ```bash
-  # Знайти всі raw SQL і перевірити що ідентифікатори у camelCase з лапками
-  grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" -A 30 | grep -E "org_id|deleted_at|created_at|updated_at|good_id|warehouse_id|min_stock|current_seq|reset_period|last_reset|include_date|document_type"
-  # Якщо щось знаходить — це CRITICAL bug: SQL крашиться з "column does not exist"
-  ```
-  Перевірка реальних колонок:
-  ```bash
-  docker exec stoerp-postgres-1 psql -U sto -d sto_erp \
-    -c "SELECT column_name FROM information_schema.columns WHERE table_name='<table>'"
-  ```
-  Приклад правильного raw SQL:
-  ```sql
-  SELECT id, "orgId", "currentSeq", "lastResetYear"
-  FROM document_number_configs
-  WHERE "orgId" = ${orgId}::uuid
-    AND "documentType" = ${documentType}::"DocumentType"
-  FOR UPDATE
-  LIMIT 1
-  ```
-
-#### Нумерація документів
-- [ ] Номери генеруються через `DocumentNumberService.next(orgId, type)` — не хардкодяться у форматі
-- [ ] `DocumentNumberConfig` читається по `orgId` — не по глобальному конфігу
-
-#### Prisma model name lookup (snake_case table → camelCase model)
-- [ ] **Plural table → singular model** — Prisma client експонує моделі **тільки у СІНГУЛЯР camelCase** (`prisma.workOrder`, `prisma.counterparty`, `prisma.warranty`). Postgres таблиці через `@@map` — **ПЛЮРАЛ** (`work_orders`, `counterparties`, `warranties`). Наївний `snake_to_camel` дає `workOrders` плюрал → `prisma.workOrders === undefined` → `TypeError: Cannot read properties of undefined`. Catch навколо async-функції НЕ ловить синхронний `.method` access на `undefined`. Bug #127.
-  ```bash
-  # Знайти підозрілі patternи snake_case → camelCase
-  grep -rn "toCamel\|snake.*camel\|snakeCase" apps/api/src --include="*.ts" | grep -v spec
-  # Для кожного — переконатись що є явний table→model map, або викликається лише з singular forms
-  ```
-- [ ] Якщо знайдено динамічний `(prisma as any)[modelName]` — мати **explicit table→model Record** + `if (!model) throw new Error(...)` (швидше провалюватись на dev ніж тихо повертати undefined).
-- [ ] **Pull/push/sync що повертають Prisma rows напряму у response** — кожне `BigInt` поле (`syncVersion`) і `Decimal` поле має бути конвертоване через `Number()`/`.toNumber()`. `payload = { ...row }` → 500 на JSON.stringify. Bug #128.
-  ```bash
-  # Знайти sync/payload patterns
-  grep -rn "payload.*\.\.\.row\|payload.*= row\|{ \.\.\.row }" apps/api/src/modules --include="*.ts" | grep -v spec
-  ```
-
-#### Алгоритми та формули (ОБОВ'ЯЗКОВО при змінах у pricing/batch/work-orders)
-
+**Soft-delete + `@@unique` = P2002 при повторному створенні (Bug #152)**
 ```bash
-# Перевірити FEFO — nulls last (товари без терміну ідуть В КІНЦІ, не на початку)
-grep -n "expiryDate\|FEFO" apps/api/src/modules/inventory/batch.service.ts
-# Очікується: { expiryDate: 'asc', nulls: 'last' }
-
-# Перевірити AVG_COST — зважене, не просте
-grep -n "avgCost\|totalCost\|totalQty\|AVG_COST" apps/api/src/modules/inventory/batch.service.ts
-
-# Перевірити округлення цін — Math.round (не ceil/floor)
-grep -n "Math\.round\|Math\.ceil\|Math\.floor" apps/api/src/modules/inventory/pricing.service.ts
-
-# Перевірити захист від від'ємної ціни
-grep -n "Math.max" apps/api/src/modules/inventory/pricing.service.ts
-
-# Перевірити Decimal cast у recalcTotals
-grep -n "Number(l\.\|Number(p\.\|totalLabor\|totalParts" apps/api/src/modules/work-orders/work-orders.service.ts
+# Знайти @@unique без partial WHERE deletedAt IS NULL у міграції
+grep -n "@@unique" packages/database/prisma/schema.prisma
+grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "WHERE"
 ```
+- [ ] Якщо `@@unique([orgId, X])` без `deletedAt` у partial filter → `create()` має **resurrection pattern**: `findFirst({ NOT: { deletedAt: null } })` → якщо знайшов, `update({ ...dto, deletedAt: null })` замість `create`
 
-- [ ] Pricing: `PERCENT` = `cost * (1 + pct/100)` — не `cost + pct/100`
-- [ ] Pricing: `FIXED_AMOUNT` = `cost + delta` — не `cost * delta`
-- [ ] Pricing: `FIXED_PRICE` fallback = `fixedPrice ?? costPrice` — не `fixedPrice ?? 0`
-- [ ] Pricing: округлення = `Math.round(result / r) * r` — не `Math.ceil` і не `Math.floor`
-- [ ] Pricing: floor guard = `Math.max(0, result)` присутній (ціна не від'ємна)
-- [ ] Pricing: `Number(rule.percentValue ?? 0)` — Decimal cast перед арифметикою
-- [ ] Batch FEFO: `[{ expiryDate: 'asc', nulls: 'last' }, { createdAt: 'asc' }]` — `nulls: 'last'` обов'язковий
-- [ ] Batch AVG_COST: `SUM(qty * price) / SUM(qty)` — не `SUM(price) / count`
-- [ ] Batch loop: `Math.min(remaining, batch.remainingQty)` — не `batch.remainingQty` напряму
-- [ ] Batch loop: після циклу якщо `remaining > 0` → `throw BadRequestException` (недостатньо в батчах)
-- [ ] recalcTotals: `Number(l.amount)` cast (Decimal у reduce без cast → рядкова конкатенація)
-- [ ] recalcTotals: `totalAmount = totalLabor + totalParts` — дві окремі суми, не одна
-- [ ] PriceHistory: `create` тільки якщо нова ціна відрізняється від `good.salePrice` (>0.001 tolerance)
+**PATCH що змінює unique-поле → ConflictException (Bug #151)**
+- [ ] `update()` з `dto.field` що є у `@@unique` → re-check: `findFirst({ orgId, field, NOT: { id } })` → `ConflictException` якщо знайшов
 
-### 1.2 — TypeScript / API якість
-
-- [ ] Немає `any` (крім виправданих `as unknown as T`)
-- [ ] `toResponseDto()` присутній — жоден `prisma.*` модель не повертається напряму в controller
-- [ ] DTO-поля мають `@ApiProperty`
-- [ ] Помилки `throw new XxxException('...')` — повідомлення українською
-- [ ] `pnpm --filter @sto/web exec tsc --noEmit` — 0 errors
-- [ ] `pnpm --filter @sto/api exec tsc --noEmit` — 0 errors
-
-### 1.2.1 — Sentry інтеграція
-
+#### List endpoints — API contract
 ```bash
-# Перевірити що instrument.ts є першим імпортом у main.ts
-head -3 apps/api/src/main.ts | grep "instrument"
-
-# Перевірити що Sentry.captureException викликається тільки для 5xx
-grep -n "captureException\|captureMessage" apps/api/src/common/filters/http-exception.filter.ts
-
-# Перевірити що enabled: false у development
-grep -n "enabled" apps/api/src/instrument.ts
-grep -n "enabled" apps/web/src/lib/sentry.ts
-
-# Перевірити що SentryProvider є у root layout
-grep -n "SentryProvider" apps/web/src/app/layout.tsx
+# findAll що повертають голий масив замість { items, total }
+grep -rn "return.*\[\]\|return items\b\|return result\b" apps/api/src/modules/ --include="*.service.ts" | grep -v "spec\|toDto\|map(" | head -10
 ```
+- [ ] Кожен list endpoint → `{ items, total }` (не голий масив)
 
-- [ ] `apps/api/src/instrument.ts` існує і є першим `import` у `main.ts` (до `@nestjs/core`)
-- [ ] `Sentry.init({ enabled: process.env.NODE_ENV === 'production' && !!dsn })` — у development Sentry вимкнений
-- [ ] `HttpExceptionFilter` — `captureException`/`captureMessage` тільки коли `status >= 500`; 4xx НЕ надсилаються
-- [ ] `beforeSend` у `instrument.ts` — додатковий фільтр: відхиляє events з `status_code < 500`
-- [ ] `apps/web/src/lib/sentry.ts` — `initSentry()` з `enabled: NODE_ENV === 'production' && !!dsn`
-- [ ] `SentryProvider` присутній у `apps/web/src/app/layout.tsx` (НЕ у setup layout)
-- [ ] У `apps/web/src/app/(setup)/layout.tsx` — `SentryProvider` **відсутній** (setup ізольований)
-- [ ] `NEXT_PUBLIC_SENTRY_DSN` і `SENTRY_DSN` є у `.env.example` (з placeholder, не реальним DSN)
-
-### 1.3 — Frontend (Next.js)
-
-→ Виконати всі перевірки **§8 Web Frontend** зі `sto-review/SKILL.md` (UI стани, hydration, routing, SSE, Tailwind, async-init Select, UX features).
-
-Додатково перевірити у контексті тестування:
-
-- [ ] **Free-text `<Input>` що приймає UUID** (наприклад, workOrderId) — має клієнтську UUID-валідацію ПЕРЕД submit.
-  ```typescript
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
-    setError('ID наряду має бути у форматі UUID'); return;
-  }
-  ```
-  ```bash
-  grep -rn "workOrderId\|vehicleId\|employeeId\|counterpartyId\|liftId" apps/web/src/app --include="*.tsx" \
-    | grep "onChange.*e\.target\.value\|value=\{form\." | grep -v "Select\|<select"
-  ```
-- [ ] **`apiFetch` error array join**: сервер повертає `{ message: string[] }` при validation errors. `apiFetch` має `Array.isArray(msg) ? msg.join('; ') : msg`.
-- [ ] **Async-init Select race**: `<Select value={form.xxxId}>` ініціалізується `''` → опції завантажуються async → перший option показується візуально але `form.xxxId = ''` → API 400. Фікс: `useEffect(() => { if (modal && !form.xxxId && options[0]) setForm(f => ({...f, xxxId: options[0].id})); }, [options, modal])`.
-  ```bash
-  grep -rn "value=\{form\." apps/web/src/app --include="*.tsx" | grep -v "//\|onChange"
-  # Для кожного — перевірити чи опції завантажуються async і чи є sync useEffect
-  ```
-- [ ] **`.catch(() => {})` на list-fetch у `useEffect` — ховає loading/error стан** (Bug #145). Будь-який `apiFetch(...).then(setX).catch(() => {})` у mount/tab-effect має 4 запахи: (1) loading-прапорець оголошений але `setLoading(true)` ніколи не викликається → empty-state блимає під час завантаження; (2) `.catch(() => {})` ковтає 500 → виглядає як "немає даних"; (3) немає cancelled-flag → setState після unmount; (4) мертвий loading-state (declared, never read у JSX). Канон для кожного list-fetch effect: `let cancelled=false` + `return () => {cancelled=true}`; `setLoading(true)` перед, `.finally(() => !cancelled && setLoading(false))`; `.catch((e) => !cancelled && setError(e instanceof Error ? e.message : 'Помилка...'))`; у JSX `{loading && <Spinner/>}` + `{!loading && items.length===0 && <Empty/>}`.
-  ```bash
-  # Знайти fetch-и що тихо ковтають помилки
-  grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx"
-  # Знайти loading-state що оголошений але ніколи не set true
-  grep -rn "const \[loading" apps/web/src/app --include="*.tsx"  # → перевірити setLoading(true) існує
-  ```
-- [ ] **UUID у контракт-тестах має валідну версію**: `@IsUUID()` (default version 'all') ВІДХИЛЯЄ nil/zero-version UUID `00000000-...-000000000001` (13-й hex = `0` не version 1-5) → 400 `"X must be a UUID"`. У `*.contract.spec.ts` для UUID-полів використовувати `11111111-1111-4111-8111-111111111111` (v4 layout), не nil-UUID. Це test-only баг — фіксувати ТЕСТ.
-
-### 1.4 — Тести Backend _(AUTO: тільки якщо змінено *.spec.ts або service; FULL: завжди)_
-
-#### Unit-тести (`.spec.ts`) — перевір покриття
-
-| Сервіс | Обов'язкові тест-кейси |
-|---|---|
-| `work-orders.service` | happy path create; FSM invalid transition throws; soft delete; IN_PROGRESS резервує запчастини; COMPLETED списує і виставляє рахунок |
-| `inventory.service` | createMovement RECEIPT збільшує qty; RESERVATION зменшує available; WRITEOFF кидає при insufficient stock; qty=0 кидає |
-| `settlements.service` | CHARGE збільшує balance; PAYMENT зменшує; немає account → NotFoundException |
-| `auth.service` | login happy path; login wrong password; login deleted employee; refresh invalid token |
-| `sync.service` | pull фільтрує по orgId і syncVersion; push відхиляє заборонені таблиці; push cross-tenant FK кидає |
-
-#### Contract-тести (`.contract.spec.ts`) — перевір HTTP шар
-
-| Модуль | Обов'язкові contract тест-кейси |
-|---|---|
-| `work-orders` | GET /work-orders → 200 + pagination shape; POST без полів → 400; 401 без токена |
-| `inventory` | GET /stock-items → 200 + items[].available; POST /movements → 400 при qty=0 |
-| `auth` | POST /auth/login → 200 + accessToken + employee shape; 401 при невірному паролі |
-| `settlements` | GET /settlements/accounts → 200 + balance є числом |
-| `sync` | GET /sync/pull → 200 + records + maxSyncVersion |
-
-Перевірити наявність contract тестів:
+#### Raw SQL — casing та LIMIT
 ```bash
-find apps/api/src -name "*.contract.spec.ts" | sort
-# Якщо файлів немає — це LOW bug: відсутнє contract покриття
+# Raw SQL без LIMIT
+grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" | grep -v spec
+
+# snake_case колонки у raw SQL (має бути camelCase з лапками)
+grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" -A 20 | grep -E "org_id|deleted_at|created_at|updated_at|good_id|warehouse_id|min_stock" | head -10
 ```
+- [ ] Кожен `$queryRaw` має `LIMIT N` (Prisma `take:` не впливає)
+- [ ] Raw SQL ідентифікатори — camelCase у лапках: `"orgId"`, `"deletedAt"` (не `org_id`)
 
-#### Property-based тести (`.invariants.spec.ts`) — перевір інваріанти
-
-| Модуль | Обов'язкові інваріанти |
-|---|---|
-| `work-orders.fsm` | всі пари (from, to): якщо to ∉ TRANSITIONS[from] → blocked; ARCHIVED/CANCELLED → порожні списки |
-| `inventory` | після валідних рухів: quantity≥0, reserved≥0, available≥0 |
-| `settlements` | CHARGE підвищує баланс; PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE знижують |
-
-Перевірити наявність property тестів:
+#### Алгоритми ціноутворення та партій
 ```bash
-find apps/api/src -name "*.invariants.spec.ts" | sort
-# Якщо файлів немає і fast-check встановлений — це MEDIUM bug
+# FEFO — nulls last обов'язково
+grep -n "expiryDate" apps/api/src/modules/inventory/batch.service.ts | head -5
+
+# AVG_COST — зважена, не проста
+grep -n "AVG_COST\|avgCost\|totalCost" apps/api/src/modules/inventory/batch.service.ts | head -5
+
+# Decimal cast у recalcTotals
+grep -n "Number(l\.\|Number(p\.\|totalLabor\|totalParts" apps/api/src/modules/work-orders/work-orders.service.ts | head -5
 ```
+- [ ] FEFO: `[{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }]`
+- [ ] `PERCENT` = `cost * (1 + pct/100)`; `FIXED_AMOUNT` = `cost + delta`; `FIXED_PRICE` fallback = `fixedPrice ?? costPrice`
+- [ ] Округлення = `Math.round(result / r) * r`; захист від від'ємної ціни = `Math.max(0, result)`
+- [ ] `recalcTotals`: `Number(l.amount)` cast (Decimal без cast → рядкова конкатенація)
+- [ ] Batch loop: `Math.min(remaining, batch.remainingQty)`; якщо `remaining > 0` після циклу → `BadRequestException`
 
-### 1.5 — Тести Frontend _(тільки FULL режим)_
-
-#### Component-тести (`src/components/ui/__tests__/*.test.tsx`)
-
-| Компонент | Обов'язкові тест-кейси |
-|---|---|
-| `Button` | всі variants рендеряться; disabled блокує; loading показує spinner |
-| `Select` | placeholder як disabled option; label/errorMessage/hint присутні |
-| `Modal` | закритий не рендерить; Escape → onClose; footer рендерить кнопки |
-| `Input` | label/errorMessage/hint відображаються |
-| `EmptyState` | title + description; action кнопка якщо передана |
-
-Перевірити наявність:
+#### $transaction timeout
 ```bash
-find apps/web/src -name "*.test.tsx" | sort
-# Якщо 0 файлів — це LOW bug (відсутнє component покриття)
+# $transaction без timeout
+for f in $(grep -rl "\$transaction(async" apps/api/src --include="*.ts" | grep -v spec); do
+  tx=$(grep -c "\$transaction(async" "$f")
+  to=$(grep -c "timeout:" "$f")
+  if [ "$tx" -gt "$to" ]; then echo "MISMATCH $f: $tx transactions, $to timeouts"; fi
+done
 ```
+- [ ] Кожен `$transaction(async callback)` має `{ timeout: N }` (5000–15000ms)
 
-#### E2E тести (`e2e/*.spec.ts`) — smoke + user flows
+---
 
-| Тест файл | Мінімальне покриття |
-|---|---|
-| `smoke.spec.ts` | / і /login доступні; /setup без auth; /work-orders без auth → /login |
-| `work-order-flow.spec.ts` | список WO завантажується; API mock: IN_PROGRESS WO показує кнопку COMPLETED |
-| `inventory.spec.ts` | список завантажується; low-stock badge при minStock < quantity; empty state |
-| `api-errors.spec.ts` | кожна сторінка показує error state при 500 від API |
-
-Перевірити покриття E2E:
-```bash
-find apps/web/e2e -name "*.spec.ts" | sort
-# smoke.spec.ts — обов'язковий, решта — рекомендовані
-```
-
-### 1.6 — Accessibility (a11y) _(тільки FULL режим)_
+### §1.2 — TypeScript / API якість
 
 ```bash
-# Кнопки з onClick на не-інтерактивних елементах
-grep -rn "onClick" apps/web/src/ --include="*.tsx" | grep -E "<div|<span|<p " | grep -v "role="
+# any без виправданого cast
+grep -rn ": any\b\|as any\b" apps/api/src/modules/ --include="*.ts" | grep -v "as unknown as\|spec" | head -10
 
-# Зображення без alt
-grep -rn "<img" apps/web/src/ --include="*.tsx" | grep -v "alt="
+# Prisma model напряму в response
+grep -rn "return.*await.*prisma\|res\.json.*prisma\|return prisma" apps/api/src/modules/ --include="*.controller.ts" | grep -v spec | head -10
 
-# aria-label на іконкових кнопках
-grep -rn "<Button" apps/web/src/ --include="*.tsx" | grep -E "(<[A-Z][a-z]+Icon|lucide)" | grep -v "aria-label\|aria-describedby\|title"
+# BigInt у response без Number() cast
+grep -rn "syncVersion\b" apps/api/src/modules/ --include="*.service.ts" | grep -v "Number(\|toNumber()\|spec\|where\|select\|BigInt" | head -10
 
-# SearchCombobox / combobox — WAI-ARIA wiring
-grep -rn "role=\"combobox\"\|role=\"listbox\"\|aria-expanded" apps/web/src/ --include="*.tsx" | head -20
-```
+# @IsUUID без версії — відхиляє nil-UUID (test-only баг)
+grep -rn "@IsUUID()" apps/api/src/modules/ --include="*.dto.ts" | head -5
 
-- [ ] Кожен `onClick` на `<div>` / `<span>` — додати `role="button"` та `tabIndex={0}` + `onKeyDown` handler
-- [ ] Всі `<img>` мають `alt` (описовий для контентних, `alt=""` для декоративних)
-- [ ] Іконкові кнопки (без тексту) мають `aria-label` або `<span className="sr-only">`
-- [ ] `<SearchCombobox>` або combobox pattern: `role="combobox"` + `aria-expanded` + `aria-controls` → `role="listbox"` + `role="option"` на кожному елементі
-- [ ] Modal закривається по `Escape` — `onKeyDown` handler у `<Modal>` компоненті
-- [ ] Форми мають `<label htmlFor>` або `aria-label` на кожному `<input>` / `<select>`
-- [ ] **opacity-0 pattern**: `opacity-0 pointer-events-none` для приховання контенту — переконатись що `aria-hidden="true"` теж присутній (screen readers читають opacity-0 елементи)
-  ```bash
-  grep -rn "opacity-0" apps/web/src/ --include="*.tsx" | grep -v "aria-hidden\|transition\|group-hover"
-  ```
-- [ ] Focus order логічний — tab переміщується у порядку DOM (нема `tabIndex > 0`)
-  ```bash
-  grep -rn "tabIndex=[^{]0}" apps/web/src/ --include="*.tsx" | grep -v "tabIndex={0}"
-  ```
+# ParseUUIDPipe відсутній
+grep -rn "@Param('id')" apps/api/src/ --include="*.controller.ts" | grep -v "ParseUUIDPipe" | head -10
 
-### 1.7 — i18n & Ukrainian UI Consistency _(тільки FULL режим)_
-
-```bash
-# Англійські рядки у JSX (підозрілі — може бути умисно для власних назв)
-grep -rn ">[A-Z][a-z]* [A-Z][a-z]*<\|>[A-Z][a-z]* [a-z]* [A-Z][a-z]*<" apps/web/src/app/ --include="*.tsx" \
-  | grep -v "className\|import\|//\|{" | head -30
-
-# Англійські повідомлення про помилки в API
+# Ukrainian error messages
 grep -rn "throw new.*Exception\|throw new.*Error" apps/api/src/modules/ --include="*.ts" \
-  | grep -E "['\"](Cannot|Invalid|Not found|Already|Forbidden|Unauthorized|Failed)" | grep -v "spec"
-
-# Логування без перекладу (ок — але перевірити що user-facing messages — не лог-рядки)
-grep -rn "message:.*['\"].*[A-Z][a-z]" apps/api/src/modules/ --include="*.ts" \
-  | grep "NotFoundException\|BadRequestException\|ForbiddenException" | grep -v "spec" | head -20
+  | grep -E "['\"](Cannot|Invalid|Not found|Already|Forbidden|Unauthorized|Failed)" | grep -v spec | head -10
 ```
 
-- [ ] Всі user-facing рядки у JSX — кирилицею (`uk-UA`)
-- [ ] Всі `throw new XxxException('...')` у сервісах — повідомлення українською
-- [ ] Дати відображаються у форматі `DD.MM.YYYY` — не `YYYY-MM-DD` або `MM/DD/YYYY`
-  ```bash
-  grep -rn "toLocaleDateString\|toISOString\|new Date.*toStr" apps/web/src/app/ --include="*.tsx" | grep -v "useEffect\|api"
-  # Перевірити що використовується форматування з локаллю uk-UA або date-fns uk
-  ```
-- [ ] Валюта відображається як `1 250,00 ₴` — не `UAH 1250.00` або `$1250`
-  ```bash
-  grep -rn "toFixed\|toLocaleString\|UAH\|грн" apps/web/src/ --include="*.tsx" | grep -v "//\|import" | head -20
-  ```
-- [ ] Час — `HH:mm` (24-год), не `12:30 PM`
-- [ ] Тиждень починається з понеділка (`weekStartsOn: 1` у date-fns / react-day-picker)
-  ```bash
-  grep -rn "weekStartsOn\|startOfWeek\|getDay" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "node_modules"
-  ```
-- [ ] Placeholder тексти — кирилицею (`Введіть назву...`, не `Enter name...`)
-  ```bash
-  grep -rn "placeholder=" apps/web/src/ --include="*.tsx" | grep -E '"[A-Z][a-z]' | head -20
-  ```
+- [ ] Немає `any` (крім `as unknown as T`)
+- [ ] `toResponseDto()` — жоден Prisma model не повертається напряму
+- [ ] `syncVersion: Number(row.syncVersion)` у всіх DTO (Decimal/BigInt → Number)
+- [ ] `@Param(':id')` → `ParseUUIDPipe`
+- [ ] `throw new XxxException('...')` — повідомлення українською
+- [ ] `@IsUUID()` без версії ('all') відхиляє nil-UUID → у **тестах** для UUID-полів: `11111111-1111-4111-8111-111111111111` (v4 layout)
+
+---
+
+### §1.3 — Frontend (Next.js)
+
+```bash
+# .catch(() => {}) на fetch — ховає помилки
+grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx"
+
+# loading оголошений але setLoading(true) відсутній
+grep -rn "const \[loading.*false" apps/web/src/app --include="*.tsx" | head -10
+# → для кожного перевірити чи є setLoading(true) перед fetch
+
+# cancelled flag відсутній
+grep -rn "useEffect" apps/web/src/app --include="*.tsx" -A 10 | grep "apiFetch\|apiMultipartFetch" | grep -v "cancelled\|mounted" | head -10
+
+# Async-init Select race
+grep -rn "value=\{form\." apps/web/src/app --include="*.tsx" | grep -v "//\|onChange" | head -20
+# Для кожного — перевірити що опції завантажуються async і є sync useEffect автовибору
+
+# SSR-safe date (new Date() у render = hydration mismatch)
+grep -rn "new Date()\|Date\.now()" apps/web/src/app --include="*.tsx" | grep -v "useEffect\|getTime\|setDate\|//\|spec" | head -10
+
+# key={i} у списках з filter/sort
+grep -rn "key={i}\|key={index}" apps/web/src/app --include="*.tsx" | head -10
+
+# apiFetch у PUBLIC_ROUTES сторінках (public pages мають publicFetch)
+grep -rn "apiFetch\|apiBlobFetch" apps/web/src/app --include="*.tsx" | grep -E "booking|setup" | head -5
+
+# React.X без named import
+grep -rn "React\.\(ReactNode\|CSSProperties\|ChangeEvent\|MouseEvent\|FormEvent\)" apps/web/src/ --include="*.tsx" | grep -v "//\|spec" | head -10
+```
+
+- [ ] Кожен list-fetch в `useEffect` має: `let cancelled=false` + `return () => {cancelled=true}`; `setLoading(true)` перед; `.finally(() => !cancelled && setLoading(false))`; `.catch((e) => !cancelled && setError(...))`; у JSX `{loading && <Spinner/>}` + `{!loading && items.length===0 && <Empty/>}`
+- [ ] `new Date()` у render path → `useState<Date|null>(null)` + `useEffect(() => setToday(new Date()), [])`
+- [ ] `key={i}` у списках де можлива re-order/filter → `key={item.id}` або stable derived key
+- [ ] PUBLIC_ROUTES (`/booking`, `/setup`, `/login`, `/403`) → `publicFetch`, не `apiFetch`
+- [ ] `import type { ReactNode, ChangeEvent, MouseEvent } from 'react'` (не `React.ReactNode`)
+- [ ] `setTimeout` / `setInterval` у `useEffect` → `clearTimeout` / `clearInterval` у cleanup
+
+---
+
+### §1.4 — Security (FULL режим)
+
+```bash
+# SSRF guard на webhook/external URL
+grep -rn "validatePublicUrl\|url-guard" apps/api/src/modules/ --include="*.ts" | grep -v spec | head -10
+
+# fetch без redirect: 'manual' на user-supplied URL
+grep -rn "fetch(.*url\|fetch(dto\." apps/api/src/modules/ --include="*.ts" | grep -v "redirect:\|spec" | head -5
+
+# @IsArray без @ArrayMaxSize
+grep -rn "@IsArray()" apps/api/src/modules/ --include="*.dto.ts" -A 2 | grep -v "ArrayMaxSize" | head -10
+
+# @IsString без @MaxLength (DoS)
+grep -rn "@IsString()" apps/api/src/modules/ --include="*.dto.ts" | grep -v "MaxLength\|IsIn\|IsEmail\|IsUrl\|Matches\|spec" | head -20
+```
+
+- [ ] User-supplied URL що server fetch-ить → `validatePublicUrl()` (`apps/api/src/common/utils/url-guard.ts`)
+- [ ] `fetch(userUrl)` → `{ redirect: 'manual' }` + перевірка 3xx → block
+- [ ] `@IsArray()` → `@ArrayMaxSize(N)` (N = реалістичний бізнес-ліміт)
+- [ ] Вільний `@IsString()` → `@MaxLength(N)` (anti-DoS)
+- [ ] `@IsIn(['A','B','C'])` для union-string типів (`'OK' | 'WARN' | 'CRITICAL'`)
+
+---
+
+### §1.5 — Тест-покриття Backend
+
+```bash
+# Contract тести
+find apps/api/src -name "*.contract.spec.ts" | sort
+
+# Property-based тести
+find apps/api/src -name "*.invariants.spec.ts" | sort
+
+# Unit тести нових сервісів
+git diff HEAD --name-only | grep "service.ts" | while read f; do
+  spec="${f%.ts}.spec.ts"
+  [ -f "$spec" ] && echo "OK: $spec" || echo "MISSING spec: $spec"
+done
+
+# Стала spec після рефактору — нова constructor-залежність не замокана у TestingModule
+# (NestJS DI fail "Nest can't resolve dependencies ... at index [N]")
+for svc in $(git log --oneline -10 --name-only | grep "service.ts$" | sort -u); do
+  spec="${svc%.ts}.spec.ts"
+  [ -f "$spec" ] || continue
+  # кожен private readonly у конструкторі сервісу має бути provided у спеці
+  deps=$(grep -oE "private readonly [a-zA-Z]+: [A-Z][a-zA-Z]+" "$svc" | grep -oE ": [A-Z][a-zA-Z]+" | tr -d ': ')
+  for d in $deps; do
+    grep -q "$d" "$spec" || echo "STALE SPEC $spec: missing provider/mock for $d (constructor dep of $svc)";
+  done
+done
+
+# Застарілий mock-call-count: сервіс спрощено до 1 findFirst, але spec мокає двічі
+grep -rn "mockResolvedValueOnce(null)" apps/api/src --include="*.spec.ts" -A1 | grep "mockResolvedValueOnce" | head -10
+# → для кожного звірити кількість findFirst у відповідному service.create()/update()
+```
+
+**Стала spec після рефактору сервісу (Bug #153-#155):**
+- [ ] Кожен `private readonly X: Type` у конструкторі сервісу → є `{ provide: Type, useValue: mock }` у `Test.createTestingModule({ providers })` спеки (інакше NestJS DI fail на всіх тестах файлу)
+- [ ] Кеш-мок: `CacheService.get` → `mockResolvedValue(null)` (cache miss → fallthrough на БД); `set/del/delPattern` → no-op
+- [ ] Якщо `service.create()/update()` спрощено з N `findFirst` до 1 (single round-trip resurrection/dup-check) → spec мокає `findFirst` РІВНО стільки разів скільки реальних викликів (не успадкований `mockResolvedValueOnce(null).mockResolvedValueOnce(...)`)
+
+**Обов'язкові contract тести для нових endpoints:**
+- `GET /X` → 200 + `{ items, total }`; 401 без токена
+- `POST /X` без обов'язкових полів → 400
+- `PATCH /X/:id` з чужим orgId → 404
+
+**Обов'язкові unit тести:**
+| Сервіс | Критичні кейси |
+|---|---|
+| `work-orders.service` | create→DRAFT; FSM invalid→throws; IN_PROGRESS→RESERVATION; COMPLETED→WRITEOFF+CHARGE |
+| `inventory.service` | RECEIPT +qty; RESERVATION -available; WRITEOFF insufficient→throws; qty=0→throws |
+| `settlements.service` | CHARGE +balance; PAYMENT -balance; no account→NotFoundException |
+| `auth.service` | login OK; wrong password→401; deleted employee→401; invalid refresh→401 |
+
+- [ ] Нові `*.service.ts` → парний `*.spec.ts` з мінімальними кейсами вище
+- [ ] Нові `@Controller` → парний `*.contract.spec.ts`
+
+---
+
+### §1.6 — Frontend тест-покриття (FULL режим)
+
+```bash
+# Component тести
+find apps/web/src -name "*.test.tsx" | sort
+
+# E2E тести
+find apps/web/e2e -name "*.spec.ts" | sort
+
+# Playwright config
+test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwright MISSING"
+```
+
+- [ ] `Button`, `Select`, `Modal`, `Input`, `EmptyState` — component тести існують
+- [ ] `smoke.spec.ts` — обов'язковий: `/`, `/login`, `/setup` без auth, auth redirect
+
+---
+
+### §1.7 — Accessibility та i18n (FULL режим)
+
+```bash
+# Іконкові кнопки без aria-label
+grep -rn "<Button\b\|<button\b" apps/web/src/ --include="*.tsx" | grep -E "Icon|lucide|Trash|Pencil|Eye" | grep -v "aria-label\|aria-describedby\|sr-only\|spec" | head -15
+
+# onClick на не-інтерактивних елементах
+grep -rn "onClick" apps/web/src/ --include="*.tsx" | grep -E "<div|<span|<p " | grep -v "role=" | head -10
+
+# Англійські placeholder
+grep -rn "placeholder=" apps/web/src/ --include="*.tsx" | grep -E '"[A-Z][a-z]' | head -10
+
+# Англійські exception messages
+grep -rn "throw new.*Exception\|throw new.*Error" apps/api/src/modules/ --include="*.ts" \
+  | grep -E "['\"](Cannot|Invalid|Not found|Already|Forbidden)" | grep -v spec | head -10
+
+# Формат дати: toISOString у render path
+grep -rn "toISOString\|toLocaleDateString" apps/web/src/app/ --include="*.tsx" | grep -v "useEffect\|split\|//\|spec" | head -10
+```
+
+- [ ] Іконкові кнопки (без тексту) → `aria-label="Дієслово"`
+- [ ] `onClick` на `<div>`/`<span>` → `role="button"` + `tabIndex={0}` + `onKeyDown`
+- [ ] Всі placeholder → кирилицею (`Введіть...`, не `Enter...`)
+- [ ] Всі `throw new XxxException(...)` → українською
+- [ ] Дати у форматі `DD.MM.YYYY` (date-fns `uk` або `toLocaleDateString('uk-UA')`)
+- [ ] Тиждень починається з понеділка (`weekStartsOn: 1`)
 
 ---
 
 ## Крок 2 — Фіксація в BUG_REPORT.md
 
-Після аналізу **одразу запиши** всі знайдені баги у файл `BUG_REPORT.md` в корені проєкту:
+Записуй **зразу після аналізу**, до виправлень:
 
 ```markdown
 # BUG_REPORT.md — STO ERP
 
 Дата: YYYY-MM-DD
-Сесія: <короткий опис що тестувалось>
+Сесія: <коротко що тестувалось>
 
 ---
 
-## Bug #1 — [severity] Заголовок
+## Bug #N — [CRITICAL|HIGH|MEDIUM|LOW] Заголовок
 
-**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:145`
+**Файл:** `apps/api/src/modules/X/X.service.ts:145`
 **Severity:** CRITICAL | HIGH | MEDIUM | LOW
 **Категорія:** business-logic | security | typescript | frontend | test-coverage
 
-**Опис:**
-Що саме не так і чому це баг (не побажання).
-
-**Очікувана поведінка:**
-Що повинно відбуватись.
-
-**Фактична поведінка:**
-Що відбувається зараз.
-
+**Опис:** Що не так і чому це баг.
+**Очікувана поведінка:** Що має бути.
+**Фактична поведінка:** Що є зараз.
 **Статус:** [ ] відкритий / [x] виправлено
-
----
 ```
 
 **Severity:**
-- `CRITICAL` — втрата даних, неправильні фінансові розрахунки, cross-tenant витік
-- `HIGH` — порушення бізнес-правила (FSM, резерви), security проблема
-- `MEDIUM` — TypeScript помилка, відсутній тест на критичну гілку
+- `CRITICAL` — втрата даних, неправильні фінанси, cross-tenant витік
+- `HIGH` — порушення бізнес-правила (FSM, резерви), security
+- `MEDIUM` — TypeScript помилка, відсутній тест критичної гілки
 - `LOW` — UI стан (loading/empty), незручність
 
 ---
 
 ## Крок 3 — Автоматичне виправлення
 
-Після запису `BUG_REPORT.md` — **виправляй кожен баг по черзі**, від CRITICAL до LOW:
-
 ```
-для кожного Bug #N:
+Для кожного Bug #N (від CRITICAL до LOW):
   1. Прочитай файл з багом
-  2. Зроби мінімальний точковий фікс (не рефактор)
-  3. Після фіксу: pnpm --filter <package> exec tsc --noEmit
-  4. Якщо тест покриття відсутнє → додай тест-кейс у .spec.ts
+  2. Застосуй мінімальний точковий фікс (не рефактор)
+  3. pnpm --filter <package> exec tsc --noEmit → 0 errors
+  4. Якщо відсутній тест → додай кейс у .spec.ts
   5. Відмітити [x] у BUG_REPORT.md
-  6. git add <змінені файли> && git commit -m "fix(tester): Bug #N — <заголовок>"  ← БЕЗ запиту
+  6. git add <змінені файли> && git commit -m "fix(tester): Bug #N — <заголовок>"
 
 Після останнього Bug:
-  7. Оновити MemoryManual.md (Останній commit + TypeScript + Тести) ← БЕЗ запиту
+  7. Оновити MemoryManual.md — одразу, без запиту
 ```
 
-**Правила фіксу:**
+**Правила:**
 - Мінімальний diff — не чіпай нічого крім проблемного місця
-- Якщо фікс потребує міграції БД — зафіксуй як окремий CRITICAL, повідом користувача
-- Якщо фікс потребує змін у `@sto/shared` типах — оновлюй синхронно
+- Фікс потребує міграції БД → CRITICAL, повідоми користувача
+- Фікс потребує змін у `@sto/shared` → оновлюй синхронно
 
 ---
 
 ## Крок 4 — Верифікація
 
-Після всіх фіксів:
-
 ```bash
-# TypeScript — повинно бути 0 errors
-pnpm --filter @sto/web exec tsc --noEmit
+# TypeScript — 0 errors
 pnpm --filter @sto/api exec tsc --noEmit
+pnpm --filter @sto/web exec tsc --noEmit --incremental false
 pnpm --filter @sto/shared exec tsc --noEmit
 
-# Unit тести — всі повинні пройти
-pnpm --filter @sto/api test --run
+# Unit тести
+pnpm --filter @sto/api test --run 2>&1 | tail -30
 
-# Build — перевірка що нічого не зламалось
+# Build
 pnpm --filter @sto/api build 2>&1 | tail -10
-```
 
----
-
-## Крок 4.3 — Contract-тести (Supertest)
-
-Contract-тести перевіряють **HTTP шар**: статус-коди, shape відповіді, заголовки авторизації.
-
-> Шаблон → `sto-tester-templates.md §4.3`
-
-**Мета:** виявити розрив між `toResponseDto()` у сервісі та `interface` у фронтенді.
-
-### Коли писати
-- Новий `@Controller` → одразу `.contract.spec.ts`
-- Зміна `toResponseDto()` → оновити snapshot
-- Новий endpoint → тест 401/403/200/201
-
-### Структура файлу
-```
-apps/api/src/modules/{domain}/{domain}.contract.spec.ts
-```
-
-### Що перевіряти
-
-| Endpoint | Тест-кейси |
-|---|---|
-| `GET /work-orders` | 200 з pagination shape; 401 без токена |
-| `POST /work-orders` | 201 + DTO shape; 400 без обов'яз. полів |
-| `PATCH /work-orders/:id/status` | 400 при невалідному FSM-переході |
-| `GET /inventory` | 200 + items[].available присутній |
-| `POST /auth/login` | 200 + `{ accessToken, refreshToken, employee }`; 401 |
-| `GET /sync/pull` | 200 + `{ records, maxSyncVersion }` |
-
-### Запуск
-
-```bash
+# Contract тести
 pnpm --filter @sto/api test --run --reporter=verbose 2>&1 | grep -E "contract|PASS|FAIL"
-find apps/api/src -name "*.contract.spec.ts" | sort
-# Якщо файлів немає — це LOW bug: відсутнє contract покриття
 ```
-
-→ **Повний шаблон:** `sto-tester-templates.md §4.3`
 
 ---
 
-## Крок 4.4 — Property-based тести (fast-check) _(тільки FULL режим)_
+## Крок 5 — Розширені тести (FULL режим)
 
-> **AUTO:** пропустити. **FULL:** виконати якщо `fast-check` встановлений.  
-> → **Шаблони:** `sto-tester-templates.md §4.4` (FSM, Inventory, Settlements, Pricing invariants)
-
-**Мета:** знайти edge cases які unit-тест з хардкодженими значеннями не покриє.
+### 5.1 — Property-based (fast-check)
 
 ```bash
 grep "fast-check" apps/api/package.json || pnpm --filter @sto/api add -D fast-check
@@ -657,62 +483,30 @@ find apps/api/src -name "*.invariants.spec.ts" | sort
 |---|---|
 | `work-orders.fsm` | всі пари (from, to) → blocked; ARCHIVED/CANCELLED = порожні |
 | `inventory` | quantity≥0, reserved≥0, available≥0 після валідних рухів |
-| `settlements` | CHARGE підвищує; PAYMENT/REFUND/CREDIT_NOTE знижують |
+| `settlements` | CHARGE ↑balance; PAYMENT/REFUND/CREDIT_NOTE ↓balance |
 | `pricing` | PERCENT = `cost*(1+pct/100)`; округлення кратне roundTo; `Math.max(0,result)` |
 
----
-
-## Крок 4.5 — E2E тести (Playwright) _(тільки FULL режим)_
-
-> **AUTO:** пропустити. **FULL:** виконати якщо `@playwright/test` встановлений + dev-сервери з §0.2 запущені.  
-> → **Шаблони:** `sto-tester-templates.md §4.5` (playwright.config.ts, auth.spec.ts, work-orders.spec.ts, inventory.spec.ts, api-errors.spec.ts, console-errors.spec.ts, setup-auth.ts)
+### 5.2 — E2E (Playwright)
 
 ```bash
-test -f apps/web/playwright.config.ts && echo "EXISTS" || echo "NOT INSTALLED"
-curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 | grep -q 200 && echo "OK" || echo "OFFLINE"
-pnpm --filter @sto/web exec playwright test --reporter=list 2>&1 | tail -40
-pnpm --filter @sto/web exec playwright test e2e/console-errors.spec.ts --reporter=list 2>&1 | tail -50
-```
+# Перевірити dev-сервери
+docker ps --format "{{.Names}}\t{{.Status}}" | grep -E "postgres|redis|minio"
+curl -s http://localhost:3000/api/docs > /dev/null && echo "API:UP" || echo "API:DOWN"
+curl -s http://localhost:3001 > /dev/null && echo "WEB:UP" || echo "WEB:DOWN"
 
-**Структура e2e:**
-```
-apps/web/e2e/
-  smoke.spec.ts           — публічні URL + auth guard
-  auth.spec.ts            — login/logout flows
-  work-orders.spec.ts     — список, CRUD, FSM переходи
-  work-order-flow.spec.ts — повний user flow: WO → completion → payment
-  inventory.spec.ts       — список, low-stock badge
-  api-errors.spec.ts      — 500 → error state на кожній сторінці
-  console-errors.spec.ts  — немає console.error/pageerror (ОБОВ'ЯЗКОВО)
-  .auth/admin.json        — збережений auth state (gitignored)
-```
-
-**Якщо E2E тест падає:**
-1. `--screenshot=on` → переглянути
-2. Зафіксувати Bug → BUG_REPORT.md → виправити
-3. Flaky → додати `{ timeout: 8_000 }`
-4. Відсутній `data-testid` → додати у компонент (LOW bug)
-
-**⚠️ STALE DEV API = console-errors false-positive (НЕ код-баг).** Якщо console-errors.spec
-показує `Failed to load resource: 404` на сторінці що кличе НОВІ endpoints — спочатку перевір
-чи це не stale API-процес (запущений ДО merge feature-коміту з новими routes). NestJS
-`nest start --watch` не завжди підхоплює модулі додані поки сервер вже працював.
-```bash
-# Діагностика: route у коді але 404 на рантаймі?
-curl -s http://localhost:3000/api/<new-route>   # 404 "Cannot GET" = stale; 401 = route OK (auth)
-# Лік: рестарт API
-powershell -Command "Get-NetTCPConnection -LocalPort 3000 -State Listen | %{ Stop-Process -Id \$_.OwningProcess -Force }"
+# Якщо API:DOWN
 pnpm --filter @sto/api dev > /tmp/sto-api-dev.log 2>&1 &
-until curl -s http://localhost:3000/api/<new-route> | grep -q "statusCode"; do sleep 3; done
+until curl -s http://localhost:3000/api/docs > /dev/null; do sleep 3; done && echo "API ready"
+
+# Запуск
+test -f apps/web/playwright.config.ts && \
+  pnpm --filter @sto/web exec playwright test --reporter=list 2>&1 | tail -40 || \
+  echo "⏭ Playwright не встановлений"
 ```
-404 на route який ТОЧНО є у `@Controller` + зареєстрований у AppModule = stale server, перезапусти і пере-прогон.
 
----
+**⚠️ STALE DEV API = false-positive.** `404 "Cannot GET /api/X"` при роботі routes у коді = stale server (не перезапущений після нового модуля). Діагностика: `curl localhost:3000/api/<route>` → 404 = stale; 401 = route OK (auth). Фікс: вбити процес на порту 3000 і перезапустити.
 
-## Крок 4.6 — Component-тести (Vitest + Testing Library) _(тільки FULL режим)_
-
-> **AUTO:** пропустити. **FULL:** виконати якщо `@testing-library/react` встановлений.  
-> → **Шаблони:** `sto-tester-templates.md §4.6` (Button, Select, Modal, EmptyState)
+### 5.3 — Component-тести (Testing Library)
 
 ```bash
 grep "@testing-library" apps/web/package.json || \
@@ -721,161 +515,189 @@ find apps/web/src -name "*.test.tsx" | sort
 pnpm --filter @sto/web exec vitest run --reporter=verbose 2>&1 | tail -30
 ```
 
-**Checklist:**
-- [ ] `Button` — всі variants; disabled блокує; loading spinner
-- [ ] `Select` — placeholder disabled option; label/errorMessage/hint
-- [ ] `Modal` — закритий не рендерить; Escape → onClose; footer
-- [ ] `Input` — label/errorMessage/hint; leftElement/rightElement
-- [ ] `EmptyState` — title + description; action кнопка
-
 ---
 
-## Крок 4.7 — Функціональне тестування _(тільки FULL режим)_
-
-> → **Шаблони:** `sto-tester-templates.md §4.7` (WorkOrders, Inventory, Settlements, CRM, Auth таблиці + код)
-
-**Алгоритм:**
-```
-1. git diff → які service-методи змінились
-2. Для кожного зміненого метода — пройти таблицю нижче
-3. Написати/оновити .spec.ts якщо кейс відсутній
-```
-
-| Домен | Критичні кейси |
-|---|---|
-| WorkOrders | create → DRAFT; IN_PROGRESS → RESERVATION; COMPLETED → WRITEOFF+CHARGE в tx |
-| Inventory | RECEIPT +qty; RESERVATION -available; WRITEOFF -qty; TRANSFER src→dst |
-| Settlements | CHARGE +balance; PAYMENT -balance; SUM(CHARGE)=SUM(PAYMENT) → 0 |
-| Auth | login happy path; wrong password 401; refresh → new accessToken |
-
----
-
-## Крок 4.8 — Негативне тестування _(тільки FULL режим)_
-
-> → **Шаблони:** `sto-tester-templates.md §4.8` (DTO, бізнес-правила, tenant isolation)
+## Крок 6 — Commit + MemoryManual.md
 
 ```bash
-# Поля без захисту від від'ємних значень
-grep -rn "@IsNumber\|@IsInt\|@IsPositive\|@Min" apps/api/src/modules/ --include="*.dto.ts" | grep -v "@Min(1\|@Min(0\|@IsPositive"
-
-# :id без ParseUUIDPipe
-grep -rn "@Param('id')" apps/api/src/ --include="*.controller.ts" | grep -v "ParseUUIDPipe"
+git add apps/ packages/ BUG_REPORT.md
+git commit -m "fix(tester): <короткий підсумок всіх багів>"
 ```
 
-- [ ] Кожен `POST`/`PATCH` → 400 при відсутньому обов'язковому полі
-- [ ] Кожен `:id` → `ParseUUIDPipe`
-- [ ] `quantity=0`, `amount=0` → 400
-- [ ] RESERVATION `qty > available` → 400
-- [ ] Невалідний FSM-перехід → 400 з українським повідомленням
-- [ ] Без `Authorization` → 401; неправильна роль → 403; чужий orgId → 404
+Оновити `MemoryManual.md`:
+```markdown
+## Останній commit
+<hash> fix(tester): <message>
+Дата: YYYY-MM-DD
+Latest tester: YYYY-MM-DD (<режим>, HEAD <hash>) — <N> баги: <перелік>.
 
----
-
-## Крок 4.9 — Нефункціональне тестування _(тільки FULL режим)_
-
-> → **Шаблони:** `sto-tester-templates.md §4.9` (perf Supertest, security headers, DB resilience, BullMQ)
-
-```bash
-# $transaction без timeout
-grep -rn "prisma.\$transaction" apps/api/src/ --include="*.ts" | grep -v "timeout:"
-
-# findMany без take
-grep -rn "findMany(" apps/api/src/modules/ --include="*.service.ts" | grep -v "take:" | grep -v "spec"
-
-# Security headers
-curl -I http://localhost:3000/api/health 2>/dev/null | grep -iE "x-content-type|x-frame"
-```
-
-- [ ] List endpoints `< 200ms`; sync pull `< 500ms`
-- [ ] `X-Content-Type-Options`, `X-Frame-Options` присутні
-- [ ] `$transaction` з `timeout: 5000`
-- [ ] P2002 → 409; P2025 → 404 (не 500)
-- [ ] BullMQ processors re-throw помилки
-- [ ] Всі `findMany` мають `take`
-
----
-
-## Крок 5 — Фінальний звіт _(тільки FULL режим; AUTO — короткий підсумок)_
-
-**AUTO підсумок:**
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🧪 AUTO QA — STO ERP
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TypeScript:  ✅ 0 errors
-Unit:        ✅ N/N passed
-Contract:    ✅ N passed  (або ⏭ немає .contract.spec.ts)
-Баги:        N знайдено / N виправлено / 0 залишилось
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-**FULL підсумок:**
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🧪 FULL ТЕСТУВАННЯ STO ERP
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Знайдено багів:    N (CRITICAL: X / HIGH: Y / MEDIUM: Z / LOW: W)
-Виправлено:        N
-Залишилось:        0
-
-TypeScript:        ✅ 0 errors
-Unit:              ✅ N passed / 0 failed
-Contract:          ✅ N passed  (або ⏭ немає .contract.spec.ts)
-Property-based:    ✅ N passed  (або ⏭ fast-check не встановлений)
-Component:         ✅ N passed  (або ⏭ @testing-library не встановлений)
-E2E:               ✅ N passed  (або ⏭ Playwright не встановлений)
-Функціональне:     ✅ N кейсів (або ⚠ N пропущено)
-Негативне:         ✅ N кейсів (або ⚠ N відсутніх)
-Нефункціональне:   ✅ perf OK, headers OK (або ⚠ N проблем)
-Build:             ✅ OK
-
-Коміти:
-  fix(tester): Bug #1 — ...
-  fix(tester): Bug #2 — ...
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## Поточний стан проєкту
+TypeScript:      ✅ 0 errors
+Unit+Contract:   ✅ N/N passed
+Property-based:  ✅ N passed  (або ⏭ fast-check не встановлений)
+Components:      ✅ N passed  (або ⏭ @testing-library не встановлений)
+E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлений)
 ```
 
 ---
 
-## Шаблони тестів (copy-paste)
-
-→ **Повні шаблони:** `sto-tester-templates.md §S` (service unit test + component test)
-
----
-
-## Ключові файли для аналізу
-
-| Область | Файли |
-|---|---|
-| FSM нарядів | `apps/api/src/modules/work-orders/work-orders.fsm.ts`, `work-orders.service.ts` |
-| Інвентар | `apps/api/src/modules/inventory/inventory.service.ts` |
-| Розрахунки | `apps/api/src/modules/settlements/settlements.service.ts` |
-| Синхронізація | `apps/api/src/modules/sync/sync.service.ts` |
-| Компоненти UI | `apps/web/src/components/ui/` |
-| Design tokens | `apps/web/src/app/globals.css` |
-| Shared types | `packages/shared/src/types/index.ts` |
-| Auth guard | `apps/api/src/auth/guards/` |
-| E2E тести | `apps/web/e2e/`, `apps/web/playwright.config.ts` |
-
----
-
-## Самовдосконалення скіла (ОБОВ'ЯЗКОВО після кожного запуску)
+## Крок 7 — Самовдосконалення (ОБОВ'ЯЗКОВО після кожного запуску)
 
 Після виправлення кожного Bug #N — запитай себе:
 
-> "Цей баг був передбачений існуючим пунктом у §1.1–§1.7?"
+> **"Цей баг передбачений існуючим пунктом §1.1–§1.7?"**
 
-Якщо **НІ** — одразу оновити цей файл (`SKILL.md`):
-1. Додати новий пункт у відповідний підрозділ:
-   - `§1.1` — бізнес-логіка backend (FSM, інвентар, settlements, tenant isolation)
-   - `§1.2` — TypeScript / API якість
-   - `§1.3` — frontend-специфічні динамічні баги (async race, UUID validation)
-   - `§1.4` — покриття backend тестами
-   - `§1.5` — покриття frontend тестами
-   - `§1.6` — accessibility (aria, keyboard, screen reader)
-   - `§1.7` — i18n / Ukrainian UI consistency
-   - якщо баг стосується статичного аналізу коду → **оновлювати sto-review** (§1–§13), не тестер
-2. Якщо патерн виявляється grep'ом → додати bash команду
+Якщо **НІ** — одразу оновити цей файл:
+1. Додати новий пункт у відповідний розділ з grep-командою
+2. Записати підхід у "Накопичені підходи" нижче
 3. Commit: `docs(skills): add <баг> to sto-tester checklist`
 
-**Мета:** кожен баг що пройшов непомічений — робить наступний запуск розумнішим.
+**Що записувати:**
+- Новий **тип бага** якого не було в чеклісті
+- Новий **grep-сигнал** для автовиявлення
+- **Причину** чому баг виникає (щоб знати де шукати наступного разу)
+- **Severity** для калібрування пріоритетів
+
+**Не записувати:** конкретні файли/рядки (вони змінюються); ready-made фікси (для цього є Крок 3).
+
+### Формат запису
+
+```
+### [Дата] — [Тип бага] — [Область: backend / frontend / db / security]
+
+**Сигнал:** ознака за якою баг можна знайти або відтворити
+**Причина виникнення:** типова помилка розробника або edge case
+**Підхід до виявлення:** загальний принцип пошуку (не grep, не файл)
+**Підхід до фіксу:** загальний принцип виправлення
+**Severity:** CRITICAL / HIGH / MEDIUM / LOW
+**Де шукати ще:** суміжні модулі де той самий патерн може повторитись
+```
+
+---
+
+## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-28 — Стала spec після рефактору сервісу — backend, test-coverage
+
+**Сигнал:** baseline unit ❌ при docs-only diff. Дві ознаки: (1) NestJS "Nest can't resolve dependencies of the XService (PrismaService, ?) ... at index [N]" → нова constructor-залежність не замокана у `Test.createTestingModule`; (2) `expect(spy).toHaveBeenCalledWith(...)` → "Number of calls: 0" коли spy реально не викликався бо `mockResolvedValueOnce(null)` спожився раніше ніж очікувалось.
+**Причина виникнення:** perf/simplify commit змінює сервіс (додає `CacheService` у конструктор, АБО зводить `create()/update()` з N `findFirst` до одного single-round-trip), але парний `*.spec.ts` не оновлюється. Тести лежать «зеленими» в пам'яті розробника, реально падають при наступному прогоні. Docs-only сесія не торкає код, але baseline-прогін викриває борг.
+**Підхід до виявлення:** для кожного `service.ts` зміненого за останні N commits — звірити: (а) кожен `private readonly X: Type` конструктора присутній як provider у спеці; (б) кількість `mockResolvedValueOnce` на `findFirst` = реальна кількість викликів у методі (читати сервіс, не вгадувати). Не довіряти "тести зелені були минулого разу" — запускати baseline ЗАВЖДИ (Крок 0), навіть для docs-only.
+**Підхід до фіксу:** фіксувати ТЕСТ, не код (prod коректний). Додати мок-провайдер для нової залежності (`CacheService.get` → `null` щоб не ламати cache-miss fallthrough); привести `mockResolvedValueOnce` ланцюг до фактичної кількості викликів.
+**Severity:** MEDIUM — не runtime bug, але CI/baseline червоний → блокує наступні сесії та ховає реальні регресії за шумом.
+**Де шукати ще:** усі `*.service.spec.ts` сервісів що отримали `CacheService` у perf-раунді (brands, units, payment-methods, branches, zones, work-categories, bank-accounts, cash-registers, dashboard) — якщо спека існує і будує власний TestingModule, вона під ризиком того ж DI fail.
+
+### 2026-05-28 — Soft-delete resurrection / P2002 — backend, unique constraints
+
+**Сигнал:** `create()` на таблиці з `@@unique([orgId, X])` де X не включає `deletedAt` — soft-deleted рядок займає uniq index
+**Причина виникнення:** `findFirst({ deletedAt: null })` вважається повною перевіркою, але soft-deleted рядок блокує DB unique constraint
+**Підхід до виявлення:** `@@unique` без partial `WHERE deletedAt IS NULL` + `create()` без resurrection
+**Підхід до фіксу:** `findFirst({ NOT: { deletedAt: null } })` → якщо знайшов: `update({ ...dto, deletedAt: null })` замість `create`
+**Severity:** HIGH — P2002 → HTTP 500 замість ConflictException; дані не псуються але UX broken
+**Де шукати ще:** будь-який новий довідниковий модуль з `@@unique([orgId, code/name/shortName])`
+
+---
+
+### 2026-05-28 — @db.Date timezone mismatch — backend, date handling
+
+**Сигнал:** `new Date(dto.date)` де `dto.date` — ISO string з TZ offset → UTC-parse зміщує дату
+**Причина виникнення:** `new Date(isoString)` завжди парсить у UTC; `@db.Date` очікує UTC midnight
+**Підхід до виявлення:** шукати `new Date(dto.X)` де X — поле `@IsDateString()` що пишеться у `@db.Date` колонку
+**Підхід до фіксу:** `parseDateOnly(dto.date)` — витягти `YYYY-MM-DD` перші 10 символів + parse UTC midnight
+**Severity:** HIGH — неправильна дата в БД для клієнтів у UTC+X
+**Де шукати ще:** exchange-rates, warranties, maintenance-schedules, будь-що з date-only полем
+
+---
+
+### 2026-05-28 — $transaction(array, { timeout }) не підтримується Prisma 5 — backend
+
+**Сигнал:** `prisma.$transaction([...promises], { timeout: N })` — TS-помилка (timeout не в array-form)
+**Причина виникнення:** array-form приймає тільки `{ isolationLevel }`, callback-form — `{ timeout }`
+**Підхід до виявлення:** grep `\$transaction(\[` — якщо там `timeout` → баг
+**Підхід до фіксу:** переписати array → callback-form (`async tx => { for ... }`)
+**Severity:** MEDIUM — TS-помилка при build; runtime може відпрацювати але без timeout гарантії
+**Де шукати ще:** pricing.service.ts, будь-який масив із `$transaction` де хотіли timeout
+
+---
+
+### 2026-05-28 — Prisma plural table → singular model lookup — backend, sync
+
+**Сигнал:** dynamic `(prisma as any)[modelName]` де modelName — snake_case plural (`work_orders`) → `prisma.workOrders === undefined`
+**Причина виникнення:** Prisma exposes singular camelCase (`workOrder`), не plural; `@@map` задає plural тільки для таблиці
+**Підхід до виявлення:** grep `toCamel\|snake.*camel` + перевірити чи є explicit `TABLE_TO_MODEL` map
+**Підхід до фіксу:** explicit `Record<tableName, modelKey>` + `if (!model) throw` (fail-fast)
+**Severity:** CRITICAL — `TypeError: Cannot read properties of undefined` на runtime; `.catch()` не ловить синхронний access
+**Де шукати ще:** sync.service.ts будь-який dynamic model lookup
+
+---
+
+### 2026-05-28 — BigInt у payload spread → JSON.stringify 500 — backend, sync
+
+**Сигнал:** `payload = { ...row }` де row має `syncVersion BigInt` → `Fastify JSON.stringify TypeError`
+**Причина виникнення:** `syncVersion: Number(row.syncVersion)` конвертує top-level, але `{ ...row }` копіює BigInt у payload
+**Підхід до виявлення:** grep `payload.*\.\.\.row\|{ \.\.\.row }` у sync/pull endpoints
+**Підхід до фіксу:** прохід по полях: `if (typeof v === 'bigint') Number(v)` — об'єднати з BLACKLIST в один цикл
+**Severity:** CRITICAL — 500 при будь-якому sync pull з реальними даними
+**Де шукати ще:** будь-який endpoint що spread-ить Prisma row напряму у response
+
+---
+
+### 2026-05-28 — CRON findMany без deletedAt: null на Organisation — backend
+
+**Сигнал:** `organisation.findMany()` без `where: { deletedAt: null }` у CRON-job → обробляє видалені org
+**Причина виникнення:** CRON-код пишеться без думки про soft delete — кожен tenant проходить без перевірки
+**Підхід до виявлення:** grep `organisation.findMany` у `*.processor.ts` / `*.scheduler.ts` | grep -v "deletedAt"
+**Підхід до фіксу:** `where: { deletedAt: null }` — завжди для findMany на Organisation у CRON
+**Severity:** HIGH — мертві org отримують SMS/webhooks, витрачаються кредити
+**Де шукати ще:** followup.processor, будь-який новий scheduler
+
+---
+
+### 2026-05-28 — Playwright fullyParallel + Next.js dev → SyntaxError race — frontend, E2E
+
+**Сигнал:** `Invalid or unexpected token` у console-errors.spec при > 5 workers + Next.js dev server
+**Причина виникнення:** Next.js dev компілює chunks on-demand; паралельні workers отримують partial JS
+**Підхід до виявлення:** console-errors.spec з `fullyParallel: true` і > 5 routes → SyntaxError у браузері
+**Підхід до фіксу:** `test.describe.configure({ mode: 'serial' })` + `beforeAll` warm-up на `/dashboard`
+**Severity:** MEDIUM — flaky tests, не production bug
+**Де шукати ще:** будь-який E2E файл що навігує > 5 routes у Next.js dev
+
+---
+
+### 2026-05-28 — .catch(() => {}) ховає loading/error стан — frontend
+
+**Сигнал:** `apiFetch(...).then(setX).catch(() => {})` у mount useEffect → loading ніколи false, error ніколи set
+**Причина виникнення:** розробник додає fetch поступово без рефакторингу loading/error шаблону
+**Підхід до виявлення:** grep `.catch(() => {})` + перевірити чи є `setLoading(true)` + `setError`
+**Підхід до фіксу:** канонічний шаблон: `let cancelled=false; setLoading(true); fetch.then(...).catch(setError).finally(() => !cancelled && setLoading(false)); return () => cancelled=true`
+**Severity:** LOW-MEDIUM — UX broken (empty state замість error, loading spinner ніколи не зникає)
+**Де шукати ще:** нові вкладки settings, будь-яка сторінка де fetch додавався інкрементально
+
+---
+
+## Що вже перевірено (не дублювати)
+
+**Backend:**
+- ✅ FSM transition map pattern (work-orders.fsm.ts)
+- ✅ InventoryService guards (quantity=0, available < qty, RESERVATION_RELEASE)
+- ✅ SettlementsService guards (CHARGE ↑, PAYMENT ↓)
+- ✅ Soft-delete: всі основні сервіси
+- ✅ Resurrection pattern: currencies, exchange-rates, brands, units, payment-methods
+- ✅ $transaction explicit timeout: всі interactive callbacks
+- ✅ ParseUUIDPipe: всі :id параметри
+- ✅ Security headers (X-Content-Type-Options, X-Frame-Options, HSTS via @fastify/helmet@11)
+- ✅ SSRF guard: webhooks.processor (validatePublicUrl + redirect: 'manual')
+- ✅ ArrayMaxSize: inspection.dto, webhook payload
+
+**Frontend:**
+- ✅ cancelled flag: AuthProvider, всі mount-fetches (settings, crm, work-orders)
+- ✅ SSR-safe today: useState(null) + useEffect → setToday(new Date())
+- ✅ apiFetch error array join: `Array.isArray(msg) ? msg.join('; ') : msg`
+- ✅ UUID validation client-side перед submit
+- ✅ aria-label на іконкових кнопках (після bulk-fix)
+- ✅ React named imports (не React.ReactNode)
+
+**Tests:**
+- ✅ Contract specs: auth, work-orders, warehouses, counterparties, sync, settings, audit, pricing-rules, batches, currencies, bank-accounts, exchange-rates, cash-registers
+- ✅ Property-based invariants: inventory, settlements, FSM (26 invariants)
+- ✅ Component tests: 139/139 passed (13 файлів)
+- ✅ E2E: 42/42 passed (smoke, console-errors serial mode, inventory, api-errors)
