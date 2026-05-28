@@ -305,13 +305,14 @@ export default function CalendarPage() {
 
   const handleDrawStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, liftId: string) => {
     if (e.button !== 0) return;
+    if (showAdd) return; // form is open — don't start drawing
     const target = e.target as HTMLElement;
     if (target.closest('[data-calendar-slot]')) return;
 
     const startH = snapTo15(pxToDecimalHours(e.clientX));
     drawingRef.current = { liftId, startH };
     setGhost({ liftId, startH, endH: startH + 1 });
-  }, [pxToDecimalHours]);
+  }, [pxToDecimalHours, showAdd]);
 
   // ── Resize existing slot ─────────────────────────────────────────────────────
 
@@ -378,6 +379,7 @@ export default function CalendarPage() {
         setGhost(null);
 
         if (endH - startH >= 0.25) {
+          setGhost(null); // ensure ghost is cleared before form opens
           setForm(f => ({
             ...f,
             liftId,
@@ -730,7 +732,7 @@ export default function CalendarPage() {
             <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt}>
               Зберегти
             </Button>
-            <Button variant="outline" onClick={() => { setShowAdd(false); setError(''); }}>
+            <Button variant="outline" onClick={() => { setShowAdd(false); setError(''); setGhost(null); }}>
               Скасувати
             </Button>
           </div>
