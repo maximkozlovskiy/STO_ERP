@@ -175,6 +175,8 @@ export default function SettingsPage() {
 
   // Bank accounts state
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [baPickerModal, setBaPickerModal] = useState(false);
+  const [baPickerQuery, setBaPickerQuery] = useState('');
   const [baModal, setBaModal] = useState(false);
   const [editingBa, setEditingBa] = useState<BankAccount | null>(null);
   const [baForm, setBaForm] = useState({ name: '', ibanUA: '', currencyId: '', branchId: '', bankName: '', mfo: '', edrpou: '', bankAddress: '' });
@@ -942,14 +944,34 @@ export default function SettingsPage() {
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Основний банківський рахунок</label>
-            <SearchCombobox<BankAccount>
-              value={orgInfoForm.bankAccountId}
-              displayValue={orgInfoForm.bankAccountDisplay || (bankAccounts.find(b => b.id === orgInfoForm.bankAccountId)?.name ?? '')}
-              onSelect={(item) => setOrgInfoForm({ ...orgInfoForm, bankAccountId: item.id, bankAccountDisplay: item.name })}
-              onClear={() => setOrgInfoForm({ ...orgInfoForm, bankAccountId: '', bankAccountDisplay: '' })}
-              fetchItems={async (q) => { const r = await apiFetch<{ items: BankAccount[] }>(`/bank-accounts?q=${encodeURIComponent(q)}&limit=10`); return r.items.map(a => ({ ...a, primary: a.name, secondary: a.ibanUA })); }}
-              placeholder="Пошук рахунку..."
-            />
+            {(() => {
+              const selected = bankAccounts.find(b => b.id === orgInfoForm.bankAccountId);
+              return (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setBaPickerQuery(''); setBaPickerModal(true); }}
+                    className="flex-1 text-left px-3 py-2 rounded-lg border border-border bg-surface hover:border-primary transition-colors text-sm"
+                  >
+                    {selected ? (
+                      <span className="text-foreground">{selected.name} <span className="text-muted-foreground font-mono">{selected.ibanUA}</span></span>
+                    ) : (
+                      <span className="text-muted-foreground">Оберіть рахунок...</span>
+                    )}
+                  </button>
+                  {orgInfoForm.bankAccountId && (
+                    <button
+                      aria-label="Очистити рахунок"
+                      type="button"
+                      onClick={() => setOrgInfoForm({ ...orgInfoForm, bankAccountId: '', bankAccountDisplay: '' })}
+                      className="text-muted-foreground hover:text-destructive-text transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <Button onClick={saveOrgInfo} loading={savingOrgInfo} className="w-full">Зберегти</Button>
@@ -1647,6 +1669,59 @@ export default function SettingsPage() {
           )}
         </div>
       )}
+
+      {/* ─── Bank Account Picker Modal ──────────────────────────────────────── */}
+      <Modal open={baPickerModal} onClose={() => setBaPickerModal(false)} title="Оберіть банківський рахунок"
+        footer={<Button variant="outline" onClick={() => setBaPickerModal(false)}>Закрити</Button>}>
+        <div className="space-y-3">
+          <Input
+            placeholder="Пошук за назвою, IBAN, МФО, ЄДРПОУ, банком..."
+            value={baPickerQuery}
+            onChange={e => setBaPickerQuery(e.target.value)}
+          />
+          {(() => {
+            const q = baPickerQuery.trim().toLowerCase();
+            const filtered = q
+              ? bankAccounts.filter(b =>
+                  b.name.toLowerCase().includes(q) ||
+                  b.ibanUA.toLowerCase().includes(q) ||
+                  (b.bankName ?? '').toLowerCase().includes(q) ||
+                  (b.mfo ?? '').toLowerCase().includes(q) ||
+                  (b.edrpou ?? '').toLowerCase().includes(q)
+                )
+              : bankAccounts;
+            if (bankAccounts.length === 0) return <p className="text-sm text-muted-foreground py-4 text-center">Рахунки не додано</p>;
+            if (filtered.length === 0) return <p className="text-sm text-muted-foreground py-4 text-center">Нічого не знайдено</p>;
+            return (
+              <div className="space-y-1 max-h-80 overflow-y-auto">
+                {filtered.map(b => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => { setOrgInfoForm(prev => ({ ...prev, bankAccountId: b.id, bankAccountDisplay: b.name })); setBaPickerModal(false); }}
+                    className={cn(
+                      'w-full text-left px-3 py-2.5 rounded-lg border transition-colors',
+                      orgInfoForm.bankAccountId === b.id
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border bg-surface hover:border-primary hover:bg-primary/5'
+                    )}
+                  >
+                    <div className="font-medium text-foreground text-sm">{b.name}</div>
+                    <div className="font-mono text-xs text-muted-foreground mt-0.5">{b.ibanUA}</div>
+                    {(b.bankName || b.mfo || b.edrpou) && (
+                      <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
+                        {b.bankName && <span>{b.bankName}</span>}
+                        {b.mfo && <span>МФО: {b.mfo}</span>}
+                        {b.edrpou && <span>ЄДРПОУ: {b.edrpou}</span>}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      </Modal>
 
       {/* ─── Currency Modal ──────────────────────────────────────────────────── */}
       <Modal open={currencyModal} onClose={() => setCurrencyModal(false)} title={editingCurrency ? 'Редагувати валюту' : 'Нова валюта'}
