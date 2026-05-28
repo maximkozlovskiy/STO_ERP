@@ -9,14 +9,14 @@
 ## Останній commit
 
 ```
+2e68a01 fix(tester): Bug #151+#152 — exchange-rate update dup-date check + soft-delete resurrection
+366c82d fix(tester): Bug #150 — aria-label on icon-only buttons in new settings tabs
+f28787d fix(tester): Bug #147+#148+#149 — client validation on currency/rate modals
+8733962 fix(tester): Bug #146 — cash-registers contract spec
 9e3fa77 docs(memory): record /sto-review verify pass on HEAD aa5aefd (catalog modules — 0 issues)
 aa5aefd fix(settings): explicit select on org queries to exclude BigInt syncVersion
 8b3b64c fix(shell): public routes always render without sidebar
-338c0ee fix(settings): bank-account/cash-register modals — Select dropdowns + inline validation
 bd02c9a fix(settings): BigInt JSON serialization + logo upload multipart
-27a7063 test(tester): contract specs for currencies/exchange-rates/bank-accounts
-bb26737 fix(tester): Bug #145 — loading/error states on 5 new settings tabs
-ebbf746 fix(review): narrow currency includes to select + widen exchange-rate precision
 4ff6454 feat(catalog): currencies, exchange-rates, bank-accounts, cash-registers
 ```
 
@@ -25,10 +25,10 @@ ebbf746 fix(review): narrow currency includes to select + widen exchange-rate pr
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors           (apps/web + apps/api + shared)
-Unit+Contract:   ✅ 287/287 passed     (26 файлів — backend; +16 contract: currencies/bank-accounts/exchange-rates)
-Contract:        ✅ 12 contract spec files (auth, work-orders, warehouses, counterparties,
+Unit+Contract:   ✅ 302/302 passed     (29 файлів — backend; +9 service spec: currencies.service, exchange-rates.service)
+Contract:        ✅ 13 contract spec files (auth, work-orders, warehouses, counterparties,
                                        sync, settings, audit, pricing-rules, batches,
-                                       currencies, bank-accounts, exchange-rates)
+                                       currencies, bank-accounts, exchange-rates, cash-registers)
 Property-based:  ✅ 26 invariants passed (inventory, settlements, FSM)
 Components:      ✅ 139/139 passed     (13 файлів, @testing-library/react)
 E2E (Playwright):✅ 42/42 passed (smoke 8, console-errors 22, inventory 4, api-errors 8)
@@ -37,7 +37,7 @@ E2E (Playwright):✅ 42/42 passed (smoke 8, console-errors 22, inventory 4, api-
 Build:           ✅ @sto/api build OK
 Security headers:✅ X-Content-Type-Options, X-Frame-Options, HSTS, CORP через @fastify/helmet@11 (Bug #135)
 $transaction timeouts: ✅ ВСІ interactive callbacks мають explicit { timeout } (work-orders transition 10s + 6 line/part 5s; warehouses 2; +calendar/completion-acts/counterparties/document-number/employees/loyalty/payments/purchase-orders/services/setup/stock-documents; Bug #130/#138/#141/#144)
-Latest tester:   2026-05-28 — FULL на catalog modules (currencies/exchange-rates/bank-accounts/cash-registers + settings org-info + 5 web tabs). 1 баг: #145 (loading/error states на 5 нових вкладках settings + cancelled-flag, bb26737). Бекенд чистий: tenant isolation, soft-delete, cross-tenant FK guard, IBAN regex, ExchangeRate dup→409 — все OK. Додано 3 contract spec (16 тестів). API 287/287, TS 0 errors api+web, E2E 42/42 (console-errors 22/22, settings clean після рестарту stale API). Урок: stale dev-API дав false 404 на нових routes — рестарт обов'язковий перед E2E на нових endpoints.
+Latest tester:   2026-05-28 (re-run, HEAD 2e68a01) — FULL на catalog/finance modules. 2 баги: #151 MEDIUM (exchange-rates update() не перевіряв dup-date при зміні дати → P2002 generic 409 замість локалізованого ConflictException) + #152 LOW (повний DB unique index включає soft-deleted рядок → create після soft-delete падав на P2002; фікс — воскресіння un-delete у create() для currencies+exchange-rates). Додано 2 service spec (9 тестів). Решта чисте: tenant isolation скрізь, ParseUUIDPipe на :id, RolesGuard+OrgContext на всіх endpoints, IBAN regex збігається DTO↔клієнт, cash-register branchId required+FK guard, frontend 4 таб loading/empty/error states + cancelled-flag (Bug #145 канон), aria-label на іконкових кнопках, apiMultipartFetch для logo (не задає Content-Type), TopShell isPublic перед employee-check. API 302/302, TS 0 errors api+web+shared, Property 26/26, Components 139/139, E2E 42/42.
 Latest review:   2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — повний AUTO review feature surface: 4 нові модулі (currencies/exchange-rates/bank-accounts/cash-registers), settings org-info endpoint (logoUrl/legalAddress/actualAddress/bankAccountId + explicit orgSelect виключає BigInt syncVersion), web settings 4 нові вкладки + Organisation tab з logo upload (apiMultipartFetch), TopShell public-route guard перед employee-check. 0 Critical / 0 Important — код чистий (пройшов попередній review ebbf746 + tester bb26737). TS 0 errors api+web. Перевірено: tenant isolation (orgId у всіх query), cross-tenant FK guard на create+update, soft-delete, toDto Decimal→Number + syncVersion виключено, sync-ready schema (всі моделі мають id/orgId/syncVersion/timestamps + @@index orgId,deletedAt/syncVersion), PULL_TABLES обґрунтовано виключені (admin reference data, не для mobile mechanic), Select placeholder уникає async-init race (§8.2.1), SearchCombobox paired displayName reset (§8.2). Suggestion-only (не фіксовано): saveUiFeatures unguarded toast (pre-existing phase19); BankAccount/CashRegister currencyId/branchId без dedicated @@index (малі settings-таблиці take:200); combobox q-param ігнориться бекендом (client-side display, OK для малих таблиць).
 ```
 
