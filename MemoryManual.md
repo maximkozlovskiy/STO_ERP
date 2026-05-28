@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+63640fb perf(optimize): hoist Intl formatters + drop per-render new Date() in calendar
+d4de52a perf(optimize): parallel FK validation in calendar create/update slot
+d98a968 docs(sync): record branches bare-array gotcha in MemoryManual
 fbe66ad fix(sync): branches endpoint returns bare array, not {items}
 e27cc22 fix(tester): Bugs #159-#160 — surface /branches error, remove dead WO-dropdown code
 9d454d3 fix(review): add LiftType PIT/RAMP migration, strip BOM from 22 DTOs, surface SearchPicker errors
@@ -45,6 +48,7 @@ f040cde perf(db): 5 composite indexes
 ## Поточний стан проєкту
 TypeScript: ✅ 0 errors (web --incremental false, api, shared)
 Unit+Contract: ✅ 316/316 passed (30 файлів)
+Latest optimize: 2026-05-28 (AUTO, HEAD 63640fb) — calendar scope. Backend: createSlot 3 sequential FK findFirst → Promise.all; updateSlot 4 sequential reads (existing+3 FK) → Promise.all (error priority збережено). Frontend: kyivHours/fmtTime/toDateString new Intl.DateTimeFormat на кожен виклик → 4 module-level singletons; TimeSelect new Date().getMinutes() per-option у render → nowMs-derived minMinute prop. DB: CalendarSlot вже добре проіндексований ((orgId,deletedAt),(orgId,liftId,startAt,endAt),(orgId,employeeId,startAt)) — змін не потрібно. 14/14 calendar тестів passed.
 Latest sync: 2026-05-28 (AUTO, HEAD fbe66ad) — 1 bug fixed: branches bare-array vs {items} mismatch
 Latest review: 2026-05-28 (auto, HEAD 9d454d3) — 4 проблеми виправлено (1 Critical, 2 Important, 1 Suggestion)
 Latest tester: 2026-05-28 (AUTO, HEAD e27cc22) — 2 баги: #159 MEDIUM /branches silent catch блокував створення наряду (порожній обов'язковий select); #160 LOW мертвий inline WO-dropdown після SearchPickerModal рефактору. Перевірено scope review-коміту 9d454d3 (@Matches не послаблює валідацію, PIT/RAMP міграція+labels синхронні, SearchPickerModal error-state коректний) — баги у суміжному calendar/page.tsx.
