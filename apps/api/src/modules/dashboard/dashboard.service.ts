@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 
 interface DashboardSummary {
   activeWo: number;
@@ -9,17 +10,27 @@ interface DashboardSummary {
   timestamp: string;
 }
 
+// Dashboard is polled every 30s via SSE — cache for 25s so each SSE tick
+// returns fresh data but we never hit the DB more than once per interval.
+const DASHBOARD_TTL = 25;
+
 @Injectable()
 export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   /**
    * Отримати поточний стан дашборду для організації.
    * Повертає: активні наряди, виручку сьогодні, очікуючі рахунки, низькі залишки.
    */
   async getSummary(orgId: string): Promise<DashboardSummary> {
+    const cacheKey = `dashboard:summary:${orgId}`;
+    const cached = await this.cache.get<DashboardSummary>(cacheKey);
+    if (cached) return cached;
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -100,12 +111,14 @@ export class DashboardService {
         ? Number(lowStockCount.value[0].count)
         : 0;
 
-    return {
+    const result: DashboardSummary = {
       activeWo,
       todayRevenue,
       pendingInvoices,
       lowStockCount: lowStock,
       timestamp: now.toISOString(),
     };
+    await this.cache.set(cacheKey, result, DASHBOARD_TTL);
+    return result;
   }
 }
