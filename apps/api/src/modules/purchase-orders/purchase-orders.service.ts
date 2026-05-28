@@ -37,16 +37,18 @@ export class PurchaseOrdersService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.purchaseOrder.findMany({
         where, skip, take: limit, orderBy: { createdAt: 'desc' },
+        // Lines omitted from list — loaded on demand via findOne when detail opens.
+        // Avoids fetching up to 1000 line rows × 20 POs per list request.
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
-          lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
+          _count: { select: { lines: { where: { deletedAt: null } } } },
         },
       }),
       this.prisma.purchaseOrder.count({ where }),
     ]);
 
-    return { items: items.map(item => this.toDto(item)), total, page, limit };
+    return { items: items.map(item => this.toDto(item as Parameters<typeof this.toDto>[0])), total, page, limit };
   }
 
   async findOne(orgId: string, id: string): Promise<PurchaseOrderResponseDto> {
@@ -218,7 +220,8 @@ export class PurchaseOrdersService {
     createdAt: Date; updatedAt: Date;
     supplier: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
     warehouse: { name: string } | null;
-    lines: Array<{ id: string; goodId: string; quantity: number; price: import('@prisma/client').Prisma.Decimal; receivedQty: number; good: { name: string; sku: string | null; unit: string } | null }>;
+    lines?: Array<{ id: string; goodId: string; quantity: number; price: import('@prisma/client').Prisma.Decimal; receivedQty: number; good: { name: string; sku: string | null; unit: string } | null }>;
+    _count?: { lines: number };
   }): PurchaseOrderResponseDto {
     const sup = po.supplier;
     const supplierName = formatPersonName(sup?.lastName, sup?.firstName, sup?.companyName) || undefined;
@@ -228,6 +231,7 @@ export class PurchaseOrdersService {
       warehouseId: po.warehouseId, warehouseName: po.warehouse?.name,
       totalAmount: Number(po.totalAmount),
       notes: po.notes ?? null,
+      linesCount: po._count?.lines ?? po.lines?.length ?? 0,
       lines: (po.lines ?? []).map((l) => ({
         id: l.id, goodId: l.goodId,
         goodName: l.good?.name, goodSku: l.good?.sku ?? null, unit: l.good?.unit,

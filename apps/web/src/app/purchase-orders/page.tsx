@@ -32,7 +32,8 @@ interface PurchaseOrder {
   supplierId: string; supplierName?: string;
   warehouseId: string; warehouseName?: string;
   totalAmount: number; notes: string | null;
-  lines: POLine[];
+  linesCount: number;
+  lines: POLine[]; // empty in list — loaded on demand via findOne
   createdAt: string; updatedAt: string;
   deletedAt?: string | null;
 }
@@ -73,6 +74,7 @@ export default function PurchaseOrdersPage() {
   const [error, setError] = useState('');
 
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<PurchaseOrder | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
@@ -179,10 +181,26 @@ export default function PurchaseOrdersPage() {
     finally { setSaving(false); }
   };
 
-  const openReceive = (po: PurchaseOrder) => {
+  const loadDetail = async (po: PurchaseOrder, mode: 'detail' | 'receive') => {
+    // Lines are not included in list response — fetch full PO on demand
+    if (po.lines.length > 0 || po.linesCount === 0) {
+      mode === 'detail' ? setShowDetail(po) : openReceiveWithLines(po);
+      return;
+    }
+    setDetailLoading(true);
+    try {
+      const full = await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`);
+      mode === 'detail' ? setShowDetail(full) : openReceiveWithLines(full);
+    } catch { /* show partial data */ mode === 'detail' ? setShowDetail(po) : openReceiveWithLines(po); }
+    finally { setDetailLoading(false); }
+  };
+
+  const openReceiveWithLines = (po: PurchaseOrder) => {
     setReceiveLines(po.lines.map(l => ({ lineId: l.id!, receivedQty: '' })));
     setShowReceive(po);
   };
+
+  const openReceive = (po: PurchaseOrder) => { void loadDetail(po, 'receive'); };
 
   const handleReceive = async () => {
     if (!showReceive) return;
@@ -328,7 +346,7 @@ export default function PurchaseOrdersPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={e => { e.stopPropagation(); setShowDetail(po); }}
+                      onClick={e => { e.stopPropagation(); void loadDetail(po, 'detail'); }}
                     >
                       Деталі
                     </Button>

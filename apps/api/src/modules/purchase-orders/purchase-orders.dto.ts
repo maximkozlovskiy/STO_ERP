@@ -75,6 +75,7 @@ export class PurchaseOrderResponseDto {
   @ApiPropertyOptional() warehouseName?: string;
   @ApiProperty() totalAmount!: number;
   @ApiPropertyOptional() notes?: string | null;
+  @ApiProperty() linesCount!: number;
   @ApiProperty({ type: [PurchaseOrderLineResponseDto] }) lines!: PurchaseOrderLineResponseDto[];
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
