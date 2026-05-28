@@ -15,6 +15,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { cn, daysUntil } from '@/lib/utils';
+import { getCached, setCache } from '@/lib/ref-cache';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -78,11 +79,24 @@ export default function InfrastructurePage() {
 
   const loadAll = () => {
     setLoading(true);
+    // Paint instantly from sessionStorage, then refresh in parallel. This page is
+    // the management source for these reference lists, so it always re-fetches
+    // fresh; writing setCache after the fetch warms the shared ref-cache AND
+    // propagates edits/deletes here to consumer pages (employees, work-orders,
+    // inventory…) on their next mount.
+    const cBranches = getCached<Branch[]>('cache:branches');
+    const cZones = getCached<Zone[]>('cache:zones');
+    const cLifts = getCached<Lift[]>('cache:lifts');
+    const cWarehouses = getCached<Warehouse[]>('cache:warehouses');
+    if (cBranches) setBranches(cBranches);
+    if (cZones) setZones(cZones);
+    if (cLifts) setLifts(cLifts);
+    if (cWarehouses) setWarehouses(cWarehouses);
     Promise.all([
-      apiFetch<Branch[]>('/branches').then(setBranches),
-      apiFetch<Zone[]>('/zones').then(setZones),
-      apiFetch<Lift[]>('/lifts').then(setLifts),
-      apiFetch<Warehouse[]>('/warehouses').then(setWarehouses),
+      apiFetch<Branch[]>('/branches').then(d => { setBranches(d); setCache('cache:branches', d); }),
+      apiFetch<Zone[]>('/zones').then(d => { setZones(d); setCache('cache:zones', d); }),
+      apiFetch<Lift[]>('/lifts').then(d => { setLifts(d); setCache('cache:lifts', d); }),
+      apiFetch<Warehouse[]>('/warehouses').then(d => { setWarehouses(d); setCache('cache:warehouses', d); }),
     ]).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   };
 
