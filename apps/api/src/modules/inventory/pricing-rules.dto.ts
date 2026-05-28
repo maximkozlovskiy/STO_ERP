@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional, IsNumber, IsBoolean, IsUUID, Min, Max } from 'class-validator';
+﻿import { IsString, IsEnum, IsOptional, IsNumber, IsBoolean, IsUUID, Matches, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PricingRuleType, GoodType } from '@prisma/client';
 import { Type } from 'class-transformer';
@@ -21,7 +21,7 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   goodId?: string;
 
   @ApiPropertyOptional()
@@ -87,7 +87,7 @@ export class UpdatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   goodId?: string;
 
   @ApiPropertyOptional()

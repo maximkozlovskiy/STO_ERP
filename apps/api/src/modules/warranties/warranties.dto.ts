@@ -1,17 +1,17 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsUUID, IsDateString, IsOptional, IsString, MaxLength } from 'class-validator';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsUUID, Matches, IsDateString, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateWarrantyDto {
-  @ApiProperty() @IsUUID() workOrderId!: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() workOrderLineId?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() workOrderPartId?: string;
-  @ApiProperty() @IsUUID() counterpartyId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) workOrderId!: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) workOrderLineId?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) workOrderPartId?: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) counterpartyId!: string;
   @ApiProperty() @IsDateString() expiresAt!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) description?: string;
 }
 
 export class ClaimWarrantyDto {
-  @ApiProperty() @IsUUID() claimWoId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) claimWoId!: string;
 }
 
 export class WarrantyResponseDto {

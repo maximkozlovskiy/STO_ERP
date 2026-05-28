@@ -1,4 +1,4 @@
-import { IsString, IsUUID, IsOptional, IsEnum, IsInt, IsNumber, Min, Max, IsISO8601, IsBoolean, IsBooleanString } from 'class-validator';
+﻿import { IsString, IsUUID, Matches, IsOptional, IsEnum, IsInt, IsNumber, Min, Max, IsISO8601, IsBoolean, IsBooleanString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
@@ -6,9 +6,9 @@ import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/clie
 // ─── Work Order ───────────────────────────────────────────
 
 export class CreateWorkOrderDto {
-  @ApiProperty() @IsUUID() branchId!: string;
-  @ApiProperty() @IsUUID() vehicleId!: string;
-  @ApiProperty() @IsUUID() counterpartyId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) branchId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) vehicleId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) counterpartyId!: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
@@ -54,15 +54,15 @@ export class TransitionWorkOrderDto {
 export class WorkOrderQueryDto {
   @ApiPropertyOptional({ enum: WorkOrderStatus }) @IsOptional() @IsEnum(WorkOrderStatus) status?: WorkOrderStatus;
   @ApiPropertyOptional({ enum: WorkOrderPriority }) @IsOptional() @IsEnum(WorkOrderPriority) priority?: WorkOrderPriority;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() branchId?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() counterpartyId?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() vehicleId?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) branchId?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) counterpartyId?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) vehicleId?: string;
 
   // F6: "Мої наряди" chip — filter by assigned mechanic. The filter joins through workOrderLines.employeeId,
   // so an employee sees an order if ANY of its line items reference them as the executor.
   @ApiPropertyOptional({ description: 'Фільтр за виконавцем (через рядки робіт)' })
   @IsOptional()
-  @IsUUID()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   employeeId?: string;
 
   @ApiPropertyOptional({ description: 'Пошук за номером або назвою контрагента' })
@@ -135,9 +135,9 @@ export class PaginatedWorkOrdersDto {
 // ─── Work Order Line ──────────────────────────────────────
 
 export class CreateWorkOrderLineDto {
-  @ApiProperty() @IsUUID() workId!: string;
-  @ApiProperty() @IsUUID() employeeId!: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() liftId?: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) workId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) employeeId!: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) liftId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) normoHours?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) actualHours?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
@@ -171,8 +171,8 @@ export class WorkOrderLineResponseDto {
 // ─── Work Order Part ──────────────────────────────────────
 
 export class CreateWorkOrderPartDto {
-  @ApiProperty() @IsUUID() goodId!: string;
-  @ApiProperty() @IsUUID() warehouseId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) goodId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) warehouseId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
 }

@@ -1,9 +1,9 @@
-import { IsString, IsNotEmpty, IsNumber, Min, IsOptional, IsUUID, IsArray, ValidateNested } from 'class-validator';
+﻿import { IsString, IsNotEmpty, IsNumber, Min, IsOptional, IsUUID, Matches, IsArray, ValidateNested } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class ServiceWorkItemDto {
-  @ApiProperty() @IsUUID() workId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) workId!: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
@@ -13,7 +13,7 @@ export class ServiceWorkItemDto {
 }
 
 export class ServiceGoodItemDto {
-  @ApiProperty() @IsUUID() goodId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) goodId!: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

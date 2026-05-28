@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsEnum,
@@ -8,7 +8,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  IsUUID,
+  IsUUID, Matches,
   Max,
   Min,
   ValidateIf,
@@ -49,7 +49,7 @@ export class UpdateOrganisationSettingsDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   defaultVatRateId?: string;
 
   @ApiPropertyOptional({ minimum: 1, maximum: 365 })
@@ -256,7 +256,7 @@ export class UpdateOrganisationDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.actualAddress !== null) @IsString()
   actualAddress?: string | null;
 
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.bankAccountId !== null) @IsUUID()
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.bankAccountId !== null) @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   bankAccountId?: string | null;
 }
 

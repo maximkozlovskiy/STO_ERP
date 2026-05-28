@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 export class CreateBankAccountDto {
@@ -11,7 +11,7 @@ export class CreateBankAccountDto {
   ibanUA!: string;
 
   @ApiProperty({ example: 'uuid' })
-  @IsUUID() @IsNotEmpty()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) @IsNotEmpty()
   currencyId!: string;
 
   @ApiPropertyOptional({ example: 'ПриватБанк' })
@@ -19,7 +19,7 @@ export class CreateBankAccountDto {
   bankName?: string;
 
   @ApiPropertyOptional({ example: 'uuid' })
-  @IsOptional() @IsUUID()
+  @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   branchId?: string;
 
   @ApiPropertyOptional({ example: '305299' })
@@ -44,13 +44,13 @@ export class UpdateBankAccountDto {
   @Matches(/^UA\d{27}$/, { message: 'Невірний формат IBAN. Має починатись з UA та містити 29 символів' })
   ibanUA?: string;
 
-  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   currencyId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString()
   bankName?: string;
 
-  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   branchId?: string | null;
 
   @ApiPropertyOptional() @IsOptional() @IsString()

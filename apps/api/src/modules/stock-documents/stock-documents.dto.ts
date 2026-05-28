@@ -1,12 +1,12 @@
-import {
-  IsUUID, IsString, IsOptional, IsNumber, Min, IsArray,
+﻿import {
+  IsUUID, Matches, IsString, IsOptional, IsNumber, Min, IsArray,
   ValidateNested, IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class StockDocumentLineDto {
-  @ApiProperty() @IsUUID() goodId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) goodId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
 }
@@ -16,11 +16,11 @@ export class CreateStockDocumentDto {
   @IsEnum(['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'])
   type!: string;
 
-  @ApiProperty() @IsUUID() branchId!: string;
-  @ApiProperty() @IsUUID() warehouseId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) branchId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) warehouseId!: string;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsUUID()
+  @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   targetWarehouseId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;

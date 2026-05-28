@@ -1,10 +1,10 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsUUID, Min } from 'class-validator';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsDateString, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsUUID, Matches, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateExchangeRateDto {
   @ApiProperty({ example: 'uuid' })
-  @IsUUID() @IsNotEmpty()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) @IsNotEmpty()
   currencyId!: string;
 
   @ApiProperty({ example: '2026-05-28' })

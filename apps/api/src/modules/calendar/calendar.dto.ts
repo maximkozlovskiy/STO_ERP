@@ -1,11 +1,11 @@
-import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum, ValidateIf } from 'class-validator';
+﻿import { IsUUID, Matches, IsOptional, IsString, IsISO8601, IsEnum, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
 
 export class CreateCalendarSlotDto {
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.liftId != null) @IsUUID() liftId?: string;
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.employeeId != null) @IsUUID() employeeId?: string;
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.workOrderId != null) @IsUUID() workOrderId?: string;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.liftId != null) @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) liftId?: string;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.employeeId != null) @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) employeeId?: string;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.workOrderId != null) @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) workOrderId?: string;
   @ApiProperty() @IsISO8601() startAt!: string;
   @ApiProperty() @IsISO8601() endAt!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
@@ -16,9 +16,9 @@ export class CreateCalendarSlotDto {
 export class UpdateCalendarSlotDto {
   // ValidateIf(o => o.liftId !== null) — пропускає null (переміщення без підйомника),
   // @IsOptional — пропускає undefined (поле не передане взагалі).
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.liftId !== null) @IsUUID() liftId?: string | null;
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.employeeId !== null) @IsUUID() employeeId?: string | null;
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.workOrderId !== null) @IsUUID() workOrderId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.liftId !== null) @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) liftId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.employeeId !== null) @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) employeeId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.workOrderId !== null) @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) workOrderId?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() startAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() endAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;

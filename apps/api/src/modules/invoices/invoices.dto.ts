@@ -1,10 +1,10 @@
-import { IsUUID, IsOptional, IsNumber, Min, Max, IsString, IsDateString, IsEnum } from 'class-validator';
+﻿import { IsUUID, Matches, IsOptional, IsNumber, Min, Max, IsString, IsDateString, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InvoiceStatus } from '@prisma/client';
 
 export class CreateInvoiceDto {
-  @ApiProperty() @IsUUID() counterpartyId!: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() workOrderId?: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) counterpartyId!: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) workOrderId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
   @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
@@ -30,8 +30,8 @@ export class CreateInvoiceLineDto {
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiProperty() @IsNumber() @Min(0) unitPrice!: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) vatRate?: number;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() goodId?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() workId?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) goodId?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) workId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) sortOrder?: number;
 }
 

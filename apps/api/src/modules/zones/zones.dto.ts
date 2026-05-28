@@ -1,12 +1,12 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
 
 // ─── Zone DTOs ───────────────────────────────────────────
 
 export class CreateZoneDto {
   @ApiProperty()
-  @IsUUID()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   branchId!: string;
 
   @ApiProperty({ example: 'Механічна зона А' })
@@ -44,7 +44,7 @@ export class ZoneResponseDto {
 
 export class CreateLiftDto {
   @ApiProperty()
-  @IsUUID()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   zoneId!: string;
 
   @ApiProperty({ example: 'Підйомник №1' })

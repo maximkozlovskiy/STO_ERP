@@ -1,9 +1,9 @@
-import { IsString, IsNotEmpty, IsUUID, IsNumber, Min, Max, IsOptional, IsPositive, IsBoolean } from 'class-validator';
+﻿import { IsString, IsNotEmpty, IsUUID, Matches, IsNumber, Min, Max, IsOptional, IsPositive, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class CreateWorkDto {
-  @ApiProperty() @IsUUID() categoryId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) categoryId!: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
   @ApiProperty({ description: 'Нормо-годин' }) @IsNumber() @Min(0) normoHours!: number;
   @ApiProperty({ description: 'Ціна, ₴' }) @IsNumber() @Min(0) price!: number;
@@ -24,7 +24,7 @@ export class UpdateWorkDto extends PartialType(CreateWorkDto) {}
 export class WorkQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   categoryId?: string;
 
   @ApiPropertyOptional()

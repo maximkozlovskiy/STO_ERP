@@ -1,4 +1,4 @@
-import { IsUUID, IsString, IsOptional, IsNumber, Min, IsArray, ValidateNested, IsEnum } from 'class-validator';
+﻿import { IsUUID, Matches, IsString, IsOptional, IsNumber, Min, IsArray, ValidateNested, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { PurchaseOrderStatus } from '@prisma/client';
@@ -10,14 +10,14 @@ export class TransitionPurchaseOrderDto {
 }
 
 export class PurchaseOrderLineDto {
-  @ApiProperty() @IsUUID() goodId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) goodId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiProperty() @IsNumber() @Min(0) price!: number;
 }
 
 export class CreatePurchaseOrderDto {
-  @ApiProperty() @IsUUID() supplierId!: string;
-  @ApiProperty() @IsUUID() warehouseId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) supplierId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) warehouseId!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
@@ -40,7 +40,7 @@ export class UpdatePurchaseOrderDto {
 }
 
 export class ReceiveLineDto {
-  @ApiProperty() @IsUUID() lineId!: string;
+  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) lineId!: string;
   @ApiProperty() @IsNumber() @Min(0) receivedQty!: number;
 }
 

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, Min, Max, IsOptional, IsPositive, IsEnum, IsUUID } from 'class-validator';
+﻿import { IsString, IsNotEmpty, IsNumber, Min, Max, IsOptional, IsPositive, IsEnum, IsUUID, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { GoodType } from '@prisma/client';
@@ -20,7 +20,7 @@ export class CreateGoodDto {
   @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
   @ApiPropertyOptional({ enum: GoodType }) @IsOptional() @IsEnum(GoodType) goodType?: GoodType;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() preferredSupplierId?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) preferredSupplierId?: string;
 }
 
 export class UpdateGoodDto extends PartialType(CreateGoodDto) {}
