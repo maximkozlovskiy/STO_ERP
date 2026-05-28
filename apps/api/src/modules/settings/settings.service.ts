@@ -331,19 +331,32 @@ export class SettingsService {
     await this.prisma.taxRate.update({ where: { id }, data: { isActive: false } });
   }
 
+  private readonly orgSelect = {
+    id: true, orgId: true, name: true, edrpou: true,
+    logoUrl: true, legalAddress: true, actualAddress: true,
+    bankAccountId: true, updatedAt: true,
+  } as const;
+
   async getOrganisation(orgId: string): Promise<OrganisationResponseDto> {
-    const org = await this.prisma.organisation.findFirst({ where: { orgId, deletedAt: null } });
+    const org = await this.prisma.organisation.findFirst({
+      where: { orgId, deletedAt: null },
+      select: this.orgSelect,
+    });
     if (!org) throw new NotFoundException('Організацію не знайдено');
     return this.mapOrganisation(org);
   }
 
   async updateOrganisation(orgId: string, dto: UpdateOrganisationDto): Promise<OrganisationResponseDto> {
-    const org = await this.prisma.organisation.findFirst({ where: { orgId, deletedAt: null } });
+    const org = await this.prisma.organisation.findFirst({
+      where: { orgId, deletedAt: null },
+      select: { id: true },
+    });
     if (!org) throw new NotFoundException('Організацію не знайдено');
 
     if (dto.bankAccountId) {
       const ba = await this.prisma.bankAccount.findFirst({
         where: { id: dto.bankAccountId, orgId, deletedAt: null },
+        select: { id: true },
       });
       if (!ba) throw new NotFoundException('Банківський рахунок не знайдено');
     }
@@ -351,6 +364,7 @@ export class SettingsService {
     const updated = await this.prisma.organisation.update({
       where: { id: org.id },
       data: dto,
+      select: this.orgSelect,
     });
     return this.mapOrganisation(updated);
   }
