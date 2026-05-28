@@ -198,6 +198,15 @@ until curl -s http://localhost:3001 > /dev/null 2>&1; do sleep 3; done && echo "
 - [ ] **Виключення** (моделі без `deletedAt`): `SettlementAccount`, `SettlementTransaction`, `StockMovement`, `Payment`, `WorkOrderLineEmployee` — там `deletedAt` фільтр НЕ потрібен
 - [ ] **Relation-фільтри теж** — якщо `findMany` рендериться в UI з FK на іншу soft-deletable модель, додати `where: { relatedModel: { deletedAt: null } }`. Інакше видалені сутності з'являються у списках/widgets (наприклад: `MaintenanceSchedule.findUpcoming` має фільтрувати `vehicle: { deletedAt: null }`).
 - [ ] Жодного `prisma.X.delete()` на бізнес-сутностях
+- [ ] **Soft-delete + повний `@@unique` = повторне створення неможливе** (Bug #152). Якщо модель має `@@unique([orgId, code])` БЕЗ partial-фільтра (`WHERE "deletedAt" IS NULL`), то soft-deleted рядок все ще займає унікальний ключ. App-level dup-check фільтрує `deletedAt: null` → проходить → `prisma.create` падає на DB P2002 → generic 409. Сценарій: видалив валюту "USD" → не можеш створити "USD" знову. Канон у `create()`: після перевірки активного дубля шукай soft-deleted рядок з тим самим ключем (`NOT: { deletedAt: null }`) і **воскрешай** через `update({ ...dto, deletedAt: null })` замість `create`.
+  ```bash
+  # Знайти повні @@unique (не partial) у schema.prisma на soft-deletable моделях
+  grep -n "@@unique" packages/database/prisma/schema.prisma
+  # Перевірити чи відповідна міграція має "WHERE ... IS NULL" — якщо НІ, а create() лише
+  # перевіряє deletedAt:null без resurrection — це баг
+  grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "WHERE"
+  ```
+- [ ] **PATCH що змінює unique-поле має re-check унікальності** (Bug #151). Якщо `create()` робить explicit dup-check по `@@unique`, то `update()` теж мусить — інакше PATCH на зайняте значення покладається на DB P2002 → generic 409 замість локалізованого `ConflictException`. Канон: `if (dto.field !== undefined && dto.field !== existing.field) { duplicate = findFirst({ ...uniqueKey, NOT: { id } }); if (duplicate) throw ConflictException }`.
 
 #### API Contract — list endpoints
 - [ ] **Кожен list endpoint повертає `{ items, total, page?, limit? }`** — frontend всюди очікує `data.items.length`. Bare-array відповіді крашать з `TypeError: Cannot read properties of undefined`. Якщо `.catch(() => {})` ховає це — баг невидимий.
