@@ -129,23 +129,26 @@ function pxToHours(px: number, timelineW: number): number {
 // ─── TimeSelect — hour + minute selects, 15-min step, bounded range ──────────
 
 interface TimeSelectProps {
-  value: string;           // "HH:mm"
+  value: string;    // "HH:mm"
   onChange: (v: string) => void;
+  minHour?: number; // hours before this are disabled (past hours on today)
 }
 
-function TimeSelect({ value, onChange }: TimeSelectProps) {
+function TimeSelect({ value, onChange, minHour = 0 }: TimeSelectProps) {
   const { h, m } = value ? parseHHMM(value) : { h: HOURS[0], m: 0 };
-  const cls = 'w-1/2 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40';
+  const cls = 'w-1/2 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50';
   return (
     <div className="flex gap-1">
       <select className={cls} value={h} onChange={e => onChange(buildHHMM(Number(e.target.value), m))}>
         {PICK_HOURS.map(hh => (
-          <option key={hh} value={hh}>{pad(hh)}</option>
+          <option key={hh} value={hh} disabled={hh < minHour}>{pad(hh)}</option>
         ))}
       </select>
       <select className={cls} value={m} onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}>
         {PICK_MINUTES.map(mm => (
-          <option key={mm} value={mm}>{pad(mm)}</option>
+          <option key={mm} value={mm} disabled={h === minHour && mm < (new Date().getMinutes())}>
+            {pad(mm)}
+          </option>
         ))}
       </select>
     </div>
@@ -237,19 +240,34 @@ interface PendingSlotBlockProps {
   onPendingResizeStart: (e: ReactPointerEvent<HTMLDivElement>, edge: 'start' | 'end') => void;
 }
 
+const PENDING_DRAG_ID = '__pending__';
+
 const PendingSlotBlock = memo(function PendingSlotBlock({
   pending, onOpen, onCancel, onPendingResizeStart,
 }: PendingSlotBlockProps) {
   const left  = ((pending.startH - HOURS[0]) / TOTAL_HOURS) * 100;
   const width = ((pending.endH - pending.startH) / TOTAL_HOURS) * 100;
 
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: PENDING_DRAG_ID,
+    data: { isPending: true },
+  });
+
+  const style: CSSProperties = {
+    left: `${left}%`,
+    width: `${width}%`,
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : 10,
+  };
+
   return (
     <div
+      ref={setNodeRef}
       data-pending-slot
-      className="absolute top-1 bottom-1 bg-primary/20 border-2 border-primary rounded flex items-center overflow-hidden group select-none cursor-pointer z-10"
-      style={{ left: `${left}%`, width: `${width}%` }}
-      onClick={onOpen}
-      title="Натисніть щоб зберегти"
+      className="absolute top-1 bottom-1 bg-primary/20 border-2 border-primary rounded flex items-center overflow-hidden group select-none z-10"
+      style={style}
+      title="Перетягніть щоб змінити підйомник або час. Натисніть щоб відкрити форму"
     >
       {/* Left resize handle */}
       <div
@@ -260,7 +278,13 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
         <div className="w-0.5 h-4 bg-primary/60 rounded" />
       </div>
 
-      <span className="flex-1 text-xs text-primary font-medium px-3 truncate">
+      {/* Draggable + clickable label */}
+      <span
+        className="flex-1 text-xs text-primary font-medium px-3 truncate cursor-grab active:cursor-grabbing"
+        onClick={onOpen}
+        {...listeners}
+        {...attributes}
+      >
         {decimalHoursToHHMM(pending.startH)}–{decimalHoursToHHMM(pending.endH)}
       </span>
 
@@ -375,6 +399,25 @@ export default function CalendarPage() {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Current Kyiv hour — used to disable past hours in TimeSelect on today
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // minHour: on today disable hours already passed; on other days no restriction
+  const minHour = useMemo(() => {
+    if (!date || !nowMs) return HOURS[0];
+    const todayKyiv = toDateString(new Date(nowMs));
+    if (date !== todayKyiv) return HOURS[0];
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: KYIV_TZ, hour: 'numeric', hour12: false,
+    }).formatToParts(new Date(nowMs));
+    return parseInt(parts.find(p => p.type === 'hour')?.value ?? '8', 10);
+  }, [date, nowMs]);
 
   // Ghost while finger is down drawing
   const [ghost, setGhost] = useState<GhostSlot | null>(null);
@@ -682,6 +725,30 @@ export default function CalendarPage() {
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, delta, over } = event;
     if (!active || !delta) return;
+
+    // ── Pending slot drag ─────────────────────────────────────────────────
+    if (active.id === PENDING_DRAG_ID) {
+      const p = pendingSlotRef.current;
+      if (!p) return;
+      const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
+      if (!containerWidth) return;
+      const timelineWidth = containerWidth - SIDEBAR_W;
+      const shiftH = snapTo15((delta.x / timelineWidth) * TOTAL_HOURS);
+      const newLiftId = over?.data?.current?.liftId ?? p.liftId;
+      const newStartH = Math.max(WINDOW_START, Math.min(p.startH + shiftH, WINDOW_END - (p.endH - p.startH)));
+      const newEndH   = newStartH + (p.endH - p.startH);
+      setPendingSlot({ liftId: newLiftId, startH: newStartH, endH: newEndH });
+      setForm(f => ({
+        ...f,
+        liftId: newLiftId,
+        startAt: decimalHoursToHHMM(newStartH),
+        endAt:   decimalHoursToHHMM(newEndH),
+        normoHours: String(+(newEndH - newStartH).toFixed(2)),
+      }));
+      return;
+    }
+
+    // ── Saved slot drag ───────────────────────────────────────────────────
     const slot = slots.find(s => s.id === active.id);
     if (!slot) return;
     const newLiftId: string | null = over?.data?.current?.liftId ?? slot.liftId ?? null;
@@ -969,6 +1036,7 @@ export default function CalendarPage() {
               <label className="block text-xs font-medium text-muted-foreground mb-1">Початок</label>
               <TimeSelect
                 value={form.startAt}
+                minHour={editingSlotId ? HOURS[0] : minHour}
                 onChange={start => {
                   setForm(f => {
                     let next = { ...f, startAt: start };
@@ -1019,6 +1087,7 @@ export default function CalendarPage() {
               <label className="block text-xs font-medium text-muted-foreground mb-1">Кінець</label>
               <TimeSelect
                 value={form.endAt}
+                minHour={editingSlotId ? HOURS[0] : minHour}
                 onChange={endAt => {
                   setForm(f => ({ ...f, endAt }));
                   if (pendingSlotRef.current) {
