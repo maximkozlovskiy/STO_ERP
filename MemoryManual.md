@@ -9,21 +9,41 @@
 ## Останній commit
 
 ```
+ba14043 fix(review): make calendar memo effective + guard GET dedup against shared AbortSignal
+5704435 perf(db): GIN trgm indexes applied
+e59578b perf(web): memo calendar + dedup GET requests (api-client.ts)
+8e4d346 perf(dashboard): Redis 25s TTL cache
+2e180d9 perf(reports): $queryRaw groupBy aggregation (workOrders + profitability)
+f040cde perf(db): 5 composite indexes
 19a4c22 fix(review): narrow employee relation includes to select in create/update
 945e264 perf(web+api): lazy-load reports charts + slim employee includes
 9a9efeb perf(purchase-orders): lazy-load lines — remove from list, fetch on detail open
 923aea5 perf(api): Redis cache for reference data (5 min TTL)
-f6438e8 perf(web): lazy-load recharts on dashboard (235kB → 124kB)
-016f041 perf(web): debounce search inputs across all pages (300ms)
-c2d12be fix(simplify): 3 findings from /simplify review
-ea7e3e1 perf(web): parallel fetches + SW cache fix + sessionStorage for reference data
-38b8a34 perf(work-orders): parallel fetch + sessionStorage cache + fix double load
-2e8b4ce fix(tech-debt): soft-delete resurrection in brands, units, payment-methods
 ```
 
 Дата: 2026-05-28
 
-> /sto-review verify pass на HEAD 2e8b4ce (2026-05-28): 0 issues to fix, no review commit needed.
+> /sto-review verify pass на HEAD 5704435 (2026-05-28, perf commits f040cde..5704435):
+> CRITICAL/Important checks усі пройшли. Виправлено 2 ефективність-проблеми (commit ba14043):
+> 1. calendar/page.tsx — memo() на DroppableLiftRow був неефективний: `slotsForLift(id)`
+>    створював новий .filter() масив кожен render → memo завжди re-render. Фікс: useMemo Map<liftId,slots[]>
+>    + stable EMPTY_SLOTS → liftSlots reference стабільна.
+> 2. api-client.ts — GET dedup keyed на path: безпечно для plain GET (shared promise rejection
+>    коректно прокидається всім callers), АЛЕ небезпечно якщо GET має AbortSignal (abort одного
+>    caller валив би проміс іншого). Фікс: `method === 'GET' && !init?.signal` — abortable GET не дедупиться.
+> Verified OK (без правок):
+>   • reports.service.ts $queryRaw — усі колонки camelCase у лапках ("employeeId", "normoHours",
+>     "amount", "deletedAt", "orgId", "workOrderId", "totalAmount", "totalLabor", "completedAt",
+>     "batchCostPrice", "purchasePrice", "firstName", "lastName") звірені зі schema.prisma (без @map).
+>     Table names = @@map plural (work_order_lines, work_orders, employees, work_order_parts, goods).
+>     Conditional fragment через Prisma.sql / Prisma.empty (НЕ string interpolation). BETWEEN = gte/lte
+>     inclusive — збігається зі старою логікою. Bug #74 fallback (batchCostPrice→good.purchasePrice)
+>     + unknownCount FILTER збережені; SUM ігнорує NULL → unknown parts contribute 0 (як раніше).
+>   • dashboard.service.ts — CacheService DI ОК (RedisModule @Global + AppModule import). Cache key
+>     містить orgId (`dashboard:summary:${orgId}`) → 25s TTL не плутає org-и. CacheService get/set
+>     мають try/catch fallback → Redis down не ламає request (offline-first).
+> ---
+> Попередній /sto-review verify pass на HEAD 2e8b4ce (2026-05-28): 0 issues to fix, no review commit needed.
 > Перевірено: brands/units/payment-methods.service (resurrection pattern), exchange-rates.service
 > (parseDateOnly + merged findFirst), currencies.service (merged findFirst), picker-modal.tsx
 > (IIFE removed), settings/page.tsx (logoPreview cleared on success + objectURL revoke).
