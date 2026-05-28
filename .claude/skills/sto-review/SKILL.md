@@ -639,6 +639,24 @@ grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" -A 30 \
 - [ ] Indexes для FK і частих фільтрів (`orgId`, `status`, `deletedAt`)
 - [ ] `@unique` де бізнес вимагає (StockItem: `orgId + goodId + warehouseId`)
 - [ ] Ніяких `prisma.X.delete()` на бізнес-сутностях
+- [ ] **Soft-delete resurrection на `@@unique` що НЕ включає `deletedAt`** (Bug #152, tech-debt brands/units/payment-methods/currencies/exchange-rates). Якщо модель має `@@unique([orgId, X])` БЕЗ `deletedAt` у ключі, `create()` НЕ можна писати як `findFirst({ ..., deletedAt: null })` → `create()`: soft-deleted рядок з тим самим `X` усе ще займає унікальний індекс → `prisma.create` падає на `P2002` → HTTP 500 (а не локалізований 409). Канон — один merged `findFirst` (БЕЗ `deletedAt` фільтра) + resurrect:
+  ```typescript
+  // ✅ GOOD — обробляє active-dup І resurrection в одному round-trip
+  const anyExisting = await this.prisma.X.findFirst({ where: { orgId, uniqueField: dto.uniqueField } });
+  if (anyExisting) {
+    if (!anyExisting.deletedAt) throw new ConflictException('... вже існує');
+    const restored = await this.prisma.X.update({ where: { id: anyExisting.id }, data: { ...dto, deletedAt: null } });
+    return this.toDto(restored); // update() bumps syncVersion → sync-safe
+  }
+  const item = await this.prisma.X.create({ data: { ...dto, orgId } });
+  ```
+  Виняток (resurrection НЕ потрібен): поле має `@@index` (не `@@unique`) → `findFirst({ deletedAt: null })` + `create()` коректний (P2002 неможливий, дублі серед active — суто UX-перевірка). Приклад: `goods.service.ts` sku/barcode (`@@index([orgId, sku])`).
+  ```bash
+  # Для кожної моделі з @@unique без deletedAt у ключі — перевір що create() робить resurrection
+  grep -n "@@unique" packages/database/prisma/schema.prisma | grep -v "deletedAt"
+  # Потім у відповідному *.service.ts: create() не має падати на soft-deleted колізію
+  grep -rn "deletedAt: null" apps/api/src/modules --include="*.service.ts" -A2 | grep -B2 "\.create("
+  ```
 
 ### 6.1 select vs include — зайвий SELECT *
 

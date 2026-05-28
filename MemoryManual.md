@@ -9,19 +9,28 @@
 ## Останній commit
 
 ```
+2e8b4ce fix(tech-debt): soft-delete resurrection in brands, units, payment-methods
+3d2c185 fix(simplify): 4 findings from /simplify review
+2493d73 docs(skills): document ExpiryBadge/daysUntil primitive + UI modularity review section
 06e2ccb refactor(ui): replace inline pickers with PickerModal + extract duplicated helpers
 2e68a01 fix(tester): Bug #151+#152 — exchange-rate update dup-date check + soft-delete resurrection
 366c82d fix(tester): Bug #150 — aria-label on icon-only buttons in new settings tabs
 f28787d fix(tester): Bug #147+#148+#149 — client validation on currency/rate modals
 8733962 fix(tester): Bug #146 — cash-registers contract spec
-9e3fa77 docs(memory): record /sto-review verify pass on HEAD aa5aefd (catalog modules — 0 issues)
 aa5aefd fix(settings): explicit select on org queries to exclude BigInt syncVersion
-8b3b64c fix(shell): public routes always render without sidebar
-bd02c9a fix(settings): BigInt JSON serialization + logo upload multipart
 4ff6454 feat(catalog): currencies, exchange-rates, bank-accounts, cash-registers
 ```
 
 Дата: 2026-05-28
+
+> /sto-review verify pass на HEAD 2e8b4ce (2026-05-28): 0 issues to fix, no review commit needed.
+> Перевірено: brands/units/payment-methods.service (resurrection pattern), exchange-rates.service
+> (parseDateOnly + merged findFirst), currencies.service (merged findFirst), picker-modal.tsx
+> (IIFE removed), settings/page.tsx (logoPreview cleared on success + objectURL revoke).
+> Усі три resurrection-сервіси мають `@@unique([orgId, X])` що НЕ включає deletedAt → soft-deleted
+> рядок блокує re-create → resurrection через update() коректний + bumps syncVersion (sync-safe).
+> goods.service.ts (sku/barcode) — НЕ потребує resurrection: `@@index` (не `@@unique`), P2002 неможливий.
+> Контролери: повні guards (Jwt+Roles), @Roles на кожному методі, ParseUUIDPipe на :id. API tsc: 0 errors.
 
 ## Поточний стан проєкту
 ```
