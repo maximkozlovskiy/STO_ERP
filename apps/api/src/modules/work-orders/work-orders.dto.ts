@@ -1,4 +1,4 @@
-﻿import { IsString, IsUUID, Matches, IsOptional, IsEnum, IsInt, IsNumber, Min, Max, IsISO8601, IsBoolean, IsBooleanString } from 'class-validator';
+import { IsString, IsUUID, Matches, IsOptional, IsEnum, IsInt, IsNumber, Min, Max, IsISO8601, IsBoolean, IsBooleanString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';

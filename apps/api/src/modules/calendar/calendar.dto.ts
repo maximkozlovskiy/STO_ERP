@@ -1,4 +1,4 @@
-﻿import { IsUUID, Matches, IsOptional, IsString, IsISO8601, IsEnum, ValidateIf } from 'class-validator';
+import { IsUUID, Matches, IsOptional, IsString, IsISO8601, IsEnum, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
 

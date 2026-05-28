@@ -1,4 +1,4 @@
-﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 export class CreateCashRegisterDto {

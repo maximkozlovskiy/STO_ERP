@@ -1,4 +1,4 @@
-﻿import { IsString, IsEnum, IsOptional, IsNumber, IsBoolean, IsUUID, Matches, Min, Max } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsNumber, IsBoolean, IsUUID, Matches, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PricingRuleType, GoodType } from '@prisma/client';
 import { Type } from 'class-transformer';

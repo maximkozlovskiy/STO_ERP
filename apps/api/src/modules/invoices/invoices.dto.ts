@@ -1,4 +1,4 @@
-﻿import { IsUUID, Matches, IsOptional, IsNumber, Min, Max, IsString, IsDateString, IsEnum } from 'class-validator';
+import { IsUUID, Matches, IsOptional, IsNumber, Min, Max, IsString, IsDateString, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InvoiceStatus } from '@prisma/client';
 

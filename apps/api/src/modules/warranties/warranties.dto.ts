@@ -1,4 +1,4 @@
-﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsUUID, Matches, IsDateString, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateWarrantyDto {

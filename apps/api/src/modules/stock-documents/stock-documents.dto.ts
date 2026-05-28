@@ -1,4 +1,4 @@
-﻿import {
+import {
   IsUUID, Matches, IsString, IsOptional, IsNumber, Min, IsArray,
   ValidateNested, IsEnum,
 } from 'class-validator';

@@ -1,4 +1,4 @@
-﻿import { IsUUID, Matches, IsString, IsOptional, IsNumber, Min, IsArray, ValidateNested, IsEnum } from 'class-validator';
+import { IsUUID, Matches, IsString, IsOptional, IsNumber, Min, IsArray, ValidateNested, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { PurchaseOrderStatus } from '@prisma/client';

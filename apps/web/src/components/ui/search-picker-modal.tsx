@@ -38,6 +38,7 @@ export function SearchPickerModal<T extends SearchPickerItem>({
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
@@ -48,11 +49,14 @@ export function SearchPickerModal<T extends SearchPickerItem>({
 
   // Load initial list when modal opens
   useEffect(() => {
-    if (!open) { setQuery(''); setItems([]); return; }
+    if (!open) { setQuery(''); setItems([]); setError(''); return; }
     setLoading(true);
+    setError('');
     fetchItems('').then(data => {
       if (mountedRef.current) setItems(data);
-    }).catch(() => {}).finally(() => {
+    }).catch((e: unknown) => {
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+    }).finally(() => {
       if (mountedRef.current) setLoading(false);
     });
   }, [open, fetchItems]);
@@ -60,10 +64,13 @@ export function SearchPickerModal<T extends SearchPickerItem>({
   const search = useCallback((q: string) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setLoading(true);
+    setError('');
     timeoutRef.current = setTimeout(() => {
       fetchItems(q).then(data => {
         if (mountedRef.current) { setItems(data); setLoading(false); }
-      }).catch(() => { if (mountedRef.current) setLoading(false); });
+      }).catch((e: unknown) => {
+        if (mountedRef.current) { setError(e instanceof Error ? e.message : 'Помилка пошуку'); setLoading(false); }
+      });
     }, 300);
   }, [fetchItems]);
 
@@ -72,7 +79,7 @@ export function SearchPickerModal<T extends SearchPickerItem>({
   }, []);
 
   const handleClose = useCallback(() => {
-    setQuery(''); setItems([]);
+    setQuery(''); setItems([]); setError('');
     onClose();
   }, [onClose]);
 
@@ -88,9 +95,12 @@ export function SearchPickerModal<T extends SearchPickerItem>({
             search(e.target.value);
           }}
         />
+        {error && (
+          <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</p>
+        )}
         {loading ? (
           <div className="flex justify-center py-6"><Spinner size="sm" /></div>
-        ) : items.length === 0 ? (
+        ) : error ? null : items.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">{emptyText}</p>
         ) : (
           <div className="space-y-1 max-h-96 overflow-y-auto pr-0.5">

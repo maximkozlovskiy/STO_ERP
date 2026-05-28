@@ -1,4 +1,4 @@
-﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, IsDateString, IsOptional, IsString, IsUUID, MaxLength, Matches } from 'class-validator';
 
 export class BookingAvailabilityQueryDto {
