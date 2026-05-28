@@ -45,16 +45,14 @@ export function PickerModal<T extends PickerItem>({
     onClose();
   }, [onClose]);
 
-  const filtered = query.trim()
-    ? (() => {
-        const q = query.trim().toLowerCase();
-        return items.filter(item =>
-          searchKeys.some(k => {
-            const v = (item as Record<string, unknown>)[k];
-            return typeof v === 'string' && v.toLowerCase().includes(q);
-          })
-        );
-      })()
+  const trimmed = query.trim();
+  const filtered = trimmed
+    ? items.filter(item =>
+        searchKeys.some(k => {
+          const v = (item as Record<string, unknown>)[k];
+          return typeof v === 'string' && v.toLowerCase().includes(trimmed.toLowerCase());
+        })
+      )
     : items;
 
   return (

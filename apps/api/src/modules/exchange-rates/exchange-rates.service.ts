@@ -3,6 +3,15 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateExchangeRateDto, ExchangeRateResponseDto, UpdateExchangeRateDto } from './exchange-rates.dto';
 
+// Normalise any ISO-8601 string (including timezone-aware) to a UTC midnight Date
+// that matches what Prisma returns for @db.Date columns.
+// e.g. '2024-01-15T03:00:00+03:00' → 2024-01-15T00:00:00.000Z (not 2024-01-14)
+function parseDateOnly(value: string): Date {
+  // Take only the date portion (first 10 chars) and parse as UTC midnight
+  const ymd = value.slice(0, 10);
+  return new Date(`${ymd}T00:00:00.000Z`);
+}
+
 @Injectable()
 export class ExchangeRatesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -47,21 +56,16 @@ export class ExchangeRatesService {
     });
     if (!currency) throw new NotFoundException('Валюту не знайдено');
 
-    const date = new Date(dto.date);
-    const existing = await this.prisma.exchangeRate.findFirst({
-      where: { orgId, currencyId: dto.currencyId, date, deletedAt: null },
+    const date = parseDateOnly(dto.date);
+    // Single query: fetch any row (active or soft-deleted) for this unique key (Bug #152 + merge).
+    const anyExisting = await this.prisma.exchangeRate.findFirst({
+      where: { orgId, currencyId: dto.currencyId, date },
     });
-    if (existing) throw new ConflictException('Курс на цю дату вже існує');
-
-    // Bug #152: DB unique (orgId, currencyId, date) — повний, не partial. Soft-deleted
-    // рядок все ще займає ключ → prisma.create впав би на P2002. Якщо такий рядок є —
-    // воскрешаємо його (un-delete + оновлення даними), а не створюємо новий.
-    const softDeleted = await this.prisma.exchangeRate.findFirst({
-      where: { orgId, currencyId: dto.currencyId, date, NOT: { deletedAt: null } },
-    });
-    if (softDeleted) {
+    if (anyExisting) {
+      if (!anyExisting.deletedAt) throw new ConflictException('Курс на цю дату вже існує');
+      // Soft-deleted row occupies the unique index — resurrect it
       const restored = await this.prisma.exchangeRate.update({
-        where: { id: softDeleted.id },
+        where: { id: anyExisting.id },
         data: { rate: dto.rate, coefficient: dto.coefficient ?? 1, deletedAt: null },
         include: { currency: { select: { code: true, name: true } } },
       });
@@ -85,8 +89,9 @@ export class ExchangeRatesService {
     // Інакше PATCH на зайняту дату падає на DB P2002 → generic 409 замість
     // локалізованого повідомлення (так само як у create()).
     if (dto.date !== undefined) {
-      const newDate = new Date(dto.date);
-      if (newDate.getTime() !== existing.date.getTime()) {
+      const newDate = parseDateOnly(dto.date);
+      // Only check for conflicts when the calendar date actually changes
+      if (newDate.getTime() !== new Date(existing.date).setUTCHours(0, 0, 0, 0)) {
         const duplicate = await this.prisma.exchangeRate.findFirst({
           where: { orgId, currencyId: existing.currencyId, date: newDate, NOT: { id }, deletedAt: null },
         });
@@ -95,7 +100,7 @@ export class ExchangeRatesService {
     }
 
     const updateData: Record<string, unknown> = {};
-    if (dto.date !== undefined) updateData['date'] = new Date(dto.date);
+    if (dto.date !== undefined) updateData['date'] = parseDateOnly(dto.date);
     if (dto.rate !== undefined) updateData['rate'] = dto.rate;
     if (dto.coefficient !== undefined) updateData['coefficient'] = dto.coefficient;
 

@@ -764,6 +764,8 @@ export default function SettingsPage() {
       const result = await apiMultipartFetch<{ url: string }>('/files/upload', formData);
       await apiFetch('/settings/org-info', { method: 'PATCH', body: JSON.stringify({ logoUrl: result.url }) });
       setOrgInfo(prev => prev ? { ...prev, logoUrl: result.url } : prev);
+      // Clear blob preview so src falls through to the persisted server URL
+      setLogoPreview(null);
       if (currentFeatures.toastEnabled) toast.success('Логотип завантажено');
     } catch (e: unknown) {
       setLogoPreview(null);
