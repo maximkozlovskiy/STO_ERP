@@ -94,19 +94,25 @@ function displayCounterparty(cp: CounterpartyOption): string {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
-function toDateString(d: Date) { return new Intl.DateTimeFormat('sv-SE', { timeZone: KYIV_TZ }).format(d); }
+
+// Module-level cached Intl formatters — constructing Intl.DateTimeFormat is expensive
+// (locale-data init); kyivHours/fmtTime are called per-slot per-render, so reuse one instance.
+const DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: KYIV_TZ });
+const KYIV_HM_FMT = new Intl.DateTimeFormat('en-US', { timeZone: KYIV_TZ, hour: 'numeric', minute: 'numeric', hour12: false });
+const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-US', { timeZone: KYIV_TZ, hour: 'numeric', hour12: false });
+const TIME_FMT = new Intl.DateTimeFormat('uk-UA', { timeZone: KYIV_TZ, hour: '2-digit', minute: '2-digit', hour12: false });
+
+function toDateString(d: Date) { return DATE_FMT.format(d); }
 
 function kyivHours(iso: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: KYIV_TZ, hour: 'numeric', minute: 'numeric', hour12: false,
-  }).formatToParts(new Date(iso));
+  const parts = KYIV_HM_FMT.formatToParts(new Date(iso));
   const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
   const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
   return h + m / 60;
 }
 
 function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('uk-UA', { timeZone: KYIV_TZ, hour: '2-digit', minute: '2-digit', hour12: false });
+  return TIME_FMT.format(new Date(iso));
 }
 
 function decimalHoursToHHMM(h: number): string {
@@ -129,12 +135,13 @@ function pxToHours(px: number, timelineW: number): number {
 // ─── TimeSelect — hour + minute selects, 15-min step, bounded range ──────────
 
 interface TimeSelectProps {
-  value: string;    // "HH:mm"
+  value: string;      // "HH:mm"
   onChange: (v: string) => void;
-  minHour?: number; // hours before this are disabled (past hours on today)
+  minHour?: number;   // hours before this are disabled (past hours on today)
+  minMinute?: number; // when h === minHour, minutes before this are disabled (current minute on today)
 }
 
-function TimeSelect({ value, onChange, minHour = 0 }: TimeSelectProps) {
+function TimeSelect({ value, onChange, minHour = 0, minMinute = 0 }: TimeSelectProps) {
   const { h, m } = value ? parseHHMM(value) : { h: HOURS[0], m: 0 };
   const cls = 'w-1/2 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50';
   return (
@@ -146,7 +153,7 @@ function TimeSelect({ value, onChange, minHour = 0 }: TimeSelectProps) {
       </select>
       <select className={cls} value={m} onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}>
         {PICK_MINUTES.map(mm => (
-          <option key={mm} value={mm} disabled={h === minHour && mm < (new Date().getMinutes())}>
+          <option key={mm} value={mm} disabled={h === minHour && mm < minMinute}>
             {pad(mm)}
           </option>
         ))}
@@ -413,11 +420,12 @@ export default function CalendarPage() {
     if (!date || !nowMs) return HOURS[0];
     const todayKyiv = toDateString(new Date(nowMs));
     if (date !== todayKyiv) return HOURS[0];
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: KYIV_TZ, hour: 'numeric', hour12: false,
-    }).formatToParts(new Date(nowMs));
+    const parts = KYIV_HOUR_FMT.formatToParts(new Date(nowMs));
     return parseInt(parts.find(p => p.type === 'hour')?.value ?? '8', 10);
   }, [date, nowMs]);
+
+  // minMinute: current Kyiv minute on today (used to disable past minutes in the minHour slot)
+  const minMinute = useMemo(() => (nowMs ? new Date(nowMs).getMinutes() : 0), [nowMs]);
 
   // Ghost while finger is down drawing
   const [ghost, setGhost] = useState<GhostSlot | null>(null);
@@ -1037,6 +1045,7 @@ export default function CalendarPage() {
               <TimeSelect
                 value={form.startAt}
                 minHour={editingSlotId ? HOURS[0] : minHour}
+                minMinute={editingSlotId ? 0 : minMinute}
                 onChange={start => {
                   setForm(f => {
                     let next = { ...f, startAt: start };
@@ -1088,6 +1097,7 @@ export default function CalendarPage() {
               <TimeSelect
                 value={form.endAt}
                 minHour={editingSlotId ? HOURS[0] : minHour}
+                minMinute={editingSlotId ? 0 : minMinute}
                 onChange={endAt => {
                   setForm(f => ({ ...f, endAt }));
                   if (pendingSlotRef.current) {
