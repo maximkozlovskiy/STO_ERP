@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, type CSSProperties } from 'react';
+import { useEffect, useState, useCallback, useRef, memo, type CSSProperties } from 'react';
 import { Plus, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -56,7 +56,7 @@ interface DraggableSlotProps {
   slot: CalendarSlot;
   onRemove: (id: string) => void;
 }
-function DraggableSlot({ slot, onRemove }: DraggableSlotProps) {
+const DraggableSlot = memo(function DraggableSlot({ slot, onRemove }: DraggableSlotProps) {
   const startH = kyivHours(slot.startAt);
   const endH   = kyivHours(slot.endAt);
   const left  = ((startH - HOURS[0]) / TOTAL_HOURS) * 100;
@@ -91,14 +91,14 @@ function DraggableSlot({ slot, onRemove }: DraggableSlotProps) {
       </button>
     </div>
   );
-}
+});
 
 interface DroppableLiftRowProps {
   liftId: string;
   liftSlots: CalendarSlot[];
   onRemove: (id: string) => void;
 }
-function DroppableLiftRow({ liftId, liftSlots, onRemove }: DroppableLiftRowProps) {
+const DroppableLiftRow = memo(function DroppableLiftRow({ liftId, liftSlots, onRemove }: DroppableLiftRowProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `lift-${liftId}`, data: { liftId } });
 
   return (
@@ -117,7 +117,7 @@ function DroppableLiftRow({ liftId, liftSlots, onRemove }: DroppableLiftRowProps
       ))}
     </div>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -200,13 +200,13 @@ export default function CalendarPage() {
     finally { setSaving(false); }
   };
 
-  const removeSlot = async (id: string) => {
+  const removeSlot = useCallback(async (id: string) => {
     if (!confirm('Видалити слот?')) return;
     setSaving(true); setError('');
     try { await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
     finally { setSaving(false); }
-  };
+  }, [load]);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, delta, over } = event;

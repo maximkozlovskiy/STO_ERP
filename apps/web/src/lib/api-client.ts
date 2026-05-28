@@ -33,7 +33,27 @@ async function tryRefresh(): Promise<string | null> {
   }
 }
 
+// Dedup identical in-flight GET requests — prevents double-fetch on StrictMode
+// double-invoke and rapid UI interactions hitting the same endpoint.
+const inFlight = new Map<string, Promise<unknown>>();
+
 export async function apiFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const method = (init?.method ?? 'GET').toUpperCase();
+  if (method === 'GET') {
+    const key = path;
+    const existing = inFlight.get(key);
+    if (existing) return existing as Promise<T>;
+    const promise = _apiFetch<T>(path, init).finally(() => inFlight.delete(key));
+    inFlight.set(key, promise);
+    return promise;
+  }
+  return _apiFetch<T>(path, init);
+}
+
+async function _apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
