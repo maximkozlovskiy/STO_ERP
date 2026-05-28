@@ -520,12 +520,14 @@ export default function CalendarPage() {
       // ── Finish drawing → create pending slot ───────────────────────────
       if (drawingRef.current) {
         const { liftId, startH } = drawingRef.current;
-        const endH = snapTo15(Math.max(pxToDecimalHours(e.clientX), startH + 0.25));
+        const rawEndH = pxToDecimalHours(e.clientX);
+        // If user barely moved (< 15 min drag) — use 1-hour default
+        const endH = (rawEndH - startH) >= 0.25
+          ? snapTo15(rawEndH)
+          : startH + 1;
         drawingRef.current = null;
         setGhost(null);
-        if (endH - startH >= 0.25) {
-          setPendingSlot({ liftId, startH, endH });
-        }
+        setPendingSlot({ liftId, startH, endH: Math.min(endH, WINDOW_END) });
         return;
       }
 
