@@ -220,15 +220,42 @@ export default function WorkOrdersPage() {
   });
 
   useEffect(() => {
-    apiFetch<Branch[]>('/branches').then(bs => {
+    let cancelled = false;
+    // Try sessionStorage cache first (reference data rarely changes within a session)
+    const cachedBranches = sessionStorage.getItem('cache:branches');
+    const cachedTemplates = sessionStorage.getItem('cache:wo-templates');
+    if (cachedBranches && cachedTemplates) {
+      try {
+        const bs = JSON.parse(cachedBranches) as Branch[];
+        const tmpl = JSON.parse(cachedTemplates) as WOTemplate[];
+        setBranches(bs);
+        if (bs.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: bs[0].id }));
+        setTemplates(tmpl);
+        return;
+      } catch { /* cache corrupted — fall through to fetch */ }
+    }
+    // Parallel fetch — branches and templates in one round trip
+    Promise.all([
+      apiFetch<Branch[]>('/branches'),
+      apiFetch<{ items: WOTemplate[] }>('/work-order-templates?limit=100'),
+    ]).then(([bs, tmpl]) => {
+      if (cancelled) return;
       setBranches(bs);
-      // Auto-select single branch but preserve user's manual pick (race-safe on remount).
       if (bs.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: bs[0].id }));
-    }).catch((e: unknown) => setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити філії'));
-    apiFetch<{ items: WOTemplate[] }>('/work-order-templates?limit=100')
-      .then(r => setTemplates(r.items))
-      .catch(() => {});
+      setTemplates(tmpl.items);
+      try {
+        sessionStorage.setItem('cache:branches', JSON.stringify(bs));
+        sessionStorage.setItem('cache:wo-templates', JSON.stringify(tmpl.items));
+      } catch { /* ignore quota errors */ }
+    }).catch((e: unknown) => {
+      if (!cancelled) setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити дані');
+    });
+    return () => { cancelled = true; };
   }, []);
+
+  // Keep employeeId in a ref so load() doesn't re-create when employee object changes identity
+  const employeeIdRef = useRef(employee?.id);
+  useEffect(() => { employeeIdRef.current = employee?.id; }, [employee?.id]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -237,12 +264,12 @@ export default function WorkOrdersPage() {
     if (categoryFilter) p.set('repairCategory', categoryFilter);
     if (search) p.set('q', search);
     if (showDeleted) p.set('showDeleted', 'true');
-    if (myOrders && employee?.id) p.set('employeeId', employee.id);
+    if (myOrders && employeeIdRef.current) p.set('employeeId', employeeIdRef.current);
     apiFetch<Paginated>(`/work-orders?${p}`)
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
       .finally(() => setLoading(false));
-  }, [page, statusFilter, categoryFilter, search, showDeleted, myOrders, employee?.id]);
+  }, [page, statusFilter, categoryFilter, search, showDeleted, myOrders]);
 
   useEffect(() => { load(); }, [load]);
 
