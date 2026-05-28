@@ -160,6 +160,7 @@ export default function SettingsPage() {
   const [currencyModal, setCurrencyModal] = useState(false);
   const [editingCurrency, setEditingCurrency] = useState<Currency | null>(null);
   const [currencyForm, setCurrencyForm] = useState({ name: '', code: '', symbol: '', fullName: '', internationalName: '' });
+  const [currencyErrors, setCurrencyErrors] = useState<{ name?: string; code?: string }>({});
   const [savingCurrency, setSavingCurrency] = useState(false);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
 
@@ -168,6 +169,7 @@ export default function SettingsPage() {
   const [rateModal, setRateModal] = useState(false);
   const [editingRate, setEditingRate] = useState<ExchangeRate | null>(null);
   const [rateForm, setRateForm] = useState({ currencyId: '', currencyDisplay: '', date: '', rate: '', coefficient: '1' });
+  const [rateErrors, setRateErrors] = useState<{ currencyId?: string; date?: string; rate?: string; coefficient?: string }>({});
   const [savingRate, setSavingRate] = useState(false);
   const [loadingRates, setLoadingRates] = useState(false);
 
@@ -542,18 +544,32 @@ export default function SettingsPage() {
 
   const openCurrencyModal = (c?: Currency) => {
     setEditingCurrency(c ?? null);
+    setCurrencyErrors({});
     setCurrencyForm(c ? { name: c.name, code: c.code, symbol: c.symbol ?? '', fullName: c.fullName ?? '', internationalName: c.internationalName ?? '' } : { name: '', code: '', symbol: '', fullName: '', internationalName: '' });
     setCurrencyModal(true);
   };
 
   const saveCurrency = async () => {
+    const errs: typeof currencyErrors = {};
+    if (!currencyForm.name.trim()) errs.name = 'Введіть назву валюти';
+    if (!currencyForm.code.trim()) errs.code = 'Введіть код валюти';
+    if (Object.keys(errs).length > 0) { setCurrencyErrors(errs); return; }
+    setCurrencyErrors({});
     setSavingCurrency(true);
     try {
+      // Незаповнені optional поля → undefined (omit), щоб у БД зберігся null, а не ''.
+      const body = {
+        name: currencyForm.name.trim(),
+        code: currencyForm.code.trim(),
+        symbol: currencyForm.symbol.trim() || undefined,
+        fullName: currencyForm.fullName.trim() || undefined,
+        internationalName: currencyForm.internationalName.trim() || undefined,
+      };
       if (editingCurrency) {
-        const updated = await apiFetch<Currency>(`/currencies/${editingCurrency.id}`, { method: 'PATCH', body: JSON.stringify(currencyForm) });
+        const updated = await apiFetch<Currency>(`/currencies/${editingCurrency.id}`, { method: 'PATCH', body: JSON.stringify(body) });
         setCurrencies(prev => prev.map(c => c.id === updated.id ? updated : c));
       } else {
-        const created = await apiFetch<Currency>('/currencies', { method: 'POST', body: JSON.stringify(currencyForm) });
+        const created = await apiFetch<Currency>('/currencies', { method: 'POST', body: JSON.stringify(body) });
         setCurrencies(prev => [...prev, created]);
       }
       setCurrencyModal(false);
@@ -574,14 +590,24 @@ export default function SettingsPage() {
 
   const openRateModal = (r?: ExchangeRate) => {
     setEditingRate(r ?? null);
+    setRateErrors({});
     setRateForm(r ? { currencyId: r.currencyId, currencyDisplay: `${r.currencyCode} — ${r.currencyName}`, date: r.date, rate: String(r.rate), coefficient: String(r.coefficient) } : { currencyId: '', currencyDisplay: '', date: new Date().toISOString().split('T')[0], rate: '', coefficient: '1' });
     setRateModal(true);
   };
 
   const saveRate = async () => {
+    const errs: typeof rateErrors = {};
+    if (!editingRate && !rateForm.currencyId) errs.currencyId = 'Оберіть валюту';
+    if (!rateForm.date) errs.date = 'Вкажіть дату';
+    const rateNum = Number(rateForm.rate);
+    if (!rateForm.rate || !Number.isFinite(rateNum) || rateNum <= 0) errs.rate = 'Курс має бути більше 0';
+    const coefNum = Number(rateForm.coefficient);
+    if (!Number.isFinite(coefNum) || coefNum <= 0) errs.coefficient = 'Кількість одиниць має бути більше 0';
+    if (Object.keys(errs).length > 0) { setRateErrors(errs); return; }
+    setRateErrors({});
     setSavingRate(true);
     try {
-      const body = { currencyId: rateForm.currencyId, date: rateForm.date, rate: Number(rateForm.rate), coefficient: Number(rateForm.coefficient) };
+      const body = { currencyId: rateForm.currencyId, date: rateForm.date, rate: rateNum, coefficient: coefNum };
       if (editingRate) {
         const updated = await apiFetch<ExchangeRate>(`/exchange-rates/${editingRate.id}`, { method: 'PATCH', body: JSON.stringify({ date: body.date, rate: body.rate, coefficient: body.coefficient }) });
         setExchangeRates(prev => prev.map(r => r.id === updated.id ? updated : r));
@@ -1587,8 +1613,8 @@ export default function SettingsPage() {
       <Modal open={currencyModal} onClose={() => setCurrencyModal(false)} title={editingCurrency ? 'Редагувати валюту' : 'Нова валюта'}
         footer={<><Button variant="outline" onClick={() => setCurrencyModal(false)}>Скасувати</Button><Button onClick={saveCurrency} loading={savingCurrency}>Зберегти</Button></>}>
         <div className="space-y-4">
-          <Input label="Назва *" value={currencyForm.name} onChange={e => setCurrencyForm({ ...currencyForm, name: e.target.value })} />
-          <Input label="Код (ISO 4217) *" value={currencyForm.code} onChange={e => setCurrencyForm({ ...currencyForm, code: e.target.value.toUpperCase() })} placeholder="UAH" />
+          <Input label="Назва *" required value={currencyForm.name} errorMessage={currencyErrors.name} onChange={e => { setCurrencyForm({ ...currencyForm, name: e.target.value }); if (currencyErrors.name) setCurrencyErrors(p => ({ ...p, name: undefined })); }} />
+          <Input label="Код (ISO 4217) *" required value={currencyForm.code} errorMessage={currencyErrors.code} onChange={e => { setCurrencyForm({ ...currencyForm, code: e.target.value.toUpperCase() }); if (currencyErrors.code) setCurrencyErrors(p => ({ ...p, code: undefined })); }} placeholder="UAH" />
           <Input label="Символ" value={currencyForm.symbol} onChange={e => setCurrencyForm({ ...currencyForm, symbol: e.target.value })} placeholder="₴" />
           <Input label="Повна назва" value={currencyForm.fullName} onChange={e => setCurrencyForm({ ...currencyForm, fullName: e.target.value })} />
           <Input label="Міжнародна назва" value={currencyForm.internationalName} onChange={e => setCurrencyForm({ ...currencyForm, internationalName: e.target.value })} />
@@ -1605,16 +1631,17 @@ export default function SettingsPage() {
               <SearchCombobox<Currency>
                 value={rateForm.currencyId}
                 displayValue={rateForm.currencyDisplay}
-                onSelect={(item) => setRateForm({ ...rateForm, currencyId: item.id, currencyDisplay: `${item.code} — ${item.name}` })}
+                onSelect={(item) => { setRateForm({ ...rateForm, currencyId: item.id, currencyDisplay: `${item.code} — ${item.name}` }); if (rateErrors.currencyId) setRateErrors(p => ({ ...p, currencyId: undefined })); }}
                 onClear={() => setRateForm({ ...rateForm, currencyId: '', currencyDisplay: '' })}
                 fetchItems={async (q) => { const r = await apiFetch<{ items: Currency[] }>(`/currencies?q=${encodeURIComponent(q)}&limit=10`); return r.items.map(c => ({ ...c, primary: `${c.code} — ${c.name}`, secondary: c.symbol ?? undefined })); }}
                 placeholder="Пошук валюти..."
               />
+              {rateErrors.currencyId && <p className="text-xs text-destructive-text mt-1">{rateErrors.currencyId}</p>}
             </div>
           )}
-          <Input label="Дата *" type="date" value={rateForm.date} onChange={e => setRateForm({ ...rateForm, date: e.target.value })} />
-          <Input label="Курс (UAH) *" type="number" step="0.000001" value={rateForm.rate} onChange={e => setRateForm({ ...rateForm, rate: e.target.value })} />
-          <Input label="Кількість одиниць" type="number" step="1" value={rateForm.coefficient} onChange={e => setRateForm({ ...rateForm, coefficient: e.target.value })} hint="Скільки одиниць валюти відповідають вказаному курсу" />
+          <Input label="Дата *" required type="date" value={rateForm.date} errorMessage={rateErrors.date} onChange={e => { setRateForm({ ...rateForm, date: e.target.value }); if (rateErrors.date) setRateErrors(p => ({ ...p, date: undefined })); }} />
+          <Input label="Курс (UAH) *" required type="number" step="0.000001" value={rateForm.rate} errorMessage={rateErrors.rate} onChange={e => { setRateForm({ ...rateForm, rate: e.target.value }); if (rateErrors.rate) setRateErrors(p => ({ ...p, rate: undefined })); }} />
+          <Input label="Кількість одиниць" type="number" step="1" value={rateForm.coefficient} errorMessage={rateErrors.coefficient} onChange={e => { setRateForm({ ...rateForm, coefficient: e.target.value }); if (rateErrors.coefficient) setRateErrors(p => ({ ...p, coefficient: undefined })); }} hint="Скільки одиниць валюти відповідають вказаному курсу" />
         </div>
       </Modal>
 
