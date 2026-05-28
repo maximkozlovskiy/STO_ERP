@@ -156,12 +156,13 @@ function TimeSelect({ value, onChange }: TimeSelectProps) {
 
 interface DraggableSlotProps {
   slot: CalendarSlot;
+  isEditing: boolean;
   onRemove: (id: string) => void;
   onEdit: (slot: CalendarSlot) => void;
   onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
 }
 
-const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onEdit, onResizeStart }: DraggableSlotProps) {
+const DraggableSlot = memo(function DraggableSlot({ slot, isEditing, onRemove, onEdit, onResizeStart }: DraggableSlotProps) {
   const startH = kyivHours(slot.startAt);
   const endH   = kyivHours(slot.endAt);
   const left   = ((startH - HOURS[0]) / TOTAL_HOURS) * 100;
@@ -187,7 +188,7 @@ const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onEdit, onRe
       ref={setNodeRef}
       style={style}
       data-calendar-slot
-      className="absolute top-1 bottom-1 bg-primary rounded text-white text-xs flex items-center overflow-hidden group select-none"
+      className={`absolute top-1 bottom-1 rounded text-white text-xs flex items-center overflow-hidden group select-none ring-2 ring-offset-1 ${isEditing ? 'bg-amber-500 ring-amber-400' : 'bg-primary ring-transparent'}`}
       title={label}
     >
       <div
@@ -292,6 +293,7 @@ interface DroppableLiftRowProps {
   liftSlots: CalendarSlot[];
   ghost: GhostSlot | null;
   pending: PendingSlot | null;
+  editingSlotId: string | null;
   onRemove: (id: string) => void;
   onEdit: (slot: CalendarSlot) => void;
   onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
@@ -301,7 +303,7 @@ interface DroppableLiftRowProps {
 }
 
 const DroppableLiftRow = memo(function DroppableLiftRow({
-  liftId, liftSlots, ghost, pending,
+  liftId, liftSlots, ghost, pending, editingSlotId,
   onRemove, onEdit, onResizeStart,
   onPendingOpen, onPendingCancel, onPendingResizeStart,
 }: DroppableLiftRowProps) {
@@ -348,7 +350,7 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
       )}
 
       {liftSlots.map(s => (
-        <DraggableSlot key={s.id} slot={s} onRemove={onRemove} onEdit={onEdit} onResizeStart={onResizeStart} />
+        <DraggableSlot key={s.id} slot={s} isEditing={s.id === editingSlotId} onRemove={onRemove} onEdit={onEdit} onResizeStart={onResizeStart} />
       ))}
     </div>
   );
@@ -1265,6 +1267,7 @@ export default function CalendarPage() {
                   liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
                   ghost={ghost}
                   pending={pendingSlot}
+                  editingSlotId={editingSlotId}
                   onRemove={removeSlot}
                   onEdit={handleEditSlot}
                   onResizeStart={handleResizeStart}
