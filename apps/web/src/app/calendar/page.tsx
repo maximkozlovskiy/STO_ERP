@@ -55,6 +55,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 8); // 08:00–19:00
 const TOTAL_HOURS = HOURS.length;
 const SIDEBAR_W = 160; // px — lift label column width
+const WINDOW_START = HOURS[0];                 // 8 — earliest valid hour
+const WINDOW_END   = HOURS[HOURS.length - 1] + 1; // 20 — latest valid hour (end of last column)
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -75,7 +77,8 @@ function fmtTime(iso: string) {
 }
 
 function decimalHoursToHHMM(h: number): string {
-  const totalMin = Math.round(h * 60);
+  // Clamp to a valid 24h window so callers never build an invalid "24:30"/"-1:00" time.
+  const totalMin = Math.min(24 * 60, Math.max(0, Math.round(h * 60)));
   return `${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}`;
 }
 
@@ -350,10 +353,16 @@ export default function CalendarPage() {
       const deltaH = pxToHours(e.clientX - resizing.pointerStartX, rect.width - SIDEBAR_W);
 
       if (resizing.edge === 'start') {
-        const newStartH = snapTo15(Math.min(resizing.origStartH + deltaH, resizing.origEndH - 0.25));
+        // Clamp to the visible window AND keep at least 15 min before the end edge.
+        const newStartH = snapTo15(
+          Math.max(WINDOW_START, Math.min(resizing.origStartH + deltaH, resizing.origEndH - 0.25)),
+        );
         setResizePreview(p => p ? { ...p, startH: newStartH } : null);
       } else {
-        const newEndH = snapTo15(Math.max(resizing.origEndH + deltaH, resizing.origStartH + 0.25));
+        // Clamp to the visible window AND keep at least 15 min after the start edge.
+        const newEndH = snapTo15(
+          Math.min(WINDOW_END, Math.max(resizing.origEndH + deltaH, resizing.origStartH + 0.25)),
+        );
         setResizePreview(p => p ? { ...p, endH: newEndH } : null);
       }
     }
@@ -506,7 +515,12 @@ export default function CalendarPage() {
       try {
         const data = await apiFetch<{ items: WorkOrderOption[] }>(`/work-orders?q=${encodeURIComponent(q)}&limit=10`);
         if (mountedRef.current) { setWoOptions(data.items); setShowWoDropdown(true); }
-      } catch { /* ignore */ }
+      } catch (err: unknown) {
+        if (mountedRef.current) {
+          setWoOptions([]); setShowWoDropdown(false);
+          setError(err instanceof Error ? err.message : 'Помилка пошуку наряду');
+        }
+      }
       finally { if (mountedRef.current) setWoLoading(false); }
     }, 300);
   }, []);

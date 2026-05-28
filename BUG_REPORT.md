@@ -4992,3 +4992,69 @@ commit спростив `create()` до ОДНОГО `findFirst` (fetch any row,
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-05-28 — Calendar feature (interactive draw / resize / PATCH endpoint)
+
+Тестовано після `0371c73` (feat: interactive slot draw, edge resize, PATCH) +
+review-коміти `5702506`, `77d9452`. Baseline: API+web+shared tsc ✅ 0 errors,
+unit ✅ 302/302. Scope (матриця): calendar.controller.ts → §1.1/§1.2/§1.5;
+calendar.service.ts → §1.1; calendar.dto.ts → §1.2; calendar/page.tsx → §1.3.
+
+---
+
+## Bug #156 — [MEDIUM] calendar — новий @Controller (4 endpoints, з них PATCH) без contract-тесту
+
+**Файл:** `apps/api/src/modules/calendar/calendar.controller.ts` (нема парного `calendar.contract.spec.ts`)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** §1.5 вимагає для кожного нового `@Controller` парний `*.contract.spec.ts`.
+`CalendarController` має 4 endpoints — `GET /calendar/slots`, `POST`, новий `PATCH /:id`,
+`DELETE /:id` — і жодного HTTP-рівневого тесту. PATCH (resize/drag) має нетривіальну логіку
+конфліктів і FK-перевірок, що не покрита.
+**Очікувана поведінка:** contract spec покриває: GET 200 + 401 без токена; POST без обов'язкових
+полів → 400; PATCH чужий orgId → 404; PATCH endAt<=startAt → 400.
+**Фактична поведінка:** 0 HTTP-тестів для calendar.
+**Виправлення:** додано `calendar.contract.spec.ts` із кейсами вище.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #157 — [MEDIUM] calendar resize — краї слоту не обмежені вікном 08:00–20:00 → Invalid Date → RangeError
+
+**Файл:** `apps/web/src/app/calendar/page.tsx:352-358` (handleTimelinePointerMove, resize гілка)
+**Severity:** MEDIUM
+**Категорія:** frontend
+
+**Опис:** При resize краю слоту обчислення нового часу обмежується ТІЛЬКИ проти протилежного
+краю (`origEndH - 0.25` / `origStartH + 0.25`), але НЕ проти меж видимого вікна. Тягнучи правий
+край далеко вправо `endH` може стати > 20 (напр. 24.5), а лівий — < 8 або від'ємним.
+На `pointerUp` викликається `decimalHoursToISO(date, h)` → `decimalHoursToHHMM(24.5)` = `"24:30"`
+(або `"-1:00"`) → `new Date("2026-05-22T24:30:00")` = **Invalid Date** → `.toISOString()` кидає
+`RangeError`. Помилка ловиться try/catch у `handleTimelinePointerUp`, показується нерелевантне
+"Помилка оновлення слоту", PATCH ніколи не надсилається — resize мовчки ламається.
+**Очікувана поведінка:** resize обмежений вікном `[HOURS[0], HOURS[last]+1]` = `[8, 20]`; час завжди валідний.
+**Фактична поведінка:** перетяг краю за межі вікна → Invalid Date → RangeError → помилкове повідомлення, слот не оновлюється.
+**Виправлення:** додано `WINDOW_START`/`WINDOW_END` константи; resize-гілка clamp-ить
+`newStartH`/`newEndH` у `[WINDOW_START, WINDOW_END]`; `decimalHoursToHHMM` додатково захищений
+clamp у `[0, 24*60]` як остання лінія оборони.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #158 — [LOW] calendar work-order search — порожній catch ховає помилку API
+
+**Файл:** `apps/web/src/app/calendar/page.tsx:509` (searchWorkOrders)
+**Severity:** LOW
+**Категорія:** frontend
+
+**Опис:** `searchWorkOrders` має `catch { /* ignore */ }` — будь-яка помилка пошуку наряду
+(мережа, 500, auth-expire) проковтується без сліду; dropdown просто не з'являється і
+користувач не розуміє чому. §1.3 анти-патерн "catch що ховає помилку".
+**Очікувана поведінка:** при помилці пошуку — очистити опції/dropdown і показати ненав'язливу
+помилку (поле `error`), щоб користувач знав що пошук недоступний.
+**Фактична поведінка:** помилка повністю прихована.
+**Виправлення:** catch очищає `woOptions`/`showWoDropdown` і встановлює `error` коротким повідомленням.
+**Статус:** [x] виправлено
+
+---
