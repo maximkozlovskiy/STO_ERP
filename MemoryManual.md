@@ -9,15 +9,14 @@
 ## Останній commit
 
 ```
+ebbf746 fix(review): narrow currency includes to select + widen exchange-rate precision
+4ff6454 feat(catalog): currencies, exchange-rates, bank-accounts, cash-registers
 fb99cab fix(tester): Bug #144 — explicit $transaction timeouts in work-orders line/part CRUD
 13c65bd fix(tester): Bug #130 — explicit $transaction timeouts in 5 services
 4adb65d fix(tester): Bug #129 — inventory inline HSL → text-warning-text token
 f2b6a80 fix(tester): Bug #127+#128 — Prisma errors mapped to 4xx in HttpExceptionFilter
 d5ec61e docs(memory): record /sto-review on f2e8182 (React imports + auth cancel guard)
 f2e8182 fix(review): React namespace imports + AuthProvider cancel guard
-f8c97d8 fix(tester): Bug #139 — displayCounterpartyName helper replaces dead `?? ''` in 6 places
-be9eb58 fix(tester): Bug #140 — SearchCombobox shows loading pill when value w/o displayValue
-fc3d15d fix(tester): Bug #141 — explicit $transaction timeouts in warehouses.service
 ```
 
 Дата: 2026-05-28
@@ -37,7 +36,7 @@ Build:           ✅ @sto/api build OK
 Security headers:✅ X-Content-Type-Options, X-Frame-Options, HSTS, CORP через @fastify/helmet@11 (Bug #135)
 $transaction timeouts: ✅ ВСІ interactive callbacks мають explicit { timeout } (work-orders transition 10s + 6 line/part 5s; warehouses 2; +calendar/completion-acts/counterparties/document-number/employees/loyalty/payments/purchase-orders/services/setup/stock-documents; Bug #130/#138/#141/#144)
 Latest tester:   2026-05-28 — FULL cycle 3/3 (ФІНАЛЬНИЙ): 0 нових багів, 0 регресій. 3-цикловий прогон завершено: цикл 1 виправив Bug #144 (work-orders line/part tx timeouts, fb99cab), цикли 2+3 — чисті. Повний §1.1–§1.7 sweep + 271 unit + 42 E2E + 139 component зелені у всіх 3 циклах; TS 0 errors; API build OK. Кодова база стабільна.
-Latest review:   2026-05-27 (f2e8182) — React namespace imports + AuthProvider cancel guard
+Latest review:   2026-05-28 (ebbf746) — catalog modules (currencies/exchange-rates/bank-accounts/cash-registers): §6.1 narrow include→select in 3 services; ExchangeRate.rate/coefficient Decimal(15,2)→(18,6) precision (migration 20260528120000). 0 Critical. TS 0 errors api+web.
 ```
 
 ### Gotcha — /sto-tester FULL 2026-05-27 (commits fc3d15d, be9eb58, f8c97d8 — bugs #139, #140, #141)
