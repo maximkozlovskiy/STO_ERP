@@ -1,11 +1,11 @@
-import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum } from 'class-validator';
+import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
 
 export class CreateCalendarSlotDto {
-  @ApiPropertyOptional() @IsOptional() @IsUUID() liftId?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() employeeId?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() workOrderId?: string;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.liftId != null) @IsUUID() liftId?: string;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.employeeId != null) @IsUUID() employeeId?: string;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.workOrderId != null) @IsUUID() workOrderId?: string;
   @ApiProperty() @IsISO8601() startAt!: string;
   @ApiProperty() @IsISO8601() endAt!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
@@ -14,9 +14,11 @@ export class CreateCalendarSlotDto {
 }
 
 export class UpdateCalendarSlotDto {
-  @ApiPropertyOptional() @IsOptional() @IsUUID() liftId?: string | null;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() employeeId?: string | null;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() workOrderId?: string | null;
+  // ValidateIf(o => o.liftId !== null) — пропускає null (переміщення без підйомника),
+  // @IsOptional — пропускає undefined (поле не передане взагалі).
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.liftId !== null) @IsUUID() liftId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.employeeId !== null) @IsUUID() employeeId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.workOrderId !== null) @IsUUID() workOrderId?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() startAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() endAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
