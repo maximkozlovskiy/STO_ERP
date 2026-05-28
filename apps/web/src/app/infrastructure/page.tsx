@@ -475,15 +475,29 @@ export default function InfrastructurePage() {
           <Select label="Тип" required value={form.type ?? 'MAIN'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
             {Object.entries(WAREHOUSE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
-          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={form.isMain === 'true'}
-              onChange={e => setForm(f => ({ ...f, isMain: e.target.checked ? 'true' : '' }))}
-              className="w-4 h-4 accent-primary"
-            />
-            <span className="text-foreground">Основний склад</span>
-          </label>
+          {(() => {
+            const currentMain = warehouses.find(w => w.isMain);
+            const isEditingSelf = editingId === currentMain?.id;
+            const anotherMainExists = !!currentMain && !isEditingSelf;
+            return (
+              <>
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.isMain === 'true'}
+                    onChange={e => setForm(f => ({ ...f, isMain: e.target.checked ? 'true' : '' }))}
+                    className="w-4 h-4 accent-primary"
+                  />
+                  <span className="text-foreground">Основний склад</span>
+                </label>
+                {form.isMain === 'true' && anotherMainExists && (
+                  <p className="text-xs text-warning-text bg-warning-subtle border border-warning-border rounded-lg px-3 py-2">
+                    «{currentMain!.name}» буде знятий з основного
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </div>
       </Modal>
     </div>
