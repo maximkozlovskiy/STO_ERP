@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -116,6 +117,7 @@ export default function EmployeesPage() {
 
   // Filters
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
   const [roleFilter, setRoleFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
 
@@ -177,8 +179,8 @@ export default function EmployeesPage() {
 
   // Re-load employee list when filters change (reference data untouched).
   useEffect(() => {
-    load({ search, role: roleFilter, showDeleted });
-  }, [search, roleFilter, showDeleted]); // eslint-disable-line react-hooks/exhaustive-deps
+    load({ search: debouncedSearch, role: roleFilter, showDeleted });
+  }, [debouncedSearch, roleFilter, showDeleted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openCard = (emp: Employee) => {
     setSelected(emp);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, ShoppingCart, Search, Eye, EyeOff } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -66,6 +67,7 @@ export default function PurchaseOrdersPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
+  const debouncedQ = useDebounce(q);
   const [showDeleted, setShowDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -91,7 +93,7 @@ export default function PurchaseOrdersPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (status) params.set('status', status);
-      if (q) params.set('q', q);
+      if (debouncedQ) params.set('q', debouncedQ);
       if (showDeleted) params.set('showDeleted', 'true');
       const data = await apiFetch<Paginated>(`/purchase-orders?${params}`);
       setOrders(data.items);
@@ -101,7 +103,7 @@ export default function PurchaseOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, status, q, showDeleted]);
+  }, [page, status, debouncedQ, showDeleted]);
 
   useEffect(() => { load(); }, [load]);
 

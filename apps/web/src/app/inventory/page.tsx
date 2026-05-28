@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { AlertTriangle, Package, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -41,6 +42,7 @@ export default function InventoryPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState('');
   const [q, setQ] = useState('');
+  const debouncedQ = useDebounce(q);
   const [showLow, setShowLow] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lowItems, setLowItems] = useState<LowStockItem[]>([]);
@@ -69,7 +71,7 @@ export default function InventoryPage() {
     try {
       const params = new URLSearchParams();
       if (warehouseId) params.set('warehouseId', warehouseId);
-      if (q) params.set('q', q);
+      if (debouncedQ) params.set('q', debouncedQ);
       const data = await apiFetch<StockItem[]>(`/stock-items?${params}`);
       setItems(data);
     } catch (e: unknown) {
@@ -77,7 +79,7 @@ export default function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [warehouseId, q]);
+  }, [warehouseId, debouncedQ]);
 
   const loadLow = useCallback(async (): Promise<boolean> => {
     try {

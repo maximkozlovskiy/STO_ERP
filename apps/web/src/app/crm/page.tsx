@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Users, Eye, EyeOff } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -37,6 +38,7 @@ export default function CrmPage() {
   const [data, setData] = useState<Paginated | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [showDeleted, setShowDeleted] = useState(false);
@@ -51,14 +53,14 @@ export default function CrmPage() {
   const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: '20' });
-    if (search) params.set('q', search);
+    if (debouncedSearch) params.set('q', debouncedSearch);
     if (typeFilter) params.set('type', typeFilter);
     if (showDeleted) params.set('showDeleted', 'true');
     apiFetch<Paginated>(`/counterparties?${params}`)
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
       .finally(() => setLoading(false));
-  }, [page, search, typeFilter, showDeleted]);
+  }, [page, debouncedSearch, typeFilter, showDeleted]);
 
   useEffect(() => { load(); }, [load]);
 

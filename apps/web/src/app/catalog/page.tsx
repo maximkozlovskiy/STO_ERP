@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, BookOpen, Package, Layers, Star, Barcode, Ruler, Tag } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -77,6 +78,7 @@ function WorksTab() {
   const [loading, setLoading] = useState(true);
   const [selectedCat, setSelectedCat] = useState('');
   const [q, setQ] = useState('');
+  const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ categoryId: '', name: '', normoHours: '', price: '', description: '', isWarranty: false });
@@ -110,9 +112,9 @@ function WorksTab() {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (selectedCat) p.set('categoryId', selectedCat);
-    if (q) p.set('q', q);
+    if (debouncedQ) p.set('q', debouncedQ);
     apiFetch<PaginatedWorks>(`/works?${p}`).then(setWorks).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
-  }, [page, selectedCat, q]);
+  }, [page, selectedCat, debouncedQ]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -439,6 +441,7 @@ function GoodsTab() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '', goodType: '', preferredSupplierId: '' });
@@ -486,9 +489,9 @@ function GoodsTab() {
   const load = useCallback(() => {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
-    if (q) p.set('q', q);
+    if (debouncedQ) p.set('q', debouncedQ);
     apiFetch<PaginatedGoods>(`/goods?${p}`).then(setGoods).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
-  }, [page, q]);
+  }, [page, debouncedQ]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1113,6 +1116,7 @@ function ServicesTab() {
   const [services, setServices] = useState<PaginatedServices | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', price: '' });
@@ -1124,9 +1128,9 @@ function ServicesTab() {
   const load = useCallback(() => {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
-    if (q) p.set('q', q);
+    if (debouncedQ) p.set('q', debouncedQ);
     apiFetch<PaginatedServices>(`/services?${p}`).then(setServices).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
-  }, [page, q]);
+  }, [page, debouncedQ]);
 
   useEffect(() => { load(); }, [load]);
 

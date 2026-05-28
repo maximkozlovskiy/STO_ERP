@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
 import { Plus, ClipboardList, Eye, EyeOff, Search, User } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
@@ -131,6 +132,7 @@ export default function WorkOrdersPage() {
   const [formError, setFormError] = useState('');
 
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
   const [showDeleted, setShowDeleted] = useState(false);
   // Default to "my orders" for MECHANICs — initialized lazily after employee loads
   const [myOrders, setMyOrders] = useState(false);
@@ -257,14 +259,14 @@ export default function WorkOrdersPage() {
     const p = new URLSearchParams({ page: String(page), limit: '20' });
     if (statusFilter) p.set('status', statusFilter);
     if (categoryFilter) p.set('repairCategory', categoryFilter);
-    if (search) p.set('q', search);
+    if (debouncedSearch) p.set('q', debouncedSearch);
     if (showDeleted) p.set('showDeleted', 'true');
     if (myOrders && employeeIdRef.current) p.set('employeeId', employeeIdRef.current);
     apiFetch<Paginated>(`/work-orders?${p}`)
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
       .finally(() => setLoading(false));
-  }, [page, statusFilter, categoryFilter, search, showDeleted, myOrders]);
+  }, [page, statusFilter, categoryFilter, debouncedSearch, showDeleted, myOrders]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Receipt, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
@@ -69,6 +70,7 @@ export default function InvoicesPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -100,7 +102,7 @@ export default function InvoicesPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (status) params.set('status', status);
-      if (search) params.set('q', search);
+      if (debouncedSearch) params.set('q', debouncedSearch);
       const data = await apiFetch<Paginated>(`/invoices?${params}`);
       if (!mountedRef.current) return;
       setInvoices(data.items);
@@ -111,7 +113,7 @@ export default function InvoicesPage() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [page, status, search]);
+  }, [page, status, debouncedSearch]);
 
   useEffect(() => { load(); }, [load]);
 
