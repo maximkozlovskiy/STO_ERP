@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Plus, ShoppingCart, Search, Eye, EyeOff } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -105,17 +106,32 @@ export default function PurchaseOrdersPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (showCreate) {
-      apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
-        .then(w => {
-          const wList = Array.isArray(w) ? w : w.items;
-          setWarehouses(wList);
-          const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
-          // Auto-select main warehouse only if the user hasn't already picked one
-          // (e.g. modal re-opened after a slow fetch — preserves manual choice).
-          if (mainW) setForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
-        }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
-    }
+    if (!showCreate) return;
+    let cancelled = false;
+
+    const apply = (wList: Warehouse[]) => {
+      if (cancelled) return;
+      setWarehouses(wList);
+      const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
+      // Auto-select main warehouse only if the user hasn't already picked one
+      // (e.g. modal re-opened after a slow fetch — preserves manual choice).
+      if (mainW) setForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
+    };
+
+    // Reference data — paint instantly from sessionStorage, refresh in background.
+    const cached = getCached<Warehouse[]>('cache:warehouses');
+    if (cached) apply(cached);
+
+    apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
+      .then(w => {
+        const wList = Array.isArray(w) ? w : w.items;
+        setCache('cache:warehouses', wList);
+        apply(wList);
+      }).catch((e: unknown) => {
+        if (!cancelled && !cached) setError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
+      });
+
+    return () => { cancelled = true; };
   }, [showCreate]);
 
   const handleCreate = async () => {

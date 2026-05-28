@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { AlertTriangle, Package, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -52,10 +53,15 @@ export default function InventoryPage() {
   const [savingMinStock, setSavingMinStock] = useState(false);
 
   const loadWarehouses = useCallback(async () => {
+    // Reference data — paint instantly from sessionStorage, refresh in background.
+    const cached = getCached<Warehouse[]>('cache:warehouses');
+    if (cached) setWarehouses(cached);
     try {
       const data = await apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses');
-      setWarehouses(Array.isArray(data) ? data : data.items);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження складів'); }
+      const list = Array.isArray(data) ? data : data.items;
+      setWarehouses(list);
+      setCache('cache:warehouses', list);
+    } catch (e: unknown) { if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження складів'); }
   }, []);
 
   const loadItems = useCallback(async () => {

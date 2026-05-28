@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Pencil, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -130,6 +131,10 @@ export default function EmployeesPage() {
   const [editBranchIds, setEditBranchIds] = useState<string[]>([]);
   const [editAllBranches, setEditAllBranches] = useState(false);
 
+  // Only the employee list depends on filters — reference data (zones, lifts,
+  // work-categories, branches) is loaded once and does NOT re-fetch on filter
+  // change. Previously every keystroke in the search box re-fetched all five
+  // lists in parallel; now only /employees is re-queried.
   const load = (opts?: { search?: string; role?: string; showDeleted?: boolean }) => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -140,20 +145,37 @@ export default function EmployeesPage() {
     if (role) params.set('role', role);
     if (deleted) params.set('showDeleted', 'true');
     const qs = params.toString();
+    apiFetch<Employee[]>(`/employees${qs ? `?${qs}` : ''}`)
+      .then(setEmployees)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .finally(() => setLoading(false));
+  };
+
+  // Reference data — paint instantly from sessionStorage, then refresh in
+  // parallel. Runs once on mount, independent of list filters.
+  const loadReference = () => {
+    const cZones = getCached<Zone[]>('cache:zones');
+    const cLifts = getCached<Lift[]>('cache:lifts');
+    const cCats = getCached<WorkCategory[]>('cache:work-categories');
+    const cBranches = getCached<Branch[]>('cache:branches');
+    if (cZones) setZones(cZones);
+    if (cLifts) setLifts(cLifts);
+    if (cCats) setWorkCategories(cCats);
+    if (cBranches) setBranches(cBranches);
     Promise.all([
-      apiFetch<Employee[]>(`/employees${qs ? `?${qs}` : ''}`).then(setEmployees),
-      apiFetch<Zone[]>('/zones').then(setZones),
-      apiFetch<Lift[]>('/lifts').then(setLifts),
-      apiFetch<WorkCategory[]>('/work-categories').then(setWorkCategories),
+      apiFetch<Zone[]>('/zones').then(d => { setZones(d); setCache('cache:zones', d); }),
+      apiFetch<Lift[]>('/lifts').then(d => { setLifts(d); setCache('cache:lifts', d); }),
+      apiFetch<WorkCategory[]>('/work-categories').then(d => { setWorkCategories(d); setCache('cache:work-categories', d); }),
       // `/branches` returns a plain `BranchResponseDto[]` (BranchesController.findAll), NOT a
       // paginated `{ items, total }` envelope. Treating it as `{ items }` resulted in `r.items`
       // being undefined and the branches multi-select staying empty — blocking B10 entirely.
-      apiFetch<Branch[]>('/branches').then(setBranches),
-    ]).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
+      apiFetch<Branch[]>('/branches').then(d => { setBranches(d); setCache('cache:branches', d); }),
+    ]).catch(() => { /* reference data is non-blocking; list still renders */ });
   };
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-load when filters change
+  useEffect(() => { loadReference(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-load employee list when filters change (reference data untouched).
   useEffect(() => {
     load({ search, role: roleFilter, showDeleted });
   }, [search, roleFilter, showDeleted]); // eslint-disable-line react-hooks/exhaustive-deps

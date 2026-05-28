@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef, type CSSProperties } from 're
 import { Plus, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -144,9 +145,12 @@ export default function CalendarPage() {
   useEffect(() => { setDate(toDateString(new Date())); }, []);
 
   useEffect(() => {
+    // Reference data — paint instantly from sessionStorage, refresh in background.
+    const cached = getCached<Lift[]>('cache:lifts');
+    if (cached && mountedRef.current) setLifts(cached);
     apiFetch<Lift[]>('/lifts')
-      .then(data => { if (mountedRef.current) setLifts(data); })
-      .catch((e: unknown) => { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження'); });
+      .then(data => { setCache('cache:lifts', data); if (mountedRef.current) setLifts(data); })
+      .catch((e: unknown) => { if (mountedRef.current && !cached) setError(e instanceof Error ? e.message : 'Помилка завантаження'); });
   }, []);
 
   const load = useCallback(() => {

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Plus, Pencil, Search, Trash2, BookOpen, Package, Layers, Star, Barcode, Ruler, Tag } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
@@ -89,7 +90,12 @@ function WorksTab() {
   const [editError, setEditError] = useState('');
 
   useEffect(() => {
-    apiFetch<Category[]>('/work-categories').then(setCategories).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження категорій'));
+    // Reference data — paint instantly from sessionStorage, refresh in background.
+    const cached = getCached<Category[]>('cache:work-categories');
+    if (cached) setCategories(cached);
+    apiFetch<Category[]>('/work-categories')
+      .then(d => { setCategories(d); setCache('cache:work-categories', d); })
+      .catch((e: unknown) => { if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження категорій'); });
   }, []);
 
   // Sync categoryId when categories load after modal is already open (race condition fix)
@@ -454,11 +460,28 @@ function GoodsTab() {
   const [batchViewerGoodId, setBatchViewerGoodId] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200').catch(() => ({ items: [], total: 0 })).then(r => setBrands(r.items));
-    apiFetch<Unit[]>('/units').catch(() => []).then(v => { if (Array.isArray(v)) setUnits(v); });
-    apiFetch<{ items: Supplier[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200')
-      .catch(() => ({ items: [] }))
-      .then(r => { if (r && Array.isArray(r.items)) setSuppliers(r.items); });
+    // Reference data (brands, units, suppliers) — paint instantly from
+    // sessionStorage, then refresh all three in parallel.
+    const cBrands = getCached<Brand[]>('cache:brands');
+    const cUnits = getCached<Unit[]>('cache:units');
+    const cSuppliers = getCached<Supplier[]>('cache:suppliers');
+    if (cBrands) setBrands(cBrands);
+    if (cUnits) setUnits(cUnits);
+    if (cSuppliers) setSuppliers(cSuppliers);
+
+    Promise.all([
+      apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200').catch(() => ({ items: [], total: 0 })),
+      apiFetch<Unit[]>('/units').catch(() => [] as Unit[]),
+      apiFetch<{ items: Supplier[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200').catch(() => ({ items: [] as Supplier[] })),
+    ]).then(([brandsRes, unitsRes, suppliersRes]) => {
+      setBrands(brandsRes.items);
+      setCache('cache:brands', brandsRes.items);
+      if (Array.isArray(unitsRes)) { setUnits(unitsRes); setCache('cache:units', unitsRes); }
+      if (suppliersRes && Array.isArray(suppliersRes.items)) {
+        setSuppliers(suppliersRes.items);
+        setCache('cache:suppliers', suppliersRes.items);
+      }
+    });
   }, []);
 
   const load = useCallback(() => {
@@ -1328,7 +1351,7 @@ function UnitsTab() {
   const load = useCallback(() => {
     setLoading(true);
     apiFetch<Unit[]>('/units')
-      .then(setUnits)
+      .then(d => { setUnits(d); setCache('cache:units', d); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
       .finally(() => setLoading(false));
   }, []);
@@ -1494,7 +1517,7 @@ function BrandsTab() {
   const load = useCallback(() => {
     setLoading(true);
     apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200')
-      .then(r => setBrands(r.items))
+      .then(r => { setBrands(r.items); setCache('cache:brands', r.items); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
       .finally(() => setLoading(false));
   }, []);

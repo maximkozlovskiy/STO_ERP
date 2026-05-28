@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Plus, FileText, Eye, EyeOff } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -97,27 +98,46 @@ export default function StockDocumentsPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (showCreate) {
-      Promise.all([
-        apiFetch<Branch[] | { items: Branch[] }>('/branches'),
-        apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses'),
-      ]).then(([b, w]) => {
-        const bList = Array.isArray(b) ? b : b.items;
-        const wList = Array.isArray(w) ? w : w.items;
-        setBranches(bList);
-        setWarehouses(wList);
-        // Auto-select defaults only if user hasn't already picked one — avoids
-        // overriding manual choice if modal re-opens during a slow fetch, and
-        // also collapses two sequential setForm calls into one render-safe update.
-        setForm(f => {
-          const next = { ...f };
-          if (!next.branchId && bList.length === 1) next.branchId = bList[0].id;
-          const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
-          if (!next.warehouseId && mainW) next.warehouseId = mainW.id;
-          return next;
-        });
-      }).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження довідників'));
-    }
+    if (!showCreate) return;
+    let cancelled = false;
+
+    // Apply branches + warehouses to state and auto-select sensible defaults.
+    const apply = (bList: Branch[], wList: Warehouse[]) => {
+      if (cancelled) return;
+      setBranches(bList);
+      setWarehouses(wList);
+      // Auto-select defaults only if user hasn't already picked one — avoids
+      // overriding manual choice if modal re-opens during a slow fetch, and
+      // also collapses two sequential setForm calls into one render-safe update.
+      setForm(f => {
+        const next = { ...f };
+        if (!next.branchId && bList.length === 1) next.branchId = bList[0].id;
+        const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
+        if (!next.warehouseId && mainW) next.warehouseId = mainW.id;
+        return next;
+      });
+    };
+
+    // Reference data — paint instantly from sessionStorage if cached.
+    const cachedB = getCached<Branch[]>('cache:branches');
+    const cachedW = getCached<Warehouse[]>('cache:warehouses');
+    if (cachedB && cachedW) apply(cachedB, cachedW);
+
+    // Always refresh in the background (parallel) to keep cache up to date.
+    Promise.all([
+      apiFetch<Branch[] | { items: Branch[] }>('/branches'),
+      apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses'),
+    ]).then(([b, w]) => {
+      const bList = Array.isArray(b) ? b : b.items;
+      const wList = Array.isArray(w) ? w : w.items;
+      setCache('cache:branches', bList);
+      setCache('cache:warehouses', wList);
+      apply(bList, wList);
+    }).catch((e: unknown) => {
+      if (!cancelled && !cachedB) setError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
+    });
+
+    return () => { cancelled = true; };
   }, [showCreate]);
 
   const handleCreate = async () => {

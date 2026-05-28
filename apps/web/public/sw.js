@@ -7,49 +7,114 @@ const PRECACHE = [
   '/offline.html',
 ];
 
+// CacheStorage may be unavailable (private mode, disk pressure, disabled flag).
+// Detect once; every cache access is additionally wrapped in try/catch.
+function cachesAvailable() {
+  try {
+    return typeof caches !== 'undefined' && caches != null;
+  } catch {
+    return false;
+  }
+}
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE))
-  );
   self.skipWaiting();
+  if (!cachesAvailable()) return;
+  event.waitUntil(
+    (async () => {
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.addAll(PRECACHE);
+      } catch {
+        // Disk full / quota exceeded / CacheStorage blocked — install anyway.
+        // SW will just pass requests through to the network.
+      }
+    })()
+  );
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
-  );
   self.clients.claim();
+  if (!cachesAvailable()) return;
+  event.waitUntil(
+    (async () => {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(
+          keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+        );
+      } catch {
+        /* ignore — stale caches are harmless */
+      }
+    })()
+  );
 });
 
 self.addEventListener('fetch', (event) => {
-  // API calls: network-first, no offline fallback (handled by app)
-  if (event.request.url.includes('/api/')) {
+  const { request } = event;
+
+  // API calls: never cached, never intercepted — let them hit the network
+  // directly so the SW adds zero overhead on data requests.
+  if (request.url.includes('/api/')) {
     return;
   }
 
-  // Navigation requests: network-first → offline page
-  if (event.request.mode === 'navigate') {
+  // Only GET requests are cacheable; pass everything else straight through.
+  if (request.method !== 'GET') {
+    return;
+  }
+
+  // If CacheStorage is unavailable, do not call respondWith at all —
+  // the browser performs its own default fetch with no SW overhead.
+  if (!cachesAvailable()) {
+    return;
+  }
+
+  // Navigation requests: network-first → offline page fallback
+  if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() =>
-        caches.open(CACHE_NAME).then((cache) => cache.match(OFFLINE_URL))
-      )
+      (async () => {
+        try {
+          return await fetch(request);
+        } catch {
+          try {
+            const cache = await caches.open(CACHE_NAME);
+            const offline = await cache.match(OFFLINE_URL);
+            if (offline) return offline;
+          } catch {
+            /* CacheStorage failed — fall through */
+          }
+          return new Response('Офлайн', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          });
+        }
+      })()
     );
     return;
   }
 
-  // Static assets: cache-first
+  // Static assets: cache-first, but never let a cache failure break the load.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((response) => {
-        if (response && response.status === 200 && response.type === 'basic') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
-        return response;
-      });
-    })
+    (async () => {
+      try {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+      } catch {
+        // CacheStorage.match threw (disk pressure) — fall back to network.
+        return fetch(request);
+      }
+
+      const response = await fetch(request);
+      if (response && response.status === 200 && response.type === 'basic') {
+        const clone = response.clone();
+        // Best-effort cache write; ignore quota / disk-full errors.
+        caches
+          .open(CACHE_NAME)
+          .then((cache) => cache.put(request, clone))
+          .catch(() => {});
+      }
+      return response;
+    })()
   );
 });

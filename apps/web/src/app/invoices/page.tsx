@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, Receipt, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -118,10 +119,17 @@ export default function InvoicesPage() {
   useEffect(() => {
     if (!showPayment) return;
     let cancelled = false;
+    // Reference data — paint instantly from sessionStorage, refresh in background.
+    const cached = getCached<{ code: string; name: string }[]>('cache:payment-methods');
+    if (cached) setPayMethods(cached);
     apiFetch<{ code: string; name: string; isActive: boolean }[]>('/payment-methods')
-      .then(d => { if (!cancelled && mountedRef.current) setPayMethods(d.filter(m => m.isActive)); })
+      .then(d => {
+        const active = d.filter(m => m.isActive).map(m => ({ code: m.code, name: m.name }));
+        setCache('cache:payment-methods', active);
+        if (!cancelled && mountedRef.current) setPayMethods(active);
+      })
       .catch((e: unknown) => {
-        if (!cancelled && mountedRef.current) {
+        if (!cancelled && mountedRef.current && !cached) {
           setError(e instanceof Error ? e.message : 'Помилка завантаження способів оплати');
         }
       });
