@@ -258,6 +258,74 @@ export const columns: ColumnDef<WorkOrderResponse>[] = [
 
 ---
 
+## Готові UI-примітиви — використовуй, не переписуй
+
+> **Правило:** перед написанням будь-якого UI — перевір `apps/web/src/components/ui/`.  
+> Якщо потрібний компонент там є — **використовуй його**, не дублюй.
+
+| Компонент | Файл | Коли використовувати |
+|---|---|---|
+| `<PickerModal<T>>` | `ui/picker-modal.tsx` | Вибір сутності зі списку + пошук по реквізитах |
+| `<Modal>` | `ui/modal.tsx` | Будь-яке модальне вікно (форма, підтвердження, деталі) |
+| `<SearchCombobox<T>>` | `ui/search-combobox.tsx` | Autocomplete з сервер-стороннім пошуком |
+| `<Input>` | `ui/input.tsx` | Текстове поле (підтримує `label`, `errorMessage`, `hint`) |
+| `<Select>` | `ui/select.tsx` | Випадаючий список (статичний набір варіантів) |
+| `<Button>` | `ui/button.tsx` | Будь-яка кнопка (підтримує `loading`, `variant`) |
+| `<DataTable>` | `ui/data-table.tsx` | Таблиця зі списком, пагінацією, сортуванням |
+| `<EmptyState>` | `ui/empty-state.tsx` | Порожній стан списку або сторінки |
+| `<Spinner>` | `ui/spinner.tsx` | Індикатор завантаження |
+
+### Коли додавати новий компонент
+
+1. Паттерн зустрічається (або зустрінеться) **2+ разів** в різних місцях
+2. Компонент має **власний локальний стан** (query, open/close, selectedIndex)
+3. JSX блок **> 20 рядків** inline в page.tsx
+
+### PickerModal — обов'язковий для FK-полів зі списком
+
+```tsx
+// ✅ Для будь-якого FK (currencyId, branchId, employeeId, goodId, counterpartyId...)
+// де є готовий список — використовуй <PickerModal>
+import { PickerModal } from '@/components/ui/picker-modal';
+
+// Тригер кнопка + очищення
+const selected = employees.find(e => e.id === form.employeeId);
+<div className="flex items-center gap-2">
+  <button type="button" onClick={() => setPickerOpen(true)}
+    className="flex-1 text-left px-3 py-2 rounded-lg border border-border bg-surface hover:border-primary transition-colors text-sm">
+    {selected ? <span className="text-foreground">{selected.name}</span>
+               : <span className="text-muted-foreground">Оберіть співробітника...</span>}
+  </button>
+  {form.employeeId && (
+    <button aria-label="Очистити" type="button"
+      onClick={() => setForm(f => ({ ...f, employeeId: '' }))}
+      className="text-muted-foreground hover:text-destructive-text transition-colors">
+      <Trash2 className="w-4 h-4" />
+    </button>
+  )}
+</div>
+
+<PickerModal<Employee>
+  open={pickerOpen}
+  onClose={() => setPickerOpen(false)}
+  title="Оберіть співробітника"
+  items={employees}
+  selectedId={form.employeeId}
+  searchKeys={['name', 'phone', 'role']}
+  onSelect={(e) => setForm(f => ({ ...f, employeeId: e.id }))}
+  renderItem={(e) => (
+    <>
+      <div className="font-medium text-foreground text-sm">{e.name}</div>
+      <div className="text-xs text-muted-foreground">{e.role} {e.phone && `· ${e.phone}`}</div>
+    </>
+  )}
+/>
+
+// ❌ Не писати свій Modal зі своїм пошуком — це завжди PickerModal
+```
+
+---
+
 ## Checklist
 
 - [ ] Page uses `'use client'` only when needed (prefer server components for static layouts)
@@ -272,6 +340,9 @@ export const columns: ColumnDef<WorkOrderResponse>[] = [
 - [ ] Bulk mutations через `Promise.allSettled` — ніколи `Promise.all`
 - [ ] `indeterminate` через `useRef` + `useEffect`, не inline ref callback
 - [ ] `useSavedFilters` init `[]`, гідратація у `useEffect`, `Array.isArray` guard
+- [ ] FK-поле зі списком сутностей → `<PickerModal<T>>`, не inline Modal
+- [ ] Inline IIFE `{(() => {...})()}` у JSX → замінити компонентом
+- [ ] Форма > 5 полів у page.tsx → виносити в `src/components/{domain}/`
 
 ---
 

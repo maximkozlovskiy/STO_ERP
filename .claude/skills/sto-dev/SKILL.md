@@ -1031,6 +1031,112 @@ Prisma
 
 ---
 
+## §14 Модульність і Універсальність UI
+
+> **Правило:** Перш ніж писати inline-логіку в page.tsx — запитай себе: "Це буде потрібно ще хоча б раз?"  
+> Якщо так — одразу виносити в компонент. Один раз — inline припустимо.
+
+### Коли виносити в компонент
+
+| Патерн | Ознаки для винесення | Куди |
+|---|---|---|
+| Picker зі списком + пошуком | `items[]` + `onSelect` + пошукове поле | `<PickerModal<T>>` |
+| Форма створення/редагування | 3+ поля + збереження + валідація | `<XxxForm>` окремий файл |
+| Список з CRUD | таблиця + кнопки edit/delete | `<XxxList>` або `<DataTable>` |
+| Підтвердження дії | "Видалити?", "Скасувати?" | `<ConfirmDialog>` (вже є) |
+| Бейдж статусу | кольоровий статус + лейбл | `<StatusBadge>` |
+
+### PickerModal — канонічний компонент для вибору зі списку
+
+> **Шлях:** `apps/web/src/components/ui/picker-modal.tsx`  
+> Використовується коли потрібно вибрати одну сутність зі списку з пошуком по реквізитах.
+
+```tsx
+// ✅ Завжди використовуй PickerModal для вибору сутності зі списку
+import { PickerModal } from '@/components/ui/picker-modal';
+
+<PickerModal<BankAccount>
+  open={pickerOpen}
+  onClose={() => setPickerOpen(false)}
+  title="Оберіть банківський рахунок"
+  items={bankAccounts}
+  selectedId={form.bankAccountId}
+  searchKeys={['name', 'ibanUA', 'bankName', 'mfo', 'edrpou']}
+  searchPlaceholder="Пошук за назвою, IBAN, МФО..."
+  emptyText="Рахунки не додано"
+  onSelect={(b) => { setForm(f => ({ ...f, bankAccountId: b.id })); }}
+  renderItem={(b) => (
+    <>
+      <div className="font-medium text-foreground text-sm">{b.name}</div>
+      <div className="font-mono text-xs text-muted-foreground">{b.ibanUA}</div>
+    </>
+  )}
+/>
+
+// ❌ НЕ робити inline Modal зі своїм пошуком
+<Modal open={open} ...>
+  <Input value={q} onChange={...} />
+  {items.filter(...).map(item => <button .../>)}
+</Modal>
+```
+
+**Тригер кнопка (стандартний вигляд):**
+```tsx
+// ✅ Кнопка-тригер для picker-модалу
+const selected = items.find(i => i.id === form.entityId);
+<div className="flex items-center gap-2">
+  <button
+    type="button"
+    onClick={() => setPickerOpen(true)}
+    className="flex-1 text-left px-3 py-2 rounded-lg border border-border bg-surface hover:border-primary transition-colors text-sm"
+  >
+    {selected
+      ? <span className="text-foreground">{selected.name}</span>
+      : <span className="text-muted-foreground">Оберіть...</span>
+    }
+  </button>
+  {form.entityId && (
+    <button aria-label="Очистити" type="button" onClick={() => setForm(f => ({ ...f, entityId: '' }))}
+      className="text-muted-foreground hover:text-destructive-text transition-colors">
+      <Trash2 className="w-4 h-4" />
+    </button>
+  )}
+</div>
+```
+
+### Заборонені inline-патерни
+
+```tsx
+// ❌ Пошук реалізований через IIFE в JSX
+{(() => {
+  const q = query.trim().toLowerCase();
+  const filtered = items.filter(i => i.name.toLowerCase().includes(q));
+  return filtered.map(i => <button key={i.id}>...</button>);
+})()}
+
+// ❌ Стан picker-модалу дублюється для кожного поля (pickerQuery1, pickerQuery2...)
+const [pickerQuery, setPickerQuery] = useState('');  // не потрібен — PickerModal керує сам
+
+// ❌ Логіка форми живе у page.tsx якщо форма > 5 полів
+// → виносити в src/components/{domain}/{Domain}Form.tsx
+```
+
+### Checklist перед здачею UI-коду
+
+```
+Компоненти
+  [ ] Picker зі списком → <PickerModal<T>> з src/components/ui/picker-modal.tsx
+  [ ] Inline IIFE `{(() => {...})()}` у JSX → замінити компонентом
+  [ ] Форма > 5 полів у page.tsx → виносити в окремий файл
+  [ ] Підтвердження дії → <ConfirmDialog>
+
+Стан
+  [ ] Немає дубльованих query/loading стейтів для однотипних picker-ів
+  [ ] pickerQuery НЕ є зовнішнім стейтом — PickerModal керує пошуком сам
+```
+
+---
+
 ## Інтеграція у флоу
 
 ```
