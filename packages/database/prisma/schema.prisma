@@ -885,9 +885,11 @@ model WorkOrder {
   inspectionReport  InspectionReport?
 
   @@index([orgId, status, deletedAt])
+  @@index([orgId, status, branchId, deletedAt])
   @@index([orgId, syncVersion])
   @@index([orgId, counterpartyId])
   @@index([orgId, branchId, deletedAt])
+  @@index([orgId, completedAt, deletedAt])
   @@map("work_orders")
 }
 
@@ -976,6 +978,7 @@ model StockItem {
 
   @@unique([orgId, goodId, warehouseId])
   @@index([orgId, warehouseId])
+  @@index([orgId, warehouseId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("stock_items")
 }
@@ -1002,6 +1005,7 @@ model StockMovement {
   sourceBatch  StockBatch? @relation("BatchSource")
 
   @@index([orgId, goodId, warehouseId])
+  @@index([orgId, warehouseId, createdAt])
   @@index([orgId, documentType, documentId])
   @@map("stock_movements")
 }
@@ -1035,6 +1039,7 @@ model StockBatch {
   movements         StockMovement[]    @relation("BatchMovements")
 
   @@index([orgId, goodId, warehouseId, isActive])
+  @@index([orgId, warehouseId, isActive, createdAt])
   @@index([orgId, goodId, expiryDate])
   @@index([orgId, syncVersion])
   @@map("stock_batches")
