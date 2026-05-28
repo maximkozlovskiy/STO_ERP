@@ -9,19 +9,18 @@
 ## Останній commit
 
 ```
+fb99cab fix(tester): Bug #144 — explicit $transaction timeouts in work-orders line/part CRUD
+13c65bd fix(tester): Bug #130 — explicit $transaction timeouts in 5 services
+4adb65d fix(tester): Bug #129 — inventory inline HSL → text-warning-text token
+f2b6a80 fix(tester): Bug #127+#128 — Prisma errors mapped to 4xx in HttpExceptionFilter
+d5ec61e docs(memory): record /sto-review on f2e8182 (React imports + auth cancel guard)
+f2e8182 fix(review): React namespace imports + AuthProvider cancel guard
 f8c97d8 fix(tester): Bug #139 — displayCounterpartyName helper replaces dead `?? ''` in 6 places
 be9eb58 fix(tester): Bug #140 — SearchCombobox shows loading pill when value w/o displayValue
 fc3d15d fix(tester): Bug #141 — explicit $transaction timeouts in warehouses.service
-4953500 fix(tester): Bug #137 — auth login + booking publicFetch join string[] message
-15e451e fix(tester): Bug #136 — infrastructure PATCH strips immutable relation FKs
-f9b781b docs(skills): add WAI-ARIA combobox + setTimeout cleanup + displayName desync checks to sto-review
-43c9435 docs(memory): record /sto-review on 6ecc7a1 (SearchCombobox a11y + cleanup)
-6ecc7a1 fix(review): SearchCombobox a11y + cleanup + modal close resets display name
-2822912 feat: full-text search combobox, UoM columns, infrastructure edit
-0c3b661 fix(review): apply string[] message join to apiBlobFetch/apiMultipartFetch + hoist UUID_RE
 ```
 
-Дата: 2026-05-27
+Дата: 2026-05-28
 
 ## Поточний стан проєкту
 ```
@@ -36,9 +35,9 @@ E2E (Playwright):✅ 42/42 passed (smoke 8, console-errors 22, inventory 4, api-
                   • smoke включає Bug #135 security headers test
 Build:           ✅ @sto/api build OK
 Security headers:✅ X-Content-Type-Options, X-Frame-Options, HSTS, CORP через @fastify/helmet@11 (Bug #135)
-$transaction timeouts: ✅ всі 8 interactive callbacks мають explicit { timeout } (work-orders 6 + warehouses 2; Bug #138/#141)
-Latest tester:   2026-05-27 (f8c97d8) — FULL sweep #3: виправлено Bug #139 (displayCounterpartyName), #140 (SearchCombobox loading pill), #141 (warehouses $transaction timeouts); deferred #142 (ParseUUIDPipe broader refactor)
-Latest review:   2026-05-27 (6ecc7a1) — SearchCombobox: ARIA combobox wiring + setTimeout cleanup + display name resets on modal close
+$transaction timeouts: ✅ ВСІ interactive callbacks мають explicit { timeout } (work-orders transition 10s + 6 line/part 5s; warehouses 2; +calendar/completion-acts/counterparties/document-number/employees/loyalty/payments/purchase-orders/services/setup/stock-documents; Bug #130/#138/#141/#144)
+Latest tester:   2026-05-28 (fb99cab) — FULL cycle 1/3: виправлено Bug #144 (work-orders line/part CRUD $transaction timeouts); решта §1.1–§1.7 чисто, попередні фікси #127–#143 не регресували
+Latest review:   2026-05-27 (f2e8182) — React namespace imports + AuthProvider cancel guard
 ```
 
 ### Gotcha — /sto-tester FULL 2026-05-27 (commits fc3d15d, be9eb58, f8c97d8 — bugs #139, #140, #141)
