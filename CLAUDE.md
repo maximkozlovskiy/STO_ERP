@@ -44,6 +44,7 @@ sto-erp/
 /sto-sync       <- синхронізація API ↔ Frontend: відсутній UI, неправильні URL, типи
 /sto-review     <- code review (перевіряє що /sto-dev дотриманий)
 /sto-tester     <- тестування: знаходить баги, фіксує, виправляє
+/sto-optimize   <- оптимізація: N+1, індекси, паралельні запити, bundle, кеш, re-renders
 /sto-installer  <- Windows installer
 /sto-git        <- git: commit, branch, changelog, статус
 /sto-phase      <- реалізує наступний блок фаз (database→backend→frontend→sync→QA), автоматично
@@ -81,7 +82,7 @@ sto-erp/
 ExitPlanMode
   ↓ запуск dev-серверів
   ↓ реалізація + перевірка у браузері після кожного кроку
-/sto-context -> /sto-analyst -> /sto-feature -> /sto-database -> /sto-dev -> /sto-backend -> /sto-web -> /sto-sync -> /sto-review -> /sto-tester
+/sto-context -> /sto-analyst -> /sto-feature -> /sto-database -> /sto-dev -> /sto-backend -> /sto-web -> /sto-sync -> /sto-review -> /sto-tester -> /sto-optimize
 ```
 
 > `/sto-dev` читається **перед** `/sto-backend` і `/sto-web` — задає стандарти написання,  
@@ -101,6 +102,7 @@ ExitPlanMode
 | Зміна Expo / mobile | `/sto-mobile` SKILL.md |
 | Новий Inno Setup / PowerShell скрипт | `/sto-installer` SKILL.md |
 | Після змін і backend і frontend одночасно | → запустити `Agent(subagent_type="sto-sync-agent")` перед review |
+| Після великої фічі або рефакторингу | → запустити `Agent(subagent_type="sto-optimize-agent")` для perf аудиту |
 
 > Не чекай на `/sto-backend`, `/sto-web` тощо від користувача — якщо пишеш бекенд, сам читай скіл.  
 > Виняток: якщо сам запит є скіл-командою (наприклад `/sto-database`) — скіл вже завантажений, не читай повторно.
@@ -113,9 +115,10 @@ ExitPlanMode
 sto-sync-agent     ← API/Frontend sync: відсутній UI, неправильні URL, типи (auto, після backend+web)
 sto-review-agent   ← code review + авто-фікс (завжди через Agent tool)
 sto-tester-agent   ← bug hunt + авто-фікс (завжди через Agent tool)
+sto-optimize-agent ← performance аудит + авто-фікс: N+1, кеш, індекси, bundle, re-renders
 ```
 
-**ПРАВИЛО:** `sto-sync`, `sto-review`, `sto-tester` ЗАВЖДИ запускати через `Agent(subagent_type=...)` — НЕ як inline скіли. Захищає основний контекст від переповнення.
+**ПРАВИЛО:** `sto-sync`, `sto-review`, `sto-tester`, `sto-optimize` ЗАВЖДИ запускати через `Agent(subagent_type=...)` — НЕ як inline скіли. Захищає основний контекст від переповнення.
 
 ```python
 # Повний QA ланцюжок після backend+frontend змін:
@@ -124,9 +127,12 @@ Agent(subagent_type="sto-sync-agent", description="sync after <block>")
 Agent(subagent_type="sto-review-agent", description="code review cycle N")
 # після завершення:
 Agent(subagent_type="sto-tester-agent", description="bug hunt cycle N")
+# після завершення (опціонально, після великих фіч):
+Agent(subagent_type="sto-optimize-agent", description="perf audit after <block>")
 
 # Якщо тільки backend АБО тільки frontend — sto-sync-agent пропускається
 # Паралельно: review і tester НІКОЛИ не паралельно — tester потребує результатів review
+# sto-optimize-agent можна запускати паралельно з tester якщо незалежні зміни
 ```
 
 ## Автоматичне QA після кожного завдання (ОБОВ'ЯЗКОВО)
