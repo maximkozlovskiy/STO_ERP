@@ -175,7 +175,8 @@ export default function SettingsPage() {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [baModal, setBaModal] = useState(false);
   const [editingBa, setEditingBa] = useState<BankAccount | null>(null);
-  const [baForm, setBaForm] = useState({ name: '', ibanUA: '', currencyId: '', currencyDisplay: '', branchId: '', branchDisplay: '', bankName: '', mfo: '', edrpou: '', bankAddress: '' });
+  const [baForm, setBaForm] = useState({ name: '', ibanUA: '', currencyId: '', branchId: '', bankName: '', mfo: '', edrpou: '', bankAddress: '' });
+  const [baErrors, setBaErrors] = useState<{ name?: string; ibanUA?: string; currencyId?: string }>({});
   const [savingBa, setSavingBa] = useState(false);
   const [loadingBa, setLoadingBa] = useState(false);
 
@@ -183,7 +184,8 @@ export default function SettingsPage() {
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
   const [crModal, setCrModal] = useState(false);
   const [editingCr, setEditingCr] = useState<CashRegister | null>(null);
-  const [crForm, setCrForm] = useState({ name: '', currencyId: '', currencyDisplay: '', branchId: '', branchDisplay: '' });
+  const [crForm, setCrForm] = useState({ name: '', currencyId: '', branchId: '' });
+  const [crErrors, setCrErrors] = useState<{ name?: string; currencyId?: string; branchId?: string }>({});
   const [savingCr, setSavingCr] = useState(false);
   const [loadingCr, setLoadingCr] = useState(false);
 
@@ -605,11 +607,29 @@ export default function SettingsPage() {
 
   const openBaModal = (ba?: BankAccount) => {
     setEditingBa(ba ?? null);
-    setBaForm(ba ? { name: ba.name, ibanUA: ba.ibanUA, currencyId: ba.currencyId, currencyDisplay: ba.currencyCode, branchId: ba.branchId ?? '', branchDisplay: ba.branchName ?? '', bankName: ba.bankName ?? '', mfo: ba.mfo ?? '', edrpou: ba.edrpou ?? '', bankAddress: ba.bankAddress ?? '' } : { name: '', ibanUA: '', currencyId: '', currencyDisplay: '', branchId: '', branchDisplay: '', bankName: '', mfo: '', edrpou: '', bankAddress: '' });
+    setBaErrors({});
+    if (ba) {
+      setBaForm({ name: ba.name, ibanUA: ba.ibanUA, currencyId: ba.currencyId, branchId: ba.branchId ?? '', bankName: ba.bankName ?? '', mfo: ba.mfo ?? '', edrpou: ba.edrpou ?? '', bankAddress: ba.bankAddress ?? '' });
+    } else {
+      setBaForm({
+        name: '',
+        ibanUA: '',
+        currencyId: currencies.length === 1 ? currencies[0].id : '',
+        branchId: branches.length === 1 ? branches[0].id : '',
+        bankName: '', mfo: '', edrpou: '', bankAddress: '',
+      });
+    }
     setBaModal(true);
   };
 
   const saveBa = async () => {
+    const errs: typeof baErrors = {};
+    if (!baForm.name.trim()) errs.name = "Введіть назву рахунку";
+    if (!baForm.ibanUA.trim()) errs.ibanUA = "Введіть IBAN";
+    else if (!/^UA\d{27}$/.test(baForm.ibanUA)) errs.ibanUA = "Невірний формат IBAN. Має починатись з UA та містити 29 символів";
+    if (!baForm.currencyId) errs.currencyId = "Оберіть валюту";
+    if (Object.keys(errs).length > 0) { setBaErrors(errs); return; }
+    setBaErrors({});
     setSavingBa(true);
     try {
       const body: Record<string, unknown> = { name: baForm.name, ibanUA: baForm.ibanUA, currencyId: baForm.currencyId, bankName: baForm.bankName || undefined, branchId: baForm.branchId || undefined, mfo: baForm.mfo || undefined, edrpou: baForm.edrpou || undefined, bankAddress: baForm.bankAddress || undefined };
@@ -638,11 +658,26 @@ export default function SettingsPage() {
 
   const openCrModal = (cr?: CashRegister) => {
     setEditingCr(cr ?? null);
-    setCrForm(cr ? { name: cr.name, currencyId: cr.currencyId, currencyDisplay: cr.currencyCode, branchId: cr.branchId, branchDisplay: cr.branchName } : { name: '', currencyId: '', currencyDisplay: '', branchId: '', branchDisplay: '' });
+    setCrErrors({});
+    if (cr) {
+      setCrForm({ name: cr.name, currencyId: cr.currencyId, branchId: cr.branchId });
+    } else {
+      setCrForm({
+        name: '',
+        currencyId: currencies.length === 1 ? currencies[0].id : '',
+        branchId: branches.length === 1 ? branches[0].id : '',
+      });
+    }
     setCrModal(true);
   };
 
   const saveCr = async () => {
+    const errs: typeof crErrors = {};
+    if (!crForm.name.trim()) errs.name = "Введіть назву каси";
+    if (!crForm.currencyId) errs.currencyId = "Оберіть валюту";
+    if (!crForm.branchId) errs.branchId = "Оберіть філію";
+    if (Object.keys(errs).length > 0) { setCrErrors(errs); return; }
+    setCrErrors({});
     setSavingCr(true);
     try {
       const body = { name: crForm.name, currencyId: crForm.currencyId, branchId: crForm.branchId };
@@ -1587,30 +1622,36 @@ export default function SettingsPage() {
       <Modal open={baModal} onClose={() => setBaModal(false)} title={editingBa ? 'Редагувати рахунок' : 'Новий банківський рахунок'}
         footer={<><Button variant="outline" onClick={() => setBaModal(false)}>Скасувати</Button><Button onClick={saveBa} loading={savingBa}>Зберегти</Button></>}>
         <div className="space-y-4">
-          <Input label="Назва рахунку *" value={baForm.name} onChange={e => setBaForm({ ...baForm, name: e.target.value })} />
-          <Input label="IBAN *" value={baForm.ibanUA} onChange={e => setBaForm({ ...baForm, ibanUA: e.target.value })} placeholder="UA213223130000026007233566001" />
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Валюта *</label>
-            <SearchCombobox<Currency>
-              value={baForm.currencyId}
-              displayValue={baForm.currencyDisplay}
-              onSelect={(item) => setBaForm({ ...baForm, currencyId: item.id, currencyDisplay: item.code })}
-              onClear={() => setBaForm({ ...baForm, currencyId: '', currencyDisplay: '' })}
-              fetchItems={async (q) => { const r = await apiFetch<{ items: Currency[] }>(`/currencies?q=${encodeURIComponent(q)}&limit=10`); return r.items.map(c => ({ ...c, primary: `${c.code} — ${c.name}`, secondary: c.symbol ?? undefined })); }}
-              placeholder="Пошук валюти..."
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Філія</label>
-            <SearchCombobox<BranchInfo>
-              value={baForm.branchId}
-              displayValue={baForm.branchDisplay}
-              onSelect={(item) => setBaForm({ ...baForm, branchId: item.id, branchDisplay: item.name })}
-              onClear={() => setBaForm({ ...baForm, branchId: '', branchDisplay: '' })}
-              fetchItems={async (q) => { const r = await apiFetch<{ items: BranchInfo[] } | BranchInfo[]>(`/branches?q=${encodeURIComponent(q)}&limit=10`); const arr = Array.isArray(r) ? r : r.items; return arr.map(b => ({ ...b, primary: b.name })); }}
-              placeholder="Пошук філії..."
-            />
-          </div>
+          <Input
+            label="Назва рахунку *" required
+            value={baForm.name}
+            onChange={e => { setBaForm({ ...baForm, name: e.target.value }); if (baErrors.name) setBaErrors(p => ({ ...p, name: undefined })); }}
+            errorMessage={baErrors.name}
+          />
+          <Input
+            label="IBAN *" required
+            value={baForm.ibanUA}
+            onChange={e => { setBaForm({ ...baForm, ibanUA: e.target.value }); if (baErrors.ibanUA) setBaErrors(p => ({ ...p, ibanUA: undefined })); }}
+            placeholder="UA213223130000026007233566001"
+            errorMessage={baErrors.ibanUA}
+          />
+          <Select
+            label="Валюта *" required
+            value={baForm.currencyId}
+            onChange={e => { setBaForm({ ...baForm, currencyId: e.target.value }); if (baErrors.currencyId) setBaErrors(p => ({ ...p, currencyId: undefined })); }}
+            errorMessage={baErrors.currencyId}
+            placeholder="Оберіть валюту..."
+          >
+            {currencies.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+          </Select>
+          <Select
+            label="Філія"
+            value={baForm.branchId}
+            onChange={e => setBaForm({ ...baForm, branchId: e.target.value })}
+            placeholder="Не прив'язано до філії"
+          >
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
           <Input label="Назва банку" value={baForm.bankName} onChange={e => setBaForm({ ...baForm, bankName: e.target.value })} />
           <Input label="МФО" value={baForm.mfo} onChange={e => setBaForm({ ...baForm, mfo: e.target.value })} />
           <Input label="ЄДРПОУ банку" value={baForm.edrpou} onChange={e => setBaForm({ ...baForm, edrpou: e.target.value })} />
@@ -1622,29 +1663,30 @@ export default function SettingsPage() {
       <Modal open={crModal} onClose={() => setCrModal(false)} title={editingCr ? 'Редагувати касу' : 'Нова каса'}
         footer={<><Button variant="outline" onClick={() => setCrModal(false)}>Скасувати</Button><Button onClick={saveCr} loading={savingCr}>Зберегти</Button></>}>
         <div className="space-y-4">
-          <Input label="Назва *" value={crForm.name} onChange={e => setCrForm({ ...crForm, name: e.target.value })} />
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Валюта *</label>
-            <SearchCombobox<Currency>
-              value={crForm.currencyId}
-              displayValue={crForm.currencyDisplay}
-              onSelect={(item) => setCrForm({ ...crForm, currencyId: item.id, currencyDisplay: item.code })}
-              onClear={() => setCrForm({ ...crForm, currencyId: '', currencyDisplay: '' })}
-              fetchItems={async (q) => { const r = await apiFetch<{ items: Currency[] }>(`/currencies?q=${encodeURIComponent(q)}&limit=10`); return r.items.map(c => ({ ...c, primary: `${c.code} — ${c.name}`, secondary: c.symbol ?? undefined })); }}
-              placeholder="Пошук валюти..."
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Філія *</label>
-            <SearchCombobox<BranchInfo>
-              value={crForm.branchId}
-              displayValue={crForm.branchDisplay}
-              onSelect={(item) => setCrForm({ ...crForm, branchId: item.id, branchDisplay: item.name })}
-              onClear={() => setCrForm({ ...crForm, branchId: '', branchDisplay: '' })}
-              fetchItems={async (q) => { const r = await apiFetch<{ items: BranchInfo[] } | BranchInfo[]>(`/branches?q=${encodeURIComponent(q)}&limit=10`); const arr = Array.isArray(r) ? r : r.items; return arr.map(b => ({ ...b, primary: b.name })); }}
-              placeholder="Пошук філії..."
-            />
-          </div>
+          <Input
+            label="Назва *" required
+            value={crForm.name}
+            onChange={e => { setCrForm({ ...crForm, name: e.target.value }); if (crErrors.name) setCrErrors(p => ({ ...p, name: undefined })); }}
+            errorMessage={crErrors.name}
+          />
+          <Select
+            label="Валюта *" required
+            value={crForm.currencyId}
+            onChange={e => { setCrForm({ ...crForm, currencyId: e.target.value }); if (crErrors.currencyId) setCrErrors(p => ({ ...p, currencyId: undefined })); }}
+            errorMessage={crErrors.currencyId}
+            placeholder="Оберіть валюту..."
+          >
+            {currencies.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+          </Select>
+          <Select
+            label="Філія *" required
+            value={crForm.branchId}
+            onChange={e => { setCrForm({ ...crForm, branchId: e.target.value }); if (crErrors.branchId) setCrErrors(p => ({ ...p, branchId: undefined })); }}
+            errorMessage={crErrors.branchId}
+            placeholder="Оберіть філію..."
+          >
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
         </div>
       </Modal>
     </div>
