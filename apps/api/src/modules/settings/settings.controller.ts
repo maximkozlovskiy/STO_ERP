@@ -17,6 +17,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+// ApiResponse is used for org-info endpoints above
 import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ResetPeriod } from '@prisma/client';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -25,9 +26,11 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import {
   BranchSettingsResponseDto,
+  OrganisationResponseDto,
   OrganisationSettingsResponseDto,
   UiFeatures,
   UpdateBranchSettingsDto,
+  UpdateOrganisationDto,
   UpdateOrganisationSettingsDto,
 } from './settings.dto';
 import { SettingsService } from './settings.service';
@@ -170,5 +173,21 @@ export class SettingsController {
   @ApiOperation({ summary: 'Видалити ставку ПДВ' })
   deleteTaxRate(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.deleteTaxRate(orgId, id);
+  }
+
+  @Get('org-info')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Дані організації (назва, адреси, лого, банк. рахунок)' })
+  @ApiResponse({ status: 200, type: OrganisationResponseDto })
+  getOrgInfo(@OrgContext() orgId: string) {
+    return this.service.getOrganisation(orgId);
+  }
+
+  @Patch('org-info')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Оновити дані організації' })
+  @ApiResponse({ status: 200, type: OrganisationResponseDto })
+  updateOrgInfo(@OrgContext() orgId: string, @Body() dto: UpdateOrganisationDto) {
+    return this.service.updateOrganisation(orgId, dto);
   }
 }

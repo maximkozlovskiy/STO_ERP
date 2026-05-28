@@ -47,6 +47,10 @@ import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { InspectionModule } from './modules/inspection/inspection.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { BookingModule } from './modules/booking/booking.module';
+import { CurrenciesModule } from './modules/currencies/currencies.module';
+import { ExchangeRatesModule } from './modules/exchange-rates/exchange-rates.module';
+import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
+import { CashRegistersModule } from './modules/cash-registers/cash-registers.module';
 
 @Module({
   imports: [
@@ -106,6 +110,10 @@ import { BookingModule } from './modules/booking/booking.module';
     InspectionModule,
     WebhooksModule,
     BookingModule,
+    CurrenciesModule,
+    ExchangeRatesModule,
+    BankAccountsModule,
+    CashRegistersModule,
   ],
 })
 export class AppModule {}

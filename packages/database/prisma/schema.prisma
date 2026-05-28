@@ -246,14 +246,18 @@ enum PricingRuleType {
 // ─── INFRASTRUCTURE ──────────────────────────────────────
 
 model Organisation {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId       String    @db.Uuid
-  name        String
-  edrpou      String?   @unique
-  syncVersion BigInt    @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId         String    @db.Uuid
+  name          String
+  edrpou        String?   @unique
+  logoUrl       String?
+  legalAddress  String?
+  actualAddress String?
+  bankAccountId String?   @db.Uuid
+  syncVersion   BigInt    @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
 
   branches              GarageBranch[]
   employees             Employee[]
@@ -273,6 +277,11 @@ model Organisation {
   webhookEndpoints      WebhookEndpoint[]
   loyaltyAccounts       LoyaltyAccount[]
   bookingRequests       BookingRequest[]
+  currencies            Currency[]
+  exchangeRates         ExchangeRate[]
+  bankAccounts          BankAccount[]
+  cashRegisters         CashRegister[]
+  primaryBankAccount    BankAccount? @relation("OrgPrimaryBankAccount", fields: [bankAccountId], references: [id])
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -317,6 +326,8 @@ model GarageBranch {
   stockDocuments   StockDocument[]
   employeeBranches EmployeeBranch[]
   bookingRequests  BookingRequest[]
+  bankAccounts     BankAccount[]
+  cashRegisters    CashRegister[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -1761,4 +1772,97 @@ model LoyaltyTransaction {
 
   @@index([accountId, createdAt])
   @@map("loyalty_transactions")
+}
+
+// ─── CURRENCIES & FINANCIAL ACCOUNTS ──────────────────────────────────────────
+
+model Currency {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String    @db.Uuid
+  name              String
+  fullName          String?
+  internationalName String?
+  code              String
+  symbol            String?
+  syncVersion       BigInt    @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  organisation  Organisation  @relation(fields: [orgId], references: [id])
+  exchangeRates ExchangeRate[]
+  bankAccounts  BankAccount[]
+  cashRegisters CashRegister[]
+
+  @@unique([orgId, code])
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("currencies")
+}
+
+model ExchangeRate {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  currencyId  String    @db.Uuid
+  date        DateTime  @db.Date
+  rate        Decimal   @db.Decimal(15, 2)
+  coefficient Decimal   @db.Decimal(15, 2) @default(1)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organisation Organisation @relation(fields: [orgId], references: [id])
+  currency     Currency     @relation(fields: [currencyId], references: [id])
+
+  @@unique([orgId, currencyId, date])
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("exchange_rates")
+}
+
+model BankAccount {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  ibanUA      String
+  currencyId  String    @db.Uuid
+  bankName    String?
+  branchId    String?   @db.Uuid
+  mfo         String?
+  edrpou      String?
+  bankAddress String?
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organisation       Organisation  @relation(fields: [orgId], references: [id])
+  currency           Currency      @relation(fields: [currencyId], references: [id])
+  branch             GarageBranch? @relation(fields: [branchId], references: [id])
+  primaryForOrgs     Organisation[] @relation("OrgPrimaryBankAccount")
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("bank_accounts")
+}
+
+model CashRegister {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  currencyId  String    @db.Uuid
+  branchId    String    @db.Uuid
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organisation Organisation @relation(fields: [orgId], references: [id])
+  currency     Currency     @relation(fields: [currencyId], references: [id])
+  branch       GarageBranch @relation(fields: [branchId], references: [id])
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("cash_registers")
 }

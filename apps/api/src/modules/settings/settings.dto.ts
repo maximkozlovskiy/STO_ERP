@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsNumber,
   IsObject,
   IsOptional,
@@ -235,5 +236,37 @@ export class BranchSettingsResponseDto {
   @ApiProperty() smsEnabled!: boolean;
   @ApiPropertyOptional() smsProvider?: string | null;
   @ApiPropertyOptional() smsSenderName?: string | null;
+  @ApiProperty() updatedAt!: Date;
+}
+
+export class UpdateOrganisationDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @IsNotEmpty()
+  name?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  edrpou?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  logoUrl?: string | null;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  legalAddress?: string | null;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  actualAddress?: string | null;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  bankAccountId?: string | null;
+}
+
+export class OrganisationResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() orgId!: string;
+  @ApiProperty() name!: string;
+  @ApiPropertyOptional() edrpou?: string | null;
+  @ApiPropertyOptional() logoUrl?: string | null;
+  @ApiPropertyOptional() legalAddress?: string | null;
+  @ApiPropertyOptional() actualAddress?: string | null;
+  @ApiPropertyOptional() bankAccountId?: string | null;
   @ApiProperty() updatedAt!: Date;
 }

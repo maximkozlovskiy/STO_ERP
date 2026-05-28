@@ -5,10 +5,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import {
   BranchSettingsResponseDto,
+  OrganisationResponseDto,
   OrganisationSettingsResponseDto,
   UiFeatures,
   UI_FEATURES_DEFAULTS,
   UpdateBranchSettingsDto,
+  UpdateOrganisationDto,
   UpdateOrganisationSettingsDto,
 } from './settings.dto';
 
@@ -327,5 +329,42 @@ export class SettingsService {
     if (!existing) throw new NotFoundException('Ставку ПДВ не знайдено');
     if (existing.isDefault) throw new BadRequestException('Не можна видалити ставку за замовчуванням');
     await this.prisma.taxRate.update({ where: { id }, data: { isActive: false } });
+  }
+
+  async getOrganisation(orgId: string): Promise<OrganisationResponseDto> {
+    const org = await this.prisma.organisation.findFirst({ where: { orgId, deletedAt: null } });
+    if (!org) throw new NotFoundException('Організацію не знайдено');
+    return this.mapOrganisation(org);
+  }
+
+  async updateOrganisation(orgId: string, dto: UpdateOrganisationDto): Promise<OrganisationResponseDto> {
+    const org = await this.prisma.organisation.findFirst({ where: { orgId, deletedAt: null } });
+    if (!org) throw new NotFoundException('Організацію не знайдено');
+
+    if (dto.bankAccountId) {
+      const ba = await this.prisma.bankAccount.findFirst({
+        where: { id: dto.bankAccountId, orgId, deletedAt: null },
+      });
+      if (!ba) throw new NotFoundException('Банківський рахунок не знайдено');
+    }
+
+    const updated = await this.prisma.organisation.update({
+      where: { id: org.id },
+      data: dto,
+    });
+    return this.mapOrganisation(updated);
+  }
+
+  private mapOrganisation(org: {
+    id: string; orgId: string; name: string; edrpou: string | null;
+    logoUrl?: string | null; legalAddress?: string | null;
+    actualAddress?: string | null; bankAccountId?: string | null; updatedAt: Date;
+  }): OrganisationResponseDto {
+    return {
+      id: org.id, orgId: org.orgId, name: org.name, edrpou: org.edrpou,
+      logoUrl: org.logoUrl ?? null, legalAddress: org.legalAddress ?? null,
+      actualAddress: org.actualAddress ?? null, bankAccountId: org.bankAccountId ?? null,
+      updatedAt: org.updatedAt,
+    };
   }
 }
