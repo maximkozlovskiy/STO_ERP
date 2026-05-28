@@ -372,7 +372,7 @@ export default function CalendarPage() {
 
     const onUp = async (e: PointerEvent) => {
       // ── Finish drawing → open form ──────────────────────────────────────
-      if (drawingRef.current && ghostRef.current) {
+      if (drawingRef.current) {
         const { liftId, startH } = drawingRef.current;
         const endH = snapTo15(Math.max(pxToDecimalHours(e.clientX), startH + 0.25));
         drawingRef.current = null;
