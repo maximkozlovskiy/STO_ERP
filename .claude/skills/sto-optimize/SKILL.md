@@ -205,6 +205,13 @@ grep -rn "apiFetch.*branches\|apiFetch.*warehouses\|apiFetch.*zones\|apiFetch.*l
 
 **Фікс:** використати `getCached` / `setCache` з `@/lib/ref-cache`.
 
+**Окремо — source/management сторінки довідників** (вони не лише читають, а й редагують список):
+```bash
+# Сторінки що фетчать довідник у loadAll/load І в mutation-хендлерах — але не пишуть у кеш
+grep -rln "apiFetch.*/branches\|apiFetch.*/zones\|apiFetch.*/lifts\|apiFetch.*/warehouses" apps/web/src/app/ --include="*.tsx" | xargs grep -L "setCache"
+```
+Якщо `loadAll()` викликається і на mount, і після КОЖНОЇ мутації → безпечно додати `getCached` (first-paint) + `setCache` (warm cache + пропагація правок споживачам). Якщо ні — НЕ кешувати (ризик stale).
+
 ### 2.5 Важкі бандли без lazy loading
 ```bash
 # Перевірити bundle sizes
@@ -385,6 +392,17 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-28 — Source/management page не наповнює спільний ref-cache — сторінки що редагують довідники
+
+**Сигнал:** сторінка-власник довідника (CRUD UI для branches/zones/lifts/warehouses/brands/units) фетчить ті самі списки що й consumer-сторінки, але БЕЗ `getCached`/`setCache` — хоча consumer-сторінки той самий список кешують
+**Причина виникнення:** ref-cache додавався з боку *споживачів* (де список — це дропдаун/лейбл). Сторінку-джерело пропускають, бо здається що "вона й так керує цими даними" — але вона теж платить cold-fetch і, головне, її правки не доходять до кешу споживачів
+**Підхід до виявлення:** не плутати з Кроком 2.4. Тут шукати **source-сторінку** довідника: знайти у grep сторінку де той самий endpoint викликається і в `loadAll`/`load`, і у mutation-хендлерах (create/update/delete) — це ознака management UI. Перевірити чи вона торкається ref-cache взагалі
+**Підхід до фіксу:** safe-умова обов'язкова — фіксувати ТІЛЬКИ якщо `loadAll()` викликається і на mount, і після КОЖНОЇ мутації (інакше кеш стане джерелом stale-даних). Якщо так: seed з `getCached` для миттєвого first-paint + `setCache` після кожного свіжого фетчу. Це не лише прискорює саму сторінку — це пропагує її правки/видалення у кеш споживачів на їхній наступний mount
+**Реальний impact:** management-сторінка більше не cold-fetch при кожному відкритті; правки довідника видно на consumer-сторінках без чекання їхнього TTL
+**Де шукати ще:** будь-яка адмінська/CRUD сторінка довідника (infrastructure, catalog tabs, settings) — перевірити що вона і читає, і ПИШЕ у ref-cache, а не лише читає
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -400,6 +418,7 @@ TypeScript: ✅ 0 errors
 - ✅ useDebounce(300ms) на 8 сторінках (work-orders, crm, invoices, purchase-orders, inventory, employees, catalog ×3)
 - ✅ next/dynamic recharts: dashboard (235→124kB), reports (269→149kB)
 - ✅ sessionStorage ref-cache: branches, warehouses, zones, lifts, work-categories, brands, units, suppliers, wo-templates, currencies, bank-accounts
+- ✅ infrastructure (source page): warm ref-cache (branches/zones/lifts/warehouses) → пропагація правок споживачам
 - ✅ settings/page.tsx: parallel Promise.all for currencies+rates+bank-accounts+cash-registers+org-info
 - ✅ SW: skipWaiting після precache; API routes не кешуються
 - ✅ Promise.all parallel fetches на 9 сторінках
