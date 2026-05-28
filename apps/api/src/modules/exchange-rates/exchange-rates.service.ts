@@ -23,7 +23,7 @@ export class ExchangeRatesService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.exchangeRate.findMany({
         where,
-        include: { currency: true },
+        include: { currency: { select: { code: true, name: true } } },
         orderBy: [{ date: 'desc' }, { currency: { code: 'asc' } }],
         take: 500,
       }),
@@ -35,7 +35,7 @@ export class ExchangeRatesService {
   async findOne(orgId: string, id: string): Promise<ExchangeRateResponseDto> {
     const item = await this.prisma.exchangeRate.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { currency: true },
+      include: { currency: { select: { code: true, name: true } } },
     });
     if (!item) throw new NotFoundException('Курс валюти не знайдено');
     return this.toDto(item);
@@ -55,7 +55,7 @@ export class ExchangeRatesService {
 
     const item = await this.prisma.exchangeRate.create({
       data: { orgId, currencyId: dto.currencyId, date, rate: dto.rate, coefficient: dto.coefficient ?? 1 },
-      include: { currency: true },
+      include: { currency: { select: { code: true, name: true } } },
     });
     return this.toDto(item);
   }
@@ -74,7 +74,7 @@ export class ExchangeRatesService {
     const item = await this.prisma.exchangeRate.update({
       where: { id },
       data: updateData,
-      include: { currency: true },
+      include: { currency: { select: { code: true, name: true } } },
     });
     return this.toDto(item);
   }

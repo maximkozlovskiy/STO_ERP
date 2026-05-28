@@ -10,7 +10,7 @@ export class BankAccountsService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.bankAccount.findMany({
         where: { orgId, deletedAt: null },
-        include: { currency: true, branch: true },
+        include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
         orderBy: { name: 'asc' },
         take: 200,
       }),
@@ -22,7 +22,7 @@ export class BankAccountsService {
   async findOne(orgId: string, id: string): Promise<BankAccountResponseDto> {
     const item = await this.prisma.bankAccount.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { currency: true, branch: true },
+      include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
     });
     if (!item) throw new NotFoundException('Банківський рахунок не знайдено');
     return this.toDto(item);
@@ -45,7 +45,7 @@ export class BankAccountsService {
       data: { orgId, name: dto.name, ibanUA: dto.ibanUA, currencyId: dto.currencyId,
         bankName: dto.bankName, branchId: dto.branchId, mfo: dto.mfo,
         edrpou: dto.edrpou, bankAddress: dto.bankAddress },
-      include: { currency: true, branch: true },
+      include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
     });
     return this.toDto(item);
   }
@@ -71,7 +71,7 @@ export class BankAccountsService {
     const item = await this.prisma.bankAccount.update({
       where: { id },
       data: dto,
-      include: { currency: true, branch: true },
+      include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
     });
     return this.toDto(item);
   }

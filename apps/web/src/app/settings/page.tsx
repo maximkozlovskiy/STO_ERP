@@ -1553,7 +1553,7 @@ export default function SettingsPage() {
             </div>
           )}
           <Input label="Дата *" type="date" value={rateForm.date} onChange={e => setRateForm({ ...rateForm, date: e.target.value })} />
-          <Input label="Курс (UAH) *" type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm({ ...rateForm, rate: e.target.value })} />
+          <Input label="Курс (UAH) *" type="number" step="0.000001" value={rateForm.rate} onChange={e => setRateForm({ ...rateForm, rate: e.target.value })} />
           <Input label="Кількість одиниць" type="number" step="1" value={rateForm.coefficient} onChange={e => setRateForm({ ...rateForm, coefficient: e.target.value })} hint="Скільки одиниць валюти відповідають вказаному курсу" />
         </div>
       </Modal>

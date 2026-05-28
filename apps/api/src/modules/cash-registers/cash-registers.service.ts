@@ -16,7 +16,7 @@ export class CashRegistersService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.cashRegister.findMany({
         where,
-        include: { currency: true, branch: true },
+        include: { currency: { select: { code: true, symbol: true } }, branch: { select: { name: true } } },
         orderBy: { name: 'asc' },
         take: 200,
       }),
@@ -28,7 +28,7 @@ export class CashRegistersService {
   async findOne(orgId: string, id: string): Promise<CashRegisterResponseDto> {
     const item = await this.prisma.cashRegister.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { currency: true, branch: true },
+      include: { currency: { select: { code: true, symbol: true } }, branch: { select: { name: true } } },
     });
     if (!item) throw new NotFoundException('Касу не знайдено');
     return this.toDto(item);
@@ -47,7 +47,7 @@ export class CashRegistersService {
 
     const item = await this.prisma.cashRegister.create({
       data: { orgId, name: dto.name, currencyId: dto.currencyId, branchId: dto.branchId },
-      include: { currency: true, branch: true },
+      include: { currency: { select: { code: true, symbol: true } }, branch: { select: { name: true } } },
     });
     return this.toDto(item);
   }
@@ -72,7 +72,7 @@ export class CashRegistersService {
     const item = await this.prisma.cashRegister.update({
       where: { id },
       data: dto,
-      include: { currency: true, branch: true },
+      include: { currency: { select: { code: true, symbol: true } }, branch: { select: { name: true } } },
     });
     return this.toDto(item);
   }
