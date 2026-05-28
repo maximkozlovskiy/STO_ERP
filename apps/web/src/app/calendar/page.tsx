@@ -1,6 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef, memo, type CSSProperties } from 'react';
+import {
+  useEffect, useState, useCallback, useMemo, useRef, memo,
+  type CSSProperties, type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { Plus, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -16,6 +19,8 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 interface CalendarSlot {
   id: string;
   liftId?: string | null;
@@ -25,11 +30,33 @@ interface CalendarSlot {
   endAt: string;
   notes?: string | null;
   workOrderNumber?: string;
+  counterpartyName?: string;
 }
 interface Lift { id: string; name: string; }
+interface WorkOrderOption { id: string; number: string; counterpartyName?: string; }
+
+// Ghost while drawing a new slot on the grid
+interface GhostSlot { liftId: string; startH: number; endH: number; }
+
+// Resize state for dragging slot edges
+interface ResizeState {
+  slotId: string;
+  edge: 'start' | 'end';
+  origStartH: number;
+  origEndH: number;
+  pointerStartX: number;
+  liftId: string | null;
+}
+
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const KYIV_TZ = 'Europe/Kyiv';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 8); // 08:00–19:00
+const TOTAL_HOURS = HOURS.length;
+const SIDEBAR_W = 160; // px — lift label column width
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
 function toDateString(d: Date) { return new Intl.DateTimeFormat('sv-SE', { timeZone: KYIV_TZ }).format(d); }
@@ -47,79 +74,151 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('uk-UA', { timeZone: KYIV_TZ, hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 8); // 08:00–19:00
-const TOTAL_HOURS = HOURS.length;
+function decimalHoursToHHMM(h: number): string {
+  const totalMin = Math.round(h * 60);
+  return `${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}`;
+}
 
-// ─── DnD helpers ─────────────────────────────────────────────────────────────
+function snapTo15(h: number): number {
+  return Math.round(h * 4) / 4;
+}
+
+// Convert pixel delta → hour shift given timeline container width
+function pxToHours(px: number, timelineW: number): number {
+  return (px / timelineW) * TOTAL_HOURS;
+}
+
+// ─── DraggableSlot ───────────────────────────────────────────────────────────
 
 interface DraggableSlotProps {
   slot: CalendarSlot;
   onRemove: (id: string) => void;
+  onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
 }
-const DraggableSlot = memo(function DraggableSlot({ slot, onRemove }: DraggableSlotProps) {
+
+const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onResizeStart }: DraggableSlotProps) {
   const startH = kyivHours(slot.startAt);
   const endH   = kyivHours(slot.endAt);
-  const left  = ((startH - HOURS[0]) / TOTAL_HOURS) * 100;
-  const width = ((endH - startH)     / TOTAL_HOURS) * 100;
+  const left   = ((startH - HOURS[0]) / TOTAL_HOURS) * 100;
+  const width  = ((endH - startH)     / TOTAL_HOURS) * 100;
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: slot.id, data: { slot } });
   const style: CSSProperties = {
-    left:      `${left}%`,
-    width:     `${width}%`,
+    left: `${left}%`,
+    width: `${width}%`,
     transform: CSS.Translate.toString(transform),
-    opacity:   isDragging ? 0.5 : 1,
-    zIndex:    isDragging ? 50 : 10,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 10,
   };
+
+  const label = [
+    `${fmtTime(slot.startAt)}–${fmtTime(slot.endAt)}`,
+    slot.workOrderNumber ? `· ${slot.workOrderNumber}` : null,
+    slot.counterpartyName ? `· ${slot.counterpartyName}` : null,
+  ].filter(Boolean).join(' ');
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
-      className="absolute top-1 bottom-1 bg-primary rounded text-white text-xs flex items-center px-1.5 overflow-hidden cursor-grab active:cursor-grabbing hover:opacity-90 group"
-      title={slot.workOrderNumber ? `Наряд ${slot.workOrderNumber}` : slot.notes ?? ''}
+      className="absolute top-1 bottom-1 bg-primary rounded text-white text-xs flex items-center overflow-hidden group select-none"
+      title={label}
     >
-      <span className="truncate select-none">{fmtTime(slot.startAt)}–{fmtTime(slot.endAt)}{slot.workOrderNumber ? ` · ${slot.workOrderNumber}` : ''}</span>
+      {/* Left resize handle */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-white/20 rounded-l flex items-center justify-center"
+        onPointerDown={e => { e.stopPropagation(); onResizeStart(e, slot.id, 'start'); }}
+        aria-label="Змінити початок"
+      >
+        <div className="w-0.5 h-4 bg-white/50 rounded" />
+      </div>
+
+      {/* Slot label — draggable area */}
+      <div
+        className="flex-1 flex items-center px-3 cursor-grab active:cursor-grabbing min-w-0"
+        {...listeners}
+        {...attributes}
+      >
+        <span className="truncate">{label}</span>
+      </div>
+
+      {/* Delete button */}
       <button
         onPointerDown={e => e.stopPropagation()}
         onClick={() => onRemove(slot.id)}
-        className="ml-auto opacity-0 group-hover:opacity-100 text-white/80 hover:text-white px-0.5"
+        className="mr-1 opacity-0 group-hover:opacity-100 text-white/80 hover:text-white shrink-0"
         aria-label="Видалити слот"
       >
         <Trash2 className="h-3 w-3" />
       </button>
+
+      {/* Right resize handle */}
+      <div
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-white/20 rounded-r flex items-center justify-center"
+        onPointerDown={e => { e.stopPropagation(); onResizeStart(e, slot.id, 'end'); }}
+        aria-label="Змінити кінець"
+      >
+        <div className="w-0.5 h-4 bg-white/50 rounded" />
+      </div>
     </div>
   );
 });
 
+// ─── DroppableLiftRow ────────────────────────────────────────────────────────
+
 interface DroppableLiftRowProps {
   liftId: string;
   liftSlots: CalendarSlot[];
+  ghost: GhostSlot | null;
   onRemove: (id: string) => void;
+  onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
+  onDrawStart: (e: ReactPointerEvent<HTMLDivElement>, liftId: string) => void;
 }
-const DroppableLiftRow = memo(function DroppableLiftRow({ liftId, liftSlots, onRemove }: DroppableLiftRowProps) {
+
+const DroppableLiftRow = memo(function DroppableLiftRow({
+  liftId, liftSlots, ghost, onRemove, onResizeStart, onDrawStart,
+}: DroppableLiftRowProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `lift-${liftId}`, data: { liftId } });
+
+  const showGhost = ghost?.liftId === liftId && ghost.endH > ghost.startH;
+  const ghostLeft  = showGhost ? ((ghost!.startH - HOURS[0]) / TOTAL_HOURS) * 100 : 0;
+  const ghostWidth = showGhost ? ((ghost!.endH - ghost!.startH) / TOTAL_HOURS) * 100 : 0;
 
   return (
     <div
       ref={setNodeRef}
       className={`col-span-12 relative min-h-12 transition-colors ${isOver ? 'bg-primary/5' : ''}`}
       style={{ gridColumn: `2 / span ${TOTAL_HOURS}` }}
+      onPointerDown={e => onDrawStart(e, liftId)}
     >
-      <div className="flex h-full">
+      {/* Hour grid lines */}
+      <div className="flex h-full pointer-events-none">
         {HOURS.map(h => (
           <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-12" />
         ))}
       </div>
+
+      {/* Ghost slot while drawing */}
+      {showGhost && (
+        <div
+          className="absolute top-1 bottom-1 bg-primary/30 border-2 border-primary border-dashed rounded pointer-events-none z-5"
+          style={{ left: `${ghostLeft}%`, width: `${ghostWidth}%` }}
+        >
+          <span className="text-xs text-primary px-1.5 font-medium">
+            {decimalHoursToHHMM(ghost!.startH)}–{decimalHoursToHHMM(ghost!.endH)}
+          </span>
+        </div>
+      )}
+
+      {/* Existing slots */}
       {liftSlots.map(s => (
-        <DraggableSlot key={s.id} slot={s} onRemove={onRemove} />
+        <DraggableSlot key={s.id} slot={s} onRemove={onRemove} onResizeStart={onResizeStart} />
       ))}
     </div>
   );
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── CalendarPage ─────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
@@ -129,23 +228,36 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ liftId: '', employeeId: '', workOrderId: '', startAt: '', endAt: '', notes: '', normoHours: '' });
+  const [form, setForm] = useState({
+    liftId: '', employeeId: '', workOrderId: '', workOrderDisplay: '',
+    startAt: '', endAt: '', notes: '', normoHours: '',
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Drawing new slot by dragging on empty grid
+  const [ghost, setGhost] = useState<GhostSlot | null>(null);
+  const drawingRef = useRef<{ liftId: string; startH: number } | null>(null);
+
+  // Resizing existing slot edges
+  const [resizing, setResizing] = useState<ResizeState | null>(null);
+  // Live preview of resized slot (local optimistic copy)
+  const [resizePreview, setResizePreview] = useState<{ id: string; startH: number; endH: number } | null>(null);
+
   const timelineRef = useRef<HTMLDivElement>(null);
+  const mountedRef  = useRef(true);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
   useEffect(() => { setDate(toDateString(new Date())); }, []);
 
+  // Load lifts (with sessionStorage cache)
   useEffect(() => {
-    // Reference data — paint instantly from sessionStorage, refresh in background.
     const cached = getCached<Lift[]>('cache:lifts');
     if (cached && mountedRef.current) setLifts(cached);
     apiFetch<Lift[]>('/lifts')
@@ -167,46 +279,139 @@ export default function CalendarPage() {
   const prevDay = () => { const d = new Date(date); d.setDate(d.getDate() - 1); setDate(toDateString(d)); };
   const nextDay = () => { const d = new Date(date); d.setDate(d.getDate() + 1); setDate(toDateString(d)); };
 
-  const addSlot = async () => {
-    if (!form.startAt || !form.endAt) {
-      setError('Вкажіть час початку та завершення'); return;
-    }
-    if (form.endAt <= form.startAt) {
-      setError('Час завершення повинен бути після часу початку'); return;
-    }
-    if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
-      setError('ID наряду має бути у форматі UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)'); return;
-    }
-    if (form.employeeId && !UUID_RE.test(form.employeeId)) {
-      setError('ID співробітника має бути у форматі UUID'); return;
-    }
-    setSaving(true); setError('');
-    try {
-      await apiFetch<CalendarSlot>('/calendar/slots', {
-        method: 'POST',
-        body: JSON.stringify({
-          liftId: form.liftId || undefined,
-          employeeId: form.employeeId || undefined,
-          workOrderId: form.workOrderId || undefined,
-          startAt: form.startAt ? new Date(`${date}T${form.startAt}:00`).toISOString() : undefined,
-          endAt: form.endAt ? new Date(`${date}T${form.endAt}:00`).toISOString() : undefined,
-          notes: form.notes || undefined,
-        }),
-      });
-      setShowAdd(false);
-      setForm({ liftId: '', employeeId: '', workOrderId: '', startAt: '', endAt: '', notes: '', normoHours: '' });
-      load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
-    finally { setSaving(false); }
-  };
+  // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  const removeSlot = useCallback(async (id: string) => {
-    if (!confirm('Видалити слот?')) return;
-    setSaving(true); setError('');
-    try { await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); }
-    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
-    finally { setSaving(false); }
-  }, [load]);
+  // Convert pointer clientX → decimal hours on the timeline
+  const pxToDecimalHours = useCallback((clientX: number): number => {
+    const rect = timelineRef.current?.getBoundingClientRect();
+    if (!rect) return HOURS[0];
+    const timelineX = clientX - rect.left - SIDEBAR_W;
+    const timelineW = rect.width - SIDEBAR_W;
+    const raw = HOURS[0] + (timelineX / timelineW) * TOTAL_HOURS;
+    return Math.max(HOURS[0], Math.min(HOURS[HOURS.length - 1], raw));
+  }, []);
+
+  // ── Draw new slot ────────────────────────────────────────────────────────────
+
+  const handleDrawStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, liftId: string) => {
+    // Only react to primary button on the row background (not on existing slots / handles)
+    if (e.button !== 0) return;
+    // If pointer is on a child with slot data — let dnd-kit handle it
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-dnd-draggable]') || target.closest('[aria-label="Змінити початок"]') || target.closest('[aria-label="Змінити кінець"]')) return;
+
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const startH = snapTo15(pxToDecimalHours(e.clientX));
+    drawingRef.current = { liftId, startH };
+    setGhost({ liftId, startH, endH: startH + 1 }); // default 1 hour preview
+  }, [pxToDecimalHours]);
+
+  // ── Resize existing slot ─────────────────────────────────────────────────────
+
+  const handleResizeStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const slot = slots.find(s => s.id === slotId);
+    if (!slot) return;
+    setResizing({
+      slotId,
+      edge,
+      origStartH: kyivHours(slot.startAt),
+      origEndH:   kyivHours(slot.endAt),
+      pointerStartX: e.clientX,
+      liftId: slot.liftId ?? null,
+    });
+    setResizePreview({ id: slotId, startH: kyivHours(slot.startAt), endH: kyivHours(slot.endAt) });
+  }, [slots]);
+
+  // ── Global pointer move / up on the timeline ─────────────────────────────────
+
+  const handleTimelinePointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const curH = pxToDecimalHours(e.clientX);
+
+    // Drawing mode
+    if (drawingRef.current) {
+      const { startH } = drawingRef.current;
+      const endH = snapTo15(Math.max(curH, startH + 0.25));
+      setGhost(g => g ? { ...g, endH } : null);
+      return;
+    }
+
+    // Resize mode
+    if (resizing) {
+      const rect = timelineRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const deltaH = pxToHours(e.clientX - resizing.pointerStartX, rect.width - SIDEBAR_W);
+
+      if (resizing.edge === 'start') {
+        const newStartH = snapTo15(Math.min(resizing.origStartH + deltaH, resizing.origEndH - 0.25));
+        setResizePreview(p => p ? { ...p, startH: newStartH } : null);
+      } else {
+        const newEndH = snapTo15(Math.max(resizing.origEndH + deltaH, resizing.origStartH + 0.25));
+        setResizePreview(p => p ? { ...p, endH: newEndH } : null);
+      }
+    }
+  }, [pxToDecimalHours, resizing]);
+
+  const handleTimelinePointerUp = useCallback(async (e: ReactPointerEvent<HTMLDivElement>) => {
+    // ── Finish drawing → open form ──────────────────────────────────────────
+    if (drawingRef.current && ghost) {
+      const { liftId, startH } = drawingRef.current;
+      const endH = snapTo15(Math.max(pxToDecimalHours(e.clientX), startH + 0.25));
+      drawingRef.current = null;
+      setGhost(null);
+
+      if (endH - startH >= 0.25) {
+        // Pre-fill form and open it
+        setForm(f => ({
+          ...f,
+          liftId,
+          startAt: decimalHoursToHHMM(startH),
+          endAt:   decimalHoursToHHMM(endH),
+          normoHours: String(+(endH - startH).toFixed(2)),
+        }));
+        setShowAdd(true);
+      }
+      return;
+    }
+
+    // ── Finish resizing → PATCH ─────────────────────────────────────────────
+    if (resizing && resizePreview) {
+      const { slotId, origStartH, origEndH } = resizing;
+      const { startH, endH } = resizePreview;
+
+      setResizing(null);
+      setResizePreview(null);
+
+      // No change — skip
+      if (Math.abs(startH - origStartH) < 0.01 && Math.abs(endH - origEndH) < 0.01) return;
+
+      // Build ISO timestamps from decimal hours + current date in Kyiv
+      const toISO = (h: number) => {
+        const totalMin = Math.round(h * 60);
+        const hh = Math.floor(totalMin / 60);
+        const mm = totalMin % 60;
+        return new Date(`${date}T${pad(hh)}:${pad(mm)}:00`).toISOString();
+      };
+
+      try {
+        await apiFetch(`/calendar/slots/${slotId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ startAt: toISO(startH), endAt: toISO(endH) }),
+        });
+        load();
+      } catch (err: unknown) {
+        if (mountedRef.current) setError(err instanceof Error ? err.message : 'Помилка оновлення слоту');
+        load(); // reload to restore original
+      }
+    }
+  }, [ghost, resizing, resizePreview, pxToDecimalHours, date, load]);
+
+  // Cancel drawing/resize on pointer leave
+  const handleTimelinePointerLeave = useCallback(() => {
+    if (drawingRef.current) { drawingRef.current = null; setGhost(null); }
+  }, []);
+
+  // ── Drag-and-drop move (existing behaviour + now PATCH actually works) ───────
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, delta, over } = event;
@@ -215,23 +420,19 @@ export default function CalendarPage() {
     const slot = slots.find(s => s.id === active.id);
     if (!slot) return;
 
-    // Determine new liftId from drop target (if dropped onto a different lift row)
     const newLiftId: string | null = over?.data?.current?.liftId ?? slot.liftId ?? null;
 
-    // Calculate time shift from horizontal drag delta
     const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
     if (!containerWidth) return;
 
-    // timeline area excludes the 160px lift-label column
-    const timelineWidth = containerWidth - 160;
-    const hoursPer100Px = TOTAL_HOURS / timelineWidth;
-    const shiftHours = delta.x * hoursPer100Px;
+    const timelineWidth = containerWidth - SIDEBAR_W;
+    const shiftHours = (delta.x / timelineWidth) * TOTAL_HOURS;
 
-    if (Math.abs(shiftHours) < 0.08 && newLiftId === slot.liftId) return; // negligible move
+    if (Math.abs(shiftHours) < 0.08 && newLiftId === slot.liftId) return;
 
     const origStart = new Date(slot.startAt);
     const origEnd   = new Date(slot.endAt);
-    const shiftMs   = Math.round(shiftHours * 3600 * 1000 / (15 * 60 * 1000)) * (15 * 60 * 1000); // snap to 15min
+    const shiftMs   = Math.round(shiftHours * 3600_000 / (15 * 60_000)) * (15 * 60_000);
 
     const newStart = new Date(origStart.getTime() + shiftMs);
     const newEnd   = new Date(origEnd.getTime()   + shiftMs);
@@ -241,38 +442,113 @@ export default function CalendarPage() {
         method: 'PATCH',
         body: JSON.stringify({
           startAt: newStart.toISOString(),
-          endAt: newEnd.toISOString(),
+          endAt:   newEnd.toISOString(),
           ...(newLiftId !== slot.liftId && { liftId: newLiftId }),
         }),
       });
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка переміщення слоту');
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка переміщення слоту');
     }
   }, [slots, load]);
 
-  // Group slots by lift once per `slots` change — keeps each row's `liftSlots` array
-  // referentially stable so the memo() on <DroppableLiftRow> actually skips re-renders
-  // when unrelated state (saving/error/form) changes. A fresh .filter() per render would
-  // defeat the memo (new array reference every time).
+  // ── Add slot (manual form submit) ────────────────────────────────────────────
+
+  const addSlot = async () => {
+    if (!form.startAt || !form.endAt) { setError('Вкажіть час початку та завершення'); return; }
+    if (form.endAt <= form.startAt)    { setError('Час завершення повинен бути після часу початку'); return; }
+    if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
+      setError('Оберіть наряд зі списку'); return;
+    }
+    setSaving(true); setError('');
+    try {
+      await apiFetch<CalendarSlot>('/calendar/slots', {
+        method: 'POST',
+        body: JSON.stringify({
+          liftId:      form.liftId      || undefined,
+          employeeId:  form.employeeId  || undefined,
+          workOrderId: form.workOrderId || undefined,
+          startAt: new Date(`${date}T${form.startAt}:00`).toISOString(),
+          endAt:   new Date(`${date}T${form.endAt}:00`).toISOString(),
+          notes: form.notes || undefined,
+        }),
+      });
+      setShowAdd(false);
+      setForm({ liftId: '', employeeId: '', workOrderId: '', workOrderDisplay: '', startAt: '', endAt: '', notes: '', normoHours: '' });
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSaving(false); }
+  };
+
+  const removeSlot = useCallback(async (id: string) => {
+    if (!confirm('Видалити слот?')) return;
+    try { await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); }
+    catch (e: unknown) { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+  }, [load]);
+
+  // ── Work-order search ─────────────────────────────────────────────────────────
+
+  const [woSearch, setWoSearch] = useState('');
+  const [woOptions, setWoOptions] = useState<WorkOrderOption[]>([]);
+  const [woLoading, setWoLoading] = useState(false);
+  const [showWoDropdown, setShowWoDropdown] = useState(false);
+  const woTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!showAdd) { setWoSearch(''); setWoOptions([]); }
+  }, [showAdd]);
+
+  const searchWorkOrders = useCallback((q: string) => {
+    if (woTimeoutRef.current) clearTimeout(woTimeoutRef.current);
+    if (!q.trim()) { setWoOptions([]); setShowWoDropdown(false); return; }
+    woTimeoutRef.current = setTimeout(async () => {
+      setWoLoading(true);
+      try {
+        const data = await apiFetch<{ items: WorkOrderOption[] }>(`/work-orders?q=${encodeURIComponent(q)}&limit=10`);
+        if (mountedRef.current) { setWoOptions(data.items); setShowWoDropdown(true); }
+      } catch { /* ignore */ }
+      finally { if (mountedRef.current) setWoLoading(false); }
+    }, 300);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (woTimeoutRef.current) clearTimeout(woTimeoutRef.current); };
+  }, []);
+
+  // ── Memoized grouping ────────────────────────────────────────────────────────
+
+  // Apply resize preview to slots for optimistic rendering
+  const slotsWithPreview = useMemo(() => {
+    if (!resizePreview) return slots;
+    return slots.map(s => {
+      if (s.id !== resizePreview.id) return s;
+      const toISO = (h: number) => {
+        const totalMin = Math.round(h * 60);
+        return new Date(`${date}T${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}:00`).toISOString();
+      };
+      return { ...s, startAt: toISO(resizePreview.startH), endAt: toISO(resizePreview.endH) };
+    });
+  }, [slots, resizePreview, date]);
+
   const slotsByLift = useMemo(() => {
     const map = new Map<string, CalendarSlot[]>();
-    for (const s of slots) {
+    for (const s of slotsWithPreview) {
       if (!s.liftId) continue;
       const list = map.get(s.liftId);
-      if (list) list.push(s);
-      else map.set(s.liftId, [s]);
+      if (list) list.push(s); else map.set(s.liftId, [s]);
     }
     return map;
-  }, [slots]);
+  }, [slotsWithPreview]);
+
   const EMPTY_SLOTS: CalendarSlot[] = useMemo(() => [], []);
-  const unassignedSlots = useMemo(() => slots.filter(s => !s.liftId), [slots]);
+  const unassignedSlots = useMemo(() => slotsWithPreview.filter(s => !s.liftId), [slotsWithPreview]);
 
   const formatDate = (ds: string) => {
     if (!ds) return '';
-    const d = new Date(ds);
-    return d.toLocaleDateString('uk-UA', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: KYIV_TZ });
+    return new Date(ds).toLocaleDateString('uk-UA', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: KYIV_TZ });
   };
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <div className="page-container">
@@ -289,29 +565,21 @@ export default function CalendarPage() {
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
 
-      {/* Date nav */}
+      {/* Date navigation */}
       <div className="flex items-center gap-4 mb-6">
         <Button variant="outline" size="sm" onClick={prevDay}>
           <ChevronLeft className="h-4 w-4" />
           Попередній
         </Button>
         <div className="flex items-center gap-2">
-          <DatePickerInput
-            value={date}
-            onChange={setDate}
-            placeholder="Дата"
-            className="w-48"
-          />
+          <DatePickerInput value={date} onChange={setDate} placeholder="Дата" className="w-48" />
           <span className="text-sm text-muted-foreground capitalize">{formatDate(date)}</span>
         </div>
         <Button variant="outline" size="sm" onClick={nextDay}>
           Наступний
           <ChevronRight className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => {
-          const now = new Date();
-          setDate(toDateString(now));
-        }}>
+        <Button variant="ghost" size="sm" onClick={() => setDate(toDateString(new Date()))}>
           Сьогодні
         </Button>
       </div>
@@ -321,17 +589,18 @@ export default function CalendarPage() {
         <div className="bg-surface border border-border rounded-xl p-5 mb-6 space-y-3">
           <h3 className="font-semibold text-foreground text-sm">Новий слот на {date}</h3>
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
+
           <div className="grid grid-cols-4 gap-3">
+            {/* Lift */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Підйомник</label>
-              <Select
-                value={form.liftId}
-                onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
-              >
+              <Select value={form.liftId} onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}>
                 <option value="">— будь-який —</option>
                 {lifts.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </Select>
             </div>
+
+            {/* Start time */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Початок</label>
               <Input
@@ -342,39 +611,30 @@ export default function CalendarPage() {
                   setForm(f => {
                     if (start && f.normoHours && Number(f.normoHours) > 0) {
                       const [h, m] = start.split(':').map(Number);
-                      // Clamp end-time within the same calendar day (23:59 max).
-                      // Slot cannot cross midnight in STO scheduling model.
                       const totalMin = Math.min(h * 60 + m + Math.round(Number(f.normoHours) * 60), 23 * 60 + 59);
-                      const endH = Math.floor(totalMin / 60);
-                      const endM = totalMin % 60;
-                      const endAt = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-                      return { ...f, startAt: start, endAt };
+                      return { ...f, startAt: start, endAt: `${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}` };
                     }
                     return { ...f, startAt: start };
                   });
                 }}
               />
             </div>
+
+            {/* Normo-hours */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">
                 Норм-год <span className="font-normal text-muted-foreground/70">(авто кінець)</span>
               </label>
               <Input
-                type="number"
-                step="0.5"
-                min="0.5"
+                type="number" step="0.5" min="0.5"
                 value={form.normoHours}
                 onChange={e => {
                   const nh = e.target.value;
                   setForm(f => {
                     if (f.startAt && nh && Number(nh) > 0) {
                       const [h, m] = f.startAt.split(':').map(Number);
-                      // Clamp end-time within the same calendar day (23:59 max).
                       const totalMin = Math.min(h * 60 + m + Math.round(Number(nh) * 60), 23 * 60 + 59);
-                      const endH = Math.floor(totalMin / 60);
-                      const endM = totalMin % 60;
-                      const endAt = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-                      return { ...f, normoHours: nh, endAt };
+                      return { ...f, normoHours: nh, endAt: `${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}` };
                     }
                     return { ...f, normoHours: nh };
                   });
@@ -382,37 +642,72 @@ export default function CalendarPage() {
                 placeholder="1.5"
               />
             </div>
+
+            {/* End time */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Кінець</label>
-              <Input
-                type="time"
-                value={form.endAt}
-                onChange={e => setForm(f => ({ ...f, endAt: e.target.value }))}
-              />
+              <Input type="time" value={form.endAt} onChange={e => setForm(f => ({ ...f, endAt: e.target.value }))} />
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">ID наряду <span className="font-normal opacity-60">(необов'язково)</span></label>
+            {/* Work order search */}
+            <div className="relative">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Наряд <span className="font-normal opacity-60">(пошук по номеру / клієнту)</span>
+              </label>
               <Input
-                value={form.workOrderId}
-                onChange={e => setForm(f => ({ ...f, workOrderId: e.target.value.trim() }))}
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                value={woSearch || form.workOrderDisplay}
+                onChange={e => {
+                  const v = e.target.value;
+                  setWoSearch(v);
+                  if (!v) setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }));
+                  searchWorkOrders(v);
+                }}
+                onFocus={() => { if (woSearch) setShowWoDropdown(true); }}
+                placeholder="Введіть номер або прізвище..."
               />
+              {form.workOrderDisplay && !woSearch && (
+                <button
+                  className="absolute right-2 top-7 text-muted-foreground hover:text-foreground text-xs"
+                  onClick={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
+                  aria-label="Очистити наряд"
+                >✕</button>
+              )}
+              {showWoDropdown && woOptions.length > 0 && (
+                <div className="absolute z-50 w-full bg-surface border border-border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                  {woLoading && <div className="p-2 text-xs text-muted-foreground">Пошук...</div>}
+                  {woOptions.map(wo => (
+                    <button
+                      key={wo.id}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors"
+                      onClick={() => {
+                        const display = `${wo.number}${wo.counterpartyName ? ` · ${wo.counterpartyName}` : ''}`;
+                        setForm(f => ({ ...f, workOrderId: wo.id, workOrderDisplay: display }));
+                        setWoSearch('');
+                        setShowWoDropdown(false);
+                      }}
+                    >
+                      <span className="font-medium text-foreground">{wo.number}</span>
+                      {wo.counterpartyName && <span className="ml-2 text-muted-foreground">{wo.counterpartyName}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* Notes */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Нотатки</label>
-              <Input
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              />
+              <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
           </div>
+
           <div className="flex gap-2">
             <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt}>
               Зберегти
             </Button>
-            <Button variant="outline" onClick={() => setShowAdd(false)}>
+            <Button variant="outline" onClick={() => { setShowAdd(false); setError(''); }}>
               Скасувати
             </Button>
           </div>
@@ -420,44 +715,56 @@ export default function CalendarPage() {
       )}
 
       {/* Timeline grid */}
-      {loading && (
-        <div className="flex justify-center py-8">
-          <Spinner size="md" />
-        </div>
-      )}
+      {loading && <div className="flex justify-center py-8"><Spinner size="md" /></div>}
+
       {!loading && lifts.length === 0 && (
         <div className="bg-surface border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
           Немає підйомників. Додайте їх у розділі <a href="/infrastructure" className="text-primary hover:underline">Інфраструктура</a>.
         </div>
       )}
+
       {!loading && lifts.length > 0 && (
-        <DndContext sensors={sensors} onDragEnd={e => { void handleDragEnd(e); }}>
-          <div ref={timelineRef} className="bg-surface border border-border rounded-xl overflow-hidden">
-            {/* Hour headers */}
-            <div className="grid border-b border-border" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
-              <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">Підйомник</div>
-              {HOURS.map(h => (
-                <div key={h} className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0">
-                  {pad(h)}:00
+        <>
+          <p className="text-xs text-muted-foreground mb-2">
+            Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї слоту для зміни тривалості.
+          </p>
+          <DndContext sensors={sensors} onDragEnd={e => { void handleDragEnd(e); }}>
+            <div
+              ref={timelineRef}
+              className="bg-surface border border-border rounded-xl overflow-hidden"
+              onPointerMove={handleTimelinePointerMove}
+              onPointerUp={e => { void handleTimelinePointerUp(e); }}
+              onPointerLeave={handleTimelinePointerLeave}
+            >
+              {/* Hour headers */}
+              <div className="grid border-b border-border" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
+                <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">Підйомник</div>
+                {HOURS.map(h => (
+                  <div key={h} className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0">
+                    {pad(h)}:00
+                  </div>
+                ))}
+              </div>
+
+              {/* Lift rows */}
+              {lifts.map(lift => (
+                <div key={lift.id} className="grid border-b border-border last:border-b-0" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
+                  <div className="px-3 py-3 text-sm font-medium text-foreground bg-secondary border-r border-border flex items-center">
+                    {lift.name}
+                  </div>
+                  <DroppableLiftRow
+                    liftId={lift.id}
+                    liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
+                    ghost={ghost}
+                    onRemove={removeSlot}
+                    onResizeStart={handleResizeStart}
+                    onDrawStart={handleDrawStart}
+                  />
                 </div>
               ))}
             </div>
-
-            {/* Lift rows */}
-            {lifts.map(lift => (
-              <div key={lift.id} className="grid border-b border-border last:border-b-0" style={{ gridTemplateColumns: `160px repeat(${HOURS.length}, 1fr)` }}>
-                <div className="px-3 py-3 text-sm font-medium text-foreground bg-secondary border-r border-border flex items-center">
-                  {lift.name}
-                </div>
-                <DroppableLiftRow
-                  liftId={lift.id}
-                  liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
-                  onRemove={removeSlot}
-                />
-              </div>
-            ))}
-          </div>
-        </DndContext>
+          </DndContext>
+        </>
       )}
 
       {/* Unassigned slots */}
@@ -470,6 +777,7 @@ export default function CalendarPage() {
                 <div>
                   <span className="text-sm text-foreground">{fmtTime(s.startAt)} – {fmtTime(s.endAt)}</span>
                   {s.workOrderNumber && <span className="ml-2 text-xs text-primary">Наряд {s.workOrderNumber}</span>}
+                  {s.counterpartyName && <span className="ml-2 text-xs text-muted-foreground">{s.counterpartyName}</span>}
                   {s.notes && <span className="ml-2 text-xs text-muted-foreground">{s.notes}</span>}
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => removeSlot(s.id)}>

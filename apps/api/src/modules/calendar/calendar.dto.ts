@@ -13,6 +13,15 @@ export class CreateCalendarSlotDto {
   @ApiPropertyOptional({ enum: CalendarSlotType }) @IsOptional() @IsEnum(CalendarSlotType) type?: CalendarSlotType;
 }
 
+export class UpdateCalendarSlotDto {
+  @ApiPropertyOptional() @IsOptional() @IsUUID() liftId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() employeeId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() workOrderId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsISO8601() startAt?: string;
+  @ApiPropertyOptional() @IsOptional() @IsISO8601() endAt?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+}
+
 export class CalendarSlotResponseDto {
   @ApiProperty() id!: string;
   @ApiPropertyOptional() liftId?: string | null;
@@ -22,6 +31,7 @@ export class CalendarSlotResponseDto {
   @ApiProperty() endAt!: Date;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() workOrderNumber?: string;
+  @ApiPropertyOptional() counterpartyName?: string;
   @ApiProperty({ enum: CalendarSlotStatus }) status!: CalendarSlotStatus;
   @ApiProperty({ enum: CalendarSlotType }) type!: CalendarSlotType;
 }

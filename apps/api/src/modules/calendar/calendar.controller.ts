@@ -1,11 +1,11 @@
-import { Controller, Get, Post, Delete, Body, Param, ParseUUIDPipe, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CalendarService } from './calendar.service';
-import { CreateCalendarSlotDto } from './calendar.dto';
+import { CreateCalendarSlotDto, UpdateCalendarSlotDto } from './calendar.dto';
 
 @ApiTags('Calendar')
 @Controller('calendar/slots')
@@ -34,6 +34,17 @@ export class CalendarController {
   @ApiOperation({ summary: 'Створити слот' })
   createSlot(@OrgContext() orgId: string, @Body() dto: CreateCalendarSlotDto) {
     return this.service.createSlot(orgId, dto);
+  }
+
+  @Patch(':id')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Оновити слот (час, підйомник, наряд)' })
+  updateSlot(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCalendarSlotDto,
+  ) {
+    return this.service.updateSlot(orgId, id, dto);
   }
 
   @Delete(':id')

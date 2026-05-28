@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateCalendarSlotDto, CalendarSlotResponseDto } from './calendar.dto';
+import { CreateCalendarSlotDto, UpdateCalendarSlotDto, CalendarSlotResponseDto } from './calendar.dto';
 
 @Injectable()
 export class CalendarService {
@@ -32,7 +32,14 @@ export class CalendarService {
     const slots = await this.prisma.calendarSlot.findMany({
       where,
       orderBy: { startAt: 'asc' },
-      include: { workOrder: { select: { number: true } } },
+      include: {
+        workOrder: {
+          select: {
+            number: true,
+            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+          },
+        },
+      },
       take: 500,
     });
 
@@ -95,12 +102,90 @@ export class CalendarService {
         status: dto.status ?? CalendarSlotStatus.BOOKED,
         type: dto.type ?? CalendarSlotType.WORK,
       },
-      include: { workOrder: { select: { number: true } } },
+      include: {
+        workOrder: {
+          select: {
+            number: true,
+            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+          },
+        },
+      },
     });
     // Bug #130: explicit 5s timeout (2 conflict checks + 1 create — well below default).
     }, { timeout: 5_000 });
 
     return this.toDto(slot);
+  }
+
+  async updateSlot(orgId: string, id: string, dto: UpdateCalendarSlotDto): Promise<CalendarSlotResponseDto> {
+    const existing = await this.prisma.calendarSlot.findFirst({ where: { id, orgId, deletedAt: null } });
+    if (!existing) throw new NotFoundException('Слот не знайдено');
+
+    if (dto.liftId !== undefined && dto.liftId !== null) {
+      const lift = await this.prisma.lift.findFirst({ where: { id: dto.liftId, orgId, deletedAt: null } });
+      if (!lift) throw new NotFoundException('Підйомник не знайдено');
+    }
+    if (dto.employeeId !== undefined && dto.employeeId !== null) {
+      const employee = await this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } });
+      if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    }
+    if (dto.workOrderId !== undefined && dto.workOrderId !== null) {
+      const workOrder = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
+      if (!workOrder) throw new NotFoundException('Наряд не знайдено');
+    }
+
+    const startAt = dto.startAt ? new Date(dto.startAt) : existing.startAt;
+    const endAt   = dto.endAt   ? new Date(dto.endAt)   : existing.endAt;
+    if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
+
+    const liftId = dto.liftId !== undefined ? dto.liftId : existing.liftId;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (liftId) {
+        const conflict = await tx.calendarSlot.findFirst({
+          where: {
+            orgId, liftId, deletedAt: null,
+            NOT: { id },
+            OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+          },
+        });
+        if (conflict) throw new BadRequestException('Підйомник вже зайнятий на цей час');
+      }
+
+      const employeeId = dto.employeeId !== undefined ? dto.employeeId : existing.employeeId;
+      if (employeeId) {
+        const empConflict = await tx.calendarSlot.findFirst({
+          where: {
+            orgId, employeeId, deletedAt: null,
+            NOT: { id },
+            OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+          },
+        });
+        if (empConflict) throw new BadRequestException('Співробітник вже зайнятий на цей час');
+      }
+
+      return tx.calendarSlot.update({
+        where: { id, orgId },
+        data: {
+          ...(dto.liftId !== undefined && { liftId: dto.liftId }),
+          ...(dto.employeeId !== undefined && { employeeId: dto.employeeId }),
+          ...(dto.workOrderId !== undefined && { workOrderId: dto.workOrderId }),
+          startAt,
+          endAt,
+          ...(dto.notes !== undefined && { notes: dto.notes }),
+        },
+        include: {
+          workOrder: {
+            select: {
+              number: true,
+              counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+            },
+          },
+        },
+      });
+    }, { timeout: 5_000 });
+
+    return this.toDto(updated);
   }
 
   async removeSlot(orgId: string, id: string): Promise<void> {
@@ -121,8 +206,16 @@ export class CalendarService {
     id: string; liftId: string | null; employeeId: string | null; workOrderId: string | null;
     startAt: Date; endAt: Date; notes: string | null;
     status: CalendarSlotStatus; type: CalendarSlotType;
-    workOrder: { number: string } | null;
+    workOrder: {
+      number: string;
+      counterparty: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
+    } | null;
   }): CalendarSlotResponseDto {
+    const cp = slot.workOrder?.counterparty;
+    const counterpartyName = cp
+      ? (cp.companyName ?? ([cp.lastName, cp.firstName].filter(Boolean).join(' ') || undefined))
+      : undefined;
+
     return {
       id: slot.id,
       liftId: slot.liftId ?? null,
@@ -134,6 +227,7 @@ export class CalendarService {
       status: slot.status,
       type: slot.type,
       workOrderNumber: slot.workOrder?.number,
+      counterpartyName,
     };
   }
 }
