@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+fbe66ad fix(sync): branches endpoint returns bare array, not {items}
 e27cc22 fix(tester): Bugs #159-#160 — surface /branches error, remove dead WO-dropdown code
 9d454d3 fix(review): add LiftType PIT/RAMP migration, strip BOM from 22 DTOs, surface SearchPicker errors
 e0af6a8 feat(warehouses): warn when setting main warehouse displaces existing main
@@ -44,6 +45,7 @@ f040cde perf(db): 5 composite indexes
 ## Поточний стан проєкту
 TypeScript: ✅ 0 errors (web --incremental false, api, shared)
 Unit+Contract: ✅ 316/316 passed (30 файлів)
+Latest sync: 2026-05-28 (AUTO, HEAD fbe66ad) — 1 bug fixed: branches bare-array vs {items} mismatch
 Latest review: 2026-05-28 (auto, HEAD 9d454d3) — 4 проблеми виправлено (1 Critical, 2 Important, 1 Suggestion)
 Latest tester: 2026-05-28 (AUTO, HEAD e27cc22) — 2 баги: #159 MEDIUM /branches silent catch блокував створення наряду (порожній обов'язковий select); #160 LOW мертвий inline WO-dropdown після SearchPickerModal рефактору. Перевірено scope review-коміту 9d454d3 (@Matches не послаблює валідацію, PIT/RAMP міграція+labels синхронні, SearchPickerModal error-state коректний) — баги у суміжному calendar/page.tsx.
 
@@ -145,6 +147,18 @@ Latest optimize: 2026-05-28 (AUTO, HEAD 5afbadd) — регресійний пр
 Latest review:   2026-05-28 (perf optimization series 016f041..945e264 — HEAD 19a4c22) — AUTO review всіх perf-коммітів. 0 Critical / 0 Important. 1 Suggestion фіксовано (19a4c22): employees create()/update() використовували `include: { employeeZones: true, ... }` (SELECT *) замість `select: { zoneId: true }` як у findAll/findOne — звужено для консистентності. Перевірено: (1) CacheService — try/catch на всіх Redis-викликах (get/set/del/delPattern), offline-first never breaks request; (2) інвалідація кешу на КОЖНОМУ мутаторі (create/update/remove) у всіх 7 ref-сервісах (branches/warehouses/zones+lifts/work-categories/brands/units/payment-methods); (3) delPattern `ref:X:${orgId}*` коректно чистить і unfiltered, і branch/zone-scoped ключі (warehouses+branchId, zones+branchId, lifts+zoneId); single-key сервіси (branches/brands/units/payment-methods/work-categories) використовують del(); (4) RedisModule @Global + у app.module → всі 7 сервісів інжектять CacheService (tsc 0 errors підтверджує DI); жоден інший модуль не пише в ці моделі повз cached-сервіси; (5) purchase-orders toDto: `lines: (po.lines ?? []).map(...)` + `linesCount: po._count?.lines ?? po.lines?.length ?? 0` — no crash коли lines=undefined у findAll (lines omitted, _count.lines використано); frontend loadDetail() перевіряє `po.linesCount === 0` перед on-demand findOne; (6) useDebounce — cleanup clearTimeout; усі 8 сторінок (work-orders/purchase-orders/invoices/inventory/employees/crm/catalog×3) використовують debouncedX у deps+URL, ніде raw X; (7) ReportsCharts типи (RevenueRow/SettlementRow/LoadRow/ProfitabilityData) точно збігаються з reports/page.tsx; dynamic import named exports коректний; (8) SW skipWaiting тепер ВСЕРЕДИНІ waitUntil ПІСЛЯ cache.addAll — новий SW не перехоплює control mid-precache; (9) ref-cache.ts SSR-safe (typeof window guard + try/catch); усі getCached/setCache у effects, 0 lazy useState(getCached(...)) initializers. Suggestion-only (не фіксовано): Redis client lazyConnect+enableOfflineQueue може повільно фейлити offline (немає connectTimeout/maxRetriesPerRequest) — змінювати connection semantics ризиковано; delPattern використовує redis.keys() O(N) — прийнятно для малих ref-наборів.
 Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — повний AUTO review feature surface: 4 нові модулі (currencies/exchange-rates/bank-accounts/cash-registers), settings org-info endpoint (logoUrl/legalAddress/actualAddress/bankAccountId + explicit orgSelect виключає BigInt syncVersion), web settings 4 нові вкладки + Organisation tab з logo upload (apiMultipartFetch), TopShell public-route guard перед employee-check. 0 Critical / 0 Important — код чистий (пройшов попередній review ebbf746 + tester bb26737). TS 0 errors api+web. Перевірено: tenant isolation (orgId у всіх query), cross-tenant FK guard на create+update, soft-delete, toDto Decimal→Number + syncVersion виключено, sync-ready schema (всі моделі мають id/orgId/syncVersion/timestamps + @@index orgId,deletedAt/syncVersion), PULL_TABLES обґрунтовано виключені (admin reference data, не для mobile mechanic), Select placeholder уникає async-init race (§8.2.1), SearchCombobox paired displayName reset (§8.2). Suggestion-only (не фіксовано): saveUiFeatures unguarded toast (pre-existing phase19); BankAccount/CashRegister currencyId/branchId без dedicated @@index (малі settings-таблиці take:200); combobox q-param ігнориться бекендом (client-side display, OK для малих таблиць).
 ```
+
+### Gotcha — /sto-sync 2026-05-28 (commit fbe66ad)
+
+**Direction 2 — /branches повертає bare array, але фронт очікував {items}:**
+`BranchesService.findAll()` повертає `BranchResponseDto[]` (plain array без пагінації),
+але `calendar/page.tsx` викликав `apiFetch<{ items: [...] }>('/branches?limit=50')` і
+читав `d.items` — завжди `undefined`. Результат: select «Філія» у формі нового наряду
+був завжди порожній → створити наряд неможливо.
+Фікс: `apiFetch<{id:string;name:string}[]>('/branches')` → `setBranches(d)`.
+**Правило:** завжди перевіряти сигнатуру сервісу перед `apiFetch<{items:T[]}>` —
+не всі endpoints пагіновані. `/branches`, `/lifts`, `/vehicles`, `/maintenance-schedules`,
+`/calendar/slots`, `/counterparties/:id/garages` повертають plain array.
 
 ### Gotcha — /sto-review модульність/універсальність UI (2026-05-28, commit 06e2ccb)
 
