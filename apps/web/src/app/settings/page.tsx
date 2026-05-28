@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Sun, Moon, Monitor, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { useRequireAuth } from '@/lib/auth';
-import { apiFetch, apiBlobFetch } from '@/lib/api-client';
+import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { THEMES, type ThemeName, applyTheme } from '@/lib/theme';
 import { setColorMode, getColorMode, type ColorMode } from '@/lib/color-mode';
 import { Button } from '@/components/ui/button';
@@ -693,7 +693,7 @@ export default function SettingsPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const result = await apiFetch<{ url: string }>('/files/upload', { method: 'POST', body: formData as unknown as string });
+      const result = await apiMultipartFetch<{ url: string }>('/files/upload', formData);
       await apiFetch('/settings/org-info', { method: 'PATCH', body: JSON.stringify({ logoUrl: result.url }) });
       setOrgInfo(prev => prev ? { ...prev, logoUrl: result.url } : prev);
       if (currentFeatures.toastEnabled) toast.success('Логотип завантажено');
