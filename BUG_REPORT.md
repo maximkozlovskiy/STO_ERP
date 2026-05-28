@@ -4919,3 +4919,76 @@ soft-deleted рядка з тим самим унікальним ключем; 
 ---
 
 
+## Session 2026-05-28 — AUTO tester after docs-only change (skill files rewrite)
+
+### Baseline
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- TypeScript shared — ✅ 0 errors
+- Unit tests (API) — ❌ 12 failed / 290 passed (3 spec files) → root cause below
+
+Scope: `git diff HEAD --name-only` = docs/config only (.claude/skills, .claude/agents,
+settings.local.json, MemoryManual.md, tsbuildinfo). No source changed → matrix says §0 (tsc)
+only. But baseline unit tests were RED → treated as Bug #0 class, fixed first per Крок 0.
+All three are STALE SPEC bugs (production code correct), introduced by earlier perf/simplify
+commits that changed service signatures/logic without updating the matching specs.
+
+---
+
+## Bug #153 — [MEDIUM] warehouses.service.spec — TestingModule не надає CacheService (DI fail)
+
+**Файл:** `apps/api/src/modules/warehouses/warehouses.service.spec.ts:27-32`
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Commit `923aea5` ("Redis cache for reference data") додав `CacheService` у
+конструктор `WarehousesService`, але `Test.createTestingModule({ providers: [...] })` у спеці
+не надає мок для `CacheService`. NestJS DI кидає "Nest can't resolve dependencies of the
+WarehousesService (PrismaService, ?)" → падають усі 6 тестів файлу.
+**Очікувана поведінка:** усі 6 тестів зелені.
+**Фактична поведінка:** 6/6 падають на DI-резолві ще до запуску asserts.
+**Виправлення:** додано `{ provide: CacheService, useValue: <mock get/set/del/delPattern> }`
+у providers; `get` повертає `null` (cache miss → fallthrough на БД).
+**Статус:** [x] виправлено
+
+---
+
+## Bug #154 — [MEDIUM] currencies.service.spec — DI fail + застарілий double-findFirst mock
+
+**Файл:** `apps/api/src/modules/currencies/currencies.service.spec.ts:23-35,45-65`
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Дві проблеми. (1) Commit `09b8a3b` додав `CacheService` у конструктор
+`CurrenciesService` — спека не надає мок → DI fail на всіх 3 тестах. (2) Той самий
+commit спростив `create()` до ОДНОГО `findFirst` (fetch any row, потім branch на `deletedAt`),
+але спека мокає `findFirst` двічі (`mockResolvedValueOnce(null)` → `mockResolvedValueOnce(deleted)`).
+Перший null споживається єдиним викликом → сервіс вважає що рядка нема → йде в `create()`,
+ніколи не викликає `update()` (resurrection). Тести "воскрешає" і "створює нову" впали б навіть
+після фіксу DI.
+**Очікувана поведінка:** усі 3 тести зелені.
+**Фактична поведінка:** DI fail → 3/3 падають; після DI фіксу 2/3 падали б на mock-count.
+**Виправлення:** (1) додано мок `CacheService`; (2) "воскрешає" — один
+`mockResolvedValueOnce(soft-deleted row)`; "створює нову" — один `mockResolvedValueOnce(null)`.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #155 — [MEDIUM] exchange-rates.service.spec — застарілий double-findFirst mock (Bug #152 resurrection test)
+
+**Файл:** `apps/api/src/modules/exchange-rates/exchange-rates.service.spec.ts:54-67`
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Commit `3d2c185` ("fix(simplify)") спростив `ExchangeRatesService.create()` до
+ОДНОГО `findFirst` (single round-trip: fetch any row → branch на `anyExisting.deletedAt`).
+Спека-тест "воскрешає soft-deleted курс" досі мокає `findFirst` двічі. Перший
+`mockResolvedValueOnce(null)` споживається єдиним викликом → сервіс іде в `create()`,
+`update()` не викликається → `toHaveBeenCalledWith` отримує "Number of calls: 0".
+(`ExchangeRatesService` НЕ має `CacheService` у конструкторі — DI-проблеми тут немає.)
+**Очікувана поведінка:** тест resurrection зелений.
+**Фактична поведінка:** 1/6 падає на mock-count mismatch.
+**Виправлення:** "воскрешає" — один `mockResolvedValueOnce(soft-deleted row)`.
+**Статус:** [x] виправлено
+
+---

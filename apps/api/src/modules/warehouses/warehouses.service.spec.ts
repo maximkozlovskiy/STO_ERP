@@ -4,12 +4,20 @@ import { Prisma } from '@prisma/client';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { WarehousesService } from './warehouses.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 
 describe('WarehousesService — isMain invariant', () => {
   let service: WarehousesService;
   let prisma: { warehouse: any; garageBranch: any; $transaction: ReturnType<typeof vi.fn> };
+  let cache: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn>; del: ReturnType<typeof vi.fn>; delPattern: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
+    cache = {
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockResolvedValue(undefined),
+      del: vi.fn().mockResolvedValue(undefined),
+      delPattern: vi.fn().mockResolvedValue(undefined),
+    };
     prisma = {
       warehouse: {
         findFirst: vi.fn(),
@@ -28,6 +36,7 @@ describe('WarehousesService — isMain invariant', () => {
       providers: [
         WarehousesService,
         { provide: PrismaService, useValue: prisma },
+        { provide: CacheService, useValue: cache },
       ],
     }).compile();
 

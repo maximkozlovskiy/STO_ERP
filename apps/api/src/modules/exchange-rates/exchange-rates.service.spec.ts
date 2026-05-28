@@ -51,11 +51,10 @@ describe('ExchangeRatesService', () => {
     });
 
     // Bug #152: повний unique index включає soft-deleted рядок → воскрешаємо, не create.
+    // Сервіс робить ОДИН exchangeRate.findFirst (fetch any row), потім branch на deletedAt.
     it('воскрешає soft-deleted курс замість create (Bug #152)', async () => {
       prisma.currency.findFirst.mockResolvedValueOnce({ id: CURRENCY_ID });
-      prisma.exchangeRate.findFirst
-        .mockResolvedValueOnce(null) // no active duplicate
-        .mockResolvedValueOnce(fullRow({ id: 'er-deleted', deletedAt: new Date() })); // soft-deleted
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce(fullRow({ id: 'er-deleted', deletedAt: new Date() })); // soft-deleted row occupies unique key
       await service.create('org-1', { currencyId: CURRENCY_ID, date: '2026-05-28', rate: 42 });
       expect(prisma.exchangeRate.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -68,9 +67,7 @@ describe('ExchangeRatesService', () => {
 
     it('створює новий курс коли немає ні активного, ні видаленого', async () => {
       prisma.currency.findFirst.mockResolvedValueOnce({ id: CURRENCY_ID });
-      prisma.exchangeRate.findFirst
-        .mockResolvedValueOnce(null) // no active
-        .mockResolvedValueOnce(null); // no soft-deleted
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce(null); // no row at all
       await service.create('org-1', { currencyId: CURRENCY_ID, date: '2026-05-28', rate: 41.5 });
       expect(prisma.exchangeRate.create).toHaveBeenCalledTimes(1);
     });
