@@ -1,5 +1,53 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-05-28 — FULL tester cycle 1/3 (work-orders $transaction timeouts + full static sweep)
+
+### Baseline (cycle 1)
+
+- TypeScript web/api/shared — ✅ 0 errors
+- Unit + contract (API) — ✅ 271/271 passed (23 files)
+- Component (web vitest) — ✅ 139/139 passed (13 files)
+- Optional deps: fast-check ✅, @testing-library ✅, playwright ✅
+
+### Bugs found this cycle: 1 (MEDIUM)
+
+Full static sweep §1.1–§1.7 was otherwise clean — previous fixes (Bug #127–#143) did not regress:
+- FSM via `WORK_ORDER_TRANSITIONS`, RESERVATION_ACTIVE_STATUSES on cancel, 10s timeout on transition tx ✅
+- Settlements: `Number.isFinite(amount) && amount > 0`, NotFoundException, CHARGE=+/PAYMENT=− ✅
+- Inventory: qty=0 / finite / RESERVATION_RELEASE positive-qty / insufficient stock/available/reserved guards ✅
+- Pricing PERCENT `cost*(1+pct/100)`, `Math.round(r/step)*step`, `Math.max(0,r)`; FEFO `nulls:'last'`; recalcTotals Decimal cast ✅
+- Sync `TABLE_TO_MODEL` map + throw-on-unknown (Bug #127), BigInt→Number in payload + per-table aggregate fallback (Bug #128) ✅
+- Tenant isolation orgId, soft-delete `deletedAt: null`, raw SQL camelCase, hard-delete only on models without `deletedAt` (Comment, GoodBarcode, InvoiceLine, WorkOrderMedia) ✅
+- Frontend: calendar `UUID_RE` validation before submit, apiFetch `Array.isArray(msg).join('; ')`, all blob URLs revoke, all addEventListener clean up, `weekStartsOn={1}`, no inline HSL, no English placeholders/errors ✅
+- All `findMany` bounded with explicit `take:`; all `:id` params use `ParseUUIDPipe`; all async `$transaction(async)` have explicit `{ timeout }` after this fix ✅
+
+---
+
+## Bug #144 — [MEDIUM] work-orders.service.ts: 6 `$transaction(async)` для line/part CRUD без явного `{ timeout }` (продовження Bug #130/#141)
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:520,541,558,578,599,616`
+**Severity:** MEDIUM
+**Категорія:** non-functional / resilience
+
+**Опис:**
+Шість транзакцій для CRUD рядків робіт (`addLine`/`updateLine`/`removeLine`) та запчастин (`addPart`/`updatePart`/`removePart`) виконують write + `recalcTotals()` без явного `{ timeout }`. `recalcTotals` робить 2× `findMany({ take: 1000 })` (рядки + запчастини) плюс `update`. На наряді з великою кількістю позицій ці транзакції можуть наближатись до дефолтного 5s ліміту Prisma interactive transaction, після чого транзакція скасовується і клієнт отримує невизначену помилку замість збереження. `transition()` вже має `{ timeout: 10_000 }` (Bug #130), а `warehouses.service` отримав явні timeout у Bug #141 — work-orders line/part CRUD був пропущений.
+
+**Очікувана поведінка:**
+Кожна interactive `$transaction` має явний `{ timeout }` що відповідає максимальній очікуваній тривалості (тут 5s — один write + recalcTotals).
+
+**Фактична поведінка (до фіксу):**
+6 транзакцій покладались на дефолтний 5s Prisma timeout без явної декларації — крихкий при зростанні розміру наряду.
+
+**Фікс:**
+Додано `, { timeout: 5_000 }` до всіх 6 `$transaction(async ...)` викликів line/part CRUD з пояснювальним коментарем `// Bug #138`.
+
+**Регресія:**
+Покривається існуючими unit-тестами work-orders.service (create line/part + recalcTotals) — поведінка не змінюється, лише додано explicit timeout. tsc 0 errors.
+
+**Статус:** [x] виправлено
+
+---
+
 ## Session 2026-05-27 — Sync service full sweep + BigInt/static-asset/limit regression
 
 ### Baseline

@@ -524,7 +524,7 @@ export class WorkOrdersService {
       });
       await this.recalcTotals(workOrderId, tx, orgId);
       return created;
-    });
+    }, { timeout: 5_000 }); // Bug #138: explicit timeout — create + recalcTotals (2 findMany take:1000 + update)
 
     return this.toLineDto(line);
   }
@@ -546,7 +546,7 @@ export class WorkOrdersService {
       });
       await this.recalcTotals(workOrderId, tx, orgId);
       return result;
-    });
+    }, { timeout: 5_000 }); // Bug #138: explicit timeout — update + recalcTotals
 
     return this.toLineDto(updated);
   }
@@ -558,7 +558,7 @@ export class WorkOrdersService {
     await this.prisma.$transaction(async (tx) => {
       await tx.workOrderLine.update({ where: { id: lineId, orgId }, data: { deletedAt: new Date() } });
       await this.recalcTotals(workOrderId, tx, orgId);
-    });
+    }, { timeout: 5_000 }); // Bug #138: explicit timeout — soft-delete + recalcTotals
   }
 
   // ─── Parts ───────────────────────────────────────────────
@@ -582,7 +582,7 @@ export class WorkOrdersService {
       });
       await this.recalcTotals(workOrderId, tx, orgId);
       return created;
-    });
+    }, { timeout: 5_000 }); // Bug #138: explicit timeout — create + recalcTotals
 
     return this.toPartDto(part);
   }
@@ -604,7 +604,7 @@ export class WorkOrdersService {
       });
       await this.recalcTotals(workOrderId, tx, orgId);
       return result;
-    });
+    }, { timeout: 5_000 }); // Bug #138: explicit timeout — update + recalcTotals
 
     return this.toPartDto(updated);
   }
@@ -616,7 +616,7 @@ export class WorkOrdersService {
     await this.prisma.$transaction(async (tx) => {
       await tx.workOrderPart.update({ where: { id: partId, orgId }, data: { deletedAt: new Date() } });
       await this.recalcTotals(workOrderId, tx, orgId);
-    });
+    }, { timeout: 5_000 }); // Bug #138: explicit timeout — soft-delete + recalcTotals
   }
 
   // ─── Helpers ─────────────────────────────────────────────
