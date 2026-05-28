@@ -920,6 +920,8 @@ export default function SettingsPage() {
                   src={logoPreview ?? orgInfo!.logoUrl!}
                   alt="Логотип"
                   className="h-16 rounded object-contain border border-border bg-white p-1"
+                  loading="lazy"
+                  decoding="async"
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
                 <button

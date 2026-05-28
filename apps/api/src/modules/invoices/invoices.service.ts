@@ -81,15 +81,15 @@ export class InvoicesService {
   }
 
   async create(orgId: string, dto: CreateInvoiceDto, userId?: string): Promise<InvoiceResponseDto> {
-    const counterparty = await this.prisma.counterparty.findFirst({
-      where: { id: dto.counterpartyId, orgId, deletedAt: null },
-    });
+    // Validate counterparty + workOrder in parallel instead of sequential round-trips
+    const [counterparty, wo] = await Promise.all([
+      this.prisma.counterparty.findFirst({ where: { id: dto.counterpartyId, orgId, deletedAt: null } }),
+      dto.workOrderId
+        ? this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } })
+        : Promise.resolve(null),
+    ]);
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
-
-    if (dto.workOrderId) {
-      const wo = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
-      if (!wo) throw new NotFoundException('Наряд не знайдено');
-    }
+    if (dto.workOrderId && !wo) throw new NotFoundException('Наряд не знайдено');
 
     const number = await this.docNumbers.next(orgId, 'INVOICE');
 

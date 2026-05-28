@@ -73,23 +73,25 @@ export class CompletionActsService {
   }
 
   async createFromWorkOrder(orgId: string, workOrderId: string): Promise<CompletionActResponseDto> {
-    const wo = await this.prisma.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-      include: {
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-        vehicle: { select: { make: true, model: true, licensePlate: true } },
-        lines: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' }, include: { work: { select: { name: true } } }, take: 500 },
-        parts: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' }, include: { good: { select: { name: true, unit: true } } }, take: 500 },
-      },
-    });
+    // Run WO fetch + duplicate check in parallel — saves one sequential DB round-trip
+    const [wo, existing] = await Promise.all([
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        include: {
+          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+          vehicle: { select: { make: true, model: true, licensePlate: true } },
+          lines: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' }, include: { work: { select: { name: true } } }, take: 500 },
+          parts: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' }, include: { good: { select: { name: true, unit: true } } }, take: 500 },
+        },
+      }),
+      this.prisma.completionAct.findFirst({
+        where: { orgId, workOrderId, deletedAt: null, status: { not: CompletionActStatus.CANCELLED } },
+      }),
+    ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (!['COMPLETED', 'INVOICED'].includes(wo.status)) {
       throw new BadRequestException('Акт можна сформувати лише для завершеного наряду');
     }
-
-    const existing = await this.prisma.completionAct.findFirst({
-      where: { orgId, workOrderId, deletedAt: null, status: { not: CompletionActStatus.CANCELLED } },
-    });
     if (existing) throw new BadRequestException('Для цього наряду вже існує активний акт');
 
     const number = await this.docNumbers.next(orgId, 'COMPLETION_ACT');

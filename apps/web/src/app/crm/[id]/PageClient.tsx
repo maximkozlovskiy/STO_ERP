@@ -149,39 +149,40 @@ export default function CounterpartyCardPage() {
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
   }, [id]);
 
-  const loadGarages = useCallback(() => {
+  const loadGarages = useCallback(async () => {
     setGaragesLoading(true);
-    apiFetch<Garage[]>(`/counterparties/${id}/garages`)
-      .then(g => {
-        setGarages(g);
-        // Expand all garages by default
-        setExpandedGarages(new Set(g.map(garage => garage.id)));
-        // Load vehicles for each garage + maintenance schedules in parallel
-        g.forEach(garage => {
-          apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${garage.id}`)
-            .then(vehicles => {
-              setGarageVehicles(prev => ({ ...prev, [garage.id]: vehicles }));
-              // Fetch maintenance schedules per vehicle (API only supports single vehicleId)
-              Promise.all(
-                vehicles.map(v =>
-                  apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${v.id}`)
-                    .catch(() => [] as MaintenanceSchedule[])
-                ),
-              ).then(results => {
-                const schedules = results.flat();
-                if (schedules.length > 0) {
-                  setMaintenanceSchedules(prev => {
-                    const vehicleIds = new Set(vehicles.map(v => v.id));
-                    return [...prev.filter(s => !vehicleIds.has(s.vehicleId)), ...schedules];
-                  });
-                }
-              });
-            })
-            .catch(() => setGarageVehicles(prev => ({ ...prev, [garage.id]: [] })));
-        });
-      })
-      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка гаражів'))
-      .finally(() => setGaragesLoading(false));
+    try {
+      const garages = await apiFetch<Garage[]>(`/counterparties/${id}/garages`);
+      setGarages(garages);
+      setExpandedGarages(new Set(garages.map(g => g.id)));
+
+      // Stage 1 — load all vehicles in parallel (one request per garage)
+      const vehiclesByGarage = await Promise.all(
+        garages.map(g =>
+          apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`)
+            .catch(() => [] as Vehicle[])
+        )
+      );
+      const garageMap: Record<string, Vehicle[]> = {};
+      garages.forEach((g, i) => { garageMap[g.id] = vehiclesByGarage[i]; });
+      setGarageVehicles(garageMap);
+
+      // Stage 2 — load maintenance schedules for all vehicles in parallel
+      const allVehicles = vehiclesByGarage.flat();
+      if (allVehicles.length > 0) {
+        const scheduleResults = await Promise.all(
+          allVehicles.map(v =>
+            apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${v.id}`)
+              .catch(() => [] as MaintenanceSchedule[])
+          )
+        );
+        setMaintenanceSchedules(scheduleResults.flat());
+      }
+    } catch (e: unknown) {
+      setLoadError(e instanceof Error ? e.message : 'Помилка гаражів');
+    } finally {
+      setGaragesLoading(false);
+    }
   }, [id]);
 
   const loadSettlements = useCallback(() => {

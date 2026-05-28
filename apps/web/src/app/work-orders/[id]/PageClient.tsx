@@ -218,16 +218,28 @@ export default function WorkOrderCardPage() {
       .catch(() => {});
   }, [id]);
 
+  // Load secondary data (comments, media, audit) in parallel — single effect, single mount
+  const loadSecondary = useCallback(() => {
+    Promise.all([
+      apiFetch<{ items: Comment[] }>(`/comments?entityType=WorkOrder&entityId=${id}`).catch(() => ({ items: [] as Comment[] })),
+      apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`).catch(() => ({ items: [] as WorkOrderMedia[] })),
+      apiFetch<{ items: AuditEventItem[] }>(`/audit?entityType=WorkOrder&entityId=${id}`).catch(() => ({ items: [] as AuditEventItem[] })),
+    ]).then(([comments, media, audit]) => {
+      if (!mountedRef.current) return;
+      setComments(comments.items ?? []);
+      setMedia(media.items ?? []);
+      setAuditEvents(audit.items ?? []);
+    });
+  }, [id]);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadSecondary(); }, [loadSecondary]);
 
   const loadComments = useCallback(() => {
-    // entityType must match the API DTO whitelist (PascalCase). See comments.dto.ts COMMENT_ENTITY_TYPES.
     apiFetch<{ items: Comment[] }>(`/comments?entityType=WorkOrder&entityId=${id}`)
       .then(r => { if (mountedRef.current) setComments(r.items ?? []); })
       .catch(() => {});
   }, [id]);
-
-  useEffect(() => { loadComments(); }, [loadComments]);
 
   const loadMedia = useCallback(() => {
     apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`)
@@ -235,15 +247,11 @@ export default function WorkOrderCardPage() {
       .catch(() => {});
   }, [id]);
 
-  useEffect(() => { loadMedia(); }, [loadMedia]);
-
   const loadAudit = useCallback(() => {
     apiFetch<{ items: AuditEventItem[] }>(`/audit?entityType=WorkOrder&entityId=${id}`)
       .then(d => { if (mountedRef.current) setAuditEvents(d.items ?? []); })
       .catch(() => {});
   }, [id]);
-
-  useEffect(() => { loadAudit(); }, [loadAudit]);
 
   // Bug #89: Escape closes lightbox + a11y. Without this keyboard users can't
   // dismiss the photo preview at all.
@@ -946,7 +954,7 @@ export default function WorkOrderCardPage() {
                 <div key={m.id} className="relative group aspect-square rounded-lg overflow-hidden bg-secondary cursor-pointer"
                   onClick={() => setLightboxUrl(m.signedUrl)}>
                   {m.mimeType.startsWith('image/') ? (
-                    <img src={m.signedUrl} alt={m.filename} className="w-full h-full object-cover" />
+                    <img src={m.signedUrl} alt={m.filename} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   ) : (
                     <div className="flex items-center justify-center h-full text-xs text-muted-foreground p-1 text-center break-all">{m.filename}</div>
                   )}
@@ -971,7 +979,7 @@ export default function WorkOrderCardPage() {
           className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
           onClick={() => setLightboxUrl(null)}
         >
-          <img src={lightboxUrl} alt="Фото" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
+          <img src={lightboxUrl} alt="Фото" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" decoding="async" />
         </div>
       )}
 
