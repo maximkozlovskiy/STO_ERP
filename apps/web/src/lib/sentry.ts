@@ -9,14 +9,14 @@ export function initSentry() {
   initialized = true;
 
   const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
-  const enabled = process.env.NODE_ENV === 'production' && !!dsn;
+  const enabled = !!dsn; // enabled in any env when DSN is set
 
   Sentry.init({
     dsn,
     enabled,
     environment: process.env.NODE_ENV ?? 'development',
     release: process.env.NEXT_PUBLIC_APP_VERSION,
-    tracesSampleRate: enabled ? 0.1 : 0,
+    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
 
     // Ігнорувати очікувані клієнтські помилки та browser extension noise
     ignoreErrors: [
