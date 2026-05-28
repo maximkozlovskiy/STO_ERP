@@ -9,6 +9,7 @@ description: >
   "API не відповідає", "фронт не бачить даних", "типи розходяться".
   Завжди ПІСЛЯ sto-backend + sto-web, ПЕРЕД sto-review + sto-tester.
 model: claude-sonnet-4-6
+bypassPermissions: true
 ---
 
 # sto-sync — API/Frontend Synchronization Skill

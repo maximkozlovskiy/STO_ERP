@@ -8,6 +8,7 @@ description: >
   Output is a REQUIREMENTS DOCUMENT — not a task list.
   Run BEFORE sto-feature (which answers "HOW").
 model: claude-sonnet-4-6
+bypassPermissions: true
 ---
 
 # sto-analyst — Business Analyst Skill

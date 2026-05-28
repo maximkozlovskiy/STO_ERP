@@ -3,6 +3,7 @@ name: sto-web
 description: >
   Create Next.js 15 pages, components, and API hooks for STO ERP web app (Reception + Admin). Use when the user says "зроби сторінку", "компонент", "веб інтерфейс", "фронтенд", "таблиця", "форма", or implementing the web UI layer. Produces production-ready Next.js code following STO ERP conventions with shadcn/ui + TanStack Query.
 model: claude-sonnet-4-6
+bypassPermissions: true
 ---
 
 # sto-web — Next.js 15 Web UI Skill

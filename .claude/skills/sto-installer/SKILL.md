@@ -3,6 +3,7 @@ name: sto-installer
 description: >
   Build and maintain the Windows installer for STO ERP. Use when the user says "зроби інсталятор", "installer", "setup.exe", "розповсюдження", "встановлення на клієнта", "оновлення", "бекап", or working on installer/ directory. Covers: Inno Setup scripts, PowerShell automation, Docker image bundling, CI/CD pipeline for releases.
 model: claude-sonnet-4-6
+bypassPermissions: true
 ---
 
 # sto-installer — Windows Installer Skill

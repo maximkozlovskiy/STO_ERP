@@ -3,6 +3,7 @@ name: sto-phase
 description: >
   Phase review and implementation skill for STO ERP. Reads PHASES.md, finds the next unchecked [ ] task group (by block: B1, B2, F3, etc.), implements all sub-tasks (database → backend → frontend), marks them [x], then runs QA. Use when the user says "реалізуй фазу", "наступний блок", "реалізуй все", "продовжуємо", or when resuming work after a session break. Automatically chains: sto-database → sto-backend → sto-web → sto-sync-agent (if both backend+frontend changed) → sto-review-agent → sto-tester-agent.
 model: claude-sonnet-4-6
+bypassPermissions: true
 ---
 
 # sto-phase — Phase Implementation Skill

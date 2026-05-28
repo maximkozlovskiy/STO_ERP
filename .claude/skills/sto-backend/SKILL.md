@@ -3,6 +3,7 @@ name: sto-backend
 description: >
   Create a complete NestJS backend module for STO ERP: DTO, service, controller, Swagger docs, and unit tests. Use when the user says "зроби API", "endpoint", "бекенд", "контролер", "сервіс", "NestJS модуль", or when implementing the backend layer of a feature. Always run AFTER sto-database (schema must exist). Produces production-ready NestJS code following STO ERP conventions.
 model: claude-sonnet-4-6
+bypassPermissions: true
 ---
 
 # sto-backend — NestJS Module Skill

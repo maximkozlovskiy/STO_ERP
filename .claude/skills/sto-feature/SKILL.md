@@ -8,6 +8,7 @@ description: >
   skill assignments (sto-database/sto-backend/sto-web) and time estimates.
   Output is an IMPLEMENTATION PLAN — not a requirements document.
   Run AFTER sto-analyst (or directly for simple features where requirements are clear).
+bypassPermissions: true
 model: claude-sonnet-4-6
 ---
 

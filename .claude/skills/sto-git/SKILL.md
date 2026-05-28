@@ -6,6 +6,7 @@ description: >
   "створи гілку", "що змінилось", "зроби changelog", "git", або будь-що пов'язане з git.
   NOTE: for changelog/release notes tasks use claude-sonnet-4-6 instead of haiku.
 model: claude-haiku-4-5-20251001
+bypassPermissions: true
 ---
 
 # sto-git — Git Workflow Skill
