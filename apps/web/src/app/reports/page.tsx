@@ -11,10 +11,12 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, Legend,
-} from 'recharts';
+import dynamic from 'next/dynamic';
+
+const RevenueCharts = dynamic(() => import('./ReportsCharts').then(m => m.RevenueCharts), { ssr: false, loading: () => <div className="h-96 bg-surface-hover animate-pulse rounded-xl" /> });
+const SettlementsChart = dynamic(() => import('./ReportsCharts').then(m => m.SettlementsChart), { ssr: false, loading: () => <div className="h-52 bg-surface-hover animate-pulse rounded-xl" /> });
+const ProfitabilityChart = dynamic(() => import('./ReportsCharts').then(m => m.ProfitabilityChart), { ssr: false, loading: () => <div className="h-56 bg-surface-hover animate-pulse rounded-xl" /> });
+const LoadChart = dynamic(() => import('./ReportsCharts').then(m => m.LoadChart), { ssr: false, loading: () => <div className="h-72 bg-surface-hover animate-pulse rounded-xl" /> });
 
 type Tab = 'revenue' | 'work-orders' | 'stock' | 'settlements' | 'load' | 'profitability';
 
@@ -52,7 +54,6 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
 export default function ReportsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
@@ -178,32 +179,7 @@ export default function ReportsPage() {
             <StatCard label="Кількість нарядів" value={String(data.totalOrders)} />
             <StatCard label="Середній чек" value={data.totalOrders > 0 ? fmt(data.totalRevenue / data.totalOrders) : '—'} />
           </div>
-          <div className="bg-surface rounded-xl border border-border p-5">
-            <h3 className="font-medium text-foreground mb-4">Виручка по днях</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={data.rows}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v / 1000).toFixed(0) + 'к'} />
-                <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
-                <Bar dataKey="revenue" fill="#3b82f6" name="Виручка" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="bg-surface rounded-xl border border-border p-5">
-            <h3 className="font-medium text-foreground mb-4">Роботи vs Запчастини</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={data.rows}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
-                <Line type="monotone" dataKey="labor" stroke="#10b981" name="Роботи" dot={false} strokeWidth={2} />
-                <Line type="monotone" dataKey="parts" stroke="#f59e0b" name="Запчастини" dot={false} strokeWidth={2} />
-                <Legend />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          <RevenueCharts rows={data.rows} />
         </div>
       )}
 
@@ -287,22 +263,7 @@ export default function ReportsPage() {
             <StatCard label="Кредиторська заборгованість" value={fmt(data.totalCredit)} sub="Ми постачальникам" />
           </div>
           <div className="grid grid-cols-2 gap-6">
-            <div className="bg-surface rounded-xl border border-border p-5">
-              <h3 className="font-medium text-foreground mb-4">Структура</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={[
-                    { name: 'Дебіторська', value: data.totalDebit },
-                    { name: 'Кредиторська', value: data.totalCredit },
-                  ]} cx="50%" cy="50%" outerRadius={80} dataKey="value">
-                    <Cell fill="#3b82f6" />
-                    <Cell fill="#ef4444" />
-                  </Pie>
-                  <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <SettlementsChart rows={data.rows} />
             <div className="bg-surface rounded-xl border border-border overflow-hidden">
               <Table>
                 <TableHeader>
@@ -336,27 +297,7 @@ export default function ReportsPage() {
             <StatCard label="Валовий прибуток" value={fmt(data.grossProfit)} />
             <StatCard label="Маржинальність" value={`${data.margin.toFixed(1)}%`} sub={data.margin >= 30 ? '✓ Норма' : '↓ Нижче норми'} />
           </div>
-          <div className="bg-surface rounded-xl border border-border p-5">
-            <h3 className="font-medium text-foreground mb-4">Структура витрат</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={[
-                    { name: 'Запчастини', value: data.totalCostParts },
-                    { name: 'Праця (40%)', value: data.totalCostLabor },
-                    { name: 'Прибуток', value: Math.max(0, data.grossProfit) },
-                  ]}
-                  cx="50%" cy="50%" outerRadius={90} dataKey="value"
-                >
-                  <Cell fill="#f59e0b" />
-                  <Cell fill="#8b5cf6" />
-                  <Cell fill="#10b981" />
-                </Pie>
-                <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+          <ProfitabilityChart data={data} />
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
@@ -390,22 +331,7 @@ export default function ReportsPage() {
       {/* Load report */}
       {data && data._tab === 'load' && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-xl border border-border p-5">
-            <h3 className="font-medium text-foreground mb-4">Завантаженість підйомників (%)</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={data.rows} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" domain={[0, 100]} tickFormatter={v => v + '%'} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="liftName" tick={{ fontSize: 11 }} width={120} />
-                <Tooltip formatter={(v) => Number(v ?? 0).toFixed(1) + '%'} />
-                <Bar dataKey="loadPercent" fill="#3b82f6" radius={[0, 4, 4, 0]} name="Завантаженість">
-                  {data.rows.map((_, idx: number) => (
-                    <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <LoadChart rows={data.rows} />
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>

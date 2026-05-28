@@ -34,10 +34,10 @@ export class EmployeesService {
     const items = await this.prisma.employee.findMany({
       where,
       include: {
-        employeeZones: true,
-        employeeLifts: true,
-        employeeWorkCategories: true,
-        employeeBranches: true,
+        employeeZones: { select: { zoneId: true } },
+        employeeLifts: { select: { liftId: true } },
+        employeeWorkCategories: { select: { workCategoryId: true } },
+        employeeBranches: { select: { branchId: true } },
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       take: 200,
@@ -49,10 +49,10 @@ export class EmployeesService {
     const item = await this.prisma.employee.findFirst({
       where: { id, orgId, deletedAt: null },
       include: {
-        employeeZones: true,
-        employeeLifts: true,
-        employeeWorkCategories: true,
-        employeeBranches: true,
+        employeeZones: { select: { zoneId: true } },
+        employeeLifts: { select: { liftId: true } },
+        employeeWorkCategories: { select: { workCategoryId: true } },
+        employeeBranches: { select: { branchId: true } },
       },
     });
     if (!item) throw new NotFoundException('Співробітника не знайдено');
