@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+f13b9ad fix(review): SSR-safe today, cancel guard on CRM loadGarages, drop dead loadAudit
+6a72c23 perf(round2): parallel queries + lazy img + today useMemo
 ba14043 fix(review): make calendar memo effective + guard GET dedup against shared AbortSignal
 5704435 perf(db): GIN trgm indexes applied
 e59578b perf(web): memo calendar + dedup GET requests (api-client.ts)
@@ -1043,6 +1045,8 @@ syncVersion BigInt   @default(0)
 | 16 | `RESERVATION_RELEASE` без перевірки `reserved >= qty` | Від'ємний резерв у StockItem. Фікс: перевірити `Math.abs(dto.quantity) > reserved` |
 | 17 | `React.ReactNode` без імпорту → 56 VSCode помилок | Next.js TS plugin суворіший ніж plain `tsc`. Фікс: `import type { ReactNode } from 'react'` і `ReactNode` напряму. Grep: `grep -rn "React\." apps/web/src/ --include="*.tsx"` |
 | 18 | `tsc --noEmit` приховує помилки через `incremental` кеш | `Check time: 0.00s` — кеш пропускає перевірку. Фікс: `tsc --noEmit --incremental false` |
+| 19 | `useMemo(() => new Date(), [])` для "now" у render | Так само небезпечно як `useState(() => new Date())` — мемо виконується під час static-export prerender → build-time timestamp запікається в shell → hydration mismatch + застаріле "сьогодні". Фікс: `useState<Date\|null>(null)` + `useEffect(() => setToday(new Date()), [])`; передавати `today?.getTime() ?? 0` у `ExpiryBadge` (nowMs=0 → `daysUntil` → null → бейдж прихований на сервері) |
+| 20 | Async-рефакторинг fire-and-forget loader без `cancelled`/`mountedRef` | Перехід `.then()`-ланцюга на `async/await` втрачає захист від race: два паралельні запуски (перемикання вкладок, refresh після мутації) інтерлівлять `setState` стейлом + setState-after-unmount. Фікс: `let cancelled=false` навколо кожного `setX`, `return () => { cancelled = true }`, і `return loadX()` у `useEffect`. Має бути консистентним з сусідніми loader'ами того ж компонента |
 
 ---
 
@@ -1075,6 +1079,8 @@ pnpm --filter @sto/web build
 
 | Hash | Опис |
 |---|---|
+| `f13b9ad` | fix(review): SSR-safe today (useMemo→useState+useEffect), cancel guard on CRM loadGarages + wired into tab effect, removed dead loadAudit useCallback in WO detail |
+| `6a72c23` | perf(round2): parallel Promise.all queries (invoices, completion-acts, CRM staged loads, WO loadSecondary) + img lazy/decoding |
 | `f70c7c7` | docs(tester): record Bugs #61-#67 from /sto-tester FULL pass + update MemoryManual |
 | `aef124b` | fix(tester): Bugs #61-#67 — search reservedQty column, /branches shape mismatch, invoice PDF Bearer fetch, employees filter DTO, palette deep-link, WO template orgId scope + description prefix |
 | `4cc4e6f` | fix(review): Phases 21-22 — TDZ, broken pdfmake, employeeId filter, polymorphic entityType, comment DELETE auth, SSR-unsafe localStorage, search ordering |
