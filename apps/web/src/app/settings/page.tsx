@@ -934,8 +934,8 @@ export default function SettingsPage() {
                   {c.fullName && <p className="text-xs text-muted-foreground mt-0.5">{c.fullName}</p>}
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => openCurrencyModal(c)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => deleteCurrency(c.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <button aria-label="Редагувати валюту" onClick={() => openCurrencyModal(c)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
+                  <button aria-label="Видалити валюту" onClick={() => deleteCurrency(c.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
@@ -960,8 +960,8 @@ export default function SettingsPage() {
                   <span className="ml-2 text-sm text-foreground">{Number(r.coefficient)} = {Number(r.rate)} UAH</span>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => openRateModal(r)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => deleteRate(r.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <button aria-label="Редагувати курс" onClick={() => openRateModal(r)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
+                  <button aria-label="Видалити курс" onClick={() => deleteRate(r.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
@@ -988,8 +988,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => openBaModal(b)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => deleteBa(b.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <button aria-label="Редагувати рахунок" onClick={() => openBaModal(b)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
+                  <button aria-label="Видалити рахунок" onClick={() => deleteBa(b.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
@@ -1014,8 +1014,8 @@ export default function SettingsPage() {
                   <span className="ml-2 text-xs text-muted-foreground">· {c.branchName}</span>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => openCrModal(c)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => deleteCr(c.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <button aria-label="Редагувати касу" onClick={() => openCrModal(c)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
+                  <button aria-label="Видалити касу" onClick={() => deleteCr(c.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
