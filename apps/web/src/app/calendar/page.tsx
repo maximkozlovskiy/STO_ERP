@@ -799,43 +799,24 @@ export default function CalendarPage() {
 
   useEffect(() => { return () => { if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current); }; }, []);
 
-  // ── Work-order search ─────────────────────────────────────────────────────
+  // ── New work-order mini-form ──────────────────────────────────────────────
 
-  const [woSearch, setWoSearch] = useState('');
-  const [woOptions, setWoOptions] = useState<WorkOrderOption[]>([]);
-  const [woLoading, setWoLoading] = useState(false);
-  const [showWoDropdown, setShowWoDropdown] = useState(false);
-  const woTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // New work-order mini-form
   const [showNewWo, setShowNewWo] = useState(false);
   const [newWo, setNewWo] = useState({ counterpartyId: '', counterpartyDisplay: '', vehicleId: '', branchId: '', description: '' });
   const [newWoVehicles, setNewWoVehicles] = useState<VehicleOption[]>([]);
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+  const [branchesError, setBranchesError] = useState('');
   const [savingWo, setSavingWo] = useState(false);
 
   useEffect(() => {
-    if (!showAdd) { setWoSearch(''); setWoOptions([]); setShowNewWo(false); }
+    if (!showAdd) { setShowNewWo(false); }
   }, [showAdd]);
 
-  // Load branches once
+  // Load branches once — surface errors so the required «Філія» select isn't silently empty (Bug #159)
   useEffect(() => {
     apiFetch<{ items: { id: string; name: string }[] }>('/branches?limit=50')
-      .then(d => { if (mountedRef.current) setBranches(d.items); })
-      .catch(() => {});
-  }, []);
-
-  const searchWorkOrders = useCallback((q: string) => {
-    if (woTimeoutRef.current) clearTimeout(woTimeoutRef.current);
-    if (!q.trim()) { setWoOptions([]); setShowWoDropdown(false); return; }
-    woTimeoutRef.current = setTimeout(async () => {
-      setWoLoading(true);
-      try {
-        const data = await apiFetch<{ items: WorkOrderOption[] }>(`/work-orders?q=${encodeURIComponent(q)}&limit=10`);
-        if (mountedRef.current) { setWoOptions(data.items); setShowWoDropdown(true); }
-      } catch { /* ignore */ }
-      finally { if (mountedRef.current) setWoLoading(false); }
-    }, 300);
+      .then(d => { if (mountedRef.current) { setBranches(d.items); setBranchesError(''); } })
+      .catch((e: unknown) => { if (mountedRef.current) setBranchesError(e instanceof Error ? e.message : 'Не вдалося завантажити список філій'); });
   }, []);
 
   const loadWoVehicles = useCallback(async (counterpartyId: string) => {
@@ -869,8 +850,6 @@ export default function CalendarPage() {
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка створення наряду'); }
     finally { setSavingWo(false); }
   };
-
-  useEffect(() => { return () => { if (woTimeoutRef.current) clearTimeout(woTimeoutRef.current); }; }, []);
 
   // ── Picker modals ─────────────────────────────────────────────────────────
 
@@ -1154,6 +1133,7 @@ export default function CalendarPage() {
                   {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
               </div>
+              {branchesError && <p className="text-xs text-destructive-text">{branchesError}</p>}
               <Input placeholder="Опис (необов'язково)" value={newWo.description}
                 onChange={e => setNewWo(v => ({ ...v, description: e.target.value }))} />
               <div className="flex gap-2">

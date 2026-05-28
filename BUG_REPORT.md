@@ -5058,3 +5058,67 @@ clamp у `[0, 24*60]` як остання лінія оборони.
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-05-28 — AUTO після review (LiftType migration, BOM strip, SearchPicker error state)
+
+Scope (git show 9d454d3): 22×*.dto.ts (BOM strip), search-picker-modal.tsx (error state),
+infrastructure/page.tsx (WarehouseMainCheckbox), migration 20260528150000_add_lift_type_pit_ramp.
+
+Baseline: TS api/web/shared OK 0 errors; unit 316/316 OK (incl. calendar.contract 14).
+Перевірено за матрицею:
+- *.dto.ts → §1.2: `@Matches(/^[0-9a-f]{8}-.../i)` замінив `@IsUUID()` — анкерований, hex-only,
+  не послаблює (з whitelist:true non-string відхиляється `@Matches` як і `@IsUUID`). IBAN
+  `@Matches(/^UA\d{27}$/)` і phone `@Matches(/^\+380\d{9}$/)` цілі. OK
+- migration + schema → §1.1: enum LiftType має PIT/RAMP; міграція idempotent `ADD VALUE IF NOT EXISTS`;
+  frontend LIFT_TYPE_LABELS = {PIT:'Яма', RAMP:'Естакада'} синхронні. OK
+- search-picker-modal.tsx → §1.3: error state + mountedRef + clearTimeout cleanup + setLoading(true)
+  + key={item.id}. Канонічний шаблон дотримано. OK
+- infrastructure/page.tsx → §1.3: WarehouseMainCheckbox — чиста екстракція, логіка ідентична. OK
+- calendar.service.ts (active area, не у scope): orgId+deletedAt на всіх findFirst/findMany,
+  $transaction {timeout:5000}, NOT:{id} у resize conflict-check. OK
+
+Знайдено 2 баги у суміжному активному коді calendar/page.tsx (тема сесії — surface swallowed errors):
+
+---
+
+## Bug #159 — [MEDIUM] calendar — `/branches` loader ховає помилку → порожній обов'язковий select блокує створення наряду
+
+**Файл:** `apps/web/src/app/calendar/page.tsx:822-826`
+**Severity:** MEDIUM
+**Категорія:** frontend
+
+**Опис:** `apiFetch('/branches?limit=50').then(setBranches).catch(() => {})` — порожній catch.
+`branches` рендериться у обов'язковому `<Select>` міні-форми «Новий наряд» (line 1152-1155),
+а кнопка «Зберегти наряд» disabled поки `!newWo.branchId` (line 1161). Якщо `/branches` падає
+(мережа, 500, auth-expire) — dropdown порожній, користувач не може обрати філію і не розуміє чому
+кнопка назавжди неактивна. Це той самий анти-патерн §1.3, який review щойно виправив у
+SearchPickerModal (Bug #158), але його сусідній двійник на тій самій сторінці лишився.
+**Очікувана поведінка:** при помилці завантаження філій — показати ненав'язливу помилку,
+щоб користувач знав що список недоступний (а не мовчазний порожній select).
+**Фактична поведінка:** помилка повністю прихована; workflow заблоковано без зворотного зв'язку.
+**Виправлення:** `branchesError` state — `.catch` встановлює повідомлення; рендериться `<p>` під
+select філії у формі «Новий наряд».
+**Статус:** [x] виправлено
+
+---
+
+## Bug #160 — [LOW] calendar — мертвий код inline work-order dropdown після рефактору на SearchPickerModal
+
+**Файл:** `apps/web/src/app/calendar/page.tsx:804-807, 828-839`
+**Severity:** LOW
+**Категорія:** frontend
+
+**Опис:** `searchWorkOrders` (useCallback) + стани `woSearch`/`woOptions`/`woLoading`/`showWoDropdown`
+лишились від старого inline-dropdown підходу. Після commit 4ef25bb (SearchPickerModal для
+клієнта/наряду через `fetchWoItems`) `searchWorkOrders` НІКОЛИ не викликається, а `wo*`-стани
+ніде не читаються у JSX (лише reset `setWoSearch('')`/`setWoOptions([])` на line 818). `searchWorkOrders`
+містить власний `catch { /* ignore */ }` (line 836) — мертвий, але плутає при аудиті (саме його
+помилково описав Bug #158 як «виправлений», хоча реальний пошук тепер у `fetchWoItems`).
+**Очікувана поведінка:** мертвий код видалено; лишаються тільки `fetchCpItems`/`fetchWoItems`.
+**Фактична поведінка:** ~15 рядків недосяжного коду + 4 невикористані стани.
+**Виправлення:** видалено `searchWorkOrders`, `woSearch/woOptions/woLoading/showWoDropdown`,
+`woTimeoutRef` + його cleanup-ефект; reset на line 818 спрощено до `setShowNewWo(false)`.
+`WorkOrderOption` лишається (використовується `fetchWoItems` + saveNewWorkOrder).
+**Статус:** [x] виправлено
+
+---
