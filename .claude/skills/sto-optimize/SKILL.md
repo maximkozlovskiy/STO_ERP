@@ -250,6 +250,17 @@ grep -rn "output.*export" apps/web/next.config.ts
 **CRITICAL для static export:** `new Date()` у `useMemo` запікає build-time дату → hydration mismatch.
 **Правильно:** `useState<Date|null>(null)` + `useEffect(() => setToday(new Date()), [])`.
 
+### 2.8 Intl.*Format у hot-path хелперах + годинник у render
+```bash
+# Конструкція форматера у тілі функції-хелпера (locale-data init на кожен виклик)
+grep -rn "new Intl\.\(DateTimeFormat\|NumberFormat\)\|\.toLocale\(Time\|Date\)String(" apps/web/src/ --include="*.tsx" | head -20
+# Читання годинника всередині render/map (impure + per-element)
+grep -rn "new Date()\|Date\.now()\|\.getMinutes()\|\.getHours()" apps/web/src/app/ --include="*.tsx" | grep -v "useEffect\|useCallback\|=>" | head -20
+```
+
+**Фікс Intl:** винести форматер у module-level `const` (опції мають бути константні), у хелпері лише `.format()`.
+**Фікс годинника:** тримати `nowMs` у стейті + interval; похідні граничні значення через `useMemo([nowMs])`; передавати як props у дочірні компоненти (роблячи їх чистими/memo-friendly).
+
 ---
 
 ## Крок 3 — DB аудит
@@ -403,6 +414,28 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-28 — `new Intl.DateTimeFormat()` у hot-path хелперах — будь-який компонент з форматуванням дати/часу/чисел у списку
+
+**Сигнал:** хелпер-функція форматування (час, дата, число, валюта) що створює `new Intl.DateTimeFormat()` / `new Intl.NumberFormat()` **всередині тіла** і викликається у `.map()`, у render списку, або у pointer/resize-хендлерах. Те саме стосується `.toLocaleTimeString()` / `.toLocaleDateString()` з опціями — вони теж конструюють форматер під капотом на кожен виклик
+**Причина виникнення:** конструктор `Intl.*Format` виглядає дешевим, тому його ставлять у функцію поруч із `.format()`. Насправді ініціалізація locale-data — найдорожча частина; сам `.format()` дешевий. У списку зі слотами/рядками × ре-рендери це сотні зайвих конструкцій
+**Підхід до виявлення:** grep `new Intl.` та `.toLocale` у компонентах; для кожного збігу спитати «чи ця функція викликається в циклі/render/хендлері?». Якщо опції форматера константні (TZ, locale фіксовані) — кандидат на хостинг
+**Підхід до фіксу:** винести форматер у module-level `const` (один інстанс на весь модуль), у хелпері викликати лише `.format()`. Опції мають бути статичними — якщо локаль/TZ динамічні, кешувати через Map за ключем
+**Реальний impact:** усуває O(slots × renders) конструкцій важкого об'єкта; найпомітніше на календарі/таблицях/звітах де форматування у кожному рядку
+**Де шукати ще:** таблиці зі стовпцями дат/сум, календар, дашборд-картки, будь-який `formatX` хелпер у `lib/` що приймає опції
+
+---
+
+### 2026-05-28 — Читання `new Date()` / годинника всередині render — компоненти з time-залежним UI
+
+**Сигнал:** `new Date()`, `Date.now()`, `.getMinutes()`/`.getHours()` викликані прямо у JSX або у `.map()` що генерує опції/комірки — особливо для disabled-логіки «минулий час». Це і impure render (різний результат при однакових props), і повторний виклик на кожен елемент
+**Причина виникнення:** «потрібен поточний час щоб задизейблити минулі опції» — найпростіше прочитати годинник там де він потрібен. Але render має бути чистим; час — це зовнішній стан
+**Підхід до виявлення:** grep `new Date()`/`Date.now()`/`.getMinutes()`/`.getHours()` у *.tsx поза `useEffect`/`useCallback`/хендлерами; якщо збіг у render-гілці або в `.map` колбеку — проблема
+**Підхід до фіксу:** тримати поточний час у стейті (`nowMs`), оновлювати по інтервалу в `useEffect`; похідні граничні значення (minHour, minMinute) рахувати через `useMemo([nowMs])`; передавати їх у дочірні компоненти як props замість читання годинника в них. Дочірній компонент стає чистим і memo-friendly
+**Реальний impact:** прибирає impure render + per-element виклики Date; робить time-gated списки опцій детермінованими і memo-сумісними
+**Де шукати ще:** time/date picker'и з disabled минулих значень, «сьогодні»-підсвітка у календарі/таблицях, countdown/таймери, будь-який disabled на основі «зараз»
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -413,6 +446,7 @@ TypeScript: ✅ 0 errors
 - ✅ Employees: `select: { xId: true }` замість `include: true`
 - ✅ Invoices create: parallel Promise.all
 - ✅ CompletionActs create: parallel Promise.all
+- ✅ Calendar createSlot/updateSlot: parallel FK validation (Promise.all)
 
 **Frontend:**
 - ✅ useDebounce(300ms) на 8 сторінках (work-orders, crm, invoices, purchase-orders, inventory, employees, catalog ×3)
@@ -424,6 +458,8 @@ TypeScript: ✅ 0 errors
 - ✅ Promise.all parallel fetches на 9 сторінках
 - ✅ GET dedup в api-client.ts (без AbortSignal)
 - ✅ React.memo + useMemo Map: DraggableSlot, DroppableLiftRow (calendar)
+- ✅ calendar: module-level Intl.DateTimeFormat singletons (kyivHours/fmtTime/toDateString) замість per-call construction
+- ✅ calendar TimeSelect: per-render new Date().getMinutes() → nowMs-derived minMinute prop
 - ✅ CRM loadGarages: waterfall → staged parallel
 - ✅ WO detail: loadComments+Media+Audit → loadSecondary Promise.all
 - ✅ img lazy loading + decoding="async"
