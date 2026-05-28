@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+5702506 fix(review): calendar draw-guard selector, stuck resize on leave, dedup toISO
 5afbadd docs(skills): add source-page-not-warming-ref-cache approach to sto-optimize
 e0fd299 perf(optimize): warm shared ref-cache from infrastructure page
 5bc5f5b docs(skills): add stale-spec-after-refactor approach to sto-tester + record #153-#155
@@ -31,6 +32,29 @@ f040cde perf(db): 5 composite indexes
 
 Дата: 2026-05-28
 
+> /sto-review (auto) на HEAD 5702506 (2026-05-28, calendar interactive feature): 0 TS errors.
+> Виправлено 3 проблеми у calendar (commit 5702506):
+> 1. IMPORTANT — calendar/page.tsx handleDrawStart: guard перевіряв `[data-dnd-draggable]`,
+>    якого dnd-kit НЕ ставить (useDraggable.attributes = role/aria-*, не data-dnd-draggable).
+>    → pointer-down на існуючому слоті стартував ghost-draw паралельно з dnd-kit drag.
+>    Фікс: додано `data-calendar-slot` на корінь DraggableSlot + перевірка `.closest('[data-calendar-slot]')`.
+> 2. IMPORTANT — handleTimelinePointerLeave скидав тільки drawing (drawingRef/ghost),
+>    але НЕ resize. Покинутий resize off-timeline → застряглий resizePreview + наступний
+>    pointermove продовжував маніпуляцію. Фікс: leave також `setResizing(null); setResizePreview(null)`.
+> 3. SUGGESTION — дубльований `toISO(h)` (decimal hours → ISO) у handleTimelinePointerUp та
+>    slotsWithPreview → винесено в module-level `decimalHoursToISO(date, h)`. calendar.service toDto
+>    тепер використовує спільний `formatPersonName` замість inline `[lastName, firstName].join`.
+> Verified OK (без правок):
+>   • calendar.controller — @UseGuards(JwtAuthGuard, RolesGuard) + @Roles на кожному методі;
+>     POST/PATCH/DELETE = OWNER/ADMIN/RECEPTIONIST; GET додатково MECHANIC. ParseUUIDPipe на :id
+>     та optional query branchId/employeeId.
+>   • calendar.service — усі find/update фільтрують orgId; FK (lift/employee/workOrder) у create+update
+>     валідуються `{ id, orgId, deletedAt: null }` (anti cross-tenant FK injection). 2 $transaction = 2 timeouts (5s).
+>     removeSlot = soft delete (update deletedAt), не hard delete. UpdateCalendarSlotDto liftId nullable +
+>     @IsOptional → `liftId: null` (move to unassigned) проходить валідацію коректно.
+>   • DTO startAt/endAt: Date — збігається з project convention (createdAt!: Date у 15+ модулях);
+>     фронт string коректний (JSON-серіалізація). toISO local-tz parse = той самий патерн що addSlot (Kyiv-pinned).
+> ---
 > /sto-review verify pass на HEAD 5704435 (2026-05-28, perf commits f040cde..5704435):
 > CRITICAL/Important checks усі пройшли. Виправлено 2 ефективність-проблеми (commit ba14043):
 > 1. calendar/page.tsx — memo() на DroppableLiftRow був неефективний: `slotsForLift(id)`
