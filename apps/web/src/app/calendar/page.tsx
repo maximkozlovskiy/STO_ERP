@@ -309,6 +309,10 @@ export default function CalendarPage() {
     const target = e.target as HTMLElement;
     if (target.closest('[data-calendar-slot]')) return;
 
+    // Stop propagation so dnd-kit PointerSensor doesn't capture this pointerdown
+    // and interfere with our custom draw gesture (pointerup would be swallowed otherwise)
+    e.stopPropagation();
+
     const startH = snapTo15(pxToDecimalHours(e.clientX));
     drawingRef.current = { liftId, startH };
     setGhost({ liftId, startH, endH: startH + 1 });
