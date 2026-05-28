@@ -4,7 +4,7 @@ import {
   useEffect, useState, useCallback, useMemo, useRef, memo,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Trash2, X, UserPlus, FilePlus } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -34,6 +34,8 @@ interface CalendarSlot {
 }
 interface Lift { id: string; name: string; }
 interface WorkOrderOption { id: string; number: string; counterpartyName?: string; }
+interface CounterpartyOption { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; phone?: string | null; }
+interface VehicleOption { id: string; make: string; model: string; licensePlate: string; }
 
 // Pending (not yet saved) slot drawn on the grid
 interface PendingSlot { liftId: string; startH: number; endH: number; }
@@ -82,6 +84,10 @@ function parseHHMM(s: string): { h: number; m: number } {
 
 function buildHHMM(h: number, m: number): string {
   return `${pad(h)}:${pad(m)}`;
+}
+
+function displayCounterparty(cp: CounterpartyOption): string {
+  return cp.companyName ?? ([cp.lastName, cp.firstName].filter(Boolean).join(' ') || '(без імені)');
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -359,7 +365,9 @@ export default function CalendarPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
   const [form, setForm] = useState({
-    liftId: '', employeeId: '', workOrderId: '', workOrderDisplay: '',
+    liftId: '', employeeId: '',
+    counterpartyId: '', counterpartyDisplay: '',
+    workOrderId: '', workOrderDisplay: '',
     startAt: '', endAt: '', notes: '', normoHours: '',
   });
   const [saving, setSaving] = useState(false);
@@ -454,13 +462,18 @@ export default function CalendarPage() {
   const handleEditSlot = useCallback((slot: CalendarSlot) => {
     setEditingSlotId(slot.id);
     setPendingSlot(null);
+    const woDisplay = slot.workOrderNumber
+      ? `${slot.workOrderNumber}${slot.counterpartyName ? ` · ${slot.counterpartyName}` : ''}`
+      : '';
+    const cpDisp = slot.counterpartyName ?? '';
+    setCpDisplay(cpDisp);
     setForm({
-      liftId:           slot.liftId ?? '',
-      employeeId:       slot.employeeId ?? '',
-      workOrderId:      slot.workOrderId ?? '',
-      workOrderDisplay: slot.workOrderNumber
-        ? `${slot.workOrderNumber}${slot.counterpartyName ? ` · ${slot.counterpartyName}` : ''}`
-        : '',
+      liftId:              slot.liftId ?? '',
+      employeeId:          slot.employeeId ?? '',
+      counterpartyId:      '',
+      counterpartyDisplay: cpDisp,
+      workOrderId:         slot.workOrderId ?? '',
+      workOrderDisplay:    woDisplay,
       startAt:    decimalHoursToHHMM(kyivHours(slot.startAt)),
       endAt:      decimalHoursToHHMM(kyivHours(slot.endAt)),
       normoHours: String(+(kyivHours(slot.endAt) - kyivHours(slot.startAt)).toFixed(2)),
@@ -718,7 +731,8 @@ export default function CalendarPage() {
       setShowAdd(false);
       setEditingSlotId(null);
       setPendingSlot(null);
-      setForm({ liftId: '', employeeId: '', workOrderId: '', workOrderDisplay: '', startAt: '', endAt: '', notes: '', normoHours: '' });
+      setForm({ liftId: '', employeeId: '', counterpartyId: '', counterpartyDisplay: '', workOrderId: '', workOrderDisplay: '', startAt: '', endAt: '', notes: '', normoHours: '' });
+      setCpDisplay('');
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
@@ -732,15 +746,81 @@ export default function CalendarPage() {
 
   // ── Work-order search ─────────────────────────────────────────────────────
 
+  // ── Counterparty search ───────────────────────────────────────────────────
+
+  const [cpSearch, setCpSearch] = useState('');
+  const [cpOptions, setCpOptions] = useState<CounterpartyOption[]>([]);
+  const [cpLoading, setCpLoading] = useState(false);
+  const [showCpDropdown, setShowCpDropdown] = useState(false);
+  const [cpDisplay, setCpDisplay] = useState('');
+  const cpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // New counterparty mini-form
+  const [showNewCp, setShowNewCp] = useState(false);
+  const [newCp, setNewCp] = useState({ firstName: '', lastName: '', phone: '', companyName: '' });
+  const [savingCp, setSavingCp] = useState(false);
+
+  useEffect(() => {
+    if (!showAdd) { setCpSearch(''); setCpOptions([]); setCpDisplay(''); setShowNewCp(false); }
+  }, [showAdd]);
+
+  const searchCounterparties = useCallback((q: string) => {
+    if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current);
+    if (!q.trim()) { setCpOptions([]); setShowCpDropdown(false); return; }
+    cpTimeoutRef.current = setTimeout(async () => {
+      setCpLoading(true);
+      try {
+        const data = await apiFetch<{ items: CounterpartyOption[] }>(`/counterparties?q=${encodeURIComponent(q)}&limit=10`);
+        if (mountedRef.current) { setCpOptions(data.items); setShowCpDropdown(true); }
+      } catch { /* ignore */ }
+      finally { if (mountedRef.current) setCpLoading(false); }
+    }, 300);
+  }, []);
+
+  const saveNewCounterparty = async () => {
+    if (!newCp.firstName && !newCp.lastName && !newCp.companyName) return;
+    setSavingCp(true);
+    try {
+      const created = await apiFetch<CounterpartyOption>('/counterparties', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'CLIENT', ...newCp }),
+      });
+      const display = displayCounterparty(created);
+      setCpDisplay(display);
+      setForm(f => ({ ...f, counterpartyId: created.id, counterpartyDisplay: display }));
+      setShowNewCp(false);
+      setNewCp({ firstName: '', lastName: '', phone: '', companyName: '' });
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка створення клієнта'); }
+    finally { setSavingCp(false); }
+  };
+
+  useEffect(() => { return () => { if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current); }; }, []);
+
+  // ── Work-order search ─────────────────────────────────────────────────────
+
   const [woSearch, setWoSearch] = useState('');
   const [woOptions, setWoOptions] = useState<WorkOrderOption[]>([]);
   const [woLoading, setWoLoading] = useState(false);
   const [showWoDropdown, setShowWoDropdown] = useState(false);
   const woTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // New work-order mini-form
+  const [showNewWo, setShowNewWo] = useState(false);
+  const [newWo, setNewWo] = useState({ counterpartyId: '', counterpartyDisplay: '', vehicleId: '', branchId: '', description: '' });
+  const [newWoVehicles, setNewWoVehicles] = useState<VehicleOption[]>([]);
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+  const [savingWo, setSavingWo] = useState(false);
+
   useEffect(() => {
-    if (!showAdd) { setWoSearch(''); setWoOptions([]); }
+    if (!showAdd) { setWoSearch(''); setWoOptions([]); setShowNewWo(false); }
   }, [showAdd]);
+
+  // Load branches once
+  useEffect(() => {
+    apiFetch<{ items: { id: string; name: string }[] }>('/branches?limit=50')
+      .then(d => { if (mountedRef.current) setBranches(d.items); })
+      .catch(() => {});
+  }, []);
 
   const searchWorkOrders = useCallback((q: string) => {
     if (woTimeoutRef.current) clearTimeout(woTimeoutRef.current);
@@ -755,9 +835,39 @@ export default function CalendarPage() {
     }, 300);
   }, []);
 
-  useEffect(() => {
-    return () => { if (woTimeoutRef.current) clearTimeout(woTimeoutRef.current); };
+  const loadWoVehicles = useCallback(async (counterpartyId: string) => {
+    if (!counterpartyId) { setNewWoVehicles([]); return; }
+    try {
+      const garages = await apiFetch<{ id: string }[]>(`/counterparties/${counterpartyId}/garages`);
+      const vehicles = await Promise.all(garages.map(g =>
+        apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(() => [] as VehicleOption[])
+      ));
+      setNewWoVehicles(vehicles.flat());
+    } catch { setNewWoVehicles([]); }
   }, []);
+
+  const saveNewWorkOrder = async () => {
+    if (!newWo.counterpartyId || !newWo.vehicleId || !newWo.branchId) return;
+    setSavingWo(true);
+    try {
+      const created = await apiFetch<WorkOrderOption>('/work-orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          counterpartyId: newWo.counterpartyId,
+          vehicleId: newWo.vehicleId,
+          branchId: newWo.branchId,
+          description: newWo.description || undefined,
+        }),
+      });
+      const display = `${created.number}${newWo.counterpartyDisplay ? ` · ${newWo.counterpartyDisplay}` : ''}`;
+      setForm(f => ({ ...f, workOrderId: created.id, workOrderDisplay: display }));
+      setShowNewWo(false);
+      setNewWo({ counterpartyId: '', counterpartyDisplay: '', vehicleId: '', branchId: '', description: '' });
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка створення наряду'); }
+    finally { setSavingWo(false); }
+  };
+
+  useEffect(() => { return () => { if (woTimeoutRef.current) clearTimeout(woTimeoutRef.current); }; }, []);
 
   // ── Memoized grouping ─────────────────────────────────────────────────────
 
@@ -907,54 +1017,176 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="relative">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Наряд <span className="font-normal opacity-60">(пошук по номеру / клієнту)</span>
-              </label>
-              <Input
-                value={woSearch || form.workOrderDisplay}
-                onChange={e => {
-                  const v = e.target.value;
-                  setWoSearch(v);
-                  if (!v) setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }));
-                  searchWorkOrders(v);
-                }}
-                onFocus={() => { if (woSearch) setShowWoDropdown(true); }}
-                placeholder="Введіть номер або прізвище..."
-              />
-              {form.workOrderDisplay && !woSearch && (
-                <button
-                  className="absolute right-2 top-7 text-muted-foreground hover:text-foreground text-xs"
-                  onClick={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
-                  aria-label="Очистити наряд"
-                >✕</button>
-              )}
-              {showWoDropdown && woOptions.length > 0 && (
-                <div className="absolute z-50 w-full bg-surface border border-border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
-                  {woLoading && <div className="p-2 text-xs text-muted-foreground">Пошук...</div>}
-                  {woOptions.map(wo => (
-                    <button
-                      key={wo.id}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors"
-                      onClick={() => {
-                        const display = `${wo.number}${wo.counterpartyName ? ` · ${wo.counterpartyName}` : ''}`;
-                        setForm(f => ({ ...f, workOrderId: wo.id, workOrderDisplay: display }));
-                        setWoSearch('');
-                        setShowWoDropdown(false);
-                      }}
-                    >
-                      <span className="font-medium text-foreground">{wo.number}</span>
-                      {wo.counterpartyName && <span className="ml-2 text-muted-foreground">{wo.counterpartyName}</span>}
-                    </button>
-                  ))}
+          {/* Client field */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Клієнт</label>
+                <Input
+                  value={cpSearch || cpDisplay}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setCpSearch(v);
+                    if (!v) { setCpDisplay(''); setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' })); }
+                    searchCounterparties(v);
+                  }}
+                  onFocus={() => { if (cpSearch) setShowCpDropdown(true); }}
+                  placeholder="Пошук по імені, телефону..."
+                />
+                {cpDisplay && !cpSearch && (
+                  <button className="absolute right-2 top-7 text-muted-foreground hover:text-foreground text-xs"
+                    onClick={() => { setCpDisplay(''); setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' })); }}
+                    aria-label="Очистити клієнта">✕</button>
+                )}
+                {showCpDropdown && cpOptions.length > 0 && (
+                  <div className="absolute z-50 w-full bg-surface border border-border rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
+                    {cpLoading && <div className="p-2 text-xs text-muted-foreground">Пошук...</div>}
+                    {cpOptions.map(cp => (
+                      <button key={cp.id} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary"
+                        onClick={() => {
+                          const d = displayCounterparty(cp);
+                          setCpDisplay(d);
+                          setForm(f => ({ ...f, counterpartyId: cp.id, counterpartyDisplay: d }));
+                          setCpSearch(''); setShowCpDropdown(false);
+                        }}>
+                        <span className="font-medium">{displayCounterparty(cp)}</span>
+                        {cp.phone && <span className="ml-2 text-muted-foreground text-xs">{cp.phone}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="mt-5">
+                <Button variant="outline" size="sm" onClick={() => setShowNewCp(v => !v)} title="Новий клієнт">
+                  <UserPlus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            {showNewCp && (
+              <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
+                <p className="text-xs font-medium text-foreground">Новий клієнт</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Ім'я" value={newCp.firstName} onChange={e => setNewCp(v => ({ ...v, firstName: e.target.value }))} />
+                  <Input placeholder="Прізвище" value={newCp.lastName} onChange={e => setNewCp(v => ({ ...v, lastName: e.target.value }))} />
                 </div>
-              )}
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Телефон" value={newCp.phone} onChange={e => setNewCp(v => ({ ...v, phone: e.target.value }))} />
+                  <Input placeholder="Компанія" value={newCp.companyName} onChange={e => setNewCp(v => ({ ...v, companyName: e.target.value }))} />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={saveNewCounterparty} loading={savingCp}
+                    disabled={!newCp.firstName && !newCp.lastName && !newCp.companyName}>
+                    Зберегти клієнта
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setShowNewCp(false)}>Скасувати</Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Work-order field */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Наряд</label>
+                <Input
+                  value={woSearch || form.workOrderDisplay}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setWoSearch(v);
+                    if (!v) setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }));
+                    searchWorkOrders(v);
+                  }}
+                  onFocus={() => { if (woSearch) setShowWoDropdown(true); }}
+                  placeholder="Пошук по номеру або клієнту..."
+                />
+                {form.workOrderDisplay && !woSearch && (
+                  <button className="absolute right-2 top-7 text-muted-foreground hover:text-foreground text-xs"
+                    onClick={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
+                    aria-label="Очистити наряд">✕</button>
+                )}
+                {showWoDropdown && woOptions.length > 0 && (
+                  <div className="absolute z-50 w-full bg-surface border border-border rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
+                    {woLoading && <div className="p-2 text-xs text-muted-foreground">Пошук...</div>}
+                    {woOptions.map(wo => (
+                      <button key={wo.id} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary"
+                        onClick={() => {
+                          const display = `${wo.number}${wo.counterpartyName ? ` · ${wo.counterpartyName}` : ''}`;
+                          setForm(f => ({ ...f, workOrderId: wo.id, workOrderDisplay: display }));
+                          setWoSearch(''); setShowWoDropdown(false);
+                        }}>
+                        <span className="font-medium">{wo.number}</span>
+                        {wo.counterpartyName && <span className="ml-2 text-muted-foreground">{wo.counterpartyName}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="mt-5">
+                <Button variant="outline" size="sm" onClick={() => setShowNewWo(v => !v)} title="Новий наряд">
+                  <FilePlus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Нотатки</label>
-              <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-            </div>
+            {showNewWo && (
+              <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
+                <p className="text-xs font-medium text-foreground">Новий наряд</p>
+                <div className="relative">
+                  <Input placeholder="Клієнт (пошук)..." value={newWo.counterpartyDisplay}
+                    onChange={e => {
+                      setNewWo(v => ({ ...v, counterpartyDisplay: e.target.value, counterpartyId: '', vehicleId: '' }));
+                      setNewWoVehicles([]);
+                      searchCounterparties(e.target.value);
+                    }}
+                    onFocus={() => setShowCpDropdown(true)}
+                  />
+                  {showCpDropdown && cpOptions.length > 0 && (
+                    <div className="absolute z-50 w-full bg-surface border border-border rounded-lg shadow-lg mt-1 max-h-36 overflow-y-auto">
+                      {cpOptions.map(cp => (
+                        <button key={cp.id} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary"
+                          onClick={async () => {
+                            const d = displayCounterparty(cp);
+                            setNewWo(v => ({ ...v, counterpartyId: cp.id, counterpartyDisplay: d, vehicleId: '' }));
+                            setShowCpDropdown(false);
+                            await loadWoVehicles(cp.id);
+                          }}>
+                          {displayCounterparty(cp)}
+                          {cp.phone && <span className="ml-2 text-muted-foreground text-xs">{cp.phone}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Select value={newWo.vehicleId} onChange={e => setNewWo(v => ({ ...v, vehicleId: e.target.value }))}
+                    disabled={!newWo.counterpartyId}>
+                    <option value="">— Автомобіль —</option>
+                    {newWoVehicles.map(v => (
+                      <option key={v.id} value={v.id}>{v.make} {v.model} ({v.licensePlate})</option>
+                    ))}
+                  </Select>
+                  <Select value={newWo.branchId} onChange={e => setNewWo(v => ({ ...v, branchId: e.target.value }))}>
+                    <option value="">— Філія —</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </div>
+                <Input placeholder="Опис (необов'язково)" value={newWo.description}
+                  onChange={e => setNewWo(v => ({ ...v, description: e.target.value }))} />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={saveNewWorkOrder} loading={savingWo}
+                    disabled={!newWo.counterpartyId || !newWo.vehicleId || !newWo.branchId}>
+                    Зберегти наряд
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setShowNewWo(false)}>Скасувати</Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Нотатки</label>
+            <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
 
           <div className="flex gap-2">
