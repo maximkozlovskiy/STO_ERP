@@ -69,10 +69,8 @@ const SIDEBAR_W = 160;
 const WINDOW_START = HOURS[0];
 const WINDOW_END   = HOURS[HOURS.length - 1] + 1;
 
-// Time picker: available hours range ±3 from working window, clamped to 0–23
-const PICK_HOUR_MIN = Math.max(0,  HOURS[0] - 3);      // 5
-const PICK_HOUR_MAX = Math.min(23, HOURS[HOURS.length - 1] + 3); // 22
-const PICK_HOURS = Array.from({ length: PICK_HOUR_MAX - PICK_HOUR_MIN + 1 }, (_, i) => PICK_HOUR_MIN + i);
+// Time picker: exactly the working hours window (08–19)
+const PICK_HOURS = HOURS; // [8, 9, ..., 19]
 const PICK_MINUTES = [0, 15, 30, 45];
 
 // Parse "HH:mm" → { h, m } snapped to nearest 15min
