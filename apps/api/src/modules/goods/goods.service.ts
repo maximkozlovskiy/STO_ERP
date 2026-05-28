@@ -48,6 +48,7 @@ export class GoodsService {
       const existing = await this.prisma.good.findFirst({ where: { orgId, sku: dto.sku, deletedAt: null } });
       if (existing) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     }
+    await this.validateFkReferences(orgId, dto);
     const item = await this.prisma.good.create({
       data: { ...dto, orgId, unit: dto.unit ?? 'шт' },
       include: { preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } } },
@@ -63,6 +64,7 @@ export class GoodsService {
       });
       if (existing) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     }
+    await this.validateFkReferences(orgId, dto);
     const item = await this.prisma.good.update({
       where: { id, orgId }, data: dto,
       include: { preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } } },
@@ -73,6 +75,33 @@ export class GoodsService {
   async remove(orgId: string, id: string): Promise<void> {
     await this.findOne(orgId, id);
     await this.prisma.good.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+  }
+
+  /**
+   * Bug #161: optional FK поля (brandId / unitId / preferredSupplierId) валідуються
+   * у межах поточної org ПЕРЕД записом. Без цього:
+   *  1) FK з ІНШОЇ org проходить сирий DB constraint → cross-tenant витік (правило #6);
+   *  2) неіснуючий ID → P2003 → загальне 400 замість конкретного повідомлення українською.
+   * Усталений патерн STO ERP (Bug #90 у invoices/work-orders): findFirst({ id, orgId, deletedAt: null }).
+   */
+  private async validateFkReferences(
+    orgId: string,
+    dto: { brandId?: string | null; unitId?: string | null; preferredSupplierId?: string | null },
+  ): Promise<void> {
+    const [brand, unit, supplier] = await Promise.all([
+      dto.brandId
+        ? this.prisma.brand.findFirst({ where: { id: dto.brandId, orgId, deletedAt: null }, select: { id: true } })
+        : Promise.resolve(null),
+      dto.unitId
+        ? this.prisma.unitOfMeasure.findFirst({ where: { id: dto.unitId, orgId, deletedAt: null }, select: { id: true } })
+        : Promise.resolve(null),
+      dto.preferredSupplierId
+        ? this.prisma.counterparty.findFirst({ where: { id: dto.preferredSupplierId, orgId, deletedAt: null }, select: { id: true } })
+        : Promise.resolve(null),
+    ]);
+    if (dto.brandId && !brand) throw new BadRequestException('Бренд не знайдено');
+    if (dto.unitId && !unit) throw new BadRequestException('Одиницю виміру не знайдено');
+    if (dto.preferredSupplierId && !supplier) throw new BadRequestException('Постачальника не знайдено');
   }
 
   // ─── Barcodes ────────────────────────────────────────────────────────────────

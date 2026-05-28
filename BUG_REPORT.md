@@ -5122,3 +5122,71 @@ select філії у формі «Новий наряд».
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-05-28 — AUTO tester on goods module (unitId/brandId DTO fields, HEAD 64dc4ef)
+
+### Baseline
+
+- TypeScript API — ✅ 0 errors
+- TypeScript web (--incremental false) — ✅ 0 errors
+- TypeScript shared — ✅ 0 errors
+- Unit + contract (API) — ✅ 316/316 passed (30 files)
+
+### Scope
+
+`apps/api/src/modules/goods/goods.dto.ts`, `apps/api/src/modules/goods/goods.service.ts`
+(commit 5045007 додав `unitId` + `brandId` до CreateGoodDto/GoodResponseDto/toDto;
+commit 634536c — review fix видалив зайвий IsUUID import).
+
+### Перевірено та підтверджено коректним (не баги)
+
+- **update() spread `data: dto`** — безпечно: global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`
+  у `main.ts` зрізає будь-які поля поза `UpdateGoodDto` (= `PartialType(CreateGoodDto)`).
+- **catalog/page.tsx edit form** — `openEditGood` читає `g.brandId ?? ''` + `g.unitId ?? ''` у `editGoodForm`,
+  модалка біндить обидва (`Select` бренд line 961, `Select`/`Input` одиниця line 942). Працює.
+- **P2003 mapping** — `HttpExceptionFilter.mapPrismaErrorToHttp` маппить P2003 → 400 (не silent 500).
+
+---
+
+## Bug #161 — [HIGH] Goods create/update не валідує org-scoped FK (cross-tenant leak + неінформативна P2003)
+
+**Файл:** `apps/api/src/modules/goods/goods.service.ts:46` (create), `:58` (update)
+**Severity:** HIGH
+**Категорія:** business-logic / tenant-isolation
+
+**Опис:** Після того як commit 5045007 додав `brandId`/`unitId` до `CreateGoodDto`, ці FK
+вперше стали досяжними через `data: { ...dto, orgId }` (раніше whitelist їх зрізав). Сервіс
+НЕ перевіряє, що `brandId` / `unitId` / `preferredSupplierId` належать поточній org.
+Сирий DB foreign key перевіряє лише глобальне існування `id`, а не `orgId`.
+
+**Очікувана поведінка:** кожен переданий FK валідується `findFirst({ id, orgId, deletedAt: null })`
+перед записом (усталений патерн STO ERP — Bug #90 у invoices/work-orders); неіснуючий або
+чужий ID → `BadRequestException` українською. Tenant isolation (CLAUDE.md правило #6) дотримано.
+
+**Фактична поведінка:**
+1. `brandId`/`unitId`/`preferredSupplierId` з ІНШОЇ org проходить DB FK constraint →
+   товар одного tenant вказує на бренд/одиницю/постачальника іншого tenant (cross-tenant витік даних).
+2. Неіснуючий ID → Prisma P2003 → загальне 400 "Порушення зовнішнього ключа: пов'язаний запис
+   не знайдено" замість конкретного "Бренд не знайдено".
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #162 — [MEDIUM] Відсутній unit-тест goods.service (нова FK-логіка без покриття)
+
+**Файл:** `apps/api/src/modules/goods/goods.service.spec.ts` (відсутній)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** §1.5 вимагає парний `*.spec.ts` для змінених сервісів. `goods.service.ts` отримав
+нову FK-логіку (Bug #161) і взагалі не мав жодного unit-тесту. Create/update SKU-конфлікт,
+soft-delete та нова org-scoped FK-валідація не покриті.
+
+**Очікувана поведінка:** spec покриває create (OK + SKU conflict + чужий brandId/unitId/supplier → throws),
+update (OK + чужий FK → throws), findOne (not found → 404).
+**Фактична поведінка:** spec-файл відсутній.
+
+**Статус:** [x] виправлено
+
+---
