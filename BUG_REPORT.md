@@ -1,5 +1,37 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-05-28 — FULL tester cycle 2/3 (regression sweep after fb99cab — 0 new bugs)
+
+### Baseline (cycle 2)
+
+- TypeScript web/api/shared — ✅ 0 errors
+- Unit + contract + invariants (API) — ✅ 271/271 passed (23 files)
+- Component + hooks (web vitest) — ✅ 139/139 passed (13 files)
+- E2E (Playwright) — ✅ 42/42 passed (smoke, api-errors, inventory, console-errors)
+- Build (API nest/webpack) — ✅ success
+- Optional deps: fast-check ✅, @testing-library ✅, playwright ✅
+- Dev servers UP: API:200, WEB:200, postgres/redis/minio healthy
+
+### Bugs found this cycle: 0
+
+Focused on regression risk after fb99cab (Bug #144 — work-orders line/part `$transaction` timeouts). No regression and no new bugs across the full §1.1–§1.7 sweep:
+
+- **Work-orders (cycle-1 area):** all 6 line/part CRUD tx have explicit `timeout: 5_000`; transition tx `timeout: 10_000`; reserveParts/writeOffPartsAndCharge/releasePartReservations re-read parts inside tx; `recalcTotals` Decimal-cast (`Number(l.amount)`); FSM via `WORK_ORDER_TRANSITIONS`; chargeAmount>0 guard before COMPLETED ✅
+- **$transaction timeout coverage:** every interactive `$transaction(async)` across all 11 services now has explicit `{ timeout }` (Bug #130/#132/#138/#141 complete — verified per-service) ✅
+- **Settlements:** `Number.isFinite(amount) && amount > 0`, NotFoundException on missing account, CHARGE=+ / PAYMENT,PREPAYMENT,REFUND,CREDIT_NOTE=− ✅
+- **Inventory:** qty=0 / non-finite / RESERVATION_RELEASE positive-qty / insufficient available / insufficient reserved guards; upsert clamps `Math.max(0, reservedDelta)` ✅
+- **Loyalty redeem:** atomic `updateMany WHERE balance >= points` double-spend guard ✅
+- **Batch:** FEFO `{ expiryDate: { sort:'asc', nulls:'last' } }`, weighted AVG_COST `SUM(qty*price)/SUM(qty)`, `Math.min(remaining, batch.remainingQty)`, throw if remaining>0 after loop ✅
+- **Pricing:** `Math.round(r/step)*step`, `Math.max(0, result)` ✅
+- **Raw SQL:** all double-quoted camelCase identifiers + `LIMIT N`; search `LIMIT ${limit}` clamped to [1,50] + q sliced to 100 chars; document-number `FOR UPDATE LIMIT 1` TOCTOU-safe; dashboard/sync BigInt→Number ✅
+- **Sync:** `TABLE_TO_MODEL` map + throw-on-unknown (Bug #127); BigInt/Decimal payload normalization (Bug #128); cross-tenant FK validation on create AND update; push table whitelist + PII blacklist; sync DELETE blocked for counterparties/vehicles/slots-with-WO ✅
+- **Payments:** pre-validate WO status before tx; atomic payment+settlement+invoice+WO; cross-reference guard; offline fiscal queue attempts=288 ✅
+- **Tenant isolation / soft delete:** orgId in every where; `deletedAt: null`; all `findMany` bounded with `take`; all `:id` params `ParseUUIDPipe` ✅
+- **Frontend:** api-client 401 silent-refresh + `Array.isArray(msg).join('; ')` in apiFetch/apiBlobFetch/apiMultipartFetch; auth context mount cancel guard + public-route refresh skip (Bug #131); work-orders PageClient mountedRef guards + optimistic transition rollback + Escape lightbox cleanup ✅
+- **E2E runtime:** 0 console.error / pageerror on 10 auth pages + 2 public pages; no Next.js error overlay; security headers present ✅
+
+---
+
 ## Session 2026-05-28 — FULL tester cycle 1/3 (work-orders $transaction timeouts + full static sweep)
 
 ### Baseline (cycle 1)

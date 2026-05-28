@@ -36,7 +36,7 @@ E2E (Playwright):✅ 42/42 passed (smoke 8, console-errors 22, inventory 4, api-
 Build:           ✅ @sto/api build OK
 Security headers:✅ X-Content-Type-Options, X-Frame-Options, HSTS, CORP через @fastify/helmet@11 (Bug #135)
 $transaction timeouts: ✅ ВСІ interactive callbacks мають explicit { timeout } (work-orders transition 10s + 6 line/part 5s; warehouses 2; +calendar/completion-acts/counterparties/document-number/employees/loyalty/payments/purchase-orders/services/setup/stock-documents; Bug #130/#138/#141/#144)
-Latest tester:   2026-05-28 (fb99cab) — FULL cycle 1/3: виправлено Bug #144 (work-orders line/part CRUD $transaction timeouts); решта §1.1–§1.7 чисто, попередні фікси #127–#143 не регресували
+Latest tester:   2026-05-28 — FULL cycle 2/3: 0 нових багів. Regression sweep після fb99cab чистий — work-orders line/part tx timeouts інтегровані без регресії; повний §1.1–§1.7 + E2E 42/42 + API build OK. (cycle 1/3 fb99cab виправив Bug #144)
 Latest review:   2026-05-27 (f2e8182) — React namespace imports + AuthProvider cancel guard
 ```
 
