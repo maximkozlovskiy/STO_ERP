@@ -138,6 +138,7 @@ export class GoodsService {
 
   private toDto(item: {
     id: string; orgId: string; sku: string | null; name: string; unit: string;
+    unitId?: string | null; brandId?: string | null;
     purchasePrice: import('@prisma/client').Prisma.Decimal | null; salePrice: import('@prisma/client').Prisma.Decimal; category: string | null;
     barcode: string | null; notes: string | null;
     goodType: import('@prisma/client').GoodType | null;
@@ -151,6 +152,8 @@ export class GoodsService {
       sku: item.sku ?? null,
       name: item.name,
       unit: item.unit,
+      unitId: item.unitId ?? null,
+      brandId: item.brandId ?? null,
       purchasePrice: item.purchasePrice != null ? Number(item.purchasePrice) : null,
       salePrice: Number(item.salePrice),
       category: item.category ?? null,

@@ -7,6 +7,8 @@ export class CreateGoodDto {
   @ApiPropertyOptional() @IsOptional() @IsString() sku?: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
   @ApiPropertyOptional({ default: 'шт' }) @IsOptional() @IsString() unit?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) unitId?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) brandId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -52,6 +54,8 @@ export class GoodResponseDto {
   @ApiPropertyOptional() sku!: string | null;
   @ApiProperty() name!: string;
   @ApiProperty() unit!: string;
+  @ApiPropertyOptional() unitId?: string | null;
+  @ApiPropertyOptional() brandId?: string | null;
   @ApiPropertyOptional() purchasePrice!: number | null;
   @ApiProperty() salePrice!: number;
   @ApiPropertyOptional() category!: string | null;
