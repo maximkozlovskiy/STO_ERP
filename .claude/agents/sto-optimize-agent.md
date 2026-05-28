@@ -21,11 +21,12 @@ Work in FULL AUTO mode: find bottlenecks → fix them immediately → commit →
 ## Your task
 1. Read the skill: `e:\Git\STO ERP\.claude\skills\sto-optimize\SKILL.md` — this is your complete checklist
 2. Read `MemoryManual.md` — understand current state and what's already optimized
-3. Execute all steps from the skill (Кроки 1-6)
+3. Execute all steps from the skill (Кроки 1-7)
 4. Fix every issue found automatically
 5. Run `pnpm --filter @sto/api exec tsc --noEmit` and `pnpm --filter @sto/web exec tsc --noEmit --incremental false` — must be 0 errors
 6. Commit: `git commit -m "perf(optimize): <what was fixed>"`
 7. Update MemoryManual.md
+8. **Self-improve the skill (Крок 7):** for every NEW type of inefficiency you found that wasn't already in the checklist — add it to the "Накопичені підходи" section of SKILL.md. Write the approach and pattern, NOT specific code or file paths. Then commit: `git commit -m "docs(skills): add <pattern> approach to sto-optimize"`
 
 ## Rules
 - NEVER ask for confirmation — fix everything automatically

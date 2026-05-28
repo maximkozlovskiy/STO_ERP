@@ -24,6 +24,7 @@ bypassPermissions: true
 5. Крок 4 — виправити всі знайдені проблеми
 6. Крок 5 — tsc 0 errors + git commit
 7. Крок 6 — оновити MemoryManual.md
+8. Крок 7 — самовдосконалення: записати нові підходи у "Накопичені підходи"
 ```
 
 > Не питай дозволу між кроками. Фіксуй одним реченням що робиш.
@@ -106,7 +107,7 @@ grep -rn "async findAll" apps/api/src/modules/ --include="*.service.ts" | grep -
 grep -rn "CacheService\|cache\.get\|cache\.set" apps/api/src/modules/ --include="*.service.ts" | head -20
 ```
 
-**Кандидати для кешування (TTL 300s):** branches, warehouses, zones, lifts, work-categories, brands, units, payment-methods — всі вже мають кеш. Нові довідники: currencies, bank-accounts, cash-registers.
+**Кандидати для кешування (TTL 300s):** branches, warehouses, zones, lifts, work-categories, brands, units, payment-methods, currencies, bank-accounts, cash-registers — всі вже мають кеш.
 
 Шаблон:
 ```typescript
@@ -317,10 +318,77 @@ TypeScript: ✅ 0 errors
 
 ---
 
+## Крок 7 — Самовдосконалення скіла (ОБОВ'ЯЗКОВО після кожної ітерації)
+
+Після кожного запуску — запитай себе:
+
+> **"Цей патерн вже покритий чеклістом? Чи є новий тип неефективності що я виявив вперше?"**
+
+### Що записувати
+
+**Записуй** якщо знайшов:
+- Новий **тип неефективності** якого не було в чеклісті (новий анти-патерн)
+- Новий **контекстний сигнал** — ознаку за якою можна автоматично виявляти проблему (grep, структура, назва)
+- **Причину** чому проблема виникла — це допомагає передбачити де шукати наступного разу
+- **Наслідок** — що реально покращилось (кількість запитів, ms, kB) — для калібрування пріоритетів
+
+**Не записуй:**
+- Конкретні файли, функції, рядки коду (вони змінюються)
+- Готові фікси або шаблони коду (для цього є Кроки 1-3)
+- Речі які вже є в чеклісті
+
+### Формат запису
+
+Після кожної ітерації — оновлювати секцію **"Накопичені підходи"** нижче:
+
+```
+### [Дата] — [Тип проблеми] — [Де зустрічається]
+
+**Сигнал:** ознака за якою можна знайти автоматично
+**Причина виникнення:** чому розробники так пишуть (зрозуміло, але неефективно)
+**Підхід до виявлення:** загальний принцип пошуку, не grep
+**Підхід до фіксу:** загальний принцип рішення, не код
+**Реальний impact:** що змінилось після фіксу
+**Де шукати ще:** суміжні місця де той самий патерн може повторитись
+```
+
+### Як оновлювати чекліст
+
+Якщо новий патерн **підтверджений у коді** (не гіпотетичний):
+1. Додати в відповідний розділ (Крок 1 / Крок 2 / Крок 3) новий підрозділ з grep-командою
+2. Додати до "Що вже оптимізовано" після фіксу
+3. Коміт: `docs(skills): add <pattern> to sto-optimize`
+
+---
+
+## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-28 — Довідники без кешу — settings/catalog/infrastructure модулі
+
+**Сигнал:** `findAll()` в сервісах що повертають незмінні reference lists без `CacheService` в constructor
+**Причина виникнення:** кеш додавався поступово по сервісах, нові модулі створювались за шаблоном без CacheService
+**Підхід до виявлення:** порівняти список `findAll` методів з тим, які сервіси мають `CacheService` в constructor — різниця = кандидати
+**Підхід до фіксу:** inject CacheService → get → якщо miss → query → set; інвалідація у кожному mutating методі
+**Реальний impact:** settings page: 5 sequential DB queries → 0 (з кешу); ~150ms → ~5ms на повторний відкрит
+**Де шукати ще:** будь-який новий модуль-довідник (currencies, tax-rates, document-configs, notification-templates)
+
+---
+
+### 2026-05-28 — Waterfall fetch у settings page — сторінки з декількома незалежними секціями
+
+**Сигнал:** декілька `apiFetch()` у `useEffect([], [])` що не залежать один від одного, але написані послідовно
+**Причина виникнення:** сторінки будуються поступово — спочатку один fetch, потім інші додаються "знизу" без рефакторингу
+**Підхід до виявлення:** в useEffect шукати кілька `apiFetch` що не пов'язані ланцюгом `.then()` — якщо кожен веде до окремого `setState`, вони незалежні
+**Підхід до фіксу:** Promise.all([...]) → деструктурувати результати → setState для кожного
+**Реальний impact:** settings: 5 послідовних fetches (~300ms кожен) → 1 паралельний (~300ms total)
+**Де шукати ще:** будь-яка сторінка з декількома вкладками що завантажують різні типи даних при mount
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
-- ✅ CacheService + Redis TTL 300s: branches, warehouses, zones, lifts, work-categories, brands, units, payment-methods
+- ✅ CacheService + Redis TTL 300s: branches, warehouses, zones, lifts, work-categories, brands, units, payment-methods, currencies, bank-accounts, cash-registers
 - ✅ Dashboard cache 25s TTL
 - ✅ Reports: $queryRaw GROUP BY замість JS aggregation
 - ✅ Purchase-orders list без lines
@@ -331,7 +399,8 @@ TypeScript: ✅ 0 errors
 **Frontend:**
 - ✅ useDebounce(300ms) на 8 сторінках (work-orders, crm, invoices, purchase-orders, inventory, employees, catalog ×3)
 - ✅ next/dynamic recharts: dashboard (235→124kB), reports (269→149kB)
-- ✅ sessionStorage ref-cache: branches, warehouses, zones, lifts, work-categories, brands, units, suppliers, wo-templates
+- ✅ sessionStorage ref-cache: branches, warehouses, zones, lifts, work-categories, brands, units, suppliers, wo-templates, currencies, bank-accounts
+- ✅ settings/page.tsx: parallel Promise.all for currencies+rates+bank-accounts+cash-registers+org-info
 - ✅ SW: skipWaiting після precache; API routes не кешуються
 - ✅ Promise.all parallel fetches на 9 сторінках
 - ✅ GET dedup в api-client.ts (без AbortSignal)
