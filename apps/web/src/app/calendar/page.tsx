@@ -69,6 +69,23 @@ const SIDEBAR_W = 160;
 const WINDOW_START = HOURS[0];
 const WINDOW_END   = HOURS[HOURS.length - 1] + 1;
 
+// Time picker: available hours range ±3 from working window, clamped to 0–23
+const PICK_HOUR_MIN = Math.max(0,  HOURS[0] - 3);      // 5
+const PICK_HOUR_MAX = Math.min(23, HOURS[HOURS.length - 1] + 3); // 22
+const PICK_HOURS = Array.from({ length: PICK_HOUR_MAX - PICK_HOUR_MIN + 1 }, (_, i) => PICK_HOUR_MIN + i);
+const PICK_MINUTES = [0, 15, 30, 45];
+
+// Parse "HH:mm" → { h, m } snapped to nearest 15min
+function parseHHMM(s: string): { h: number; m: number } {
+  const [hh, mm] = s.split(':').map(Number);
+  const snapped = Math.round((mm ?? 0) / 15) * 15;
+  return { h: hh ?? HOURS[0], m: snapped >= 60 ? 0 : snapped };
+}
+
+function buildHHMM(h: number, m: number): string {
+  return `${pad(h)}:${pad(m)}`;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
@@ -102,6 +119,39 @@ function snapTo15(h: number): number {
 
 function pxToHours(px: number, timelineW: number): number {
   return (px / timelineW) * TOTAL_HOURS;
+}
+
+// ─── TimeSelect — hour + minute selects, 15-min step, bounded range ──────────
+
+interface TimeSelectProps {
+  value: string;           // "HH:mm"
+  onChange: (v: string) => void;
+}
+
+function TimeSelect({ value, onChange }: TimeSelectProps) {
+  const { h, m } = value ? parseHHMM(value) : { h: HOURS[0], m: 0 };
+  return (
+    <div className="flex gap-1">
+      <select
+        className="flex-1 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        value={h}
+        onChange={e => onChange(buildHHMM(Number(e.target.value), m))}
+      >
+        {PICK_HOURS.map(hh => (
+          <option key={hh} value={hh}>{pad(hh)}</option>
+        ))}
+      </select>
+      <select
+        className="w-16 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        value={m}
+        onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}
+      >
+        {PICK_MINUTES.map(mm => (
+          <option key={mm} value={mm}>{pad(mm)}</option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 // ─── DraggableSlot ───────────────────────────────────────────────────────────
@@ -767,15 +817,14 @@ export default function CalendarPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Початок</label>
-              <Input
-                type="time" value={form.startAt}
-                onChange={e => {
-                  const start = e.target.value;
+              <TimeSelect
+                value={form.startAt}
+                onChange={start => {
                   setForm(f => {
                     if (start && f.normoHours && Number(f.normoHours) > 0) {
                       const [h, m] = start.split(':').map(Number);
                       const totalMin = Math.min(h * 60 + m + Math.round(Number(f.normoHours) * 60), 23 * 60 + 59);
-                      return { ...f, startAt: start, endAt: `${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}` };
+                      return { ...f, startAt: start, endAt: `${pad(Math.floor(totalMin / 60))}:${pad(Math.round((totalMin % 60) / 15) * 15 >= 60 ? 0 : Math.round((totalMin % 60) / 15) * 15)}` };
                     }
                     return { ...f, startAt: start };
                   });
@@ -804,7 +853,7 @@ export default function CalendarPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Кінець</label>
-              <Input type="time" value={form.endAt} onChange={e => setForm(f => ({ ...f, endAt: e.target.value }))} />
+              <TimeSelect value={form.endAt} onChange={endAt => setForm(f => ({ ...f, endAt }))} />
             </div>
           </div>
 
