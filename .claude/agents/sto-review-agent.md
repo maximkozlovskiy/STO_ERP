@@ -7,6 +7,7 @@ description: >
   проблеми без питань і комітить результат.
   Використовуй: Agent(subagent_type="sto-review-agent")
 model: claude-opus-4-7
+bypassPermissions: true
 ---
 
 # sto-review-agent — STO ERP Auto Code Review

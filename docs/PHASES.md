@@ -623,6 +623,31 @@
 
 ---
 
+## Фаза 17.5 — Фінансова інфраструктура: Валюти, Курси, Банківські рахунки, Каса
+
+> Реалізовано: 2026-05-28. Залежності: Фаза 4 (Organisation, GarageBranch).  
+> Мета: фінансові довідники — валюти, курси обміну, банківські рахунки, каси. Розширення Organisation логотипом і адресами.
+
+- [x] `[sto-database]` `Currency` — модель валюти: name, code (@@unique orgId+code), symbol, fullName, internationalName; soft delete
+    > 4 нові моделі + розширення Organisation (logoUrl, legalAddress, actualAddress, bankAccountId). Міграція: `add_currencies_bank_accounts_cash_registers`. ExchangeRate.rate = Decimal(18,6) (фікс точності: `exchange_rate_precision`).
+- [x] `[sto-database]` `ExchangeRate` — курс до базової валюти: date @db.Date, rate Decimal(18,6), coefficient Decimal(18,6); @@unique([orgId, currencyId, date])
+- [x] `[sto-database]` `BankAccount` — банківський рахунок: ibanUA (UA + 27 цифр), currencyId FK, branchId FK (optional), bankName, mfo, edrpou, bankAddress
+- [x] `[sto-database]` `CashRegister` — каса: currencyId FK, branchId FK (required)
+- [x] `[sto-backend]` `CurrenciesModule` — CRUD `/currencies`; ConflictException при дублікаті коду; read: всі ролі; write: OWNER/ADMIN
+    > `apps/api/src/modules/currencies/`. Contract-тести: `currencies.contract.spec.ts`.
+- [x] `[sto-backend]` `ExchangeRatesModule` — CRUD `/exchange-rates`; фільтри `?currencyId=&from=&to=`; ConflictException при дублікаті (orgId+currencyId+date)
+    > `apps/api/src/modules/exchange-rates/`. Contract-тести: `exchange-rates.contract.spec.ts`.
+- [x] `[sto-backend]` `BankAccountsModule` — CRUD `/bank-accounts`; IBAN валідація `@Matches(/^UA\d{27}$/)`; FK-перевірка currencyId+branchId по orgId
+    > `apps/api/src/modules/bank-accounts/`. Contract-тести: `bank-accounts.contract.spec.ts`.
+- [x] `[sto-backend]` `CashRegistersModule` — CRUD `/cash-registers`; фільтр `?branchId=`; FK-перевірка currencyId+branchId по orgId
+    > `apps/api/src/modules/cash-registers/`.
+- [x] `[sto-backend]` `SettingsModule` — `GET/PATCH /settings/org-info` (Organisation: name, edrpou, logoUrl, legalAddress, actualAddress, bankAccountId)
+    > Методи `getOrganisation`/`updateOrganisation` в `settings.service.ts`; `getOrgInfo`/`updateOrgInfo` в контролері.
+- [x] `[sto-web]` Вкладки у `/settings`: "Організація" (+ logoUrl upload, адреси, основний рахунок), "Валюти", "Курси валют", "Банківські рахунки", "Каса"
+    > `apps/web/src/app/settings/page.tsx`. SearchCombobox для FK-полів. Loading/error стани на всіх вкладках.
+
+---
+
 ## Фаза 19 — Партійний облік + Цінова історичність
 
 > Залежності: Фаза 9 (StockMovement, StockItem, PurchaseOrderLine), Фаза 17 (збагачені моделі).  

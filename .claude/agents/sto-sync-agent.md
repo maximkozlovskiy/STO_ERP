@@ -6,6 +6,7 @@ description: >
   interface/toResponseDto розходження. Виправляє все без питань і комітить.
   Використовуй: Agent(subagent_type="sto-sync-agent")
 model: claude-sonnet-4-6
+bypassPermissions: true
 ---
 
 # sto-sync-agent — STO ERP API/Frontend Sync

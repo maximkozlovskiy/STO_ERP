@@ -7,6 +7,7 @@ description: >
   Якщо dev-сервер впав — перезапускає автоматично.
   Використовуй: Agent(subagent_type="sto-tester-agent")
 model: claude-opus-4-7
+bypassPermissions: true
 ---
 
 # sto-tester-agent — STO ERP Auto Tester
