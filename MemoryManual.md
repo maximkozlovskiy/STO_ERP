@@ -9,6 +9,11 @@
 ## Останній commit
 
 ```
+9d454d3 fix(review): add LiftType PIT/RAMP migration, strip BOM from 22 DTOs, surface SearchPicker errors
+e0af6a8 feat(warehouses): warn when setting main warehouse displaces existing main
+c213fc0 feat(infrastructure): rename Підйомник→Пост, add PIT/RAMP lift types (Яма/Естакада)
+4ef25bb feat(calendar): SearchPickerModal for client/work-order — button opens modal list with search
+4a3cdc0 fix(validation): replace @IsUUID() with @Matches UUID regex — accepts seed UUIDs
 a6b154e fix(tester): Bugs #156-#158 — calendar contract spec, resize window clamp, search error surfacing
 77d9452 docs(skills): add closest()-on-phantom-data-attr + partial-pointer-cancel checks to sto-review
 0371c73 feat(calendar): interactive slot draw, edge resize, client name, PATCH endpoint
@@ -35,6 +40,34 @@ f040cde perf(db): 5 composite indexes
 
 Дата: 2026-05-28
 
+## Поточний стан проєкту
+TypeScript: ✅ 0 errors (web --incremental false, api, shared)
+Latest review: 2026-05-28 (auto, HEAD 9d454d3) — 4 проблеми виправлено (1 Critical, 2 Important, 1 Suggestion)
+
+> /sto-review (auto) на HEAD e0af6a8 (2026-05-28, infra rename + warehouse warn + validation @Matches + SearchPickerModal):
+> 0 TS errors (web/api/shared). Виправлено 4 проблеми (commit 9d454d3):
+> 1. CRITICAL — schema.prisma додав LiftType PIT/RAMP enum значення БЕЗ міграції → insert
+>    lift з type='PIT'/'RAMP' = runtime error (значення немає в БД). Фікс: створено
+>    migration 20260528150000_add_lift_type_pit_ramp з `ALTER TYPE "LiftType" ADD VALUE IF NOT EXISTS`.
+>    Урок: будь-яка зміна enum/моделі у schema.prisma ОБОВ'ЯЗКОВО потребує супутньої міграції.
+> 2. IMPORTANT — fix(validation) commit 4a3cdc0 (PowerShell/редактор) додав UTF-8 BOM (ef bb bf)
+>    у 22 *.dto.ts. Решта 17 dto без BOM → неконсистентність; BOM ламає деякі парсери/JSON-імпорти,
+>    git diff показує ﻿. Фікс: вирізано BOM з усіх 22 (tail -c +4). Валідація НЕ ослаблена:
+>    @Matches(/^[0-9a-f]{8}-...{12}$/i) зберігає структурну форму UUID 8-4-4-4-12, лише не
+>    енфорсить version/variant nibble (навмисно — приймає seed UUID з version 0). Malformed string
+>    усе одно reject. tsc толерує BOM, тому помилки не було — суто гігієна/консистентність.
+> 3. IMPORTANT — SearchPickerModal (новий components/ui) ковтав помилки fetch через .catch(() => {})
+>    у двох місцях (initial load + search) без error-стану → юзер бачив "Нічого не знайдено" замість
+>    реальної помилки. Фікс: додано error state + UI-банер; reset на open/close. §8.2.
+> 4. SUGGESTION — infrastructure/page.tsx warehouse-модал мав inline IIFE {(() => {...})()} у JSX
+>    (warehouses.find кожен render). Фікс: винесено в named WarehouseMainCheckbox component. §8.6.
+> Verified OK (без правок):
+>   • calendar/page.tsx pointer-логіка (window listeners): onCancel скидає ВСІ 3 режими
+>     (drawingRef+ghost, pendingResizing, resizing+resizePreview); closest('[data-calendar-slot]')
+>     використовує власний маркер (не phantom dnd-data); listeners cleanup парний.
+>   • fetchCpItems/fetchWoItems: apiFetch + encodeURIComponent (no injection), typed.
+>   • infrastructure rename Підйомник→Пост + LIFT_TYPE_LABELS PIT='Яма'/RAMP='Естакада' консистентні.
+> ---
 > /sto-review (auto) на HEAD 5702506 (2026-05-28, calendar interactive feature): 0 TS errors.
 > Виправлено 3 проблеми у calendar (commit 5702506):
 > 1. IMPORTANT — calendar/page.tsx handleDrawStart: guard перевіряв `[data-dnd-draggable]`,
