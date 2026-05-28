@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+e27cc22 fix(tester): Bugs #159-#160 — surface /branches error, remove dead WO-dropdown code
 9d454d3 fix(review): add LiftType PIT/RAMP migration, strip BOM from 22 DTOs, surface SearchPicker errors
 e0af6a8 feat(warehouses): warn when setting main warehouse displaces existing main
 c213fc0 feat(infrastructure): rename Підйомник→Пост, add PIT/RAMP lift types (Яма/Естакада)
@@ -42,7 +43,9 @@ f040cde perf(db): 5 composite indexes
 
 ## Поточний стан проєкту
 TypeScript: ✅ 0 errors (web --incremental false, api, shared)
+Unit+Contract: ✅ 316/316 passed (30 файлів)
 Latest review: 2026-05-28 (auto, HEAD 9d454d3) — 4 проблеми виправлено (1 Critical, 2 Important, 1 Suggestion)
+Latest tester: 2026-05-28 (AUTO, HEAD e27cc22) — 2 баги: #159 MEDIUM /branches silent catch блокував створення наряду (порожній обов'язковий select); #160 LOW мертвий inline WO-dropdown після SearchPickerModal рефактору. Перевірено scope review-коміту 9d454d3 (@Matches не послаблює валідацію, PIT/RAMP міграція+labels синхронні, SearchPickerModal error-state коректний) — баги у суміжному calendar/page.tsx.
 
 > /sto-review (auto) на HEAD e0af6a8 (2026-05-28, infra rename + warehouse warn + validation @Matches + SearchPickerModal):
 > 0 TS errors (web/api/shared). Виправлено 4 проблеми (commit 9d454d3):
