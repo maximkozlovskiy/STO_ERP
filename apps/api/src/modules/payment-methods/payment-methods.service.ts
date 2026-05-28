@@ -35,18 +35,18 @@ export class PaymentMethodsService {
     orgId: string,
     dto: CreatePaymentMethodDto,
   ): Promise<PaymentMethodResponseDto> {
-    const existing = await this.prisma.paymentMethodConfig.findFirst({
-      where: { orgId, code: dto.code, deletedAt: null },
+    const anyExisting = await this.prisma.paymentMethodConfig.findFirst({
+      where: { orgId, code: dto.code },
     });
-    if (existing) {
-      throw new ConflictException(
-        `Метод оплати з кодом "${dto.code}" вже існує`,
-      );
+    if (anyExisting) {
+      if (!anyExisting.deletedAt) throw new ConflictException(`Метод оплати з кодом "${dto.code}" вже існує`);
+      const restored = await this.prisma.paymentMethodConfig.update({
+        where: { id: anyExisting.id },
+        data: { ...dto, deletedAt: null },
+      });
+      return this.toDto(restored);
     }
-
-    const item = await this.prisma.paymentMethodConfig.create({
-      data: { ...dto, orgId },
-    });
+    const item = await this.prisma.paymentMethodConfig.create({ data: { ...dto, orgId } });
     return this.toDto(item);
   }
 

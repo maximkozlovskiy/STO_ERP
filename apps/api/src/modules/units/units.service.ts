@@ -24,16 +24,18 @@ export class UnitsService {
   }
 
   async create(orgId: string, dto: CreateUnitDto): Promise<UnitResponseDto> {
-    const existing = await this.prisma.unitOfMeasure.findFirst({
-      where: { orgId, shortName: dto.shortName, deletedAt: null },
+    const anyExisting = await this.prisma.unitOfMeasure.findFirst({
+      where: { orgId, shortName: dto.shortName },
     });
-    if (existing) {
-      throw new ConflictException('Одиниця з такою скороченою назвою вже існує');
+    if (anyExisting) {
+      if (!anyExisting.deletedAt) throw new ConflictException('Одиниця з такою скороченою назвою вже існує');
+      const restored = await this.prisma.unitOfMeasure.update({
+        where: { id: anyExisting.id },
+        data: { ...dto, deletedAt: null },
+      });
+      return this.toDto(restored);
     }
-
-    const item = await this.prisma.unitOfMeasure.create({
-      data: { ...dto, orgId },
-    });
+    const item = await this.prisma.unitOfMeasure.create({ data: { ...dto, orgId } });
     return this.toDto(item);
   }
 

@@ -27,16 +27,18 @@ export class BrandsService {
   }
 
   async create(orgId: string, dto: CreateBrandDto): Promise<BrandResponseDto> {
-    const existing = await this.prisma.brand.findFirst({
-      where: { orgId, name: dto.name, deletedAt: null },
+    const anyExisting = await this.prisma.brand.findFirst({
+      where: { orgId, name: dto.name },
     });
-    if (existing) {
-      throw new ConflictException('Бренд з такою назвою вже існує');
+    if (anyExisting) {
+      if (!anyExisting.deletedAt) throw new ConflictException('Бренд з такою назвою вже існує');
+      const restored = await this.prisma.brand.update({
+        where: { id: anyExisting.id },
+        data: { ...dto, deletedAt: null },
+      });
+      return this.toDto(restored);
     }
-
-    const item = await this.prisma.brand.create({
-      data: { ...dto, orgId },
-    });
+    const item = await this.prisma.brand.create({ data: { ...dto, orgId } });
     return this.toDto(item);
   }
 
