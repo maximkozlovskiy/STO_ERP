@@ -74,6 +74,17 @@ Empty-state блимає, помилки приховані, мертвий load
 > відхиляє nil-UUID `00000000-...-000000000001` (version nibble = 0). У контракт-тестах
 > використовувати UUID з валідною версією, напр. `11111111-1111-4111-8111-111111111111`.
 
+### E2E (Крок 4.5) — console-errors на /settings
+
+Перший прогін console-errors.spec показав 10× `Failed to load resource: 404` на `/settings`.
+Діагностика: dev-API (port 3000) був STALE — запущений ДО feature-коміту `4ff6454`, тому
+нові routes (`/currencies`, `/exchange-rates`, `/bank-accounts`, `/cash-registers`,
+`/settings/org-info`) не були зареєстровані (`curl /api/currencies` → 404 "Cannot GET",
+а не 401). Після `kill port 3000` + рестарту API: `curl` → 401 (route OK), повторний E2E —
+**42/42 passed**, `/settings — немає console.error` + `/settings — overlay відсутній` зелені.
+Це НЕ код-баг — це stale-server environment issue. Канон додано у sto-tester §4.5.
+
+
 
 ### Baseline (cycle 3 — final)
 

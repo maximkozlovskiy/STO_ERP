@@ -353,6 +353,14 @@ grep -n "SentryProvider" apps/web/src/app/layout.tsx
   grep -rn "value=\{form\." apps/web/src/app --include="*.tsx" | grep -v "//\|onChange"
   # Для кожного — перевірити чи опції завантажуються async і чи є sync useEffect
   ```
+- [ ] **`.catch(() => {})` на list-fetch у `useEffect` — ховає loading/error стан** (Bug #145). Будь-який `apiFetch(...).then(setX).catch(() => {})` у mount/tab-effect має 4 запахи: (1) loading-прапорець оголошений але `setLoading(true)` ніколи не викликається → empty-state блимає під час завантаження; (2) `.catch(() => {})` ковтає 500 → виглядає як "немає даних"; (3) немає cancelled-flag → setState після unmount; (4) мертвий loading-state (declared, never read у JSX). Канон для кожного list-fetch effect: `let cancelled=false` + `return () => {cancelled=true}`; `setLoading(true)` перед, `.finally(() => !cancelled && setLoading(false))`; `.catch((e) => !cancelled && setError(e instanceof Error ? e.message : 'Помилка...'))`; у JSX `{loading && <Spinner/>}` + `{!loading && items.length===0 && <Empty/>}`.
+  ```bash
+  # Знайти fetch-и що тихо ковтають помилки
+  grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx"
+  # Знайти loading-state що оголошений але ніколи не set true
+  grep -rn "const \[loading" apps/web/src/app --include="*.tsx"  # → перевірити setLoading(true) існує
+  ```
+- [ ] **UUID у контракт-тестах має валідну версію**: `@IsUUID()` (default version 'all') ВІДХИЛЯЄ nil/zero-version UUID `00000000-...-000000000001` (13-й hex = `0` не version 1-5) → 400 `"X must be a UUID"`. У `*.contract.spec.ts` для UUID-полів використовувати `11111111-1111-4111-8111-111111111111` (v4 layout), не nil-UUID. Це test-only баг — фіксувати ТЕСТ.
 
 ### 1.4 — Тести Backend _(AUTO: тільки якщо змінено *.spec.ts або service; FULL: завжди)_
 
@@ -675,6 +683,20 @@ apps/web/e2e/
 2. Зафіксувати Bug → BUG_REPORT.md → виправити
 3. Flaky → додати `{ timeout: 8_000 }`
 4. Відсутній `data-testid` → додати у компонент (LOW bug)
+
+**⚠️ STALE DEV API = console-errors false-positive (НЕ код-баг).** Якщо console-errors.spec
+показує `Failed to load resource: 404` на сторінці що кличе НОВІ endpoints — спочатку перевір
+чи це не stale API-процес (запущений ДО merge feature-коміту з новими routes). NestJS
+`nest start --watch` не завжди підхоплює модулі додані поки сервер вже працював.
+```bash
+# Діагностика: route у коді але 404 на рантаймі?
+curl -s http://localhost:3000/api/<new-route>   # 404 "Cannot GET" = stale; 401 = route OK (auth)
+# Лік: рестарт API
+powershell -Command "Get-NetTCPConnection -LocalPort 3000 -State Listen | %{ Stop-Process -Id \$_.OwningProcess -Force }"
+pnpm --filter @sto/api dev > /tmp/sto-api-dev.log 2>&1 &
+until curl -s http://localhost:3000/api/<new-route> | grep -q "statusCode"; do sleep 3; done
+```
+404 на route який ТОЧНО є у `@Controller` + зареєстрований у AppModule = stale server, перезапусти і пере-прогон.
 
 ---
 

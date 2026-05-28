@@ -9,14 +9,14 @@
 ## Останній commit
 
 ```
+27a7063 test(tester): contract specs for currencies/exchange-rates/bank-accounts
+bb26737 fix(tester): Bug #145 — loading/error states on 5 new settings tabs
 ebbf746 fix(review): narrow currency includes to select + widen exchange-rate precision
 4ff6454 feat(catalog): currencies, exchange-rates, bank-accounts, cash-registers
 fb99cab fix(tester): Bug #144 — explicit $transaction timeouts in work-orders line/part CRUD
 13c65bd fix(tester): Bug #130 — explicit $transaction timeouts in 5 services
 4adb65d fix(tester): Bug #129 — inventory inline HSL → text-warning-text token
 f2b6a80 fix(tester): Bug #127+#128 — Prisma errors mapped to 4xx in HttpExceptionFilter
-d5ec61e docs(memory): record /sto-review on f2e8182 (React imports + auth cancel guard)
-f2e8182 fix(review): React namespace imports + AuthProvider cancel guard
 ```
 
 Дата: 2026-05-28
@@ -24,9 +24,10 @@ f2e8182 fix(review): React namespace imports + AuthProvider cancel guard
 ## Поточний стан проєкту
 ```
 TypeScript:      ✅ 0 errors           (apps/web + apps/api + shared)
-Unit:            ✅ 271/271 passed     (23 файли — backend)
-Contract:        ✅ 9 contract spec files (auth, work-orders, warehouses, counterparties,
-                                       sync, settings, audit, pricing-rules, batches)
+Unit+Contract:   ✅ 287/287 passed     (26 файлів — backend; +16 contract: currencies/bank-accounts/exchange-rates)
+Contract:        ✅ 12 contract spec files (auth, work-orders, warehouses, counterparties,
+                                       sync, settings, audit, pricing-rules, batches,
+                                       currencies, bank-accounts, exchange-rates)
 Property-based:  ✅ 26 invariants passed (inventory, settlements, FSM)
 Components:      ✅ 139/139 passed     (13 файлів, @testing-library/react)
 E2E (Playwright):✅ 42/42 passed (smoke 8, console-errors 22, inventory 4, api-errors 8)
@@ -35,9 +36,15 @@ E2E (Playwright):✅ 42/42 passed (smoke 8, console-errors 22, inventory 4, api-
 Build:           ✅ @sto/api build OK
 Security headers:✅ X-Content-Type-Options, X-Frame-Options, HSTS, CORP через @fastify/helmet@11 (Bug #135)
 $transaction timeouts: ✅ ВСІ interactive callbacks мають explicit { timeout } (work-orders transition 10s + 6 line/part 5s; warehouses 2; +calendar/completion-acts/counterparties/document-number/employees/loyalty/payments/purchase-orders/services/setup/stock-documents; Bug #130/#138/#141/#144)
-Latest tester:   2026-05-28 — FULL cycle 3/3 (ФІНАЛЬНИЙ): 0 нових багів, 0 регресій. 3-цикловий прогон завершено: цикл 1 виправив Bug #144 (work-orders line/part tx timeouts, fb99cab), цикли 2+3 — чисті. Повний §1.1–§1.7 sweep + 271 unit + 42 E2E + 139 component зелені у всіх 3 циклах; TS 0 errors; API build OK. Кодова база стабільна.
+Latest tester:   2026-05-28 — FULL на catalog modules (currencies/exchange-rates/bank-accounts/cash-registers + settings org-info + 5 web tabs). 1 баг: #145 (loading/error states на 5 нових вкладках settings + cancelled-flag, bb26737). Бекенд чистий: tenant isolation, soft-delete, cross-tenant FK guard, IBAN regex, ExchangeRate dup→409 — все OK. Додано 3 contract spec (16 тестів). API 287/287, TS 0 errors api+web, E2E 42/42 (console-errors 22/22, settings clean після рестарту stale API). Урок: stale dev-API дав false 404 на нових routes — рестарт обов'язковий перед E2E на нових endpoints.
 Latest review:   2026-05-28 (ebbf746) — catalog modules (currencies/exchange-rates/bank-accounts/cash-registers): §6.1 narrow include→select in 3 services; ExchangeRate.rate/coefficient Decimal(15,2)→(18,6) precision (migration 20260528120000). 0 Critical. TS 0 errors api+web.
 ```
+
+### Gotcha — /sto-tester FULL 2026-05-28 (catalog modules — Bug #145 + contract specs, commits bb26737, 27a7063)
+
+- **STALE DEV API = E2E console-errors false-positive (404 на нових routes).** Запуск console-errors.spec знайшов 10× `Failed to load resource: 404` на `/settings`. Виглядало як баг фронту, АЛЕ причина: dev-API процес (port 3000) був запущений ДО merge нового feature-коміту (`4ff6454` catalog) і не мав зареєстрованих routes `/currencies`, `/exchange-rates`, `/bank-accounts`, `/cash-registers`, `/settings/org-info`. Діагностика: `curl /api/currencies` → `404 "Cannot GET /api/currencies"` (Nest no-route) замість `401` (route exists, auth required). Канон: ПЕРЕД будь-яким E2E на сторінці що кличе нові endpoints — рестартнути API (`kill port 3000` → `pnpm --filter @sto/api dev`) і підтвердити `curl /api/<new-route>` → **401, не 404**. 404 на route який є у коді = stale server, НЕ код-баг. NestJS dev (`nest start --watch`) не завжди підхоплює нові модулі що додані поки сервер вже працював.
+- **`.catch(() => {})` на mount-fetch ховає loading/error стан (Bug #145).** 5 нових вкладок settings (currencies/exchange-rates/bank-accounts/cash-registers/org-info) завантажувались через `apiFetch().then(setX).catch(() => {})` у спільному mount-effect. Проблеми: (1) loading-прапорці оголошені але `setLoading(true)` ніколи не викликався → empty-state блимав під час завантаження; (2) помилки API тихо ковтались → 500 виглядав ідентично до "немає даних"; (3) без cancelled-flag → setState після unmount. Канон: будь-який список-fetch у `useEffect` повинен мати (а) `let cancelled=false` + `return () => {cancelled=true}`, (б) `setLoading(true)` перед / `.finally(setLoading(false))`, (в) `.catch` що викликає `setError(...)` укр. повідомленням — НЕ `() => {}`, (г) у JSX `!loading && items.length===0` для empty-state. Мертвий loading-state (оголошений, ніколи не set) — окремий запах.
+- **`@IsUUID()` (default version 'all') ВІДХИЛЯЄ nil/zero-version UUID.** Контракт-тест `POST /exchange-rates` з `currencyId: '00000000-0000-0000-0000-000000000001'` несподівано 400'ив (`"currencyId must be a UUID"`) — version nibble (13-й hex) = `0` не є валідною UUID-версією (1-5). Це test-only баг (фіксуємо ТЕСТ, не код). Канон: у контракт-тестах для UUID-полів використовувати UUID з валідною версією, напр. `11111111-1111-4111-8111-111111111111` (v4 layout). Nil-UUID годиться лише там де треба явно тестувати rejection.
 
 ### Gotcha — /sto-tester FULL 2026-05-27 (commits fc3d15d, be9eb58, f8c97d8 — bugs #139, #140, #141)
 
