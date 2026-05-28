@@ -79,6 +79,12 @@ function decimalHoursToHHMM(h: number): string {
   return `${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}`;
 }
 
+// Build an ISO timestamp from a calendar date (YYYY-MM-DD) + decimal hours.
+// Parsed in the runtime timezone (Kyiv-pinned deployment), matching addSlot.
+function decimalHoursToISO(date: string, h: number): string {
+  return new Date(`${date}T${decimalHoursToHHMM(h)}:00`).toISOString();
+}
+
 function snapTo15(h: number): number {
   return Math.round(h * 4) / 4;
 }
@@ -121,6 +127,7 @@ const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onResizeStar
     <div
       ref={setNodeRef}
       style={style}
+      data-calendar-slot
       className="absolute top-1 bottom-1 bg-primary rounded text-white text-xs flex items-center overflow-hidden group select-none"
       title={label}
     >
@@ -296,9 +303,9 @@ export default function CalendarPage() {
   const handleDrawStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, liftId: string) => {
     // Only react to primary button on the row background (not on existing slots / handles)
     if (e.button !== 0) return;
-    // If pointer is on a child with slot data — let dnd-kit handle it
+    // If pointer is on an existing slot (drag/resize/delete) — let those handlers own it
     const target = e.target as HTMLElement;
-    if (target.closest('[data-dnd-draggable]') || target.closest('[aria-label="Змінити початок"]') || target.closest('[aria-label="Змінити кінець"]')) return;
+    if (target.closest('[data-calendar-slot]')) return;
 
     e.currentTarget.setPointerCapture(e.pointerId);
     const startH = snapTo15(pxToDecimalHours(e.clientX));
@@ -385,18 +392,10 @@ export default function CalendarPage() {
       // No change — skip
       if (Math.abs(startH - origStartH) < 0.01 && Math.abs(endH - origEndH) < 0.01) return;
 
-      // Build ISO timestamps from decimal hours + current date in Kyiv
-      const toISO = (h: number) => {
-        const totalMin = Math.round(h * 60);
-        const hh = Math.floor(totalMin / 60);
-        const mm = totalMin % 60;
-        return new Date(`${date}T${pad(hh)}:${pad(mm)}:00`).toISOString();
-      };
-
       try {
         await apiFetch(`/calendar/slots/${slotId}`, {
           method: 'PATCH',
-          body: JSON.stringify({ startAt: toISO(startH), endAt: toISO(endH) }),
+          body: JSON.stringify({ startAt: decimalHoursToISO(date, startH), endAt: decimalHoursToISO(date, endH) }),
         });
         load();
       } catch (err: unknown) {
@@ -406,10 +405,11 @@ export default function CalendarPage() {
     }
   }, [ghost, resizing, resizePreview, pxToDecimalHours, date, load]);
 
-  // Cancel drawing/resize on pointer leave
+  // Cancel drawing/resize on pointer leave (otherwise the ghost/preview gets stuck)
   const handleTimelinePointerLeave = useCallback(() => {
     if (drawingRef.current) { drawingRef.current = null; setGhost(null); }
-  }, []);
+    if (resizing) { setResizing(null); setResizePreview(null); }
+  }, [resizing]);
 
   // ── Drag-and-drop move (existing behaviour + now PATCH actually works) ───────
 
@@ -522,11 +522,11 @@ export default function CalendarPage() {
     if (!resizePreview) return slots;
     return slots.map(s => {
       if (s.id !== resizePreview.id) return s;
-      const toISO = (h: number) => {
-        const totalMin = Math.round(h * 60);
-        return new Date(`${date}T${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}:00`).toISOString();
+      return {
+        ...s,
+        startAt: decimalHoursToISO(date, resizePreview.startH),
+        endAt: decimalHoursToISO(date, resizePreview.endH),
       };
-      return { ...s, startAt: toISO(resizePreview.startH), endAt: toISO(resizePreview.endH) };
     });
   }, [slots, resizePreview, date]);
 

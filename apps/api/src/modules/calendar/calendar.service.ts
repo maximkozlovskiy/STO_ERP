@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
+import { formatPersonName } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCalendarSlotDto, UpdateCalendarSlotDto, CalendarSlotResponseDto } from './calendar.dto';
 
@@ -213,7 +214,7 @@ export class CalendarService {
   }): CalendarSlotResponseDto {
     const cp = slot.workOrder?.counterparty;
     const counterpartyName = cp
-      ? (cp.companyName ?? ([cp.lastName, cp.firstName].filter(Boolean).join(' ') || undefined))
+      ? (formatPersonName(cp.lastName, cp.firstName, cp.companyName) || undefined)
       : undefined;
 
     return {
