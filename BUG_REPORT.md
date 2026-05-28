@@ -58,6 +58,22 @@ Empty-state блимає, помилки приховані, мертвий load
 
 **Статус:** [x] виправлено
 
+---
+
+### Contract-покриття (Крок 4.3) — додано
+
+Нові 4 модулі не мали жодного `*.spec.ts`. Додано контракт-тести (Supertest/Fastify inject):
+
+- `currencies.contract.spec.ts` (5) — GET → `{items,total}`; 403 без guard; POST 400 без полів; POST 409 при дублі коду; POST 201
+- `bank-accounts.contract.spec.ts` (5) — GET → `{items,total}`; 403; POST 400 при невалідному IBAN; POST 400 без IBAN; POST 201 при валідному UA IBAN
+- `exchange-rates.contract.spec.ts` (6) — GET → `{items,total}`; from/to/currencyId фільтри передаються у сервіс; POST 400 невалідна дата; POST 400 від'ємний rate; POST 409 при дублі (orgId,currencyId,date); POST 201 з rate/coefficient як числами
+
+Усі 16 нових тестів зелені. Повний прогін API: 287/287 (26 файлів).
+
+> Test-only нюанс (зафіксовано для майбутнього): `@IsUUID()` (default version 'all')
+> відхиляє nil-UUID `00000000-...-000000000001` (version nibble = 0). У контракт-тестах
+> використовувати UUID з валідною версією, напр. `11111111-1111-4111-8111-111111111111`.
+
 
 ### Baseline (cycle 3 — final)
 
