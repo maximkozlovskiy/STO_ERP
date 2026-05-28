@@ -1,5 +1,49 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-05-28 — FULL tester cycle 3/3 (FINAL regression sweep — 0 new bugs)
+
+### Baseline (cycle 3 — final)
+
+- TypeScript web/api/shared — ✅ 0 errors
+- Unit + contract + invariants (API) — ✅ 271/271 passed (23 files)
+- Component + hooks (web vitest) — ✅ 139/139 passed (13 files)
+- E2E (Playwright) — ✅ 42/42 passed (smoke, api-errors, inventory, console-errors)
+- Build (API nest/webpack) — ✅ success in 8.2s
+- Optional deps: fast-check ✅, @testing-library ✅, playwright ✅
+- Dev servers UP: API:200, WEB:200
+
+### Bugs found this cycle: 0
+
+Final cycle of the 3-cycle FULL sweep. Re-ran the complete §1.1–§1.7 static analysis plus all test suites. No regression, no new bugs. All prior-cycle fixes verified intact:
+
+- **FSM (work-orders):** `transition()` reads `WORK_ORDER_TRANSITIONS`, invalid → BadRequestException (uk); IN_PROGRESS→RESERVATION, COMPLETED→WRITEOFF+RESERVATION_RELEASE+CHARGE in single tx (`timeout: 10_000`); CANCELLED from reservation-active status → RESERVATION_RELEASE; all 6 line/part CRUD tx `timeout: 5_000` ✅
+- **$transaction timeouts:** every interactive `$transaction(async (tx))` across all services carries explicit `{ timeout }` (Bugs #130/#132/#138/#141); array-form `$transaction([findMany, count])` pagination reads need none ✅
+- **Inventory:** qty=0 / `!Number.isFinite` / RESERVATION_RELEASE-positive-qty / insufficient-available / insufficient-reserved guards; no direct `stockItem.update` outside InventoryService ✅
+- **Settlements:** `!Number.isFinite(amount) || amount <= 0` → 400; NotFoundException on missing account; CHARGE=+ / PAYMENT,PREPAYMENT,REFUND,CREDIT_NOTE=− ✅
+- **Pricing:** PERCENT=`cost*(1+pct/100)`, FIXED_AMOUNT=`cost+delta`, FIXED_PRICE=`fixedPrice??costPrice`, `Math.round(r/step)*step`, `Math.max(0,result)`, `Number(rule.percentValue??0)` ✅
+- **Batch:** FEFO `{ expiryDate: { sort:'asc', nulls:'last' } }`, weighted AVG_COST `totalCost/totalQty` ✅
+- **Raw SQL:** all 9 raw queries use double-quoted camelCase identifiers + `LIMIT N`; no snake_case casing bug ✅
+- **Sync:** explicit model→table map with throw-on-unknown (Bug #127); BigInt→Number + Decimal→toNumber payload normalization (Bug #128); orgId+syncVersion filter; `take: 500` ✅
+- **Hard deletes:** 4 `prisma.X.delete()` calls (Comment, GoodBarcode, InvoiceLine, WorkOrderMedia) — all on models WITHOUT `deletedAt` field (child/append entities), so hard delete is by-design, not a soft-delete violation ✅
+- **List contract:** every `findAll` returns `{ items, total }` paginated shape — no bare-array crashers ✅
+- **Negative/DTO:** all `:id` params `ParseUUIDPipe`; price/qty/points DTO fields `@Min`-guarded; pricing-rule delta fields legitimately unguarded (discounts) ✅
+- **Frontend:** apiFetch `Array.isArray(msg).join('; ')`; UUID-bearing form fields bound to `<Select>` with explicit `<option value="">` placeholder (no async-init race); no `<img>` without alt; 2 `onClick` on `<div>` are backdrop/stopPropagation (not actions) ✅
+- **Sentry:** `instrument` first import in main.ts; both API+web gate `NODE_ENV==='production' && !!dsn`; captureException only `status >= 500` ✅
+- **i18n:** currency `toLocaleString('uk-UA', {2dp}) + ' ₴'`; no English exception messages in modules ✅
+- **E2E runtime:** 0 console.error/pageerror on 10 auth + 2 public pages; no Next.js error overlay; X-Content-Type-Options + X-Frame-Options present ✅
+
+### Підсумок 3-циклового FULL прогону
+
+| Цикл | Знайдено | Виправлено | Коміт |
+|---|---|---|---|
+| 1/3 | Bug #144 (MEDIUM — work-orders line/part `$transaction` timeouts) | 1 | fb99cab |
+| 2/3 | 0 | 0 | 205cefc (docs) |
+| 3/3 | 0 | 0 | — (docs) |
+
+Кодова база стабільна: 271 unit + 42 E2E + 139 component тестів зелені у всіх трьох циклах. TypeScript 0 errors. Build OK. Жодних регресій після fb99cab.
+
+---
+
 ## Session 2026-05-28 — FULL tester cycle 2/3 (regression sweep after fb99cab — 0 new bugs)
 
 ### Baseline (cycle 2)
