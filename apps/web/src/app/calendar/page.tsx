@@ -150,10 +150,11 @@ function TimeSelect({ value, onChange }: TimeSelectProps) {
 interface DraggableSlotProps {
   slot: CalendarSlot;
   onRemove: (id: string) => void;
+  onEdit: (slot: CalendarSlot) => void;
   onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
 }
 
-const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onResizeStart }: DraggableSlotProps) {
+const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onEdit, onResizeStart }: DraggableSlotProps) {
   const startH = kyivHours(slot.startAt);
   const endH   = kyivHours(slot.endAt);
   const left   = ((startH - HOURS[0]) / TOTAL_HOURS) * 100;
@@ -194,6 +195,7 @@ const DraggableSlot = memo(function DraggableSlot({ slot, onRemove, onResizeStar
         className="flex-1 flex items-center px-3 cursor-grab active:cursor-grabbing min-w-0"
         {...listeners}
         {...attributes}
+        onClick={() => onEdit(slot)}
       >
         <span className="truncate">{label}</span>
       </div>
@@ -284,6 +286,7 @@ interface DroppableLiftRowProps {
   ghost: GhostSlot | null;
   pending: PendingSlot | null;
   onRemove: (id: string) => void;
+  onEdit: (slot: CalendarSlot) => void;
   onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
   onPendingOpen: () => void;
   onPendingCancel: () => void;
@@ -292,7 +295,7 @@ interface DroppableLiftRowProps {
 
 const DroppableLiftRow = memo(function DroppableLiftRow({
   liftId, liftSlots, ghost, pending,
-  onRemove, onResizeStart,
+  onRemove, onEdit, onResizeStart,
   onPendingOpen, onPendingCancel, onPendingResizeStart,
 }: DroppableLiftRowProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `lift-${liftId}`, data: { liftId } });
@@ -338,7 +341,7 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
       )}
 
       {liftSlots.map(s => (
-        <DraggableSlot key={s.id} slot={s} onRemove={onRemove} onResizeStart={onResizeStart} />
+        <DraggableSlot key={s.id} slot={s} onRemove={onRemove} onEdit={onEdit} onResizeStart={onResizeStart} />
       ))}
     </div>
   );
@@ -354,6 +357,7 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
   const [form, setForm] = useState({
     liftId: '', employeeId: '', workOrderId: '', workOrderDisplay: '',
     startAt: '', endAt: '', notes: '', normoHours: '',
@@ -442,8 +446,27 @@ export default function CalendarPage() {
 
   const cancelPending = useCallback(() => {
     setPendingSlot(null);
+    setEditingSlotId(null);
     setShowAdd(false);
     setError('');
+  }, []);
+
+  const handleEditSlot = useCallback((slot: CalendarSlot) => {
+    setEditingSlotId(slot.id);
+    setPendingSlot(null);
+    setForm({
+      liftId:           slot.liftId ?? '',
+      employeeId:       slot.employeeId ?? '',
+      workOrderId:      slot.workOrderId ?? '',
+      workOrderDisplay: slot.workOrderNumber
+        ? `${slot.workOrderNumber}${slot.counterpartyName ? ` · ${slot.counterpartyName}` : ''}`
+        : '',
+      startAt:    decimalHoursToHHMM(kyivHours(slot.startAt)),
+      endAt:      decimalHoursToHHMM(kyivHours(slot.endAt)),
+      normoHours: String(+(kyivHours(slot.endAt) - kyivHours(slot.startAt)).toFixed(2)),
+      notes:      slot.notes ?? '',
+    });
+    setShowAdd(true);
   }, []);
 
   // ── Resize existing saved slot ────────────────────────────────────────────
@@ -678,19 +701,22 @@ export default function CalendarPage() {
     if (form.endAt <= form.startAt)    { setError('Час завершення повинен бути після часу початку'); return; }
     if (form.workOrderId && !UUID_RE.test(form.workOrderId)) { setError('Оберіть наряд зі списку'); return; }
     setSaving(true); setError('');
+    const body = {
+      liftId:      form.liftId      || undefined,
+      employeeId:  form.employeeId  || undefined,
+      workOrderId: form.workOrderId || undefined,
+      startAt: new Date(`${date}T${form.startAt}:00`).toISOString(),
+      endAt:   new Date(`${date}T${form.endAt}:00`).toISOString(),
+      notes: form.notes || undefined,
+    };
     try {
-      await apiFetch<CalendarSlot>('/calendar/slots', {
-        method: 'POST',
-        body: JSON.stringify({
-          liftId:      form.liftId      || undefined,
-          employeeId:  form.employeeId  || undefined,
-          workOrderId: form.workOrderId || undefined,
-          startAt: new Date(`${date}T${form.startAt}:00`).toISOString(),
-          endAt:   new Date(`${date}T${form.endAt}:00`).toISOString(),
-          notes: form.notes || undefined,
-        }),
-      });
+      if (editingSlotId) {
+        await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'PATCH', body: JSON.stringify(body) });
+      } else {
+        await apiFetch<CalendarSlot>('/calendar/slots', { method: 'POST', body: JSON.stringify(body) });
+      }
       setShowAdd(false);
+      setEditingSlotId(null);
       setPendingSlot(null);
       setForm({ liftId: '', employeeId: '', workOrderId: '', workOrderDisplay: '', startAt: '', endAt: '', notes: '', normoHours: '' });
       load();
@@ -804,7 +830,7 @@ export default function CalendarPage() {
       {showAdd && (
         <div className="bg-surface border border-border rounded-xl p-5 mb-6 space-y-3">
           <h3 className="font-semibold text-foreground text-sm">
-            {pendingSlot ? `Новий слот ${decimalHoursToHHMM(pendingSlot.startH)}–${decimalHoursToHHMM(pendingSlot.endH)} на ${date}` : `Новий слот на ${date}`}
+            {editingSlotId ? 'Редагування слоту' : pendingSlot ? `Новий слот ${decimalHoursToHHMM(pendingSlot.startH)}–${decimalHoursToHHMM(pendingSlot.endH)} на ${date}` : `Новий слот на ${date}`}
           </h3>
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
 
@@ -933,9 +959,9 @@ export default function CalendarPage() {
 
           <div className="flex gap-2">
             <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt}>
-              Зберегти
+              {editingSlotId ? 'Оновити' : 'Зберегти'}
             </Button>
-            <Button variant="outline" onClick={() => { setShowAdd(false); setError(''); setPendingSlot(null); }}>
+            <Button variant="outline" onClick={() => { setShowAdd(false); setEditingSlotId(null); setError(''); setPendingSlot(null); }}>
               Скасувати
             </Button>
           </div>
@@ -986,6 +1012,7 @@ export default function CalendarPage() {
                   ghost={ghost}
                   pending={pendingSlot}
                   onRemove={removeSlot}
+                  onEdit={handleEditSlot}
                   onResizeStart={handleResizeStart}
                   onPendingOpen={openFormFromPending}
                   onPendingCancel={cancelPending}
