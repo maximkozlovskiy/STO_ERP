@@ -11,6 +11,7 @@ import {
   IsUUID,
   Max,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { VatMode, BatchCostMethod } from '@prisma/client';
 
@@ -246,16 +247,16 @@ export class UpdateOrganisationDto {
   @ApiPropertyOptional() @IsOptional() @IsString()
   edrpou?: string;
 
-  @ApiPropertyOptional() @IsOptional() @IsString()
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.logoUrl !== null) @IsString()
   logoUrl?: string | null;
 
-  @ApiPropertyOptional() @IsOptional() @IsString()
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.legalAddress !== null) @IsString()
   legalAddress?: string | null;
 
-  @ApiPropertyOptional() @IsOptional() @IsString()
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.actualAddress !== null) @IsString()
   actualAddress?: string | null;
 
-  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.bankAccountId !== null) @IsUUID()
   bankAccountId?: string | null;
 }
 

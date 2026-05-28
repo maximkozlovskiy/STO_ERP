@@ -196,6 +196,8 @@ export default function SettingsPage() {
   const [orgInfoForm, setOrgInfoForm] = useState({ name: '', edrpou: '', legalAddress: '', actualAddress: '', bankAccountId: '', bankAccountDisplay: '' });
   const [savingOrgInfo, setSavingOrgInfo] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [removingLogo, setRemovingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -750,6 +752,9 @@ export default function SettingsPage() {
   };
 
   const uploadLogo = async (file: File) => {
+    // Show local preview immediately so user sees the image regardless of MinIO URL accessibility
+    const objectUrl = URL.createObjectURL(file);
+    setLogoPreview(objectUrl);
     setUploadingLogo(true);
     try {
       const formData = new FormData();
@@ -758,8 +763,25 @@ export default function SettingsPage() {
       await apiFetch('/settings/org-info', { method: 'PATCH', body: JSON.stringify({ logoUrl: result.url }) });
       setOrgInfo(prev => prev ? { ...prev, logoUrl: result.url } : prev);
       if (currentFeatures.toastEnabled) toast.success('Логотип завантажено');
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження логотипу'); }
-    finally { setUploadingLogo(false); }
+    } catch (e: unknown) {
+      setLogoPreview(null);
+      setError(e instanceof Error ? e.message : 'Помилка завантаження логотипу');
+    } finally {
+      setUploadingLogo(false);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 100);
+    }
+  };
+
+  const removeLogo = async () => {
+    setRemovingLogo(true);
+    try {
+      await apiFetch('/settings/org-info', { method: 'PATCH', body: JSON.stringify({ logoUrl: null }) });
+      setOrgInfo(prev => prev ? { ...prev, logoUrl: null } : prev);
+      setLogoPreview(null);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+      if (currentFeatures.toastEnabled) toast.success('Логотип видалено');
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення логотипу'); }
+    finally { setRemovingLogo(false); }
   };
 
   return (
@@ -886,14 +908,31 @@ export default function SettingsPage() {
           {/* Logo */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">Логотип</label>
-            {orgInfo?.logoUrl && (
-              <img src={orgInfo.logoUrl} alt="Логотип" className="h-16 mb-3 rounded object-contain border border-border bg-white p-1" />
+            {(logoPreview || orgInfo?.logoUrl) && (
+              <div className="mb-3 inline-flex items-start gap-2">
+                <img
+                  src={logoPreview ?? orgInfo!.logoUrl!}
+                  alt="Логотип"
+                  className="h-16 rounded object-contain border border-border bg-white p-1"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                />
+                <button
+                  aria-label="Видалити логотип"
+                  onClick={removeLogo}
+                  disabled={removingLogo || uploadingLogo}
+                  className="mt-1 text-muted-foreground hover:text-destructive-text transition-colors disabled:opacity-40"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             )}
-            <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }} />
-            <Button variant="outline" onClick={() => logoInputRef.current?.click()} loading={uploadingLogo}>
-              <Upload className="w-4 h-4 mr-2" />
-              {orgInfo?.logoUrl ? 'Замінити логотип' : 'Завантажити логотип'}
-            </Button>
+            <div>
+              <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }} />
+              <Button variant="outline" onClick={() => logoInputRef.current?.click()} loading={uploadingLogo}>
+                <Upload className="w-4 h-4 mr-2" />
+                {orgInfo?.logoUrl || logoPreview ? 'Замінити логотип' : 'Завантажити логотип'}
+              </Button>
+            </div>
           </div>
 
           <Input label="Назва організації" value={orgInfoForm.name} onChange={(e) => setOrgInfoForm({ ...orgInfoForm, name: e.target.value })} />
