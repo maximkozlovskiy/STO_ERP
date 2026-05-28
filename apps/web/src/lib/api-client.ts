@@ -42,7 +42,10 @@ export async function apiFetch<T>(
   init?: RequestInit,
 ): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
-  if (method === 'GET') {
+  // Only dedup plain GETs. A request carrying an AbortSignal must NOT share a promise:
+  // if caller A aborts, the underlying fetch rejects and that rejection would wrongly
+  // propagate to caller B who never aborted. Such callers always run their own fetch.
+  if (method === 'GET' && !init?.signal) {
     const key = path;
     const existing = inFlight.get(key);
     if (existing) return existing as Promise<T>;

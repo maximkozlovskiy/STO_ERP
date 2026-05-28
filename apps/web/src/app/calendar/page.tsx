@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, memo, type CSSProperties } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, memo, type CSSProperties } from 'react';
 import { Plus, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -251,8 +251,22 @@ export default function CalendarPage() {
     }
   }, [slots, load]);
 
-  const slotsForLift = (liftId: string) => slots.filter(s => s.liftId === liftId);
-  const unassignedSlots = slots.filter(s => !s.liftId);
+  // Group slots by lift once per `slots` change — keeps each row's `liftSlots` array
+  // referentially stable so the memo() on <DroppableLiftRow> actually skips re-renders
+  // when unrelated state (saving/error/form) changes. A fresh .filter() per render would
+  // defeat the memo (new array reference every time).
+  const slotsByLift = useMemo(() => {
+    const map = new Map<string, CalendarSlot[]>();
+    for (const s of slots) {
+      if (!s.liftId) continue;
+      const list = map.get(s.liftId);
+      if (list) list.push(s);
+      else map.set(s.liftId, [s]);
+    }
+    return map;
+  }, [slots]);
+  const EMPTY_SLOTS: CalendarSlot[] = useMemo(() => [], []);
+  const unassignedSlots = useMemo(() => slots.filter(s => !s.liftId), [slots]);
 
   const formatDate = (ds: string) => {
     if (!ds) return '';
@@ -437,7 +451,7 @@ export default function CalendarPage() {
                 </div>
                 <DroppableLiftRow
                   liftId={lift.id}
-                  liftSlots={slotsForLift(lift.id)}
+                  liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
                   onRemove={removeSlot}
                 />
               </div>
