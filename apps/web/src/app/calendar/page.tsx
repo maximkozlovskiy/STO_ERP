@@ -304,27 +304,23 @@ export default function CalendarPage() {
   // ── Draw new slot ────────────────────────────────────────────────────────────
 
   const handleDrawStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, liftId: string) => {
-    // Only react to primary button on the row background (not on existing slots / handles)
     if (e.button !== 0) return;
-    // If pointer is on an existing slot (drag/resize/delete) — let those handlers own it
     const target = e.target as HTMLElement;
     if (target.closest('[data-calendar-slot]')) return;
 
-    e.currentTarget.setPointerCapture(e.pointerId);
     const startH = snapTo15(pxToDecimalHours(e.clientX));
     drawingRef.current = { liftId, startH };
-    setGhost({ liftId, startH, endH: startH + 1 }); // default 1 hour preview
+    setGhost({ liftId, startH, endH: startH + 1 });
   }, [pxToDecimalHours]);
 
   // ── Resize existing slot ─────────────────────────────────────────────────────
 
   const handleResizeStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => {
-    e.currentTarget.setPointerCapture(e.pointerId);
+    e.stopPropagation();
     const slot = slots.find(s => s.id === slotId);
     if (!slot) return;
     setResizing({
-      slotId,
-      edge,
+      slotId, edge,
       origStartH: kyivHours(slot.startAt),
       origEndH:   kyivHours(slot.endAt),
       pointerStartX: e.clientX,
@@ -333,92 +329,105 @@ export default function CalendarPage() {
     setResizePreview({ id: slotId, startH: kyivHours(slot.startAt), endH: kyivHours(slot.endAt) });
   }, [slots]);
 
-  // ── Global pointer move / up on the timeline ─────────────────────────────────
+  // ── Global window listeners (pointermove / pointerup) ────────────────────────
+  // Using window instead of timelineRef handlers because setPointerCapture on
+  // a child element (DroppableLiftRow / resize handle) redirects all pointer
+  // events to that element — parent onPointerMove/Up never fire.
 
-  const handleTimelinePointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    const curH = pxToDecimalHours(e.clientX);
+  const resizingRef = useRef(resizing);
+  resizingRef.current = resizing;
+  const resizePreviewRef = useRef(resizePreview);
+  resizePreviewRef.current = resizePreview;
+  const ghostRef = useRef(ghost);
+  ghostRef.current = ghost;
+  const dateRef = useRef(date);
+  dateRef.current = date;
 
-    // Drawing mode
-    if (drawingRef.current) {
-      const { startH } = drawingRef.current;
-      const endH = snapTo15(Math.max(curH, startH + 0.25));
-      setGhost(g => g ? { ...g, endH } : null);
-      return;
-    }
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const curH = pxToDecimalHours(e.clientX);
 
-    // Resize mode
-    if (resizing) {
-      const rect = timelineRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const deltaH = pxToHours(e.clientX - resizing.pointerStartX, rect.width - SIDEBAR_W);
-
-      if (resizing.edge === 'start') {
-        // Clamp to the visible window AND keep at least 15 min before the end edge.
-        const newStartH = snapTo15(
-          Math.max(WINDOW_START, Math.min(resizing.origStartH + deltaH, resizing.origEndH - 0.25)),
-        );
-        setResizePreview(p => p ? { ...p, startH: newStartH } : null);
-      } else {
-        // Clamp to the visible window AND keep at least 15 min after the start edge.
-        const newEndH = snapTo15(
-          Math.min(WINDOW_END, Math.max(resizing.origEndH + deltaH, resizing.origStartH + 0.25)),
-        );
-        setResizePreview(p => p ? { ...p, endH: newEndH } : null);
+      if (drawingRef.current) {
+        const { startH } = drawingRef.current;
+        const endH = snapTo15(Math.max(curH, startH + 0.25));
+        setGhost(g => g ? { ...g, endH } : null);
+        return;
       }
-    }
-  }, [pxToDecimalHours, resizing]);
 
-  const handleTimelinePointerUp = useCallback(async (e: ReactPointerEvent<HTMLDivElement>) => {
-    // ── Finish drawing → open form ──────────────────────────────────────────
-    if (drawingRef.current && ghost) {
-      const { liftId, startH } = drawingRef.current;
-      const endH = snapTo15(Math.max(pxToDecimalHours(e.clientX), startH + 0.25));
-      drawingRef.current = null;
-      setGhost(null);
-
-      if (endH - startH >= 0.25) {
-        // Pre-fill form and open it
-        setForm(f => ({
-          ...f,
-          liftId,
-          startAt: decimalHoursToHHMM(startH),
-          endAt:   decimalHoursToHHMM(endH),
-          normoHours: String(+(endH - startH).toFixed(2)),
-        }));
-        setShowAdd(true);
+      const res = resizingRef.current;
+      if (res) {
+        const rect = timelineRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const deltaH = pxToHours(e.clientX - res.pointerStartX, rect.width - SIDEBAR_W);
+        if (res.edge === 'start') {
+          const newStartH = snapTo15(Math.max(WINDOW_START, Math.min(res.origStartH + deltaH, res.origEndH - 0.25)));
+          setResizePreview(p => p ? { ...p, startH: newStartH } : null);
+        } else {
+          const newEndH = snapTo15(Math.min(WINDOW_END, Math.max(res.origEndH + deltaH, res.origStartH + 0.25)));
+          setResizePreview(p => p ? { ...p, endH: newEndH } : null);
+        }
       }
-      return;
-    }
+    };
 
-    // ── Finish resizing → PATCH ─────────────────────────────────────────────
-    if (resizing && resizePreview) {
-      const { slotId, origStartH, origEndH } = resizing;
-      const { startH, endH } = resizePreview;
+    const onUp = async (e: PointerEvent) => {
+      // ── Finish drawing → open form ──────────────────────────────────────
+      if (drawingRef.current && ghostRef.current) {
+        const { liftId, startH } = drawingRef.current;
+        const endH = snapTo15(Math.max(pxToDecimalHours(e.clientX), startH + 0.25));
+        drawingRef.current = null;
+        setGhost(null);
 
-      setResizing(null);
-      setResizePreview(null);
-
-      // No change — skip
-      if (Math.abs(startH - origStartH) < 0.01 && Math.abs(endH - origEndH) < 0.01) return;
-
-      try {
-        await apiFetch(`/calendar/slots/${slotId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ startAt: decimalHoursToISO(date, startH), endAt: decimalHoursToISO(date, endH) }),
-        });
-        load();
-      } catch (err: unknown) {
-        if (mountedRef.current) setError(err instanceof Error ? err.message : 'Помилка оновлення слоту');
-        load(); // reload to restore original
+        if (endH - startH >= 0.25) {
+          setForm(f => ({
+            ...f,
+            liftId,
+            startAt: decimalHoursToHHMM(startH),
+            endAt:   decimalHoursToHHMM(endH),
+            normoHours: String(+(endH - startH).toFixed(2)),
+          }));
+          setShowAdd(true);
+        }
+        return;
       }
-    }
-  }, [ghost, resizing, resizePreview, pxToDecimalHours, date, load]);
 
-  // Cancel drawing/resize on pointer leave (otherwise the ghost/preview gets stuck)
-  const handleTimelinePointerLeave = useCallback(() => {
-    if (drawingRef.current) { drawingRef.current = null; setGhost(null); }
-    if (resizing) { setResizing(null); setResizePreview(null); }
-  }, [resizing]);
+      // ── Finish resizing → PATCH ─────────────────────────────────────────
+      const res = resizingRef.current;
+      const preview = resizePreviewRef.current;
+      if (res && preview) {
+        const { slotId, origStartH, origEndH } = res;
+        const { startH, endH } = preview;
+        setResizing(null);
+        setResizePreview(null);
+
+        if (Math.abs(startH - origStartH) < 0.01 && Math.abs(endH - origEndH) < 0.01) return;
+
+        try {
+          await apiFetch(`/calendar/slots/${slotId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ startAt: decimalHoursToISO(dateRef.current, startH), endAt: decimalHoursToISO(dateRef.current, endH) }),
+          });
+          load();
+        } catch (err: unknown) {
+          if (mountedRef.current) setError(err instanceof Error ? err.message : 'Помилка оновлення слоту');
+          load();
+        }
+      }
+    };
+
+    const onCancel = () => {
+      if (drawingRef.current) { drawingRef.current = null; setGhost(null); }
+      if (resizingRef.current) { setResizing(null); setResizePreview(null); }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+    };
+  }, [pxToDecimalHours, load]);
 
   // ── Drag-and-drop move (existing behaviour + now PATCH actually works) ───────
 
@@ -746,9 +755,6 @@ export default function CalendarPage() {
             <div
               ref={timelineRef}
               className="bg-surface border border-border rounded-xl overflow-hidden"
-              onPointerMove={handleTimelinePointerMove}
-              onPointerUp={e => { void handleTimelinePointerUp(e); }}
-              onPointerLeave={handleTimelinePointerLeave}
             >
               {/* Hour headers */}
               <div className="grid border-b border-border" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
