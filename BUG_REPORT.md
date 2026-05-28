@@ -1,6 +1,63 @@
 # BUG_REPORT.md — STO ERP
 
-## Session 2026-05-28 — FULL tester cycle 3/3 (FINAL regression sweep — 0 new bugs)
+## Session 2026-05-28 — FULL tester on catalog modules (currencies / exchange-rates / bank-accounts / cash-registers / settings org-info + 5 web tabs)
+
+### Baseline
+
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 271/271 passed (23 files)
+
+### Scope
+
+Backend modules `currencies`, `exchange-rates`, `bank-accounts`, `cash-registers`,
+`settings.service.ts` (getOrganisation/updateOrganisation) and web `settings/page.tsx`
+(5 new tabs: org-info, currencies, exchange-rates, bank-accounts, cash-registers).
+
+Backend review result: tenant isolation present on every findFirst/findMany/count/update
+(orgId in where + guard findFirst before update); soft-delete `deletedAt: null` everywhere;
+cross-tenant FK attach prevented on POST and PATCH (currencyId/branchId/bankAccountId
+validated by orgId before write); IBAN regex `/^UA\d{27}$/` enforced (400 on invalid);
+ExchangeRate duplicate (orgId, currencyId, date) → ConflictException; the DB `@@unique`
+collision against a soft-deleted row is caught by HttpExceptionFilter → 409 (not 500);
+all four list endpoints return `{ items, total }`. No backend bugs found.
+
+---
+
+## Bug #145 — [LOW] 5 нові вкладки налаштувань: відсутні loading/error стани, мертвий loading-state
+
+**Файл:** `apps/web/src/app/settings/page.tsx:164-188, 236-243, 843-844`
+**Severity:** LOW
+**Категорія:** frontend
+
+**Опис:**
+Вкладки `currencies`, `exchange-rates`, `bank-accounts`, `cash-registers` завантажують
+дані у mount-`useEffect` через `apiFetch(...).then(setX).catch(() => {})`. Проблеми:
+1. `loadingCurrencies`/`loadingRates`/`loadingBa`/`loadingCr` оголошені, але `setLoading*(true)`
+   ніколи не викликається — прапорці завжди `false`. `loadingRates`/`loadingBa`/`loadingCr`
+   взагалі не читаються в JSX (мертвий код).
+2. Через `loading === false` empty-state ("Валюти не додано" тощо) блимає під час завантаження,
+   ще до приходу даних.
+3. `.catch(() => {})` ковтає помилки API — при 500 список тихо лишається порожнім, виглядає
+   ідентично до "немає даних" (focus area #5: loading/empty/error на всіх 5 вкладках).
+4. Ці 5 fetch-ів не мають cancelled-flag (на відміну від branch-settings effect нижче), тож
+   при швидкому розмонтуванні буде `setState` після unmount → React warning.
+
+**Очікувана поведінка:**
+Під час завантаження — індикатор; при помилці — повідомлення; cancelled-flag запобігає
+setState після unmount.
+
+**Фактична поведінка:**
+Empty-state блимає, помилки приховані, мертвий loading-state.
+
+**Виправлення:**
+Винесено 5 нових fetch-ів в окремий `useEffect` з cancelled-flag; перед стартом
+встановлюються `setLoading*(true)`, у `.finally` — `false`; `.catch` тепер викликає
+`setError(...)` з українським повідомленням замість тихого `() => {}`; loading-прапорці
+підключені в JSX усіх 4 вкладок (`!loading && length===0` для empty-state).
+
+**Статус:** [x] виправлено
+
 
 ### Baseline (cycle 3 — final)
 

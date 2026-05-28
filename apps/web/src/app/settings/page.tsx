@@ -232,15 +232,37 @@ export default function SettingsPage() {
     apiFetch<{ items: BranchInfo[] } | BranchInfo[]>('/branches')
       .then(d => { const arr = Array.isArray(d) ? d : d.items; setBranches(arr); if (arr.length > 0) setSelectedBranch(arr[0].id); })
       .catch(() => {});
-    // New financial directories
-    apiFetch<{ items: Currency[] }>('/currencies').then(d => setCurrencies(d.items)).catch(() => {});
-    apiFetch<{ items: ExchangeRate[] }>('/exchange-rates').then(d => setExchangeRates(d.items)).catch(() => {});
-    apiFetch<{ items: BankAccount[] }>('/bank-accounts').then(d => setBankAccounts(d.items)).catch(() => {});
-    apiFetch<{ items: CashRegister[] }>('/cash-registers').then(d => setCashRegisters(d.items)).catch(() => {});
-    apiFetch<OrgInfo>('/settings/org-info').then(info => {
-      setOrgInfo(info);
-      setOrgInfoForm({ name: info.name, edrpou: info.edrpou ?? '', legalAddress: info.legalAddress ?? '', actualAddress: info.actualAddress ?? '', bankAccountId: info.bankAccountId ?? '', bankAccountDisplay: '' });
-    }).catch(() => {});
+  }, []);
+
+  // New financial directories — окремий effect з loading/error станами та cancelled-flag,
+  // щоб empty-state не блимав і помилки API не ковтались тихо (Bug #145).
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingCurrencies(true); setLoadingRates(true); setLoadingBa(true); setLoadingCr(true);
+    apiFetch<{ items: Currency[] }>('/currencies')
+      .then(d => { if (!cancelled) setCurrencies(d.items); })
+      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження валют'); })
+      .finally(() => { if (!cancelled) setLoadingCurrencies(false); });
+    apiFetch<{ items: ExchangeRate[] }>('/exchange-rates')
+      .then(d => { if (!cancelled) setExchangeRates(d.items); })
+      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження курсів валют'); })
+      .finally(() => { if (!cancelled) setLoadingRates(false); });
+    apiFetch<{ items: BankAccount[] }>('/bank-accounts')
+      .then(d => { if (!cancelled) setBankAccounts(d.items); })
+      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження банківських рахунків'); })
+      .finally(() => { if (!cancelled) setLoadingBa(false); });
+    apiFetch<{ items: CashRegister[] }>('/cash-registers')
+      .then(d => { if (!cancelled) setCashRegisters(d.items); })
+      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження кас'); })
+      .finally(() => { if (!cancelled) setLoadingCr(false); });
+    apiFetch<OrgInfo>('/settings/org-info')
+      .then(info => {
+        if (cancelled) return;
+        setOrgInfo(info);
+        setOrgInfoForm({ name: info.name, edrpou: info.edrpou ?? '', legalAddress: info.legalAddress ?? '', actualAddress: info.actualAddress ?? '', bankAccountId: info.bankAccountId ?? '', bankAccountDisplay: '' });
+      })
+      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження даних організації'); });
+    return () => { cancelled = true; };
   }, []);
 
   const saveTemplate = async () => {
@@ -866,7 +888,8 @@ export default function SettingsPage() {
           <div className="flex justify-end">
             <Button onClick={() => openRateModal()}><Plus className="w-4 h-4 mr-1" />Додати курс</Button>
           </div>
-          {exchangeRates.length === 0 && <p className="text-muted-foreground text-sm">Курси не додано</p>}
+          {loadingRates && <p className="text-muted-foreground text-sm">Завантаження...</p>}
+          {!loadingRates && exchangeRates.length === 0 && <p className="text-muted-foreground text-sm">Курси не додано</p>}
           <div className="space-y-2">
             {exchangeRates.map(r => (
               <div key={r.id} className="bg-surface border border-border rounded-lg px-4 py-3 flex items-center justify-between">
@@ -891,7 +914,8 @@ export default function SettingsPage() {
           <div className="flex justify-end">
             <Button onClick={() => openBaModal()}><Plus className="w-4 h-4 mr-1" />Додати рахунок</Button>
           </div>
-          {bankAccounts.length === 0 && <p className="text-muted-foreground text-sm">Рахунки не додано</p>}
+          {loadingBa && <p className="text-muted-foreground text-sm">Завантаження...</p>}
+          {!loadingBa && bankAccounts.length === 0 && <p className="text-muted-foreground text-sm">Рахунки не додано</p>}
           <div className="space-y-2">
             {bankAccounts.map(b => (
               <div key={b.id} className="bg-surface border border-border rounded-lg px-4 py-3 flex items-center justify-between">
@@ -918,7 +942,8 @@ export default function SettingsPage() {
           <div className="flex justify-end">
             <Button onClick={() => openCrModal()}><Plus className="w-4 h-4 mr-1" />Додати касу</Button>
           </div>
-          {cashRegisters.length === 0 && <p className="text-muted-foreground text-sm">Каси не додано</p>}
+          {loadingCr && <p className="text-muted-foreground text-sm">Завантаження...</p>}
+          {!loadingCr && cashRegisters.length === 0 && <p className="text-muted-foreground text-sm">Каси не додано</p>}
           <div className="space-y-2">
             {cashRegisters.map(c => (
               <div key={c.id} className="bg-surface border border-border rounded-lg px-4 py-3 flex items-center justify-between">
