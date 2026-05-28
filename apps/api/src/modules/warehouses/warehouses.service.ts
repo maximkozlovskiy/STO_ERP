@@ -1,21 +1,33 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { WarehouseType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 import { CreateWarehouseDto, UpdateWarehouseDto, WarehouseResponseDto } from './warehouses.dto';
+
+const TTL = 300;
+const cacheKey = (orgId: string, branchId?: string) =>
+  `ref:warehouses:${orgId}${branchId ? `:${branchId}` : ''}`;
 
 @Injectable()
 export class WarehousesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   async findAll(orgId: string, branchId?: string): Promise<WarehouseResponseDto[]> {
+    const key = cacheKey(orgId, branchId);
+    const cached = await this.cache.get<WarehouseResponseDto[]>(key);
+    if (cached) return cached;
+
     const items = await this.prisma.warehouse.findMany({
       where: { orgId, deletedAt: null, ...(branchId ? { branchId } : {}) },
-      // isMain first so dropdowns/auto-select prefer the canonical warehouse,
-      // then alphabetical for stable UX.
       orderBy: [{ isMain: 'desc' }, { name: 'asc' }],
       take: 100,
     });
-    return items.map(item => this.toDto(item));
+    const result = items.map(item => this.toDto(item));
+    await this.cache.set(key, result, TTL);
+    return result;
   }
 
   async findOne(orgId: string, id: string): Promise<WarehouseResponseDto> {
@@ -35,12 +47,10 @@ export class WarehousesService {
           await tx.warehouse.updateMany({ where: { orgId, deletedAt: null }, data: { isMain: false } });
         }
         return tx.warehouse.create({ data: { ...dto, orgId } });
-      }, { timeout: 5_000 }); // Bug #141: explicit timeout — updateMany + create (parity with #130/#132/#138)
+      }, { timeout: 5_000 });
+      await this.cache.delPattern(`ref:warehouses:${orgId}*`);
       return this.toDto(item);
     } catch (e) {
-      // Partial unique index `warehouses_orgId_isMain_unique` enforces single-main invariant.
-      // The service-layer updateMany covers the common case, but a parallel
-      // transaction may race past it; surface a clear 409 instead of opaque 500.
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('Лише один склад може бути основним у організації. Спробуйте ще раз.');
       }
@@ -56,7 +66,8 @@ export class WarehousesService {
           await tx.warehouse.updateMany({ where: { orgId, deletedAt: null, id: { not: id } }, data: { isMain: false } });
         }
         return tx.warehouse.update({ where: { id, orgId }, data: dto });
-      }, { timeout: 5_000 }); // Bug #141: explicit timeout — updateMany + update (parity with #130/#132/#138)
+      }, { timeout: 5_000 });
+      await this.cache.delPattern(`ref:warehouses:${orgId}*`);
       return this.toDto(item);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -69,6 +80,7 @@ export class WarehousesService {
   async remove(orgId: string, id: string): Promise<void> {
     await this.findOne(orgId, id);
     await this.prisma.warehouse.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    await this.cache.delPattern(`ref:warehouses:${orgId}*`);
   }
 
   private toDto(w: { id: string; orgId: string; branchId: string; name: string; type: string; isMain: boolean; createdAt: Date; updatedAt: Date }): WarehouseResponseDto {

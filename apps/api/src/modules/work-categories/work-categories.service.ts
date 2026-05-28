@@ -1,18 +1,30 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 import { CreateWorkCategoryDto, UpdateWorkCategoryDto, WorkCategoryResponseDto } from './work-categories.dto';
+
+const TTL = 300;
+const cacheKey = (orgId: string) => `ref:work-categories:${orgId}`;
 
 @Injectable()
 export class WorkCategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   async findAll(orgId: string): Promise<WorkCategoryResponseDto[]> {
+    const cached = await this.cache.get<WorkCategoryResponseDto[]>(cacheKey(orgId));
+    if (cached) return cached;
+
     const all = await this.prisma.workCategory.findMany({
       where: { orgId, deletedAt: null },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       take: 500,
     });
-    return this.buildTree(all, null);
+    const result = this.buildTree(all, null);
+    await this.cache.set(cacheKey(orgId), result, TTL);
+    return result;
   }
 
   async findOne(orgId: string, id: string): Promise<WorkCategoryResponseDto> {
@@ -31,6 +43,7 @@ export class WorkCategoriesService {
       if (!parent) throw new NotFoundException('Батьківську категорію не знайдено');
     }
     const item = await this.prisma.workCategory.create({ data: { ...dto, orgId } });
+    await this.cache.del(cacheKey(orgId));
     return { ...this.toDto(item), children: [] };
   }
 
@@ -43,17 +56,18 @@ export class WorkCategoriesService {
       if (!parent) throw new NotFoundException('Батьківську категорію не знайдено');
     }
     const item = await this.prisma.workCategory.update({ where: { id, orgId }, data: dto });
+    await this.cache.del(cacheKey(orgId));
     return { ...this.toDto(item), children: [] };
   }
 
   async remove(orgId: string, id: string): Promise<void> {
     await this.findOne(orgId, id);
-    // Soft-delete the category and all its descendants
     const descendants = await this.getDescendantIds(orgId, id);
     await this.prisma.workCategory.updateMany({
       where: { id: { in: [id, ...descendants] }, orgId },
       data: { deletedAt: new Date() },
     });
+    await this.cache.del(cacheKey(orgId));
   }
 
   private async getDescendantIds(orgId: string, parentId: string): Promise<string[]> {

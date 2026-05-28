@@ -1,24 +1,40 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { LiftStatus, LiftType, ZoneType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 import {
   CreateLiftDto, CreateZoneDto, LiftResponseDto,
   UpdateLiftDto, UpdateZoneDto, ZoneResponseDto,
 } from './zones.dto';
 
+const TTL = 300;
+const zonesKey = (orgId: string, branchId?: string) =>
+  `ref:zones:${orgId}${branchId ? `:${branchId}` : ''}`;
+const liftsKey = (orgId: string, zoneId?: string) =>
+  `ref:lifts:${orgId}${zoneId ? `:${zoneId}` : ''}`;
+
 @Injectable()
 export class ZonesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   // ─── Zones ───────────────────────────────────────────────
 
   async findAllZones(orgId: string, branchId?: string): Promise<ZoneResponseDto[]> {
+    const key = zonesKey(orgId, branchId);
+    const cached = await this.cache.get<ZoneResponseDto[]>(key);
+    if (cached) return cached;
+
     const items = await this.prisma.zone.findMany({
       where: { orgId, deletedAt: null, ...(branchId ? { branchId } : {}) },
       orderBy: { name: 'asc' },
       take: 100,
     });
-    return items.map(item => this.toZoneDto(item));
+    const result = items.map(item => this.toZoneDto(item));
+    await this.cache.set(key, result, TTL);
+    return result;
   }
 
   async findOneZone(orgId: string, id: string): Promise<ZoneResponseDto> {
@@ -33,29 +49,38 @@ export class ZonesService {
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
     const item = await this.prisma.zone.create({ data: { ...dto, orgId } });
+    await this.cache.delPattern(`ref:zones:${orgId}*`);
     return this.toZoneDto(item);
   }
 
   async updateZone(orgId: string, id: string, dto: UpdateZoneDto): Promise<ZoneResponseDto> {
     await this.findOneZone(orgId, id);
     const item = await this.prisma.zone.update({ where: { id, orgId }, data: dto });
+    await this.cache.delPattern(`ref:zones:${orgId}*`);
     return this.toZoneDto(item);
   }
 
   async removeZone(orgId: string, id: string): Promise<void> {
     await this.findOneZone(orgId, id);
     await this.prisma.zone.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    await this.cache.delPattern(`ref:zones:${orgId}*`);
   }
 
   // ─── Lifts ───────────────────────────────────────────────
 
   async findAllLifts(orgId: string, zoneId?: string): Promise<LiftResponseDto[]> {
+    const key = liftsKey(orgId, zoneId);
+    const cached = await this.cache.get<LiftResponseDto[]>(key);
+    if (cached) return cached;
+
     const items = await this.prisma.lift.findMany({
       where: { orgId, deletedAt: null, ...(zoneId ? { zoneId } : {}) },
       orderBy: { name: 'asc' },
       take: 100,
     });
-    return items.map(item => this.toLiftDto(item));
+    const result = items.map(item => this.toLiftDto(item));
+    await this.cache.set(key, result, TTL);
+    return result;
   }
 
   async findOneLift(orgId: string, id: string): Promise<LiftResponseDto> {
@@ -70,6 +95,7 @@ export class ZonesService {
     });
     if (!zone) throw new NotFoundException('Зону не знайдено');
     const item = await this.prisma.lift.create({ data: { ...dto, orgId } });
+    await this.cache.delPattern(`ref:lifts:${orgId}*`);
     return this.toLiftDto(item);
   }
 
@@ -85,12 +111,14 @@ export class ZonesService {
         ...(lastMaintenanceDate !== undefined ? { lastMaintenanceDate: lastMaintenanceDate ? new Date(lastMaintenanceDate) : null } : {}),
       },
     });
+    await this.cache.delPattern(`ref:lifts:${orgId}*`);
     return this.toLiftDto(item);
   }
 
   async removeLift(orgId: string, id: string): Promise<void> {
     await this.findOneLift(orgId, id);
     await this.prisma.lift.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    await this.cache.delPattern(`ref:lifts:${orgId}*`);
   }
 
   private toZoneDto(z: { id: string; orgId: string; branchId: string; name: string; type: string; createdAt: Date; updatedAt: Date }): ZoneResponseDto {
