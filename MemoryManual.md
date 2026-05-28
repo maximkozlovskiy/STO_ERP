@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+d66067b fix(tester): Bugs #161-#162 — org-scoped FK validation in goods + spec
+64dc4ef docs(memory): record goods unitId/brandId review (HEAD 5045007)
 634536c fix(review): remove unused IsUUID import from goods.dto
 5045007 fix(goods): add unitId + brandId to CreateGoodDto and GoodResponseDto
 63640fb perf(optimize): hoist Intl formatters + drop per-render new Date() in calendar
@@ -48,12 +50,12 @@ f040cde perf(db): 5 composite indexes
 Дата: 2026-05-28
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web --incremental false, api, shared) — після 634536c
-Unit+Contract: ✅ 316/316 passed (30 файлів)
+TypeScript: ✅ 0 errors (web --incremental false, api, shared) — після d66067b
+Unit+Contract: ✅ 325/325 passed (31 файл — +goods.service.spec 9 tests)
 Latest optimize: 2026-05-28 (AUTO, HEAD 63640fb) — calendar scope. Backend: createSlot 3 sequential FK findFirst → Promise.all; updateSlot 4 sequential reads (existing+3 FK) → Promise.all (error priority збережено). Frontend: kyivHours/fmtTime/toDateString new Intl.DateTimeFormat на кожен виклик → 4 module-level singletons; TimeSelect new Date().getMinutes() per-option у render → nowMs-derived minMinute prop. DB: CalendarSlot вже добре проіндексований ((orgId,deletedAt),(orgId,liftId,startAt,endAt),(orgId,employeeId,startAt)) — змін не потрібно. 14/14 calendar тестів passed.
 Latest sync: 2026-05-28 (AUTO, HEAD fbe66ad) — 1 bug fixed: branches bare-array vs {items} mismatch
 Latest review: 2026-05-28 (auto, HEAD 5045007 → 634536c) — goods scope (goods.dto.ts + goods.service.ts). 1 Suggestion виправлено (unused IsUUID import). TS 0 errors (web --incremental false, api, shared); 316/316 тестів. Перевірено: unitId/brandId @Matches UUID regex (консистентно з preferredSupplierId, конвенція 4a3cdc0) + @IsOptional; UpdateGoodDto = PartialType(CreateGoodDto) успадковує всі поля; ValidationPipe whitelist:true + forbidNonWhitelisted:true → create() `{...dto, orgId}` spread безпечний (тільки DTO-поля у Prisma); brandId/unitId optional FK без explicit валідації — Prisma P2003 при невалідному ref прийнятний (як preferredSupplierId); toDto() type signature повна + повертає unitId/brandId; frontend Good interface + create/edit форми синхронні (unitId/brandId надсилаються form.X||undefined); findMany мають take; всі find* з orgId+deletedAt:null; немає BOM/any/secrets. Контролер: JwtAuthGuard+RolesGuard+@Roles на кожному методі. Попередній review HEAD b4068a6 — calendar scope, 0 проблем.
-Latest tester: 2026-05-28 (AUTO, HEAD e27cc22) — 2 баги: #159 MEDIUM /branches silent catch блокував створення наряду (порожній обов'язковий select); #160 LOW мертвий inline WO-dropdown після SearchPickerModal рефактору. Перевірено scope review-коміту 9d454d3 (@Matches не послаблює валідацію, PIT/RAMP міграція+labels синхронні, SearchPickerModal error-state коректний) — баги у суміжному calendar/page.tsx.
+Latest tester: 2026-05-28 (AUTO, HEAD d66067b) — goods scope (goods.dto.ts + goods.service.ts після 5045007/634536c). Baseline ✅ (tsc api+web+shared 0 errors, unit 316/316). 2 баги: #161 HIGH business-logic/tenant-isolation — goods create/update spread brandId/unitId/preferredSupplierId у Prisma БЕЗ org-scoped валідації; після того як 5045007 зробив brandId/unitId досяжними через {...dto} (раніше whitelist їх зрізав), FK з ІНШОЇ org проходить сирий DB constraint → cross-tenant linkage (порушення правила #6); неіснуючий ID → generic P2003 замість конкретного. Фікс: validateFkReferences() — Promise.all з findFirst({id,orgId,deletedAt:null}) per Bug #90 pattern → BadRequestException укр., викликається перед create+update; #162 MEDIUM test-coverage — goods.service.spec.ts взагалі не існував → додано 9 тестів (create happy/SKU-conflict/cross-tenant brandId+unitId+supplier throws/valid FK passthrough, update happy + bad FK throws). Після фіксу: tsc 0 errors, unit 325/325. ⚠️ Урок: review HEAD 634536c свідомо вирішив "P2003 при невалідному ref прийнятний" — АЛЕ P2003 ловить лише НЕіснуючий ID, не cross-tenant (ID існує у чужій org); optional FK у multi-tenant ЗАВЖДИ потребує org-scoped findFirst, не покладатись на DB FK. Property/Components/E2E не перезапускались (AUTO scope: 1 backend service+dto).
 
 > /sto-review (auto) на HEAD e0af6a8 (2026-05-28, infra rename + warehouse warn + validation @Matches + SearchPickerModal):
 > 0 TS errors (web/api/shared). Виправлено 4 проблеми (commit 9d454d3):
