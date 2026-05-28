@@ -218,15 +218,17 @@ export function TopShell({ children }: { children: ReactNode }) {
     }
   }, [isPublic, isLoading, employee, router]);
 
-  if (!isPublic && (isLoading || !employee)) {
+  // Public routes (login, setup, /) always render without shell,
+  // even if employee is present (e.g. cached session on /login → redirect handled by login page itself)
+  if (isPublic) return <>{children}</>;
+
+  if (isLoading || !employee) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
-
-  if (!employee) return <>{children}</>;
 
   const role = employee.role;
   const initials = `${employee.firstName?.[0] ?? ''}${employee.lastName?.[0] ?? ''}`.toUpperCase() || '?';
