@@ -881,8 +881,8 @@ export default function CalendarPage() {
 
   // Load branches once — surface errors so the required «Філія» select isn't silently empty (Bug #159)
   useEffect(() => {
-    apiFetch<{ items: { id: string; name: string }[] }>('/branches?limit=50')
-      .then(d => { if (mountedRef.current) { setBranches(d.items); setBranchesError(''); } })
+    apiFetch<{ id: string; name: string }[]>('/branches')
+      .then(d => { if (mountedRef.current) { setBranches(d); setBranchesError(''); } })
       .catch((e: unknown) => { if (mountedRef.current) setBranchesError(e instanceof Error ? e.message : 'Не вдалося завантажити список філій'); });
   }, []);
 
