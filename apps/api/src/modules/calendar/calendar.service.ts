@@ -53,19 +53,15 @@ export class CalendarService {
 
     if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
 
-    // Validate FK ownership to prevent cross-tenant injection
-    if (dto.liftId) {
-      const lift = await this.prisma.lift.findFirst({ where: { id: dto.liftId, orgId, deletedAt: null } });
-      if (!lift) throw new NotFoundException('Підйомник не знайдено');
-    }
-    if (dto.employeeId) {
-      const employee = await this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } });
-      if (!employee) throw new NotFoundException('Співробітника не знайдено');
-    }
-    if (dto.workOrderId) {
-      const workOrder = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
-      if (!workOrder) throw new NotFoundException('Наряд не знайдено');
-    }
+    // Validate FK ownership to prevent cross-tenant injection — independent checks run in parallel
+    const [lift, employee, workOrder] = await Promise.all([
+      dto.liftId ? this.prisma.lift.findFirst({ where: { id: dto.liftId, orgId, deletedAt: null } }) : Promise.resolve(null),
+      dto.employeeId ? this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } }) : Promise.resolve(null),
+      dto.workOrderId ? this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } }) : Promise.resolve(null),
+    ]);
+    if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
+    if (dto.employeeId && !employee) throw new NotFoundException('Співробітника не знайдено');
+    if (dto.workOrderId && !workOrder) throw new NotFoundException('Наряд не знайдено');
 
     const slot = await this.prisma.$transaction(async (tx) => {
     if (dto.liftId) {
@@ -119,21 +115,20 @@ export class CalendarService {
   }
 
   async updateSlot(orgId: string, id: string, dto: UpdateCalendarSlotDto): Promise<CalendarSlotResponseDto> {
-    const existing = await this.prisma.calendarSlot.findFirst({ where: { id, orgId, deletedAt: null } });
+    // Existing slot + independent FK ownership checks run in parallel; error priority preserved below
+    const checkLift = dto.liftId !== undefined && dto.liftId !== null;
+    const checkEmployee = dto.employeeId !== undefined && dto.employeeId !== null;
+    const checkWorkOrder = dto.workOrderId !== undefined && dto.workOrderId !== null;
+    const [existing, lift, employee, workOrder] = await Promise.all([
+      this.prisma.calendarSlot.findFirst({ where: { id, orgId, deletedAt: null } }),
+      checkLift ? this.prisma.lift.findFirst({ where: { id: dto.liftId!, orgId, deletedAt: null } }) : Promise.resolve(null),
+      checkEmployee ? this.prisma.employee.findFirst({ where: { id: dto.employeeId!, orgId, deletedAt: null } }) : Promise.resolve(null),
+      checkWorkOrder ? this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId!, orgId, deletedAt: null } }) : Promise.resolve(null),
+    ]);
     if (!existing) throw new NotFoundException('Слот не знайдено');
-
-    if (dto.liftId !== undefined && dto.liftId !== null) {
-      const lift = await this.prisma.lift.findFirst({ where: { id: dto.liftId, orgId, deletedAt: null } });
-      if (!lift) throw new NotFoundException('Підйомник не знайдено');
-    }
-    if (dto.employeeId !== undefined && dto.employeeId !== null) {
-      const employee = await this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } });
-      if (!employee) throw new NotFoundException('Співробітника не знайдено');
-    }
-    if (dto.workOrderId !== undefined && dto.workOrderId !== null) {
-      const workOrder = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
-      if (!workOrder) throw new NotFoundException('Наряд не знайдено');
-    }
+    if (checkLift && !lift) throw new NotFoundException('Підйомник не знайдено');
+    if (checkEmployee && !employee) throw new NotFoundException('Співробітника не знайдено');
+    if (checkWorkOrder && !workOrder) throw new NotFoundException('Наряд не знайдено');
 
     const startAt = dto.startAt ? new Date(dto.startAt) : existing.startAt;
     const endAt   = dto.endAt   ? new Date(dto.endAt)   : existing.endAt;
