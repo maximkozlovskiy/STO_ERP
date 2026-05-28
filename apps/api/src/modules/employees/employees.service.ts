@@ -70,7 +70,12 @@ export class EmployeesService {
         rateScheme: dto.rateScheme as object,
         phone: dto.phone,
       },
-      include: { employeeZones: true, employeeLifts: true, employeeWorkCategories: true, employeeBranches: true },
+      include: {
+        employeeZones: { select: { zoneId: true } },
+        employeeLifts: { select: { liftId: true } },
+        employeeWorkCategories: { select: { workCategoryId: true } },
+        employeeBranches: { select: { branchId: true } },
+      },
     });
     return this.toDto(item);
   }
@@ -87,7 +92,12 @@ export class EmployeesService {
         ...(dto.rateScheme !== undefined && { rateScheme: dto.rateScheme as object }),
         ...(dto.phone !== undefined && { phone: dto.phone }),
       },
-      include: { employeeZones: true, employeeLifts: true, employeeWorkCategories: true, employeeBranches: true },
+      include: {
+        employeeZones: { select: { zoneId: true } },
+        employeeLifts: { select: { liftId: true } },
+        employeeWorkCategories: { select: { workCategoryId: true } },
+        employeeBranches: { select: { branchId: true } },
+      },
     });
     return this.toDto(item);
   }
