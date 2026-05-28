@@ -9,7 +9,8 @@ import {
   Wrench, Clock, TrendingUp, AlertTriangle, FileX, BarChart2,
   Plus, Users, ShoppingCart, Receipt, CalendarClock, Settings2, Check,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import dynamic from 'next/dynamic';
+const RevenueChart = dynamic(() => import('./RevenueChart'), { ssr: false, loading: () => <div className="h-50 bg-surface-hover animate-pulse rounded-lg" /> });
 import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -278,36 +279,7 @@ export default function DashboardPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={revenue} margin={{ left: -10 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={d =>
-                        new Date(d + 'T00:00').toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })
-                      }
-                    />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={v => (v / 1000).toFixed(0) + 'к'}
-                    />
-                    <Tooltip
-                      cursor={{ fill: 'var(--color-primary-subtle)' }}
-                      contentStyle={{
-                        borderRadius: 8, border: '1px solid var(--color-border)',
-                        fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                      }}
-                      formatter={(v) => [fmt(Number(v ?? 0)), 'Виручка']}
-                      labelFormatter={d => new Date(d + 'T00:00').toLocaleDateString('uk-UA')}
-                    />
-                    <Bar dataKey="revenue" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <RevenueChart data={revenue} />
               </CardContent>
             </Card>
           ) : null}
