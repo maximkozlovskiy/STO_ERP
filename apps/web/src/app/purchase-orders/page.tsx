@@ -16,7 +16,8 @@ import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { DetailPanel } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
+import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
@@ -26,6 +27,7 @@ import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
@@ -93,6 +95,8 @@ export default function PurchaseOrdersPage() {
   ], []);
 
   const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('purchase-orders', COLUMNS);
+
+  const detailPanel = useDetailPanel('purchase-orders');
 
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [total, setTotal] = useState(0);
@@ -310,6 +314,43 @@ export default function PurchaseOrdersPage() {
 
   const statuses = ['', 'DRAFT', 'ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED'];
 
+  const buildPOTabs = (po: PurchaseOrder): DetailPanelTab[] => [
+    {
+      key: 'info',
+      label: 'Основне',
+      content: (
+        <div className="space-y-3">
+          <PanelField label="Статус" value={<Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>{STATUS_LABELS[po.status]}</Badge>} />
+          <PanelField label="Постачальник" value={po.supplierName} />
+          <PanelField label="Склад" value={po.warehouseName} />
+          <PanelField label="Сума" value={po.totalAmount != null ? `${po.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : undefined} />
+          <PanelField label="Позицій" value={po.linesCount != null ? String(po.linesCount) : undefined} />
+          {po.notes && <PanelField label="Нотатки" value={po.notes} />}
+          <PanelField label="Дата" value={new Date(po.createdAt).toLocaleDateString('uk-UA')} />
+        </div>
+      ),
+    },
+    {
+      key: 'lines',
+      label: 'Позиції',
+      content: !po.lines || po.lines.length === 0 ? (
+        <p className="text-[13px] text-muted-foreground">Немає позицій</p>
+      ) : (
+        <div className="space-y-2">
+          {po.lines.map((line, i) => (
+            <div key={line.id ?? i} className="rounded-lg border border-border px-3 py-2 text-[13px]">
+              <p className="font-medium text-foreground">{line.goodName ?? line.goodId}</p>
+              {line.goodSku && <p className="text-muted-foreground text-[12px]">{line.goodSku}</p>}
+              <p className="text-muted-foreground text-[12px] mt-0.5">
+                {line.quantity} {line.unit ?? ''} × {line.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+              </p>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="page-container">
       {error && (
@@ -364,12 +405,10 @@ export default function PurchaseOrdersPage() {
           Показати видалені
         </button>
 
-        <ColumnsDropdown
-          columns={COLUMNS}
-          visibleKeys={colVisible}
-          onToggle={toggleCol}
-          className="ml-auto"
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
+        </div>
       </div>
 
       {/* Status filters */}
@@ -447,12 +486,13 @@ export default function PurchaseOrdersPage() {
                 <TableRow
                   key={po.id}
                   className={cn(
-                    'cursor-pointer',
+                    detailPanel.enabled && 'cursor-pointer',
+                    'transition-colors',
                     selectedPO?.id === po.id && 'bg-secondary',
                     bulkSelect.isSelected(po.id) && 'bg-primary/5',
                     po.deletedAt && 'opacity-60',
                   )}
-                  onClick={() => setSelectedPO(prev => prev?.id === po.id ? null : po)}
+                  onClick={() => { if (detailPanel.enabled) setSelectedPO(prev => prev?.id === po.id ? null : po); }}
                 >
                   {features.bulkActionsEnabled && (
                     <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
@@ -501,62 +541,12 @@ export default function PurchaseOrdersPage() {
 
         {/* Detail panel */}
         <DetailPanel
-          open={!!selectedPO}
+          open={!!selectedPO && detailPanel.enabled}
           onClose={() => setSelectedPO(null)}
-          title={selectedPO ? selectedPO.number : ''}
-        >
-          {selectedPO && (
-            <div className="space-y-4">
-              {/* Status */}
-              <Badge variant={STATUS_BADGE[selectedPO.status] ?? 'secondary'}>
-                {STATUS_LABELS[selectedPO.status]}
-              </Badge>
-
-              {/* Meta */}
-              <div className="space-y-2 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Постачальник:</span>{' '}
-                  <span className="text-foreground font-medium">{selectedPO.supplierName ?? '—'}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Склад:</span>{' '}
-                  <span className="text-foreground">{selectedPO.warehouseName ?? '—'}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Сума:</span>{' '}
-                  <span className="text-foreground font-semibold">{fmt(selectedPO.totalAmount)}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Дата:</span>{' '}
-                  <span className="text-foreground">{new Date(selectedPO.createdAt).toLocaleDateString('uk-UA')}</span>
-                </div>
-                {selectedPO.notes && (
-                  <div>
-                    <span className="text-muted-foreground">Примітки:</span>{' '}
-                    <span className="text-foreground italic">{selectedPO.notes}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Lines */}
-              {selectedPO.lines.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Позиції</p>
-                  <div className="space-y-1.5">
-                    {selectedPO.lines.map((l, i) => (
-                      <div key={i} className="text-xs bg-secondary rounded-lg px-3 py-2">
-                        <p className="font-medium text-foreground">{l.goodName ?? l.goodId}</p>
-                        <p className="text-muted-foreground mt-0.5">
-                          {l.quantity} {l.unit} × {fmt(l.price)} = {fmt(l.amount ?? l.quantity * l.price)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </DetailPanel>
+          title={selectedPO?.number ?? ''}
+          subtitle={selectedPO?.supplierName}
+          tabs={selectedPO ? buildPOTabs(selectedPO) : undefined}
+        />
       </div>
 
       {/* Pagination */}
