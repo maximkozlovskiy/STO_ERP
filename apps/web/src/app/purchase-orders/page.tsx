@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, ShoppingCart, Search, Eye, EyeOff } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -17,9 +17,16 @@ import { SearchCombobox } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel } from '@/components/ui/detail-panel';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
 
 interface Supplier { id: string; firstName?: string; lastName?: string; companyName?: string; }
@@ -40,6 +47,12 @@ interface PurchaseOrder {
   deletedAt?: string | null;
 }
 interface Paginated { items: PurchaseOrder[]; total: number; page: number; limit: number; }
+
+interface PoFilters extends Record<string, unknown> {
+  status: string;
+  q: string;
+  showDeleted: boolean;
+}
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Чернетка', ORDERED: 'Замовлено', PARTIAL: 'Частково', RECEIVED: 'Отримано', CANCELLED: 'Скасовано',
@@ -66,6 +79,8 @@ export default function PurchaseOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
   const { confirm, dialogProps } = useConfirm();
+  const features = useUiFeatures();
+
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -75,6 +90,35 @@ export default function PurchaseOrdersPage() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Saved filters
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<PoFilters>('purchase-orders');
+
+  const applyFilter = useCallback((preset: { id: string; filters: PoFilters }) => {
+    setStatus(preset.filters.status ?? '');
+    setQ(preset.filters.q ?? '');
+    setShowDeleted(preset.filters.showDeleted ?? false);
+    setPage(1);
+    setActiveSavedFilterId(preset.id);
+  }, []);
+
+  const handleSaveFilter = useCallback((name: string) => {
+    const preset = saveFilter(name, { status, q, showDeleted });
+    setActiveSavedFilterId(preset.id);
+    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+  }, [saveFilter, status, q, showDeleted, features.toastEnabled]);
+
+  // Bulk select
+  const bulkSelect = useBulkSelect(orders);
+
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
+
+  // Unsaved guard for create/receive modals
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -111,6 +155,26 @@ export default function PurchaseOrdersPage() {
   }, [page, status, debouncedQ, showDeleted]);
 
   useEffect(() => { load(); }, [load]);
+
+  const bulkDeleteSelected = useCallback(async (ids: string[]) => {
+    if (!(await confirm({ title: `Видалити ${ids.length} замовлень?`, confirmLabel: 'Видалити', variant: 'destructive' }))) return;
+    const results = await Promise.allSettled(
+      ids.map(id => apiFetch(`/purchase-orders/${id}`, { method: 'DELETE' })),
+    );
+    const succeeded = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - succeeded;
+    bulkSelect.clear();
+    load();
+    if (features.toastEnabled) {
+      if (succeeded > 0 && failed === 0) toast.success(`Видалено ${succeeded} замовлень`);
+      else if (succeeded > 0) toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+      else toast.error('Не вдалося видалити замовлення');
+    }
+  }, [confirm, bulkSelect, features.toastEnabled, load]);
+
+  const bulkActions = useMemo<BulkAction[]>(() => [
+    { id: 'delete', label: 'Видалити вибрані', variant: 'destructive', onClick: bulkDeleteSelected },
+  ], [bulkDeleteSelected]);
 
   useEffect(() => {
     if (!showCreate) return;
@@ -165,6 +229,7 @@ export default function PurchaseOrdersPage() {
       setForm({ supplierId: '', warehouseId: '', notes: '' });
       setSupplierDisplayName('');
       setLines([]);
+      dirty.resetDirty();
       load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка збереження');
@@ -217,15 +282,18 @@ export default function PurchaseOrdersPage() {
         method: 'POST', body: JSON.stringify({ lines: receivedLines }),
       });
       setShowReceive(null);
+      dirty.resetDirty();
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка прийому товару'); }
     finally { setSaving(false); }
   };
 
-  const addLine = () => setLines(l => [...l, { goodId: '', goodName: '', quantity: '1', price: '' }]);
-  const updateLine = (i: number, field: string, value: string) =>
+  const addLine = () => { setLines(l => [...l, { goodId: '', goodName: '', quantity: '1', price: '' }]); dirty.markDirty(); };
+  const updateLine = (i: number, field: string, value: string) => {
     setLines(l => l.map((x, idx) => idx === i ? { ...x, [field]: value } : x));
-  const removeLine = (i: number) => setLines(l => l.filter((_, idx) => idx !== i));
+    dirty.markDirty();
+  };
+  const removeLine = (i: number) => { setLines(l => l.filter((_, idx) => idx !== i)); dirty.markDirty(); };
 
   const statuses = ['', 'DRAFT', 'ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED'];
 
@@ -244,6 +312,18 @@ export default function PurchaseOrdersPage() {
         </Button>
       </div>
 
+      {/* Saved filters */}
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<PoFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          className="mb-3"
+        />
+      )}
+
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         {/* Search */}
@@ -251,7 +331,7 @@ export default function PurchaseOrdersPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             value={q}
-            onChange={e => { setQ(e.target.value); setPage(1); }}
+            onChange={e => { setQ(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
             placeholder="Пошук за номером, постачальником..."
             className="pl-9"
           />
@@ -259,7 +339,7 @@ export default function PurchaseOrdersPage() {
 
         {/* Show deleted toggle */}
         <button
-          onClick={() => { setShowDeleted(v => !v); setPage(1); }}
+          onClick={() => { setShowDeleted(v => !v); setPage(1); setActiveSavedFilterId(null); }}
           className={cn(
             'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
             showDeleted
@@ -277,7 +357,7 @@ export default function PurchaseOrdersPage() {
         {statuses.map(s => (
           <button
             key={s}
-            onClick={() => { setStatus(s); setPage(1); }}
+            onClick={() => { setStatus(s); setPage(1); setActiveSavedFilterId(null); }}
             className={cn(
               'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
               status === s
@@ -290,12 +370,35 @@ export default function PurchaseOrdersPage() {
         ))}
       </div>
 
+      {/* Bulk actions */}
+      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
+        <BulkActionsBar
+          count={bulkSelect.count}
+          selectedIds={Array.from(bulkSelect.selected)}
+          actions={bulkActions}
+          onClear={bulkSelect.clear}
+          className="mb-3"
+        />
+      )}
+
       {/* Table + DetailPanel */}
       <div className="flex gap-0">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl">
           <Table>
             <TableHeader>
               <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-9 pr-0">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      ref={selectAllRef}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-3.5 w-3.5 rounded border-border"
+                      aria-label="Вибрати всі"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Номер</TableHead>
                 <TableHead>Постачальник</TableHead>
                 <TableHead>Склад</TableHead>
@@ -308,14 +411,14 @@ export default function PurchaseOrdersPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && orders.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="p-0">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="p-0">
                     <EmptyState icon={ShoppingCart} title="Замовлень не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -326,10 +429,22 @@ export default function PurchaseOrdersPage() {
                   className={cn(
                     'cursor-pointer',
                     selectedPO?.id === po.id && 'bg-secondary',
+                    bulkSelect.isSelected(po.id) && 'bg-primary/5',
                     po.deletedAt && 'opacity-60',
                   )}
                   onClick={() => setSelectedPO(prev => prev?.id === po.id ? null : po)}
                 >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(po.id)}
+                        onChange={() => bulkSelect.toggle(po.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={`Вибрати замовлення ${po.number}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-mono font-medium text-foreground">
                     {po.number}
                     {po.deletedAt && (
@@ -433,10 +548,12 @@ export default function PurchaseOrdersPage() {
       <Modal
         open={showCreate}
         onClose={() => {
+          if (!dirty.confirmClose()) return;
           setShowCreate(false);
           setForm({ supplierId: '', warehouseId: '', notes: '' });
           setSupplierDisplayName('');
           setLines([]);
+          dirty.resetDirty();
         }}
         title="Нове замовлення постачальнику"
         size="lg"
@@ -462,6 +579,7 @@ export default function PurchaseOrdersPage() {
               // Bug #139: helper повертає '(без імені)' fallback замість порожнього рядка.
               setSupplierDisplayName(displayCounterpartyName(s));
               setForm(f => ({ ...f, supplierId: s.id }));
+              dirty.markDirty();
             }}
             onClear={() => { setSupplierDisplayName(''); setForm(f => ({ ...f, supplierId: '' })); }}
             fetchItems={q => apiFetch<{ items: Supplier[] }>(`/counterparties?type=SUPPLIER&q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(s => ({
@@ -473,7 +591,7 @@ export default function PurchaseOrdersPage() {
             label="Склад"
             required
             value={form.warehouseId}
-            onChange={e => setForm(f => ({ ...f, warehouseId: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, warehouseId: e.target.value })); dirty.markDirty(); }}
             placeholder="Оберіть склад"
           >
             {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -481,7 +599,7 @@ export default function PurchaseOrdersPage() {
           <Input
             label="Примітки"
             value={form.notes}
-            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, notes: e.target.value })); dirty.markDirty(); }}
             placeholder="Необов'язково"
           />
 
@@ -613,7 +731,7 @@ export default function PurchaseOrdersPage() {
       {/* Receive modal */}
       <Modal
         open={!!showReceive}
-        onClose={() => setShowReceive(null)}
+        onClose={() => { if (!dirty.confirmClose()) return; setShowReceive(null); dirty.resetDirty(); }}
         title={showReceive ? `Прийом по замовленню ${showReceive.number}` : ''}
         size="lg"
         footer={
@@ -637,7 +755,7 @@ export default function PurchaseOrdersPage() {
                   <Input
                     type="number"
                     value={receiveLines[i]?.receivedQty ?? ''}
-                    onChange={e => setReceiveLines(ls => ls.map((l, idx) => idx === i ? { ...l, receivedQty: e.target.value } : l))}
+                    onChange={e => { setReceiveLines(ls => ls.map((l, idx) => idx === i ? { ...l, receivedQty: e.target.value } : l)); dirty.markDirty(); }}
                     placeholder={`макс. ${line.quantity - (line.receivedQty ?? 0)}`}
                     min="0"
                     max={line.quantity - (line.receivedQty ?? 0)}
