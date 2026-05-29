@@ -194,7 +194,7 @@ export class PricingRulesController {
             tiers: { orderBy: { sortOrder: 'asc' } },
           },
         });
-      });
+      }, { timeout: 10_000 });
     } else {
       rule = await this.prisma.pricingRule.update({
         where: { id },
@@ -274,6 +274,11 @@ export class PricingRulesController {
       case 'FIXED_PRICE':
         out.percentValue = undefined;
         out.fixedAmount = undefined;
+        break;
+      case 'COST_TIER':
+        out.percentValue = undefined;
+        out.fixedAmount = undefined;
+        out.fixedPrice = undefined;
         break;
     }
     return out;

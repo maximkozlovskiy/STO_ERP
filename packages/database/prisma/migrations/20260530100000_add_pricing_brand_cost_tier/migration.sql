@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS "pricing_rule_tiers" (
 CREATE INDEX IF NOT EXISTS "pricing_rule_tiers_pricingRuleId_costMin_idx"
     ON "pricing_rule_tiers"("pricingRuleId", "costMin");
 
+-- CreateIndex: pricing_rules.brandId for FK lookups
+CREATE INDEX IF NOT EXISTS "pricing_rules_orgId_brandId_idx"
+    ON "pricing_rules"("orgId", "brandId");
+
 -- AddForeignKey: pricing_rules.brandId -> brands.id
 ALTER TABLE "pricing_rules"
     ADD CONSTRAINT "pricing_rules_brandId_fkey"

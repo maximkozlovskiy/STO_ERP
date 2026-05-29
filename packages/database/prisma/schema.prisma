@@ -1098,6 +1098,7 @@ model PricingRule {
   @@index([orgId, isActive, priority])
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
+  @@index([orgId, brandId])
   @@map("pricing_rules")
 }
 
