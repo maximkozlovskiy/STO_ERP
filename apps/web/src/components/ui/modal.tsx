@@ -19,12 +19,13 @@ interface ModalProps {
   hideClose?: boolean;
 }
 
-const sizes: Record<ModalSize, string> = {
-  sm:   'max-w-sm',
-  md:   'max-w-lg',
-  lg:   'max-w-2xl',
-  xl:   'max-w-4xl',
-  full: 'max-w-[95vw]',
+// Numeric max-width values for smooth CSS transition via inline style
+const sizeWidths: Record<ModalSize, string> = {
+  sm:   '384px',
+  md:   '512px',
+  lg:   '672px',
+  xl:   '896px',
+  full: '95vw',
 };
 
 export function Modal({
@@ -63,16 +64,19 @@ export function Modal({
         onClick={onClose}
       />
 
-      {/* Panel */}
+      {/* Panel — max-width transitions smoothly when size prop changes */}
       <div
         className={cn(
           'relative z-10 w-full rounded-xl bg-surface',
           'shadow-xl border border-border',
           'flex flex-col max-h-[90vh]',
           'animate-in fade-in zoom-in-95 duration-200',
-          sizes[size],
           className,
         )}
+        style={{
+          maxWidth: sizeWidths[size],
+          transition: 'max-width 280ms cubic-bezier(0.4,0,0.2,1)',
+        }}
       >
         {/* Header */}
         {(title || !hideClose) && (

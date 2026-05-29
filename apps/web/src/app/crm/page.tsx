@@ -705,7 +705,7 @@ export default function CrmPage() {
 
         {/* ── Вкладка: Основне (або єдина форма при створенні) ── */}
         {(!editingCp || editTab === 'main') && (
-          <>
+          <div key="tab-main" className="animate-in fade-in duration-150">
             {error && (
               <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
                 {error}
@@ -757,12 +757,12 @@ export default function CrmPage() {
                 <span className="text-sm text-foreground">Платник ПДВ</span>
               </label>
             </div>
-          </>
+          </div>
         )}
 
         {/* ── Вкладка: Авто ── */}
         {editingCp && editTab === 'vehicles' && (
-          <div className="space-y-3">
+          <div key="tab-vehicles" className="space-y-3 animate-in fade-in duration-150">
             {modalVehiclesLoading && (
               <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
             )}
@@ -851,7 +851,7 @@ export default function CrmPage() {
 
         {/* ── Вкладка: Історія нарядів ── */}
         {editingCp && editTab === 'work-orders' && (
-          <div className="space-y-3">
+          <div key="tab-work-orders" className="space-y-3 animate-in fade-in duration-150">
             {modalWorkOrdersLoading && (
               <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
             )}
