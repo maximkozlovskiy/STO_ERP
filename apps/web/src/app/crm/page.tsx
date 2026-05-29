@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil, Car, FileText } from 'lucide-react';
+import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,6 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 import { cn } from '@/lib/utils';
 
 interface Counterparty {
@@ -77,6 +76,7 @@ export default function CrmPage() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [modal, setModal] = useState(false);
   const [editingCp, setEditingCp] = useState<Counterparty | null>(null);
+  const [editTab, setEditTab] = useState<'main' | 'vehicles' | 'work-orders'>('main');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
@@ -246,6 +246,7 @@ export default function CrmPage() {
   };
 
   const openEdit = (cp: Counterparty) => {
+    setEditTab('main');
     setEditingCp(cp);
     setForm({
       type: cp.type,
@@ -662,271 +663,243 @@ export default function CrmPage() {
         title={editingCp ? 'Редагування контрагента' : 'Новий контрагент'}
         size={editingCp ? 'lg' : 'md'}
         footer={
-          <Button onClick={editingCp ? update : create} loading={saving}>
-            {editingCp ? 'Оновити' : 'Зберегти'}
-          </Button>
+          editTab === 'main'
+            ? <Button onClick={editingCp ? update : create} loading={saving}>{editingCp ? 'Оновити' : 'Зберегти'}</Button>
+            : null
         }
       >
-        {error && (
-          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
-            {error}
+        {/* Tab bar — тільки при редагуванні */}
+        {editingCp && (
+          <div className="flex gap-0 border-b border-border -mx-6 px-6 mb-5 overflow-x-auto">
+            {(
+              [
+                { key: 'main', label: 'Основне' },
+                { key: 'vehicles', label: 'Авто', count: modalVehicles.length },
+                { key: 'work-orders', label: 'Історія', count: modalWorkOrders.length },
+              ] as { key: typeof editTab; label: string; count?: number }[]
+            ).map(tab => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setEditTab(tab.key)}
+                className={cn(
+                  'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
+                  editTab === tab.key
+                    ? 'text-primary border-primary'
+                    : 'text-muted-foreground border-transparent hover:text-foreground',
+                )}
+              >
+                {tab.label}
+                {tab.count !== undefined && (
+                  <span className={cn(
+                    'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-semibold',
+                    editTab === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground',
+                  )}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
         )}
-        <div className="space-y-4">
-          <Select
-            label="Тип"
-            required
-            value={form.type}
-            onChange={e => { setForm(f => ({ ...f, type: e.target.value })); dirty.markDirty(); }}
-          >
-            {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </Select>
 
-          {form.type !== 'SUPPLIER' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Ім'я"
-                value={form.firstName}
-                onChange={e => { setForm(f => ({ ...f, firstName: e.target.value })); dirty.markDirty(); }}
-                placeholder="Іван"
-              />
-              <Input
-                label="Прізвище"
-                value={form.lastName}
-                onChange={e => { setForm(f => ({ ...f, lastName: e.target.value })); dirty.markDirty(); }}
-                placeholder="Коваль"
-              />
+        {/* ── Вкладка: Основне (або єдина форма при створенні) ── */}
+        {(!editingCp || editTab === 'main') && (
+          <>
+            {error && (
+              <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
+                {error}
+              </div>
+            )}
+            <div className="space-y-4">
+              <Select label="Тип" required value={form.type}
+                onChange={e => { setForm(f => ({ ...f, type: e.target.value })); dirty.markDirty(); }}>
+                {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Select>
+
+              {form.type !== 'SUPPLIER' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Ім'я" value={form.firstName}
+                    onChange={e => { setForm(f => ({ ...f, firstName: e.target.value })); dirty.markDirty(); }}
+                    placeholder="Іван" />
+                  <Input label="Прізвище" value={form.lastName}
+                    onChange={e => { setForm(f => ({ ...f, lastName: e.target.value })); dirty.markDirty(); }}
+                    placeholder="Коваль" />
+                </div>
+              )}
+
+              <Input label="Назва компанії" value={form.companyName}
+                onChange={e => { setForm(f => ({ ...f, companyName: e.target.value })); dirty.markDirty(); }}
+                placeholder="ТОВ «Авто»" />
+
+              <Input label="Телефон" value={form.phone}
+                onChange={e => { setForm(f => ({ ...f, phone: e.target.value })); dirty.markDirty(); }}
+                placeholder="+38 (067) 123-45-67" />
+
+              <Input label="Email" type="email" value={form.email}
+                onChange={e => { setForm(f => ({ ...f, email: e.target.value })); dirty.markDirty(); }} />
+
+              <Input label="ЄДРПОУ" value={form.edrpou}
+                onChange={e => { setForm(f => ({ ...f, edrpou: e.target.value })); dirty.markDirty(); }}
+                placeholder="12345678" />
+
+              <Input label="Контактна особа" value={form.contactPerson}
+                onChange={e => { setForm(f => ({ ...f, contactPerson: e.target.value })); dirty.markDirty(); }}
+                placeholder="Петро Іваненко" />
+
+              <Input label="Нотатки" value={form.notes}
+                onChange={e => { setForm(f => ({ ...f, notes: e.target.value })); dirty.markDirty(); }} />
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={form.vatPayer}
+                  onChange={e => { setForm(f => ({ ...f, vatPayer: e.target.checked })); dirty.markDirty(); }}
+                  className="h-4 w-4 rounded border-border accent-primary" />
+                <span className="text-sm text-foreground">Платник ПДВ</span>
+              </label>
             </div>
-          )}
+          </>
+        )}
 
-          <Input
-            label="Назва компанії"
-            value={form.companyName}
-            onChange={e => { setForm(f => ({ ...f, companyName: e.target.value })); dirty.markDirty(); }}
-            placeholder="ТОВ «Авто»"
-          />
-
-          <Input
-            label="Телефон"
-            value={form.phone}
-            onChange={e => { setForm(f => ({ ...f, phone: e.target.value })); dirty.markDirty(); }}
-            placeholder="+38 (067) 123-45-67"
-          />
-
-          <Input
-            label="Email"
-            type="email"
-            value={form.email}
-            onChange={e => { setForm(f => ({ ...f, email: e.target.value })); dirty.markDirty(); }}
-          />
-
-          <Input
-            label="ЄДРПОУ"
-            value={form.edrpou}
-            onChange={e => { setForm(f => ({ ...f, edrpou: e.target.value })); dirty.markDirty(); }}
-            placeholder="12345678"
-          />
-
-          <Input
-            label="Контактна особа"
-            value={form.contactPerson}
-            onChange={e => { setForm(f => ({ ...f, contactPerson: e.target.value })); dirty.markDirty(); }}
-            placeholder="Петро Іваненко"
-          />
-
-          <Input
-            label="Нотатки"
-            value={form.notes}
-            onChange={e => { setForm(f => ({ ...f, notes: e.target.value })); dirty.markDirty(); }}
-          />
-
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={form.vatPayer}
-              onChange={e => { setForm(f => ({ ...f, vatPayer: e.target.checked })); dirty.markDirty(); }}
-              className="h-4 w-4 rounded border-border accent-primary"
-            />
-            <span className="text-sm text-foreground">Платник ПДВ</span>
-          </label>
-        </div>
-
-        {/* Related objects — only when editing */}
-        {editingCp && (
-          <ModalTabs
-            tabs={[
-              {
-                key: 'vehicles',
-                label: 'Авто',
-                icon: <Car className="h-3.5 w-3.5" />,
-                count: modalVehicles.length,
-                content: (
-                  <div className="space-y-3">
-                    {/* Loading */}
-                    {modalVehiclesLoading && (
-                      <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
-                    )}
-                    {/* Error */}
-                    {!modalVehiclesLoading && vehiclesError && (
-                      <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
-                        {vehiclesError}
-                      </div>
-                    )}
-                    {!modalVehiclesLoading && !vehiclesError && (
-                      <>
-                        {/* Add vehicle toggle */}
-                        <div className="flex items-center justify-between">
-                          <span className="text-[13px] text-muted-foreground">{modalVehicles.length} авто</span>
-                          {!showAddVehicle && (
-                            <Button size="sm" variant="outline" leftIcon={<Plus className="h-3.5 w-3.5" />}
-                              onClick={() => setShowAddVehicle(true)}>
-                              Додати авто
-                            </Button>
-                          )}
-                        </div>
-
-                        {/* Add vehicle form */}
-                        {showAddVehicle && (
-                          <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
-                            <div className="grid grid-cols-2 gap-2">
-                              <Input label="Марка" required value={addVehicleForm.make}
-                                onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))}
-                                placeholder="Toyota" />
-                              <Input label="Модель" required value={addVehicleForm.model}
-                                onChange={e => setAddVehicleForm(f => ({ ...f, model: e.target.value }))}
-                                placeholder="Camry" />
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                              <Input label="Рік" type="number" value={addVehicleForm.year}
-                                onChange={e => setAddVehicleForm(f => ({ ...f, year: e.target.value }))}
-                                placeholder="2020" />
-                              <Input label="Держномер" value={addVehicleForm.licensePlate}
-                                onChange={e => setAddVehicleForm(f => ({ ...f, licensePlate: e.target.value }))}
-                                placeholder="АА 1234 ВС" />
-                              <Input label="VIN" value={addVehicleForm.vin}
-                                onChange={e => setAddVehicleForm(f => ({ ...f, vin: e.target.value }))}
-                                placeholder="WVWZZZ1JZXW000001" />
-                            </div>
-                            <div className="flex gap-2 justify-end">
-                              <Button size="sm" variant="outline" onClick={() => { setShowAddVehicle(false); setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' }); }}>
-                                Скасувати
-                              </Button>
-                              <Button size="sm" onClick={addVehicle} loading={addingVehicle}
-                                disabled={!addVehicleForm.make || !addVehicleForm.model}>
-                                Зберегти
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Vehicles list */}
-                        {modalVehicles.length > 0 && (
-                          <div className="rounded-xl border border-border overflow-hidden">
-                            <table className="w-full text-[13px]">
-                              <thead className="bg-secondary border-b border-border">
-                                <tr>
-                                  <th className="text-left px-3 py-2 text-muted-foreground font-medium">Марка / Модель</th>
-                                  <th className="text-left px-3 py-2 text-muted-foreground font-medium">Держномер</th>
-                                  <th className="text-left px-3 py-2 text-muted-foreground font-medium">Рік</th>
-                                  <th className="w-16" />
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-border">
-                                {modalVehicles.map(v => (
-                                  <tr key={v.id} className="bg-surface hover:bg-secondary/50 transition-colors">
-                                    <td className="px-3 py-2 font-medium text-foreground">{v.make} {v.model}</td>
-                                    <td className="px-3 py-2 text-muted-foreground">{v.licensePlate || '—'}</td>
-                                    <td className="px-3 py-2 text-muted-foreground">{v.year ?? '—'}</td>
-                                    <td className="px-3 py-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => deleteVehicle(v.id)}
-                                        disabled={deletingVehicleId === v.id}
-                                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
-                                        title="Видалити"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                        {modalVehicles.length === 0 && !showAddVehicle && (
-                          <p className="text-[13px] text-muted-foreground text-center py-4">Авто не додано</p>
-                        )}
-                      </>
-                    )}
+        {/* ── Вкладка: Авто ── */}
+        {editingCp && editTab === 'vehicles' && (
+          <div className="space-y-3">
+            {modalVehiclesLoading && (
+              <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
+            )}
+            {!modalVehiclesLoading && vehiclesError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
+                {vehiclesError}
+              </div>
+            )}
+            {!modalVehiclesLoading && !vehiclesError && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] text-muted-foreground">{modalVehicles.length} авто</span>
+                  {!showAddVehicle && (
+                    <Button size="sm" variant="outline" leftIcon={<Plus className="h-3.5 w-3.5" />}
+                      onClick={() => setShowAddVehicle(true)}>
+                      Додати авто
+                    </Button>
+                  )}
+                </div>
+                {showAddVehicle && (
+                  <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input label="Марка" required value={addVehicleForm.make}
+                        onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))} placeholder="Toyota" />
+                      <Input label="Модель" required value={addVehicleForm.model}
+                        onChange={e => setAddVehicleForm(f => ({ ...f, model: e.target.value }))} placeholder="Camry" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input label="Рік" type="number" value={addVehicleForm.year}
+                        onChange={e => setAddVehicleForm(f => ({ ...f, year: e.target.value }))} placeholder="2020" />
+                      <Input label="Держномер" value={addVehicleForm.licensePlate}
+                        onChange={e => setAddVehicleForm(f => ({ ...f, licensePlate: e.target.value }))} placeholder="АА 1234 ВС" />
+                      <Input label="VIN" value={addVehicleForm.vin}
+                        onChange={e => setAddVehicleForm(f => ({ ...f, vin: e.target.value }))} placeholder="WVWZZZ1JZXW000001" />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button size="sm" variant="outline"
+                        onClick={() => { setShowAddVehicle(false); setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' }); }}>
+                        Скасувати
+                      </Button>
+                      <Button size="sm" onClick={addVehicle} loading={addingVehicle}
+                        disabled={!addVehicleForm.make || !addVehicleForm.model}>
+                        Зберегти
+                      </Button>
+                    </div>
                   </div>
-                ),
-              },
-              {
-                key: 'work-orders',
-                label: 'Наряди',
-                icon: <FileText className="h-3.5 w-3.5" />,
-                count: modalWorkOrders.length,
-                content: (
-                  <div className="space-y-3">
-                    {/* Loading */}
-                    {modalWorkOrdersLoading && (
-                      <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
-                    )}
-                    {/* Error */}
-                    {!modalWorkOrdersLoading && woError && (
-                      <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
-                        {woError}
-                      </div>
-                    )}
-                    {/* Empty */}
-                    {!modalWorkOrdersLoading && !woError && modalWorkOrders.length === 0 && (
-                      <p className="text-[13px] text-muted-foreground text-center py-4">Нарядів немає</p>
-                    )}
-                    {/* List */}
-                    {!modalWorkOrdersLoading && !woError && modalWorkOrders.length > 0 && (
-                      <div className="rounded-xl border border-border overflow-hidden">
-                        <table className="w-full text-[13px]">
-                          <thead className="bg-secondary border-b border-border">
-                            <tr>
-                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Номер</th>
-                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Авто</th>
-                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Статус</th>
-                              <th className="text-right px-3 py-2 text-muted-foreground font-medium">Сума</th>
-                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Дата</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border">
-                            {modalWorkOrders.map(wo => (
-                              <tr
-                                key={wo.id}
-                                className="bg-surface hover:bg-secondary/50 transition-colors cursor-pointer"
-                                onClick={() => router.push(`/work-orders/${wo.id}`)}
-                              >
-                                <td className="px-3 py-2 font-mono font-medium text-foreground">{wo.number}</td>
-                                <td className="px-3 py-2 text-muted-foreground">{wo.vehicleSummary || '—'}</td>
-                                <td className="px-3 py-2">
-                                  <Badge variant={WO_STATUS_BADGE[wo.status] ?? 'secondary'} dot>
-                                    {WO_STATUS_LABELS[wo.status] ?? wo.status}
-                                  </Badge>
-                                </td>
-                                <td className="px-3 py-2 text-right text-foreground tabular-nums">
-                                  {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                                </td>
-                                <td className="px-3 py-2 text-muted-foreground">
-                                  {new Date(wo.createdAt).toLocaleDateString('uk-UA')}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
+                )}
+                {modalVehicles.length > 0 && (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    <table className="w-full text-[13px]">
+                      <thead className="bg-secondary border-b border-border">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">Марка / Модель</th>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">Держномер</th>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">Рік</th>
+                          <th className="w-16" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {modalVehicles.map(v => (
+                          <tr key={v.id} className="bg-surface hover:bg-secondary/50 transition-colors">
+                            <td className="px-3 py-2 font-medium text-foreground">{v.make} {v.model}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{v.licensePlate || '—'}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{v.year ?? '—'}</td>
+                            <td className="px-3 py-2">
+                              <button type="button" onClick={() => deleteVehicle(v.id)}
+                                disabled={deletingVehicleId === v.id}
+                                className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
+                                title="Видалити">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ),
-              },
-            ]}
-          />
+                )}
+                {modalVehicles.length === 0 && !showAddVehicle && (
+                  <p className="text-[13px] text-muted-foreground text-center py-8">Авто не додано</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Вкладка: Історія нарядів ── */}
+        {editingCp && editTab === 'work-orders' && (
+          <div className="space-y-3">
+            {modalWorkOrdersLoading && (
+              <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
+            )}
+            {!modalWorkOrdersLoading && woError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
+                {woError}
+              </div>
+            )}
+            {!modalWorkOrdersLoading && !woError && modalWorkOrders.length === 0 && (
+              <p className="text-[13px] text-muted-foreground text-center py-8">Нарядів немає</p>
+            )}
+            {!modalWorkOrdersLoading && !woError && modalWorkOrders.length > 0 && (
+              <div className="rounded-xl border border-border overflow-hidden">
+                <table className="w-full text-[13px]">
+                  <thead className="bg-secondary border-b border-border">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Номер</th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Авто</th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Статус</th>
+                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">Сума</th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Дата</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {modalWorkOrders.map(wo => (
+                      <tr key={wo.id}
+                        className="bg-surface hover:bg-secondary/50 transition-colors cursor-pointer"
+                        onClick={() => router.push(`/work-orders/${wo.id}`)}>
+                        <td className="px-3 py-2 font-mono font-medium text-foreground">{wo.number}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{wo.vehicleSummary || '—'}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant={WO_STATUS_BADGE[wo.status] ?? 'secondary'} dot>
+                            {WO_STATUS_LABELS[wo.status] ?? wo.status}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2 text-right text-foreground tabular-nums">
+                          {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {new Date(wo.createdAt).toLocaleDateString('uk-UA')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         )}
       </Modal>
       <DirtyConfirmDialog {...dirty.dialogProps} />
