@@ -67,6 +67,12 @@ export class CounterpartyQueryDto {
   @ArrayMaxSize(10)
   types?: CounterpartyType[];
 
+  @ApiPropertyOptional({ description: 'Include soft-deleted counterparties' })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  showDeleted?: boolean;
+
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) page: number = 1;
   @ApiPropertyOptional({ default: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit: number = 20;
 }
@@ -93,6 +99,7 @@ export class CounterpartyResponseDto {
   @ApiPropertyOptional() balance?: number;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional({ description: 'Set when soft-deleted (showDeleted=true)' }) deletedAt?: Date | null;
 }
 
 export class PaginatedCounterpartiesDto {

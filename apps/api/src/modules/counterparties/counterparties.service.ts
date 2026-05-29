@@ -19,7 +19,8 @@ export class CounterpartiesService {
         : {};
 
     const where = {
-      orgId, deletedAt: null,
+      orgId,
+      ...(query.showDeleted ? {} : { deletedAt: null }),
       ...typeFilter,
       ...(query.q ? {
         OR: [
@@ -150,7 +151,7 @@ export class CounterpartiesService {
     email: string | null; notes: string | null;
     legalForm: LegalForm | null; legalAddress: string | null; actualAddress: string | null;
     bankAccount: string | null; bankName: string | null; contactPerson: string | null; taxNumber: string | null;
-    createdAt: Date; updatedAt: Date;
+    createdAt: Date; updatedAt: Date; deletedAt?: Date | null;
     settlementAccount: { balance: Prisma.Decimal } | null;
   }, includeEdrpou = false): CounterpartyResponseDto {
     return {
@@ -165,6 +166,7 @@ export class CounterpartiesService {
       contactPerson: item.contactPerson, taxNumber: item.taxNumber,
       balance: item.settlementAccount ? Number(item.settlementAccount.balance) : 0,
       createdAt: item.createdAt, updatedAt: item.updatedAt,
+      deletedAt: item.deletedAt ?? null,
     };
   }
 
