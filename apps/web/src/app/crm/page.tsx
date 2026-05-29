@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
+import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil, Car } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,7 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 import { cn } from '@/lib/utils';
 
 interface Counterparty {
@@ -76,9 +77,19 @@ export default function CrmPage() {
   const { confirm, dialogProps } = useConfirm();
   const detailPanel = useDetailPanel('crm');
 
-  // ── Vehicles for selected counterparty ──────────────────────────────────────
+  // ── Vehicles for selected counterparty (detail panel) ───────────────────────
   const [cpVehicles, setCpVehicles] = useState<{ id: string; make: string; model: string; year: number | null; licensePlate: string }[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
+
+  // ── Vehicles for edit modal ──────────────────────────────────────────────────
+  type Vehicle = { id: string; make: string; model: string; year: number | null; licensePlate: string };
+  const [modalVehicles, setModalVehicles] = useState<Vehicle[]>([]);
+  const [modalVehiclesLoading, setModalVehiclesLoading] = useState(false);
+  const [modalGarageId, setModalGarageId] = useState<string | null>(null);
+  const [addVehicleForm, setAddVehicleForm] = useState({ make: '', model: '', year: '', licensePlate: '', vin: '' });
+  const [addingVehicle, setAddingVehicle] = useState(false);
+  const [showAddVehicle, setShowAddVehicle] = useState(false);
+  const [deletingVehicleId, setDeletingVehicleId] = useState<string | null>(null);
 
   // ── Column visibility ────────────────────────────────────────────────────────
   const CRM_COLUMNS = useMemo(() => [
@@ -226,7 +237,57 @@ export default function CrmPage() {
     });
     dirty.resetDirty();
     setError('');
+    setModalVehicles([]);
+    setShowAddVehicle(false);
+    setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
     setModal(true);
+    // Load vehicles for edit modal
+    setModalVehiclesLoading(true);
+    apiFetch<{ id: string }[]>(`/counterparties/${cp.id}/garages`)
+      .then(garages => {
+        const defaultGarage = garages[0];
+        if (defaultGarage) setModalGarageId(defaultGarage.id);
+        return Promise.all(garages.map(g =>
+          apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}&limit=50`)
+        ));
+      })
+      .then(results => setModalVehicles(results.flat()))
+      .catch(() => {})
+      .finally(() => setModalVehiclesLoading(false));
+  };
+
+  const addVehicle = async () => {
+    if (!modalGarageId || !addVehicleForm.make || !addVehicleForm.model) return;
+    setAddingVehicle(true);
+    try {
+      const created = await apiFetch<Vehicle>('/vehicles', {
+        method: 'POST',
+        body: JSON.stringify({
+          customerGarageId: modalGarageId,
+          make: addVehicleForm.make,
+          model: addVehicleForm.model,
+          year: addVehicleForm.year ? Number(addVehicleForm.year) : undefined,
+          licensePlate: addVehicleForm.licensePlate || undefined,
+          vin: addVehicleForm.vin || undefined,
+        }),
+      });
+      setModalVehicles(v => [...v, created]);
+      setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
+      setShowAddVehicle(false);
+      toast.success('Авто додано');
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setAddingVehicle(false); }
+  };
+
+  const deleteVehicle = async (id: string) => {
+    if (!(await confirm({ title: 'Видалити авто?', variant: 'destructive' }))) return;
+    setDeletingVehicleId(id);
+    try {
+      await apiFetch(`/vehicles/${id}`, { method: 'DELETE' });
+      setModalVehicles(v => v.filter(x => x.id !== id));
+      toast.success('Авто видалено');
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setDeletingVehicleId(null); }
   };
 
   const update = async () => {
@@ -560,6 +621,7 @@ export default function CrmPage() {
         open={modal}
         onClose={handleCloseModal}
         title={editingCp ? 'Редагування контрагента' : 'Новий контрагент'}
+        size={editingCp ? 'lg' : 'md'}
         footer={
           <Button onClick={editingCp ? update : create} loading={saving}>
             {editingCp ? 'Оновити' : 'Зберегти'}
@@ -649,6 +711,109 @@ export default function CrmPage() {
             <span className="text-sm text-foreground">Платник ПДВ</span>
           </label>
         </div>
+
+        {/* Related objects — only when editing */}
+        {editingCp && (
+          <ModalTabs
+            tabs={[
+              {
+                key: 'vehicles',
+                label: 'Авто клієнта',
+                icon: <Car className="h-3.5 w-3.5" />,
+                count: modalVehicles.length,
+                content: (
+                  <div className="space-y-3">
+                    {/* Add vehicle toggle */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] text-muted-foreground">
+                        {modalVehiclesLoading ? 'Завантаження...' : `${modalVehicles.length} авто`}
+                      </span>
+                      {!showAddVehicle && (
+                        <Button size="sm" variant="outline" leftIcon={<Plus className="h-3.5 w-3.5" />}
+                          onClick={() => setShowAddVehicle(true)}>
+                          Додати авто
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Add vehicle form */}
+                    {showAddVehicle && (
+                      <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input label="Марка" required value={addVehicleForm.make}
+                            onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))}
+                            placeholder="Toyota" />
+                          <Input label="Модель" required value={addVehicleForm.model}
+                            onChange={e => setAddVehicleForm(f => ({ ...f, model: e.target.value }))}
+                            placeholder="Camry" />
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <Input label="Рік" type="number" value={addVehicleForm.year}
+                            onChange={e => setAddVehicleForm(f => ({ ...f, year: e.target.value }))}
+                            placeholder="2020" />
+                          <Input label="Держномер" value={addVehicleForm.licensePlate}
+                            onChange={e => setAddVehicleForm(f => ({ ...f, licensePlate: e.target.value }))}
+                            placeholder="АА 1234 ВС" />
+                          <Input label="VIN" value={addVehicleForm.vin}
+                            onChange={e => setAddVehicleForm(f => ({ ...f, vin: e.target.value }))}
+                            placeholder="WVWZZZ1JZXW000001" />
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <Button size="sm" variant="outline" onClick={() => { setShowAddVehicle(false); setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' }); }}>
+                            Скасувати
+                          </Button>
+                          <Button size="sm" onClick={addVehicle} loading={addingVehicle}
+                            disabled={!addVehicleForm.make || !addVehicleForm.model}>
+                            Зберегти
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Vehicles list */}
+                    {!modalVehiclesLoading && modalVehicles.length > 0 && (
+                      <div className="rounded-xl border border-border overflow-hidden">
+                        <table className="w-full text-[13px]">
+                          <thead className="bg-secondary border-b border-border">
+                            <tr>
+                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Марка / Модель</th>
+                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Держномер</th>
+                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Рік</th>
+                              <th className="w-16" />
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {modalVehicles.map(v => (
+                              <tr key={v.id} className="bg-surface hover:bg-secondary/50 transition-colors">
+                                <td className="px-3 py-2 font-medium text-foreground">{v.make} {v.model}</td>
+                                <td className="px-3 py-2 text-muted-foreground">{v.licensePlate || '—'}</td>
+                                <td className="px-3 py-2 text-muted-foreground">{v.year ?? '—'}</td>
+                                <td className="px-3 py-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteVehicle(v.id)}
+                                    disabled={deletingVehicleId === v.id}
+                                    className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
+                                    title="Видалити"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {!modalVehiclesLoading && modalVehicles.length === 0 && !showAddVehicle && (
+                      <p className="text-[13px] text-muted-foreground text-center py-4">Авто не додано</p>
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        )}
       </Modal>
       <DirtyConfirmDialog {...dirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />

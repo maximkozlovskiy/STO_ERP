@@ -654,6 +654,65 @@ useEffect(() => {
 
 ---
 
+## ModalTabs — паттерн для довідників з 1→N зв'язками
+
+Коли сутність-довідник має дочірні колекції (авто клієнта, зони/підйомники співробітника, рядки замовлення) — розміщуй їх у вкладках внизу модальної форми через `ModalTabs`.
+
+**Компонент:** `apps/web/src/components/ui/modal-tabs.tsx`
+
+```tsx
+import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
+
+// Застосовується тільки при редагуванні (editingItem != null)
+// Modal розширюється до size="lg"
+<Modal size={editingItem ? 'lg' : 'md'} ...>
+  <div className="space-y-4">
+    {/* Основні поля форми */}
+  </div>
+
+  {/* Вкладки пов'язаних об'єктів — тільки при редагуванні */}
+  {editingItem && (
+    <ModalTabs
+      tabs={[
+        {
+          key: 'vehicles',
+          label: 'Авто клієнта',
+          icon: <Car className="h-3.5 w-3.5" />,
+          count: vehicles.length,          // badge з кількістю
+          content: <VehiclesTabContent />, // inline JSX або компонент
+        },
+        {
+          key: 'zones',
+          label: 'Зони та підйомники',
+          count: zoneIds.length + liftIds.length,
+          content: (
+            <div className="grid grid-cols-2 gap-4">
+              <CheckboxList ... />
+              <CheckboxList ... />
+            </div>
+          ),
+        },
+      ]}
+    />
+  )}
+</Modal>
+```
+
+**Правила паттерну:**
+- `Modal size="lg"` при редагуванні (більше місця для вкладок)
+- `Modal size="md"` при створенні (вкладки не показуються)
+- `ModalTabs` рендерується тільки `{editingItem && <ModalTabs ... />}`
+- `count` — показує кількість пов'язаних об'єктів у badge вкладки
+- `icon` — опційна lucide іконка перед текстом вкладки
+- Завантаження дочірніх об'єктів — в `openEdit()`, не у useEffect
+- Збереження дочірніх об'єктів — у `save()` разом з основним PATCH
+
+**Де застосовано:**
+- `crm/page.tsx` — редагування контрагента → вкладка "Авто клієнта"
+- `employees/page.tsx` — редагування співробітника → вкладки "Зони/Підйомники", "Категорії", "Філії"
+
+---
+
 ## Checklist для нової list-сторінки
 
 - [ ] `useRequireAuth(['OWNER', 'ADMIN', ...])` — перший рядок компоненту

@@ -31,6 +31,7 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
+import { ModalTabs } from '@/components/ui/modal-tabs';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
@@ -164,7 +165,10 @@ export default function EmployeesPage() {
   const [assignedBranches, setAssignedBranches] = useState<string[]>([]);
   const [allBranches, setAllBranches] = useState(false);
 
-  // Edit modal branch state
+  // Edit modal assignment state
+  const [editZoneIds, setEditZoneIds] = useState<string[]>([]);
+  const [editLiftIds, setEditLiftIds] = useState<string[]>([]);
+  const [editWorkCatIds, setEditWorkCatIds] = useState<string[]>([]);
   const [editBranchIds, setEditBranchIds] = useState<string[]>([]);
   const [editAllBranches, setEditAllBranches] = useState(false);
 
@@ -379,6 +383,9 @@ export default function EmployeesPage() {
       fixedMonthly: rs?.type === 'fixed_plus_bonus' ? String(rs.params.fixedMonthly ?? 0) : '0',
       bonusPercent: rs?.type === 'fixed_plus_bonus' ? String(rs.params.bonusPercent ?? 10) : '10',
     });
+    setEditZoneIds(emp.zoneIds ?? []);
+    setEditLiftIds(emp.liftIds ?? []);
+    setEditWorkCatIds(emp.workCategoryIds ?? []);
     setEditBranchIds(emp.branchIds ?? []);
     setEditAllBranches(emp.allBranches ?? false);
     setEditError('');
@@ -417,11 +424,16 @@ export default function EmployeesPage() {
           rateScheme,
         }),
       });
-      // Save branch assignments
-      await apiFetch<void>(`/employees/${editEmp.id}/branches`, {
-        method: 'POST',
-        body: JSON.stringify({ branchIds: editAllBranches ? [] : editBranchIds, allBranches: editAllBranches }),
-      });
+      // Save all assignments in parallel
+      await Promise.all([
+        apiFetch<void>(`/employees/${editEmp.id}/branches`, {
+          method: 'POST',
+          body: JSON.stringify({ branchIds: editAllBranches ? [] : editBranchIds, allBranches: editAllBranches }),
+        }),
+        apiFetch<void>(`/employees/${editEmp.id}/zones`, { method: 'POST', body: JSON.stringify({ zoneIds: editZoneIds }) }),
+        apiFetch<void>(`/employees/${editEmp.id}/lifts`, { method: 'POST', body: JSON.stringify({ liftIds: editLiftIds }) }),
+        apiFetch<void>(`/employees/${editEmp.id}/work-categories`, { method: 'POST', body: JSON.stringify({ workCategoryIds: editWorkCatIds }) }),
+      ]);
       editDirty.resetDirty();
       setModal(null); setEditEmp(null); load();
     } catch (e: unknown) { setEditError(e instanceof Error ? e.message : 'Помилка збереження'); }
@@ -835,6 +847,7 @@ export default function EmployeesPage() {
         open={modal === 'edit' && !!editEmp}
         onClose={closeEditModal}
         title={editEmp ? `${editEmp.lastName} ${editEmp.firstName}` : ''}
+        size="lg"
         footer={
           <>
             <Button onClick={saveEditEmp} loading={editSaving} disabled={!editForm.firstName || !editForm.lastName}>
@@ -880,44 +893,54 @@ export default function EmployeesPage() {
               <Input label="Бонус, %" type="number" value={editForm.bonusPercent} onChange={e => { setEditForm(f => ({ ...f, bonusPercent: e.target.value })); editDirty.markDirty(); }} />
             </div>
           )}
-          {branches.length > 0 && (
-            <div className="space-y-2">
-              <label className="block text-[13px] font-medium text-foreground">Доступ до філій</label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={editAllBranches}
-                  onChange={e => { setEditAllBranches(e.target.checked); editDirty.markDirty(); }}
-                  className="rounded border-border"
-                />
-                <span className="text-[13px] text-foreground">Доступ до всіх філій</span>
-              </label>
-              {!editAllBranches && (
-                <div className="space-y-1.5 max-h-40 overflow-y-auto border border-border rounded-lg p-2">
-                  {branches.map(branch => (
-                    <label key={branch.id} className="flex items-center gap-2 text-sm cursor-pointer px-1 py-0.5 hover:bg-secondary rounded">
-                      <input
-                        type="checkbox"
-                        checked={editBranchIds.includes(branch.id)}
-                        onChange={e => {
-                          setEditBranchIds(prev =>
-                            e.target.checked
-                              ? [...prev, branch.id]
-                              : prev.filter(id => id !== branch.id),
-                          );
-                          editDirty.markDirty();
-                        }}
-                        className="rounded border-border text-primary focus:ring-ring"
-                      />
-                      <span className="text-foreground">{branch.name}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-              <p className="text-[12px] text-muted-foreground">OWNER та ADMIN мають доступ до всіх філій автоматично.</p>
-            </div>
-          )}
         </div>
+
+        {/* Related assignments — tabs at bottom */}
+        <ModalTabs
+          tabs={[
+            {
+              key: 'zones',
+              label: 'Зони та підйомники',
+              count: (editEmp?.zoneIds.length ?? 0) + (editEmp?.liftIds.length ?? 0),
+              content: (
+                <div className="grid grid-cols-2 gap-4">
+                  <CheckboxList label="Зони" items={zones} selected={editZoneIds}
+                    onChange={ids => { setEditZoneIds(ids); editDirty.markDirty(); }} />
+                  <CheckboxList label="Підйомники" items={lifts} selected={editLiftIds}
+                    onChange={ids => { setEditLiftIds(ids); editDirty.markDirty(); }} />
+                </div>
+              ),
+            },
+            {
+              key: 'categories',
+              label: 'Категорії робіт',
+              count: editEmp?.workCategoryIds.length ?? 0,
+              content: (
+                <CheckboxList label="" items={flatCats} selected={editWorkCatIds}
+                  onChange={ids => { setEditWorkCatIds(ids); editDirty.markDirty(); }} />
+              ),
+            },
+            ...(branches.length > 0 ? [{
+              key: 'branches',
+              label: 'Філії',
+              content: (
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={editAllBranches}
+                      onChange={e => { setEditAllBranches(e.target.checked); editDirty.markDirty(); }}
+                      className="rounded border-border" />
+                    <span className="text-[13px] text-foreground">Доступ до всіх філій</span>
+                  </label>
+                  {!editAllBranches && (
+                    <CheckboxList label="" items={branches} selected={editBranchIds}
+                      onChange={ids => { setEditBranchIds(ids); editDirty.markDirty(); }} />
+                  )}
+                  <p className="text-[12px] text-muted-foreground">OWNER та ADMIN мають доступ до всіх філій автоматично.</p>
+                </div>
+              ),
+            }] : []),
+          ]}
+        />
       </Modal>
       <DirtyConfirmDialog {...createDirty.dialogProps} />
       <DirtyConfirmDialog {...editDirty.dialogProps} />
