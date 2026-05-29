@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-(pending) fix(tester): Bug #177 — stub ResizeObserver/IntersectionObserver in jsdom setup (web-suite green 148/148)
+8491975 fix(tester): Bug #177 — stub ResizeObserver/IntersectionObserver in jsdom setup
 f2410ae docs(skills,memory): record close-rAF id-capture + unmount cleanup pattern in sto-review
 a6f9aea fix(review): cancel close-rAF + cleanup form hide-timer/rAF on unmount in calendar
 b5add44 feat(ui): export AnimatedBody, apply ResizeObserver height to calendar form, document §14.4
@@ -94,9 +94,23 @@ f040cde perf(db): 5 composite indexes
 923aea5 perf(api): Redis cache for reference data (5 min TTL)
 ```
 
-Дата: 2026-05-29
+Дата: 2026-05-30
 
 ---
+
+## UI: AnimatedBody — плавна зміна висоти Modal (b5add44+607bfd2)
+
+`apps/web/src/components/ui/modal.tsx` — `AnimatedBody` тепер **export**.
+
+**Паттерн:** outer div з `overflow:hidden` + `transition:height 260ms` анімується через `ResizeObserver` на inner div. Висота встановлюється миттєво при mount (`transition:none` → rAF → re-enable), щоб не конфліктувати з `zoom-in-95` відкриття.
+
+**Де застосований:**
+- Modal body — автоматично (всі `<Modal>` у проекті)
+- `calendar/page.tsx` — форма нового слоту (замінено `maxHeight:'900px'` magic)
+
+**Gotcha — jsdom (Bug #177, 8491975):** `ResizeObserver` відсутній у jsdom → 9/10 modal.test.tsx падали. Фікс: noop-стаб у `apps/web/src/__tests__/setup.ts`. Правило: будь-який новий browser API у `components/ui/` потребує jsdom-стабу.
+
+**Gotcha — close-rAF (a6f9aea):** `requestAnimationFrame` без id-capture → rapid toggle писав `height:0` поверх відкритої форми. Фікс: `formCloseRafRef = useRef<number|null>(null)` + `cancelAnimationFrame` на старті toggle + unmount cleanup.
 
 ## UI: CRM edit modal — вкладка «Наряди» (613aef7)
 
