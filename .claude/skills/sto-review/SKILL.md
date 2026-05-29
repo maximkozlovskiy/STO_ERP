@@ -454,11 +454,17 @@ grep -rn "saving\b" apps/web/src/app/ --include="*.tsx" | grep "useState(false)"
 
 # Paired display-name FK — обидва не скидаються разом
 grep -rnE "setForm\(.*Id: ['\"]['\"]" apps/web/src/app/ --include="*.tsx"
+
+# Event-handler fetch (openEdit/openCard/onSelect) що setState після resolve — без request-token guard
+grep -rnE "const (open|load|select|fetch)[A-Z][A-Za-z]* = (async )?\(" apps/web/src/app/ --include="*.tsx" -A30 \
+  | grep -E "apiFetch" | head -20
+# Для кожного handler-fetch: re-виклик для іншого id → перевірити token-ref/AbortController + reset похідного стану на старті
 ```
 - [ ] Кожен list-fetch: `setLoading(true)` перед; `.catch(setError)`; `.finally(() => setLoading(false))`; `{!loading && items.length===0 && <EmptyState/>}`
 - [ ] `saving: boolean` → `savingId: string | null` (per-row, не глобальний)
 - [ ] `error` page-level ≠ `formError` (не перезаписувати)
 - [ ] Paired FK state (`counterpartyId` + `counterpartyDisplayName`) → скидати **обидва** на onClose/POST success/onClear
+- [ ] Fetch у **обробнику події** (`openEdit`/`openCard`/`onSelect`, не `useEffect`) що `setState` після resolve → request-token ref (`++ref.current`; `if (ref.current !== reqId) return` перед кожним setState) бо `cancelled`-flag з useEffect тут не спрацьовує; **+ скинути похідний стан** (`garageId`, обраний рядок) на старті handler — інакше stale id на fetch-failure → мутація йде у чужу сутність
 
 #### §8.2.1 Select race
 ```bash
@@ -805,6 +811,17 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 **Підхід до фіксу:** (1) `const ac = new AbortController(); ref.current?.abort(); ref.current = ac;` на старті loader; передати `{ signal: ac.signal }` у кожен apiFetch; `if (ac.signal.aborted) return` перед setState. (2) cap довжину масиву (`while (cur <= end && n < MAX_N)`); clamp будь-який знаменник що залежить від days до того ж cap; UI-підказка коли діапазон обрізано
 **Критичність:** IMPORTANT — stale-data race + потенційне перевантаження (degradation без помилки)
 **Де шукати ще:** calendar month/stats, будь-який per-day/per-id loader; bulk-prefetch на dashboard
+
+---
+
+### 2026-05-29 — event-handler fetch без request-token + stale похідний id — §8.2 UI Стани
+
+**Сигнал:** `openEdit(item)` / `openCard` / `onSelect` (обробник події, НЕ useEffect) робить `apiFetch(...).then(setState)`; при повторному відкритті для іншого id попередній in-flight fetch резолвиться пізніше й перезаписує стан. Додатково: похідний стан (`modalGarageId`, обраний рядок) не скидається на старті handler → на fetch-failure лишається id попередньої сутності
+**Причина виникнення:** `cancelled`-flag патерн (§3.1) застосовний лише у useEffect (cleanup на unmount/dep-change); у event-handler немає cleanup-hook → розробник копіює fetch без жодного guard. Stale похідний id особливо небезпечний: наступна мутація (`addVehicle`) POST-ить у гараж ПОПЕРЕДНЬОГО контрагента
+**Підхід до виявлення:** grep `const (open|load|select)[A-Z]\w* = (async )?\(` + наявність apiFetch у тілі → перевірити token-ref guard перед кожним setState + reset похідного стану на першому рядку handler
+**Підхід до фіксу:** `const reqId = ++ref.current;` на старті; `if (ref.current !== reqId) return` перед кожним `.then(setState)`/`.finally`; скинути всі похідні id (`setModalGarageId(null)`) до fetch
+**Критичність:** IMPORTANT — stale-data race + крос-сутнісна мутація на fetch-failure (degradation/data corruption без TS/runtime помилки)
+**Де шукати ще:** будь-яка edit/detail модалка що довантажує під-ресурси по кліку; picker що fetch-ить деталі обраного; master-detail з ledзінню child-колекцій
 
 ---
 

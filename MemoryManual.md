@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+e69bf1e fix(review): guard CRM edit-modal vehicle fetch against stale-CP race
+6b886ae feat(crm,employees): ModalTabs component + assignments in edit modal
 cc44f73 fix(sync): align counterparties API with frontend showDeleted + deletedAt contract
 921afb7 refactor(useDirtyForm): confirmClose returns Promise<boolean>, adds dialogProps
 2a874fb fix(po,sd,wo): async confirmClose + DirtyConfirmDialog
@@ -85,7 +87,14 @@ f040cde perf(db): 5 composite indexes
 Дата: 2026-05-29
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api) — після sync fix counterparties (cc44f73)
+TypeScript: ✅ 0 errors (web + api) — після CRM stale-fetch race-guard (e69bf1e)
+Latest review: 2026-05-29 (auto, HEAD e69bf1e) — modal-tabs.tsx + crm/employees ModalTabs + counterparties showDeleted/deletedAt. 1 Important fix (CRM edit-modal vehicle fetch race + stale modalGarageId). Backend DTO/service вже коректні після cc44f73 (showDeleted @Transform, orgId зберігається при showDeleted=true, toDto включає deletedAt).
+
+## UI: ModalTabs — нижній таб-секція модалок для 1→N зв'язків (6b886ae)
+
+`apps/web/src/components/ui/modal-tabs.tsx` — SSR-safe (no window/document), кнопки `type="button"`, canonical Tailwind tokens (border-border, text-primary, bg-secondary). Використовується у crm (Авто клієнта) та employees (Зони/Підйомники/Категорії/Філії) edit-модалках. `key={tab.key}` стабільний.
+
+**CRM edit-modal gotcha (e69bf1e):** `openEdit` робить fetch гаражів+авто в обробнику події (не useEffect) → потрібен request-token ref щоб повільніший fetch попереднього CP не перезаписав поточний; `modalGarageId` скидати на `null` при відкритті (інакше addVehicle POST-ить у чужий гараж при fetch failure).
 
 ## UI: useDirtyForm — async confirmClose + DirtyConfirmDialog (921afb7)
 
