@@ -514,9 +514,16 @@ export default function CalendarPage() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  // rAF id for close-collapse so we can cancel on rapid re-open / unmount
+  const formCloseRafRef = useRef<number | null>(null);
+
   // Animate form open/close: mount → next paint → visible (spring in); hide → transition → unmount
   useEffect(() => {
     if (formHideTimerRef.current) clearTimeout(formHideTimerRef.current);
+    if (formCloseRafRef.current !== null) {
+      cancelAnimationFrame(formCloseRafRef.current);
+      formCloseRafRef.current = null;
+    }
     if (showAdd) {
       setFormMounted(true);
       // double-rAF ensures the browser has painted the initial hidden state before animating in
@@ -526,7 +533,8 @@ export default function CalendarPage() {
       const outer = formCollapseRef.current;
       if (outer) {
         outer.style.height = `${outer.scrollHeight}px`; // pin current height
-        requestAnimationFrame(() => {
+        formCloseRafRef.current = requestAnimationFrame(() => {
+          formCloseRafRef.current = null;
           if (formCollapseRef.current) {
             formCollapseRef.current.style.transition = 'height 320ms cubic-bezier(0.4,0,0.6,1), margin-bottom 320ms cubic-bezier(0.4,0,0.6,1)';
             formCollapseRef.current.style.height = '0px';
@@ -539,16 +547,28 @@ export default function CalendarPage() {
     }
   }, [showAdd]);
 
-  // ResizeObserver: keep form collapse wrapper height in sync with actual content
+  // Component-level cleanup: cancel pending hide-timer + close-rAF on unmount
+  useEffect(() => () => {
+    if (formHideTimerRef.current) {
+      clearTimeout(formHideTimerRef.current);
+      formHideTimerRef.current = null;
+    }
+    if (formCloseRafRef.current !== null) {
+      cancelAnimationFrame(formCloseRafRef.current);
+      formCloseRafRef.current = null;
+    }
+  }, []);
+
+  // ResizeObserver: keep form collapse wrapper height in sync with actual content.
+  // Re-bound when formVisible flips so the latest value is captured (no stale closure).
   useEffect(() => {
     if (!formMounted) return;
-    const outer = formCollapseRef.current;
     const inner = formInnerRef.current;
-    if (!outer || !inner) return;
+    if (!inner) return;
     const ro = new ResizeObserver(() => {
-      if (!formCollapseRef.current || !formInnerRef.current) return;
-      // Only update if form is visible (not collapsing)
-      if (formVisible) {
+      // Only update if form is visible (not collapsing) — close branch owns the height
+      if (!formVisible) return;
+      if (formCollapseRef.current && formInnerRef.current) {
         formCollapseRef.current.style.height = `${formInnerRef.current.scrollHeight}px`;
       }
     });
