@@ -238,7 +238,6 @@ export default function CrmPage() {
       await apiFetch(`/counterparties/${editingCp.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          type: form.type,
           firstName: form.firstName || undefined,
           lastName: form.lastName || undefined,
           companyName: form.companyName || undefined,
