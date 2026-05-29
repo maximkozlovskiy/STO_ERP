@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+c353de7 fix(tester): Bugs #182-#183 — @IsObject on DTO value field + user-preferences contract spec
 5d003e4 feat(panel): configurable detail panel — UserPreference DB + API + useDetailPanelConfig hook + CRM/Employees
 aa7ca6e feat(ui): AnimatedBody on all inline form sections — smooth expand animation
 21587cf fix(tester): Bug #181 — brands fetch shape mismatch ({ items } not Brand[])
@@ -208,7 +209,8 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 **Gotcha — CurrentUser decorator:** повертає `AuthenticatedUser` з полем `id` (не `sub`). `sub` є у `JwtPayload` але контролери отримують `AuthenticatedUser` після `validate()`.
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api + shared) — після 5d003e4 configurable detail panel
+TypeScript: ✅ 0 errors (web + api + shared) — після c353de7
+Latest tester: 2026-05-30 (AUTO, HEAD 5d003e4 → c353de7) — Етап D configurable detail panel. **2 баги виправлено.** #182 HIGH — `UpsertUserPreferenceDto.value` поле без `@IsObject()` → whitelist:true знімав його з body → `dto.value === undefined` → Prisma записувала `undefined`. Фікс: `@IsObject()` на `value`. #183 MEDIUM — відсутній `user-preferences.contract.spec.ts` → +7 тестів (GET 200/{key,value}/empty/403, PUT 204/400-missing/400-non-object/403). Після фіксів: tsc 0 errors, 369/369 API tests + 148/148 web tests.
 Latest tester: 2026-05-30 (AUTO, HEAD aa7ca6e) — AnimatedBody inline forms Етап C. **0 нових багів у scope.** 6 секцій у 5 файлах анімовані: showAddNode+showAddSchedule (vehicles/[id]), showInspection (work-orders/[id]), showAddVehicle (crm/page), showAddBarcode (catalog/page), showAddGarage (crm/[id]). ResizeObserver вже застабований (Bug #177). API 362/362 + Web 148/148 baseline ✅.
 Previous tester: 2026-05-30 (AUTO, HEAD 21a356e → 21587cf)
 Latest review: 2026-05-30 (auto, HEAD fdcf7ea → 23bf19c) — pricing brand+COST_TIER backend. 2 Important fixes: (1) `cleanValuesForType` не мав `case 'COST_TIER'` → при збереженні COST_TIER правила старі `percentValue`/`fixedAmount`/`fixedPrice` лишались у БД; (2) `$transaction(async tx)` для replace-semantics тірів без `{ timeout: 10_000 }`. 1 IMPORTANT структурне: `@@index([orgId, brandId])` відсутній у PricingRule (нове FK поле без індексу). Всі виправлено у 23bf19c. tsc 0 errors, 357/357 tests.
