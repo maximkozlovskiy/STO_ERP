@@ -9,6 +9,16 @@
 ## Останній commit
 
 ```
+921afb7 refactor(useDirtyForm): confirmClose returns Promise<boolean>, adds dialogProps
+2a874fb fix(po,sd,wo): async confirmClose + DirtyConfirmDialog
+ca77bec fix(crm,employees,invoices): async confirmClose + DirtyConfirmDialog
+70487cd fix(catalog): async confirmClose + DirtyConfirmDialog
+1f260e1 fix(crm): remove type from PATCH body — UpdateCounterpartyDto does not accept it
+4968a88 docs(skills): update sto-web with visibleColumns.map pattern as standard
+da693b7 refactor(ui): useTableColumns owns order+labels, ColumnsDropdown is pure UI
+798c0cb refactor(work-orders,catalog): dynamic column order via visibleColumns.map
+f529d0f feat(ui): detail panel system — useDetailPanel, DetailPanelToggle, tabs + PanelField
+3fba789 feat(ui): column configurator, crm edit, panel tabs height
 dfd5c3e fix(review): align catalog ColumnsDropdown with ml-auto like work-orders
 3a11f60 feat(catalog): column visibility management — 3 tabs (works/goods/services), independent useTableColumns keys
 4b77c87 feat(catalog): savedFilters + bulkActions + unsavedGuard
@@ -74,7 +84,128 @@ f040cde perf(db): 5 composite indexes
 Дата: 2026-05-29
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api) — після column management на 6 сторінках (83d88c4)
+TypeScript: ✅ 0 errors (web + api) — після useDirtyForm async refactor (921afb7)
+
+## UI: useDirtyForm — async confirmClose + DirtyConfirmDialog (921afb7)
+
+`useDirtyForm` переписаний — `confirmClose()` тепер `Promise<boolean>`, не `boolean`.
+
+**Що змінилось:**
+- `confirmClose(): Promise<boolean>` — показує власний `ConfirmDialog`, не `window.confirm()`
+- `dialogProps: { open, onConfirm, onCancel }` — spread на `<DirtyConfirmDialog>`
+- Новий компонент `apps/web/src/components/ui/dirty-confirm-dialog.tsx`
+
+**Паттерн використання:**
+```ts
+const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+
+// В функціях — await:
+const closeModal = async () => {
+  if (!(await dirty.confirmClose())) return;
+  setShowModal(false);
+};
+
+// В Modal onClose — async arrow:
+onClose={async () => { if (!(await dirty.confirmClose())) return; setModal(false); }}
+
+// В JSX — додати компонент:
+<DirtyConfirmDialog {...dirty.dialogProps} />
+```
+
+**Gotcha:** `onClose` пропc Modal — тип `() => void`, але async arrow `async () => void` сумісний (Promise<void> assignable to void). TypeScript не скаржиться.
+
+**Файли оновлені:** catalog, crm, employees, invoices, purchase-orders, stock-documents, work-orders/[id]/PageClient
+
+---
+
+## UI: Бокова інформаційна панель — detail panel system (f529d0f)
+
+**Нові хуки/компоненти:**
+- `apps/web/src/hooks/useDetailPanel.ts` — `useDetailPanel(key)` → `{ enabled, toggle }`, зберігає в localStorage
+- `apps/web/src/components/ui/detail-panel-toggle.tsx` — `<DetailPanelToggle>` кнопка поруч з `ColumnsDropdown`
+- `DetailPanel` оновлений — `tabs?: DetailPanelTab[]`, `subtitle?`, відступ `ml-3 rounded-xl border`
+- `PanelField` / `PanelSection` — хелпери для вмісту панелі
+
+**Паттерн:**
+```tsx
+const detailPanel = useDetailPanel('page-key');
+// В рядку фільтрів:
+<div className="flex items-center gap-2 ml-auto">
+  <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+  <ColumnsDropdown ... />
+</div>
+// Клік на рядок — тільки якщо enabled:
+onClick={() => { if (detailPanel.enabled) setSelected(item); }}
+// Панель:
+<DetailPanel open={!!selected && detailPanel.enabled} title={...} tabs={buildTabs(selected)} ... />
+```
+
+**По сторінках:**
+| Сторінка | Вкладки панелі |
+|---|---|
+| employees | Основне · Зони/Підйомники |
+| crm | Основне · Авто (реальні авто клієнта з API) |
+| invoices | Основне · Позиції |
+| purchase-orders | Основне · Позиції |
+| stock-documents | Основне · Позиції |
+| catalog/works | Основне |
+| catalog/goods | Основне · ШК · Партії (існуючі вкладки) |
+| catalog/services | Основне · Роботи (N) · Товари (N) |
+
+---
+
+## UI: Конфігуратор колонок — useTableColumns рефакторинг (da693b7)
+
+**Архітектурне рішення:** `useTableColumns` є єдиним власником порядку і назв колонок. `ColumnsDropdown` — чистий UI без localStorage.
+
+**useTableColumns повертає:**
+```ts
+{
+  visibleKeys,    // Set — для допоміжних перевірок
+  visibleColumns, // ← ПО ЦЬОМУ рендерь TableHead і TableCell (порядок і label вже правильні)
+  orderedColumns, // ← ЦЕ передавай в ColumnsDropdown
+  order, customLabels,
+  toggle, reorder, renameColumn, resetConfig
+}
+```
+
+**localStorage keys:** `sto_columns_<key>` (visible), `sto_col_order_<key>`, `sto_col_labels_<key>`
+
+**ColumnsDropdown props:**
+```tsx
+<ColumnsDropdown
+  columns={orderedColumns}        // НЕ COLUMNS — вже з user order і label
+  visibleKeys={colVisible}
+  onToggle={toggleCol}
+  onReorder={reorder}
+  onRename={renameColumn}
+  onReset={resetConfig}
+  hasCustomization={JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
+/>
+```
+
+**❌ Старий паттерн (не використовувати):**
+```tsx
+{colVisible.has('name') && <TableHead>Назва</TableHead>}
+colSpan={colVisible.size + ...}
+```
+
+**✅ Новий паттерн:**
+```tsx
+{visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+{visibleColumns.map(col => { if (col.key==='name') return <TableCell key="name">...</TableCell>; return null; })}
+colSpan={visibleColumns.length + ...}
+```
+
+---
+
+## Gotcha — UpdateCounterpartyDto не має поля type (1f260e1)
+
+`UpdateCounterpartyDto` не містить `type` — тип контрагента immutable після створення.
+`forbidNonWhitelisted: true` → 400 якщо передаєш `type` в PATCH `/counterparties/:id`.
+**Рішення:** прибрати `type` з тіла PATCH запиту.
+
+---
 
 ## UI: Управління колонками — розповсюджено на 6 сторінок (2026-05-29)
 
