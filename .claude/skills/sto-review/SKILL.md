@@ -83,6 +83,12 @@ grep -rn "\[var(--\|(--color-" apps/web/src/ --include="*.tsx" --include="*.ts"
 # Tailwind 4 — inline HSL (не перемикається в dark mode)
 grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app apps/web/src/components --include="*.tsx"
 
+# Inline style з rgba(var(--X-rgb)) / hsl(var(--X)) — звірити що CSS var РЕАЛЬНО існує у globals.css.
+# Токени --color-* зберігаються як hsl()/var() цілісні значення, НЕ як rgb/hsl-триплети →
+# rgba(var(--color-primary), a) мовчки падає на fallback (або transparent). Тема-aware фарба з alpha = color-mix().
+grep -rnE "rgba\(var\(--|hsla?\(var\(--" apps/web/src/ --include="*.tsx" --include="*.ts"
+# Для кожного --X-rgb / --X у rgba(): grep "X" apps/web/src/app/globals.css — якщо немає → CRITICAL/IMPORTANT
+
 # Pixel значення замість Tailwind scale
 grep -rnE "(w|h|top|left|right|bottom|max-w|min-w|p|m|gap)-\[[0-9]+px\]" apps/web/src/ --include="*.tsx"
 
@@ -401,11 +407,16 @@ grep -rn "new Date()\|Date\.now()" apps/web/src/app/ --include="*.tsx" \
 
 # key={i} у re-sortable lists
 grep -rn "key={i}\|key={index}" apps/web/src/app/ --include="*.tsx" | head -10
+
+# Per-item fan-out: Promise.all(days/ids.map(apiFetch)) без cap і без AbortController
+grep -rnE "Promise\.all\(\s*[a-zA-Z]+\.map\(" apps/web/src/app/ --include="*.tsx" -A2 | grep -i "apiFetch" | head -10
+# Для кожного — перевірити (1) cap на довжину масиву (MAX_N), (2) AbortController на зміну параметра
 ```
 - [ ] `new Date()` у render → `useState('')` + `useEffect(() => setX(new Date()), [])`
 - [ ] `key={i}` у списках з filter/sort → `key={item.id}` або stable derived key
 - [ ] Важкі обчислення у render → `useMemo`
 - [ ] `createPortal` → `mounted` guard
+- [ ] `Promise.all(arr.map(apiFetch))` fan-out (per-day/per-id) → (1) cap довжини масиву (`MAX_N`); (2) `AbortController`-ref що `.abort()` попередню партію при зміні параметра + `if (signal.aborted) return` перед setState (інакше race: остання-зарезолвлена партія, не остання-запитана, виграє)
 
 ---
 
@@ -772,6 +783,28 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 **Підхід до фіксу:** `tail -c +4 "$f" > tmp && mv tmp "$f"` для кожного BOM-файлу; перевірити що tsc усе ще 0 errors
 **Критичність:** IMPORTANT — tsc толерує, але ламає деякі JSON/ESM парсери, забруднює git diff, неконсистентно з codebase
 **Де шукати ще:** будь-який масовий sed/replace через PowerShell; коміти що чіпають багато файлів одночасно (validation-renames, import-reorgs)
+
+---
+
+### 2026-05-29 — rgba(var(--X-rgb)) на CSS var якого немає → hardcoded fallback ігнорує тему — §1 TypeScript/Tailwind
+
+**Сигнал:** inline `style={{ backgroundColor: \`rgba(var(--color-primary-rgb, 59,130,246), ${a})\` }}` — `--color-primary-rgb` НЕ існує у globals.css; є лише `--color-primary: hsl(...)` (цілісне hsl-значення, НЕ rgb-триплет)
+**Причина виникнення:** розробник хоче brand-колір з alpha, припускає що існує rgb-триплет варіант токена → пише rgba(var(...)) з «безпечним» числовим fallback; var невизначений → CSS мовчки бере fallback → колір захардкоджений, ігнорує тему й dark mode (жодної TS/runtime помилки, виглядає «майже правильно»)
+**Підхід до виявлення:** grep `rgba\(var\(--|hsla?\(var\(--` у .tsx/.ts → для кожного var звірити з globals.css; токени `--color-*` тримають цілісне hsl()/var(), не триплети → не годяться всередині rgba()/hsla()
+**Підхід до фіксу:** `color-mix(in srgb, var(--color-X) ${round(a*100)}%, transparent)` — тема-aware alpha на реальному токені (Tailwind 4 baseline підтримує color-mix). Inline `style` з цілим токеном (`var(--color-primary)` без alpha) — OK.
+**Критичність:** IMPORTANT — degradation без помилки: фіксований колір, зламаний dark mode/rebrand
+**Де шукати ще:** heatmap/badge/progress-bar з brand-альфою; будь-який rgba(var()) у JS-style або в @layer CSS
+
+---
+
+### 2026-05-29 — Promise.all(days.map(apiFetch)) fan-out без cap і без abort — §7.2 Frontend Performance
+
+**Сигнал:** `await Promise.all(days.map(d => apiFetch(\`/x?date=${d}\`)))` — масив генерується з діапазону дат/масиву id; немає cap на довжину, немає AbortController при зміні параметра (місяць/діапазон)
+**Причина виникнення:** немає range-endpoint на бекенді → розробник fan-out-ить по днях; забуває що (1) custom-діапазон може бути роком (365 паралельних запитів → вичерпання connection pool браузера + перевантаження API); (2) швидке перемикання влаштовує race — стара партія резолвиться ПІСЛЯ нової й перезаписує свіжий стан (виграє остання-зарезолвлена, не остання-запитана); mountedRef рятує лише від unmount, не від switch-race
+**Підхід до виявлення:** grep `Promise\.all\(\s*\w+\.map\(` → перевірити чи всередині apiFetch → звірити cap (MAX_N) + AbortController-ref
+**Підхід до фіксу:** (1) `const ac = new AbortController(); ref.current?.abort(); ref.current = ac;` на старті loader; передати `{ signal: ac.signal }` у кожен apiFetch; `if (ac.signal.aborted) return` перед setState. (2) cap довжину масиву (`while (cur <= end && n < MAX_N)`); clamp будь-який знаменник що залежить від days до того ж cap; UI-підказка коли діапазон обрізано
+**Критичність:** IMPORTANT — stale-data race + потенційне перевантаження (degradation без помилки)
+**Де шукати ще:** calendar month/stats, будь-який per-day/per-id loader; bulk-prefetch на dashboard
 
 ---
 
