@@ -1149,7 +1149,14 @@ export default function CalendarPage() {
     <div className="page-container">
       <div className="page-header mb-6">
         <h1 className="page-title">Календар</h1>
-        <Button onClick={() => { setPendingSlot(null); setShowAdd(v => !v); }}>
+        <Button onClick={() => {
+          setPendingSlot(null);
+          setEditingSlotId(null);
+          setError('');
+          setCpDisplay('');
+          setForm({ liftId: '', employeeId: '', counterpartyId: '', counterpartyDisplay: '', workOrderId: '', workOrderDisplay: '', startAt: '', endAt: '', notes: '', normoHours: '' });
+          setShowAdd(v => !v);
+        }}>
           <Plus className="h-4 w-4" />
           Слот
         </Button>
