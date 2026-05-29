@@ -30,8 +30,9 @@ const sizeWidths: Record<ModalSize, string> = {
 
 const TRANSITION = 'cubic-bezier(0.4,0,0.2,1)';
 
-// Animates its height to always match its content height via ResizeObserver.
-// Eliminates the "jump" when tab content changes size.
+// Animates its height to match content via ResizeObserver.
+// outer: overflow:hidden — clips during transition, no scrollbar flash.
+// inner: holds padding + content, measured via scrollHeight.
 function AnimatedBody({ children, className }: { children: ReactNode; className?: string }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -41,25 +42,28 @@ function AnimatedBody({ children, className }: { children: ReactNode; className?
     const inner = innerRef.current;
     if (!outer || !inner) return;
 
-    // Set initial height without animation
+    // Set initial height instantly (no transition yet — avoids open animation fighting)
+    outer.style.transition = 'none';
     outer.style.height = `${inner.scrollHeight}px`;
+    // Re-enable transition on next frame
+    requestAnimationFrame(() => {
+      if (outerRef.current) outerRef.current.style.transition = `height 260ms ${TRANSITION}`;
+    });
 
     const ro = new ResizeObserver(() => {
-      // Read natural content height, write animated outer height
-      const h = inner.scrollHeight;
-      outer.style.height = `${h}px`;
+      if (outerRef.current && innerRef.current) {
+        outerRef.current.style.height = `${innerRef.current.scrollHeight}px`;
+      }
     });
     ro.observe(inner);
     return () => ro.disconnect();
   }, []);
 
   return (
-    <div
-      ref={outerRef}
-      className={cn('overflow-hidden', className)}
-      style={{ transition: `height 260ms ${TRANSITION}` }}
-    >
-      <div ref={innerRef}>
+    // outer: clips content during animation — no scrollbar flash
+    <div ref={outerRef} style={{ overflow: 'hidden' }}>
+      {/* inner: padding lives here so it's included in scrollHeight measurement */}
+      <div ref={innerRef} className={className}>
         {children}
       </div>
     </div>
@@ -146,8 +150,8 @@ export function Modal({
           </div>
         )}
 
-        {/* Body — height animates smoothly when children change size */}
-        <AnimatedBody className="overflow-y-auto px-6 py-5">
+        {/* Body — height animates smoothly; overflow-y:auto on inner handles tall content */}
+        <AnimatedBody className="overflow-y-auto px-6 py-5 max-h-[calc(90vh-8rem)]">
           {children}
         </AnimatedBody>
 
