@@ -16,10 +16,12 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
-import { DetailPanel } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField, PanelSection, type DetailPanelTab } from '@/components/ui/detail-panel';
+import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
+import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -70,6 +72,11 @@ export default function CrmPage() {
 
   const features = useUiFeatures();
   const { confirm, dialogProps } = useConfirm();
+  const detailPanel = useDetailPanel('crm');
+
+  // ── Vehicles for selected counterparty ──────────────────────────────────────
+  const [cpVehicles, setCpVehicles] = useState<{ id: string; make: string; model: string; year: number | null; licensePlate: string }[]>([]);
+  const [vehiclesLoading, setVehiclesLoading] = useState(false);
 
   // ── Column visibility ────────────────────────────────────────────────────────
   const CRM_COLUMNS = useMemo(() => [
@@ -149,6 +156,18 @@ export default function CrmPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!selectedCp || !detailPanel.enabled) { setCpVehicles([]); return; }
+    setVehiclesLoading(true);
+    apiFetch<{ id: string }[]>(`/counterparties/${selectedCp.id}/garages`)
+      .then(garages => Promise.all(garages.map(g =>
+        apiFetch<{ id: string; make: string; model: string; year: number | null; licensePlate: string }[]>(`/vehicles?customerGarageId=${g.id}&limit=50`)
+      )))
+      .then(results => setCpVehicles(results.flat()))
+      .catch(() => setCpVehicles([]))
+      .finally(() => setVehiclesLoading(false));
+  }, [selectedCp?.id, detailPanel.enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const create = async () => {
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
       setError('Некоректний email'); return;
@@ -202,6 +221,50 @@ export default function CrmPage() {
     cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ') ?? '—';
 
   const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
+
+  const buildCpTabs = (cp: Counterparty): DetailPanelTab[] => [
+    {
+      key: 'info',
+      label: 'Основне',
+      content: (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-1.5">
+            <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>{TYPE_LABELS[cp.type]}</Badge>
+            {cp.vatPayer && <Badge variant="warning">ПДВ</Badge>}
+            {cp.deletedAt && <Badge variant="secondary">видалено</Badge>}
+          </div>
+          <PanelField label="Телефон" value={cp.phone} />
+          <PanelField label="Email" value={cp.email} />
+          <PanelField label="ЄДРПОУ" value={cp.edrpou} />
+          <PanelField label="Баланс" value={
+            <span className={cn('font-semibold', cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground')}>
+              {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+            </span>
+          } />
+        </div>
+      ),
+    },
+    {
+      key: 'vehicles',
+      label: 'Авто',
+      content: vehiclesLoading ? (
+        <div className="flex justify-center py-6"><Spinner size="sm" /></div>
+      ) : cpVehicles.length === 0 ? (
+        <p className="text-[13px] text-muted-foreground">Авто не додано</p>
+      ) : (
+        <div className="space-y-2">
+          {cpVehicles.map(v => (
+            <div key={v.id} className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px]">
+              <p className="font-medium text-foreground">{v.make} {v.model}</p>
+              <p className="text-muted-foreground text-[12px] mt-0.5">
+                {v.year && `${v.year} · `}{v.licensePlate || 'без держномера'}
+              </p>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="page-container">
@@ -267,12 +330,10 @@ export default function CrmPage() {
         >
           {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
         </Button>
-        <ColumnsDropdown
-          columns={CRM_COLUMNS}
-          visibleKeys={colVisible}
-          onToggle={toggleCol}
-          className="ml-auto"
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <ColumnsDropdown columns={CRM_COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
+        </div>
       </div>
 
       {/* Bulk actions */}
@@ -333,12 +394,13 @@ export default function CrmPage() {
                   <TableRow
                     key={cp.id}
                     className={cn(
-                      'cursor-pointer',
+                      'transition-colors',
+                      detailPanel.enabled && 'cursor-pointer',
                       isDeleted && 'opacity-60',
                       selectedCp?.id === cp.id && 'bg-secondary',
                       bulkSelect.isSelected(cp.id) && 'bg-primary/5',
                     )}
-                    onClick={() => setSelectedCp(prev => prev?.id === cp.id ? null : cp)}
+                    onClick={() => { if (detailPanel.enabled) setSelectedCp(prev => prev?.id === cp.id ? null : cp); }}
                   >
                     {features.bulkActionsEnabled && (
                       <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
@@ -422,66 +484,11 @@ export default function CrmPage() {
         </div>
 
         <DetailPanel
-          open={!!selectedCp}
+          open={!!selectedCp && detailPanel.enabled}
           onClose={() => setSelectedCp(null)}
           title={selectedCp ? displayName(selectedCp) : ''}
-        >
-          {selectedCp && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant={TYPE_BADGE[selectedCp.type] ?? 'secondary'}>
-                    {TYPE_LABELS[selectedCp.type]}
-                  </Badge>
-                  {selectedCp.vatPayer && <Badge variant="warning">ПДВ</Badge>}
-                  {selectedCp.deletedAt && <Badge variant="secondary">видалено</Badge>}
-                </div>
-
-                {selectedCp.phone && (
-                  <div>
-                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Телефон</p>
-                    <p className="text-[13px] text-foreground">{selectedCp.phone}</p>
-                  </div>
-                )}
-
-                {selectedCp.email && (
-                  <div>
-                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Email</p>
-                    <p className="text-[13px] text-foreground">{selectedCp.email}</p>
-                  </div>
-                )}
-
-                {selectedCp.edrpou && (
-                  <div>
-                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">ЄДРПОУ</p>
-                    <p className="text-[13px] text-foreground">{selectedCp.edrpou}</p>
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Баланс</p>
-                  <p className={cn(
-                    'text-[14px] font-semibold tabular-nums',
-                    selectedCp.balance < 0 ? 'text-destructive-text' : selectedCp.balance > 0 ? 'text-success-text' : 'text-muted-foreground',
-                  )}>
-                    {selectedCp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-border">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => router.push(`/crm/${selectedCp.id}`)}
-                >
-                  Відкрити картку
-                </Button>
-              </div>
-            </div>
-          )}
-        </DetailPanel>
+          tabs={selectedCp ? buildCpTabs(selectedCp) : undefined}
+        />
       </div>
 
       {/* Create modal */}
