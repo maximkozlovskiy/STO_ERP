@@ -219,6 +219,11 @@ done
 grep -n "healthcheck\|curl\|wget\|/health\|HEALTHCHECK" docker-compose*.yml apps/*/Dockerfile 2>/dev/null
 grep -n "setGlobalPrefix\|app.use('/api" apps/api/src/main.ts
 
+# curl/wget healthcheck на образі що їх НЕ містить (minio/minio, node:*-alpine, distroless)
+# minio/minio має ЛИШЕ mc — НЕ curl/НЕ wget. Емпірична перевірка наявного образу:
+#   docker run --rm --entrypoint sh <image> -c "command -v curl; command -v wget; command -v mc"
+grep -nE "curl|wget" docker-compose*.yml | grep -i "healthcheck\|test:" -A1
+
 # root .dockerignore присутній (COPY . . без нього шле node_modules/.git/.env у контекст)
 test -f .dockerignore && echo ".dockerignore OK" || echo ".dockerignore MISSING"
 grep -c "COPY \. \.\|COPY \./" apps/*/Dockerfile 2>/dev/null
@@ -230,7 +235,7 @@ grep -n "useStaticAssets\|@fastify/static\|express.static" apps/api/src/main.ts
 # PowerShell $PSScriptRoot (порожній при dot-source) без fallback
 grep -rn "PSScriptRoot" scripts/ installer/ 2>/dev/null | grep -v "MyInvocation\|if (\$PSScriptRoot)"
 ```
-- [ ] Кожен compose healthcheck: бінарник є у базовому образі (alpine → НЕ curl; node → `node -e http.get`); шлях узгоджений з `setGlobalPrefix`/proxy-prefix (`/api/health` не `/health`)
+- [ ] Кожен compose healthcheck: бінарник є у базовому образі (alpine → НЕ curl; node → `node -e http.get`; **minio/minio → НЕ curl/НЕ wget, лише `mc` → `["CMD","mc","ready","local"]`**); шлях узгоджений з `setGlobalPrefix`/proxy-prefix (`/api/health` не `/health`). Не довіряти «alpine/curl» евристиці для НЕ-alpine образів (minio, distroless, mongo тощо) — перевіряти емпірично `docker run --rm --entrypoint sh <image> -c "command -v curl wget mc"`
 - [ ] Перевірити blast-radius: сервіси з `depends_on: X: { condition: service_healthy }` не стартують якщо healthcheck X завжди FAIL → CRITICAL
 - [ ] Root `.dockerignore` присутній якщо будь-який Dockerfile робить `COPY . .` (інакше node_modules/.git/.env/out у контексті — повільно + ризик leak)
 - [ ] Build-скрипт не копіює у мертвий шлях (`apps/api/public` коли API не реєструє `@fastify/static`/`useStaticAssets`)
@@ -668,6 +673,15 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 **Severity:** CRITICAL — release-blocker; уся система не піднімається у production.
 **Де шукати ще:** будь-який compose healthcheck на alpine-образі; `Dockerfile` `HEALTHCHECK` директива; `Update.ps1`/installer health-probe; будь-який сервіс за reverse-proxy з префіксом.
 
+### 2026-05-29 — curl/wget healthcheck на НЕ-alpine образі без цих бінарників (minio/minio) → сервіс ніколи не healthy → каскад мертвий — backend, deploy
+
+**Сигнал:** compose healthcheck `["CMD","curl","-f","http://localhost:9000/minio/health/live"]` (або `wget`) на сервісі чий образ — `minio/minio`. Емпірично: `minio/minio:RELEASE.2024-*` має ЛИШЕ `/usr/bin/mc`, НЕ curl, НЕ wget. curl → command-not-found → healthcheck назавжди FAIL → minio `unhealthy` → `api` (depends_on minio: service_healthy) НІКОЛИ не стартує → web→caddy каскад мертвий. Той самий blast-radius, що node-alpine+curl, але пропускається бо minio — НЕ alpine, тому «alpine→немає curl»-евристика на нього не спрацьовує.
+**Причина виникнення:** popular minio docker-compose приклади з мережі досі показують `curl -f /minio/health/live` — копіюється «як є». Раніше старі minio-образи містили curl; сучасні distroless-варіанти його викинули, але healthcheck лишився. Попередня deploy-аудит-сесія перевірила node/alpine образи (Bug #164/#165), але minio пропустила бо не alpine. tsc/unit/`docker compose config` НЕ ловлять (config валідний, бінарник перевіряється лише при реальному `up`).
+**Підхід до виявлення:** для КОЖНОГО compose healthcheck що використовує curl/wget — НЕ покладатись на «alpine vs не-alpine», а емпірично перевірити образ: `docker run --rm --entrypoint sh <image> -c "command -v curl; command -v wget; command -v mc"`. minio/minio, distroless, scratch-based, деякі mongo/redis-варіанти можуть не мати http-клієнта. Перевірити blast-radius: хто `depends_on … service_healthy`?
+**Підхід до фіксу:** для minio — офіційний `["CMD","mc","ready","local"]` (mc бандлиться у server-образі, `local`-alias вбудований у самому контейнері minio — alias-setup НЕ потрібен; перевірено: exit 0 «The cluster is ready»). Запінити образ конкретним RELEASE-тегом для offline-відтворюваності (latest може знову змінити набір бінарників). Для інших образів без http-клієнта — TCP-probe або вбудований інструмент образу.
+**Severity:** CRITICAL — release-blocker; уся production-топологія не піднімається.
+**Де шукати ще:** будь-який compose healthcheck з curl/wget на НЕ-node образі (minio, mongo, elasticsearch, distroless); `docker-compose.dev.yml` (часто копія prod healthcheck — фіксити ОБИДВА); installer health-probe; будь-який майбутній сервіс який додають з copy-paste healthcheck.
+
 ### 2026-05-29 — Query-shape фікс (relation-ім'я / nested where) без service-spec → невидима регресія — backend, test-coverage
 
 **Сигнал:** fix-commit (часто з повідомленням «fix PrismaClientValidationError on search») змінює **relation-ім'я** у вкладеному `where` (`customerGarage`→`customerGarages`, singular→plural), форму `some`/`every`/`OR`, або `include`/`select` shape. Прод-код тепер коректний, але парного **service-spec немає** — є лише `*.contract.spec.ts`, який реєструє `{ provide: XService, useValue: serviceMock }`. Mock повністю заміняє сервіс → реальний `where` ніколи не доходить до Prisma → регресія назад до неправильного relation-імені пройде всі тести зеленими і впаде тільки на runtime з 500/`PrismaClientValidationError`.
@@ -824,7 +838,7 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 - ✅ Security headers (X-Content-Type-Options, X-Frame-Options, HSTS via @fastify/helmet@11)
 - ✅ SSRF guard: webhooks.processor (validatePublicUrl + redirect: 'manual')
 - ✅ ArrayMaxSize: inspection.dto, webhook payload
-- ✅ Deploy/infra (phase18): docker-compose healthcheck node-http /api/health (Bug #164/#165); root .dockerignore (Bug #166); build-prod.ps1 export→apps/web/out + $PSScriptRoot fallback (Bug #167); nginx _next/static immutable + gzip_types svg/js (Bug #168)
+- ✅ Deploy/infra (phase18): docker-compose api healthcheck node-http /api/health (Bug #164/#165); minio healthcheck `mc ready local` замість curl-less образу + пін RELEASE-тегу (Bug #170); root .dockerignore (Bug #166); build-prod.ps1 export→apps/web/out + $PSScriptRoot fallback (Bug #167); nginx _next/static immutable + gzip_types svg/js (Bug #168). /api/health публічний (HealthController без @UseGuards, auth per-controller) → healthcheck 200. minio/minio = лише mc, НЕ curl/wget (перевірено емпірично)
 
 **Frontend:**
 - ✅ cancelled flag: AuthProvider, всі mount-fetches (settings, crm, work-orders)
@@ -836,7 +850,7 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 
 **Tests:**
 - ✅ Contract specs: auth, work-orders, warehouses, counterparties, sync, settings, audit, pricing-rules, batches, currencies, bank-accounts, exchange-rates, cash-registers, calendar (GET/POST/PATCH/DELETE — resize/drag PATCH endpoint)
-- ✅ Service specs (query-shape): goods (FK validation), counterparties (?q= plural relation customerGarages→vehicles — Bug #163)
+- ✅ Service specs (query-shape): goods (FK validation), counterparties (?q= plural relation customerGarages→vehicles — Bug #163), work-orders (findAll calendarSlots include: plural relation + take:1 + deletedAt + orderBy asc; ?q= counterparty nested; employeeId some soft-delete — Bug #171)
 - ✅ Calendar timeline px→time clamp: усі гілки (draw/pending-resize/saved-resize/drag) clamp у [WINDOW_START,WINDOW_END]; isEditingPast minHour-boundary (slot==minHour → НЕ past)
 - ✅ Property-based invariants: inventory, settlements, FSM (26 invariants)
 - ✅ Component tests: 139/139 passed (13 файлів)
