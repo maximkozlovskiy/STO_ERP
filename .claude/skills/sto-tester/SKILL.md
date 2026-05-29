@@ -122,9 +122,15 @@ grep -rn "settlementAccount\.update\|balance.*decrement\|balance.*increment" app
 ```bash
 # findFirst/findMany без orgId
 grep -rn "findFirst\|findMany\|findUnique" apps/api/src/modules/ --include="*.service.ts" | grep -v "orgId\|spec\|//.*find" | head -20
+
+# Optional FK у create/update spread без org-scoped перевірки (Bug #161)
+# для кожного *Id?: поля у CreateDto перевірити чи сервіс робить findFirst({ id: dto.XId, orgId }) ПЕРЕД create/update
+grep -rn "Id?: string\|Id!: string" apps/api/src/modules/ --include="*.dto.ts" | grep -iE "brand|unit|supplier|counterparty|vehicle|branch|warehouse|category|account" | head -20
+grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.service.ts" | grep -v spec | head -10
 ```
 
 - [ ] Кожен `findFirst` / `findMany` / `update` містить `orgId` у `where`
+- [ ] **Optional FK у `data: { ...dto }` / `data: dto`** (`brandId`, `unitId`, `preferredSupplierId`, `vehicleId`, `branchId`...) → сервіс валідує КОЖЕН наданий FK через `findFirst({ id: dto.XId, orgId, deletedAt: null })` ПЕРЕД write (патерн Bug #90). Сирий DB FK перевіряє лише глобальне існування `id`, НЕ `orgId` → FK з чужої org проходить → cross-tenant linkage. P2003 ловить ТІЛЬКИ неіснуючий ID, не cross-tenant — тому «P2003 прийнятний» НЕ закриває tenant-isolation. Severity HIGH
 
 #### Soft Delete
 ```bash
@@ -595,6 +601,15 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-05-28 — Optional FK у spread без org-scoped перевірки → cross-tenant leak — backend, tenant-isolation
+
+**Сигнал:** сервіс пише `data: { ...dto, orgId }` (або `data: dto` в update) де DTO має optional FK-поля (`brandId?`, `unitId?`, `preferredSupplierId?`, `vehicleId?`...), і сервіс НЕ робить `findFirst({ id: dto.XId, orgId })` перед write. Часто з'являється коли FK-поле щойно додали до DTO (раніше whitelist його зрізав, P2003 не виникав, тому ніхто не думав про валідацію). База даних має лише звичайний FK constraint без `orgId` у ньому.
+**Причина виникнення:** розробник (і навіть review) вважає, що сирий DB foreign key constraint + маппінг P2003→400 у HttpExceptionFilter — достатній захист. Це хибно у multi-tenant: DB FK перевіряє лише що `id` існує ГЛОБАЛЬНО, не що він належить поточній org. Тому `brandId` з org-B спокійно пишеться у товар org-A — cross-tenant linkage без жодної помилки. P2003 спрацьовує ЛИШЕ для повністю неіснуючого ID, не для валідного-у-чужій-org. Review може свідомо написати «P2003 прийнятний» — і це справедливо для «not found», але мовчки пропускає cross-tenant вимір.
+**Підхід до виявлення:** для кожного `*.dto.ts` знайти optional/required `*Id` поля що є FK на org-scoped таблицю. Для кожного — у відповідному сервісі перевірити чи `create`/`update` робить org-scoped `findFirst` перед записом. НЕ зараховувати P2003-маппінг як захист: явно поставити питання «чи FK з ІНШОЇ org пройде?». Якщо так — HIGH (tenant isolation), не MEDIUM.
+**Підхід до фіксу:** приватний `validateFkReferences(orgId, dto)` — `Promise.all` з `findFirst({ id: dto.XId, orgId, deletedAt: null, select: { id: true } })` для кожного наданого FK; кинути `BadRequestException` українською з конкретною назвою сутності («Бренд не знайдено»). Викликати ПЕРЕД `create` і `update` (усталений патерн Bug #90 з invoices/work-orders). Перевіряти лише надані поля (`dto.XId ? findFirst : Promise.resolve(null)`).
+**Severity:** HIGH — cross-tenant data linkage порушує CLAUDE.md правило #6 (tenant isolation); дані не псуються одразу, але один tenant бачить/посилається на довідники іншого.
+**Де шукати ще:** будь-який сервіс з optional FK у DTO який пишеться через spread — work-orders (vehicleId/counterpartyId/branchId на create, не лише clone), purchase-orders, invoices, stock-documents, pricing-rules (goodId), будь-який новий модуль з `preferredSupplierId`/`brandId`/`warehouseId` у DTO. Особлива увага — коли FK-поле ЩОЙНО додали до DTO (як 5045007): новий шлях запису без валідації.
+
 ### 2026-05-28 — Swallowed fetch годує обов'язковий контрол → заблокований workflow — frontend
 
 **Сигнал:** `apiFetch('/list').then(setX).catch(() => {})` де `X` рендериться у `<Select>` обов'язкового поля, а submit-кнопка має `disabled={!form.fieldFromX}`. Базовий §1.3 анти-патерн (порожній catch) присутній, АЛЕ наслідок гірший за звичайний «порожній стан»: якщо список не завантажився, користувач фізично не може заповнити обов'язкове поле → кнопка назавжди disabled, без жодного пояснення. Часто сидить поряд з іншим catch який review/tester вже виправив (двійник на тій самій сторінці).
@@ -727,6 +742,7 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 - ✅ SettlementsService guards (CHARGE ↑, PAYMENT ↓)
 - ✅ Soft-delete: всі основні сервіси
 - ✅ Resurrection pattern: currencies, exchange-rates, brands, units, payment-methods
+- ✅ Org-scoped FK validation перед write: goods (brandId/unitId/preferredSupplierId — Bug #161), invoices/work-orders clone (Bug #90)
 - ✅ $transaction explicit timeout: всі interactive callbacks
 - ✅ ParseUUIDPipe: всі :id параметри
 - ✅ Security headers (X-Content-Type-Options, X-Frame-Options, HSTS via @fastify/helmet@11)
