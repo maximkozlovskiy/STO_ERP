@@ -801,12 +801,12 @@ export default function CalendarPage() {
     if (form.endAt <= form.startAt)    { setError('Час завершення повинен бути після часу початку'); return; }
     if (!form.counterpartyId)          { setError('Оберіть клієнта'); return; }
     if (form.workOrderId && !UUID_RE.test(form.workOrderId)) { setError('Оберіть наряд зі списку'); return; }
-    // New slots cannot start in the past (editing existing slot is always allowed)
+    // New slots: block only hours strictly before the current Kyiv hour (9:22 → hour 9 is still allowed)
     if (!editingSlotId && nowMs) {
       const todayKyiv = toDateString(new Date(nowMs));
       if (date === todayKyiv) {
-        const slotStart = new Date(`${date}T${form.startAt}:00`).getTime();
-        if (slotStart < nowMs) { setError('Не можна створити запис у минулому'); return; }
+        const slotHour = parseInt(form.startAt.split(':')[0] ?? '0', 10);
+        if (slotHour < minHour) { setError('Не можна створити запис у минулому'); return; }
       }
     }
     setSaving(true); setError('');
@@ -1082,7 +1082,7 @@ export default function CalendarPage() {
               <TimeSelect
                 value={form.startAt}
                 minHour={editingSlotId ? HOURS[0] : minHour}
-                minMinute={editingSlotId ? 0 : minMinute}
+                minMinute={0}
                 onChange={start => {
                   setForm(f => {
                     let next = { ...f, startAt: start };
@@ -1134,7 +1134,7 @@ export default function CalendarPage() {
               <TimeSelect
                 value={form.endAt}
                 minHour={editingSlotId ? HOURS[0] : minHour}
-                minMinute={editingSlotId ? 0 : minMinute}
+                minMinute={0}
                 onChange={endAt => {
                   setForm(f => ({ ...f, endAt }));
                   if (pendingSlotRef.current) {
