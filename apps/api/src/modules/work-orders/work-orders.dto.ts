@@ -125,6 +125,7 @@ export class WorkOrderResponseDto {
   @ApiPropertyOptional({ description: 'Є активна гарантія' }) hasActiveWarranty?: boolean;
   @ApiPropertyOptional({ description: 'Найближчий слот у календарі: початок' }) slotStartAt?: Date | null;
   @ApiPropertyOptional({ description: 'Найближчий слот у календарі: кінець' }) slotEndAt?: Date | null;
+  @ApiPropertyOptional({ description: 'Підйомник слота у календарі' }) slotLiftName?: string | null;
 }
 
 export class PaginatedWorkOrdersDto {

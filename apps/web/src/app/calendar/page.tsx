@@ -35,7 +35,7 @@ interface CalendarSlot {
   counterpartyName?: string;
 }
 interface Lift { id: string; name: string; }
-interface WorkOrderOption { id: string; number: string; counterpartyName?: string; counterpartyId?: string | null; slotStartAt?: string | null; slotEndAt?: string | null; }
+interface WorkOrderOption { id: string; number: string; counterpartyName?: string; counterpartyId?: string | null; slotStartAt?: string | null; slotEndAt?: string | null; slotLiftName?: string | null; }
 interface CounterpartyOption { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; phone?: string | null; }
 interface VehicleOption { id: string; make: string; model: string; licensePlate: string; }
 
@@ -1046,7 +1046,7 @@ export default function CalendarPage() {
   const [newWoCpPickerOpen, setNewWoCpPickerOpen] = useState(false);
 
   type CpItem = SearchPickerItem & { phone?: string | null };
-  type WoItem = SearchPickerItem & { counterpartyId?: string | null; counterpartyName?: string; slotStartAt?: string | null; slotEndAt?: string | null };
+  type WoItem = SearchPickerItem & { counterpartyId?: string | null; counterpartyName?: string; slotStartAt?: string | null; slotEndAt?: string | null; slotLiftName?: string | null };
 
   const fetchCpItems = useCallback(async (q: string): Promise<CpItem[]> => {
     let url = '/counterparties?limit=50';
@@ -1077,6 +1077,7 @@ export default function CalendarPage() {
       counterpartyName: wo.counterpartyName,
       slotStartAt: wo.slotStartAt ?? null,
       slotEndAt: wo.slotEndAt ?? null,
+      slotLiftName: wo.slotLiftName ?? null,
     }));
   }, [form.counterpartyId]);
 
@@ -1469,12 +1470,18 @@ export default function CalendarPage() {
               <div>
                 <div className={`text-sm font-medium ${selected ? 'text-primary' : 'text-foreground'}`}>{item.primary}</div>
                 {item.secondary && <div className="text-xs text-muted-foreground mt-0.5">{item.secondary}</div>}
-                {item.slotStartAt && (
-                  <div className="text-xs text-primary/70 mt-0.5">
-                    📅 {new Date(item.slotStartAt).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: KYIV_TZ })}
-                    {' '}
-                    {fmtTime(item.slotStartAt)}–{item.slotEndAt ? fmtTime(item.slotEndAt) : ''}
+                {item.slotStartAt ? (
+                  <div className="flex items-center gap-1.5 text-xs text-primary mt-0.5">
+                    <span>📅</span>
+                    <span>
+                      {new Date(item.slotStartAt).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: KYIV_TZ })}
+                      {' '}
+                      {fmtTime(item.slotStartAt)}–{item.slotEndAt ? fmtTime(item.slotEndAt) : ''}
+                      {item.slotLiftName ? ` · ${item.slotLiftName}` : ''}
+                    </span>
                   </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground/60 mt-0.5">не заплановано</div>
                 )}
               </div>
             )}

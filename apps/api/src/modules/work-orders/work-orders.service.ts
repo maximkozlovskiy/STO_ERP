@@ -77,7 +77,11 @@ export class WorkOrdersService {
           calendarSlots: {
             where: { deletedAt: null },
             orderBy: { startAt: 'asc' },
-            select: { startAt: true, endAt: true },
+            select: {
+              startAt: true,
+              endAt: true,
+              lift: { select: { name: true } },
+            },
             take: 1,
           },
           _count: {
@@ -713,7 +717,7 @@ export class WorkOrdersService {
     branch?: { name: string } | null;
     vehicle?: { make: string; model: string; licensePlate: string | null } | null;
     counterparty?: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
-    calendarSlots?: { startAt: Date; endAt: Date }[];
+    calendarSlots?: { startAt: Date; endAt: Date; lift: { name: string } | null }[];
     _count?: { warranties?: number } | null;
   }): WorkOrderResponseDto {
     const cp = wo.counterparty;
@@ -735,6 +739,7 @@ export class WorkOrdersService {
       hasActiveWarranty: (wo._count?.warranties ?? 0) > 0,
       slotStartAt: wo.calendarSlots?.[0]?.startAt ?? null,
       slotEndAt: wo.calendarSlots?.[0]?.endAt ?? null,
+      slotLiftName: wo.calendarSlots?.[0]?.lift?.name ?? null,
     };
   }
 
