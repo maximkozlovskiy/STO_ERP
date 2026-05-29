@@ -119,8 +119,9 @@ f040cde perf(db): 5 composite indexes
 ---
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api) — після sync fix batches shape (561e08b)
-Latest review: 2026-05-29 (auto, HEAD e69bf1e) — modal-tabs.tsx + crm/employees ModalTabs + counterparties showDeleted/deletedAt. 1 Important fix (CRM edit-modal vehicle fetch race + stale modalGarageId). Backend DTO/service вже коректні після cc44f73 (showDeleted @Transform, orgId зберігається при showDeleted=true, toDto включає deletedAt).
+TypeScript: ✅ 0 errors (web + api + shared) — після sync fix batches shape (561e08b)
+Latest review: 2026-05-29 (auto, HEAD fc0d1ad → 613aef7+561e08b+fc0d1ad) — crm/page.tsx Наряди-таб + catalog/page.tsx Штрихкоди+Партії-таби + sto-dev §14.1–14.3. **0 проблем знайдено**: race-guard ref (modalWoReqRef, modalBarcodeReqRef, modalBatchReqRef) застосовано згідно патерну з e69bf1e; reset похідного стану на старті openEdit/openEditGood; всі 10 WorkOrderStatus покриті у WO_STATUS_LABELS/BADGE; катаlог не імпортує `cn` (не потрібний); BOM-чистий; немає React.X / any / console.log / Tailwind anti-patterns.
+Previous review: 2026-05-29 (auto, HEAD e69bf1e) — modal-tabs.tsx + crm/employees ModalTabs + counterparties showDeleted/deletedAt. 1 Important fix (CRM edit-modal vehicle fetch race + stale modalGarageId). Backend DTO/service вже коректні після cc44f73 (showDeleted @Transform, orgId зберігається при showDeleted=true, toDto включає deletedAt).
 
 ## UI: ModalTabs — нижній таб-секція модалок для 1→N зв'язків (6b886ae)
 
