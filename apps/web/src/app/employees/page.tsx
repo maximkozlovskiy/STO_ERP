@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -20,6 +20,13 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────
@@ -40,6 +47,12 @@ interface Zone { id: string; name: string; type: string; }
 interface Lift { id: string; name: string; type: string; }
 interface WorkCategory { id: string; name: string; parentId: string | null; children: WorkCategory[]; }
 interface Branch { id: string; name: string; address: string; }
+
+interface EmployeeFilters extends Record<string, unknown> {
+  search: string;
+  roleFilter: string;
+  showDeleted: boolean;
+}
 
 const ROLE_LABELS: Record<string, string> = {
   OWNER: 'Власник', ADMIN: 'Адміністратор', RECEPTIONIST: 'Приймальник',
@@ -100,6 +113,8 @@ function flattenTree(cats: WorkCategory[]): { id: string; name: string }[] {
 export default function EmployeesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
   const { confirm, dialogProps } = useConfirm();
+  const features = useUiFeatures();
+
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [lifts, setLifts] = useState<Lift[]>([]);
@@ -135,6 +150,63 @@ export default function EmployeesPage() {
   // Edit modal branch state
   const [editBranchIds, setEditBranchIds] = useState<string[]>([]);
   const [editAllBranches, setEditAllBranches] = useState(false);
+
+  // ─── Saved filters ────────────────────────────────────
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<EmployeeFilters>('employees');
+
+  const applyFilter = useCallback((preset: { id: string; filters: EmployeeFilters }) => {
+    setSearch(preset.filters.search ?? '');
+    setRoleFilter(preset.filters.roleFilter ?? '');
+    setShowDeleted(preset.filters.showDeleted ?? false);
+    setActiveSavedFilterId(preset.id);
+  }, []);
+
+  const handleSaveFilter = useCallback((name: string) => {
+    const preset = saveFilter(name, { search, roleFilter, showDeleted });
+    setActiveSavedFilterId(preset.id);
+    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+  }, [saveFilter, search, roleFilter, showDeleted, features.toastEnabled]);
+
+  // ─── Bulk select ──────────────────────────────────────
+  const bulkSelect = useBulkSelect(employees);
+
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
+
+  const bulkActions = useMemo<BulkAction[]>(() => [
+    {
+      id: 'delete',
+      label: 'Видалити вибраних',
+      variant: 'destructive',
+      icon: <Trash2 className="h-3.5 w-3.5" />,
+      onClick: async (ids) => {
+        if (!(await confirm({ title: `Помітити ${ids.length} співробітників на видалення?`, variant: 'destructive' }))) return;
+        await Promise.allSettled(ids.map(id => apiFetch<void>(`/employees/${id}`, { method: 'DELETE' })));
+        bulkSelect.clear();
+        load();
+      },
+    },
+    {
+      id: 'fire',
+      label: 'Звільнити вибраних',
+      variant: 'outline',
+      onClick: async (ids) => {
+        if (!(await confirm({ title: `Змінити статус ${ids.length} співробітників на "Звільнений"?`, variant: 'destructive' }))) return;
+        await Promise.allSettled(ids.map(id => apiFetch<void>(`/employees/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'FIRED' }) })));
+        bulkSelect.clear();
+        load();
+      },
+    },
+  ], [confirm, bulkSelect]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Unsaved guard — create modal ────────────────────
+  const createDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+
+  // ─── Unsaved guard — edit modal ───────────────────────
+  const editDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   // Only the employee list depends on filters — reference data (zones, lifts,
   // work-categories, branches) is loaded once and does NOT re-fetch on filter
@@ -199,10 +271,16 @@ export default function EmployeesPage() {
   const openCreate = () => {
     setForm({ firstName: '', lastName: '', role: 'MECHANIC', phone: '', email: '', status: 'ACTIVE', dateOfHire: '', rateType: 'percent_normo', percent: '40', fixedMonthly: '0', bonusPercent: '10' });
     setError('');
+    createDirty.resetDirty();
     setModal('create');
   };
 
-  const closeModal = () => { setModal(null); setSelected(null); setError(''); };
+  const closeModal = async () => {
+    if (modal === 'create') {
+      if (!createDirty.confirmClose()) return;
+    }
+    setModal(null); setSelected(null); setError('');
+  };
 
   const buildRateScheme = () => {
     if (form.rateType === 'percent_normo') {
@@ -235,7 +313,9 @@ export default function EmployeesPage() {
           rateScheme: buildRateScheme(),
         }),
       });
-      closeModal(); load();
+      createDirty.resetDirty();
+      setModal(null); setSelected(null); setError('');
+      load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
   };
@@ -250,7 +330,8 @@ export default function EmployeesPage() {
         apiFetch<void>(`/employees/${selected.id}/work-categories`, { method: 'POST', body: JSON.stringify({ workCategoryIds: assignedCats }) }),
         apiFetch<void>(`/employees/${selected.id}/branches`, { method: 'POST', body: JSON.stringify({ branchIds: allBranches ? [] : assignedBranches, allBranches }) }),
       ]);
-      closeModal(); load();
+      setModal(null); setSelected(null); setError('');
+      load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
   };
@@ -284,7 +365,13 @@ export default function EmployeesPage() {
     setEditBranchIds(emp.branchIds ?? []);
     setEditAllBranches(emp.allBranches ?? false);
     setEditError('');
+    editDirty.resetDirty();
     setModal('edit');
+  };
+
+  const closeEditModal = () => {
+    if (!editDirty.confirmClose()) return;
+    setModal(null); setEditEmp(null);
   };
 
   const saveEditEmp = async () => {
@@ -318,6 +405,7 @@ export default function EmployeesPage() {
         method: 'POST',
         body: JSON.stringify({ branchIds: editAllBranches ? [] : editBranchIds, allBranches: editAllBranches }),
       });
+      editDirty.resetDirty();
       setModal(null); setEditEmp(null); load();
     } catch (e: unknown) { setEditError(e instanceof Error ? e.message : 'Помилка збереження'); }
     finally { setEditSaving(false); }
@@ -341,18 +429,30 @@ export default function EmployeesPage() {
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
 
+      {/* Saved filters */}
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<EmployeeFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          className="mb-3"
+        />
+      )}
+
       {/* Filters */}
       <div className="flex gap-3 mb-5 flex-wrap">
         <Input
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => { setSearch(e.target.value); setActiveSavedFilterId(null); }}
           placeholder="Пошук за ім'ям..."
           leftElement={<Search />}
           className="flex-1 min-w-48"
         />
         <Select
           value={roleFilter}
-          onChange={e => setRoleFilter(e.target.value)}
+          onChange={e => { setRoleFilter(e.target.value); setActiveSavedFilterId(null); }}
           className="w-48"
         >
           {ROLE_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -361,12 +461,23 @@ export default function EmployeesPage() {
           variant="outline"
           size="md"
           leftIcon={showDeleted ? <Eye /> : <EyeOff />}
-          onClick={() => setShowDeleted(d => !d)}
+          onClick={() => { setShowDeleted(d => !d); setActiveSavedFilterId(null); }}
           className={showDeleted ? 'border-primary text-primary' : ''}
         >
           {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
         </Button>
       </div>
+
+      {/* Bulk actions */}
+      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
+        <BulkActionsBar
+          count={bulkSelect.count}
+          selectedIds={Array.from(bulkSelect.selected)}
+          actions={bulkActions}
+          onClear={bulkSelect.clear}
+          className="mb-3"
+        />
+      )}
 
       {/* Table + DetailPanel */}
       <div className="flex gap-0 flex-1 min-h-0 bg-surface rounded-xl border border-border overflow-hidden">
@@ -374,6 +485,18 @@ export default function EmployeesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-9 pr-0">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      ref={selectAllRef}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-3.5 w-3.5 rounded border-border"
+                      aria-label="Вибрати всі"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>ПІБ</TableHead>
                 <TableHead>Посада</TableHead>
                 <TableHead>Статус</TableHead>
@@ -386,14 +509,14 @@ export default function EmployeesPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && employees.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="p-0">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="p-0">
                     <EmptyState icon={Users} title="Немає співробітників" description="Додайте першого співробітника" />
                   </TableCell>
                 </TableRow>
@@ -408,9 +531,21 @@ export default function EmployeesPage() {
                       'cursor-pointer',
                       isDeleted && 'opacity-60',
                       selectedEmp?.id === emp.id && 'bg-secondary',
+                      bulkSelect.isSelected(emp.id) && 'bg-primary/5',
                     )}
                     onClick={() => setSelectedEmp(prev => prev?.id === emp.id ? null : emp)}
                   >
+                    {features.bulkActionsEnabled && (
+                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={bulkSelect.isSelected(emp.id)}
+                          onChange={() => bulkSelect.toggle(emp.id)}
+                          className="h-3.5 w-3.5 rounded border-border"
+                          aria-label={`Вибрати ${emp.lastName} ${emp.firstName}`}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <span className="text-[13px] font-medium text-foreground">
@@ -596,14 +731,14 @@ export default function EmployeesPage() {
               label="Ім'я"
               required
               value={form.firstName}
-              onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, firstName: e.target.value })); createDirty.markDirty(); }}
               placeholder="Іван"
             />
             <Input
               label="Прізвище"
               required
               value={form.lastName}
-              onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, lastName: e.target.value })); createDirty.markDirty(); }}
               placeholder="Коваль"
             />
           </div>
@@ -611,7 +746,7 @@ export default function EmployeesPage() {
             label="Посада"
             required
             value={form.role}
-            onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, role: e.target.value })); createDirty.markDirty(); }}
           >
             {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
@@ -619,14 +754,14 @@ export default function EmployeesPage() {
             <Input
               label="Телефон"
               value={form.phone}
-              onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, phone: e.target.value })); createDirty.markDirty(); }}
               placeholder="+38 (067) 123-45-67"
             />
             <Input
               label="Email"
               type="email"
               value={form.email}
-              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, email: e.target.value })); createDirty.markDirty(); }}
               placeholder="ivan@example.com"
             />
           </div>
@@ -634,21 +769,21 @@ export default function EmployeesPage() {
             <Select
               label="Статус"
               value={form.status}
-              onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, status: e.target.value })); createDirty.markDirty(); }}
             >
               {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
             <DatePickerInput
               label="Дата прийому"
               value={form.dateOfHire}
-              onChange={v => setForm(f => ({ ...f, dateOfHire: v }))}
+              onChange={v => { setForm(f => ({ ...f, dateOfHire: v })); createDirty.markDirty(); }}
             />
           </div>
           <Select
             label="Схема нарахування"
             required
             value={form.rateType}
-            onChange={e => setForm(f => ({ ...f, rateType: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, rateType: e.target.value })); createDirty.markDirty(); }}
           >
             {Object.entries(RATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
@@ -657,7 +792,7 @@ export default function EmployeesPage() {
               label="Відсоток, %"
               type="number"
               value={form.percent}
-              onChange={e => setForm(f => ({ ...f, percent: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, percent: e.target.value })); createDirty.markDirty(); }}
             />
           )}
           {form.rateType === 'fixed_plus_bonus' && (
@@ -666,13 +801,13 @@ export default function EmployeesPage() {
                 label="Ставка, грн/міс"
                 type="number"
                 value={form.fixedMonthly}
-                onChange={e => setForm(f => ({ ...f, fixedMonthly: e.target.value }))}
+                onChange={e => { setForm(f => ({ ...f, fixedMonthly: e.target.value })); createDirty.markDirty(); }}
               />
               <Input
                 label="Бонус, %"
                 type="number"
                 value={form.bonusPercent}
-                onChange={e => setForm(f => ({ ...f, bonusPercent: e.target.value }))}
+                onChange={e => { setForm(f => ({ ...f, bonusPercent: e.target.value })); createDirty.markDirty(); }}
               />
             </div>
           )}
@@ -716,14 +851,14 @@ export default function EmployeesPage() {
       {/* Edit modal — employee data */}
       <Modal
         open={modal === 'edit' && !!editEmp}
-        onClose={() => { setModal(null); setEditEmp(null); }}
+        onClose={closeEditModal}
         title={editEmp ? `${editEmp.lastName} ${editEmp.firstName}` : ''}
         footer={
           <>
             <Button onClick={saveEditEmp} loading={editSaving} disabled={!editForm.firstName || !editForm.lastName}>
               Зберегти
             </Button>
-            <Button variant="outline" onClick={() => { setModal(null); setEditEmp(null); }}>Скасувати</Button>
+            <Button variant="outline" onClick={closeEditModal}>Скасувати</Button>
           </>
         }
       >
@@ -732,35 +867,35 @@ export default function EmployeesPage() {
         )}
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Ім'я" required value={editForm.firstName} onChange={e => setEditForm(f => ({ ...f, firstName: e.target.value }))} placeholder="Іван" />
-            <Input label="Прізвище" required value={editForm.lastName} onChange={e => setEditForm(f => ({ ...f, lastName: e.target.value }))} placeholder="Коваль" />
+            <Input label="Ім'я" required value={editForm.firstName} onChange={e => { setEditForm(f => ({ ...f, firstName: e.target.value })); editDirty.markDirty(); }} placeholder="Іван" />
+            <Input label="Прізвище" required value={editForm.lastName} onChange={e => { setEditForm(f => ({ ...f, lastName: e.target.value })); editDirty.markDirty(); }} placeholder="Коваль" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Посада" required value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}>
+            <Select label="Посада" required value={editForm.role} onChange={e => { setEditForm(f => ({ ...f, role: e.target.value })); editDirty.markDirty(); }}>
               {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
-            <Select label="Статус" value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}>
+            <Select label="Статус" value={editForm.status} onChange={e => { setEditForm(f => ({ ...f, status: e.target.value })); editDirty.markDirty(); }}>
               {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Телефон" value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="+38 (067) 123-45-67" />
-            <Input label="Email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} placeholder="ivan@example.com" />
+            <Input label="Телефон" value={editForm.phone} onChange={e => { setEditForm(f => ({ ...f, phone: e.target.value })); editDirty.markDirty(); }} placeholder="+38 (067) 123-45-67" />
+            <Input label="Email" value={editForm.email} onChange={e => { setEditForm(f => ({ ...f, email: e.target.value })); editDirty.markDirty(); }} placeholder="ivan@example.com" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <DatePickerInput label="Дата прийому" value={editForm.dateOfHire} onChange={v => setEditForm(f => ({ ...f, dateOfHire: v }))} />
-            <DatePickerInput label="Дата звільнення" value={editForm.dateOfFire} onChange={v => setEditForm(f => ({ ...f, dateOfFire: v }))} />
+            <DatePickerInput label="Дата прийому" value={editForm.dateOfHire} onChange={v => { setEditForm(f => ({ ...f, dateOfHire: v })); editDirty.markDirty(); }} />
+            <DatePickerInput label="Дата звільнення" value={editForm.dateOfFire} onChange={v => { setEditForm(f => ({ ...f, dateOfFire: v })); editDirty.markDirty(); }} />
           </div>
-          <Select label="Схема нарахування" required value={editForm.rateType} onChange={e => setEditForm(f => ({ ...f, rateType: e.target.value }))}>
+          <Select label="Схема нарахування" required value={editForm.rateType} onChange={e => { setEditForm(f => ({ ...f, rateType: e.target.value })); editDirty.markDirty(); }}>
             {Object.entries(RATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
           {editForm.rateType === 'percent_normo' && (
-            <Input label="Відсоток, %" type="number" value={editForm.percent} onChange={e => setEditForm(f => ({ ...f, percent: e.target.value }))} />
+            <Input label="Відсоток, %" type="number" value={editForm.percent} onChange={e => { setEditForm(f => ({ ...f, percent: e.target.value })); editDirty.markDirty(); }} />
           )}
           {editForm.rateType === 'fixed_plus_bonus' && (
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Ставка, грн/міс" type="number" value={editForm.fixedMonthly} onChange={e => setEditForm(f => ({ ...f, fixedMonthly: e.target.value }))} />
-              <Input label="Бонус, %" type="number" value={editForm.bonusPercent} onChange={e => setEditForm(f => ({ ...f, bonusPercent: e.target.value }))} />
+              <Input label="Ставка, грн/міс" type="number" value={editForm.fixedMonthly} onChange={e => { setEditForm(f => ({ ...f, fixedMonthly: e.target.value })); editDirty.markDirty(); }} />
+              <Input label="Бонус, %" type="number" value={editForm.bonusPercent} onChange={e => { setEditForm(f => ({ ...f, bonusPercent: e.target.value })); editDirty.markDirty(); }} />
             </div>
           )}
           {branches.length > 0 && (
@@ -770,7 +905,7 @@ export default function EmployeesPage() {
                 <input
                   type="checkbox"
                   checked={editAllBranches}
-                  onChange={e => setEditAllBranches(e.target.checked)}
+                  onChange={e => { setEditAllBranches(e.target.checked); editDirty.markDirty(); }}
                   className="rounded border-border"
                 />
                 <span className="text-[13px] text-foreground">Доступ до всіх філій</span>
@@ -788,6 +923,7 @@ export default function EmployeesPage() {
                               ? [...prev, branch.id]
                               : prev.filter(id => id !== branch.id),
                           );
+                          editDirty.markDirty();
                         }}
                         className="rounded border-border text-primary focus:ring-ring"
                       />
