@@ -984,6 +984,25 @@ export default function CalendarPage() {
   const EMPTY_SLOTS: CalendarSlot[] = useMemo(() => [], []);
   const unassignedSlots = useMemo(() => slotsWithPreview.filter(s => !s.liftId), [slotsWithPreview]);
 
+  // Next upcoming slot per lift — 'now' if currently active, ISO string if future, undefined if none
+  const nextSlotByLift = useMemo(() => {
+    const map = new Map<string, 'now' | string>();
+    if (!nowMs) return map;
+    const now = nowMs;
+    for (const [liftId, liftSlots] of slotsByLift) {
+      const active = liftSlots.find(s => new Date(s.startAt).getTime() <= now && new Date(s.endAt).getTime() > now);
+      if (active) { map.set(liftId, 'now'); continue; }
+      let earliest: CalendarSlot | null = null;
+      for (const s of liftSlots) {
+        if (new Date(s.startAt).getTime() > now) {
+          if (!earliest || new Date(s.startAt) < new Date(earliest.startAt)) earliest = s;
+        }
+      }
+      if (earliest) map.set(liftId, earliest.startAt);
+    }
+    return map;
+  }, [slotsByLift, nowMs]);
+
   const formatDate = (ds: string) => {
     if (!ds) return '';
     return new Date(ds).toLocaleDateString('uk-UA', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: KYIV_TZ });
@@ -1318,8 +1337,13 @@ export default function CalendarPage() {
 
             {lifts.map(lift => (
               <div key={lift.id} className="grid border-b border-border last:border-b-0" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
-                <div className="px-3 py-3 text-sm font-medium text-foreground bg-secondary border-r border-border flex items-center">
-                  {lift.name}
+                <div className="px-3 py-3 bg-secondary border-r border-border flex flex-col justify-center gap-0.5">
+                  <span className="text-sm font-medium text-foreground leading-tight">{lift.name}</span>
+                  {nextSlotByLift.get(lift.id) === 'now' ? (
+                    <span className="text-[10px] font-medium text-success-text leading-none">● зараз</span>
+                  ) : nextSlotByLift.has(lift.id) ? (
+                    <span className="text-[10px] text-muted-foreground leading-none">↓ {fmtTime(nextSlotByLift.get(lift.id)!)}</span>
+                  ) : null}
                 </div>
                 <DroppableLiftRow
                   liftId={lift.id}
