@@ -14,6 +14,7 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
+import { Modal } from '@/components/ui/modal';
 import {
   DndContext, useDraggable, useDroppable,
   type DragEndEvent, PointerSensor, useSensor, useSensors,
@@ -878,13 +879,96 @@ export default function CalendarPage() {
   const [cpDisplay, setCpDisplay] = useState('');
   const cpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // New counterparty mini-form
-  const [showNewCp, setShowNewCp] = useState(false);
-  const [newCp, setNewCp] = useState({ firstName: '', lastName: '', phone: '', companyName: '' });
+  // New counterparty wizard modal (3 steps: client → garage → vehicle)
+  const [newCpOpen, setNewCpOpen] = useState(false);
+  const [newCpStep, setNewCpStep] = useState<1 | 2 | 3>(1);
+  const [newCp, setNewCp] = useState({ firstName: '', lastName: '', phone: '', companyName: '', email: '' });
+  const [newGarage, setNewGarage] = useState({ name: 'Основний', address: '' });
+  const [newVehicle, setNewVehicle] = useState({ make: '', model: '', year: '', licensePlate: '', vin: '' });
   const [savingCp, setSavingCp] = useState(false);
+  const [cpWizardError, setCpWizardError] = useState('');
+  // ids created during wizard
+  const [createdCpId, setCreatedCpId] = useState('');
+  const [createdGarageId, setCreatedGarageId] = useState('');
+
+  const openNewCpWizard = () => {
+    setNewCp({ firstName: '', lastName: '', phone: '', companyName: '', email: '' });
+    setNewGarage({ name: 'Основний', address: '' });
+    setNewVehicle({ make: '', model: '', year: '', licensePlate: '', vin: '' });
+    setCreatedCpId(''); setCreatedGarageId('');
+    setCpWizardError(''); setNewCpStep(1);
+    setNewCpOpen(true);
+  };
+
+  const saveWizardStep1 = async () => {
+    if (!newCp.firstName && !newCp.lastName && !newCp.companyName) {
+      setCpWizardError("Вкажіть ім'я або назву компанії"); return;
+    }
+    setSavingCp(true); setCpWizardError('');
+    try {
+      const created = await apiFetch<CounterpartyOption>('/counterparties', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'CLIENT',
+          firstName:   newCp.firstName   || undefined,
+          lastName:    newCp.lastName    || undefined,
+          phone:       newCp.phone       || undefined,
+          companyName: newCp.companyName || undefined,
+          email:       newCp.email       || undefined,
+        }),
+      });
+      setCreatedCpId(created.id);
+      setNewCpStep(2);
+    } catch (e: unknown) { setCpWizardError(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSavingCp(false); }
+  };
+
+  const saveWizardStep2 = async (skip = false) => {
+    if (skip) { setNewCpStep(3); return; }
+    if (!newGarage.name.trim()) { setCpWizardError('Вкажіть назву гаражу'); return; }
+    setSavingCp(true); setCpWizardError('');
+    try {
+      const garage = await apiFetch<{ id: string }>(`/counterparties/${createdCpId}/garages`, {
+        method: 'POST',
+        body: JSON.stringify({ name: newGarage.name, address: newGarage.address || undefined }),
+      });
+      setCreatedGarageId(garage.id);
+      setNewCpStep(3);
+    } catch (e: unknown) { setCpWizardError(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSavingCp(false); }
+  };
+
+  const saveWizardStep3 = async (skip = false) => {
+    if (!skip && createdGarageId) {
+      if (!newVehicle.make.trim() || !newVehicle.model.trim()) {
+        setCpWizardError('Вкажіть марку та модель авто'); return;
+      }
+      setSavingCp(true); setCpWizardError('');
+      try {
+        await apiFetch('/vehicles', {
+          method: 'POST',
+          body: JSON.stringify({
+            customerGarageId: createdGarageId,
+            make: newVehicle.make,
+            model: newVehicle.model,
+            year: newVehicle.year ? Number(newVehicle.year) : undefined,
+            licensePlate: newVehicle.licensePlate || undefined,
+            vin: newVehicle.vin || undefined,
+          }),
+        });
+      } catch (e: unknown) { setCpWizardError(e instanceof Error ? e.message : 'Помилка'); setSavingCp(false); return; }
+      finally { setSavingCp(false); }
+    }
+    // Finish wizard — select the created client
+    const cp = await apiFetch<CounterpartyOption>(`/counterparties/${createdCpId}`).catch(() => null);
+    const display = cp ? displayCounterparty(cp) : newCp.companyName || [newCp.lastName, newCp.firstName].filter(Boolean).join(' ') || '(без імені)';
+    setCpDisplay(display);
+    setForm(f => ({ ...f, counterpartyId: createdCpId, counterpartyDisplay: display }));
+    setNewCpOpen(false);
+  };
 
   useEffect(() => {
-    if (!showAdd) { setCpSearch(''); setCpOptions([]); setCpDisplay(''); setShowNewCp(false); }
+    if (!showAdd) { setCpSearch(''); setCpOptions([]); setCpDisplay(''); setNewCpOpen(false); }
   }, [showAdd]);
 
   const searchCounterparties = useCallback((q: string) => {
@@ -899,29 +983,6 @@ export default function CalendarPage() {
       finally { if (mountedRef.current) setCpLoading(false); }
     }, 300);
   }, []);
-
-  const saveNewCounterparty = async () => {
-    if (!newCp.firstName && !newCp.lastName && !newCp.companyName) return;
-    setSavingCp(true);
-    try {
-      const created = await apiFetch<CounterpartyOption>('/counterparties', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'CLIENT',
-          firstName:   newCp.firstName   || undefined,
-          lastName:    newCp.lastName    || undefined,
-          phone:       newCp.phone       || undefined,
-          companyName: newCp.companyName || undefined,
-        }),
-      });
-      const display = displayCounterparty(created);
-      setCpDisplay(display);
-      setForm(f => ({ ...f, counterpartyId: created.id, counterpartyDisplay: display }));
-      setShowNewCp(false);
-      setNewCp({ firstName: '', lastName: '', phone: '', companyName: '' });
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка створення клієнта'); }
-    finally { setSavingCp(false); }
-  };
 
   useEffect(() => { return () => { if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current); }; }, []);
 
@@ -1215,7 +1276,7 @@ export default function CalendarPage() {
                     <X className="h-4 w-4" />
                   </button>
                 )}
-                <Button variant="outline" size="sm" onClick={() => setShowNewCp(v => !v)} title="Новий клієнт">
+                <Button variant="outline" size="sm" onClick={openNewCpWizard} title="Новий клієнт">
                   <UserPlus className="h-4 w-4" />
                 </Button>
               </div>
@@ -1248,27 +1309,88 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          {/* New counterparty mini-form */}
-          {showNewCp && (
-            <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
-              <p className="text-xs font-medium text-foreground">Новий клієнт</p>
-              <div className="grid grid-cols-2 gap-2">
-                <Input placeholder="Ім'я" value={newCp.firstName} onChange={e => setNewCp(v => ({ ...v, firstName: e.target.value }))} />
-                <Input placeholder="Прізвище" value={newCp.lastName} onChange={e => setNewCp(v => ({ ...v, lastName: e.target.value }))} />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Input placeholder="Телефон" value={newCp.phone} onChange={e => setNewCp(v => ({ ...v, phone: e.target.value }))} />
-                <Input placeholder="Компанія" value={newCp.companyName} onChange={e => setNewCp(v => ({ ...v, companyName: e.target.value }))} />
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={saveNewCounterparty} loading={savingCp}
-                  disabled={!newCp.firstName && !newCp.lastName && !newCp.companyName}>
-                  Зберегти клієнта
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setShowNewCp(false)}>Скасувати</Button>
-              </div>
+          {/* New client wizard modal */}
+          <Modal
+            open={newCpOpen}
+            onClose={() => setNewCpOpen(false)}
+            title={newCpStep === 1 ? 'Новий клієнт' : newCpStep === 2 ? 'Гараж клієнта' : 'Автомобіль'}
+            size="md"
+          >
+            {/* Step indicator */}
+            <div className="flex items-center gap-2 mb-5">
+              {([1, 2, 3] as const).map(s => (
+                <div key={s} className="flex items-center gap-2">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${s === newCpStep ? 'bg-primary text-primary-foreground' : s < newCpStep ? 'bg-success-text text-white' : 'bg-secondary text-muted-foreground border border-border'}`}>
+                    {s < newCpStep ? '✓' : s}
+                  </div>
+                  <span className={`text-xs ${s === newCpStep ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                    {s === 1 ? 'Клієнт' : s === 2 ? 'Гараж' : 'Авто'}
+                  </span>
+                  {s < 3 && <div className="w-8 h-px bg-border mx-1" />}
+                </div>
+              ))}
             </div>
-          )}
+
+            {cpWizardError && (
+              <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2 mb-4">{cpWizardError}</p>
+            )}
+
+            {/* Step 1 — Client */}
+            {newCpStep === 1 && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Ім'я" placeholder="Іван" value={newCp.firstName} onChange={e => setNewCp(v => ({ ...v, firstName: e.target.value }))} />
+                  <Input label="Прізвище" placeholder="Коваль" value={newCp.lastName} onChange={e => setNewCp(v => ({ ...v, lastName: e.target.value }))} />
+                </div>
+                <Input label="Назва компанії" placeholder="ТОВ «Авто»" value={newCp.companyName} onChange={e => setNewCp(v => ({ ...v, companyName: e.target.value }))} />
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Телефон" placeholder="+38 (067) 123-45-67" value={newCp.phone} onChange={e => setNewCp(v => ({ ...v, phone: e.target.value }))} />
+                  <Input label="Email" type="email" placeholder="ivan@example.com" value={newCp.email} onChange={e => setNewCp(v => ({ ...v, email: e.target.value }))} />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button onClick={saveWizardStep1} loading={savingCp} disabled={!newCp.firstName && !newCp.lastName && !newCp.companyName}>
+                    Далі →
+                  </Button>
+                  <Button variant="outline" onClick={() => setNewCpOpen(false)}>Скасувати</Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2 — Garage */}
+            {newCpStep === 2 && (
+              <div className="space-y-3">
+                <Input label="Назва гаражу" placeholder="Основний" value={newGarage.name} onChange={e => setNewGarage(v => ({ ...v, name: e.target.value }))} />
+                <Input label="Адреса (необов'язково)" placeholder="вул. Хрещатик, 1, Київ" value={newGarage.address} onChange={e => setNewGarage(v => ({ ...v, address: e.target.value }))} />
+                <div className="flex gap-2 pt-2">
+                  <Button onClick={() => saveWizardStep2(false)} loading={savingCp} disabled={!newGarage.name.trim()}>
+                    Далі →
+                  </Button>
+                  <Button variant="outline" onClick={() => saveWizardStep2(true)}>Пропустити</Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3 — Vehicle */}
+            {newCpStep === 3 && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Марка" placeholder="Toyota" value={newVehicle.make} onChange={e => setNewVehicle(v => ({ ...v, make: e.target.value }))} />
+                  <Input label="Модель" placeholder="Camry" value={newVehicle.model} onChange={e => setNewVehicle(v => ({ ...v, model: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Рік" placeholder="2021" value={newVehicle.year} onChange={e => setNewVehicle(v => ({ ...v, year: e.target.value }))} />
+                  <Input label="Держ. номер" placeholder="АА 1234 ВВ" value={newVehicle.licensePlate} onChange={e => setNewVehicle(v => ({ ...v, licensePlate: e.target.value }))} />
+                </div>
+                <Input label="VIN (необов'язково)" placeholder="1HGBH41JXMN109186" value={newVehicle.vin} onChange={e => setNewVehicle(v => ({ ...v, vin: e.target.value }))} />
+                <div className="flex gap-2 pt-2">
+                  <Button onClick={() => saveWizardStep3(false)} loading={savingCp} disabled={!newVehicle.make.trim() || !newVehicle.model.trim()}>
+                    Зберегти
+                  </Button>
+                  <Button variant="outline" onClick={() => saveWizardStep3(true)}>Пропустити</Button>
+                </div>
+              </div>
+            )}
+          </Modal>
 
           {/* New work-order mini-form */}
           {showNewWo && (
