@@ -1049,16 +1049,17 @@ export default function CalendarPage() {
   type WoItem = SearchPickerItem;
 
   const fetchCpItems = useCallback(async (q: string): Promise<CpItem[]> => {
-    // Build URL manually to avoid URLSearchParams encoding comma as %2C
-    let url = '/counterparties?types=CLIENT,BOTH&limit=30';
+    let url = '/counterparties?limit=50';
     if (q.trim()) url += `&q=${encodeURIComponent(q.trim())}`;
     const data = await apiFetch<{ items: CounterpartyOption[] }>(url);
-    return data.items.map(cp => ({
-      id: cp.id,
-      primary: displayCounterparty(cp),
-      secondary: cp.phone ?? undefined,
-      phone: cp.phone,
-    }));
+    return data.items
+      .filter(cp => cp.firstName || cp.lastName || cp.companyName)
+      .map(cp => ({
+        id: cp.id,
+        primary: displayCounterparty(cp),
+        secondary: cp.phone ?? undefined,
+        phone: cp.phone,
+      }));
   }, []);
 
   const fetchWoItems = useCallback(async (q: string): Promise<WoItem[]> => {
