@@ -330,6 +330,14 @@ grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx" -B3
 # викликається ПОЗА reset-ефектом і чи value читається у JSX. tsc без noUnusedLocals НЕ ловить.
 grep -rn "const \[\(wo\|cp\|search\|inline\)[A-Za-z]*," apps/web/src/app --include="*.tsx" | head -20
 
+# apiFetch generic type mismatch — fetch<T[]> але endpoint повертає {items,total} (Bug #181)
+# Стандарт STO ERP list endpoint = { items, total }. Виняток: /branches = bare array.
+# Шукати apiFetch<X[]> де X — не пагінований примітив; перевірити контролер.
+grep -rn "apiFetch<[A-Za-z]*\[\]>" apps/web/src/app --include="*.tsx" | grep -v "//\|spec" | head -20
+# → для кожного: прочитати controller.ts endpoint — повертає масив чи {items,total}?
+# Known bare-array endpoints: /branches (fbe66ad — спеціальний випадок, довідник)
+# Known {items,total} endpoints: /brands, /goods, /pricing-rules, /work-orders, /invoices, /counterparties, ...
+
 # Нова browser-API залежність без jsdom-стабу (Bug #177) → каскадне падіння всіх тестів які монтують shared-компонент
 # tsc мовчить (типи в lib.dom.d.ts), prod працює (браузер має API), jsdom — НІ.
 grep -rnE "new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver)\(|window\.matchMedia\(|navigator\.(clipboard|share|wakeLock|geolocation|mediaDevices)|crypto\.subtle|new Notification\(" apps/web/src/components/ui apps/web/src/app --include="*.tsx" -l | while read f; do
@@ -678,6 +686,15 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-30 — apiFetch generic type mismatch: очікує масив, endpoint повертає {items,total} — frontend
+
+**Сигнал:** `apiFetch<X[]>('/endpoint').then(setX)` де `setX` — `Dispatch<SetStateAction<X[]>>`. При монтуванні `X[]` фактично отримує об'єкт `{ items: X[], total: number }` → `x.map is not a function` TypeError → Select порожній або fetch-помилка ковтається. `tsc` мовчить бо generic параметр `T` у `apiFetch<T>` — лише assertion, не runtime validation. Баг виявляється лише у runtime.
+**Причина виникнення:** STO ERP має дві конвенції для довідникових endpoints: (1) `{ items, total }` — стандарт (brands, goods, pricing-rules, тощо); (2) bare array — виняток для деяких `/branches` (спеціальний endpoint). Розробник, знаючи про `/branches → bare`, помилково поширює цей патерн на `/brands`, або навпаки — знаючи про `{items}` стандарт, не перевіряє конкретний контролер. `tsc` не ловить (`apiFetch<T>` довіряє generic T без runtime-перевірки).
+**Підхід до виявлення:** для кожного нового `apiFetch<X[]>('/endpoint')` (де X — не пагінований тип) — прочитати `*.controller.ts` endpoint-а і перевірити що саме повертає сервіс (bare array або object). Grep `apiFetch<[A-Za-z]*\[\]>` у всіх page.tsx і звірити кожне. Known виняток: `/branches` → bare array (fbe66ad); всі решта list-endpoints → `{ items, total }`.
+**Підхід до фіксу:** `apiFetch<{ items: X[]; total: number }>('/endpoint').then(r => setX(r.items))`. Якщо endpoint реально повертає bare array — типизувати правильно і не чіпати; якщо потрібен `total` для пагінації — додати у state.
+**Severity:** MEDIUM — brands Select порожній без feedback; якщо fetch у `Promise.all` — падіння ковтає також сусідній goods-fetch.
+**Де шукати ще:** будь-яка нова довідникова сутність що додається до форми (units, warehouses, employees, payment-methods); будь-яка сторінка де `apiFetch<T[]>` на endpoint що не `/branches`.
 
 ### 2026-05-30 — Bulk-apply scope-inconsistency після додавання нового scope-поля — backend, business-logic
 
