@@ -5513,3 +5513,41 @@ Baseline: API tsc 0 errors, Web tsc 0 errors, Shared tsc 0 errors, 357/357 API u
 - **#14 Barcode trim-inconsistency у `createBarcode` (service line 122 vs 127):** pre-existing (phase16), НЕ у scope.
 
 **Підсумок:** реалізація race-guarded fetch у обох сценаріях (CRM і Catalog) — взірцева. Окремі reqRef для кожного асинхронного джерела даних (запобігає крос-впливу між vehicles↔WO і barcodes↔batches), token check на КОЖНОМУ `.then`/`.catch`/`.finally`, error-state не silent (видимий inline у ModalTabs контенті), не покладається на cancellation flag (бо openEdit — event handler, не useEffect). 0 нових багів у scope. Базові suite зелені (357 API + 148 web).
+
+---
+
+## Session 2026-05-30 — AUTO tester: AnimatedBody export + calendar ResizeObserver refactor (HEAD f2410ae)
+
+Scope: 4 комміти — `b5add44` (feat ui: export AnimatedBody, apply ResizeObserver height to calendar form, document §14.4), `a6f9aea` (fix review: cancel close-rAF + cleanup form hide-timer/rAF on unmount in calendar), `eb16f51` + `f2410ae` (docs-only).
+
+Зачеплені файли коду: `apps/web/src/components/ui/modal.tsx`, `apps/web/src/app/calendar/page.tsx`.
+
+Baseline:
+- API tsc: 0 errors
+- Web tsc: 0 errors
+- Shared tsc: 0 errors
+- API unit/contract: 357/357 passed
+- **Web component suite: 139/148 passed, 9 FAILED** ← release-blocker, виявлено на Кроці 0
+
+---
+
+## Bug #177 — [HIGH] ResizeObserver не задефайнений у jsdom → 9 modal.test.tsx падають → червоний web-baseline
+
+**Файл:** `apps/web/src/__tests__/setup.ts` (відсутня jsdom-poly для `ResizeObserver`); тригерить помилку в `apps/web/src/components/ui/modal.tsx:54` (`new ResizeObserver(...)` у `AnimatedBody` `useEffect`).
+**Severity:** HIGH (release-blocker — червоний baseline-тест блокує сесії, ховає реальні регресії; той самий патерн з SKILL "web-suite поза baseline → червоний тест невидимий до Кроку 4").
+**Категорія:** test-coverage / frontend infrastructure
+
+**Опис:**
+Commit `b5add44` представив `AnimatedBody` усередині `Modal` (`apps/web/src/components/ui/modal.tsx:54`), який підписується на `new ResizeObserver(...)` у `useEffect`. `jsdom` (environment Vitest для web) НЕ реалізує `ResizeObserver` як global. Setup-файл `apps/web/src/__tests__/setup.ts` стабає лише `scrollIntoView`, але не `ResizeObserver`. Внаслідок — кожен тест що рендерить `<Modal open>` падає на post-mount useEffect: `ReferenceError: ResizeObserver is not defined`.
+
+9 з 10 тестів у `apps/web/src/components/ui/__tests__/modal.test.tsx` падають (єдиний живий — `open=false` бо тоді AnimatedBody не монтуються). React-error boundary unmount-ить дерево → `queryByText`/`queryByRole` повертають порожньо → асерти `getByText`/`getByRole('dialog')` кидають "not found", але корінь — саме `ReferenceError` у консолі. Помилка з'явилась у baseline відразу після push `b5add44` — попередня сесія цього не помітила бо AUTO-режим (CLAUDE.md) запускає лише API-suite по замовчуванню; web-suite зловив це лише при ручному прогоні Кроку 0.
+
+**Очікувана поведінка:** baseline web-suite зелений (148/148). `Modal` тести (10) пасають у jsdom без потреби модифікувати компонент.
+
+**Фактична поведінка:** 9 modal.test.tsx падають з `ReferenceError: ResizeObserver is not defined` через те що jsdom не має нативної реалізації. Будь-який майбутній компонент з `ResizeObserver`/`IntersectionObserver` повторить помилку.
+
+**Підхід до фіксу (test-only, мінімальний diff):**
+Додати noop-стаби `ResizeObserver` (і `IntersectionObserver` для майбутнього-проофінгу) у `apps/web/src/__tests__/setup.ts`. Це СТАНДАРТНА практика для jsdom (документовано у Testing Library), не workaround. Компонент `AnimatedBody` коректний у проді — реальний браузер має `ResizeObserver` нативно.
+
+**Статус:** [x] виправлено — `apps/web/src/__tests__/setup.ts` тепер експортує стаби `ResizeObserver` (observe/unobserve/disconnect — no-op) і `IntersectionObserver` (observe/unobserve/disconnect/takeRecords — no-op), захищені guard-ом `typeof globalThis.X === 'undefined'`. Web suite 148/148 passed. Modal-тести зелені, що підтверджує: жодне реальне UX не зламано, проблема була виключно у jsdom-полі.
+

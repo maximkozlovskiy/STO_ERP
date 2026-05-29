@@ -324,6 +324,17 @@ grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx" -B3
 # для кожного useState/useCallback з префіксом фічі (woSearch/woOptions...) перевірити чи setter
 # викликається ПОЗА reset-ефектом і чи value читається у JSX. tsc без noUnusedLocals НЕ ловить.
 grep -rn "const \[\(wo\|cp\|search\|inline\)[A-Za-z]*," apps/web/src/app --include="*.tsx" | head -20
+
+# Нова browser-API залежність без jsdom-стабу (Bug #177) → каскадне падіння всіх тестів які монтують shared-компонент
+# tsc мовчить (типи в lib.dom.d.ts), prod працює (браузер має API), jsdom — НІ.
+grep -rnE "new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver)\(|window\.matchMedia\(|navigator\.(clipboard|share|wakeLock|geolocation|mediaDevices)|crypto\.subtle|new Notification\(" apps/web/src/components/ui apps/web/src/app --include="*.tsx" -l | while read f; do
+  # для кожного знайденого API — перевірити чи setup.ts його стабає
+  for api in ResizeObserver IntersectionObserver MutationObserver PerformanceObserver matchMedia; do
+    if grep -q "$api" "$f" && ! grep -q "$api" apps/web/src/__tests__/setup.ts; then
+      echo "JSDOM STUB MISSING: $f uses $api but apps/web/src/__tests__/setup.ts does not stub it"
+    fi
+  done
+done
 ```
 
 - [ ] Кожен list-fetch в `useEffect` має: `let cancelled=false` + `return () => {cancelled=true}`; `setLoading(true)` перед; `.finally(() => !cancelled && setLoading(false))`; `.catch((e) => !cancelled && setError(...))`; у JSX `{loading && <Spinner/>}` + `{!loading && items.length===0 && <Empty/>}`
@@ -448,6 +459,7 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 - [ ] Кожен **новий shared UI-компонент** (`components/ui/`) → парний `*.test.tsx` (render, інтерактив-стани, edge: порожні дані/`null`-render, badge з `0`)
 - [ ] `smoke.spec.ts` — обов'язковий: `/`, `/login`, `/setup` без auth, auth redirect
 - [ ] **Component-vs-test drift:** якщо component-тест падає у baseline на `getByText(...)`/`getByRole(...)` — звірити чи компонент реально рендерить цей елемент. Тест може документувати UX-намір, від якого компонент розійшовся (видалили hint/label). Якщо намір легітимний → виправити КОМПОНЕНТ (повернути елемент); якщо застарів → виправити тест. НЕ ігнорувати «червоне і так було»
+- [ ] **jsdom browser-API стаби в `apps/web/src/__tests__/setup.ts`:** якщо diff чіпає `components/ui/` АБО `app/**/page.tsx` і додає `new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver)\(`, `window.matchMedia(`, `navigator.(clipboard|share|wakeLock|geolocation|mediaDevices)`, `crypto.subtle`, `Notification(` — перевірити що setup.ts стабає це API. tsc мовчить (типи у `lib.dom.d.ts`), prod працює (браузер має API), але jsdom падає → каскадне падіння всіх тестів які монтують компонент (включно з тестами далеких компонентів якщо shared-компонент усередині них). Фікс: noop-стаб під guard `typeof globalThis.X === 'undefined'`. Не стабати в самому компоненті, не вимикати тест
 
 ---
 
@@ -661,6 +673,15 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-30 — Нова browser-API залежність у shared-компоненті без jsdom-стабу → каскадне падіння всіх тестів які монтують компонент — frontend, test-coverage
+
+**Сигнал:** після введення `new ResizeObserver(...)` / `new IntersectionObserver(...)` / `new MutationObserver(...)` / `matchMedia(...)` у `useEffect` shared-компонента (Modal, Drawer, Tooltip, Combobox, будь-що з `components/ui/`) — раптово N component-тестів які раніше були зеленими падають з `ReferenceError: X is not defined`. Падіння — НЕ у тесті самого компонента, а у тестах ДОВКОЛА (`getByText` → "not found", бо React error-boundary unmount-ить дерево після useEffect-exception). Виявляється ТІЛЬКИ при повному прогоні web-suite на Кроці 0, бо TypeScript мовчить (типи `ResizeObserver`/`IntersectionObserver` живуть у `lib.dom.d.ts` — завжди present), а dev/prod сервер коректний (браузер має API нативно).
+**Причина виникнення:** розробник додає browser-API у компонент щоб реалізувати "розумну" поведінку (анімація висоти за scrollHeight, lazy-load при появі в viewport, реакція на theme-change). Локально все працює бо браузер має API. jsdom (environment Vitest для web) — мінімальна реалізація DOM що НЕ містить більшості Observer API. Setup-файл історично стабав лише те що падало раніше (`scrollIntoView`); новий API не покритий — повторюється історія "jsdom doesn't implement X" з кожним новим Observer. Code review пропускає бо локально файл валідний; `tsc` пропускає бо типи в `lib.dom`. Падіння виявляється аж на повному `vitest run`.
+**Підхід до виявлення:** при будь-якому diff у `components/ui/` шукати `new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver|BroadcastChannel)\(`, `window\.matchMedia\(`, `navigator\.(clipboard|share|wakeLock|geolocation|mediaDevices)`, `crypto\.subtle`, `IndexedDB`, `Notification\(`. Для кожного співпадіння — перевірити чи `apps/web/src/__tests__/setup.ts` стабає це API. Якщо ні → preempt-fix (додати стаб ДО того як тест впаде у baseline). Альтернативно: ЗАВЖДИ ганяти web-suite на Кроці 0 (вже у SKILL з 2026-05-29) — це ловить пропуск.
+**Підхід до фіксу:** додати noop-клас-стаб у setup.ts під guard-ом `typeof globalThis.X === 'undefined'` (захист щоб у jsdom-версіях що отримають реальну реалізацію не перетирати). Не стабати у самому компоненті (захаращує prod-код); не вимикати тест (приховує реальні регресії). Для observable API (ResizeObserver, IntersectionObserver) — noop observe/unobserve/disconnect достатньо: тест перевіряє render-логіку, не саму анімацію.
+**Severity:** HIGH — release-blocker через червоний baseline; ховає реальні регресії за шумом і блокує наступні AUTO-сесії (баг "хибно-червоний" симетричний до "хибно-зеленого" з 2026-05-29).
+**Де шукати ще:** будь-який майбутній компонент з нативним browser-API; модальні/drawer/tooltip-системи (часто додають Observer-based layout); календарі/timeline (як calendar/page.tsx); virtual-list/auto-scroll; реактивні до viewport компоненти (responsive nav, sticky header). Профілактика: тримати у setup.ts ВСІ стандартні Observer-стаби незалежно від того чи використовуються — preempt-cost ~30 рядків, ловить весь клас багів.
 
 ### 2026-05-29 — Component-vs-test drift + web-suite поза baseline → червоний тест невидимий до Кроку 4 — frontend, test-coverage, process
 
