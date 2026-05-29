@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+5d003e4 feat(panel): configurable detail panel — UserPreference DB + API + useDetailPanelConfig hook + CRM/Employees
 aa7ca6e feat(ui): AnimatedBody on all inline form sections — smooth expand animation
 21587cf fix(tester): Bug #181 — brands fetch shape mismatch ({ items } not Brand[])
 21a356e feat(pricing): brand + COST_TIER grade pricing UI — brand select + tier table
@@ -177,8 +178,37 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 
 **Migration:** `20260530100000_add_pricing_brand_cost_tier` — ALTER TYPE + ALTER TABLE + CREATE TABLE + FK constraints.
 
+## UI: Конфігурована бокова панель — useDetailPanelConfig + UserPreference (5d003e4)
+
+**Нова модель БД:** `UserPreference` у `packages/database/prisma/schema.prisma` — зберігає JSON-конфіг per (orgId, employeeId, key). Без soft-delete (config data). Міграція `20260530200000_add_user_preferences`.
+
+**Новий API-модуль:** `apps/api/src/modules/user-preferences/`
+- `GET /user-preferences/:key` — повертає `{ key, value }` для поточного employee
+- `PUT /user-preferences/:key` — зберігає `{ key, value }` (204 No Content)
+- Auth-scoped: employeeId береться з `@CurrentUser() user.id` (AuthenticatedUser, не JwtPayload)
+- Всі ролі мають доступ (OWNER|ADMIN|RECEPTIONIST|MECHANIC|ACCOUNTANT|STOREKEEPER)
+
+**Новий хук:** `apps/web/src/hooks/useDetailPanelConfig.ts`
+- `useDetailPanelConfig(pageKey)` → `{ isFieldHidden, toggleField, reset, loading, config }`
+- Offline-first: optimistic localStorage + fire-and-forget API save
+- API key = `detail_panel_${pageKey}`, storage key = `sto_panel_cfg_${pageKey}`
+
+**Розширений DetailPanel:** `apps/web/src/components/ui/detail-panel.tsx`
+- Нові props: `configFields?: PanelConfigField[]`, `onToggleField?`, `onReset?`
+- Кнопка ⚙ у хедері (Settings icon, тільки якщо є configFields)
+- `showConfig` state — при click замінює контент панелі на checkbox-список полів
+- `PanelField` отримав `fieldKey?: string` і `hidden?: boolean` — якщо `hidden=true`, не рендерить
+
+**Сторінки з конфігуратором:**
+- `crm/page.tsx` — 6 полів: phone, email, edrpou, balance, contactPerson, type
+- `employees/page.tsx` — 6 полів: status, role, phone, email, rateScheme, dateOfHire
+
+**Gotcha — Prisma Json type у upsert:** `Record<string, unknown>` не assignable до `InputJsonValue` → cast `value as Prisma.InputJsonValue` у service.
+
+**Gotcha — CurrentUser decorator:** повертає `AuthenticatedUser` з полем `id` (не `sub`). `sub` є у `JwtPayload` але контролери отримують `AuthenticatedUser` після `validate()`.
+
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api + shared) — після aa7ca6e AnimatedBody inline forms
+TypeScript: ✅ 0 errors (web + api + shared) — після 5d003e4 configurable detail panel
 Latest tester: 2026-05-30 (AUTO, HEAD aa7ca6e) — AnimatedBody inline forms Етап C. **0 нових багів у scope.** 6 секцій у 5 файлах анімовані: showAddNode+showAddSchedule (vehicles/[id]), showInspection (work-orders/[id]), showAddVehicle (crm/page), showAddBarcode (catalog/page), showAddGarage (crm/[id]). ResizeObserver вже застабований (Bug #177). API 362/362 + Web 148/148 baseline ✅.
 Previous tester: 2026-05-30 (AUTO, HEAD 21a356e → 21587cf)
 Latest review: 2026-05-30 (auto, HEAD fdcf7ea → 23bf19c) — pricing brand+COST_TIER backend. 2 Important fixes: (1) `cleanValuesForType` не мав `case 'COST_TIER'` → при збереженні COST_TIER правила старі `percentValue`/`fixedAmount`/`fixedPrice` лишались у БД; (2) `$transaction(async tx)` для replace-semantics тірів без `{ timeout: 10_000 }`. 1 IMPORTANT структурне: `@@index([orgId, brandId])` відсутній у PricingRule (нове FK поле без індексу). Всі виправлено у 23bf19c. tsc 0 errors, 357/357 tests.
