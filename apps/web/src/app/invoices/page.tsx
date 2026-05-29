@@ -20,7 +20,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
-import { DetailPanel } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField, PanelSection, type DetailPanelTab } from '@/components/ui/detail-panel';
+import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
+import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
@@ -94,6 +96,7 @@ export default function InvoicesPage() {
   ], []);
 
   const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('invoices', INVOICE_COLUMNS);
+  const detailPanel = useDetailPanel('invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -104,7 +107,6 @@ export default function InvoicesPage() {
   const [error, setError] = useState('');
 
   const [selectedInv, setSelectedInv] = useState<Invoice | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
 
   const [showCreate, setShowCreate] = useState(false);
   const [showPayment, setShowPayment] = useState<Invoice | null>(null);
@@ -323,7 +325,6 @@ export default function InvoicesPage() {
   const selectInvoice = useCallback(async (inv: Invoice) => {
     const token = ++selectTokenRef.current;
     setSelectedInv(inv);
-    setDetailLoading(true);
     try {
       const detail = await apiFetch<Invoice>(`/invoices/${inv.id}`);
       // Discard stale response if another row was clicked or unmounted
@@ -331,8 +332,6 @@ export default function InvoicesPage() {
       setSelectedInv(detail);
     } catch {
       // keep basic inv data if detail fetch fails
-    } finally {
-      if (mountedRef.current && token === selectTokenRef.current) setDetailLoading(false);
     }
   }, []);
 
@@ -376,6 +375,86 @@ export default function InvoicesPage() {
   };
 
   const statuses = ['', 'DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'];
+
+  const buildInvoiceTabs = (inv: Invoice): DetailPanelTab[] => [
+    {
+      key: 'info',
+      label: 'Основне',
+      content: (
+        <div className="space-y-3">
+          <PanelField label="Статус" value={<Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>{STATUS_LABELS[inv.status]}</Badge>} />
+          <PanelField label="Контрагент" value={inv.counterpartyName} />
+          <PanelField label="Наряд" value={inv.workOrderNumber} />
+          <PanelField label="Тип" value={inv.invoiceType ? INVOICE_TYPE_LABELS[inv.invoiceType] : undefined} />
+          <PanelField label="Сума" value={inv.amount != null ? `${inv.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : undefined} />
+          <PanelField label="Сплачено" value={inv.paidAmount != null ? `${inv.paidAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : undefined} />
+          <PanelField label="Термін оплати" value={inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : undefined} />
+          {inv.notes && <PanelField label="Нотатки" value={inv.notes} />}
+          <PanelSection title="Дії">
+            <div className="flex flex-col gap-2">
+              {STATUS_TRANSITIONS[inv.status]?.map(s => (
+                <Button
+                  key={s}
+                  variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
+                  size="sm"
+                  className="w-full"
+                  onClick={() => s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s)}
+                  loading={savingId === inv.id}
+                >
+                  {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
+                </Button>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => void downloadPdf(inv)}
+              >
+                Завантажити PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => window.print()}
+              >
+                Друк
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => void handleClone(inv)}
+                loading={cloning}
+                disabled={cloning}
+              >
+                Дублювати
+              </Button>
+            </div>
+          </PanelSection>
+        </div>
+      ),
+    },
+    {
+      key: 'lines',
+      label: 'Позиції',
+      content: !inv.lines || inv.lines.length === 0 ? (
+        <p className="text-[13px] text-muted-foreground">Немає позицій</p>
+      ) : (
+        <div className="space-y-2">
+          {inv.lines.map((line, i) => (
+            <div key={line.id ?? i} className="rounded-lg border border-border px-3 py-2 text-[13px]">
+              <p className="font-medium text-foreground">{line.description}</p>
+              <p className="text-muted-foreground text-[12px] mt-0.5">
+                {line.quantity} × {line.unitPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                {' = '}<span className="text-foreground font-medium">{line.priceWithVat.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="page-container">
@@ -433,12 +512,10 @@ export default function InvoicesPage() {
             className="pl-9"
           />
         </div>
-        <ColumnsDropdown
-          columns={INVOICE_COLUMNS}
-          visibleKeys={colVisible}
-          onToggle={toggleCol}
-          className="ml-auto"
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <ColumnsDropdown columns={INVOICE_COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
+        </div>
       </div>
 
       {/* Bulk actions */}
@@ -497,8 +574,10 @@ export default function InvoicesPage() {
               {!loading && invoices.map(inv => (
                 <TableRow
                   key={inv.id}
-                  onClick={() => selectInvoice(inv)}
+                  onClick={() => { if (detailPanel.enabled) selectInvoice(inv); }}
                   className={cn(
+                    detailPanel.enabled && 'cursor-pointer',
+                    'transition-colors',
                     selectedInv?.id === inv.id && 'bg-primary/5',
                     bulkSelect.isSelected(inv.id) && 'bg-primary/5',
                   )}
@@ -563,173 +642,12 @@ export default function InvoicesPage() {
         </div>
 
         <DetailPanel
-          open={!!selectedInv}
+          open={!!selectedInv && detailPanel.enabled}
           onClose={() => setSelectedInv(null)}
           title={selectedInv?.number ?? ''}
-        >
-          {selectedInv && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant={STATUS_BADGE[selectedInv.status] ?? 'secondary'}>
-                  {STATUS_LABELS[selectedInv.status] ?? selectedInv.status}
-                </Badge>
-                {selectedInv.invoiceType && (
-                  <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
-                    {INVOICE_TYPE_LABELS[selectedInv.invoiceType] ?? selectedInv.invoiceType}
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-2 text-[13px]">
-                <div>
-                  <span className="text-muted-foreground">Контрагент</span>
-                  <p className="font-medium text-foreground mt-0.5">{selectedInv.counterpartyName ?? '—'}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Наряд</span>
-                  <p className="font-medium text-foreground mt-0.5 font-mono">{selectedInv.workOrderNumber ?? '—'}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Термін оплати</span>
-                  <p className="font-medium text-foreground mt-0.5">
-                    {selectedInv.dueDate ? new Date(selectedInv.dueDate).toLocaleDateString('uk-UA') : '—'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Створено</span>
-                  <p className="font-medium text-foreground mt-0.5">
-                    {new Date(selectedInv.createdAt).toLocaleString('uk-UA', {
-                      day: '2-digit', month: '2-digit', year: 'numeric',
-                      hour: '2-digit', minute: '2-digit',
-                    })}
-                  </p>
-                </div>
-                {selectedInv.notes && (
-                  <div>
-                    <span className="text-muted-foreground">Примітки</span>
-                    <p className="text-foreground mt-0.5">{selectedInv.notes}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Invoice lines */}
-              {detailLoading && (
-                <div className="flex justify-center py-4"><Spinner size="sm" /></div>
-              )}
-              {!detailLoading && selectedInv.lines && selectedInv.lines.length > 0 && (
-                <div className="space-y-1.5 pt-2 border-t border-border">
-                  <p className="text-[12px] text-muted-foreground font-medium uppercase tracking-wide">Позиції</p>
-                  <div className="rounded-lg border border-border overflow-hidden">
-                    <table className="w-full text-[12px]">
-                      <thead>
-                        <tr className="bg-secondary/50">
-                          <th className="text-left p-2 text-muted-foreground font-medium">Назва</th>
-                          <th className="text-right p-2 text-muted-foreground font-medium">К-сть</th>
-                          <th className="text-right p-2 text-muted-foreground font-medium">Ціна</th>
-                          <th className="text-right p-2 text-muted-foreground font-medium">ПДВ</th>
-                          <th className="text-right p-2 text-muted-foreground font-medium">Сума</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedInv.lines.map(line => (
-                          <tr key={line.id} className="border-t border-border/50">
-                            <td className="p-2 text-foreground">{line.description}</td>
-                            <td className="p-2 text-right text-foreground-muted">{line.quantity}</td>
-                            <td className="p-2 text-right text-foreground-muted">{fmt(line.unitPrice)}</td>
-                            <td className="p-2 text-right text-foreground-muted">{line.vatRate}%</td>
-                            <td className="p-2 text-right font-medium text-foreground">{fmt(line.priceWithVat)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* VAT breakdown — render only when there are real line totals,
-                  otherwise Prisma defaults of 0 produce a misleading
-                  «Без ПДВ: 0,00 ₴ / ПДВ: 0,00 ₴ / З ПДВ: 0,00 ₴» summary. */}
-              {!detailLoading && (selectedInv.totalWithVat ?? 0) > 0 && (
-                <div className="space-y-1.5 pt-2 border-t border-border">
-                  <p className="text-[12px] text-muted-foreground font-medium uppercase tracking-wide">Підсумок</p>
-                  <div className="space-y-1 text-[13px]">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Без ПДВ</span>
-                      <span className="text-foreground">{fmt(selectedInv.totalWithoutVat ?? 0)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">ПДВ</span>
-                      <span className="text-foreground">{fmt(selectedInv.totalVat ?? 0)}</span>
-                    </div>
-                    <div className="flex justify-between font-semibold border-t border-border/50 pt-1 mt-1">
-                      <span className="text-foreground">З ПДВ</span>
-                      <span className="text-foreground">{fmt(selectedInv.totalWithVat ?? 0)}</span>
-                    </div>
-                    {selectedInv.paidAmount !== undefined && (
-                      <>
-                        <div className="flex justify-between text-success-text border-t border-border/50 pt-1 mt-1">
-                          <span>Оплачено</span>
-                          <span className="font-medium">{fmt(selectedInv.paidAmount)}</span>
-                        </div>
-                        {(selectedInv.totalWithVat ?? 0) > selectedInv.paidAmount && (
-                          <div className="flex justify-between text-warning-text">
-                            <span>Залишок</span>
-                            <span className="font-medium">{fmt((selectedInv.totalWithVat ?? 0) - selectedInv.paidAmount)}</span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Action buttons in panel */}
-              <div className="space-y-2 pt-2 border-t border-border">
-                <p className="text-[12px] text-muted-foreground font-medium uppercase tracking-wide">Дії</p>
-                <div className="flex flex-col gap-2">
-                  {STATUS_TRANSITIONS[selectedInv.status]?.map(s => (
-                    <Button
-                      key={s}
-                      variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
-                      size="sm"
-                      className="w-full"
-                      onClick={() => s === 'PAID' ? setShowPayment(selectedInv) : handleTransition(selectedInv, s)}
-                      loading={savingId === selectedInv.id}
-                    >
-                      {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
-                    </Button>
-                  ))}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => void downloadPdf(selectedInv)}
-                  >
-                    Завантажити PDF
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => window.print()}
-                  >
-                    Друк
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => void handleClone(selectedInv)}
-                    loading={cloning}
-                    disabled={cloning}
-                  >
-                    Дублювати
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </DetailPanel>
+          subtitle={selectedInv?.counterpartyName}
+          tabs={selectedInv ? buildInvoiceTabs(selectedInv) : undefined}
+        />
       </div>
 
       {/* Pagination */}
