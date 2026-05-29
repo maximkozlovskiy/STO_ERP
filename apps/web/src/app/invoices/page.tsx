@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Receipt, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -21,6 +21,13 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
 
 interface Counterparty { id: string; firstName?: string; lastName?: string; companyName?: string; }
@@ -42,6 +49,11 @@ interface Invoice {
   createdAt: string; updatedAt: string;
 }
 interface Paginated { items: Invoice[]; total: number; page: number; limit: number; }
+
+interface InvoiceFilters extends Record<string, unknown> {
+  search: string;
+  status: string;
+}
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Чернетка', SENT: 'Надіслано', PAID: 'Оплачено',
@@ -68,6 +80,7 @@ export default function InvoicesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
 
   const { confirm, dialogProps } = useConfirm();
+  const features = useUiFeatures();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -90,6 +103,64 @@ export default function InvoicesPage() {
   const [saving, setSaving] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 
+  // Saved filters
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<InvoiceFilters>('invoices');
+
+  const applyFilter = useCallback((preset: { id: string; filters: InvoiceFilters }) => {
+    setSearch(preset.filters.search ?? '');
+    setStatus(preset.filters.status ?? '');
+    setPage(1);
+    setActiveSavedFilterId(preset.id);
+  }, []);
+
+  const handleSaveFilter = useCallback((name: string) => {
+    const preset = saveFilter(name, { search, status });
+    setActiveSavedFilterId(preset.id);
+    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+  }, [saveFilter, search, status, features.toastEnabled]);
+
+  // Bulk select
+  const [data, setData] = useState<Paginated | null>(null);
+  const bulkSelect = useBulkSelect(data?.items ?? []);
+
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
+
+  const bulkCancel = useCallback(async (ids: string[]) => {
+    const results = await Promise.allSettled(
+      ids.map(id => apiFetch(`/invoices/${id}/transition`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'CANCELLED' }),
+      })),
+    );
+    const succeeded = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - succeeded;
+    bulkSelect.clear();
+    load();
+    if (features.toastEnabled) {
+      if (succeeded > 0 && failed === 0) {
+        toast.success(`Скасовано ${succeeded} ${succeeded === 1 ? 'рахунок' : 'рахунків'}`);
+      } else if (succeeded > 0 && failed > 0) {
+        toast.warning(`Скасовано ${succeeded} з ${results.length}. ${failed} не змінено (статус не дозволяє)`);
+      } else {
+        toast.error('Жоден рахунок не скасовано (статус не дозволяє)');
+      }
+    } else if (failed > 0) {
+      setError(`${succeeded} з ${results.length} рахунків змінено, ${failed} не вдалось`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkSelect, features.toastEnabled]);
+
+  const bulkActions = useMemo<BulkAction[]>(() => [
+    { id: 'cancel', label: 'Скасувати вибрані', variant: 'destructive', onClick: bulkCancel },
+  ], [bulkCancel]);
+
+  // Unsaved guard for create modal
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+
   const limit = 20;
 
   const mountedRef = useRef(true);
@@ -106,10 +177,11 @@ export default function InvoicesPage() {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (status) params.set('status', status);
       if (debouncedSearch) params.set('q', debouncedSearch);
-      const data = await apiFetch<Paginated>(`/invoices?${params}`);
+      const result = await apiFetch<Paginated>(`/invoices?${params}`);
       if (!mountedRef.current) return;
-      setInvoices(data.items);
-      setTotal(data.total);
+      setData(result);
+      setInvoices(result.items);
+      setTotal(result.total);
     } catch (e: unknown) {
       if (!mountedRef.current) return;
       setError(e instanceof Error ? e.message : 'Помилка завантаження');
@@ -169,6 +241,7 @@ export default function InvoicesPage() {
         }),
       });
       if (!mountedRef.current) return;
+      dirty.resetDirty();
       setShowCreate(false);
       setForm({ counterpartyId: '', amount: '', dueDate: '' });
       setCounterpartyDisplayName('');
@@ -306,12 +379,24 @@ export default function InvoicesPage() {
         </Button>
       </div>
 
+      {/* Saved filters */}
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<InvoiceFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          className="mb-3"
+        />
+      )}
+
       {/* Status filters */}
       <div className="flex flex-wrap gap-1.5 mb-4">
         {statuses.map(s => (
           <button
             key={s}
-            onClick={() => { setStatus(s); setPage(1); }}
+            onClick={() => { setStatus(s); setPage(1); setActiveSavedFilterId(null); }}
             className={cn(
               'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
               status === s
@@ -330,12 +415,23 @@ export default function InvoicesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            onChange={e => { setSearch(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
             placeholder="Пошук за номером або контрагентом..."
             className="pl-9"
           />
         </div>
       </div>
+
+      {/* Bulk actions */}
+      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
+        <BulkActionsBar
+          count={bulkSelect.count}
+          selectedIds={Array.from(bulkSelect.selected)}
+          actions={bulkActions}
+          onClear={bulkSelect.clear}
+          className="mb-3"
+        />
+      )}
 
       {/* Table + DetailPanel */}
       <div className="flex gap-0 rounded-xl border border-border overflow-hidden">
@@ -343,6 +439,18 @@ export default function InvoicesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-9 pr-0">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      ref={selectAllRef}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-3.5 w-3.5 rounded border-border"
+                      aria-label="Вибрати всі"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Номер</TableHead>
                 <TableHead>Контрагент</TableHead>
                 <TableHead>Наряд</TableHead>
@@ -355,14 +463,14 @@ export default function InvoicesPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && invoices.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="p-0">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="p-0">
                     <EmptyState icon={Receipt} title="Рахунків не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -371,8 +479,22 @@ export default function InvoicesPage() {
                 <TableRow
                   key={inv.id}
                   onClick={() => selectInvoice(inv)}
-                  className={cn(selectedInv?.id === inv.id && 'bg-primary/5')}
+                  className={cn(
+                    selectedInv?.id === inv.id && 'bg-primary/5',
+                    bulkSelect.isSelected(inv.id) && 'bg-primary/5',
+                  )}
                 >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(inv.id)}
+                        onChange={() => bulkSelect.toggle(inv.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={`Вибрати рахунок ${inv.number}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-mono font-medium text-foreground">{inv.number}</TableCell>
                   <TableCell className="text-foreground-muted">{inv.counterpartyName ?? '—'}</TableCell>
                   <TableCell className="text-muted-foreground text-xs font-mono">{inv.workOrderNumber ?? '—'}</TableCell>
@@ -592,6 +714,8 @@ export default function InvoicesPage() {
       <Modal
         open={showCreate}
         onClose={() => {
+          if (!dirty.confirmClose()) return;
+          dirty.resetDirty();
           setShowCreate(false);
           setForm({ counterpartyId: '', amount: '', dueDate: '' });
           setCounterpartyDisplayName('');
@@ -619,8 +743,13 @@ export default function InvoicesPage() {
               // Bug #139: helper повертає '(без імені)' fallback замість порожнього рядка.
               setCounterpartyDisplayName(displayCounterpartyName(c));
               setForm(f => ({ ...f, counterpartyId: c.id }));
+              dirty.markDirty();
             }}
-            onClear={() => { setCounterpartyDisplayName(''); setForm(f => ({ ...f, counterpartyId: '' })); }}
+            onClear={() => {
+              setCounterpartyDisplayName('');
+              setForm(f => ({ ...f, counterpartyId: '' }));
+              dirty.markDirty();
+            }}
             fetchItems={q => apiFetch<{ items: Counterparty[] }>(`/counterparties?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(c => ({
               ...c,
               primary: displayCounterpartyName(c),
@@ -631,7 +760,7 @@ export default function InvoicesPage() {
             required
             type="number"
             value={form.amount}
-            onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, amount: e.target.value })); dirty.markDirty(); }}
             min="0.01"
             step="0.01"
             placeholder="0.00"
@@ -639,7 +768,7 @@ export default function InvoicesPage() {
           <DatePickerInput
             label="Термін оплати"
             value={form.dueDate}
-            onChange={v => setForm(f => ({ ...f, dueDate: v }))}
+            onChange={v => { setForm(f => ({ ...f, dueDate: v })); dirty.markDirty(); }}
           />
         </div>
       </Modal>
