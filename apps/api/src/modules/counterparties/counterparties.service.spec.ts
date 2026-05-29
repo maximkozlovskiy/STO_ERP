@@ -87,6 +87,38 @@ describe('CounterpartiesService', () => {
     });
   });
 
+  describe('findAll — showDeleted', () => {
+    it('showDeleted=true прибирає deletedAt:null з where (повертає й видалених)', async () => {
+      await service.findAll('org-1', query({ showDeleted: true }));
+      const where = prisma.counterparty.findMany.mock.calls[0][0].where;
+      // deletedAt-фільтр НЕ додається → у вибірку потрапляють і soft-deleted рядки
+      expect(where).not.toHaveProperty('deletedAt');
+    });
+
+    it('showDeleted=true ЗАВЖДИ зберігає tenant-фільтр orgId (не витікають інші org)', async () => {
+      await service.findAll('org-7', query({ showDeleted: true }));
+      const where = prisma.counterparty.findMany.mock.calls[0][0].where;
+      expect(where.orgId).toBe('org-7');
+      // count() для total має використовувати ТОЙ САМИЙ where (без розбіжності items/total)
+      expect(prisma.counterparty.count.mock.calls[0][0].where).toMatchObject({ orgId: 'org-7' });
+      expect(prisma.counterparty.count.mock.calls[0][0].where).not.toHaveProperty('deletedAt');
+    });
+
+    it('showDeleted=false (за замовчуванням) фільтрує deletedAt:null', async () => {
+      await service.findAll('org-1', query({ showDeleted: false }));
+      const where = prisma.counterparty.findMany.mock.calls[0][0].where;
+      expect(where.deletedAt).toBeNull();
+    });
+
+    it('showDeleted=true разом з ?q= зберігає orgId і OR-пошук, але без deletedAt-фільтра верхнього рівня', async () => {
+      await service.findAll('org-1', query({ showDeleted: true, q: 'AA1234BB' }));
+      const where = prisma.counterparty.findMany.mock.calls[0][0].where;
+      expect(where.orgId).toBe('org-1');
+      expect(where).not.toHaveProperty('deletedAt');
+      expect(Array.isArray(where.OR)).toBe(true);
+    });
+  });
+
   describe('findOne', () => {
     it('кидає NotFoundException якщо контрагента немає в org', async () => {
       prisma.counterparty.findFirst.mockResolvedValueOnce(null);

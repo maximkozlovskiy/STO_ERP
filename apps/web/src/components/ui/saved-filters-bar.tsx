@@ -42,8 +42,12 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
 
   return (
     <div className={cn('flex items-center gap-1.5 flex-wrap', className)}>
-      {saved.length > 0 && (
+      {saved.length > 0 ? (
         <Bookmark className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+      ) : (
+        !saveOpen && (
+          <span className="text-[12px] text-muted-foreground">Немає збережених фільтрів</span>
+        )
       )}
 
       {saved.map(preset => (

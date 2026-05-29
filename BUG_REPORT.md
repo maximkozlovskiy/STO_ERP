@@ -5423,3 +5423,67 @@ Scope: `apps/web/src/app/calendar/page.tsx` (month view, stats period filter, lo
 **Очікувана поведінка:** при повному провалі — inline-hint про помилку завантаження, відмінний від empty-state.
 **Фактична поведінка:** порожній view, не відрізнити від «немає даних».
 **Статус:** [x] виправлено — додано `monthError`/`statsError` стани, що ставляться у `true` ТІЛЬКИ коли `failures === days.length` (весь fan-out провалився; часткові провали все одно агрегуються). Inline-повідомлення у month-панелі та під period-селектором stats. Окремі стани (не form-level `error`) щоб не конфліктувати з day-view. Web tsc 0 errors.
+
+---
+
+## Session 2026-05-29 — AUTO tester: ModalTabs + CRM stale-fetch guard + counterparties showDeleted + employees assignments (HEAD e69bf1e)
+
+Scope: 3 комміти — `e69bf1e` (CRM openEdit stale-fetch race + modalGarageId), `cc44f73` (CounterpartyResponseDto deletedAt + showDeleted), `6b886ae` (ModalTabs component + employees assignments).
+Baseline: API tsc 0 errors, Web tsc 0 errors, Shared tsc 0 errors, 334/334 API unit/contract passed, 139/139 web component passed (до фіксів).
+
+**Перевірки коду із завдання (підтверджено OK, не баги):**
+- #1 `counterparties.service.findAll`: `where = { orgId, ...(showDeleted ? {} : { deletedAt: null }), ... }` — `showDeleted=true` прибирає `deletedAt`-фільтр, `orgId` ЗАВЖДИ присутній. `count()` використовує той самий `where`. Логіка коректна — БРАКУВАЛО лише spec-покриття (Bug #173).
+- #3 `crm/page.tsx openEdit`: race-guard через `modalVehiclesReqRef` бездоганний — `reqId = ++ref.current` на старті, кожен `.then`/`.finally` гейтить `ref.current === reqId` перед мутацією state. Стара повільніша вкладка не перезапише дані поточного CP. OK.
+- #4 `employees/page.tsx saveEditEmp`: PATCH `/employees/:id`, далі `Promise.all([branches, zones, lifts, work-categories])` — усі 4 паралельно. Усі 4 endpoint-и існують на бекенді з `ParseUUIDPipe` + role-guards + org-scoped FK-валідацією у сервісі (`findMany({ id:{in}, orgId, deletedAt:null })` + count-check). Логіка коректна — БРАКУВАЛО лише contract-spec (Bug #175).
+
+---
+
+## Bug #173 — [MEDIUM] counterparties.service.spec.ts не покриває showDeleted — немає regression-захисту що showDeleted=true прибирає deletedAt-фільтр але зберігає orgId
+
+**Файл:** `apps/api/src/modules/counterparties/counterparties.service.spec.ts` — існуючий spec покривав лише `?q=` (Bug #163), без жодного кейсу для `showDeleted`
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Комміт `cc44f73` додав підтримку `showDeleted` query (`where = { orgId, ...(query.showDeleted ? {} : { deletedAt: null }) }`) + `deletedAt` у `CounterpartyResponseDto`/`toDto`. Прод-код коректний, але немає тесту що фіксує два інваріанти: (1) `showDeleted=true` РЕАЛЬНО прибирає `deletedAt: null` з `where` (інакше soft-deleted ніколи не повертаються — фіча мертва), (2) `orgId` ЗАВЖДИ лишається у `where` навіть при showDeleted (інакше cross-tenant витік видалених контрагентів — CRITICAL). Регресія типу `...(query.showDeleted ? {} : ...)` → `...({})` (втрата orgId), або зворотного `?? { deletedAt: null }`, пройшла б усі тести зеленими.
+**Очікувана поведінка:** service-spec асертить форму `where` для showDeleted=true/false через Prisma-мок-шпигун.
+**Фактична поведінка:** нуль покриття showDeleted-гілки.
+**Статус:** [x] виправлено — додано блок `describe('findAll — showDeleted')` (4 тести): showDeleted=true прибирає `deletedAt` з where (`findMany` + `count`); showDeleted=true ЗАВЖДИ зберігає `orgId` (tenant isolation); showDeleted=false фільтрує `deletedAt:null`; showDeleted+`?q=` зберігає orgId+OR без top-level deletedAt. `counterparties.service.spec.ts` 9/9 passed (було 5).
+
+---
+
+## Bug #174 — [MEDIUM] Немає component-тесту для ModalTabs — новий shared-компонент (CRM/Employees edit-modal) без покриття
+
+**Файл:** `apps/web/src/components/ui/modal-tabs.tsx` (комміт `6b886ae`) — `*.test.tsx` відсутній
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Комміт `6b886ae` додав `ModalTabs` — shared-компонент нижньої секції модалки для 1→N дочірніх колекцій (авто у CRM, призначення у Employees). SKILL §1.6 вимагає component-тести для всіх shared UI-компонентів. Без тесту базовий контракт (рендер табів, перемикання активного по кліку, count badge, defaultTab fallback, null при порожньому масиві) не захищений — типова регресія: `tabs.find(...) ?? tabs[0]!` зламається при зміні fallback-логіки, badge `count !== undefined` (рендерити 0) зламається при наївному `count &&`.
+**Очікувана поведінка:** component-тест перевіряє render/click/badge/defaultTab.
+**Фактична поведінка:** компонент без покриття.
+**Статус:** [x] виправлено — додано `modal-tabs.test.tsx` (9 тестів): рендер усіх label; перший таб активний за замовчуванням; клік перемикає контент; count badge (включно з `count=0` — не зникає); відсутній badge для табу без count; defaultTab відкриває вказаний; невідомий defaultTab → fallback на перший; порожній масив → null (`toBeEmptyDOMElement`); перемикання назад. 9/9 passed.
+
+---
+
+## Bug #175 — [MEDIUM] Немає employees.contract.spec.ts — 4 assignment-endpoints (zones/lifts/work-categories/branches) у Promise.all без HTTP-contract захисту
+
+**Файл:** `apps/api/src/modules/employees/employees.controller.ts:60-98` — `*.contract.spec.ts` відсутній
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Комміт `6b886ae` під'єднав `saveEditEmp` що паралельно (`Promise.all`) б'є по 4 endpoint-ах: `POST /:id/zones`, `/lifts`, `/work-categories`, `/branches`. Жоден з них не мав HTTP-contract тесту. SKILL §1.5 вимагає contract-spec для кожного `@Controller`-endpoint (валідне body→200, невалідне→400, без auth→403/401, ParseUUIDPipe на :id). Без покриття регресія DTO-валідації (`@IsUUID('4', { each })` зняти), зміна status-коду, або зняття `ParseUUIDPipe` пройшла б непомітно — а оскільки фронт б'є всі 4 у Promise.all, поломка одного провалює весь save без явного зв'язку з конкретним endpoint.
+**Очікувана поведінка:** contract-spec фіксує 200/400/403 + UUID-валідацію :id та FK-масивів для всіх 4 endpoint-ів.
+**Фактична поведінка:** нуль HTTP-contract покриття призначень.
+**Статус:** [x] виправлено — додано `employees.contract.spec.ts` (19 тестів): `describe.each` для zones/lifts/work-categories (валідний body→200/201 + service-call assert; порожній масив; невалідний UUID у масиві→400; невалідний :id→400 ParseUUIDPipe; без auth→403) + окремий блок branches (`branchIds`+`allBranches`; allBranches=true з порожнім масивом; невалідний UUID→400; без auth→403). UUID v4-layout щоб `@IsUUID('4')` не відхиляв. 19/19 passed.
+
+---
+
+## Bug #176 — [MEDIUM] saved-filters-bar.test.tsx — червоний baseline-тест: компонент не рендерив empty-state hint «Немає збережених фільтрів»
+
+**Файл:** `apps/web/src/components/ui/saved-filters-bar.tsx` — компонент при `saved=[]` показував лише кнопку «Зберегти», без hint-тексту якого очікував тест (`saved-filters-bar.test.tsx:23`)
+**Severity:** MEDIUM
+**Категорія:** test-coverage / frontend (UX)
+
+**Опис:** Виявлено на Кроці 4 (повний прогін web-suite): `SavedFiltersBar > показує підказку коли немає збережених фільтрів і не відкритий save dialog` падав — `getByText('Немає збережених фільтрів')` не знаходив елемент. Компонент рендерив `Bookmark`-іконку лише коли `saved.length > 0`, а у порожньому стані — нічого окрім кнопки. Тест документує UX-намір (показати hint про відсутність фільтрів коли список порожній і не відкритий save-dialog), компонент від нього розійшовся. Червоний baseline-тест ховає реальні регресії за шумом і блокує наступні сесії (SKILL Крок 0). НЕ зачеплений scope-коммітами цієї сесії, але виявлений під час верифікації.
+**Очікувана поведінка:** при `saved=[]` і `!saveOpen` → inline-hint «Немає збережених фільтрів».
+**Фактична поведінка:** порожній стан без жодного тексту → тест падав.
+**Статус:** [x] виправлено — у `saved-filters-bar.tsx` empty-стан тепер рендерить `<span className="text-[12px] text-muted-foreground">Немає збережених фільтрів</span>` коли `saved.length === 0 && !saveOpen` (точно як очікує тест: hide коли save-dialog відкритий). Виправлено компонент (не тест), бо тест документує легітимний UX-намір. Web suite 148/148 passed.
