@@ -359,15 +359,27 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
         ))}
       </div>
 
-      {/* Past-hours overlay — visually blocks hours before current time */}
+      {/* Unavailable overlay — past dates (full) or past hours today (partial) */}
       {blockedWidth > 0 && (
         <div
           className="absolute inset-y-0 left-0 pointer-events-none z-1"
           style={{ width: `${blockedWidth}%` }}
           aria-hidden
         >
-          <div className="absolute inset-0 bg-muted/40" />
-          <div className="absolute inset-y-0 right-0 w-px bg-border/60" />
+          {/* Base tint */}
+          <div className="absolute inset-0 bg-foreground/[0.07]" />
+          {/* Diagonal stripe pattern */}
+          <div
+            className="absolute inset-0 opacity-30"
+            style={{
+              backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 4px, currentColor 4px, currentColor 5px)',
+              color: 'var(--color-foreground)',
+            }}
+          />
+          {/* Right border — boundary line */}
+          {blockedWidth < 100 && (
+            <div className="absolute inset-y-0 right-0 w-0.5 bg-foreground/20" />
+          )}
         </div>
       )}
 
@@ -617,8 +629,9 @@ export default function CalendarPage() {
       // Discard previous pending slot when starting a new draw
       setPendingSlot(null);
 
-      // On today: clamp draw start to current time so past slots can't be drawn
+      // Past dates: block drawing entirely; today: clamp to current hour
       const todayKyiv = toDateString(new Date());
+      if (dateRef.current < todayKyiv) return;
       const pastClamp = dateRef.current === todayKyiv ? minHourRef.current : HOURS[0];
       const startH = Math.max(snapTo15(pxToDecimalHours(e.clientX)), pastClamp);
       drawingRef.current = { liftId, startH };
@@ -814,9 +827,10 @@ export default function CalendarPage() {
     if (form.endAt <= form.startAt)    { setError('Час завершення повинен бути після часу початку'); return; }
     if (!form.counterpartyId)          { setError('Оберіть клієнта'); return; }
     if (form.workOrderId && !UUID_RE.test(form.workOrderId)) { setError('Оберіть наряд зі списку'); return; }
-    // New slots: block only hours strictly before the current Kyiv hour (9:22 → hour 9 is still allowed)
+    // New slots: block past dates entirely; on today block hours before current hour
     if (!editingSlotId && nowMs) {
       const todayKyiv = toDateString(new Date(nowMs));
+      if (date < todayKyiv) { setError('Не можна створити запис у минулому'); return; }
       if (date === todayKyiv) {
         const slotHour = parseInt(form.startAt.split(':')[0] ?? '0', 10);
         if (slotHour < minHour) { setError('Не можна створити запис у минулому'); return; }
@@ -1040,12 +1054,13 @@ export default function CalendarPage() {
     return map;
   }, [slotsByLift, nowMs]);
 
-  // Width (%) of the past-hours overlay on today; 0 on other dates
+  // Width (%) of the unavailable overlay: 100 for past dates, partial for today, 0 for future
   const blockedWidth = useMemo(() => {
     if (!nowMs || !date) return 0;
     const todayKyiv = toDateString(new Date(nowMs));
-    if (date !== todayKyiv) return 0;
-    // Block everything strictly before current hour (whole-hour granularity)
+    if (date < todayKyiv) return 100;
+    if (date > todayKyiv) return 0;
+    // Today: block hours strictly before current hour
     const blockedHours = Math.max(0, minHour - WINDOW_START);
     return (blockedHours / TOTAL_HOURS) * 100;
   }, [nowMs, date, minHour]);
@@ -1079,7 +1094,10 @@ export default function CalendarPage() {
         </Button>
         <div className="flex items-center gap-2">
           <DatePickerInput value={date} onChange={setDate} placeholder="Дата" className="w-48" />
-          <span className="text-sm text-muted-foreground capitalize">{formatDate(date)}</span>
+          <span className={`text-sm capitalize ${nowMs && date < toDateString(new Date(nowMs)) ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}>
+            {formatDate(date)}
+            {nowMs && date < toDateString(new Date(nowMs)) && ' — минулий день'}
+          </span>
         </div>
         <Button variant="outline" size="sm" onClick={nextDay}>
           Наступний
