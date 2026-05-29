@@ -95,7 +95,7 @@ export default function InvoicesPage() {
     { key: 'dueDate', label: 'Термін оплати', defaultVisible: true },
   ], []);
 
-  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('invoices', INVOICE_COLUMNS);
+  const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('invoices', INVOICE_COLUMNS);
   const detailPanel = useDetailPanel('invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);
@@ -514,7 +514,15 @@ export default function InvoicesPage() {
         </div>
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <ColumnsDropdown columns={INVOICE_COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
+          <ColumnsDropdown
+            columns={orderedColumns}
+            visibleKeys={colVisible}
+            onToggle={toggleCol}
+            onReorder={reorder}
+            onRename={renameColumn}
+            onReset={resetConfig}
+            hasCustomization={JSON.stringify(order) !== JSON.stringify(INVOICE_COLUMNS.map(c => c.key)) || Object.keys(customLabels).length > 0}
+          />
         </div>
       </div>
 
@@ -547,26 +555,25 @@ export default function InvoicesPage() {
                     />
                   </TableHead>
                 )}
-                {colVisible.has('number') && <TableHead>Номер</TableHead>}
-                {colVisible.has('counterparty') && <TableHead>Контрагент</TableHead>}
-                {colVisible.has('workOrder') && <TableHead>Наряд</TableHead>}
-                {colVisible.has('status') && <TableHead>Статус</TableHead>}
-                {colVisible.has('amount') && <TableHead className="text-right">Сума</TableHead>}
-                {colVisible.has('dueDate') && <TableHead>Термін оплати</TableHead>}
+                {visibleColumns.map(col => (
+                  col.key === 'amount'
+                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
+                    : <TableHead key={col.key}>{col.label}</TableHead>
+                ))}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && invoices.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={Receipt} title="Рахунків не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -593,30 +600,19 @@ export default function InvoicesPage() {
                       />
                     </TableCell>
                   )}
-                  {colVisible.has('number') && (
-                    <TableCell className="font-mono font-medium text-foreground">{inv.number}</TableCell>
-                  )}
-                  {colVisible.has('counterparty') && (
-                    <TableCell className="text-foreground-muted">{inv.counterpartyName ?? '—'}</TableCell>
-                  )}
-                  {colVisible.has('workOrder') && (
-                    <TableCell className="text-muted-foreground text-xs font-mono">{inv.workOrderNumber ?? '—'}</TableCell>
-                  )}
-                  {colVisible.has('status') && (
-                    <TableCell>
-                      <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
-                        {STATUS_LABELS[inv.status]}
-                      </Badge>
-                    </TableCell>
-                  )}
-                  {colVisible.has('amount') && (
-                    <TableCell className="text-right font-semibold">{fmt(inv.amount)}</TableCell>
-                  )}
-                  {colVisible.has('dueDate') && (
-                    <TableCell className="text-foreground-faint text-xs">
-                      {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : '—'}
-                    </TableCell>
-                  )}
+                  {visibleColumns.map(col => {
+                    if (col.key === 'number') return <TableCell key="number" className="font-medium text-[13px]">{inv.number}</TableCell>;
+                    if (col.key === 'counterparty') return <TableCell key="counterparty" className="text-[13px]">{inv.counterpartyName ?? '—'}</TableCell>;
+                    if (col.key === 'workOrder') return <TableCell key="workOrder" className="text-[13px] text-muted-foreground">{inv.workOrderNumber ?? '—'}</TableCell>;
+                    if (col.key === 'status') return (
+                      <TableCell key="status">
+                        <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>{STATUS_LABELS[inv.status]}</Badge>
+                      </TableCell>
+                    );
+                    if (col.key === 'amount') return <TableCell key="amount" className="text-right font-semibold text-[13px]">{fmt(inv.amount)}</TableCell>;
+                    if (col.key === 'dueDate') return <TableCell key="dueDate" className="text-[13px] text-muted-foreground">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : '—'}</TableCell>;
+                    return null;
+                  })}
                   <TableCell>
                     <div
                       className="flex gap-1.5 justify-end"
