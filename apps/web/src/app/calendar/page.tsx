@@ -1049,9 +1049,10 @@ export default function CalendarPage() {
   type WoItem = SearchPickerItem;
 
   const fetchCpItems = useCallback(async (q: string): Promise<CpItem[]> => {
-    const params = new URLSearchParams({ types: 'CLIENT,BOTH', limit: '30' });
-    if (q.trim()) params.set('q', q.trim());
-    const data = await apiFetch<{ items: CounterpartyOption[] }>(`/counterparties?${params}`);
+    // Build URL manually to avoid URLSearchParams encoding comma as %2C
+    let url = '/counterparties?types=CLIENT,BOTH&limit=30';
+    if (q.trim()) url += `&q=${encodeURIComponent(q.trim())}`;
+    const data = await apiFetch<{ items: CounterpartyOption[] }>(url);
     return data.items.map(cp => ({
       id: cp.id,
       primary: displayCounterparty(cp),
