@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Production build: Next.js static export → apps/api/public/
+    Production build: Next.js static export → apps/web/out/ (packed by apps/web/Dockerfile into nginx)
 #>
 param(
     [string]$ApiUrl = 'http://localhost:3000'
