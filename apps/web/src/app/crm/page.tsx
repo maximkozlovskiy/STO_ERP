@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Users, Eye, EyeOff } from 'lucide-react';
@@ -17,6 +17,13 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 interface Counterparty {
@@ -27,6 +34,12 @@ interface Counterparty {
   deletedAt: string | null;
 }
 interface Paginated { items: Counterparty[]; total: number; page: number; limit: number; }
+
+interface CrmFilters extends Record<string, unknown> {
+  search: string;
+  typeFilter: string;
+  showDeleted: boolean;
+}
 
 const TYPE_LABELS: Record<string, string> = { CLIENT: 'Клієнт', SUPPLIER: 'Постачальник', BOTH: 'Обидва' };
 const TYPE_BADGE: Record<string, BadgeVariant> = { CLIENT: 'default', SUPPLIER: 'secondary', BOTH: 'warning' };
@@ -50,6 +63,61 @@ export default function CrmPage() {
     type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '',
     vatPayer: false, notes: '', contactPerson: '',
   });
+
+  const features = useUiFeatures();
+
+  // ── Saved filters ────────────────────────────────────────────────────────────
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<CrmFilters>('crm');
+
+  const applyFilter = useCallback((preset: { id: string; filters: CrmFilters }) => {
+    setSearch(preset.filters.search ?? '');
+    setTypeFilter(preset.filters.typeFilter ?? '');
+    setShowDeleted(preset.filters.showDeleted ?? false);
+    setPage(1);
+    setActiveSavedFilterId(preset.id);
+  }, []);
+
+  const handleSaveFilter = useCallback((name: string) => {
+    const preset = saveFilter(name, { search, typeFilter, showDeleted });
+    setActiveSavedFilterId(preset.id);
+    toast.success(`Фільтр "${name}" збережено`);
+  }, [saveFilter, search, typeFilter, showDeleted]);
+
+  // ── Bulk select ──────────────────────────────────────────────────────────────
+  const bulkSelect = useBulkSelect(data?.items ?? []);
+
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
+
+  const bulkActions = useMemo<BulkAction[]>(() => [
+    {
+      id: 'delete',
+      label: 'Видалити вибраних',
+      variant: 'destructive',
+      onClick: async (ids: string[]) => {
+        const results = await Promise.allSettled(
+          ids.map(id => apiFetch(`/counterparties/${id}`, { method: 'DELETE' })),
+        );
+        const succeeded = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.length - succeeded;
+        bulkSelect.clear();
+        load();
+        if (succeeded > 0 && failed === 0) {
+          toast.success(`Видалено ${succeeded} контрагент${succeeded === 1 ? 'а' : 'ів'}`);
+        } else if (succeeded > 0) {
+          toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+        } else {
+          toast.error('Не вдалося видалити контрагентів');
+        }
+      },
+    },
+  ], [bulkSelect]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Unsaved guard (modal form) ───────────────────────────────────────────────
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   const load = useCallback(() => {
     setLoading(true);
@@ -92,10 +160,16 @@ export default function CrmPage() {
           contactPerson: form.contactPerson || undefined,
         }),
       });
+      dirty.resetDirty();
       setModal(false);
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
+  };
+
+  const handleCloseModal = async () => {
+    if (!dirty.confirmClose()) return;
+    setModal(false);
   };
 
   const displayName = (cp: Counterparty) =>
@@ -116,6 +190,7 @@ export default function CrmPage() {
           leftIcon={<Plus />}
           onClick={() => {
             setForm({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '', vatPayer: false, notes: '', contactPerson: '' });
+            dirty.resetDirty();
             setError(''); setModal(true);
           }}
         >
@@ -129,18 +204,30 @@ export default function CrmPage() {
         </div>
       )}
 
+      {/* Saved filters */}
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<CrmFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          className="mb-3"
+        />
+      )}
+
       {/* Filters */}
       <div className="flex gap-3 mb-5 flex-wrap">
         <Input
           value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1); }}
+          onChange={e => { setSearch(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
           placeholder="Пошук за ім'ям, телефоном, ЄДРПОУ..."
           leftElement={<Search />}
           className="flex-1 min-w-48"
         />
         <Select
           value={typeFilter}
-          onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
+          onChange={e => { setTypeFilter(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
           className="w-44"
         >
           {TYPE_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -149,12 +236,23 @@ export default function CrmPage() {
           variant="outline"
           size="md"
           leftIcon={showDeleted ? <Eye /> : <EyeOff />}
-          onClick={() => { setShowDeleted(d => !d); setPage(1); }}
+          onClick={() => { setShowDeleted(d => !d); setPage(1); setActiveSavedFilterId(null); }}
           className={showDeleted ? 'border-primary text-primary' : ''}
         >
           {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
         </Button>
       </div>
+
+      {/* Bulk actions */}
+      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
+        <BulkActionsBar
+          count={bulkSelect.count}
+          selectedIds={Array.from(bulkSelect.selected)}
+          actions={bulkActions}
+          onClear={bulkSelect.clear}
+          className="mb-3"
+        />
+      )}
 
       {/* Table + DetailPanel */}
       <div className="flex gap-0 flex-1 min-h-0">
@@ -162,6 +260,18 @@ export default function CrmPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-9 pr-0">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      ref={selectAllRef}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-3.5 w-3.5 rounded border-border"
+                      aria-label="Вибрати всіх"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Контрагент</TableHead>
                 <TableHead>Тип</TableHead>
                 <TableHead>Телефон</TableHead>
@@ -172,14 +282,14 @@ export default function CrmPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-12 text-center">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="py-12 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && data?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="p-0">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="p-0">
                     <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" size="sm" />
                   </TableCell>
                 </TableRow>
@@ -193,9 +303,21 @@ export default function CrmPage() {
                       'cursor-pointer',
                       isDeleted && 'opacity-60',
                       selectedCp?.id === cp.id && 'bg-secondary',
+                      bulkSelect.isSelected(cp.id) && 'bg-primary/5',
                     )}
                     onClick={() => setSelectedCp(prev => prev?.id === cp.id ? null : cp)}
                   >
+                    {features.bulkActionsEnabled && (
+                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={bulkSelect.isSelected(cp.id)}
+                          onChange={() => bulkSelect.toggle(cp.id)}
+                          className="h-3.5 w-3.5 rounded border-border"
+                          aria-label={`Вибрати ${displayName(cp)}`}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-[13px] font-medium text-primary">{displayName(cp)}</p>
@@ -309,7 +431,7 @@ export default function CrmPage() {
       {/* Create modal */}
       <Modal
         open={modal}
-        onClose={() => setModal(false)}
+        onClose={handleCloseModal}
         title="Новий контрагент"
         footer={
           <Button onClick={create} loading={saving}>Зберегти</Button>
@@ -325,7 +447,7 @@ export default function CrmPage() {
             label="Тип"
             required
             value={form.type}
-            onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, type: e.target.value })); dirty.markDirty(); }}
           >
             {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
@@ -335,13 +457,13 @@ export default function CrmPage() {
               <Input
                 label="Ім'я"
                 value={form.firstName}
-                onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
+                onChange={e => { setForm(f => ({ ...f, firstName: e.target.value })); dirty.markDirty(); }}
                 placeholder="Іван"
               />
               <Input
                 label="Прізвище"
                 value={form.lastName}
-                onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
+                onChange={e => { setForm(f => ({ ...f, lastName: e.target.value })); dirty.markDirty(); }}
                 placeholder="Коваль"
               />
             </div>
@@ -350,14 +472,14 @@ export default function CrmPage() {
           <Input
             label="Назва компанії"
             value={form.companyName}
-            onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, companyName: e.target.value })); dirty.markDirty(); }}
             placeholder="ТОВ «Авто»"
           />
 
           <Input
             label="Телефон"
             value={form.phone}
-            onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, phone: e.target.value })); dirty.markDirty(); }}
             placeholder="+38 (067) 123-45-67"
           />
 
@@ -365,34 +487,34 @@ export default function CrmPage() {
             label="Email"
             type="email"
             value={form.email}
-            onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, email: e.target.value })); dirty.markDirty(); }}
           />
 
           <Input
             label="ЄДРПОУ"
             value={form.edrpou}
-            onChange={e => setForm(f => ({ ...f, edrpou: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, edrpou: e.target.value })); dirty.markDirty(); }}
             placeholder="12345678"
           />
 
           <Input
             label="Контактна особа"
             value={form.contactPerson}
-            onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, contactPerson: e.target.value })); dirty.markDirty(); }}
             placeholder="Петро Іваненко"
           />
 
           <Input
             label="Нотатки"
             value={form.notes}
-            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, notes: e.target.value })); dirty.markDirty(); }}
           />
 
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={form.vatPayer}
-              onChange={e => setForm(f => ({ ...f, vatPayer: e.target.checked }))}
+              onChange={e => { setForm(f => ({ ...f, vatPayer: e.target.checked })); dirty.markDirty(); }}
               className="h-4 w-4 rounded border-border accent-primary"
             />
             <span className="text-sm text-foreground">Платник ПДВ</span>
