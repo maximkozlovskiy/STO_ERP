@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, IsObject } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpsertUserPreferenceDto {
@@ -9,6 +9,7 @@ export class UpsertUserPreferenceDto {
   key!: string;
 
   @ApiProperty({ description: 'Значення (JSON-об\'єкт)' })
+  @IsObject({ message: 'Значення має бути об\'єктом' })
   value!: Record<string, unknown>;
 }
 

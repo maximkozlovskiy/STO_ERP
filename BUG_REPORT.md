@@ -1,5 +1,43 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-05-30 — AUTO tester: Етап D — configurable detail panel (5d003e4)
+
+Scope: `user-preferences` backend module + `useDetailPanelConfig` hook + `DetailPanel` config mode + CRM/Employees wiring.
+
+### Baseline
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 362/362 passed (34 files)
+- Web components — ✅ 148/148 passed (14 files)
+
+---
+
+## Bug #182 — HIGH backend / validation
+
+**Файл:** `apps/api/src/modules/user-preferences/user-preferences.dto.ts:12`
+**Severity:** HIGH
+**Категорія:** typescript, backend
+
+**Опис:** `UpsertUserPreferenceDto.value` поле не має жодного class-validator декоратора. З `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })` будь-яке поле без декоратора вважається "не whitelisted" і **знімається з body** перед передачею в контролер. Результат: `dto.value === undefined` → `service.upsert(...)` отримує `undefined` → `undefined as Prisma.InputJsonValue` → або Prisma кидає TypeError, або записує `null` в БД замість реального конфігу.
+**Очікувана поведінка:** `dto.value` містить JSON-об'єкт переданий клієнтом.
+**Фактична поведінка:** `dto.value === undefined` — поле знімається whitelist-ом.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #183 — MEDIUM test-coverage
+
+**Файл:** `apps/api/src/modules/user-preferences/` (немає spec файлу)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Новий `UserPreferencesController` та `UserPreferencesService` не мають жодного contract або unit spec. Відповідно до §1.5, кожен новий `@Controller` потребує парного `*.contract.spec.ts` (GET 200/{key,value}, 401 без токена; PUT 204, 401, 400 при bad body).
+**Очікувана поведінка:** є `user-preferences.contract.spec.ts` з мінімальними перевірками.
+**Фактична поведінка:** spec файл відсутній.
+**Статус:** [x] виправлено
+
+---
+
 ## Session 2026-05-30 — AUTO tester: AnimatedBody inline forms (Етап C) (aa7ca6e)
 
 Scope: `feat(ui): AnimatedBody on all inline form sections` — 5 файлів: `vehicles/[id]/PageClient.tsx` (showAddNode, showAddSchedule), `work-orders/[id]/PageClient.tsx` (showInspection), `crm/page.tsx` (showAddVehicle), `catalog/page.tsx` (showAddBarcode), `crm/[id]/PageClient.tsx` (showAddGarage).
