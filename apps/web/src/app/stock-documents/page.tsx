@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Plus, FileText, Eye, EyeOff } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { Plus, FileText, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -19,6 +19,13 @@ import { DetailPanel } from '@/components/ui/detail-panel';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 interface Branch { id: string; name: string; }
@@ -40,6 +47,12 @@ interface StockDoc {
 }
 interface Paginated { items: StockDoc[]; total: number; page: number; limit: number; }
 
+interface StockDocFilters extends Record<string, unknown> {
+  typeFilter: string;
+  statusFilter: string;
+  showDeleted: boolean;
+}
+
 const TYPE_LABELS: Record<string, string> = {
   WRITEOFF: 'Списання', TRANSFER: 'Переміщення', OPENING_BALANCE: 'Поч. залишки',
 };
@@ -57,6 +70,8 @@ export default function StockDocumentsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
   const { confirm, dialogProps } = useConfirm();
+  const features = useUiFeatures();
+
   const [docs, setDocs] = useState<StockDoc[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -77,6 +92,68 @@ export default function StockDocumentsPage() {
   });
   const [lines, setLines] = useState<{ goodId: string; goodName: string; quantity: string; price: string }[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // — Saved filters ——————————————————————————————————————————————————————
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<StockDocFilters>('stock-documents');
+
+  const applyFilter = useCallback((preset: { id: string; filters: StockDocFilters }) => {
+    setTypeFilter(preset.filters.typeFilter ?? '');
+    setStatusFilter(preset.filters.statusFilter ?? '');
+    setShowDeleted(preset.filters.showDeleted ?? false);
+    setPage(1);
+    setActiveSavedFilterId(preset.id);
+  }, []);
+
+  const handleSaveFilter = useCallback((name: string) => {
+    const preset = saveFilter(name, { typeFilter, statusFilter, showDeleted });
+    setActiveSavedFilterId(preset.id);
+    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+  }, [saveFilter, typeFilter, statusFilter, showDeleted, features.toastEnabled]);
+
+  // — Bulk select ————————————————————————————————————————————————————————
+  const bulkSelect = useBulkSelect(docs);
+
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
+
+  const handleBulkDelete = useCallback(async (ids: string[]) => {
+    if (!(await confirm({ title: `Видалити ${ids.length} документ(ів)?`, confirmLabel: 'Видалити', variant: 'destructive' }))) return;
+    const results = await Promise.allSettled(
+      ids.map(id => apiFetch(`/stock-documents/${id}`, { method: 'DELETE' })),
+    );
+    const succeeded = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - succeeded;
+    bulkSelect.clear();
+    load();
+    if (features.toastEnabled) {
+      if (succeeded > 0 && failed === 0) {
+        toast.success(`Видалено ${succeeded} документ(ів)`);
+      } else if (succeeded > 0 && failed > 0) {
+        toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+      } else {
+        toast.error('Не вдалося видалити документи');
+      }
+    } else if (failed > 0) {
+      setError(`${succeeded} з ${results.length} документів видалено, ${failed} не вдалось`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkSelect, confirm, features.toastEnabled]);
+
+  const bulkActions = useMemo<BulkAction[]>(() => [
+    {
+      id: 'delete',
+      label: 'Видалити вибрані',
+      variant: 'destructive',
+      icon: <Trash2 className="h-3.5 w-3.5 mr-1.5" />,
+      onClick: handleBulkDelete,
+    },
+  ], [handleBulkDelete]);
+
+  // — Unsaved guard ——————————————————————————————————————————————————————
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   const limit = 20;
 
@@ -166,6 +243,7 @@ export default function StockDocumentsPage() {
           })),
         }),
       });
+      dirty.resetDirty();
       setShowCreate(false);
       setForm({ type: 'WRITEOFF', branchId: '', warehouseId: '', targetWarehouseId: '', notes: '' });
       setLines([]);
@@ -173,6 +251,12 @@ export default function StockDocumentsPage() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка збереження');
     } finally { setSaving(false); }
+  };
+
+  const handleCloseCreate = () => {
+    if (!dirty.confirmClose()) return;
+    dirty.resetDirty();
+    setShowCreate(false);
   };
 
   const handleTransition = async (doc: StockDoc, newStatus: string) => {
@@ -213,6 +297,18 @@ export default function StockDocumentsPage() {
         </Button>
       </div>
 
+      {/* Saved filters */}
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<StockDocFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          className="mb-3"
+        />
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
         {/* Type filters */}
@@ -221,7 +317,7 @@ export default function StockDocumentsPage() {
           {types.map(t => (
             <button
               key={t}
-              onClick={() => { setTypeFilter(t); setPage(1); }}
+              onClick={() => { setTypeFilter(t); setPage(1); setActiveSavedFilterId(null); }}
               className={cn(
                 'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
                 typeFilter === t
@@ -241,7 +337,7 @@ export default function StockDocumentsPage() {
           {statuses.map(s => (
             <button
               key={s}
-              onClick={() => { setStatusFilter(s); setPage(1); }}
+              onClick={() => { setStatusFilter(s); setPage(1); setActiveSavedFilterId(null); }}
               className={cn(
                 'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
                 statusFilter === s
@@ -255,7 +351,7 @@ export default function StockDocumentsPage() {
         </div>
         {/* Show deleted */}
         <button
-          onClick={() => { setShowDeleted(v => !v); setPage(1); }}
+          onClick={() => { setShowDeleted(v => !v); setPage(1); setActiveSavedFilterId(null); }}
           className={cn(
             'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
             showDeleted
@@ -268,12 +364,35 @@ export default function StockDocumentsPage() {
         </button>
       </div>
 
+      {/* Bulk actions */}
+      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
+        <BulkActionsBar
+          count={bulkSelect.count}
+          selectedIds={Array.from(bulkSelect.selected)}
+          actions={bulkActions}
+          onClear={bulkSelect.clear}
+          className="mb-3"
+        />
+      )}
+
       {/* Table + DetailPanel */}
       <div className="flex gap-0">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl">
           <Table>
             <TableHeader>
               <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-9 pr-0">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      ref={selectAllRef}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-3.5 w-3.5 rounded border-border"
+                      aria-label="Вибрати всі"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Номер</TableHead>
                 <TableHead>Тип</TableHead>
                 <TableHead>Склад</TableHead>
@@ -286,14 +405,14 @@ export default function StockDocumentsPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && docs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="p-0">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="p-0">
                     <EmptyState icon={FileText} title="Документів не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -304,10 +423,22 @@ export default function StockDocumentsPage() {
                   className={cn(
                     'cursor-pointer',
                     selectedDoc?.id === doc.id && 'bg-secondary',
+                    bulkSelect.isSelected(doc.id) && 'bg-primary/5',
                     doc.deletedAt && 'opacity-60',
                   )}
                   onClick={() => setSelectedDoc(prev => prev?.id === doc.id ? null : doc)}
                 >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(doc.id)}
+                        onChange={() => bulkSelect.toggle(doc.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={`Вибрати документ ${doc.number}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-mono font-medium text-foreground">
                     {doc.number}
                     {doc.deletedAt && (
@@ -430,7 +561,7 @@ export default function StockDocumentsPage() {
       {/* Create modal */}
       <Modal
         open={showCreate}
-        onClose={() => setShowCreate(false)}
+        onClose={handleCloseCreate}
         title="Новий складський документ"
         size="lg"
         footer={
@@ -449,7 +580,7 @@ export default function StockDocumentsPage() {
             label="Тип документа"
             required
             value={form.type}
-            onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, type: e.target.value })); dirty.markDirty(); }}
           >
             <option value="WRITEOFF">Списання</option>
             <option value="TRANSFER">Переміщення між складами</option>
@@ -459,7 +590,7 @@ export default function StockDocumentsPage() {
             label="Філія"
             required
             value={form.branchId}
-            onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, branchId: e.target.value })); dirty.markDirty(); }}
             placeholder="Оберіть філію"
           >
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -468,7 +599,7 @@ export default function StockDocumentsPage() {
             label={form.type === 'TRANSFER' ? 'Склад (джерело)' : 'Склад'}
             required
             value={form.warehouseId}
-            onChange={e => setForm(f => ({ ...f, warehouseId: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, warehouseId: e.target.value })); dirty.markDirty(); }}
             placeholder="Оберіть склад"
           >
             {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -478,7 +609,7 @@ export default function StockDocumentsPage() {
               label="Склад призначення"
               required
               value={form.targetWarehouseId}
-              onChange={e => setForm(f => ({ ...f, targetWarehouseId: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, targetWarehouseId: e.target.value })); dirty.markDirty(); }}
               placeholder="Оберіть склад"
             >
               {warehouses.filter(w => w.id !== form.warehouseId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -487,7 +618,7 @@ export default function StockDocumentsPage() {
           <Input
             label="Примітки"
             value={form.notes}
-            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, notes: e.target.value })); dirty.markDirty(); }}
             placeholder="Необов'язково"
           />
 
@@ -505,15 +636,15 @@ export default function StockDocumentsPage() {
                       placeholder="Товар..."
                       value={l.goodId}
                       displayValue={l.goodName}
-                      onSelect={g => setLines(ls => ls.map((x, idx) => idx === i ? { ...x, goodId: g.id, goodName: g.name } : x))}
-                      onClear={() => setLines(ls => ls.map((x, idx) => idx === i ? { ...x, goodId: '', goodName: '' } : x))}
+                      onSelect={g => { setLines(ls => ls.map((x, idx) => idx === i ? { ...x, goodId: g.id, goodName: g.name } : x)); dirty.markDirty(); }}
+                      onClear={() => { setLines(ls => ls.map((x, idx) => idx === i ? { ...x, goodId: '', goodName: '' } : x)); dirty.markDirty(); }}
                       fetchItems={q => apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(g => ({ ...g, primary: g.name, secondary: g.sku ?? undefined })))}
                     />
                   </div>
                   <Input
                     type="number"
                     value={l.quantity}
-                    onChange={e => updateLine(i, 'quantity', e.target.value)}
+                    onChange={e => { updateLine(i, 'quantity', e.target.value); dirty.markDirty(); }}
                     placeholder="Кіл."
                     min="0.001"
                     step="0.001"
@@ -522,13 +653,13 @@ export default function StockDocumentsPage() {
                   <Input
                     type="number"
                     value={l.price}
-                    onChange={e => updateLine(i, 'price', e.target.value)}
+                    onChange={e => { updateLine(i, 'price', e.target.value); dirty.markDirty(); }}
                     placeholder="Ціна"
                     min="0"
                     step="0.01"
                     className="w-24 text-xs"
                   />
-                  <button onClick={() => removeLine(i)} className="text-destructive/60 hover:text-destructive text-sm px-1">×</button>
+                  <button onClick={() => { removeLine(i); dirty.markDirty(); }} className="text-destructive/60 hover:text-destructive text-sm px-1">×</button>
                 </div>
               ))}
             </div>
