@@ -34,9 +34,11 @@ export class CalendarService {
       where,
       orderBy: { startAt: 'asc' },
       include: {
+        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: {
           select: {
             number: true,
+            counterpartyId: true,
             counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           },
         },
@@ -54,14 +56,16 @@ export class CalendarService {
     if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
 
     // Validate FK ownership to prevent cross-tenant injection — independent checks run in parallel
-    const [lift, employee, workOrder] = await Promise.all([
+    const [lift, employee, workOrder, counterparty] = await Promise.all([
       dto.liftId ? this.prisma.lift.findFirst({ where: { id: dto.liftId, orgId, deletedAt: null } }) : Promise.resolve(null),
       dto.employeeId ? this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } }) : Promise.resolve(null),
       dto.workOrderId ? this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } }) : Promise.resolve(null),
+      dto.counterpartyId ? this.prisma.counterparty.findFirst({ where: { id: dto.counterpartyId, orgId, deletedAt: null } }) : Promise.resolve(null),
     ]);
     if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
     if (dto.employeeId && !employee) throw new NotFoundException('Співробітника не знайдено');
     if (dto.workOrderId && !workOrder) throw new NotFoundException('Наряд не знайдено');
+    if (dto.counterpartyId && !counterparty) throw new NotFoundException('Клієнта не знайдено');
 
     const slot = await this.prisma.$transaction(async (tx) => {
     if (dto.liftId) {
@@ -93,6 +97,7 @@ export class CalendarService {
         liftId: dto.liftId ?? null,
         employeeId: dto.employeeId ?? null,
         workOrderId: dto.workOrderId ?? null,
+        counterpartyId: dto.counterpartyId ?? null,
         startAt,
         endAt,
         notes: dto.notes ?? null,
@@ -100,9 +105,11 @@ export class CalendarService {
         type: dto.type ?? CalendarSlotType.WORK,
       },
       include: {
+        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: {
           select: {
             number: true,
+            counterpartyId: true,
             counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           },
         },
@@ -119,16 +126,19 @@ export class CalendarService {
     const checkLift = dto.liftId !== undefined && dto.liftId !== null;
     const checkEmployee = dto.employeeId !== undefined && dto.employeeId !== null;
     const checkWorkOrder = dto.workOrderId !== undefined && dto.workOrderId !== null;
-    const [existing, lift, employee, workOrder] = await Promise.all([
+    const checkCounterparty = dto.counterpartyId !== undefined && dto.counterpartyId !== null;
+    const [existing, lift, employee, workOrder, counterparty] = await Promise.all([
       this.prisma.calendarSlot.findFirst({ where: { id, orgId, deletedAt: null } }),
       checkLift ? this.prisma.lift.findFirst({ where: { id: dto.liftId!, orgId, deletedAt: null } }) : Promise.resolve(null),
       checkEmployee ? this.prisma.employee.findFirst({ where: { id: dto.employeeId!, orgId, deletedAt: null } }) : Promise.resolve(null),
       checkWorkOrder ? this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId!, orgId, deletedAt: null } }) : Promise.resolve(null),
+      checkCounterparty ? this.prisma.counterparty.findFirst({ where: { id: dto.counterpartyId!, orgId, deletedAt: null } }) : Promise.resolve(null),
     ]);
     if (!existing) throw new NotFoundException('Слот не знайдено');
     if (checkLift && !lift) throw new NotFoundException('Підйомник не знайдено');
     if (checkEmployee && !employee) throw new NotFoundException('Співробітника не знайдено');
     if (checkWorkOrder && !workOrder) throw new NotFoundException('Наряд не знайдено');
+    if (checkCounterparty && !counterparty) throw new NotFoundException('Клієнта не знайдено');
 
     const startAt = dto.startAt ? new Date(dto.startAt) : existing.startAt;
     const endAt   = dto.endAt   ? new Date(dto.endAt)   : existing.endAt;
@@ -166,14 +176,17 @@ export class CalendarService {
           ...(dto.liftId !== undefined && { liftId: dto.liftId }),
           ...(dto.employeeId !== undefined && { employeeId: dto.employeeId }),
           ...(dto.workOrderId !== undefined && { workOrderId: dto.workOrderId }),
+          ...(dto.counterpartyId !== undefined && { counterpartyId: dto.counterpartyId }),
           startAt,
           endAt,
           ...(dto.notes !== undefined && { notes: dto.notes }),
         },
         include: {
+          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           workOrder: {
             select: {
               number: true,
+              counterpartyId: true,
               counterparty: { select: { firstName: true, lastName: true, companyName: true } },
             },
           },
@@ -200,17 +213,24 @@ export class CalendarService {
 
   private toDto(slot: {
     id: string; liftId: string | null; employeeId: string | null; workOrderId: string | null;
+    counterpartyId?: string | null;
     startAt: Date; endAt: Date; notes: string | null;
     status: CalendarSlotStatus; type: CalendarSlotType;
     workOrder: {
       number: string;
+      counterpartyId: string;
       counterparty: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
     } | null;
+    counterparty?: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
   }): CalendarSlotResponseDto {
-    const cp = slot.workOrder?.counterparty;
+    const woCp = slot.workOrder?.counterparty;
+    const directCp = slot.counterparty;
+    const cp = woCp ?? directCp;
     const counterpartyName = cp
       ? (formatPersonName(cp.lastName, cp.firstName, cp.companyName) || undefined)
       : undefined;
+
+    const counterpartyId = slot.counterpartyId ?? slot.workOrder?.counterpartyId ?? null;
 
     return {
       id: slot.id,
@@ -223,6 +243,7 @@ export class CalendarService {
       status: slot.status,
       type: slot.type,
       workOrderNumber: slot.workOrder?.number,
+      counterpartyId,
       counterpartyName,
     };
   }

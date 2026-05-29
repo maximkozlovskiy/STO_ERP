@@ -30,6 +30,7 @@ interface CalendarSlot {
   liftId?: string | null;
   employeeId?: string | null;
   workOrderId?: string | null;
+  counterpartyId?: string | null;
   startAt: string;
   endAt: string;
   notes?: string | null;
@@ -706,7 +707,7 @@ export default function CalendarPage() {
     setForm({
       liftId:              slot.liftId ?? '',
       employeeId:          slot.employeeId ?? '',
-      counterpartyId:      '',
+      counterpartyId:      slot.counterpartyId ?? '',
       counterpartyDisplay: cpDisp,
       workOrderId:         slot.workOrderId ?? '',
       workOrderDisplay:    woDisplay,
@@ -1007,7 +1008,8 @@ export default function CalendarPage() {
   const addSlot = async () => {
     if (!form.startAt || !form.endAt) { setError('Вкажіть час початку та завершення'); return; }
     if (form.endAt <= form.startAt)    { setError('Час завершення повинен бути після часу початку'); return; }
-    if (!form.counterpartyId)          { setError('Оберіть клієнта'); return; }
+    // При редагуванні клієнт може бути прив'язаний через наряд (workOrderId) — не вимагати явного counterpartyId
+    if (!form.counterpartyId && !form.workOrderId) { setError('Оберіть клієнта'); return; }
     if (form.workOrderId && !UUID_RE.test(form.workOrderId)) { setError('Оберіть наряд зі списку'); return; }
     // New slots: block past dates entirely; on today block hours before current hour
     if (!editingSlotId && nowMs) {
@@ -1020,9 +1022,10 @@ export default function CalendarPage() {
     }
     setSaving(true); setError('');
     const body = {
-      liftId:      form.liftId      || undefined,
-      employeeId:  form.employeeId  || undefined,
-      workOrderId: form.workOrderId || undefined,
+      liftId:          form.liftId          || undefined,
+      employeeId:      form.employeeId      || undefined,
+      workOrderId:     form.workOrderId     || undefined,
+      counterpartyId:  form.counterpartyId  || undefined,
       startAt: new Date(`${date}T${form.startAt}:00`).toISOString(),
       endAt:   new Date(`${date}T${form.endAt}:00`).toISOString(),
       notes: form.notes || undefined,
