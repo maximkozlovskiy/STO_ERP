@@ -473,12 +473,12 @@ export default function WorkOrderCardPage() {
     setWo(prev => prev ? { ...prev, status: newStatus } : prev);
     setTransitioning(true); setError('');
     try {
-      const updated = await apiFetch<WorkOrderDetail>(
+      const updated = await apiFetch<Omit<WorkOrderDetail, 'lines' | 'parts'>>(
         `/work-orders/${id}/transition`,
         { method: 'POST', body: JSON.stringify({ status: newStatus }) },
       );
-      // Sync з сервером — отримуємо повні дані
-      setWo(updated);
+      // transition returns WorkOrderResponseDto (no lines/parts) — merge with existing
+      setWo(prev => prev ? { ...prev, ...updated } : prev);
       if (features.toastEnabled) toast.success(`Статус змінено: ${label}`);
     } catch (e: unknown) {
       // Rollback
