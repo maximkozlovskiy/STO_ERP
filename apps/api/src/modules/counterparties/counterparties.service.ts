@@ -30,7 +30,7 @@ export class CounterpartiesService {
           { edrpou: { contains: query.q } },
           // Search by vehicle license plate — user looks up client by car number
           {
-            garages: {
+            customerGarages: {
               some: {
                 deletedAt: null,
                 vehicles: {
