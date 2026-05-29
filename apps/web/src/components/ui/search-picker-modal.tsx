@@ -63,9 +63,9 @@ export function SearchPickerModal<T extends SearchPickerItem>({
 
   const search = useCallback((q: string) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setLoading(true);
     setError('');
     timeoutRef.current = setTimeout(() => {
+      setLoading(true);
       fetchItems(q).then(data => {
         if (mountedRef.current) { setItems(data); setLoading(false); }
       }).catch((e: unknown) => {
