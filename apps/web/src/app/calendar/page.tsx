@@ -526,13 +526,18 @@ export default function CalendarPage() {
   const openFormFromPending = useCallback(() => {
     const p = pendingSlotRef.current;
     if (!p) return;
-    setForm(f => ({
-      ...f,
+    setEditingSlotId(null);
+    setError('');
+    setCpDisplay('');
+    setForm({
       liftId: p.liftId,
+      employeeId: '', counterpartyId: '', counterpartyDisplay: '',
+      workOrderId: '', workOrderDisplay: '',
       startAt: decimalHoursToHHMM(p.startH),
       endAt:   decimalHoursToHHMM(p.endH),
       normoHours: String(+(p.endH - p.startH).toFixed(2)),
-    }));
+      notes: '',
+    });
     setShowAdd(true);
   }, []);
 
@@ -696,14 +701,19 @@ export default function CalendarPage() {
         drawingRef.current = null;
         setGhost(null);
         setPendingSlot({ liftId, startH, endH: clampedEnd });
-        // Immediately open form pre-filled with drawn times
-        setForm(f => ({
-          ...f,
+        // Open blank new-slot form (reset edit state + prefill times/lift)
+        setEditingSlotId(null);
+        setError('');
+        setCpDisplay('');
+        setForm({
           liftId,
+          employeeId: '', counterpartyId: '', counterpartyDisplay: '',
+          workOrderId: '', workOrderDisplay: '',
           startAt: decimalHoursToHHMM(startH),
           endAt:   decimalHoursToHHMM(clampedEnd),
           normoHours: String(+(clampedEnd - startH).toFixed(2)),
-        }));
+          notes: '',
+        });
         setShowAdd(true);
         return;
       }
