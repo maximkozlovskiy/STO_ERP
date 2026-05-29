@@ -129,7 +129,7 @@ export default function EmployeesPage() {
     { key: 'lifts',  label: 'Підйомники',         defaultVisible: false },
   ], []);
 
-  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('employees', COLUMNS);
+  const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('employees', COLUMNS);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -524,7 +524,15 @@ export default function EmployeesPage() {
         </Button>
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} pageKey="employees" />
+          <ColumnsDropdown
+            columns={orderedColumns}
+            visibleKeys={colVisible}
+            onToggle={toggleCol}
+            onReorder={reorder}
+            onRename={renameColumn}
+            onReset={resetConfig}
+            hasCustomization={JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c => c.key)) || Object.keys(customLabels).length > 0}
+          />
         </div>
       </div>
 
@@ -557,26 +565,21 @@ export default function EmployeesPage() {
                     />
                   </TableHead>
                 )}
-                {colVisible.has('name') && <TableHead>ПІБ</TableHead>}
-                {colVisible.has('role') && <TableHead>Посада</TableHead>}
-                {colVisible.has('status') && <TableHead>Статус</TableHead>}
-                {colVisible.has('rate') && <TableHead>Схема нарахування</TableHead>}
-                {colVisible.has('zones') && <TableHead>Зони</TableHead>}
-                {colVisible.has('lifts') && <TableHead>Підйомники</TableHead>}
+                {visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && employees.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={Users} title="Немає співробітників" description="Додайте першого співробітника" />
                   </TableCell>
                 </TableRow>
@@ -607,50 +610,53 @@ export default function EmployeesPage() {
                         />
                       </TableCell>
                     )}
-                    {colVisible.has('name') && (
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[13px] font-medium text-foreground">
-                            {emp.lastName} {emp.firstName}
-                          </span>
-                          {isDeleted && <Badge variant="secondary">видалено</Badge>}
-                        </div>
-                        {emp.phone && <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>}
-                      </TableCell>
-                    )}
-                    {colVisible.has('role') && (
-                      <TableCell>
-                        <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
-                          {ROLE_LABELS[emp.role] ?? emp.role}
-                        </Badge>
-                      </TableCell>
-                    )}
-                    {colVisible.has('status') && (
-                      <TableCell>
-                        <Badge variant={STATUS_BADGE[emp.status] ?? 'secondary'}>{STATUS_LABELS[emp.status] ?? emp.status}</Badge>
-                      </TableCell>
-                    )}
-                    {colVisible.has('rate') && (
-                      <TableCell className="text-muted-foreground">
-                        {emp.rateScheme
-                          ? (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) + (emp.rateScheme.type === 'percent_normo' ? ` ${emp.rateScheme.params.percent}%` : '')
-                          : <span className="text-foreground-faint">—</span>}
-                      </TableCell>
-                    )}
-                    {colVisible.has('zones') && (
-                      <TableCell className="text-muted-foreground">
-                        {emp.zoneIds.length > 0
-                          ? emp.zoneIds.map(id => zones.find(z => z.id === id)?.name ?? id).join(', ')
-                          : <span className="text-foreground-faint">—</span>}
-                      </TableCell>
-                    )}
-                    {colVisible.has('lifts') && (
-                      <TableCell className="text-muted-foreground">
-                        {emp.liftIds.length > 0
-                          ? emp.liftIds.map(id => lifts.find(l => l.id === id)?.name ?? id).join(', ')
-                          : <span className="text-foreground-faint">—</span>}
-                      </TableCell>
-                    )}
+                    {visibleColumns.map(col => {
+                      if (col.key === 'name') return (
+                        <TableCell key="name">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-medium text-foreground">
+                              {emp.lastName} {emp.firstName}
+                            </span>
+                            {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                          </div>
+                          {emp.phone && <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>}
+                        </TableCell>
+                      );
+                      if (col.key === 'role') return (
+                        <TableCell key="role">
+                          <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
+                            {ROLE_LABELS[emp.role] ?? emp.role}
+                          </Badge>
+                        </TableCell>
+                      );
+                      if (col.key === 'status') return (
+                        <TableCell key="status">
+                          <Badge variant={STATUS_BADGE[emp.status] ?? 'secondary'}>{STATUS_LABELS[emp.status] ?? emp.status}</Badge>
+                        </TableCell>
+                      );
+                      if (col.key === 'rate') return (
+                        <TableCell key="rate" className="text-muted-foreground">
+                          {emp.rateScheme
+                            ? (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) + (emp.rateScheme.type === 'percent_normo' ? ` ${emp.rateScheme.params.percent}%` : '')
+                            : <span className="text-foreground-faint">—</span>}
+                        </TableCell>
+                      );
+                      if (col.key === 'zones') return (
+                        <TableCell key="zones" className="text-muted-foreground">
+                          {emp.zoneIds.length > 0
+                            ? emp.zoneIds.map(id => zones.find(z => z.id === id)?.name ?? id).join(', ')
+                            : <span className="text-foreground-faint">—</span>}
+                        </TableCell>
+                      );
+                      if (col.key === 'lifts') return (
+                        <TableCell key="lifts" className="text-muted-foreground">
+                          {emp.liftIds.length > 0
+                            ? emp.liftIds.map(id => lifts.find(l => l.id === id)?.name ?? id).join(', ')
+                            : <span className="text-foreground-faint">—</span>}
+                        </TableCell>
+                      );
+                      return null;
+                    })}
                     <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <Button
