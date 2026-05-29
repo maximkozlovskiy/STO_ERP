@@ -90,6 +90,11 @@ export default function CrmPage() {
   const [addingVehicle, setAddingVehicle] = useState(false);
   const [showAddVehicle, setShowAddVehicle] = useState(false);
   const [deletingVehicleId, setDeletingVehicleId] = useState<string | null>(null);
+  // Guards against stale fetch: openEdit runs in an event handler (not useEffect),
+  // so re-opening for another CP before the first fetch resolves can overwrite
+  // modalVehicles/modalGarageId with the previous CP's data. Each openEdit bumps
+  // the token; resolved fetches whose token != current are discarded.
+  const modalVehiclesReqRef = useRef(0);
 
   // ── Column visibility ────────────────────────────────────────────────────────
   const CRM_COLUMNS = useMemo(() => [
@@ -238,22 +243,26 @@ export default function CrmPage() {
     dirty.resetDirty();
     setError('');
     setModalVehicles([]);
+    setModalGarageId(null);
     setShowAddVehicle(false);
     setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
     setModal(true);
-    // Load vehicles for edit modal
+    // Load vehicles for edit modal. Bump request token so a slower fetch for a
+    // previously-opened CP cannot overwrite this CP's garage/vehicles (race guard).
+    const reqId = ++modalVehiclesReqRef.current;
     setModalVehiclesLoading(true);
     apiFetch<{ id: string }[]>(`/counterparties/${cp.id}/garages`)
       .then(garages => {
+        if (modalVehiclesReqRef.current !== reqId) return [] as Vehicle[][];
         const defaultGarage = garages[0];
         if (defaultGarage) setModalGarageId(defaultGarage.id);
         return Promise.all(garages.map(g =>
           apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}&limit=50`)
         ));
       })
-      .then(results => setModalVehicles(results.flat()))
+      .then(results => { if (modalVehiclesReqRef.current === reqId) setModalVehicles(results.flat()); })
       .catch(() => {})
-      .finally(() => setModalVehiclesLoading(false));
+      .finally(() => { if (modalVehiclesReqRef.current === reqId) setModalVehiclesLoading(false); });
   };
 
   const addVehicle = async () => {
