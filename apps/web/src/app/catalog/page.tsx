@@ -27,6 +27,8 @@ import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useTableColumns } from '@/hooks/useTableColumns';
+import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -114,6 +116,15 @@ function WorksTab() {
   const [editForm, setEditForm] = useState({ categoryId: '', name: '', normoHours: '', price: '', description: '', isWarranty: false });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
+
+  const WORKS_COLUMNS = useMemo(() => [
+    { key: 'name', label: 'Назва', defaultVisible: true },
+    { key: 'category', label: 'Категорія', defaultVisible: true },
+    { key: 'normo', label: 'Нормо-год', defaultVisible: true },
+    { key: 'price', label: 'Ціна, ₴', defaultVisible: true },
+  ], []);
+
+  const { visibleKeys: worksColVisible, toggle: toggleWorksCol } = useTableColumns('catalog-works', WORKS_COLUMNS);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -290,6 +301,11 @@ function WorksTab() {
           importUrl="/xlsx/import/works"
           onImportComplete={load}
         />
+        <ColumnsDropdown
+          columns={WORKS_COLUMNS}
+          visibleKeys={worksColVisible}
+          onToggle={toggleWorksCol}
+        />
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setForm({ categoryId: flat[0]?.id ?? '', name: '', normoHours: '', price: '', description: '', isWarranty: false }); worksFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Робота
         </Button>
@@ -322,24 +338,24 @@ function WorksTab() {
                     />
                   </TableHead>
                 )}
-                <TableHead>Назва</TableHead>
-                <TableHead>Категорія</TableHead>
-                <TableHead>Нормо-год</TableHead>
-                <TableHead>Ціна, ₴</TableHead>
+                {worksColVisible.has('name') && <TableHead>Назва</TableHead>}
+                {worksColVisible.has('category') && <TableHead>Категорія</TableHead>}
+                {worksColVisible.has('normo') && <TableHead>Нормо-год</TableHead>}
+                {worksColVisible.has('price') && <TableHead>Ціна, ₴</TableHead>}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="py-10 text-center">
+                  <TableCell colSpan={worksColVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && works?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="p-0">
+                  <TableCell colSpan={worksColVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={BookOpen} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -361,13 +377,15 @@ function WorksTab() {
                       />
                     </TableCell>
                   )}
-                  <TableCell>
-                    <p className="text-[13px] font-medium text-foreground">{w.name}</p>
-                    {w.description && <p className="text-[12px] text-muted-foreground mt-0.5">{w.description}</p>}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{w.categoryName}</TableCell>
-                  <TableCell className="text-muted-foreground">{w.normoHours}</TableCell>
-                  <TableCell className="font-medium text-foreground">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
+                  {worksColVisible.has('name') && (
+                    <TableCell>
+                      <p className="text-[13px] font-medium text-foreground">{w.name}</p>
+                      {w.description && <p className="text-[12px] text-muted-foreground mt-0.5">{w.description}</p>}
+                    </TableCell>
+                  )}
+                  {worksColVisible.has('category') && <TableCell className="text-muted-foreground">{w.categoryName}</TableCell>}
+                  {worksColVisible.has('normo') && <TableCell className="text-muted-foreground">{w.normoHours}</TableCell>}
+                  {worksColVisible.has('price') && <TableCell className="font-medium text-foreground">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>}
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditWork(w); }}>
@@ -589,6 +607,16 @@ function GoodsTab() {
   const [editGoodError, setEditGoodError] = useState('');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [batchViewerGoodId, setBatchViewerGoodId] = useState<string | null>(null);
+
+  const GOODS_COLUMNS = useMemo(() => [
+    { key: 'name', label: 'Назва / Артикул', defaultVisible: true },
+    { key: 'category', label: 'Категорія', defaultVisible: true },
+    { key: 'unit', label: 'Одиниця', defaultVisible: false },
+    { key: 'purchase', label: 'Закупівля, ₴', defaultVisible: true },
+    { key: 'sale', label: 'Продаж, ₴', defaultVisible: true },
+  ], []);
+
+  const { visibleKeys: goodsColVisible, toggle: toggleGoodsCol } = useTableColumns('catalog-goods', GOODS_COLUMNS);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -827,6 +855,11 @@ function GoodsTab() {
           importUrl="/xlsx/import/goods"
           onImportComplete={load}
         />
+        <ColumnsDropdown
+          columns={GOODS_COLUMNS}
+          visibleKeys={goodsColVisible}
+          onToggle={toggleGoodsCol}
+        />
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { goodsFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Товар
         </Button>
@@ -859,26 +892,26 @@ function GoodsTab() {
                     />
                   </TableHead>
                 )}
-                <TableHead>Назва / Артикул</TableHead>
-                <TableHead>Категорія</TableHead>
+                {goodsColVisible.has('name') && <TableHead>Назва / Артикул</TableHead>}
+                {goodsColVisible.has('category') && <TableHead>Категорія</TableHead>}
                 <TableHead>Тип</TableHead>
-                <TableHead>Од.</TableHead>
-                <TableHead>Закупка, ₴</TableHead>
-                <TableHead>Продаж, ₴</TableHead>
+                {goodsColVisible.has('unit') && <TableHead>Од.</TableHead>}
+                {goodsColVisible.has('purchase') && <TableHead>Закупка, ₴</TableHead>}
+                {goodsColVisible.has('sale') && <TableHead>Продаж, ₴</TableHead>}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="py-10 text-center">
+                  <TableCell colSpan={goodsColVisible.size + (features.bulkActionsEnabled ? 3 : 2)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && goods?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="p-0">
+                  <TableCell colSpan={goodsColVisible.size + (features.bulkActionsEnabled ? 3 : 2)} className="p-0">
                     <EmptyState icon={Package} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -900,20 +933,22 @@ function GoodsTab() {
                       />
                     </TableCell>
                   )}
-                  <TableCell>
-                    <p className="text-[13px] font-medium text-foreground">{g.name}</p>
-                    {g.sku && <p className="text-[12px] text-muted-foreground mt-0.5">Арт: {g.sku}</p>}
-                    {g.barcode && <p className="text-[12px] text-muted-foreground">Штрих: {g.barcode}</p>}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{g.category ?? '—'}</TableCell>
+                  {goodsColVisible.has('name') && (
+                    <TableCell>
+                      <p className="text-[13px] font-medium text-foreground">{g.name}</p>
+                      {g.sku && <p className="text-[12px] text-muted-foreground mt-0.5">Арт: {g.sku}</p>}
+                      {g.barcode && <p className="text-[12px] text-muted-foreground">Штрих: {g.barcode}</p>}
+                    </TableCell>
+                  )}
+                  {goodsColVisible.has('category') && <TableCell className="text-muted-foreground">{g.category ?? '—'}</TableCell>}
                   <TableCell>
                     {g.goodType
                       ? <Badge variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}>{GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}</Badge>
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{g.unit}</TableCell>
-                  <TableCell className="text-muted-foreground">{g.purchasePrice != null ? g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}</TableCell>
-                  <TableCell className="font-medium text-foreground">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>
+                  {goodsColVisible.has('unit') && <TableCell className="text-muted-foreground">{g.unit}</TableCell>}
+                  {goodsColVisible.has('purchase') && <TableCell className="text-muted-foreground">{g.purchasePrice != null ? g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}</TableCell>}
+                  {goodsColVisible.has('sale') && <TableCell className="font-medium text-foreground">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>}
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditGood(g); }}>
@@ -1357,6 +1392,13 @@ function ServicesTab() {
   const [error, setError] = useState('');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
+  const SERVICES_COLUMNS = useMemo(() => [
+    { key: 'name', label: 'Назва', defaultVisible: true },
+    { key: 'price', label: 'Ціна, ₴', defaultVisible: true },
+  ], []);
+
+  const { visibleKeys: servicesColVisible, toggle: toggleServicesCol } = useTableColumns('catalog-services', SERVICES_COLUMNS);
+
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
   const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<ServicesFilters>('catalog-services');
@@ -1472,6 +1514,11 @@ function ServicesTab() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); setActiveSavedFilterId(null); }} placeholder="Пошук послуг..." className="pl-9" />
         </div>
+        <ColumnsDropdown
+          columns={SERVICES_COLUMNS}
+          visibleKeys={servicesColVisible}
+          onToggle={toggleServicesCol}
+        />
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { servicesFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Послуга
         </Button>
@@ -1504,24 +1551,24 @@ function ServicesTab() {
                     />
                   </TableHead>
                 )}
-                <TableHead>Назва</TableHead>
+                {servicesColVisible.has('name') && <TableHead>Назва</TableHead>}
                 <TableHead>Роботи</TableHead>
                 <TableHead>Товари</TableHead>
-                <TableHead>Ціна, ₴</TableHead>
+                {servicesColVisible.has('price') && <TableHead>Ціна, ₴</TableHead>}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="py-10 text-center">
+                  <TableCell colSpan={servicesColVisible.size + (features.bulkActionsEnabled ? 4 : 3)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && services?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="p-0">
+                  <TableCell colSpan={servicesColVisible.size + (features.bulkActionsEnabled ? 4 : 3)} className="p-0">
                     <EmptyState icon={Layers} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -1543,15 +1590,19 @@ function ServicesTab() {
                       />
                     </TableCell>
                   )}
-                  <TableCell>
-                    <p className="text-[13px] font-medium text-foreground">{s.name}</p>
-                    {s.description && <p className="text-[12px] text-muted-foreground mt-0.5">{s.description}</p>}
-                  </TableCell>
+                  {servicesColVisible.has('name') && (
+                    <TableCell>
+                      <p className="text-[13px] font-medium text-foreground">{s.name}</p>
+                      {s.description && <p className="text-[12px] text-muted-foreground mt-0.5">{s.description}</p>}
+                    </TableCell>
+                  )}
                   <TableCell className="text-muted-foreground">{s.works.length > 0 ? s.works.map(w => w.workName).join(', ') : '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{s.goods.length > 0 ? s.goods.map(g => g.goodName).join(', ') : '—'}</TableCell>
-                  <TableCell className="font-medium text-foreground">
-                    {s.price != null ? s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : 'авто'}
-                  </TableCell>
+                  {servicesColVisible.has('price') && (
+                    <TableCell className="font-medium text-foreground">
+                      {s.price != null ? s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : 'авто'}
+                    </TableCell>
+                  )}
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
