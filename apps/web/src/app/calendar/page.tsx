@@ -77,6 +77,11 @@ const WINDOW_END   = HOURS[HOURS.length - 1] + 1;
 const PICK_HOURS = HOURS; // [8, 9, ..., 19]
 const PICK_MINUTES = [0, 15, 30, 45];
 
+// Max days a custom stats range may span. The calendar API has no range endpoint,
+// so we fan out one request per day — cap the fan-out to avoid hundreds of parallel
+// requests exhausting the browser connection pool and overloading the API.
+const STATS_MAX_DAYS = 92; // ≈ one quarter
+
 // Parse "HH:mm" → { h, m } snapped to nearest 15min
 function parseHHMM(s: string): { h: number; m: number } {
   const [hh, mm] = s.split(':').map(Number);
@@ -502,12 +507,20 @@ export default function CalendarPage() {
       .catch((e: unknown) => { if (mountedRef.current && !cached) setError(e instanceof Error ? e.message : 'Помилка завантаження'); });
   }, []);
 
+  // Abort the previous month fan-out when a new month load starts — without this,
+  // rapidly switching months leaves stale batches racing the fresh one (last to
+  // resolve wins, not last requested) and piles up parallel requests.
+  const monthAbortRef = useRef<AbortController | null>(null);
+
   // Load all slots for a calendar month (parallel per-day requests)
   const loadMonth = useCallback(async (yearMonth: string) => {
     // yearMonth: 'YYYY-MM'
     const [y, m] = yearMonth.split('-').map(Number);
     if (!y || !m) return;
     const daysInMonth = new Date(y, m, 0).getDate();
+    monthAbortRef.current?.abort();
+    const ac = new AbortController();
+    monthAbortRef.current = ac;
     setMonthLoading(true);
     try {
       const days = Array.from({ length: daysInMonth }, (_, i) => {
@@ -516,11 +529,12 @@ export default function CalendarPage() {
       });
       const results = await Promise.all(
         days.map(d =>
-          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`)
+          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal })
             .then(slots => ({ d, slots }))
             .catch(() => ({ d, slots: [] as CalendarSlot[] }))
         )
       );
+      if (ac.signal.aborted) return; // superseded by a newer load
       const acc: MonthSlots = {};
       for (const { d, slots } of results) {
         const byLift: Record<string, number> = {};
@@ -529,7 +543,7 @@ export default function CalendarPage() {
       }
       if (mountedRef.current) setMonthSlots(acc);
     } finally {
-      if (mountedRef.current) setMonthLoading(false);
+      if (mountedRef.current && !ac.signal.aborted) setMonthLoading(false);
     }
   }, []);
 
@@ -556,27 +570,44 @@ export default function CalendarPage() {
     return null;
   }, [statsPeriod, date, statsFrom, statsTo]);
 
+  // Abort previous stats fan-out on range/view change (same race + overload reasons as month).
+  const statsAbortRef = useRef<AbortController | null>(null);
+
   const loadStats = useCallback(async (from: string, to: string) => {
+    statsAbortRef.current?.abort();
+    const ac = new AbortController();
+    statsAbortRef.current = ac;
     setStatsLoading(true);
     try {
-      // Generate all dates in range
+      // Generate all dates in range, capped to STATS_MAX_DAYS to bound the fan-out
       const days: string[] = [];
       const cur = new Date(from + 'T12:00:00');
       const end = new Date(to + 'T12:00:00');
-      while (cur <= end) {
+      while (cur <= end && days.length < STATS_MAX_DAYS) {
         days.push(toDateString(cur));
         cur.setDate(cur.getDate() + 1);
       }
       const results = await Promise.all(
         days.map(d =>
-          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`).catch(() => [] as CalendarSlot[])
+          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal }).catch(() => [] as CalendarSlot[])
         )
       );
+      if (ac.signal.aborted) return; // superseded by a newer load
       if (mountedRef.current) setStatsSlots(results.flat());
     } finally {
-      if (mountedRef.current) setStatsLoading(false);
+      if (mountedRef.current && !ac.signal.aborted) setStatsLoading(false);
     }
   }, []);
+
+  // Custom range exceeds the per-day fan-out cap — surface a hint and clamp the load.
+  const statsRangeTooLong = useMemo(() => {
+    if (statsPeriod !== 'custom' || !statsFrom || !statsTo || statsFrom > statsTo) return false;
+    const cur = new Date(statsFrom + 'T12:00:00');
+    const end = new Date(statsTo + 'T12:00:00');
+    let n = 0;
+    while (cur <= end) { n++; cur.setDate(cur.getDate() + 1); if (n > STATS_MAX_DAYS) return true; }
+    return false;
+  }, [statsPeriod, statsFrom, statsTo]);
 
   useEffect(() => {
     if (calView === 'stats' && statsRange) {
@@ -1827,7 +1858,10 @@ export default function CalendarPage() {
                           type="button"
                           onClick={() => { setDate(dayStr); setCalView('day'); }}
                           className={`min-h-20 border-r border-border last:border-r-0 p-2 text-left transition-colors hover:bg-primary/5 flex flex-col gap-1 ${isPast ? 'opacity-60' : ''}`}
-                          style={total > 0 ? { backgroundColor: `rgba(var(--color-primary-rgb, 59,130,246), ${bgAlpha})` } : undefined}
+                          // color-mix keeps the heatmap theme-aware (dark mode + brand recolour) —
+                          // --color-primary is an hsl() token, so it can't be used inside rgba(); and
+                          // --color-primary-rgb doesn't exist, so the old rgba() fell back to hardcoded blue.
+                          style={total > 0 ? { backgroundColor: `color-mix(in srgb, var(--color-primary) ${Math.round(bgAlpha * 100)}%, transparent)` } : undefined}
                         >
                           <span className={`text-sm font-semibold leading-none ${isToday ? 'flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs' : 'text-foreground'}`}>
                             {dayNum}
@@ -1852,13 +1886,15 @@ export default function CalendarPage() {
       {calView === 'stats' && (() => {
         const WINDOW_H = WINDOW_END - WINDOW_START; // 11 h
 
-        // Per-lift aggregation over statsSlots (multi-day range)
+        // Per-lift aggregation over statsSlots (multi-day range).
+        // Clamp to STATS_MAX_DAYS so the load% denominator matches the actually loaded
+        // (capped) slot set — otherwise an over-long range would understate utilisation.
         const days = statsRange
           ? (() => {
               const d: string[] = [];
               const cur = new Date(statsRange.from + 'T12:00:00');
               const end = new Date(statsRange.to + 'T12:00:00');
-              while (cur <= end) { d.push(toDateString(cur)); cur.setDate(cur.getDate() + 1); }
+              while (cur <= end && d.length < STATS_MAX_DAYS) { d.push(toDateString(cur)); cur.setDate(cur.getDate() + 1); }
               return d.length;
             })()
           : 1;
@@ -1946,6 +1982,14 @@ export default function CalendarPage() {
 
               {statsLoading && <Spinner size="sm" />}
             </div>
+
+            {/* Custom-range validation hints */}
+            {statsPeriod === 'custom' && statsFrom && statsTo && statsFrom > statsTo && (
+              <p className="text-xs text-destructive-text">Дата «Від» повинна бути не пізніше за «До».</p>
+            )}
+            {statsRangeTooLong && (
+              <p className="text-xs text-warning-text">Діапазон задовгий — показано перші {STATS_MAX_DAYS} днів. Звузьте період для повної статистики.</p>
+            )}
 
             {/* Period label */}
             <p className="text-xs text-muted-foreground">
