@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Users, Eye, EyeOff } from 'lucide-react';
+import { Plus, Search, Users, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,8 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
+import { useConfirm } from '@/hooks/useConfirm';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 
 interface Counterparty {
@@ -67,6 +69,7 @@ export default function CrmPage() {
   });
 
   const features = useUiFeatures();
+  const { confirm, dialogProps } = useConfirm();
 
   // ── Column visibility ────────────────────────────────────────────────────────
   const CRM_COLUMNS = useMemo(() => [
@@ -185,6 +188,16 @@ export default function CrmPage() {
     setModal(false);
   };
 
+  const markDeleted = async (id: string) => {
+    if (!(await confirm({ title: 'Позначити контрагента на видалення?', variant: 'destructive' }))) return;
+    try {
+      await apiFetch(`/counterparties/${id}`, { method: 'DELETE' });
+      toast.success('Контрагента позначено на видалення');
+      if (selectedCp?.id === id) setSelectedCp(null);
+      load();
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка видалення'); }
+  };
+
   const displayName = (cp: Counterparty) =>
     cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ') ?? '—';
 
@@ -296,6 +309,7 @@ export default function CrmPage() {
                 {colVisible.has('phone')   && <TableHead>Телефон</TableHead>}
                 {colVisible.has('edrpou')  && <TableHead>ЄДРПОУ</TableHead>}
                 {colVisible.has('balance') && <TableHead>Баланс, ₴</TableHead>}
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -367,6 +381,19 @@ export default function CrmPage() {
                         {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
                       </TableCell>
                     )}
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                      {!isDeleted && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          title="Позначити на видалення"
+                          onClick={() => markDeleted(cp.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -550,6 +577,7 @@ export default function CrmPage() {
           </label>
         </div>
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

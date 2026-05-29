@@ -1388,6 +1388,7 @@ function ServicesTab() {
   const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
+  const [editingService, setEditingService] = useState<Service | null>(null);
   const [form, setForm] = useState({ name: '', description: '', price: '' });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -1461,17 +1462,37 @@ function ServicesTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const create = async () => {
+  const openCreate = () => {
+    setEditingService(null);
+    setForm({ name: '', description: '', price: '' });
+    servicesFormDirty.resetDirty();
+    setError('');
+    setModal(true);
+  };
+
+  const openEdit = (s: Service) => {
+    setEditingService(s);
+    setForm({ name: s.name, description: s.description ?? '', price: s.price != null ? String(s.price) : '' });
+    servicesFormDirty.resetDirty();
+    setError('');
+    setModal(true);
+  };
+
+  const save = async () => {
     setSaving(true); setError('');
     try {
-      await apiFetch<Service>('/services', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: form.name,
-          description: form.description || undefined,
-          price: form.price ? Number(form.price) : undefined,
-        }),
-      });
+      const body = {
+        name: form.name,
+        description: form.description || undefined,
+        price: form.price ? Number(form.price) : undefined,
+      };
+      if (editingService) {
+        await apiFetch(`/services/${editingService.id}`, { method: 'PATCH', body: JSON.stringify(body) });
+        toast.success('Послугу оновлено');
+      } else {
+        await apiFetch<Service>('/services', { method: 'POST', body: JSON.stringify(body) });
+        toast.success('Послугу створено');
+      }
       setModal(false);
       setForm({ name: '', description: '', price: '' });
       servicesFormDirty.resetDirty();
@@ -1522,7 +1543,7 @@ function ServicesTab() {
           onToggle={toggleServicesCol}
           className="ml-auto"
         />
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { servicesFormDirty.resetDirty(); setError(''); setModal(true); }}>
+        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
           Послуга
         </Button>
       </div>
@@ -1606,17 +1627,28 @@ function ServicesTab() {
                       {s.price != null ? s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : 'авто'}
                     </TableCell>
                   )}
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={e => { e.stopPropagation(); remove(s.id); }}
-                      disabled={deletingId === s.id}
-                      loading={deletingId === s.id}
-                      className="text-destructive/60 hover:text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                  <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Редагувати"
+                        onClick={() => openEdit(s)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        title="Видалити"
+                        onClick={() => remove(s.id)}
+                        disabled={deletingId === s.id}
+                        loading={deletingId === s.id}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -1687,10 +1719,10 @@ function ServicesTab() {
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
-      <Modal open={modal} onClose={() => { if (servicesFormDirty.confirmClose()) setModal(false); }} title="Нова комплексна послуга"
+      <Modal open={modal} onClose={() => { if (servicesFormDirty.confirmClose()) setModal(false); }} title={editingService ? 'Редагування послуги' : 'Нова комплексна послуга'}
         footer={
-          <Button onClick={create} loading={saving} disabled={!form.name} className="w-full">
-            Зберегти
+          <Button onClick={save} loading={saving} disabled={!form.name} className="w-full">
+            {editingService ? 'Оновити' : 'Зберегти'}
           </Button>
         }
       >

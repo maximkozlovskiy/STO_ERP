@@ -437,6 +437,7 @@ export default function InvoicesPage() {
           columns={INVOICE_COLUMNS}
           visibleKeys={colVisible}
           onToggle={toggleCol}
+          className="ml-auto"
         />
       </div>
 
