@@ -16,7 +16,14 @@ const prismaMock = {
     create: vi.fn(),
     update: vi.fn(),
   },
+  pricingRuleTier: {
+    deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    createMany: vi.fn().mockResolvedValue({ count: 0 }),
+  },
   good: {
+    findFirst: vi.fn(),
+  },
+  brand: {
     findFirst: vi.fn(),
   },
   $transaction: vi.fn().mockImplementation((arg: unknown) => {
@@ -147,6 +154,7 @@ describe('PricingRules — HTTP Contract', () => {
         goodId: null,
         goodCategory: null,
         goodType: 'SPARE_PART',
+        brandId: null,
         percentValue: 35,
         fixedAmount: null,
         fixedPrice: null,
@@ -154,6 +162,8 @@ describe('PricingRules — HTTP Contract', () => {
         isActive: true,
         createdAt: new Date(),
         good: null,
+        brand: null,
+        tiers: [],
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',

@@ -1,7 +1,43 @@
-import { IsString, IsEnum, IsOptional, IsNumber, IsBoolean, IsUUID, Matches, Min, Max } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsNumber, IsBoolean, IsInt, IsArray, IsUUID, Matches, Min, Max, ValidateNested } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PricingRuleType, GoodType } from '@prisma/client';
 import { Type } from 'class-transformer';
+
+export class PricingRuleTierDto {
+  id!: string;
+  costMin!: number;
+  costMax!: number | null;
+  percentValue!: number;
+  sortOrder!: number;
+}
+
+export class CreatePricingRuleTierDto {
+  @ApiProperty()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  costMin!: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  costMax?: number;
+
+  @ApiProperty()
+  @IsNumber()
+  @Min(0)
+  @Max(999)
+  @Type(() => Number)
+  percentValue!: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  sortOrder?: number;
+}
 
 export class CreatePricingRuleDto {
   @ApiProperty()
@@ -36,6 +72,18 @@ export class CreatePricingRuleDto {
   @IsOptional()
   @IsEnum(GoodType)
   goodType?: GoodType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  brandId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreatePricingRuleTierDto)
+  tiers?: CreatePricingRuleTierDto[];
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -100,6 +148,18 @@ export class UpdatePricingRuleDto {
   @IsOptional()
   @IsEnum(GoodType)
   goodType?: GoodType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  brandId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreatePricingRuleTierDto)
+  tiers?: CreatePricingRuleTierDto[];
 
   // Bug #27: PATCH повинен мати ті самі валідатори, що й POST,
   // інакше ціна продажу може стати від'ємною (`percentValue: -50` → costPrice * 0.5).

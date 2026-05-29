@@ -52,7 +52,7 @@ export class BatchService {
 
     const good = await db.good.findFirst({
       where: { id: dto.goodId, orgId, deletedAt: null },
-      select: { id: true, category: true, goodType: true, salePrice: true },
+      select: { id: true, category: true, goodType: true, salePrice: true, brandId: true },
     });
     if (!good) throw new BadRequestException('Товар не знайдено');
 
@@ -60,8 +60,9 @@ export class BatchService {
     const computedSalePrice = await this.pricing.calculateSalePrice(
       orgId,
       dto.goodId,
-      good.category ?? undefined,
-      good.goodType ?? undefined,
+      good.category ?? null,
+      good.goodType ?? null,
+      good.brandId ?? null,
       dto.costPrice,
     );
     // Bug #14: при безкоштовному прийомі (costPrice=0) використовуємо поточну ціну товару,

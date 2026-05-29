@@ -10,10 +10,12 @@ import { PricingService } from './pricing.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePricingRuleDto, UpdatePricingRuleDto } from './pricing-rules.dto';
 import { NotFoundException } from '@nestjs/common';
-import { UserRole, PricingRule, Prisma } from '@prisma/client';
+import { UserRole, PricingRule, PricingRuleTier, Prisma } from '@prisma/client';
 
-type PricingRuleWithGood = PricingRule & {
+type PricingRuleWithRelations = PricingRule & {
   good: { id: string; name: string; sku: string | null } | null;
+  brand: { id: string; name: string } | null;
+  tiers: PricingRuleTier[];
 };
 
 @ApiTags('Pricing Rules')
@@ -43,7 +45,11 @@ export class PricingRulesController {
     const [rules, total] = await this.prisma.$transaction([
       this.prisma.pricingRule.findMany({
         where,
-        include: { good: { select: { id: true, name: true, sku: true } } },
+        include: {
+          good: { select: { id: true, name: true, sku: true } },
+          brand: { select: { id: true, name: true } },
+          tiers: { orderBy: { sortOrder: 'asc' } },
+        },
         orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
         take: 200,
       }),
@@ -69,14 +75,39 @@ export class PricingRulesController {
       });
       if (!good) throw new NotFoundException('Товар не знайдено');
     }
+    // Validate brandId belongs to same org
+    if (dto.brandId) {
+      const brand = await this.prisma.brand.findFirst({
+        where: { id: dto.brandId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!brand) throw new NotFoundException('Бренд не знайдено');
+    }
     // Bug #22: scope-поля взаємовиключні, ієрархія goodId > goodCategory > goodType.
     // Очищаємо менш специфічні рівні, щоб менеджер не зберігав суперечливі правила.
     const normalized = this.normalizeScope(dto);
     // Bug #23 echo: backend очищає поля values, які не належать обраному type.
     const cleanValues = this.cleanValuesForType(normalized);
+    const { tiers, ...ruleData } = cleanValues;
     const rule = await this.prisma.pricingRule.create({
-      data: { orgId, ...cleanValues, priority: cleanValues.priority ?? 10 },
-      include: { good: { select: { id: true, name: true, sku: true } } },
+      data: {
+        orgId,
+        ...ruleData,
+        priority: ruleData.priority ?? 10,
+        ...(tiers && tiers.length > 0 ? {
+          tiers: { createMany: { data: tiers.map((t, i) => ({
+            costMin: t.costMin,
+            costMax: t.costMax ?? null,
+            percentValue: t.percentValue,
+            sortOrder: t.sortOrder ?? i,
+          })) } },
+        } : {}),
+      },
+      include: {
+        good: { select: { id: true, name: true, sku: true } },
+        brand: { select: { id: true, name: true } },
+        tiers: { orderBy: { sortOrder: 'asc' } },
+      },
     });
     return this.toDto(rule);
   }
@@ -103,6 +134,14 @@ export class PricingRulesController {
       });
       if (!good) throw new NotFoundException('Товар не знайдено');
     }
+    // Validate brandId belongs to same org
+    if (dto.brandId) {
+      const brand = await this.prisma.brand.findFirst({
+        where: { id: dto.brandId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!brand) throw new NotFoundException('Бренд не знайдено');
+    }
 
     // Bug #35: PATCH повинен застосовувати ієрархію scope з урахуванням існуючого
     // стану. Якщо клієнт надсилає лише `goodCategory` (без явного `goodId: null`),
@@ -121,18 +160,52 @@ export class PricingRulesController {
     // Explicitly null out scope fields що були "пониззані" нормалізацією,
     // інакше Prisma update лишить старі значення в БД.
     // Використовуємо UncheckedUpdateInput, бо `goodId` — це foreign key поле без relation-обгортки.
+    const { tiers, ...restValues } = cleanValues;
     const updateData: Prisma.PricingRuleUncheckedUpdateInput = {
-      ...cleanValues,
+      ...restValues,
       goodId: normalized.goodId ?? null,
       goodCategory: normalized.goodCategory ?? null,
       goodType: normalized.goodType ?? null,
+      brandId: dto.brandId !== undefined ? (dto.brandId ?? null) : existing.brandId,
     };
 
-    const rule = await this.prisma.pricingRule.update({
-      where: { id },
-      data: updateData,
-      include: { good: { select: { id: true, name: true, sku: true } } },
-    });
+    // Replace-semantics for tiers: deleteMany + createMany in $transaction
+    let rule;
+    if (tiers !== undefined) {
+      rule = await this.prisma.$transaction(async (tx) => {
+        await tx.pricingRuleTier.deleteMany({ where: { pricingRuleId: id } });
+        if (tiers.length > 0) {
+          await tx.pricingRuleTier.createMany({
+            data: tiers.map((t, i) => ({
+              pricingRuleId: id,
+              costMin: t.costMin,
+              costMax: t.costMax ?? null,
+              percentValue: t.percentValue,
+              sortOrder: t.sortOrder ?? i,
+            })),
+          });
+        }
+        return tx.pricingRule.update({
+          where: { id },
+          data: updateData,
+          include: {
+            good: { select: { id: true, name: true, sku: true } },
+            brand: { select: { id: true, name: true } },
+            tiers: { orderBy: { sortOrder: 'asc' } },
+          },
+        });
+      });
+    } else {
+      rule = await this.prisma.pricingRule.update({
+        where: { id },
+        data: updateData,
+        include: {
+          good: { select: { id: true, name: true, sku: true } },
+          brand: { select: { id: true, name: true } },
+          tiers: { orderBy: { sortOrder: 'asc' } },
+        },
+      });
+    }
     return this.toDto(rule);
   }
 
@@ -206,7 +279,7 @@ export class PricingRulesController {
     return out;
   }
 
-  private toDto(rule: PricingRuleWithGood) {
+  private toDto(rule: PricingRuleWithRelations) {
     return {
       id: rule.id,
       name: rule.name,
@@ -216,12 +289,21 @@ export class PricingRulesController {
       good: rule.good ?? null,
       goodCategory: rule.goodCategory,
       goodType: rule.goodType,
+      brandId: rule.brandId ?? null,
+      brandName: rule.brand?.name ?? null,
       percentValue: rule.percentValue != null ? Number(rule.percentValue) : null,
       fixedAmount: rule.fixedAmount != null ? Number(rule.fixedAmount) : null,
       fixedPrice: rule.fixedPrice != null ? Number(rule.fixedPrice) : null,
       roundTo: rule.roundTo != null ? Number(rule.roundTo) : null,
       isActive: rule.isActive,
       createdAt: rule.createdAt,
+      tiers: rule.tiers.map(t => ({
+        id: t.id,
+        costMin: Number(t.costMin),
+        costMax: t.costMax != null ? Number(t.costMax) : null,
+        percentValue: Number(t.percentValue),
+        sortOrder: t.sortOrder,
+      })),
     };
   }
 }

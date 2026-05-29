@@ -243,6 +243,7 @@ enum PricingRuleType {
   FIXED_AMOUNT
   FIXED_PRICE
   COMPETITOR_PLUS
+  COST_TIER
 }
 
 // ─── INFRASTRUCTURE ──────────────────────────────────────
@@ -714,7 +715,8 @@ model Brand {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  goods       Good[]
+  goods        Good[]
+  pricingRules PricingRule[]
 
   @@unique([orgId, name])
   @@index([orgId, deletedAt])
@@ -1077,6 +1079,7 @@ model PricingRule {
   goodId       String?         @db.Uuid
   goodCategory String?
   goodType     String?
+  brandId      String?         @db.Uuid
   percentValue Decimal?        @db.Decimal(6, 2)
   fixedAmount  Decimal?        @db.Decimal(12, 2)
   fixedPrice   Decimal?        @db.Decimal(12, 2)
@@ -1087,13 +1090,29 @@ model PricingRule {
   updatedAt    DateTime        @updatedAt
   deletedAt    DateTime?
 
-  good         Good?         @relation(fields: [goodId], references: [id])
+  good         Good?             @relation(fields: [goodId], references: [id])
+  brand        Brand?            @relation(fields: [brandId], references: [id])
+  tiers        PricingRuleTier[]
   priceHistory PriceHistory[]
 
   @@index([orgId, isActive, priority])
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("pricing_rules")
+}
+
+model PricingRuleTier {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pricingRuleId String      @db.Uuid
+  costMin       Decimal     @db.Decimal(12, 2)
+  costMax       Decimal?    @db.Decimal(12, 2)
+  percentValue  Decimal     @db.Decimal(6, 2)
+  sortOrder     Int         @default(0)
+
+  pricingRule   PricingRule @relation(fields: [pricingRuleId], references: [id], onDelete: Cascade)
+
+  @@index([pricingRuleId, costMin])
+  @@map("pricing_rule_tiers")
 }
 
 // Append-only — лог усіх змін ціни продажу
