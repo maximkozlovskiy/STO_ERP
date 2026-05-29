@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useState, type ReactNode } from 'react';
+import { useEffect, useCallback, useState, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,7 @@ interface ModalProps {
   hideClose?: boolean;
 }
 
-// Numeric max-width values for smooth CSS transition via inline style
+// Pixel max-width per size — used for smooth CSS transition via inline style
 const sizeWidths: Record<ModalSize, string> = {
   sm:   '384px',
   md:   '512px',
@@ -27,6 +27,44 @@ const sizeWidths: Record<ModalSize, string> = {
   xl:   '896px',
   full: '95vw',
 };
+
+const TRANSITION = 'cubic-bezier(0.4,0,0.2,1)';
+
+// Animates its height to always match its content height via ResizeObserver.
+// Eliminates the "jump" when tab content changes size.
+function AnimatedBody({ children, className }: { children: ReactNode; className?: string }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+
+    // Set initial height without animation
+    outer.style.height = `${inner.scrollHeight}px`;
+
+    const ro = new ResizeObserver(() => {
+      // Read natural content height, write animated outer height
+      const h = inner.scrollHeight;
+      outer.style.height = `${h}px`;
+    });
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={outerRef}
+      className={cn('overflow-hidden', className)}
+      style={{ transition: `height 260ms ${TRANSITION}` }}
+    >
+      <div ref={innerRef}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export function Modal({
   open, onClose, title, description, children, footer, size = 'md', className, hideClose,
@@ -64,7 +102,7 @@ export function Modal({
         onClick={onClose}
       />
 
-      {/* Panel — max-width transitions smoothly when size prop changes */}
+      {/* Panel */}
       <div
         className={cn(
           'relative z-10 w-full rounded-xl bg-surface',
@@ -75,7 +113,7 @@ export function Modal({
         )}
         style={{
           maxWidth: sizeWidths[size],
-          transition: 'max-width 280ms cubic-bezier(0.4,0,0.2,1)',
+          transition: `max-width 280ms ${TRANSITION}`,
         }}
       >
         {/* Header */}
@@ -108,10 +146,10 @@ export function Modal({
           </div>
         )}
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        {/* Body — height animates smoothly when children change size */}
+        <AnimatedBody className="overflow-y-auto px-6 py-5">
           {children}
-        </div>
+        </AnimatedBody>
 
         {/* Footer */}
         {footer && (
