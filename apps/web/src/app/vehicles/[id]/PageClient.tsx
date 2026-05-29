@@ -11,6 +11,8 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { ExpiryBadge } from '@/components/ui/expiry-badge';
 
 interface Vehicle {
@@ -53,6 +55,7 @@ const NODE_CATEGORY_LABELS: Record<string, string> = {
 
 export default function VehicleCardPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
+  const { confirm, dialogProps } = useConfirm();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
@@ -178,7 +181,7 @@ export default function VehicleCardPage() {
   };
 
   const removeNode = async (nodeId: string) => {
-    if (!confirm('Видалити вузол?')) return;
+    if (!(await confirm({ title: 'Видалити вузол?', variant: 'destructive' }))) return;
     setSaving(true);
     try { await apiFetch<void>(`/vehicles/${id}/nodes/${nodeId}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка видалення'); }
@@ -209,7 +212,7 @@ export default function VehicleCardPage() {
   };
 
   const removeSchedule = async (scheduleId: string) => {
-    if (!confirm('Видалити регламент ТО?')) return;
+    if (!(await confirm({ title: 'Видалити регламент ТО?', variant: 'destructive' }))) return;
     setDeletingScheduleId(scheduleId);
     try {
       await apiFetch<void>(`/maintenance-schedules/${scheduleId}`, { method: 'DELETE' });
@@ -540,6 +543,7 @@ export default function VehicleCardPage() {
           <Input label="Нотатки" value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} placeholder="Додаткова інформація..." />
         </div>
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

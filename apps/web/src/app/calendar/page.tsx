@@ -15,6 +15,8 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import {
   DndContext, useDraggable, useDroppable,
   type DragEndEvent, PointerSensor, useSensor, useSensors,
@@ -417,6 +419,7 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
 export default function CalendarPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
 
+  const { confirm, dialogProps } = useConfirm();
   const [date, setDate] = useState('');
   const [slots, setSlots] = useState<CalendarSlot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1041,10 +1044,10 @@ export default function CalendarPage() {
   };
 
   const removeSlot = useCallback(async (id: string) => {
-    if (!confirm('Видалити слот?')) return;
+    if (!(await confirm({ title: 'Видалити слот?', variant: 'destructive' }))) return;
     try { await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка видалення'); }
-  }, [load]);
+  }, [load, confirm]);
 
   // ── Work-order search ─────────────────────────────────────────────────────
 
@@ -1702,11 +1705,13 @@ export default function CalendarPage() {
             fetchItems={fetchCpItems}
             searchPlaceholder="Ім'я, телефон, компанія..."
             emptyText="Клієнтів не знайдено"
-            onSelect={item => {
+            onSelect={async item => {
               if (form.workOrderId && form.counterpartyId && item.id !== form.counterpartyId) {
-                const ok = confirm(
-                  `Зміна клієнта очистить прив'язаний наряд «${form.workOrderDisplay}».\nПродовжити?`
-                );
+                const ok = await confirm({
+                  title: 'Зміна клієнта очистить прив\'язаний наряд?',
+                  message: `Прив'язаний наряд «${form.workOrderDisplay}» буде відкріплено.`,
+                  variant: 'destructive',
+                });
                 if (!ok) return;
                 setCpDisplay(item.primary);
                 setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary, workOrderId: '', workOrderDisplay: '' }));
@@ -1743,16 +1748,17 @@ export default function CalendarPage() {
                 )}
               </div>
             )}
-            onSelect={item => {
+            onSelect={async item => {
               const display = item.counterpartyName
                 ? `${item.primary} · ${item.counterpartyName}`
                 : item.primary;
 
               // If WO has a client different from currently selected — warn and replace
               if (item.counterpartyId && form.counterpartyId && item.counterpartyId !== form.counterpartyId) {
-                const replace = confirm(
-                  `Наряд належить іншому клієнту (${item.counterpartyName ?? item.counterpartyId}).\nЗамінити поточного клієнта?`
-                );
+                const replace = await confirm({
+                  title: 'Замінити поточного клієнта?',
+                  message: `Наряд належить іншому клієнту (${item.counterpartyName ?? item.counterpartyId}).`,
+                });
                 if (replace) {
                   const cpDisplay = item.counterpartyName ?? '';
                   setCpDisplay(cpDisplay);
@@ -2155,6 +2161,7 @@ export default function CalendarPage() {
           </div>
         </div>
       )}
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

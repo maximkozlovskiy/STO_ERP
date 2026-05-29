@@ -8,6 +8,8 @@ import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
@@ -73,6 +75,7 @@ function Pagination({ page, totalPages, onChange }: { page: number; totalPages: 
 // ─── Works Tab ───────────────────────────────────────────────────────────────
 
 function WorksTab() {
+  const { confirm, dialogProps } = useConfirm();
   const [categories, setCategories] = useState<Category[]>([]);
   const [works, setWorks] = useState<PaginatedWorks | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,7 +149,7 @@ function WorksTab() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Видалити роботу?')) return;
+    if (!(await confirm({ title: 'Видалити роботу?', variant: 'destructive' }))) return;
     setDeletingId(id); setError('');
     try { await apiFetch<void>(`/works/${id}`, { method: 'DELETE' }); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
@@ -429,6 +432,7 @@ function WorksTab() {
           </label>
         </div>
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }
@@ -436,6 +440,7 @@ function WorksTab() {
 // ─── Goods Tab ────────────────────────────────────────────────────────────────
 
 function GoodsTab() {
+  const { confirm, dialogProps } = useConfirm();
   const [goods, setGoods] = useState<PaginatedGoods | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -551,7 +556,7 @@ function GoodsTab() {
   };
 
   const deleteBarcode = async (goodId: string, barcodeId: string) => {
-    if (!confirm('Видалити штрихкод?')) return;
+    if (!(await confirm({ title: 'Видалити штрихкод?', variant: 'destructive' }))) return;
     try {
       await apiFetch<void>(`/goods/${goodId}/barcodes/${barcodeId}`, { method: 'DELETE' });
       loadBarcodes(goodId);
@@ -1106,6 +1111,7 @@ function GoodsTab() {
           />
         </div>
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }
@@ -1113,6 +1119,7 @@ function GoodsTab() {
 // ─── Services Tab ─────────────────────────────────────────────────────────────
 
 function ServicesTab() {
+  const { confirm, dialogProps } = useConfirm();
   const [services, setServices] = useState<PaginatedServices | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -1153,7 +1160,7 @@ function ServicesTab() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Видалити послугу?')) return;
+    if (!(await confirm({ title: 'Видалити послугу?', variant: 'destructive' }))) return;
     setDeletingId(id); setError('');
     try {
       await apiFetch<void>(`/services/${id}`, { method: 'DELETE' });
@@ -1337,6 +1344,7 @@ function ServicesTab() {
           <p className="text-[12px] text-muted-foreground">Роботи та товари можна додати після створення</p>
         </div>
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }
@@ -1344,6 +1352,7 @@ function ServicesTab() {
 // ─── Units Tab ────────────────────────────────────────────────────────────────
 
 function UnitsTab() {
+  const { confirm, dialogProps } = useConfirm();
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
@@ -1386,7 +1395,7 @@ function UnitsTab() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Видалити одиницю виміру?')) return;
+    if (!(await confirm({ title: 'Видалити одиницю виміру?', variant: 'destructive' }))) return;
     try {
       await apiFetch<void>(`/units/${id}`, { method: 'DELETE' });
       load();
@@ -1501,6 +1510,7 @@ function UnitsTab() {
           </div>
         </div>
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }
@@ -1508,6 +1518,7 @@ function UnitsTab() {
 // ─── Brands Tab ───────────────────────────────────────────────────────────────
 
 function BrandsTab() {
+  const { confirm, dialogProps } = useConfirm();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
@@ -1546,7 +1557,7 @@ function BrandsTab() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Видалити бренд? Товари з цим брендом не будуть видалені.')) return;
+    if (!(await confirm({ title: 'Видалити бренд?', message: 'Товари з цим брендом не будуть видалені.', variant: 'destructive' }))) return;
     setDeletingId(id);
     try {
       await apiFetch<void>(`/brands/${id}`, { method: 'DELETE' });
@@ -1637,6 +1648,7 @@ function BrandsTab() {
           autoFocus
         />
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

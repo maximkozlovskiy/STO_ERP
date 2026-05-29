@@ -30,6 +30,8 @@ import {
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { ToastContainer } from '@/components/ui/toast';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { CommandPalette } from '@/components/ui/command-palette';
 import { SyncIndicator } from '@/components/ui/sync-indicator';
 import { NotificationCenter } from '@/components/ui/notification-center';
@@ -146,6 +148,7 @@ function isPublicRoute(pathname: string): boolean {
 
 export function TopShell({ children }: { children: ReactNode }) {
   const { employee, isLoading, logout } = useAuth();
+  const { confirm, dialogProps } = useConfirm();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -241,8 +244,8 @@ export function TopShell({ children }: { children: ReactNode }) {
     });
   };
 
-  const handleLogout = () => {
-    if (confirm('Вийти з системи?')) { logout(); router.push('/login'); }
+  const handleLogout = async () => {
+    if (await confirm({ title: 'Вийти з системи?' })) { logout(); router.push('/login'); }
   };
 
   const NavLink = ({
@@ -442,6 +445,7 @@ export function TopShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <ToastContainer />
+      <ConfirmDialog {...dialogProps} />
       {employee && uiFeatures.commandPaletteEnabled && (
         <CommandPalette
           open={paletteOpen}

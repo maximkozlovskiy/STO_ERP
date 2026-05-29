@@ -6,6 +6,8 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
@@ -269,6 +271,7 @@ function RuleFormModal({
 export default function PricingRulesClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
+  const { confirm, dialogProps } = useConfirm();
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [goods, setGoods] = useState<Good[]>([]);
   const [loading, setLoading] = useState(true);
@@ -356,7 +359,7 @@ export default function PricingRulesClient() {
   };
 
   const deleteRule = async (id: string) => {
-    if (!confirm('Видалити правило ціноутворення?')) return;
+    if (!(await confirm({ title: 'Видалити правило ціноутворення?', variant: 'destructive' }))) return;
     setDeletingId(id);
     try {
       await apiFetch<void>(`/pricing-rules/${id}`, { method: 'DELETE' });
@@ -369,7 +372,7 @@ export default function PricingRulesClient() {
   };
 
   const applyAll = async (rule: PricingRule) => {
-    if (!confirm(`Застосувати правило "${rule.name}" до всіх відповідних товарів? Ціни буде перераховано.`)) return;
+    if (!(await confirm({ title: `Застосувати правило "${rule.name}"?`, message: 'Правило буде застосовано до всіх відповідних товарів. Ціни буде перераховано.' }))) return;
     setApplyingId(rule.id);
     setApplyResult(null);
     try {
@@ -544,6 +547,7 @@ export default function PricingRulesClient() {
         initial={editFormInitial}
         goods={goods}
       />
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

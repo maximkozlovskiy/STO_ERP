@@ -9,6 +9,8 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -97,6 +99,7 @@ function flattenTree(cats: WorkCategory[]): { id: string; name: string }[] {
 
 export default function EmployeesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
+  const { confirm, dialogProps } = useConfirm();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [lifts, setLifts] = useState<Lift[]>([]);
@@ -253,7 +256,7 @@ export default function EmployeesPage() {
   };
 
   const markForDeletion = async (id: string) => {
-    if (!confirm('Помітити співробітника на видалення?')) return;
+    if (!(await confirm({ title: 'Помітити співробітника на видалення?', variant: 'destructive' }))) return;
     setMarkingId(id);
     setError('');
     try {
@@ -798,6 +801,7 @@ export default function EmployeesPage() {
           )}
         </div>
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

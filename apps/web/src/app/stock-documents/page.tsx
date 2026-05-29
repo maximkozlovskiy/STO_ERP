@@ -8,6 +8,8 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
@@ -54,6 +56,7 @@ const STATUS_BADGE: Record<string, BadgeVariant> = {
 export default function StockDocumentsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
+  const { confirm, dialogProps } = useConfirm();
   const [docs, setDocs] = useState<StockDoc[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -174,7 +177,7 @@ export default function StockDocumentsPage() {
 
   const handleTransition = async (doc: StockDoc, newStatus: string) => {
     const label = newStatus === 'CONFIRMED' ? 'підтвердити' : 'скасувати';
-    if (!confirm(`Бажаєте ${label} документ ${doc.number}?`)) return;
+    if (!(await confirm({ title: `Бажаєте ${label} документ ${doc.number}?` }))) return;
     setSaving(true);
     setError('');
     try {
@@ -606,6 +609,7 @@ export default function StockDocumentsPage() {
           </div>
         )}
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

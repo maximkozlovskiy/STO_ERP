@@ -9,6 +9,8 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
@@ -65,6 +67,7 @@ function fmt(n: number) {
 export default function InvoicesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
 
+  const { confirm, dialogProps } = useConfirm();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -178,7 +181,7 @@ export default function InvoicesPage() {
   };
 
   const handleTransition = async (inv: Invoice, newStatus: string) => {
-    if (!confirm(`Перевести рахунок ${inv.number} → ${STATUS_LABELS[newStatus]}?`)) return;
+    if (!(await confirm({ title: `Перевести рахунок ${inv.number} → ${STATUS_LABELS[newStatus]}?` }))) return;
     setSavingId(inv.id);
     setError('');
     try {
@@ -689,6 +692,7 @@ export default function InvoicesPage() {
           </div>
         )}
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

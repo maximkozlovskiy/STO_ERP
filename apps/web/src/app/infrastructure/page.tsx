@@ -7,6 +7,8 @@ import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -61,6 +63,7 @@ const WAREHOUSE_TYPE_LABELS: Record<string, string> = {
 
 export default function InfrastructurePage() {
   useRequireAuth(['OWNER', 'ADMIN']);
+  const { confirm, dialogProps } = useConfirm();
   const [tab, setTab] = useState<Tab>('branches');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -173,7 +176,7 @@ export default function InfrastructurePage() {
   };
 
   const remove = async (endpoint: string, id: string) => {
-    if (!confirm('Видалити запис?')) return;
+    if (!(await confirm({ title: 'Видалити запис?', variant: 'destructive' }))) return;
     setSaving(true); setError('');
     try {
       await apiFetch<void>(`${endpoint}/${id}`, { method: 'DELETE' });
@@ -483,6 +486,7 @@ export default function InfrastructurePage() {
           />
         </div>
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

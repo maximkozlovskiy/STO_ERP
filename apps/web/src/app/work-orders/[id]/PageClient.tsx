@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { SearchCombobox, type ComboboxItem } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
@@ -127,6 +129,7 @@ const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'>
 
 export default function WorkOrderCardPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
+  const { confirm, dialogProps } = useConfirm();
   const { employee } = useAuth();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -398,7 +401,7 @@ export default function WorkOrderCardPage() {
   };
 
   const removeLine = async (lineId: string) => {
-    if (!confirm('Видалити роботу?')) return;
+    if (!(await confirm({ title: 'Видалити роботу?', variant: 'destructive' }))) return;
     setDeletingLineId(lineId); setError('');
     try {
       await apiFetch<void>(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' });
@@ -444,7 +447,7 @@ export default function WorkOrderCardPage() {
   };
 
   const removePart = async (partId: string) => {
-    if (!confirm('Видалити запчастину?')) return;
+    if (!(await confirm({ title: 'Видалити запчастину?', variant: 'destructive' }))) return;
     setDeletingPartId(partId); setError('');
     try {
       await apiFetch<void>(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' });
@@ -461,7 +464,7 @@ export default function WorkOrderCardPage() {
 
   const transition = async (newStatus: string) => {
     const label = STATUS_LABELS[newStatus];
-    if (!confirm(`Перевести наряд у статус "${label}"?`)) return;
+    if (!(await confirm({ title: `Перевести наряд у статус "${label}"?` }))) return;
     if (!wo) return;
 
     const previousStatus = wo.status;
@@ -1103,6 +1106,7 @@ export default function WorkOrderCardPage() {
           </Button>
         </div>
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

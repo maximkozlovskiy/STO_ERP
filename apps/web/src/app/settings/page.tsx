@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sun, Moon, Monitor, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { THEMES, type ThemeName, applyTheme } from '@/lib/theme';
@@ -121,6 +123,7 @@ const VAT_LABELS: Record<string, string> = {
 
 export default function SettingsPage() {
   useRequireAuth(['OWNER', 'ADMIN']);
+  const { confirm, dialogProps } = useConfirm();
   const [tab, setTab] = useState<Tab>('org');
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
   const [payments, setPayments] = useState<PaymentMethod[]>([]);
@@ -401,7 +404,7 @@ export default function SettingsPage() {
   };
 
   const deleteTaxRate = async (id: string) => {
-    if (!confirm('Видалити ставку ПДВ?')) return;
+    if (!(await confirm({ title: 'Видалити ставку ПДВ?', variant: 'destructive' }))) return;
     try {
       await apiFetch(`/settings/tax-rates/${id}`, { method: 'DELETE' });
       setTaxRates(prev => prev.filter(r => r.id !== id));
@@ -464,7 +467,7 @@ export default function SettingsPage() {
   };
 
   const deletePaymentMethod = async (id: string) => {
-    if (!confirm('Видалити метод оплати?')) return;
+    if (!(await confirm({ title: 'Видалити метод оплати?', variant: 'destructive' }))) return;
     try {
       await apiFetch(`/payment-methods/${id}`, { method: 'DELETE' });
       setPayments(prev => prev.filter(p => p.id !== id));
@@ -472,7 +475,7 @@ export default function SettingsPage() {
   };
 
   const resetDocNumber = async (documentType: string) => {
-    if (!confirm(`Скинути лічильник для ${documentType}?`)) return;
+    if (!(await confirm({ title: `Скинути лічильник для ${documentType}?` }))) return;
     try {
       await apiFetch(`/settings/document-numbers/${documentType}/reset`, { method: 'POST' });
       setDocNumbers(prev => prev.map(c => c.documentType === documentType ? { ...c, currentSeq: 0 } : c));
@@ -532,7 +535,7 @@ export default function SettingsPage() {
   };
 
   const deleteWebhook = async (id: string) => {
-    if (!confirm('Видалити вебхук?')) return;
+    if (!(await confirm({ title: 'Видалити вебхук?', variant: 'destructive' }))) return;
     try {
       await apiFetch(`/webhooks/${id}`, { method: 'DELETE' });
       setWebhooks(prev => prev.filter(w => w.id !== id));
@@ -593,7 +596,7 @@ export default function SettingsPage() {
   };
 
   const deleteCurrency = async (id: string) => {
-    if (!confirm('Видалити валюту?')) return;
+    if (!(await confirm({ title: 'Видалити валюту?', variant: 'destructive' }))) return;
     try {
       await apiFetch(`/currencies/${id}`, { method: 'DELETE' });
       setCurrencies(prev => { const next = prev.filter(c => c.id !== id); setCache('cache:currencies', { items: next }); return next; });
@@ -636,7 +639,7 @@ export default function SettingsPage() {
   };
 
   const deleteRate = async (id: string) => {
-    if (!confirm('Видалити курс?')) return;
+    if (!(await confirm({ title: 'Видалити курс?', variant: 'destructive' }))) return;
     try {
       await apiFetch(`/exchange-rates/${id}`, { method: 'DELETE' });
       setExchangeRates(prev => prev.filter(r => r.id !== id));
@@ -687,7 +690,7 @@ export default function SettingsPage() {
   };
 
   const deleteBa = async (id: string) => {
-    if (!confirm('Видалити банківський рахунок?')) return;
+    if (!(await confirm({ title: 'Видалити банківський рахунок?', variant: 'destructive' }))) return;
     try {
       await apiFetch(`/bank-accounts/${id}`, { method: 'DELETE' });
       setBankAccounts(prev => { const next = prev.filter(b => b.id !== id); setCache('cache:bank-accounts', { items: next }); return next; });
@@ -735,7 +738,7 @@ export default function SettingsPage() {
   };
 
   const deleteCr = async (id: string) => {
-    if (!confirm('Видалити касу?')) return;
+    if (!(await confirm({ title: 'Видалити касу?', variant: 'destructive' }))) return;
     try {
       await apiFetch(`/cash-registers/${id}`, { method: 'DELETE' });
       setCashRegisters(prev => prev.filter(c => c.id !== id));
@@ -1814,6 +1817,7 @@ export default function SettingsPage() {
           </Select>
         </div>
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

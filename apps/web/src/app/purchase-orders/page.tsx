@@ -9,6 +9,8 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
@@ -63,6 +65,7 @@ function fmt(n: number) {
 export default function PurchaseOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
+  const { confirm, dialogProps } = useConfirm();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -169,7 +172,7 @@ export default function PurchaseOrdersPage() {
   };
 
   const handleTransition = async (po: PurchaseOrder, newStatus: string) => {
-    if (!confirm(`Перевести замовлення ${po.number} → ${STATUS_LABELS[newStatus]}?`)) return;
+    if (!(await confirm({ title: `Перевести замовлення ${po.number} → ${STATUS_LABELS[newStatus]}?` }))) return;
     setSaving(true); setError('');
     try {
       await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}/transition`, {
@@ -648,6 +651,7 @@ export default function PurchaseOrdersPage() {
           </div>
         )}
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }
