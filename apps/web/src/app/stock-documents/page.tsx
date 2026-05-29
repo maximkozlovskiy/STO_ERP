@@ -85,7 +85,7 @@ export default function StockDocumentsPage() {
     { key: 'date',      label: 'Дата' },
   ], []);
 
-  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('stock-documents', COLUMNS);
+  const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('stock-documents', COLUMNS);
 
   const detailPanel = useDetailPanel('stock-documents');
 
@@ -420,7 +420,15 @@ export default function StockDocumentsPage() {
 
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
+          <ColumnsDropdown
+                  columns={orderedColumns}
+                  visibleKeys={colVisible}
+                  onToggle={toggleCol}
+                  onReorder={reorder}
+                  onRename={renameColumn}
+                  onReset={resetConfig}
+                  hasCustomization={JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
+                />
         </div>
       </div>
 
@@ -453,26 +461,25 @@ export default function StockDocumentsPage() {
                     />
                   </TableHead>
                 )}
-                {colVisible.has('number')    && <TableHead>Номер</TableHead>}
-                {colVisible.has('type')      && <TableHead>Тип</TableHead>}
-                {colVisible.has('warehouse') && <TableHead>Склад</TableHead>}
-                {colVisible.has('status')    && <TableHead>Статус</TableHead>}
-                {colVisible.has('lines')     && <TableHead className="text-right">Позицій</TableHead>}
-                {colVisible.has('date')      && <TableHead>Дата</TableHead>}
+                {visibleColumns.map(col => (
+                  col.key === 'lines'
+                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
+                    : <TableHead key={col.key}>{col.label}</TableHead>
+                ))}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && docs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={FileText} title="Документів не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -500,40 +507,22 @@ export default function StockDocumentsPage() {
                       />
                     </TableCell>
                   )}
-                  {colVisible.has('number') && (
-                    <TableCell className="font-mono font-medium text-foreground">
-                      {doc.number}
-                      {doc.deletedAt && (
-                        <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
-                      )}
-                    </TableCell>
-                  )}
-                  {colVisible.has('type') && (
-                    <TableCell>
-                      <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>
-                        {TYPE_LABELS[doc.type]}
-                      </Badge>
-                    </TableCell>
-                  )}
-                  {colVisible.has('warehouse') && (
-                    <TableCell className="text-foreground-muted">
-                      {doc.warehouseName}
-                      {doc.targetWarehouseName && <span className="text-muted-foreground"> → {doc.targetWarehouseName}</span>}
-                    </TableCell>
-                  )}
-                  {colVisible.has('status') && (
-                    <TableCell>
-                      <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>
-                        {STATUS_LABELS[doc.status]}
-                      </Badge>
-                    </TableCell>
-                  )}
-                  {colVisible.has('lines') && (
-                    <TableCell className="text-right text-muted-foreground">{doc.lines.length}</TableCell>
-                  )}
-                  {colVisible.has('date') && (
-                    <TableCell className="text-foreground-faint text-xs">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</TableCell>
-                  )}
+                  {visibleColumns.map(col => {
+                    if (col.key === 'number') return (
+                      <TableCell key="number" className="font-medium text-[13px]">
+                        {doc.number}
+                        {doc.deletedAt && (
+                          <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
+                        )}
+                      </TableCell>
+                    );
+                    if (col.key === 'type') return <TableCell key="type"><Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>{TYPE_LABELS[doc.type]}</Badge></TableCell>;
+                    if (col.key === 'warehouse') return <TableCell key="warehouse" className="text-[13px] text-muted-foreground">{doc.warehouseName ?? '—'}</TableCell>;
+                    if (col.key === 'status') return <TableCell key="status"><Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>{STATUS_LABELS[doc.status]}</Badge></TableCell>;
+                    if (col.key === 'lines') return <TableCell key="lines" className="text-right text-[13px] text-muted-foreground">{doc.lines.length}</TableCell>;
+                    if (col.key === 'date') return <TableCell key="date" className="text-[13px] text-muted-foreground">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</TableCell>;
+                    return null;
+                  })}
                   <TableCell>
                     <Button
                       variant="ghost"

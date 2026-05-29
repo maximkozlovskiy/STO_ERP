@@ -94,7 +94,7 @@ export default function PurchaseOrdersPage() {
     { key: 'date',      label: 'Дата',         defaultVisible: true },
   ], []);
 
-  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('purchase-orders', COLUMNS);
+  const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('purchase-orders', COLUMNS);
 
   const detailPanel = useDetailPanel('purchase-orders');
 
@@ -407,7 +407,15 @@ export default function PurchaseOrdersPage() {
 
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
+          <ColumnsDropdown
+                  columns={orderedColumns}
+                  visibleKeys={colVisible}
+                  onToggle={toggleCol}
+                  onReorder={reorder}
+                  onRename={renameColumn}
+                  onReset={resetConfig}
+                  hasCustomization={JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
+                />
         </div>
       </div>
 
@@ -458,26 +466,25 @@ export default function PurchaseOrdersPage() {
                     />
                   </TableHead>
                 )}
-                {colVisible.has('number')    && <TableHead>Номер</TableHead>}
-                {colVisible.has('supplier')  && <TableHead>Постачальник</TableHead>}
-                {colVisible.has('warehouse') && <TableHead>Склад</TableHead>}
-                {colVisible.has('status')    && <TableHead>Статус</TableHead>}
-                {colVisible.has('amount')    && <TableHead className="text-right">Сума</TableHead>}
-                {colVisible.has('date')      && <TableHead>Дата</TableHead>}
+                {visibleColumns.map(col => (
+                  col.key === 'amount'
+                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
+                    : <TableHead key={col.key}>{col.label}</TableHead>
+                ))}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && orders.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={ShoppingCart} title="Замовлень не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -505,25 +512,22 @@ export default function PurchaseOrdersPage() {
                       />
                     </TableCell>
                   )}
-                  {colVisible.has('number') && (
-                    <TableCell className="font-mono font-medium text-foreground">
-                      {po.number}
-                      {po.deletedAt && (
-                        <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
-                      )}
-                    </TableCell>
-                  )}
-                  {colVisible.has('supplier')  && <TableCell className="text-foreground-muted">{po.supplierName ?? '—'}</TableCell>}
-                  {colVisible.has('warehouse') && <TableCell className="text-muted-foreground">{po.warehouseName ?? '—'}</TableCell>}
-                  {colVisible.has('status') && (
-                    <TableCell>
-                      <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>
-                        {STATUS_LABELS[po.status]}
-                      </Badge>
-                    </TableCell>
-                  )}
-                  {colVisible.has('amount') && <TableCell className="text-right font-medium">{fmt(po.totalAmount)}</TableCell>}
-                  {colVisible.has('date')   && <TableCell className="text-foreground-faint text-xs">{new Date(po.createdAt).toLocaleDateString('uk-UA')}</TableCell>}
+                  {visibleColumns.map(col => {
+                    if (col.key === 'number') return (
+                      <TableCell key="number" className="font-medium text-[13px]">
+                        {po.number}
+                        {po.deletedAt && (
+                          <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
+                        )}
+                      </TableCell>
+                    );
+                    if (col.key === 'supplier') return <TableCell key="supplier" className="text-[13px]">{po.supplierName ?? '—'}</TableCell>;
+                    if (col.key === 'warehouse') return <TableCell key="warehouse" className="text-[13px] text-muted-foreground">{po.warehouseName ?? '—'}</TableCell>;
+                    if (col.key === 'status') return <TableCell key="status"><Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>{STATUS_LABELS[po.status]}</Badge></TableCell>;
+                    if (col.key === 'amount') return <TableCell key="amount" className="text-right font-semibold text-[13px]">{po.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</TableCell>;
+                    if (col.key === 'date') return <TableCell key="date" className="text-[13px] text-muted-foreground">{new Date(po.createdAt).toLocaleDateString('uk-UA')}</TableCell>;
+                    return null;
+                  })}
                   <TableCell>
                     <Button
                       variant="ghost"
