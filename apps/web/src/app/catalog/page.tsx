@@ -14,7 +14,9 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { DetailPanel } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
+import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
+import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
@@ -99,6 +101,7 @@ function Pagination({ page, totalPages, onChange }: { page: number; totalPages: 
 function WorksTab() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+  const detailPanel = useDetailPanel('catalog-works');
   const [categories, setCategories] = useState<Category[]>([]);
   const [works, setWorks] = useState<PaginatedWorks | null>(null);
   const [loading, setLoading] = useState(true);
@@ -301,12 +304,14 @@ function WorksTab() {
           importUrl="/xlsx/import/works"
           onImportComplete={load}
         />
-        <ColumnsDropdown
-          columns={WORKS_COLUMNS}
-          visibleKeys={worksColVisible}
-          onToggle={toggleWorksCol}
-          className="ml-auto"
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          <ColumnsDropdown
+            columns={WORKS_COLUMNS}
+            visibleKeys={worksColVisible}
+            onToggle={toggleWorksCol}
+          />
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+        </div>
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setForm({ categoryId: flat[0]?.id ?? '', name: '', normoHours: '', price: '', description: '', isWarranty: false }); worksFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Робота
         </Button>
@@ -365,7 +370,7 @@ function WorksTab() {
                 <TableRow
                   key={w.id}
                   className={`cursor-pointer ${selectedWork?.id === w.id ? 'bg-secondary' : ''}`}
-                  onClick={() => setSelectedWork(prev => prev?.id === w.id ? null : w)}
+                  onClick={() => { if (detailPanel.enabled) setSelectedWork(prev => prev?.id === w.id ? null : w); }}
                 >
                   {features.bulkActionsEnabled && (
                     <TableCell onClick={e => e.stopPropagation()}>
@@ -410,41 +415,30 @@ function WorksTab() {
           </Table>
         </div>
 
-        <DetailPanel
-          open={!!selectedWork}
-          onClose={() => setSelectedWork(null)}
-          title={selectedWork?.name ?? ''}
-        >
-          {selectedWork && (
-            <div className="space-y-3 text-sm">
-              <div>
-                <span className="text-muted-foreground">Категорія:</span>{' '}
-                <span className="text-foreground">{selectedWork.categoryName}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Нормо-годин:</span>{' '}
-                <span className="text-foreground font-medium">{selectedWork.normoHours}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Ціна:</span>{' '}
-                <span className="text-foreground font-semibold">
-                  {selectedWork.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                </span>
-              </div>
-              {selectedWork.isWarranty && (
-                <div>
-                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-warning-subtle text-warning">Гарантійна</span>
+        {(() => {
+          const buildWorkTabs = (w: Work): DetailPanelTab[] => [
+            {
+              key: 'info', label: 'Основне',
+              content: (
+                <div className="space-y-3">
+                  <PanelField label="Категорія" value={w.categoryName} />
+                  <PanelField label="Нормо-год" value={String(w.normoHours)} />
+                  <PanelField label="Ціна" value={`${w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴`} />
+                  {w.isWarranty && <PanelField label="Гарантійна" value="Так" />}
+                  {w.description && <PanelField label="Опис" value={w.description} />}
                 </div>
-              )}
-              {selectedWork.description && (
-                <div>
-                  <p className="text-muted-foreground mb-1">Опис:</p>
-                  <p className="text-foreground italic">{selectedWork.description}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </DetailPanel>
+              ),
+            },
+          ];
+          return (
+            <DetailPanel
+              open={!!selectedWork && detailPanel.enabled}
+              onClose={() => setSelectedWork(null)}
+              title={selectedWork?.name ?? ''}
+              tabs={selectedWork ? buildWorkTabs(selectedWork) : undefined}
+            />
+          );
+        })()}
       </div>
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
@@ -583,6 +577,7 @@ function WorksTab() {
 function GoodsTab() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+  const detailPanel = useDetailPanel('catalog-goods');
   const [goods, setGoods] = useState<PaginatedGoods | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -856,12 +851,14 @@ function GoodsTab() {
           importUrl="/xlsx/import/goods"
           onImportComplete={load}
         />
-        <ColumnsDropdown
-          columns={GOODS_COLUMNS}
-          visibleKeys={goodsColVisible}
-          onToggle={toggleGoodsCol}
-          className="ml-auto"
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          <ColumnsDropdown
+            columns={GOODS_COLUMNS}
+            visibleKeys={goodsColVisible}
+            onToggle={toggleGoodsCol}
+          />
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+        </div>
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { goodsFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Товар
         </Button>
@@ -922,7 +919,7 @@ function GoodsTab() {
                 <TableRow
                   key={g.id}
                   className={`cursor-pointer ${selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
-                  onClick={() => selectGood(selectedGood?.id === g.id ? null : g)}
+                  onClick={() => { if (detailPanel.enabled) selectGood(selectedGood?.id === g.id ? null : g); }}
                 >
                   {features.bulkActionsEnabled && (
                     <TableCell onClick={e => e.stopPropagation()}>
@@ -974,7 +971,7 @@ function GoodsTab() {
         </div>
 
         <DetailPanel
-          open={!!selectedGood}
+          open={!!selectedGood && detailPanel.enabled}
           onClose={() => selectGood(null)}
           title={selectedGood?.name ?? ''}
         >
@@ -1382,6 +1379,7 @@ function GoodsTab() {
 function ServicesTab() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+  const detailPanel = useDetailPanel('catalog-services');
   const [services, setServices] = useState<PaginatedServices | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -1537,12 +1535,14 @@ function ServicesTab() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); setActiveSavedFilterId(null); }} placeholder="Пошук послуг..." className="pl-9" />
         </div>
-        <ColumnsDropdown
-          columns={SERVICES_COLUMNS}
-          visibleKeys={servicesColVisible}
-          onToggle={toggleServicesCol}
-          className="ml-auto"
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          <ColumnsDropdown
+            columns={SERVICES_COLUMNS}
+            visibleKeys={servicesColVisible}
+            onToggle={toggleServicesCol}
+          />
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+        </div>
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
           Послуга
         </Button>
@@ -1601,7 +1601,7 @@ function ServicesTab() {
                 <TableRow
                   key={s.id}
                   className={`cursor-pointer ${selectedService?.id === s.id ? 'bg-secondary' : ''}`}
-                  onClick={() => setSelectedService(prev => prev?.id === s.id ? null : s)}
+                  onClick={() => { if (detailPanel.enabled) setSelectedService(prev => prev?.id === s.id ? null : s); }}
                 >
                   {features.bulkActionsEnabled && (
                     <TableCell onClick={e => e.stopPropagation()}>
@@ -1656,65 +1656,53 @@ function ServicesTab() {
           </Table>
         </div>
 
-        <DetailPanel
-          open={!!selectedService}
-          onClose={() => setSelectedService(null)}
-          title={selectedService?.name ?? ''}
-        >
-          {selectedService && (
-            <div className="space-y-4 text-sm">
-              {selectedService.price != null ? (
-                <div>
-                  <span className="text-muted-foreground">Ціна:</span>{' '}
-                  <span className="text-foreground font-semibold">
-                    {selectedService.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                  </span>
+        {(() => {
+          const buildServiceTabs = (s: Service): DetailPanelTab[] => [
+            {
+              key: 'info', label: 'Основне',
+              content: (
+                <div className="space-y-3">
+                  {s.price != null && <PanelField label="Ціна" value={`${s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴`} />}
+                  {s.description && <PanelField label="Опис" value={s.description} />}
                 </div>
-              ) : (
-                <div>
-                  <span className="text-muted-foreground">Ціна:</span>{' '}
-                  <span className="text-foreground italic">авто (з позицій)</span>
+              ),
+            },
+            {
+              key: 'works', label: `Роботи (${s.works.length})`,
+              content: s.works.length === 0 ? <p className="text-[13px] text-muted-foreground">Немає</p> : (
+                <div className="space-y-2">
+                  {s.works.map((w, i) => (
+                    <div key={i} className="rounded-lg border border-border px-3 py-2 text-[13px]">
+                      <p className="font-medium text-foreground">{w.workName}</p>
+                      <p className="text-muted-foreground text-[12px] mt-0.5">{w.quantity} × {w.normoHours} нормо-год · {w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+                    </div>
+                  ))}
                 </div>
-              )}
-
-              {selectedService.works.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Роботи ({selectedService.works.length})
-                  </p>
-                  <div className="space-y-1.5">
-                    {selectedService.works.map((w, i) => (
-                      <div key={i} className="text-xs bg-secondary rounded-lg px-3 py-2">
-                        <p className="font-medium text-foreground">{w.workName}</p>
-                        <p className="text-muted-foreground mt-0.5">
-                          {w.quantity} × {w.normoHours} нормо-год · {w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+              ),
+            },
+            {
+              key: 'goods', label: `Товари (${s.goods.length})`,
+              content: s.goods.length === 0 ? <p className="text-[13px] text-muted-foreground">Немає</p> : (
+                <div className="space-y-2">
+                  {s.goods.map((g, i) => (
+                    <div key={i} className="rounded-lg border border-border px-3 py-2 text-[13px]">
+                      <p className="font-medium text-foreground">{g.goodName}</p>
+                      <p className="text-muted-foreground text-[12px] mt-0.5">{g.quantity} {g.unit} · {g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+                    </div>
+                  ))}
                 </div>
-              )}
-
-              {selectedService.goods.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Товари ({selectedService.goods.length})
-                  </p>
-                  <div className="space-y-1.5">
-                    {selectedService.goods.map((g, i) => (
-                      <div key={i} className="text-xs bg-secondary rounded-lg px-3 py-2">
-                        <p className="font-medium text-foreground">{g.goodName}</p>
-                        <p className="text-muted-foreground mt-0.5">
-                          {g.quantity} {g.unit} · {g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </DetailPanel>
+              ),
+            },
+          ];
+          return (
+            <DetailPanel
+              open={!!selectedService && detailPanel.enabled}
+              onClose={() => setSelectedService(null)}
+              title={selectedService?.name ?? ''}
+              tabs={selectedService ? buildServiceTabs(selectedService) : undefined}
+            />
+          );
+        })()}
       </div>
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
