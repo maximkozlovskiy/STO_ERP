@@ -50,3 +50,4 @@ installer/output/
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/.playwright/
+.claude/worktrees/
