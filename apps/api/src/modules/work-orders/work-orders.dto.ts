@@ -123,6 +123,8 @@ export class WorkOrderResponseDto {
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
   @ApiPropertyOptional({ description: 'Є активна гарантія' }) hasActiveWarranty?: boolean;
+  @ApiPropertyOptional({ description: 'Найближчий слот у календарі: початок' }) slotStartAt?: Date | null;
+  @ApiPropertyOptional({ description: 'Найближчий слот у календарі: кінець' }) slotEndAt?: Date | null;
 }
 
 export class PaginatedWorkOrdersDto {

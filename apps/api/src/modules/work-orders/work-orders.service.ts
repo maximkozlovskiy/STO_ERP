@@ -74,6 +74,12 @@ export class WorkOrdersService {
           vehicle: { select: { make: true, model: true, licensePlate: true } },
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           branch: { select: { name: true } },
+          calendarSlots: {
+            where: { deletedAt: null },
+            orderBy: { startAt: 'asc' },
+            select: { startAt: true, endAt: true },
+            take: 1,
+          },
           _count: {
             select: {
               warranties: {
@@ -707,6 +713,7 @@ export class WorkOrdersService {
     branch?: { name: string } | null;
     vehicle?: { make: string; model: string; licensePlate: string | null } | null;
     counterparty?: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
+    calendarSlots?: { startAt: Date; endAt: Date }[];
     _count?: { warranties?: number } | null;
   }): WorkOrderResponseDto {
     const cp = wo.counterparty;
@@ -726,6 +733,8 @@ export class WorkOrdersService {
       totalAmount: Number(wo.totalAmount), paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,
       createdAt: wo.createdAt, updatedAt: wo.updatedAt,
       hasActiveWarranty: (wo._count?.warranties ?? 0) > 0,
+      slotStartAt: wo.calendarSlots?.[0]?.startAt ?? null,
+      slotEndAt: wo.calendarSlots?.[0]?.endAt ?? null,
     };
   }
 
