@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, BookOpen, Package, Layers, Star, Barcode, Ruler, Tag } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -17,10 +17,17 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel } from '@/components/ui/detail-panel';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { toast } from '@/lib/toast';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -40,6 +47,19 @@ interface GoodBarcode { id: string; barcode: string; type: string; isPrimary: bo
 
 type Tab = 'works' | 'goods' | 'services' | 'units' | 'brands';
 type GoodDetailTab = 'info' | 'barcodes' | 'batches';
+
+interface WorksFilters extends Record<string, unknown> {
+  search: string;
+  categoryId: string;
+}
+
+interface GoodsFilters extends Record<string, unknown> {
+  search: string;
+}
+
+interface ServicesFilters extends Record<string, unknown> {
+  search: string;
+}
 
 const GOOD_TYPE_LABELS: Record<string, string> = {
   SPARE_PART: 'Запчастина',
@@ -76,6 +96,7 @@ function Pagination({ page, totalPages, onChange }: { page: number; totalPages: 
 
 function WorksTab() {
   const { confirm, dialogProps } = useConfirm();
+  const features = useUiFeatures();
   const [categories, setCategories] = useState<Category[]>([]);
   const [works, setWorks] = useState<PaginatedWorks | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,6 +114,57 @@ function WorksTab() {
   const [editForm, setEditForm] = useState({ categoryId: '', name: '', normoHours: '', price: '', description: '', isWarranty: false });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
+
+  // ── Saved filters ────────────────────────────────────────────────────────────
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<WorksFilters>('catalog-works');
+
+  const applyFilter = useCallback((preset: { id: string; filters: WorksFilters }) => {
+    setQ(preset.filters.search ?? '');
+    setSelectedCat(preset.filters.categoryId ?? '');
+    setPage(1);
+    setActiveSavedFilterId(preset.id);
+  }, []);
+
+  const handleSaveFilter = useCallback((name: string) => {
+    const preset = saveFilter(name, { search: q, categoryId: selectedCat });
+    setActiveSavedFilterId(preset.id);
+    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+  }, [saveFilter, q, selectedCat, features.toastEnabled]);
+
+  // ── Bulk select ──────────────────────────────────────────────────────────────
+  const bulkSelect = useBulkSelect(works?.items ?? []);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
+
+  // loadRef allows bulkDelete (defined before load) to call the latest load()
+  const worksLoadRef = useRef<(() => void) | null>(null);
+
+  const worksActions = useMemo<BulkAction[]>(() => [
+    {
+      id: 'delete', label: 'Видалити вибрані', variant: 'destructive',
+      onClick: async (ids) => {
+        if (!window.confirm(`Видалити ${ids.length} ${ids.length === 1 ? 'роботу' : 'робіт'}?`)) return;
+        const results = await Promise.allSettled(
+          ids.map(id => apiFetch(`/works/${id}`, { method: 'DELETE' })),
+        );
+        const succeeded = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.length - succeeded;
+        bulkSelect.clear();
+        worksLoadRef.current?.();
+        if (features.toastEnabled) {
+          if (failed === 0) toast.success(`Видалено ${succeeded} ${succeeded === 1 ? 'роботу' : 'робіт'}`);
+          else toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+        }
+      },
+    },
+  ], [bulkSelect, features.toastEnabled]);
+
+  // ── Unsaved guard ────────────────────────────────────────────────────────────
+  const worksFormDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+  const editWorkDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   useEffect(() => {
     // Reference data — paint instantly from sessionStorage, refresh in background.
@@ -119,6 +191,9 @@ function WorksTab() {
     apiFetch<PaginatedWorks>(`/works?${p}`).then(setWorks).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   }, [page, selectedCat, debouncedQ]);
 
+  // Keep ref in sync so worksActions can call load() without depending on it
+  useEffect(() => { worksLoadRef.current = load; }, [load]);
+
   useEffect(() => { load(); }, [load]);
 
   const flatCategories = (cats: Category[], depth = 0): Array<Category & { depth: number }> =>
@@ -143,6 +218,7 @@ function WorksTab() {
       });
       setModal(false);
       setForm({ categoryId: '', name: '', normoHours: '', price: '', description: '', isWarranty: false });
+      worksFormDirty.resetDirty();
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
@@ -160,6 +236,7 @@ function WorksTab() {
     setEditWork(w);
     setEditForm({ categoryId: w.categoryId, name: w.name, normoHours: String(w.normoHours), price: String(w.price), description: w.description ?? '', isWarranty: w.isWarranty });
     setEditError('');
+    editWorkDirty.resetDirty();
   };
 
   const saveEditWork = async () => {
@@ -173,6 +250,7 @@ function WorksTab() {
         method: 'PATCH',
         body: JSON.stringify({ categoryId: editForm.categoryId, name: editForm.name, normoHours: normo, price, description: editForm.description || undefined, isWarranty: editForm.isWarranty }),
       });
+      editWorkDirty.resetDirty();
       setEditWork(null);
       load();
     } catch (e: unknown) { setEditError(e instanceof Error ? e.message : 'Помилка збереження'); }
@@ -187,12 +265,23 @@ function WorksTab() {
       {!modal && error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<WorksFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          className="mb-3"
+        />
+      )}
+
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук робіт..." className="pl-9" />
+          <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); setActiveSavedFilterId(null); }} placeholder="Пошук робіт..." className="pl-9" />
         </div>
-        <Select value={selectedCat} onChange={e => { setSelectedCat(e.target.value); setPage(1); }}>
+        <Select value={selectedCat} onChange={e => { setSelectedCat(e.target.value); setPage(1); setActiveSavedFilterId(null); }}>
           <option value="">Всі категорії</option>
           {flat.map(c => <option key={c.id} value={c.id}>{' '.repeat(c.depth * 4)}{c.name}</option>)}
         </Select>
@@ -201,16 +290,38 @@ function WorksTab() {
           importUrl="/xlsx/import/works"
           onImportComplete={load}
         />
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setForm({ categoryId: flat[0]?.id ?? '', name: '', normoHours: '', price: '', description: '', isWarranty: false }); setError(''); setModal(true); }}>
+        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setForm({ categoryId: flat[0]?.id ?? '', name: '', normoHours: '', price: '', description: '', isWarranty: false }); worksFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Робота
         </Button>
       </div>
+
+      {features.bulkActionsEnabled && (
+        <BulkActionsBar
+          count={bulkSelect.count}
+          selectedIds={[...bulkSelect.selected]}
+          actions={worksActions}
+          onClear={bulkSelect.clear}
+          className="mb-3"
+        />
+      )}
 
       <div className="flex gap-0">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-10">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-4 w-4 accent-primary"
+                      aria-label="Обрати всі"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Назва</TableHead>
                 <TableHead>Категорія</TableHead>
                 <TableHead>Нормо-год</TableHead>
@@ -221,14 +332,14 @@ function WorksTab() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && works?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="p-0">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="p-0">
                     <EmptyState icon={BookOpen} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -239,6 +350,17 @@ function WorksTab() {
                   className={`cursor-pointer ${selectedWork?.id === w.id ? 'bg-secondary' : ''}`}
                   onClick={() => setSelectedWork(prev => prev?.id === w.id ? null : w)}
                 >
+                  {features.bulkActionsEnabled && (
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(w.id)}
+                        onChange={() => bulkSelect.toggle(w.id)}
+                        className="h-4 w-4 accent-primary"
+                        aria-label={`Обрати ${w.name}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <p className="text-[13px] font-medium text-foreground">{w.name}</p>
                     {w.description && <p className="text-[12px] text-muted-foreground mt-0.5">{w.description}</p>}
@@ -308,7 +430,7 @@ function WorksTab() {
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
-      <Modal open={modal} onClose={() => setModal(false)} title="Нова робота"
+      <Modal open={modal} onClose={() => { if (worksFormDirty.confirmClose()) setModal(false); }} title="Нова робота"
         footer={
           <Button onClick={create} loading={saving} disabled={!form.name || !form.categoryId || !form.normoHours || !form.price} className="w-full">
             Зберегти
@@ -323,7 +445,7 @@ function WorksTab() {
             label="Категорія"
             required
             value={form.categoryId}
-            onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, categoryId: e.target.value })); worksFormDirty.markDirty(); }}
           >
             {flat.map(c => <option key={c.id} value={c.id}>{' '.repeat(c.depth * 4)}{c.name}</option>)}
           </Select>
@@ -331,7 +453,7 @@ function WorksTab() {
             label="Назва"
             required
             value={form.name}
-            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, name: e.target.value })); worksFormDirty.markDirty(); }}
             placeholder="Заміна масла"
           />
           <div className="grid grid-cols-2 gap-3">
@@ -340,7 +462,7 @@ function WorksTab() {
               required
               type="number"
               value={form.normoHours}
-              onChange={e => setForm(f => ({ ...f, normoHours: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, normoHours: e.target.value })); worksFormDirty.markDirty(); }}
               placeholder="1.5"
             />
             <Input
@@ -348,20 +470,20 @@ function WorksTab() {
               required
               type="number"
               value={form.price}
-              onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, price: e.target.value })); worksFormDirty.markDirty(); }}
               placeholder="500"
             />
           </div>
           <Input
             label="Опис"
             value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, description: e.target.value })); worksFormDirty.markDirty(); }}
           />
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={form.isWarranty}
-              onChange={e => setForm(f => ({ ...f, isWarranty: e.target.checked }))}
+              onChange={e => { setForm(f => ({ ...f, isWarranty: e.target.checked })); worksFormDirty.markDirty(); }}
               className="h-4 w-4 accent-primary"
             />
             <span className="text-sm text-foreground">Гарантійна робота (виконується безкоштовно)</span>
@@ -369,13 +491,13 @@ function WorksTab() {
         </div>
       </Modal>
 
-      <Modal open={!!editWork} onClose={() => setEditWork(null)} title="Редагування роботи"
+      <Modal open={!!editWork} onClose={() => { if (editWorkDirty.confirmClose()) setEditWork(null); }} title="Редагування роботи"
         footer={
           <>
             <Button onClick={saveEditWork} loading={editSaving} disabled={!editForm.name || !editForm.categoryId || !editForm.normoHours || !editForm.price}>
               Зберегти
             </Button>
-            <Button variant="outline" onClick={() => setEditWork(null)}>Скасувати</Button>
+            <Button variant="outline" onClick={() => { if (editWorkDirty.confirmClose()) setEditWork(null); }}>Скасувати</Button>
           </>
         }
       >
@@ -387,7 +509,7 @@ function WorksTab() {
             label="Категорія"
             required
             value={editForm.categoryId}
-            onChange={e => setEditForm(f => ({ ...f, categoryId: e.target.value }))}
+            onChange={e => { setEditForm(f => ({ ...f, categoryId: e.target.value })); editWorkDirty.markDirty(); }}
           >
             {flat.map(c => <option key={c.id} value={c.id}>{' '.repeat(c.depth * 4)}{c.name}</option>)}
           </Select>
@@ -395,7 +517,7 @@ function WorksTab() {
             label="Назва"
             required
             value={editForm.name}
-            onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+            onChange={e => { setEditForm(f => ({ ...f, name: e.target.value })); editWorkDirty.markDirty(); }}
             placeholder="Заміна масла"
           />
           <div className="grid grid-cols-2 gap-3">
@@ -404,7 +526,7 @@ function WorksTab() {
               required
               type="number"
               value={editForm.normoHours}
-              onChange={e => setEditForm(f => ({ ...f, normoHours: e.target.value }))}
+              onChange={e => { setEditForm(f => ({ ...f, normoHours: e.target.value })); editWorkDirty.markDirty(); }}
               placeholder="1.5"
             />
             <Input
@@ -412,20 +534,20 @@ function WorksTab() {
               required
               type="number"
               value={editForm.price}
-              onChange={e => setEditForm(f => ({ ...f, price: e.target.value }))}
+              onChange={e => { setEditForm(f => ({ ...f, price: e.target.value })); editWorkDirty.markDirty(); }}
               placeholder="500"
             />
           </div>
           <Input
             label="Опис"
             value={editForm.description}
-            onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+            onChange={e => { setEditForm(f => ({ ...f, description: e.target.value })); editWorkDirty.markDirty(); }}
           />
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={editForm.isWarranty}
-              onChange={e => setEditForm(f => ({ ...f, isWarranty: e.target.checked }))}
+              onChange={e => { setEditForm(f => ({ ...f, isWarranty: e.target.checked })); editWorkDirty.markDirty(); }}
               className="h-4 w-4 accent-primary"
             />
             <span className="text-sm text-foreground">Гарантійна робота (виконується безкоштовно)</span>
@@ -441,6 +563,7 @@ function WorksTab() {
 
 function GoodsTab() {
   const { confirm, dialogProps } = useConfirm();
+  const features = useUiFeatures();
   const [goods, setGoods] = useState<PaginatedGoods | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -466,6 +589,55 @@ function GoodsTab() {
   const [editGoodError, setEditGoodError] = useState('');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [batchViewerGoodId, setBatchViewerGoodId] = useState<string | null>(null);
+
+  // ── Saved filters ────────────────────────────────────────────────────────────
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<GoodsFilters>('catalog-goods');
+
+  const applyFilter = useCallback((preset: { id: string; filters: GoodsFilters }) => {
+    setQ(preset.filters.search ?? '');
+    setPage(1);
+    setActiveSavedFilterId(preset.id);
+  }, []);
+
+  const handleSaveFilter = useCallback((name: string) => {
+    const preset = saveFilter(name, { search: q });
+    setActiveSavedFilterId(preset.id);
+    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+  }, [saveFilter, q, features.toastEnabled]);
+
+  // ── Bulk select ──────────────────────────────────────────────────────────────
+  const bulkSelect = useBulkSelect(goods?.items ?? []);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
+
+  const goodsLoadRef = useRef<(() => void) | null>(null);
+
+  const goodsActions = useMemo<BulkAction[]>(() => [
+    {
+      id: 'delete', label: 'Видалити вибрані', variant: 'destructive',
+      onClick: async (ids) => {
+        if (!window.confirm(`Видалити ${ids.length} ${ids.length === 1 ? 'товар' : 'товарів'}?`)) return;
+        const results = await Promise.allSettled(
+          ids.map(id => apiFetch(`/goods/${id}`, { method: 'DELETE' })),
+        );
+        const succeeded = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.length - succeeded;
+        bulkSelect.clear();
+        goodsLoadRef.current?.();
+        if (features.toastEnabled) {
+          if (failed === 0) toast.success(`Видалено ${succeeded} ${succeeded === 1 ? 'товар' : 'товарів'}`);
+          else toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+        }
+      },
+    },
+  ], [bulkSelect, features.toastEnabled]);
+
+  // ── Unsaved guard ────────────────────────────────────────────────────────────
+  const goodsFormDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+  const editGoodDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   useEffect(() => {
     // Reference data (brands, units, suppliers) — paint instantly from
@@ -498,6 +670,9 @@ function GoodsTab() {
     apiFetch<PaginatedGoods>(`/goods?${p}`).then(setGoods).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   }, [page, debouncedQ]);
 
+  // Keep ref in sync so goodsActions can call load() without depending on it
+  useEffect(() => { goodsLoadRef.current = load; }, [load]);
+
   useEffect(() => { load(); }, [load]);
 
   const create = async () => {
@@ -528,6 +703,7 @@ function GoodsTab() {
       });
       setModal(false);
       setForm({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '', goodType: '', preferredSupplierId: '' });
+      goodsFormDirty.resetDirty();
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
@@ -591,6 +767,7 @@ function GoodsTab() {
       preferredSupplierId: g.preferredSupplierId ?? '',
     });
     setEditGoodError('');
+    editGoodDirty.resetDirty();
   };
 
   const saveEditGood = async () => {
@@ -615,6 +792,7 @@ function GoodsTab() {
           preferredSupplierId: editGoodForm.preferredSupplierId || undefined,
         }),
       });
+      editGoodDirty.resetDirty();
       setEditGood(null);
       load();
     } catch (e: unknown) { setEditGoodError(e instanceof Error ? e.message : 'Помилка збереження'); }
@@ -628,26 +806,59 @@ function GoodsTab() {
       {!modal && error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<GoodsFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          className="mb-3"
+        />
+      )}
+
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук за назвою, артикулом, штрихкодом..." className="pl-9" />
+          <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); setActiveSavedFilterId(null); }} placeholder="Пошук за назвою, артикулом, штрихкодом..." className="pl-9" />
         </div>
         <XlsxImportButton
           templateType="goods"
           importUrl="/xlsx/import/goods"
           onImportComplete={load}
         />
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setError(''); setModal(true); }}>
+        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { goodsFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Товар
         </Button>
       </div>
+
+      {features.bulkActionsEnabled && (
+        <BulkActionsBar
+          count={bulkSelect.count}
+          selectedIds={[...bulkSelect.selected]}
+          actions={goodsActions}
+          onClear={bulkSelect.clear}
+          className="mb-3"
+        />
+      )}
 
       <div className="flex gap-0">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-10">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-4 w-4 accent-primary"
+                      aria-label="Обрати всі"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Назва / Артикул</TableHead>
                 <TableHead>Категорія</TableHead>
                 <TableHead>Тип</TableHead>
@@ -660,14 +871,14 @@ function GoodsTab() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && goods?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="p-0">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="p-0">
                     <EmptyState icon={Package} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -678,6 +889,17 @@ function GoodsTab() {
                   className={`cursor-pointer ${selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
                   onClick={() => selectGood(selectedGood?.id === g.id ? null : g)}
                 >
+                  {features.bulkActionsEnabled && (
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(g.id)}
+                        onChange={() => bulkSelect.toggle(g.id)}
+                        className="h-4 w-4 accent-primary"
+                        aria-label={`Обрати ${g.name}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <p className="text-[13px] font-medium text-foreground">{g.name}</p>
                     {g.sku && <p className="text-[12px] text-muted-foreground mt-0.5">Арт: {g.sku}</p>}
@@ -926,13 +1148,13 @@ function GoodsTab() {
         </p>
       </Modal>
 
-      <Modal open={!!editGood} onClose={() => setEditGood(null)} title="Редагування товару"
+      <Modal open={!!editGood} onClose={() => { if (editGoodDirty.confirmClose()) setEditGood(null); }} title="Редагування товару"
         footer={
           <>
             <Button onClick={saveEditGood} loading={editGoodSaving} disabled={!editGoodForm.name || !editGoodForm.salePrice}>
               Зберегти
             </Button>
-            <Button variant="outline" onClick={() => setEditGood(null)}>Скасувати</Button>
+            <Button variant="outline" onClick={() => { if (editGoodDirty.confirmClose()) setEditGood(null); }}>Скасувати</Button>
           </>
         }
       >
@@ -940,43 +1162,44 @@ function GoodsTab() {
           <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{editGoodError}</div>
         )}
         <div className="space-y-4">
-          <Input label="Назва" required value={editGoodForm.name} onChange={e => setEditGoodForm(f => ({ ...f, name: e.target.value }))} placeholder="Масло моторне 5W-40" />
+          <Input label="Назва" required value={editGoodForm.name} onChange={e => { setEditGoodForm(f => ({ ...f, name: e.target.value })); editGoodDirty.markDirty(); }} placeholder="Масло моторне 5W-40" />
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Артикул (SKU)" value={editGoodForm.sku} onChange={e => setEditGoodForm(f => ({ ...f, sku: e.target.value }))} placeholder="OIL-5W40" />
+            <Input label="Артикул (SKU)" value={editGoodForm.sku} onChange={e => { setEditGoodForm(f => ({ ...f, sku: e.target.value })); editGoodDirty.markDirty(); }} placeholder="OIL-5W40" />
             {units.length > 0 ? (
               <Select label="Одиниця виміру" value={editGoodForm.unitId} onChange={e => {
                 const unit = units.find(u => u.id === e.target.value);
                 setEditGoodForm(f => ({ ...f, unitId: e.target.value, unit: unit?.shortName ?? f.unit }));
+                editGoodDirty.markDirty();
               }}>
                 <option value="">— вписати вручну</option>
                 {units.map(u => <option key={u.id} value={u.id}>{u.shortName} ({u.name})</option>)}
               </Select>
             ) : (
-              <Input label="Одиниця" value={editGoodForm.unit} onChange={e => setEditGoodForm(f => ({ ...f, unit: e.target.value }))} placeholder="шт" />
+              <Input label="Одиниця" value={editGoodForm.unit} onChange={e => { setEditGoodForm(f => ({ ...f, unit: e.target.value })); editGoodDirty.markDirty(); }} placeholder="шт" />
             )}
           </div>
           {units.length > 0 && !editGoodForm.unitId && (
             <Input label="Одиниця (вручну)" value={editGoodForm.unit} onChange={e => setEditGoodForm(f => ({ ...f, unit: e.target.value }))} placeholder="шт" />
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Ціна закупки, ₴" type="number" value={editGoodForm.purchasePrice} onChange={e => setEditGoodForm(f => ({ ...f, purchasePrice: e.target.value }))} placeholder="350" />
-            <Input label="Ціна продажу, ₴" required type="number" value={editGoodForm.salePrice} onChange={e => setEditGoodForm(f => ({ ...f, salePrice: e.target.value }))} placeholder="500" />
+            <Input label="Ціна закупки, ₴" type="number" value={editGoodForm.purchasePrice} onChange={e => { setEditGoodForm(f => ({ ...f, purchasePrice: e.target.value })); editGoodDirty.markDirty(); }} placeholder="350" />
+            <Input label="Ціна продажу, ₴" required type="number" value={editGoodForm.salePrice} onChange={e => { setEditGoodForm(f => ({ ...f, salePrice: e.target.value })); editGoodDirty.markDirty(); }} placeholder="500" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Бренд" value={editGoodForm.brandId} onChange={e => setEditGoodForm(f => ({ ...f, brandId: e.target.value }))}>
+            <Select label="Бренд" value={editGoodForm.brandId} onChange={e => { setEditGoodForm(f => ({ ...f, brandId: e.target.value })); editGoodDirty.markDirty(); }}>
               <option value="">—</option>
               {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
-            <Input label="Категорія" value={editGoodForm.category} onChange={e => setEditGoodForm(f => ({ ...f, category: e.target.value }))} placeholder="Мастила" />
+            <Input label="Категорія" value={editGoodForm.category} onChange={e => { setEditGoodForm(f => ({ ...f, category: e.target.value })); editGoodDirty.markDirty(); }} placeholder="Мастила" />
           </div>
-          <Select label="Тип товару" value={editGoodForm.goodType} onChange={e => setEditGoodForm(f => ({ ...f, goodType: e.target.value }))}>
+          <Select label="Тип товару" value={editGoodForm.goodType} onChange={e => { setEditGoodForm(f => ({ ...f, goodType: e.target.value })); editGoodDirty.markDirty(); }}>
             <option value="">Не вказано</option>
             <option value="SPARE_PART">Запчастина</option>
             <option value="CONSUMABLE">Витратний матеріал</option>
             <option value="MATERIAL">Матеріал</option>
             <option value="TOOL">Інструмент</option>
           </Select>
-          <Select label="Основний постачальник" value={editGoodForm.preferredSupplierId} onChange={e => setEditGoodForm(f => ({ ...f, preferredSupplierId: e.target.value }))}>
+          <Select label="Основний постачальник" value={editGoodForm.preferredSupplierId} onChange={e => { setEditGoodForm(f => ({ ...f, preferredSupplierId: e.target.value })); editGoodDirty.markDirty(); }}>
             <option value="">— Не вказано —</option>
             {suppliers.map(s => (
               <option key={s.id} value={s.id}>
@@ -984,11 +1207,11 @@ function GoodsTab() {
               </option>
             ))}
           </Select>
-          <Input label="Нотатки" value={editGoodForm.notes} onChange={e => setEditGoodForm(f => ({ ...f, notes: e.target.value }))} />
+          <Input label="Нотатки" value={editGoodForm.notes} onChange={e => { setEditGoodForm(f => ({ ...f, notes: e.target.value })); editGoodDirty.markDirty(); }} />
         </div>
       </Modal>
 
-      <Modal open={modal} onClose={() => setModal(false)} title="Новий товар / запчастина"
+      <Modal open={modal} onClose={() => { if (goodsFormDirty.confirmClose()) setModal(false); }} title="Новий товар / запчастина"
         footer={
           <Button onClick={create} loading={saving} disabled={!form.name || !form.salePrice} className="w-full">
             Зберегти
@@ -1003,14 +1226,14 @@ function GoodsTab() {
             label="Назва"
             required
             value={form.name}
-            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, name: e.target.value })); goodsFormDirty.markDirty(); }}
             placeholder="Масло моторне 5W-40"
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Артикул (SKU)"
               value={form.sku}
-              onChange={e => setForm(f => ({ ...f, sku: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, sku: e.target.value })); goodsFormDirty.markDirty(); }}
               placeholder="OIL-5W40"
             />
             {units.length > 0 ? (
@@ -1020,6 +1243,7 @@ function GoodsTab() {
                 onChange={e => {
                   const unit = units.find(u => u.id === e.target.value);
                   setForm(f => ({ ...f, unitId: e.target.value, unit: unit?.shortName ?? f.unit }));
+                  goodsFormDirty.markDirty();
                 }}
               >
                 <option value="">— вписати вручну</option>
@@ -1029,7 +1253,7 @@ function GoodsTab() {
               <Input
                 label="Одиниця"
                 value={form.unit}
-                onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
+                onChange={e => { setForm(f => ({ ...f, unit: e.target.value })); goodsFormDirty.markDirty(); }}
                 placeholder="шт"
               />
             )}
@@ -1038,7 +1262,7 @@ function GoodsTab() {
             <Input
               label="Одиниця (вручну)"
               value={form.unit}
-              onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, unit: e.target.value })); goodsFormDirty.markDirty(); }}
               placeholder="шт"
             />
           )}
@@ -1047,7 +1271,7 @@ function GoodsTab() {
               label="Ціна закупки, ₴"
               type="number"
               value={form.purchasePrice}
-              onChange={e => setForm(f => ({ ...f, purchasePrice: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, purchasePrice: e.target.value })); goodsFormDirty.markDirty(); }}
               placeholder="350"
             />
             <Input
@@ -1055,7 +1279,7 @@ function GoodsTab() {
               required
               type="number"
               value={form.salePrice}
-              onChange={e => setForm(f => ({ ...f, salePrice: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, salePrice: e.target.value })); goodsFormDirty.markDirty(); }}
               placeholder="500"
             />
           </div>
@@ -1063,7 +1287,7 @@ function GoodsTab() {
             <Select
               label="Бренд"
               value={form.brandId}
-              onChange={e => setForm(f => ({ ...f, brandId: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, brandId: e.target.value })); goodsFormDirty.markDirty(); }}
             >
               <option value="">—</option>
               {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -1071,14 +1295,14 @@ function GoodsTab() {
             <Input
               label="Категорія"
               value={form.category}
-              onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+              onChange={e => { setForm(f => ({ ...f, category: e.target.value })); goodsFormDirty.markDirty(); }}
               placeholder="Мастила"
             />
           </div>
           <Select
             label="Тип товару"
             value={form.goodType}
-            onChange={e => setForm(f => ({ ...f, goodType: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, goodType: e.target.value })); goodsFormDirty.markDirty(); }}
           >
             <option value="">Не вказано</option>
             <option value="SPARE_PART">Запчастина</option>
@@ -1089,7 +1313,7 @@ function GoodsTab() {
           <Select
             label="Основний постачальник"
             value={form.preferredSupplierId}
-            onChange={e => setForm(f => ({ ...f, preferredSupplierId: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, preferredSupplierId: e.target.value })); goodsFormDirty.markDirty(); }}
           >
             <option value="">— Не вказано —</option>
             {suppliers.map(s => (
@@ -1101,13 +1325,13 @@ function GoodsTab() {
           <Input
             label="Штрихкод"
             value={form.barcode}
-            onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, barcode: e.target.value })); goodsFormDirty.markDirty(); }}
             placeholder="4820000000000"
           />
           <Input
             label="Нотатки"
             value={form.notes}
-            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, notes: e.target.value })); goodsFormDirty.markDirty(); }}
           />
         </div>
       </Modal>
@@ -1120,6 +1344,7 @@ function GoodsTab() {
 
 function ServicesTab() {
   const { confirm, dialogProps } = useConfirm();
+  const features = useUiFeatures();
   const [services, setServices] = useState<PaginatedServices | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -1132,12 +1357,63 @@ function ServicesTab() {
   const [error, setError] = useState('');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
+  // ── Saved filters ────────────────────────────────────────────────────────────
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<ServicesFilters>('catalog-services');
+
+  const applyFilter = useCallback((preset: { id: string; filters: ServicesFilters }) => {
+    setQ(preset.filters.search ?? '');
+    setPage(1);
+    setActiveSavedFilterId(preset.id);
+  }, []);
+
+  const handleSaveFilter = useCallback((name: string) => {
+    const preset = saveFilter(name, { search: q });
+    setActiveSavedFilterId(preset.id);
+    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+  }, [saveFilter, q, features.toastEnabled]);
+
+  // ── Bulk select ──────────────────────────────────────────────────────────────
+  const bulkSelect = useBulkSelect(services?.items ?? []);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
+
+  const servicesLoadRef = useRef<(() => void) | null>(null);
+
+  const servicesActions = useMemo<BulkAction[]>(() => [
+    {
+      id: 'delete', label: 'Видалити вибрані', variant: 'destructive',
+      onClick: async (ids) => {
+        if (!window.confirm(`Видалити ${ids.length} ${ids.length === 1 ? 'послугу' : 'послуг'}?`)) return;
+        const results = await Promise.allSettled(
+          ids.map(id => apiFetch(`/services/${id}`, { method: 'DELETE' })),
+        );
+        const succeeded = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.length - succeeded;
+        bulkSelect.clear();
+        servicesLoadRef.current?.();
+        if (features.toastEnabled) {
+          if (failed === 0) toast.success(`Видалено ${succeeded} ${succeeded === 1 ? 'послугу' : 'послуг'}`);
+          else toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+        }
+      },
+    },
+  ], [bulkSelect, features.toastEnabled]);
+
+  // ── Unsaved guard ────────────────────────────────────────────────────────────
+  const servicesFormDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+
   const load = useCallback(() => {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (debouncedQ) p.set('q', debouncedQ);
     apiFetch<PaginatedServices>(`/services?${p}`).then(setServices).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
   }, [page, debouncedQ]);
+
+  // Keep ref in sync so servicesActions can call load() without depending on it
+  useEffect(() => { servicesLoadRef.current = load; }, [load]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1154,6 +1430,7 @@ function ServicesTab() {
       });
       setModal(false);
       setForm({ name: '', description: '', price: '' });
+      servicesFormDirty.resetDirty();
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSaving(false); }
@@ -1178,21 +1455,55 @@ function ServicesTab() {
       {!modal && error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
+
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<ServicesFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          className="mb-3"
+        />
+      )}
+
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Пошук послуг..." className="pl-9" />
+          <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); setActiveSavedFilterId(null); }} placeholder="Пошук послуг..." className="pl-9" />
         </div>
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setError(''); setModal(true); }}>
+        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { servicesFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Послуга
         </Button>
       </div>
+
+      {features.bulkActionsEnabled && (
+        <BulkActionsBar
+          count={bulkSelect.count}
+          selectedIds={[...bulkSelect.selected]}
+          actions={servicesActions}
+          onClear={bulkSelect.clear}
+          className="mb-3"
+        />
+      )}
 
       <div className="flex gap-0">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-10">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-4 w-4 accent-primary"
+                      aria-label="Обрати всі"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Назва</TableHead>
                 <TableHead>Роботи</TableHead>
                 <TableHead>Товари</TableHead>
@@ -1203,14 +1514,14 @@ function ServicesTab() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && services?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="p-0">
+                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="p-0">
                     <EmptyState icon={Layers} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -1221,6 +1532,17 @@ function ServicesTab() {
                   className={`cursor-pointer ${selectedService?.id === s.id ? 'bg-secondary' : ''}`}
                   onClick={() => setSelectedService(prev => prev?.id === s.id ? null : s)}
                 >
+                  {features.bulkActionsEnabled && (
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(s.id)}
+                        onChange={() => bulkSelect.toggle(s.id)}
+                        className="h-4 w-4 accent-primary"
+                        aria-label={`Обрати ${s.name}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <p className="text-[13px] font-medium text-foreground">{s.name}</p>
                     {s.description && <p className="text-[12px] text-muted-foreground mt-0.5">{s.description}</p>}
@@ -1311,7 +1633,7 @@ function ServicesTab() {
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
-      <Modal open={modal} onClose={() => setModal(false)} title="Нова комплексна послуга"
+      <Modal open={modal} onClose={() => { if (servicesFormDirty.confirmClose()) setModal(false); }} title="Нова комплексна послуга"
         footer={
           <Button onClick={create} loading={saving} disabled={!form.name} className="w-full">
             Зберегти
@@ -1326,19 +1648,19 @@ function ServicesTab() {
             label="Назва"
             required
             value={form.name}
-            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, name: e.target.value })); servicesFormDirty.markDirty(); }}
             placeholder="ТО-1 (20 000 км)"
           />
           <Input
             label="Опис"
             value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, description: e.target.value })); servicesFormDirty.markDirty(); }}
           />
           <Input
             label="Фіксована ціна, ₴ (не заповнювати = авто)"
             type="number"
             value={form.price}
-            onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
+            onChange={e => { setForm(f => ({ ...f, price: e.target.value })); servicesFormDirty.markDirty(); }}
             placeholder="2500"
           />
           <p className="text-[12px] text-muted-foreground">Роботи та товари можна додати після створення</p>
