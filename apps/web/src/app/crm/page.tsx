@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil, Car } from 'lucide-react';
+import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil, Car, FileText } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -50,6 +50,18 @@ interface CrmFilters extends Record<string, unknown> {
 }
 
 const TYPE_LABELS: Record<string, string> = { CLIENT: 'Клієнт', SUPPLIER: 'Постачальник', BOTH: 'Обидва' };
+
+type ModalWorkOrder = { id: string; number: string; status: string; totalAmount: number; createdAt: string; vehicleSummary?: string | null };
+const WO_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Чернетка', ESTIMATE: 'Кошторис', APPROVED: 'Затверджено',
+  IN_PROGRESS: 'В роботі', ON_HOLD: 'Призупинено', COMPLETED: 'Виконано',
+  INVOICED: 'Виставлено', PAID: 'Оплачено', ARCHIVED: 'Архів', CANCELLED: 'Скасовано',
+};
+const WO_STATUS_BADGE: Record<string, BadgeVariant> = {
+  DRAFT: 'secondary', ESTIMATE: 'info', APPROVED: 'info',
+  IN_PROGRESS: 'warning', ON_HOLD: 'secondary', COMPLETED: 'success',
+  INVOICED: 'default', PAID: 'success', ARCHIVED: 'secondary', CANCELLED: 'destructive',
+};
 const TYPE_BADGE: Record<string, BadgeVariant> = { CLIENT: 'default', SUPPLIER: 'secondary', BOTH: 'warning' };
 const TYPE_FILTER_OPTIONS = [['', 'Всі'], ['CLIENT', 'Клієнти'], ['SUPPLIER', 'Постачальники'], ['BOTH', 'Обидва']] as const;
 
@@ -95,6 +107,13 @@ export default function CrmPage() {
   // modalVehicles/modalGarageId with the previous CP's data. Each openEdit bumps
   // the token; resolved fetches whose token != current are discarded.
   const modalVehiclesReqRef = useRef(0);
+
+  // ── Work orders for edit modal ───────────────────────────────────────────────
+  const [modalWorkOrders, setModalWorkOrders] = useState<ModalWorkOrder[]>([]);
+  const [modalWorkOrdersLoading, setModalWorkOrdersLoading] = useState(false);
+  const [woError, setWoError] = useState('');
+  const [vehiclesError, setVehiclesError] = useState('');
+  const modalWoReqRef = useRef(0);
 
   // ── Column visibility ────────────────────────────────────────────────────────
   const CRM_COLUMNS = useMemo(() => [
@@ -246,23 +265,34 @@ export default function CrmPage() {
     setModalGarageId(null);
     setShowAddVehicle(false);
     setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
+    setModalWorkOrders([]);
+    setVehiclesError('');
+    setWoError('');
     setModal(true);
-    // Load vehicles for edit modal. Bump request token so a slower fetch for a
-    // previously-opened CP cannot overwrite this CP's garage/vehicles (race guard).
-    const reqId = ++modalVehiclesReqRef.current;
+
+    // Race-guarded parallel fetch: vehicles and work orders for this CP.
+    const vReqId = ++modalVehiclesReqRef.current;
+    const woReqId = ++modalWoReqRef.current;
+
     setModalVehiclesLoading(true);
     apiFetch<{ id: string }[]>(`/counterparties/${cp.id}/garages`)
       .then(garages => {
-        if (modalVehiclesReqRef.current !== reqId) return [] as Vehicle[][];
+        if (modalVehiclesReqRef.current !== vReqId) return [] as Vehicle[][];
         const defaultGarage = garages[0];
         if (defaultGarage) setModalGarageId(defaultGarage.id);
         return Promise.all(garages.map(g =>
           apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}&limit=50`)
         ));
       })
-      .then(results => { if (modalVehiclesReqRef.current === reqId) setModalVehicles(results.flat()); })
-      .catch(() => {})
-      .finally(() => { if (modalVehiclesReqRef.current === reqId) setModalVehiclesLoading(false); });
+      .then(results => { if (modalVehiclesReqRef.current === vReqId) setModalVehicles(results.flat()); })
+      .catch(err => { if (modalVehiclesReqRef.current === vReqId) setVehiclesError(err instanceof Error ? err.message : 'Помилка завантаження авто'); })
+      .finally(() => { if (modalVehiclesReqRef.current === vReqId) setModalVehiclesLoading(false); });
+
+    setModalWorkOrdersLoading(true);
+    apiFetch<{ items: ModalWorkOrder[] }>(`/work-orders?counterpartyId=${cp.id}&limit=50`)
+      .then(data => { if (modalWoReqRef.current === woReqId) setModalWorkOrders(data.items); })
+      .catch(err => { if (modalWoReqRef.current === woReqId) setWoError(err instanceof Error ? err.message : 'Помилка завантаження нарядів'); })
+      .finally(() => { if (modalWoReqRef.current === woReqId) setModalWorkOrdersLoading(false); });
   };
 
   const addVehicle = async () => {
@@ -727,95 +757,170 @@ export default function CrmPage() {
             tabs={[
               {
                 key: 'vehicles',
-                label: 'Авто клієнта',
+                label: 'Авто',
                 icon: <Car className="h-3.5 w-3.5" />,
                 count: modalVehicles.length,
                 content: (
                   <div className="space-y-3">
-                    {/* Add vehicle toggle */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] text-muted-foreground">
-                        {modalVehiclesLoading ? 'Завантаження...' : `${modalVehicles.length} авто`}
-                      </span>
-                      {!showAddVehicle && (
-                        <Button size="sm" variant="outline" leftIcon={<Plus className="h-3.5 w-3.5" />}
-                          onClick={() => setShowAddVehicle(true)}>
-                          Додати авто
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Add vehicle form */}
-                    {showAddVehicle && (
-                      <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input label="Марка" required value={addVehicleForm.make}
-                            onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))}
-                            placeholder="Toyota" />
-                          <Input label="Модель" required value={addVehicleForm.model}
-                            onChange={e => setAddVehicleForm(f => ({ ...f, model: e.target.value }))}
-                            placeholder="Camry" />
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <Input label="Рік" type="number" value={addVehicleForm.year}
-                            onChange={e => setAddVehicleForm(f => ({ ...f, year: e.target.value }))}
-                            placeholder="2020" />
-                          <Input label="Держномер" value={addVehicleForm.licensePlate}
-                            onChange={e => setAddVehicleForm(f => ({ ...f, licensePlate: e.target.value }))}
-                            placeholder="АА 1234 ВС" />
-                          <Input label="VIN" value={addVehicleForm.vin}
-                            onChange={e => setAddVehicleForm(f => ({ ...f, vin: e.target.value }))}
-                            placeholder="WVWZZZ1JZXW000001" />
-                        </div>
-                        <div className="flex gap-2 justify-end">
-                          <Button size="sm" variant="outline" onClick={() => { setShowAddVehicle(false); setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' }); }}>
-                            Скасувати
-                          </Button>
-                          <Button size="sm" onClick={addVehicle} loading={addingVehicle}
-                            disabled={!addVehicleForm.make || !addVehicleForm.model}>
-                            Зберегти
-                          </Button>
-                        </div>
+                    {/* Loading */}
+                    {modalVehiclesLoading && (
+                      <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
+                    )}
+                    {/* Error */}
+                    {!modalVehiclesLoading && vehiclesError && (
+                      <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
+                        {vehiclesError}
                       </div>
                     )}
+                    {!modalVehiclesLoading && !vehiclesError && (
+                      <>
+                        {/* Add vehicle toggle */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-[13px] text-muted-foreground">{modalVehicles.length} авто</span>
+                          {!showAddVehicle && (
+                            <Button size="sm" variant="outline" leftIcon={<Plus className="h-3.5 w-3.5" />}
+                              onClick={() => setShowAddVehicle(true)}>
+                              Додати авто
+                            </Button>
+                          )}
+                        </div>
 
-                    {/* Vehicles list */}
-                    {!modalVehiclesLoading && modalVehicles.length > 0 && (
+                        {/* Add vehicle form */}
+                        {showAddVehicle && (
+                          <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
+                            <div className="grid grid-cols-2 gap-2">
+                              <Input label="Марка" required value={addVehicleForm.make}
+                                onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))}
+                                placeholder="Toyota" />
+                              <Input label="Модель" required value={addVehicleForm.model}
+                                onChange={e => setAddVehicleForm(f => ({ ...f, model: e.target.value }))}
+                                placeholder="Camry" />
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <Input label="Рік" type="number" value={addVehicleForm.year}
+                                onChange={e => setAddVehicleForm(f => ({ ...f, year: e.target.value }))}
+                                placeholder="2020" />
+                              <Input label="Держномер" value={addVehicleForm.licensePlate}
+                                onChange={e => setAddVehicleForm(f => ({ ...f, licensePlate: e.target.value }))}
+                                placeholder="АА 1234 ВС" />
+                              <Input label="VIN" value={addVehicleForm.vin}
+                                onChange={e => setAddVehicleForm(f => ({ ...f, vin: e.target.value }))}
+                                placeholder="WVWZZZ1JZXW000001" />
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                              <Button size="sm" variant="outline" onClick={() => { setShowAddVehicle(false); setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' }); }}>
+                                Скасувати
+                              </Button>
+                              <Button size="sm" onClick={addVehicle} loading={addingVehicle}
+                                disabled={!addVehicleForm.make || !addVehicleForm.model}>
+                                Зберегти
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Vehicles list */}
+                        {modalVehicles.length > 0 && (
+                          <div className="rounded-xl border border-border overflow-hidden">
+                            <table className="w-full text-[13px]">
+                              <thead className="bg-secondary border-b border-border">
+                                <tr>
+                                  <th className="text-left px-3 py-2 text-muted-foreground font-medium">Марка / Модель</th>
+                                  <th className="text-left px-3 py-2 text-muted-foreground font-medium">Держномер</th>
+                                  <th className="text-left px-3 py-2 text-muted-foreground font-medium">Рік</th>
+                                  <th className="w-16" />
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border">
+                                {modalVehicles.map(v => (
+                                  <tr key={v.id} className="bg-surface hover:bg-secondary/50 transition-colors">
+                                    <td className="px-3 py-2 font-medium text-foreground">{v.make} {v.model}</td>
+                                    <td className="px-3 py-2 text-muted-foreground">{v.licensePlate || '—'}</td>
+                                    <td className="px-3 py-2 text-muted-foreground">{v.year ?? '—'}</td>
+                                    <td className="px-3 py-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => deleteVehicle(v.id)}
+                                        disabled={deletingVehicleId === v.id}
+                                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
+                                        title="Видалити"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                        {modalVehicles.length === 0 && !showAddVehicle && (
+                          <p className="text-[13px] text-muted-foreground text-center py-4">Авто не додано</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: 'work-orders',
+                label: 'Наряди',
+                icon: <FileText className="h-3.5 w-3.5" />,
+                count: modalWorkOrders.length,
+                content: (
+                  <div className="space-y-3">
+                    {/* Loading */}
+                    {modalWorkOrdersLoading && (
+                      <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
+                    )}
+                    {/* Error */}
+                    {!modalWorkOrdersLoading && woError && (
+                      <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
+                        {woError}
+                      </div>
+                    )}
+                    {/* Empty */}
+                    {!modalWorkOrdersLoading && !woError && modalWorkOrders.length === 0 && (
+                      <p className="text-[13px] text-muted-foreground text-center py-4">Нарядів немає</p>
+                    )}
+                    {/* List */}
+                    {!modalWorkOrdersLoading && !woError && modalWorkOrders.length > 0 && (
                       <div className="rounded-xl border border-border overflow-hidden">
                         <table className="w-full text-[13px]">
                           <thead className="bg-secondary border-b border-border">
                             <tr>
-                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Марка / Модель</th>
-                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Держномер</th>
-                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Рік</th>
-                              <th className="w-16" />
+                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Номер</th>
+                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Авто</th>
+                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Статус</th>
+                              <th className="text-right px-3 py-2 text-muted-foreground font-medium">Сума</th>
+                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Дата</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border">
-                            {modalVehicles.map(v => (
-                              <tr key={v.id} className="bg-surface hover:bg-secondary/50 transition-colors">
-                                <td className="px-3 py-2 font-medium text-foreground">{v.make} {v.model}</td>
-                                <td className="px-3 py-2 text-muted-foreground">{v.licensePlate || '—'}</td>
-                                <td className="px-3 py-2 text-muted-foreground">{v.year ?? '—'}</td>
+                            {modalWorkOrders.map(wo => (
+                              <tr
+                                key={wo.id}
+                                className="bg-surface hover:bg-secondary/50 transition-colors cursor-pointer"
+                                onClick={() => router.push(`/work-orders/${wo.id}`)}
+                              >
+                                <td className="px-3 py-2 font-mono font-medium text-foreground">{wo.number}</td>
+                                <td className="px-3 py-2 text-muted-foreground">{wo.vehicleSummary || '—'}</td>
                                 <td className="px-3 py-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteVehicle(v.id)}
-                                    disabled={deletingVehicleId === v.id}
-                                    className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
-                                    title="Видалити"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                  <Badge variant={WO_STATUS_BADGE[wo.status] ?? 'secondary'} dot>
+                                    {WO_STATUS_LABELS[wo.status] ?? wo.status}
+                                  </Badge>
+                                </td>
+                                <td className="px-3 py-2 text-right text-foreground tabular-nums">
+                                  {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                                </td>
+                                <td className="px-3 py-2 text-muted-foreground">
+                                  {new Date(wo.createdAt).toLocaleDateString('uk-UA')}
                                 </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
-                    )}
-                    {!modalVehiclesLoading && modalVehicles.length === 0 && !showAddVehicle && (
-                      <p className="text-[13px] text-muted-foreground text-center py-4">Авто не додано</p>
                     )}
                   </div>
                 ),

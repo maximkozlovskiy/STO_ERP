@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Plus, Pencil, Search, Trash2, BookOpen, Package, Layers, Star, Barcode, Ruler, Tag } from 'lucide-react';
+import { Plus, Pencil, Search, Trash2, BookOpen, Package, Layers, Star, Barcode, Ruler, Tag, X } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -33,6 +33,7 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
+import { ModalTabs } from '@/components/ui/modal-tabs';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,15 @@ interface ServiceGood { goodId: string; goodName: string; unit: string; salePric
 interface Service { id: string; name: string; description: string | null; price: number | null; works: ServiceWork[]; goods: ServiceGood[]; }
 interface PaginatedServices { items: Service[]; total: number; page: number; limit: number; }
 interface GoodBarcode { id: string; barcode: string; type: string; isPrimary: boolean; }
+interface StockBatchDto {
+  id: string; goodId: string; warehouseId: string;
+  batchNumber: string | null; expiryDate: string | null;
+  receivedQty: number; remainingQty: number;
+  costPrice: number; salePrice: number;
+  isActive: boolean; createdAt: string;
+  purchaseOrderNumber: string | null;
+  purchaseOrderLineId: string | null;
+}
 
 type Tab = 'works' | 'goods' | 'services' | 'units' | 'brands';
 type GoodDetailTab = 'info' | 'barcodes' | 'batches';
@@ -612,6 +622,22 @@ function GoodsTab() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [batchViewerGoodId, setBatchViewerGoodId] = useState<string | null>(null);
 
+  // ── Edit modal: barcodes tab ─────────────────────────────────────────────────
+  const [modalBarcodes, setModalBarcodes] = useState<GoodBarcode[]>([]);
+  const [modalBarcodesLoading, setModalBarcodesLoading] = useState(false);
+  const [barcodeError, setBarcodeError] = useState('');
+  const [showAddBarcode, setShowAddBarcode] = useState(false);
+  const [addBarcodeForm, setAddBarcodeForm] = useState({ barcode: '', type: 'EAN13' });
+  const [addingBarcode2, setAddingBarcode2] = useState(false);
+  const [deletingBarcodeId2, setDeletingBarcodeId2] = useState<string | null>(null);
+  const modalBarcodeReqRef = useRef(0);
+
+  // ── Edit modal: batches tab ──────────────────────────────────────────────────
+  const [modalBatches, setModalBatches] = useState<StockBatchDto[]>([]);
+  const [modalBatchesLoading, setModalBatchesLoading] = useState(false);
+  const [batchError, setBatchError] = useState('');
+  const modalBatchReqRef = useRef(0);
+
   const GOODS_COLUMNS = useMemo(() => [
     { key: 'name', label: 'Назва / Артикул', defaultVisible: true },
     { key: 'category', label: 'Категорія', defaultVisible: true },
@@ -800,6 +826,29 @@ function GoodsTab() {
     });
     setEditGoodError('');
     editGoodDirty.resetDirty();
+    // Reset tabs state
+    setModalBarcodes([]);
+    setBarcodeError('');
+    setShowAddBarcode(false);
+    setAddBarcodeForm({ barcode: '', type: 'EAN13' });
+    setModalBatches([]);
+    setBatchError('');
+
+    // Race-guarded fetch for barcodes and batches
+    const bReqId = ++modalBarcodeReqRef.current;
+    const btReqId = ++modalBatchReqRef.current;
+
+    setModalBarcodesLoading(true);
+    apiFetch<GoodBarcode[]>(`/goods/${g.id}/barcodes`)
+      .then(data => { if (modalBarcodeReqRef.current === bReqId) setModalBarcodes(data); })
+      .catch(err => { if (modalBarcodeReqRef.current === bReqId) setBarcodeError(err instanceof Error ? err.message : 'Помилка завантаження штрихкодів'); })
+      .finally(() => { if (modalBarcodeReqRef.current === bReqId) setModalBarcodesLoading(false); });
+
+    setModalBatchesLoading(true);
+    apiFetch<StockBatchDto[]>(`/goods/${g.id}/batches`)
+      .then(data => { if (modalBatchReqRef.current === btReqId) setModalBatches(data); })
+      .catch(err => { if (modalBatchReqRef.current === btReqId) setBatchError(err instanceof Error ? err.message : 'Помилка завантаження партій'); })
+      .finally(() => { if (modalBatchReqRef.current === btReqId) setModalBatchesLoading(false); });
   };
 
   const saveEditGood = async () => {
@@ -1253,6 +1302,195 @@ function GoodsTab() {
           </Select>
           <Input label="Нотатки" value={editGoodForm.notes} onChange={e => { setEditGoodForm(f => ({ ...f, notes: e.target.value })); editGoodDirty.markDirty(); }} />
         </div>
+
+        {/* ModalTabs — штрихкоди та партії */}
+        <ModalTabs
+          tabs={[
+            {
+              key: 'barcodes',
+              label: 'Штрихкоди',
+              icon: <Barcode className="h-3.5 w-3.5" />,
+              count: modalBarcodes.length,
+              content: (
+                <div className="space-y-3">
+                  {modalBarcodesLoading && (
+                    <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
+                  )}
+                  {!modalBarcodesLoading && barcodeError && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
+                      {barcodeError}
+                    </div>
+                  )}
+                  {!modalBarcodesLoading && !barcodeError && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[13px] text-muted-foreground">{modalBarcodes.length} штрихкодів</span>
+                        {!showAddBarcode && (
+                          <Button size="sm" variant="outline" leftIcon={<Plus className="h-3.5 w-3.5" />}
+                            onClick={() => setShowAddBarcode(true)}>
+                            Додати
+                          </Button>
+                        )}
+                      </div>
+                      {showAddBarcode && (
+                        <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input label="Штрихкод" required value={addBarcodeForm.barcode}
+                              onChange={e => setAddBarcodeForm(f => ({ ...f, barcode: e.target.value }))}
+                              placeholder="4820123456789" />
+                            <Select label="Тип" value={addBarcodeForm.type}
+                              onChange={e => setAddBarcodeForm(f => ({ ...f, type: e.target.value }))}>
+                              <option value="EAN13">EAN-13</option>
+                              <option value="EAN8">EAN-8</option>
+                              <option value="CODE128">Code 128</option>
+                              <option value="CODE39">Code 39</option>
+                              <option value="QR">QR</option>
+                            </Select>
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <Button size="sm" variant="outline"
+                              onClick={() => { setShowAddBarcode(false); setAddBarcodeForm({ barcode: '', type: 'EAN13' }); }}>
+                              Скасувати
+                            </Button>
+                            <Button size="sm" loading={addingBarcode2}
+                              disabled={!addBarcodeForm.barcode}
+                              onClick={async () => {
+                                if (!editGood) return;
+                                setAddingBarcode2(true);
+                                try {
+                                  const created = await apiFetch<GoodBarcode>(`/goods/${editGood.id}/barcodes`, {
+                                    method: 'POST',
+                                    body: JSON.stringify({ barcode: addBarcodeForm.barcode, type: addBarcodeForm.type }),
+                                  });
+                                  setModalBarcodes(prev => [...prev, created]);
+                                  setAddBarcodeForm({ barcode: '', type: 'EAN13' });
+                                  setShowAddBarcode(false);
+                                  toast.success('Штрихкод додано');
+                                } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка'); }
+                                finally { setAddingBarcode2(false); }
+                              }}>
+                              Зберегти
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      {modalBarcodes.length > 0 && (
+                        <div className="rounded-xl border border-border overflow-hidden">
+                          <table className="w-full text-[13px]">
+                            <thead className="bg-secondary border-b border-border">
+                              <tr>
+                                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Штрихкод</th>
+                                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Тип</th>
+                                <th className="w-10 px-3 py-2 text-muted-foreground" title="Основний">
+                                  <Star className="h-3.5 w-3.5" />
+                                </th>
+                                <th className="w-12" />
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {modalBarcodes.map(bc => (
+                                <tr key={bc.id} className="bg-surface hover:bg-secondary/50 transition-colors">
+                                  <td className="px-3 py-2 font-mono text-foreground">{bc.barcode}</td>
+                                  <td className="px-3 py-2 text-muted-foreground">{bc.type}</td>
+                                  <td className="px-3 py-2 text-center">
+                                    {bc.isPrimary && <Star className="h-3.5 w-3.5 text-warning-text fill-warning-text" />}
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <button type="button"
+                                      disabled={deletingBarcodeId2 === bc.id}
+                                      onClick={async () => {
+                                        if (!editGood) return;
+                                        setDeletingBarcodeId2(bc.id);
+                                        try {
+                                          await apiFetch(`/goods/${editGood.id}/barcodes/${bc.id}`, { method: 'DELETE' });
+                                          setModalBarcodes(prev => prev.filter(b => b.id !== bc.id));
+                                          toast.success('Штрихкод видалено');
+                                        } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка'); }
+                                        finally { setDeletingBarcodeId2(null); }
+                                      }}
+                                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
+                                      title="Видалити">
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {modalBarcodes.length === 0 && !showAddBarcode && (
+                        <p className="text-[13px] text-muted-foreground text-center py-4">Штрихкодів немає</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'batches',
+              label: 'Партії',
+              icon: <Package className="h-3.5 w-3.5" />,
+              count: modalBatches.filter(b => b.remainingQty > 0).length,
+              content: (
+                <div className="space-y-3">
+                  {modalBatchesLoading && (
+                    <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
+                  )}
+                  {!modalBatchesLoading && batchError && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
+                      {batchError}
+                    </div>
+                  )}
+                  {!modalBatchesLoading && !batchError && modalBatches.length === 0 && (
+                    <p className="text-[13px] text-muted-foreground text-center py-4">Партій немає</p>
+                  )}
+                  {!modalBatchesLoading && !batchError && modalBatches.length > 0 && (
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <table className="w-full text-[13px]">
+                        <thead className="bg-secondary border-b border-border">
+                          <tr>
+                            <th className="text-left px-3 py-2 text-muted-foreground font-medium">Партія / Накладна</th>
+                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">Отримано</th>
+                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">Залишок</th>
+                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">Собів., ₴</th>
+                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">Продаж, ₴</th>
+                            <th className="text-left px-3 py-2 text-muted-foreground font-medium">Дата</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {modalBatches.map(b => (
+                            <tr key={b.id} className="bg-surface hover:bg-secondary/50 transition-colors">
+                              <td className="px-3 py-2 text-foreground">
+                                {b.batchNumber ?? b.purchaseOrderNumber ?? '—'}
+                              </td>
+                              <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">{b.receivedQty}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">
+                                {b.remainingQty > 0
+                                  ? <span className="text-foreground">{b.remainingQty}</span>
+                                  : <span className="text-muted-foreground line-through">{b.remainingQty}</span>
+                                }
+                              </td>
+                              <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">
+                                {b.costPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right text-foreground tabular-nums">
+                                {b.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground">
+                                {new Date(b.createdAt).toLocaleDateString('uk-UA')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+        />
       </Modal>
 
       <Modal open={modal} onClose={async () => { if (!(await goodsFormDirty.confirmClose())) return; setModal(false); }} title="Новий товар / запчастина"

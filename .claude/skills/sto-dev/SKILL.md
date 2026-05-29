@@ -1179,6 +1179,186 @@ const [pickerQuery, setPickerQuery] = useState('');  // не потрібен �
 
 ---
 
+## §14 — Modal + ModalTabs для 1-N зв'язків
+
+### §14.1 — Структура Edit Modal з ModalTabs
+
+Коли сутність має 1+ дочірніх колекцій (контрагент → авто, товар → штрихкоди), організуй edit modal за цим паттерном:
+
+```tsx
+// ✅ Правильна організація: основна форма + ModalTabs нижче
+<Modal open={modal} onClose={closeModal} size="lg" title="Редагування X">
+  {/* 1) Основні поля форми — завжди видимі */}
+  <form className="space-y-4" onSubmit={e => e.preventDefault()}>
+    <Input label="Назва" value={form.name} onChange={...} />
+    {/* ...інші поля... */}
+    {error && <p className="text-sm text-destructive-text">{error}</p>}
+  </form>
+
+  {/* 2) ModalTabs — тільки при редагуванні (не при створенні) */}
+  {editingItem && (
+    <ModalTabs
+      tabs={[
+        {
+          key: 'children',
+          label: 'Дочірні об'єкти',
+          icon: <SomeIcon className="h-3.5 w-3.5" />,
+          count: modalChildren.length,
+          content: (
+            <div className="space-y-3">
+              {/* Loading / Error / Empty / List */}
+            </div>
+          ),
+        },
+        // ... інші вкладки
+      ]}
+    />
+  )}
+
+  {/* 3) Footer кнопки — після ModalTabs, у Modal footer */}
+</Modal>
+```
+
+**State для дочірньої колекції:**
+```ts
+// По одному блоку на кожну дочірню колекцію:
+const [modalChildren, setModalChildren] = useState<Child[]>([]);
+const [modalChildrenLoading, setModalChildrenLoading] = useState(false);
+const [childError, setChildError] = useState('');
+const modalChildReqRef = useRef(0);  // race guard (обов'язковий!)
+```
+
+**PATCH + оновлення списку після мутації:**
+```ts
+// Після успішного PATCH основних даних:
+setItems(prev => prev.map(i => i.id === editingItem.id ? { ...i, ...updated } : i));
+// Після POST нового дочірнього елемента:
+setModalChildren(prev => [...prev, created]);
+// Після DELETE дочірнього елемента:
+setModalChildren(prev => prev.filter(c => c.id !== deletedId));
+```
+
+### §14.2 — Loading/Error в контенті вкладки
+
+Loading і error показуються **у tab.content**, не на рівні ModalTabs:
+
+```tsx
+content: (
+  <div className="space-y-3">
+    {/* Loading state */}
+    {childrenLoading && (
+      <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
+    )}
+
+    {/* Error state */}
+    {!childrenLoading && childError && (
+      <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
+        {childError}
+      </div>
+    )}
+
+    {/* Empty state */}
+    {!childrenLoading && !childError && children.length === 0 && (
+      <p className="text-[13px] text-muted-foreground text-center py-4">Нічого не знайдено</p>
+    )}
+
+    {/* List */}
+    {!childrenLoading && !childError && children.length > 0 && (
+      <div className="rounded-xl border border-border overflow-hidden">
+        <table className="w-full text-[13px]">
+          {/* ... */}
+        </table>
+      </div>
+    )}
+  </div>
+),
+```
+
+**count у вкладці** — обчислюється з поточного state (не від API):
+```tsx
+count: modalChildren.length,  // оновлюється в реальному часі при add/delete
+```
+
+**Умовні вкладки** (показуємо лише якщо дані завантажені):
+```tsx
+tabs={[
+  mainTab,
+  ...(editingItem ? [childrenTab] : []),
+  ...(editingItem && showBatches ? [batchesTab] : []),
+]}
+```
+
+### §14.3 — Race guard + скидання стану при відкритті
+
+**Обов'язково:** openEdit запускається в event handler (не useEffect), тому повільний fetch попереднього об'єкта може перезаписати дані поточного.
+
+```ts
+const openEdit = (item: Item) => {
+  setEditingItem(item);
+  setForm({ ...extractFields(item) });
+  dirty.resetDirty();
+  setError('');
+
+  // Скинути стан дочірніх колекцій при відкритті
+  setModalChildren([]);
+  setChildError('');
+
+  setModal(true);
+
+  // Race guard: кожне відкриття отримує унікальний token
+  const reqId = ++modalChildReqRef.current;
+  setModalChildrenLoading(true);
+  apiFetch<Child[]>(`/items/${item.id}/children`)
+    .then(data => {
+      if (modalChildReqRef.current !== reqId) return;  // стара відповідь — ігнорувати
+      setModalChildren(data);
+    })
+    .catch(err => {
+      if (modalChildReqRef.current !== reqId) return;
+      setChildError(err instanceof Error ? err.message : 'Помилка завантаження');
+    })
+    .finally(() => {
+      if (modalChildReqRef.current !== reqId) return;
+      setModalChildrenLoading(false);
+    });
+};
+```
+
+**Якщо декілька дочірніх колекцій** — окремий reqRef для кожної:
+```ts
+const vehiclesReqRef = useRef(0);
+const workOrdersReqRef = useRef(0);
+
+// В openEdit — bump ОБИДВА перед стартом fetch
+const vReqId = ++vehiclesReqRef.current;
+const woReqId = ++workOrdersReqRef.current;
+
+// Паралельний fetch двох колекцій:
+Promise.all([
+  apiFetch<Vehicle[]>(`/counterparties/${cp.id}/garages`).then(...),
+  apiFetch<WorkOrder[]>(`/work-orders?counterpartyId=${cp.id}&limit=50`).then(...),
+]);
+```
+
+**❌ Типові помилки:**
+```ts
+// ❌ Немає race guard — stale fetch перезаписує поточний CP
+apiFetch<Child[]>(`/items/${item.id}/children`)
+  .then(data => setModalChildren(data));  // без перевірки reqRef!
+
+// ❌ Не скидати стан при відкритті — попередній CP залишається у вкладці
+const openEdit = (cp) => {
+  setEditingCp(cp);
+  // setModalVehicles([]);  ← пропущено!
+  setModal(true);
+};
+
+// ❌ catch без error state — юзер бачить порожній список замість помилки
+.catch(() => {})  // ← ковтаємо помилку
+```
+
+---
+
 ## Інтеграція у флоу
 
 ```
