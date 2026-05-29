@@ -1046,7 +1046,6 @@ export default function CalendarPage() {
       endAt:   new Date(`${date}T${form.endAt}:00`).toISOString(),
       notes: form.notes || undefined,
     };
-    console.log('[calendar] submit body:', body);
     try {
       if (editingSlotId) {
         await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'PATCH', body: JSON.stringify(body) });
