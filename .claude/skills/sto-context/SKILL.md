@@ -203,7 +203,10 @@ await this.smsQueue.add('send', { phone, message }, {
 - **Invoice**, **Payment**, **SettlementAccount**, **SettlementTransaction**, **ReconciliationAct**
 
 ### Scheduling
-- **CalendarSlot** — підйомник + механік + наряд + час
+- **CalendarSlot** — підйомник + механік + наряд + контрагент + час
+  - `counterpartyId` — прямий зв'язок (без наряду)
+  - `workOrderId` — через наряд (counterpartyId fallback з workOrder)
+  - FSM статусів: AVAILABLE | BOOKED | BLOCKED
 
 ---
 
@@ -231,6 +234,28 @@ syncVersion BigInt    @default(0)
 
 ---
 
+## UI Features (керуються через Налаштування → Інтерфейс)
+
+Всі прапорці доступні через `useUiFeatures()`:
+
+| Flag | Хук/Компонент | Сторінки |
+|---|---|---|
+| `toastEnabled` | `toast` з `@/lib/toast` | всі |
+| `unsavedGuardEnabled` | `useDirtyForm` | всі форми |
+| `bulkActionsEnabled` | `useBulkSelect` + `BulkActionsBar` | всі списки |
+| `savedFiltersEnabled` | `useSavedFilters` + `SavedFiltersBar` | всі списки |
+| `inlineEditEnabled` | `useInlineEdit` + `InlineEditCell` | work-orders |
+| `stockIndicatorEnabled` | показ залишку | work-orders/[id] |
+| `commandPaletteEnabled` | Ctrl+K палітра | TopShell |
+| `keyboardShortcutsEnabled` | `useGlobalShortcuts` | TopShell |
+| `syncIndicatorEnabled` | `SyncIndicator` | TopShell header |
+| `notificationCenterEnabled` | `NotificationCenter` | TopShell header |
+
+**Управління колонками** (`useTableColumns` + `ColumnsDropdown`) є на всіх списках:
+`work-orders`, `employees`, `crm`, `invoices`, `purchase-orders`, `stock-documents`, `catalog-works/goods/services`
+
+---
+
 ## Critical Rules
 
 1. **Offline-first**: система ПОВНІСТЮ працює без інтернету
@@ -241,16 +266,18 @@ syncVersion BigInt    @default(0)
 6. **Settlement via SettlementsService.createTransaction()** — ніколи напряму
 7. **WO FSM через transition map** — ніколи прямий запис статусу
 8. **Installer**: `installer/` — окремий Inno Setup проєкт
+9. **apiFetch**: завжди `@/lib/api-client` — ніколи axios або raw fetch
 
 ---
 
 ## Key Files to Read Before Any Task
 
-1. `packages/database/schema.prisma`
-2. `packages/shared/src/types/index.ts`
-3. `packages/shared/src/schemas/index.ts`
+1. `MemoryManual.md` — **першим завжди**: поточний стан, gotchas, що вже зроблено
+2. `packages/database/prisma/schema.prisma` — моделі БД
+3. `packages/shared/src/types/index.ts` — shared типи
 4. `docs/architecture/` — ADR файли
-5. Відповідний `*.service.ts`
+5. Відповідний `*.service.ts` та `*.page.tsx` — конкретний модуль
+6. `apps/web/src/app/work-orders/page.tsx` — **еталон списку** (перед будь-якою новою сторінкою)
 
 ---
 

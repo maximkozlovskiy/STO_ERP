@@ -1,7 +1,7 @@
 ---
 name: sto-web
 description: >
-  Create Next.js 15 pages, components, and API hooks for STO ERP web app (Reception + Admin). Use when the user says "зроби сторінку", "компонент", "веб інтерфейс", "фронтенд", "таблиця", "форма", or implementing the web UI layer. Produces production-ready Next.js code following STO ERP conventions with shadcn/ui + TanStack Query.
+  Create Next.js 15 pages, components, and hooks for STO ERP web app. Use when the user says "зроби сторінку", "компонент", "веб інтерфейс", "фронтенд", "таблиця", "форма", or implementing the web UI layer. Produces production-ready Next.js code following real STO ERP conventions.
 model: claude-sonnet-4-6
 bypassPermissions: true
 ---
@@ -10,165 +10,313 @@ bypassPermissions: true
 
 ## Before Starting
 
-1. Read `MemoryManual.md` — current project state, gotchas, recent changes
-2. Read `sto-context` — understand domain and roles
-3. Read `sto-dev` — coding standards (Next.js, Tailwind 4, React patterns) — prevents sto-review findings
-4. Check existing similar page/component for patterns
-5. Confirm API endpoint exists (or run `sto-backend` first)
+1. Read `MemoryManual.md` — current state, gotchas, recent changes
+2. Read `sto-dev` — coding standards (patterns, anti-patterns)
+3. Check existing similar page for patterns — **не вигадуй, копіюй існуючий стиль**
+4. Confirm API endpoint exists (або запусти `sto-backend` спочатку)
 
 ---
 
-## App Router Structure
+## Реальна структура проєкту
 
 ```
 apps/web/src/
-├── app/
-│   ├── (auth)/
-│   │   └── login/page.tsx
-│   ├── (dashboard)/
-│   │   ├── layout.tsx              ← sidebar + navbar
-│   │   ├── work-orders/
-│   │   │   ├── page.tsx            ← list page
-│   │   │   ├── [id]/page.tsx       ← detail page
-│   │   │   └── new/page.tsx        ← create page
-│   │   ├── vehicles/
-│   │   ├── inventory/
-│   │   ├── settlements/
-│   │   └── reports/
-├── components/
-│   ├── ui/                         ← shadcn/ui components (don't edit)
-│   ├── work-orders/
-│   │   ├── WorkOrderTable.tsx
-│   │   ├── WorkOrderForm.tsx
-│   │   └── WorkOrderStatusBadge.tsx
-│   └── shared/
-│       ├── DataTable.tsx           ← TanStack Table wrapper
-│       ├── PageHeader.tsx
-│       └── ConfirmDialog.tsx
-├── lib/
-│   ├── api/
-│   │   ├── client.ts               ← axios instance with auth interceptor
-│   │   ├── work-orders.ts          ← API functions
-│   │   └── query-keys.ts           ← TanStack Query key factories
-│   ├── hooks/
-│   │   ├── useWorkOrders.ts        ← TanStack Query hooks
-│   │   └── useAuth.ts
-│   └── utils.ts
+├── app/                        ← Next.js App Router pages
+│   ├── (auth)/login/           ← публічна сторінка
+│   ├── work-orders/page.tsx    ← ЕТАЛОН списку (читай перед новою сторінкою)
+│   ├── work-orders/[id]/       ← деталі наряду
+│   ├── employees/page.tsx
+│   ├── crm/page.tsx
+│   ├── invoices/page.tsx
+│   ├── purchase-orders/page.tsx
+│   ├── stock-documents/page.tsx
+│   ├── catalog/page.tsx        ← 3 вкладки: works/goods/services
+│   ├── calendar/page.tsx
+│   ├── inventory/page.tsx
+│   ├── settlements/page.tsx
+│   └── settings/page.tsx
+├── components/ui/              ← готові примітиви (не переписувати!)
+├── hooks/                      ← готові хуки (не переписувати!)
+└── lib/
+    ├── api-client.ts           ← apiFetch / apiBlobFetch / apiMultipartFetch
+    ├── auth.ts                 ← useRequireAuth, getToken
+    ├── toast.ts                ← toast.success/error/warning/info
+    ├── ref-cache.ts            ← getCached / setCache (sessionStorage)
+    └── utils.ts                ← cn, displayCounterpartyName, daysUntil
 ```
 
 ---
 
-## API Client Pattern
+## API Client — РЕАЛЬНИЙ паттерн
 
 ```typescript
-// lib/api/client.ts
-import axios from 'axios';
+// ✅ Завжди apiFetch — НЕ axios, НЕ fetch напряму
+import { apiFetch } from '@/lib/api-client';
 
-export const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
-});
+// GET з пагінацією
+const data = await apiFetch<{ items: T[]; total: number }>(`/resource?page=${page}&limit=20`);
 
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+// POST
+const created = await apiFetch<T>('/resource', { method: 'POST', body: JSON.stringify(dto) });
 
-// lib/api/query-keys.ts
-export const queryKeys = {
-  workOrders: {
-    all: (orgId: string) => ['work-orders', orgId] as const,
-    list: (orgId: string, filters: object) => ['work-orders', orgId, 'list', filters] as const,
-    detail: (orgId: string, id: string) => ['work-orders', orgId, id] as const,
-  },
-  vehicles: {
-    all: (orgId: string) => ['vehicles', orgId] as const,
-    byCounterparty: (orgId: string, counterpartyId: string) => ['vehicles', orgId, 'by-counterparty', counterpartyId] as const,
-  },
-};
+// PATCH
+await apiFetch(`/resource/${id}`, { method: 'PATCH', body: JSON.stringify(dto) });
+
+// DELETE (soft)
+await apiFetch(`/resource/${id}`, { method: 'DELETE' });
+
+// ❌ НЕ використовувати axios, TanStack Query, React Hook Form, Zod resolver
 ```
 
 ---
 
-## TanStack Query Hooks Pattern
+## Список сторінки — повний шаблон
+
+> **Еталон:** `apps/web/src/app/work-orders/page.tsx` — читай перед написанням будь-якого списку.
 
 ```typescript
-// lib/hooks/useWorkOrders.ts
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../api/client';
-import { queryKeys } from '../api/query-keys';
-
-export function useWorkOrders(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: queryKeys.workOrders.list(orgId, { page, limit }),
-    queryFn: () => apiClient.get('/work-orders', { params: { page, limit } }).then(r => r.data),
-    staleTime: 30_000,
-  });
-}
-
-export function useCreateWorkOrder() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (dto: CreateWorkOrderDto) =>
-      apiClient.post('/work-orders', dto).then(r => r.data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['work-orders'] });
-    },
-    onError: (error: AxiosError<{ message: string }>) => {
-      toast.error(error.response?.data?.message ?? 'Помилка');
-    },
-  });
-}
-
-export function useTransitionWorkOrder() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      apiClient.patch(`/work-orders/${id}/status`, { status }).then(r => r.data),
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ['work-orders'] });
-    },
-  });
-}
-```
-
----
-
-## List Page Pattern
-
-```typescript
-// app/(dashboard)/work-orders/page.tsx
 'use client';
-import { useState } from 'react';
-import { useWorkOrders } from '@/lib/hooks/useWorkOrders';
-import { DataTable } from '@/components/shared/DataTable';
-import { PageHeader } from '@/components/shared/PageHeader';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useRequireAuth } from '@/lib/auth';
+import { apiFetch } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useTableColumns } from '@/hooks/useTableColumns';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { useConfirm } from '@/hooks/useConfirm';
+import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
+import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
-import { columns } from '@/components/work-orders/columns';
-import Link from 'next/link';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
-export default function WorkOrdersPage() {
+// ─── Types ───────────────────────────────────────────────
+interface Item { id: string; name: string; status: string; /* ... */ }
+interface Paginated { items: Item[]; total: number; page: number; limit: number; }
+interface MyFilters extends Record<string, unknown> { search: string; status: string; showDeleted: boolean; }
+
+export default function MyListPage() {
+  useRequireAuth(['OWNER', 'ADMIN']);
+
+  // ── State ───────────────────────────────────────────────
+  const [data, setData] = useState<Paginated | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useWorkOrders(page);
+  const [showModal, setShowModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ name: '', status: '' });
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
+  // ── UI Features ─────────────────────────────────────────
+  const features = useUiFeatures();
+  const { confirm, dialogProps } = useConfirm();
+
+  // ── Columns ─────────────────────────────────────────────
+  const COLUMNS = useMemo(() => [
+    { key: 'name',   label: 'Назва',   defaultVisible: true },
+    { key: 'status', label: 'Статус',  defaultVisible: true },
+    { key: 'extra',  label: 'Додатково', defaultVisible: false },  // прихована за замовч.
+  ], []);
+  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('my-page', COLUMNS);
+
+  // ── Saved Filters ────────────────────────────────────────
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<MyFilters>('my-page');
+  const applyFilter = useCallback((preset: { id: string; filters: MyFilters }) => {
+    setSearch(preset.filters.search ?? '');
+    setStatusFilter(preset.filters.status ?? '');
+    setShowDeleted(preset.filters.showDeleted ?? false);
+    setPage(1);
+    setActiveSavedFilterId(preset.id);
+  }, []);
+  const handleSaveFilter = useCallback((name: string) => {
+    const preset = saveFilter(name, { search, status: statusFilter, showDeleted });
+    setActiveSavedFilterId(preset.id);
+    toast.success(`Фільтр "${name}" збережено`);
+  }, [saveFilter, search, statusFilter, showDeleted]);
+
+  // ── Bulk Select ──────────────────────────────────────────
+  const bulkSelect = useBulkSelect(data?.items ?? []);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
+  const bulkActions: BulkAction[] = [
+    {
+      label: 'Видалити вибрані',
+      variant: 'destructive',
+      onClick: async (ids) => {
+        if (!(await confirm({ title: `Видалити ${ids.length} записів?`, variant: 'destructive' }))) return;
+        const results = await Promise.allSettled(ids.map(id => apiFetch(`/resource/${id}`, { method: 'DELETE' })));
+        const failed = results.filter(r => r.status === 'rejected').length;
+        if (failed) toast.warning(`Видалено ${ids.length - failed} з ${ids.length}`);
+        else toast.success(`Видалено ${ids.length}`);
+        bulkSelect.clear(); load();
+      },
+    },
+  ];
+
+  // ── Dirty Form Guard ─────────────────────────────────────
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+
+  // ── Load ─────────────────────────────────────────────────
+  const load = useCallback(() => {
+    setLoading(true);
+    const params = new URLSearchParams({ page: String(page), limit: '20' });
+    if (debouncedSearch) params.set('q', debouncedSearch);
+    if (statusFilter) params.set('status', statusFilter);
+    if (showDeleted) params.set('showDeleted', 'true');
+    apiFetch<Paginated>(`/resource?${params}`)
+      .then(d => { if (mountedRef.current) { setData(d); } })
+      .catch((e: unknown) => { if (mountedRef.current) toast.error(e instanceof Error ? e.message : 'Помилка завантаження'); })
+      .finally(() => { if (mountedRef.current) setLoading(false); });
+  }, [page, debouncedSearch, statusFilter, showDeleted]);
+  useEffect(() => { load(); }, [load]);
+
+  // ── Modal Handlers ───────────────────────────────────────
+  const openCreate = () => {
+    setEditingItem(null);
+    setForm({ name: '', status: '' });
+    dirty.resetDirty();
+    setShowModal(true);
+  };
+  const openEdit = (item: Item) => {
+    setEditingItem(item);
+    setForm({ name: item.name, status: item.status });
+    dirty.resetDirty();
+    setShowModal(true);
+  };
+  const closeModal = async () => {
+    if (!(await dirty.confirmClose())) return;
+    setShowModal(false);
+  };
+
+  const handleSave = async () => {
+    if (!form.name) return;
+    setSaving(true);
+    try {
+      if (editingItem) {
+        await apiFetch(`/resource/${editingItem.id}`, { method: 'PATCH', body: JSON.stringify(form) });
+        toast.success('Збережено');
+      } else {
+        await apiFetch('/resource', { method: 'POST', body: JSON.stringify(form) });
+        toast.success('Створено');
+      }
+      dirty.resetDirty();
+      setShowModal(false);
+      load();
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSaving(false); }
+  };
+
+  // ── Render ───────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <PageHeader
-        title="Замовлення-наряди"
-        actions={
-          <Button asChild>
-            <Link href="/work-orders/new">Новий наряд</Link>
-          </Button>
-        }
-      />
-      <DataTable
-        columns={columns}
-        data={data?.items ?? []}
-        total={data?.total ?? 0}
-        page={page}
-        onPageChange={setPage}
-        isLoading={isLoading}
-      />
+    <div className="page-container">
+      <div className="page-header mb-6">
+        <h1 className="page-title">Назва розділу</h1>
+        <Button onClick={openCreate}><Plus className="h-4 w-4" />Додати</Button>
+      </div>
+
+      {/* Saved Filters */}
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<MyFilters>
+          saved={savedFilters} activeId={activeSavedFilterId}
+          onApply={applyFilter} onSave={handleSaveFilter} onRemove={removeFilter}
+          className="mb-3"
+        />
+      )}
+
+      {/* Filters row */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className="relative w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input value={search} onChange={e => { setSearch(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
+            placeholder="Пошук..." className="pl-9" />
+        </div>
+        <Select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); setActiveSavedFilterId(null); }} className="w-44">
+          <option value="">Всі статуси</option>
+          <option value="ACTIVE">Активні</option>
+        </Select>
+        {/* ColumnsDropdown — завжди ml-auto, останній у рядку */}
+        <ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} className="ml-auto" />
+      </div>
+
+      {/* Bulk Actions Bar */}
+      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
+        <BulkActionsBar count={bulkSelect.count} selectedIds={Array.from(bulkSelect.selected)}
+          actions={bulkActions} onClear={bulkSelect.clear} className="mb-3" />
+      )}
+
+      {/* Table */}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {features.bulkActionsEnabled && (
+              <TableHead className="w-9 pr-0">
+                <input type="checkbox" checked={bulkSelect.allSelected} ref={selectAllRef}
+                  onChange={bulkSelect.toggleAll} className="h-3.5 w-3.5 rounded border-border" />
+              </TableHead>
+            )}
+            {colVisible.has('name')   && <TableHead>Назва</TableHead>}
+            {colVisible.has('status') && <TableHead>Статус</TableHead>}
+            {colVisible.has('extra')  && <TableHead>Додатково</TableHead>}
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {loading ? (
+            <TableRow><TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center"><Spinner /></TableCell></TableRow>
+          ) : !data?.items.length ? (
+            <TableRow><TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0"><EmptyState title="Нічого не знайдено" /></TableCell></TableRow>
+          ) : data.items.map(item => (
+            <TableRow key={item.id} className={cn(item.status === 'DELETED' && 'opacity-50')}>
+              {features.bulkActionsEnabled && (
+                <TableCell className="w-9 pr-0">
+                  <input type="checkbox" checked={bulkSelect.isSelected(item.id)}
+                    onChange={() => bulkSelect.toggle(item.id)} className="h-3.5 w-3.5 rounded border-border" />
+                </TableCell>
+              )}
+              {colVisible.has('name')   && <TableCell className="font-medium">{item.name}</TableCell>}
+              {colVisible.has('status') && <TableCell>{item.status}</TableCell>}
+              {colVisible.has('extra')  && <TableCell>—</TableCell>}
+              <TableCell className="text-right">
+                <Button variant="ghost" size="sm" onClick={() => openEdit(item)}>Редагувати</Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      {/* Modal */}
+      <Modal open={showModal} onClose={closeModal} title={editingItem ? 'Редагувати' : 'Додати'}>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Назва <span className="text-destructive-text">*</span></label>
+            <Input value={form.name} onChange={e => { setForm(f => ({ ...f, name: e.target.value })); dirty.markDirty(); }} />
+          </div>
+        </div>
+        <div className="flex gap-2 mt-6">
+          <Button onClick={handleSave} loading={saving}>Зберегти</Button>
+          <Button variant="outline" onClick={closeModal}>Скасувати</Button>
+        </div>
+      </Modal>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }
@@ -176,372 +324,311 @@ export default function WorkOrdersPage() {
 
 ---
 
-## Form Pattern (React Hook Form + Zod)
+## Готові UI-примітиви — таблиця
 
-```typescript
-// components/work-orders/WorkOrderForm.tsx
-'use client';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { useCreateWorkOrder } from '@/lib/hooks/useWorkOrders';
-import { createWorkOrderSchema } from '@sto/shared';
-
-type FormValues = z.infer<typeof createWorkOrderSchema>;
-
-export function WorkOrderForm() {
-  const { mutate, isPending } = useCreateWorkOrder();
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(createWorkOrderSchema),
-    defaultValues: { description: '' },
-  });
-
-  return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit((data) => mutate(data))} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Опис</FormLabel>
-              <FormControl>
-                <Input placeholder="Опис робіт" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <Button type="submit" disabled={isPending}>
-          {isPending ? 'Збереження...' : 'Створити наряд'}
-        </Button>
-      </form>
-    </Form>
-  );
-}
-```
-
----
-
-## TanStack Table Columns Pattern
-
-```typescript
-// components/work-orders/columns.tsx
-import { ColumnDef } from '@tanstack/react-table';
-import { WorkOrderStatusBadge } from './WorkOrderStatusBadge';
-import { formatCurrency, formatDate } from '@/lib/utils';
-
-export const columns: ColumnDef<WorkOrderResponse>[] = [
-  { accessorKey: 'number', header: 'Номер', cell: ({ row }) => (
-    <a href={`/work-orders/${row.original.id}`} className="font-medium hover:underline">
-      {row.getValue('number')}
-    </a>
-  )},
-  { accessorKey: 'status', header: 'Статус', cell: ({ row }) => (
-    <WorkOrderStatusBadge status={row.getValue('status')} />
-  )},
-  { accessorKey: 'vehicle', header: 'Авто', cell: ({ row }) => {
-    const v = row.original.vehicle;
-    return `${v.make} ${v.model} · ${v.licensePlate}`;
-  }},
-  { accessorKey: 'counterparty', header: 'Клієнт', cell: ({ row }) => {
-    const c = row.original.counterparty;
-    return `${c.firstName} ${c.lastName}`;
-  }},
-  { accessorKey: 'totalAmount', header: 'Сума', cell: ({ row }) => formatCurrency(row.getValue('totalAmount')) },
-  { accessorKey: 'createdAt', header: 'Дата', cell: ({ row }) => formatDate(row.getValue('createdAt')) },
-];
-```
-
----
-
-## Готові UI-примітиви — використовуй, не переписуй
-
-> **Правило:** перед написанням будь-якого UI — перевір `apps/web/src/components/ui/`.  
-> Якщо потрібний компонент там є — **використовуй його**, не дублюй.
-
-| Компонент | Файл | Коли використовувати |
+| Компонент | Файл | Використовувати коли |
 |---|---|---|
-| `<PickerModal<T>>` | `ui/picker-modal.tsx` | Вибір сутності зі списку + пошук по реквізитах |
-| `<Modal>` | `ui/modal.tsx` | Будь-яке модальне вікно (форма, підтвердження, деталі) |
-| `<SearchCombobox<T>>` | `ui/search-combobox.tsx` | Autocomplete з сервер-стороннім пошуком |
-| `<Input>` | `ui/input.tsx` | Текстове поле (підтримує `label`, `errorMessage`, `hint`) |
-| `<Select>` | `ui/select.tsx` | Випадаючий список (статичний набір варіантів) |
-| `<Button>` | `ui/button.tsx` | Будь-яка кнопка (підтримує `loading`, `variant`) |
-| `<DataTable>` | `ui/data-table.tsx` | Таблиця зі списком, пагінацією, сортуванням |
-| `<EmptyState>` | `ui/empty-state.tsx` | Порожній стан списку або сторінки |
+| `<Modal>` | `ui/modal.tsx` | Будь-яке модальне вікно |
+| `<ConfirmDialog>` | `ui/confirm-dialog.tsx` | Підтвердження дії (разом з `useConfirm`) |
+| `<Input>` | `ui/input.tsx` | Текстове поле |
+| `<Select>` | `ui/select.tsx` | Випадаючий список |
+| `<Button>` | `ui/button.tsx` | Кнопка (підтримує `loading`, `variant`) |
+| `<Badge>` | `ui/badge.tsx` | Статусний тег |
+| `<EmptyState>` | `ui/empty-state.tsx` | Порожній стан списку |
 | `<Spinner>` | `ui/spinner.tsx` | Індикатор завантаження |
-
-### Коли додавати новий компонент
-
-1. Паттерн зустрічається (або зустрінеться) **2+ разів** в різних місцях
-2. Компонент має **власний локальний стан** (query, open/close, selectedIndex)
-3. JSX блок **> 20 рядків** inline в page.tsx
-
-### PickerModal — обов'язковий для FK-полів зі списком
-
-```tsx
-// ✅ Для будь-якого FK (currencyId, branchId, employeeId, goodId, counterpartyId...)
-// де є готовий список — використовуй <PickerModal>
-import { PickerModal } from '@/components/ui/picker-modal';
-
-// Тригер кнопка + очищення
-const selected = employees.find(e => e.id === form.employeeId);
-<div className="flex items-center gap-2">
-  <button type="button" onClick={() => setPickerOpen(true)}
-    className="flex-1 text-left px-3 py-2 rounded-lg border border-border bg-surface hover:border-primary transition-colors text-sm">
-    {selected ? <span className="text-foreground">{selected.name}</span>
-               : <span className="text-muted-foreground">Оберіть співробітника...</span>}
-  </button>
-  {form.employeeId && (
-    <button aria-label="Очистити" type="button"
-      onClick={() => setForm(f => ({ ...f, employeeId: '' }))}
-      className="text-muted-foreground hover:text-destructive-text transition-colors">
-      <Trash2 className="w-4 h-4" />
-    </button>
-  )}
-</div>
-
-<PickerModal<Employee>
-  open={pickerOpen}
-  onClose={() => setPickerOpen(false)}
-  title="Оберіть співробітника"
-  items={employees}
-  selectedId={form.employeeId}
-  searchKeys={['name', 'phone', 'role']}
-  onSelect={(e) => setForm(f => ({ ...f, employeeId: e.id }))}
-  renderItem={(e) => (
-    <>
-      <div className="font-medium text-foreground text-sm">{e.name}</div>
-      <div className="text-xs text-muted-foreground">{e.role} {e.phone && `· ${e.phone}`}</div>
-    </>
-  )}
-/>
-
-// ❌ Не писати свій Modal зі своїм пошуком — це завжди PickerModal
-```
+| `<DetailPanel>` | `ui/detail-panel.tsx` | Бокова панель деталей (split-view) |
+| `<SearchCombobox>` | `ui/search-combobox.tsx` | Autocomplete з сервер-стороннім пошуком |
+| `<SearchPickerModal>` | `ui/search-picker-modal.tsx` | Picker з пошуком і пагінацією |
+| `<DatePickerInput>` | `ui/date-picker-input.tsx` | Поле вибору дати |
+| `<ColumnsDropdown>` | `ui/columns-dropdown.tsx` | Управління видимістю колонок |
+| `<BulkActionsBar>` | `ui/bulk-actions-bar.tsx` | Панель групових дій |
+| `<SavedFiltersBar>` | `ui/saved-filters-bar.tsx` | Панель збережених фільтрів |
+| `<Table>` + friends | `ui/table.tsx` | Таблиця |
 
 ---
 
-## Checklist
+## Хуки — таблиця
 
-- [ ] Page uses `'use client'` only when needed (prefer server components for static layouts)
-- [ ] API calls go through TanStack Query hooks (no raw fetch in components)
-- [ ] Forms use React Hook Form + Zod schema from `@sto/shared`
-- [ ] Error states handled (toast + form field errors)
-- [ ] Loading states shown (skeleton or spinner)
-- [ ] Role-based rendering: wrap admin-only sections with `<RoleGuard roles={[...]}/>`
-- [ ] Tables use DataTable wrapper (consistent pagination)
-- [ ] `pnpm --filter @sto/web build` passes
-- [ ] toast.X завжди за `if (features.toastEnabled)` + fallback `setError`
-- [ ] Bulk mutations через `Promise.allSettled` — ніколи `Promise.all`
-- [ ] `indeterminate` через `useRef` + `useEffect`, не inline ref callback
-- [ ] `useSavedFilters` init `[]`, гідратація у `useEffect`, `Array.isArray` guard
-- [ ] FK-поле зі списком сутностей → `<PickerModal<T>>`, не inline Modal
-- [ ] Inline IIFE `{(() => {...})()}` у JSX → замінити компонентом
-- [ ] Форма > 5 полів у page.tsx → виносити в `src/components/{domain}/`
+| Хук | Файл | Призначення |
+|---|---|---|
+| `useUiFeatures` | `hooks/useUiFeatures.ts` | Прапорці фіч (toast, bulk, columns...) |
+| `useTableColumns` | `hooks/useTableColumns.ts` | Видимість колонок → localStorage |
+| `useBulkSelect` | `hooks/useBulkSelect.ts` | Вибір рядків для групових дій |
+| `useSavedFilters` | `hooks/useSavedFilters.ts` | Збереження пресетів фільтрів |
+| `useDirtyForm` | `hooks/useDirtyForm.ts` | Захист форми від втрати змін |
+| `useConfirm` | `hooks/useConfirm.ts` | Промісний confirm-діалог |
+| `useDebounce` | `hooks/useDebounce.ts` | Дебаунс пошукового рядка |
+| `useRequireAuth` | `lib/auth.ts` | Захист сторінки по ролях |
+| `useInlineEdit` | `hooks/useInlineEdit.ts` | Inline редагування в таблиці |
+| `useKeyboardShortcut` | `hooks/useKeyboardShortcut.ts` | Глобальні гарячі клавіші |
 
 ---
 
-## Ukrainian UI Standards for Web
+## useTableColumns — управління колонками
 
-### Ukrainian Locale in Next.js
 ```typescript
-// app/layout.tsx
-export const metadata = { title: 'STO ERP' };
+import { useTableColumns, type ColumnDef } from '@/hooks/useTableColumns';
+import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="uk">
-      <body>{children}</body>
-    </html>
-  );
-}
+// 1. Визнач колонки (useMemo — стабільна референція)
+const COLUMNS = useMemo<ColumnDef[]>(() => [
+  { key: 'name',   label: 'Назва',      defaultVisible: true },
+  { key: 'status', label: 'Статус',     defaultVisible: true },
+  { key: 'phone',  label: 'Телефон',    defaultVisible: true },
+  { key: 'extra',  label: 'Додатково',  defaultVisible: false },  // прихована за замовч.
+], []);
+
+// 2. Підключи хук (зберігає у localStorage під ключем 'sto_columns_<pageKey>')
+const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('my-page', COLUMNS);
+
+// 3. ColumnsDropdown — у рядку фільтрів, ml-auto
+<ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} className="ml-auto" />
+
+// 4. TableHead — умовний рендер
+{colVisible.has('name')  && <TableHead>Назва</TableHead>}
+{colVisible.has('extra') && <TableHead>Додатково</TableHead>}
+
+// 5. TableCell — ті самі умови
+{colVisible.has('name')  && <TableCell>{item.name}</TableCell>}
+{colVisible.has('extra') && <TableCell>—</TableCell>}
+
+// 6. colSpan для loading/empty рядків
+colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)}
+// +2 = чекбокс + кнопки дій; +1 = тільки кнопки дій
 ```
 
-### Ukrainian UI String Constants
-```typescript
-// packages/shared/src/constants/ui-strings.ts
-export const UI = {
-  actions: {
-    save:    'Зберегти',
-    cancel:  'Скасувати',
-    delete:  'Видалити',
-    edit:    'Редагувати',
-    create:  'Створити',
-    confirm: 'Підтвердити',
-    back:    'Назад',
-    search:  'Пошук',
-    filter:  'Фільтр',
-    export:  'Експорт',
-    print:   'Друк',
-  },
-  status: {
-    loading: 'Завантаження...',
-    saving:  'Збереження...',
-    empty:   'Нічого не знайдено',
-    error:   'Сталася помилка',
-  },
-  workOrder: {
-    title:   'Замовлення-наряди',
-    new:     'Новий наряд',
-    number:  'Номер наряду',
-    status:  'Статус',
-    client:  'Клієнт',
-    vehicle: 'Автомобіль',
-    amount:  'Сума',
-    date:    'Дата',
-  },
-} as const;
-```
-
-### Date/Currency Display Components
-```tsx
-// components/shared/FormatCurrency.tsx
-export function FormatCurrency({ amount }: { amount: number }) {
-  return (
-    <span>
-      {amount.toLocaleString('uk-UA', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}{' '}
-      ₴
-    </span>
-  );
-}
-
-// components/shared/FormatDate.tsx
-export function FormatDate({ date }: { date: string | Date }) {
-  return (
-    <time dateTime={new Date(date).toISOString()}>
-      {new Date(date).toLocaleDateString('uk-UA')}
-    </time>
-  );
-}
-```
-
-### Ukrainian Form Placeholders & Labels Pattern
-```tsx
-// Always use Ukrainian in all form elements
-<FormField name="phone" render={({ field }) => (
-  <FormItem>
-    <FormLabel>Номер телефону</FormLabel>
-    <FormControl>
-      <Input placeholder="+38 (067) 123-45-67" {...field} />
-    </FormControl>
-    <FormMessage /> {/* Zod validation messages are Ukrainian */}
-  </FormItem>
-)} />
-```
-
-### Ukrainian shadcn/ui Table Columns Pattern
-```typescript
-// Always Ukrainian headers
-export const workOrderColumns: ColumnDef<WorkOrderResponse>[] = [
-  { accessorKey: 'number',      header: 'Номер' },
-  { accessorKey: 'status',      header: 'Статус' },
-  { accessorKey: 'vehicle',     header: 'Автомобіль' },
-  { accessorKey: 'counterparty',header: 'Клієнт' },
-  { accessorKey: 'totalAmount', header: 'Сума', cell: ({ row }) => <FormatCurrency amount={row.getValue('totalAmount')} /> },
-  { accessorKey: 'createdAt',   header: 'Дата',  cell: ({ row }) => <FormatDate date={row.getValue('createdAt')} /> },
-];
-```
-
-### Ukrainian Toast Notifications
-```typescript
-// ✅ Завжди перевіряй прапорець + fallback
-const features = useUiFeatures();
-try {
-  await apiFetch('/work-orders', { method: 'POST', body: JSON.stringify(data) });
-  if (features.toastEnabled) toast.success('Наряд створено');
-  setModal(false);
-} catch (e) {
-  const msg = e instanceof Error ? e.message : 'Помилка';
-  if (features.toastEnabled) toast.error(msg);
-  else setError(msg);  // ❌ НЕ викидай помилку мовчки
-}
-
-// ✅ Типові повідомлення (Ukrainian):
-toast.success('Збережено');
-toast.success(`Фільтр "${name}" збережено`);
-toast.success(`Скасовано ${n} нарядів`);
-toast.warning(`Скасовано ${ok} з ${total}. ${total - ok} не змінено`);  // bulk partial
-toast.warning('Залишок нижче мінімального рівня');
-toast.error(`Помилка: ${e.message}`);
-toast.info('Синхронізацію завершено');
-```
+**Правила:**
+- Чекбокс bulk-select і колонка кнопок дій — **НЕ** входять у `COLUMNS`
+- `COLUMNS` у `useMemo` — обов'язково, щоб референція була стабільною
+- Ключ `'my-page'` — унікальний по сторінці; для вкладок: `'catalog-works'`, `'catalog-goods'`
 
 ---
 
-## UX Hooks — довідник
+## useBulkSelect — групові дії
 
-### useUiFeatures
-```typescript
-import { useUiFeatures, invalidateUiFeaturesCache } from '@/hooks/useUiFeatures';
-const features = useUiFeatures();  // module-level cache, одна мережа-запит на сесію
-invalidateUiFeaturesCache();       // викликати після збереження налаштувань
-```
-Endpoint: `GET /settings/ui-features` — доступний усім авторизованим ролям.
-
-### useDirtyForm
-```typescript
-import { useDirtyForm } from '@/hooks/useDirtyForm';
-const { isDirty, markDirty, resetDirty, confirmClose } = useDirtyForm({
-  enabled: features.unsavedGuardEnabled,
-});
-// onChange: markDirty()
-// onClose button: if (await confirmClose()) { resetDirty(); closeModal(); }
-// after save: resetDirty()
-```
-
-### useInlineEdit
-```typescript
-import { useInlineEdit } from '@/hooks/useInlineEdit';
-const inlineEdit = useInlineEdit({ enabled: features.inlineEditEnabled, onSave });
-// isEditing(id, field), startEdit(id, field, value), commitEdit(value), cancelEdit
-// InlineEditCell + InlineViewCell з '@/components/ui/inline-edit-cell'
-// commitEdit ЗАВЖДИ: void inlineEdit.commitEdit(v).catch(() => {})
-```
-
-### useBulkSelect
 ```typescript
 import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+
 const bulkSelect = useBulkSelect(data?.items ?? []);
-// { selected, toggle, toggleAll, clear, isSelected, allSelected, someSelected, count }
-// Автоматично прибирає stale IDs при зміні items (пагінація / фільтрація)
-```
-Шаблон indeterminate:
-```typescript
-const selectAllRef = useRef<HTMLInputElement>(null);
+
+// indeterminate через ref (DOM property — не можна через React prop)
+const selectAllRef = useRef<HTMLInputElement | null>(null);
 useEffect(() => {
   if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
 }, [bulkSelect.someSelected]);
+
+// Дії
+const bulkActions: BulkAction[] = [{
+  label: 'Видалити вибрані',
+  variant: 'destructive',
+  onClick: async (ids) => {
+    if (!(await confirm({ title: `Видалити ${ids.length}?`, variant: 'destructive' }))) return;
+    // ✅ Promise.allSettled — ніколи Promise.all для bulk
+    const results = await Promise.allSettled(ids.map(id => apiFetch(`/resource/${id}`, { method: 'DELETE' })));
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed === 0) toast.success(`Видалено ${ids.length}`);
+    else toast.warning(`Видалено ${ids.length - failed} з ${ids.length}. ${failed} помилок`);
+    bulkSelect.clear(); load();
+  },
+}];
+
+// Render
+{features.bulkActionsEnabled && bulkSelect.count > 0 && (
+  <BulkActionsBar count={bulkSelect.count} selectedIds={Array.from(bulkSelect.selected)}
+    actions={bulkActions} onClear={bulkSelect.clear} className="mb-3" />
+)}
+
+// TableHead checkbox
+{features.bulkActionsEnabled && (
+  <TableHead className="w-9 pr-0">
+    <input type="checkbox" checked={bulkSelect.allSelected} ref={selectAllRef}
+      onChange={bulkSelect.toggleAll} className="h-3.5 w-3.5 rounded border-border" />
+  </TableHead>
+)}
+
+// TableRow checkbox
+{features.bulkActionsEnabled && (
+  <TableCell className="w-9 pr-0">
+    <input type="checkbox" checked={bulkSelect.isSelected(item.id)}
+      onChange={() => bulkSelect.toggle(item.id)} className="h-3.5 w-3.5 rounded border-border" />
+  </TableCell>
+)}
 ```
 
-### useSavedFilters
+---
+
+## useSavedFilters — збережені фільтри
+
 ```typescript
 import { useSavedFilters } from '@/hooks/useSavedFilters';
-interface MyFilters extends Record<string, unknown> { status: string; }
-const { saved, save, remove } = useSavedFilters<MyFilters>('page-key');
-const preset = save('Назва', filters);  // повертає { id, name, filters }
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+
+// Тип фільтрів extends Record<string, unknown>
+interface MyFilters extends Record<string, unknown> {
+  search: string; status: string; showDeleted: boolean;
+}
+
+const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<MyFilters>('my-page');
+
+const applyFilter = useCallback((preset: { id: string; filters: MyFilters }) => {
+  setSearch(preset.filters.search ?? '');
+  setStatusFilter(preset.filters.status ?? '');
+  setShowDeleted(preset.filters.showDeleted ?? false);
+  setPage(1);
+  setActiveSavedFilterId(preset.id);
+}, []);
+
+const handleSaveFilter = useCallback((name: string) => {
+  const preset = saveFilter(name, { search, status: statusFilter, showDeleted });
+  setActiveSavedFilterId(preset.id);
+  toast.success(`Фільтр "${name}" збережено`);
+}, [saveFilter, search, statusFilter, showDeleted]);
+
+// При зміні будь-якого фільтра — скинути активний пресет
+setSearch(v); setPage(1); setActiveSavedFilterId(null);
+
+// Render
+{features.savedFiltersEnabled && (
+  <SavedFiltersBar<MyFilters>
+    saved={savedFilters} activeId={activeSavedFilterId}
+    onApply={applyFilter} onSave={handleSaveFilter} onRemove={removeFilter}
+    className="mb-3"
+  />
+)}
 ```
 
-### useKeyboardShortcut
+---
+
+## useDirtyForm — захист незбережених змін
+
 ```typescript
-import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
-useKeyboardShortcut('k', () => setPaletteOpen(true), { enabled: features.commandPaletteEnabled, ctrl: true });
-// SHIFT_ALIAS map: '?' → '/' (layout-independent)
-// null guard на e.target перед перевіркою isInputEl
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+
+const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+
+// При відкритті форми
+dirty.resetDirty();
+
+// На кожну зміну поля
+<Input onChange={e => { setForm(f => ({ ...f, name: e.target.value })); dirty.markDirty(); }} />
+
+// Перед закриттям модалі (confirmClose — синхронний, повертає Promise<boolean>)
+const closeModal = async () => {
+  if (!(await dirty.confirmClose())) return;
+  setShowModal(false);
+};
+
+// Після збереження
+dirty.resetDirty();
 ```
 
-### Windows Dev Notes
+---
+
+## useConfirm — підтвердження дій
+
+```typescript
+import { useConfirm } from '@/hooks/useConfirm';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+
+const { confirm, dialogProps } = useConfirm();
+
+// Видалення
+const handleDelete = async (id: string) => {
+  if (!(await confirm({ title: 'Видалити запис?', variant: 'destructive' }))) return;
+  await apiFetch(`/resource/${id}`, { method: 'DELETE' });
+  toast.success('Видалено');
+  load();
+};
+
+// Обов'язково в кінці return JSX:
+<ConfirmDialog {...dialogProps} />
+```
+
+---
+
+## Toast-сповіщення
+
+```typescript
+import { toast } from '@/lib/toast';
+
+// ✅ Використовуй toast напряму — НЕ перевіряй features.toastEnabled вручну
+// (ToastContainer рендериться тільки коли потрібно)
+toast.success('Збережено');
+toast.success(`Фільтр "${name}" збережено`);
+toast.success(`Видалено ${n}`);
+toast.warning(`Видалено ${ok} з ${total}. ${total - ok} помилок`);  // bulk partial
+toast.error(e instanceof Error ? e.message : 'Помилка');
+toast.info('Синхронізацію завершено');
+
+// ❌ Не перевіряй if (features.toastEnabled) — це зайве
+// ❌ Не використовуй setError для системних помилок — тільки toast.error
+// ✅ setError залишай тільки для валідаційних помилок всередині форми
+```
+
+---
+
+## Ref-cache — довідник даних
+
+```typescript
+import { getCached, setCache } from '@/lib/ref-cache';
+
+// Для довідників (filials, lifts, warehouses) — завжди через cache
+useEffect(() => {
+  const cached = getCached<Branch[]>('cache:branches');
+  if (cached) setBranches(cached);
+  apiFetch<Branch[]>('/branches')
+    .then(data => { setCache('cache:branches', data); setBranches(data); })
+    .catch(() => {});
+}, []);
+```
+
+---
+
+## Пагінація
+
+```typescript
+// Проста пагінація кнопками Попередня/Наступна
+<div className="flex items-center justify-between pt-4">
+  <span className="text-sm text-muted-foreground">
+    {data ? `${(page - 1) * 20 + 1}–${Math.min(page * 20, data.total)} з ${data.total}` : ''}
+  </span>
+  <div className="flex gap-2">
+    <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page === 1}>
+      <ChevronLeft className="h-4 w-4" />Попередня
+    </Button>
+    <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)}
+      disabled={!data || page * 20 >= data.total}>
+      Наступна<ChevronRight className="h-4 w-4" />
+    </Button>
+  </div>
+</div>
+```
+
+---
+
+## Checklist для нової list-сторінки
+
+- [ ] `useRequireAuth(['OWNER', 'ADMIN', ...])` — перший рядок компоненту
+- [ ] `mountedRef` guard на всіх `setState` в async callback
+- [ ] `let cancelled = false` + `return () => { cancelled = true }` у `useEffect` з fetch
+- [ ] `useTableColumns` + `ColumnsDropdown` (className="ml-auto")
+- [ ] `useBulkSelect` + `BulkActionsBar` + чекбокси в TableHead/TableRow
+- [ ] `useSavedFilters` + `SavedFiltersBar`
+- [ ] `useDirtyForm` на кожній формі (markDirty на onChange, confirmClose перед закриттям)
+- [ ] `useConfirm` + `<ConfirmDialog {...dialogProps} />` для видалень
+- [ ] `toast.success/error/warning` замість `alert()` або `window.confirm()`
+- [ ] `Promise.allSettled` для bulk-операцій (ніколи `Promise.all`)
+- [ ] `colSpan = colVisible.size + (features.bulkActionsEnabled ? 2 : 1)` на loading/empty рядках
+- [ ] Фільтри скидають `setActiveSavedFilterId(null)` при зміні
+- [ ] `pnpm --filter @sto/web exec tsc --noEmit` — 0 помилок
+
+---
+
+## Windows Dev
+
 ```powershell
-# Hot reload works correctly on Windows with Next.js 15
 pnpm --filter @sto/web dev      # http://localhost:3001
-# If hot reload is slow — add to next.config.ts:
-# experimental: { turbo: {} }
+pnpm --filter @sto/web exec tsc --noEmit  # TypeScript check
 ```
