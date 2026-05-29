@@ -93,10 +93,12 @@ export class PricingService {
     if (!rule) return 0;
 
     // Bug #19: GoodType enum cast замість `as never`, який вимикав перевірку типів.
+    // Bug #178: brandId scope — якщо правило brand-scoped, перераховуємо ЛИШЕ товари цього бренду.
     const where = {
       orgId,
       deletedAt: null as null,
       ...(rule.goodId ? { id: rule.goodId } : {}),
+      ...(rule.brandId && !rule.goodId ? { brandId: rule.brandId } : {}),
       ...(rule.goodCategory ? { category: rule.goodCategory } : {}),
       ...(rule.goodType ? { goodType: rule.goodType as GoodType } : {}),
     };

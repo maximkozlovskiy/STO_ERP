@@ -109,6 +109,56 @@ describe('PricingService.calculateSalePrice', () => {
     const price = await service.calculateSalePrice('org', 'g', null, null, null, 100);
     expect(price).toBeCloseTo(110);
   });
+
+  it('COST_TIER: cost у першому тірі застосовує відповідний відсоток', async () => {
+    const tiers: RuleTier[] = [
+      { costMin: 0, costMax: 100, percentValue: 30, sortOrder: 0 },
+      { costMin: 100, costMax: 500, percentValue: 20, sortOrder: 1 },
+      { costMin: 500, costMax: null, percentValue: 10, sortOrder: 2 },
+    ];
+    prisma.pricingRule.findMany.mockResolvedValue([rule({ type: 'COST_TIER', tiers })]);
+    const price = await service.calculateSalePrice('org', 'g', null, null, null, 50);
+    expect(price).toBeCloseTo(65); // 50 * 1.30
+  });
+
+  it('COST_TIER: cost у другому тірі', async () => {
+    const tiers: RuleTier[] = [
+      { costMin: 0, costMax: 100, percentValue: 30, sortOrder: 0 },
+      { costMin: 100, costMax: 500, percentValue: 20, sortOrder: 1 },
+      { costMin: 500, costMax: null, percentValue: 10, sortOrder: 2 },
+    ];
+    prisma.pricingRule.findMany.mockResolvedValue([rule({ type: 'COST_TIER', tiers })]);
+    const price = await service.calculateSalePrice('org', 'g', null, null, null, 200);
+    expect(price).toBeCloseTo(240); // 200 * 1.20
+  });
+
+  it('COST_TIER: cost у останньому тірі (costMax null)', async () => {
+    const tiers: RuleTier[] = [
+      { costMin: 0, costMax: 100, percentValue: 30, sortOrder: 0 },
+      { costMin: 500, costMax: null, percentValue: 10, sortOrder: 1 },
+    ];
+    prisma.pricingRule.findMany.mockResolvedValue([rule({ type: 'COST_TIER', tiers })]);
+    const price = await service.calculateSalePrice('org', 'g', null, null, null, 1000);
+    expect(price).toBeCloseTo(1100); // 1000 * 1.10
+  });
+
+  it('COST_TIER: cost не потрапляє в жоден тір → повертає costPrice', async () => {
+    const tiers: RuleTier[] = [
+      { costMin: 200, costMax: 500, percentValue: 20, sortOrder: 0 },
+    ];
+    prisma.pricingRule.findMany.mockResolvedValue([rule({ type: 'COST_TIER', tiers })]);
+    const price = await service.calculateSalePrice('org', 'g', null, null, null, 50);
+    expect(price).toBe(50); // no matching tier
+  });
+
+  it('brandId правило перекриває goodType (пріоритет 2 > 4)', async () => {
+    prisma.pricingRule.findMany.mockResolvedValue([
+      rule({ id: 'r-brand', brandId: 'b1', goodId: null, percentValue: 25, priority: 5, tiers: [] }),
+      rule({ id: 'r-type', goodId: null, goodType: 'SPARE_PART', percentValue: 10, priority: 1, tiers: [] }),
+    ]);
+    const price = await service.calculateSalePrice('org', 'g', null, 'SPARE_PART', 'b1', 100);
+    expect(price).toBeCloseTo(125); // brand rule wins over type rule
+  });
 });
 
 describe('PricingService.applyRuleToGoods', () => {

@@ -150,6 +150,7 @@ export class PricingRulesController {
     // Merge існуючого з dto перед нормалізацією — забезпечує self-consistent контракт.
     const mergedScope = {
       goodId: dto.goodId !== undefined ? dto.goodId : existing.goodId,
+      brandId: dto.brandId !== undefined ? dto.brandId : existing.brandId ?? undefined,
       goodCategory: dto.goodCategory !== undefined ? dto.goodCategory : existing.goodCategory,
       goodType: dto.goodType !== undefined ? dto.goodType : existing.goodType ?? undefined,
     };
@@ -166,7 +167,9 @@ export class PricingRulesController {
       goodId: normalized.goodId ?? null,
       goodCategory: normalized.goodCategory ?? null,
       goodType: normalized.goodType ?? null,
-      brandId: dto.brandId !== undefined ? (dto.brandId ?? null) : existing.brandId,
+      // Use normalized.brandId: normalizeScope clears it if goodId is set (priority 1 > 2).
+      // If not touched by caller and not cleared by normalizeScope → keep existing value.
+      brandId: normalized.brandId !== undefined ? (normalized.brandId ?? null) : existing.brandId,
     };
 
     // Replace-semantics for tiers: deleteMany + createMany in $transaction
@@ -245,9 +248,16 @@ export class PricingRulesController {
   private normalizeScope<T extends Partial<CreatePricingRuleDto> & Partial<UpdatePricingRuleDto>>(dto: T): T {
     const clone = { ...dto };
     if (clone.goodId) {
+      // goodId (priority 1) — clear all lower-priority scope fields
+      clone.brandId = undefined;
+      clone.goodCategory = undefined;
+      clone.goodType = undefined;
+    } else if (clone.brandId) {
+      // brandId (priority 2) — clear lower-priority scope fields
       clone.goodCategory = undefined;
       clone.goodType = undefined;
     } else if (clone.goodCategory) {
+      // goodCategory (priority 3) — clear goodType
       clone.goodType = undefined;
     }
     return clone;

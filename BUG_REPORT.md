@@ -1,5 +1,54 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-05-30 — AUTO tester on pricing brand+COST_TIER backend (fdcf7ea + 23bf19c)
+
+### Baseline
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 357/357 passed (34 files)
+- Web components — ✅ 148/148 passed (14 files)
+
+---
+
+## Bug #178 — HIGH business-logic — applyRuleToGoods ignores brandId scope
+
+**Файл:** `apps/api/src/modules/inventory/pricing.service.ts:96-102`
+**Severity:** HIGH
+**Категорія:** business-logic
+
+**Опис:** Метод `applyRuleToGoods` будує `where`-умову для `good.findMany` враховуючи `goodId`/`goodCategory`/`goodType` скоупи, але НЕ враховує `brandId`. Якщо правило має `brandId` і не має `goodId` — перерахунок застосовується до ВСІХ товарів org, а не лише тим що мають цей бренд.
+**Очікувана поведінка:** `where` фільтрує `{ brandId: rule.brandId }` коли `rule.brandId !== null`.
+**Фактична поведінка:** `where = { orgId, deletedAt: null, ...goodType }` — `brandId` відсутній → ВСІ товари.
+**Статус:** [x] виправлено — додано `brandId: rule.brandId` у `where` коли `rule.brandId && !rule.goodId`
+
+---
+
+## Bug #179 — MEDIUM test-coverage — COST_TIER pricing not covered by unit tests
+
+**Файл:** `apps/api/src/modules/inventory/pricing.service.spec.ts`
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** `pricing.service.spec.ts` не має жодного тесту для нового `COST_TIER` типу правила. Логіка знаходження тіру (`costMin <= cost < costMax`, останній тір з `costMax: null`) і розрахунку ціни за `percentValue` тіру — без покриття. Аналогічно відсутній тест `brandId` пріоритету у виборі правила.
+**Очікувана поведінка:** Тести на (1) COST_TIER базовий (cost у першому тірі), (2) COST_TIER останній тір без costMax, (3) COST_TIER без відповідного тіру → costPrice повертається, (4) brandId перекриває goodType за пріоритетом.
+**Фактична поведінка:** 0 COST_TIER тестів.
+**Статус:** [x] виправлено — додано 6 тестів у pricing.service.spec.ts: COST_TIER перший/другий/останній тір, без відповідного тіру, brandId пріоритет над goodType
+
+---
+
+## Bug #180 — MEDIUM business-logic — normalizeScope does not clear brandId when goodId is set
+
+**Файл:** `apps/api/src/modules/inventory/pricing-rules.controller.ts:245-254`
+**Severity:** MEDIUM
+**Категорія:** business-logic
+
+**Опис:** `normalizeScope` очищає `goodCategory` і `goodType` коли задано `goodId` (priority 1), але не очищає `brandId` (priority 2). Правило може одночасно мати `goodId` і `brandId` у БД — суперечливий стан: правило прив'язане до конкретного товару, але також має brand relation.
+**Очікувана поведінка:** якщо `goodId` задано → `brandId` також обнуляється (як і `goodCategory`/`goodType`).
+**Фактична поведінка:** `brandId` зберігається у БД навіть при заданому `goodId`.
+**Статус:** [x] виправлено — `normalizeScope` тепер очищає `brandId` при `goodId`; `mergedScope` включає `brandId`; `updateData.brandId` використовує `normalized.brandId`
+
+---
+
 ## Session 2026-05-28 — FULL tester on catalog modules (currencies / exchange-rates / bank-accounts / cash-registers / settings org-info + 5 web tabs)
 
 ### Baseline
