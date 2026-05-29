@@ -350,13 +350,13 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
   return (
     <div
       ref={setNodeRef}
-      className={`col-span-12 relative min-h-12 transition-colors ${isOver ? 'bg-primary/5' : ''}`}
+      className={`col-span-12 relative min-h-20 transition-colors ${isOver ? 'bg-primary/5' : ''}`}
       style={{ gridColumn: `2 / span ${TOTAL_HOURS}` }}
       data-lift-id={liftId}
     >
       <div className="flex h-full pointer-events-none">
         {HOURS.map(h => (
-          <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-12" />
+          <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-20" />
         ))}
       </div>
 
@@ -1511,7 +1511,7 @@ export default function CalendarPage() {
 
             {lifts.map(lift => (
               <div key={lift.id} className="grid border-b border-border last:border-b-0" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
-                <div className="px-3 py-3 bg-secondary border-r border-border flex flex-col justify-center gap-0.5">
+                <div className="px-3 py-3 min-h-20 bg-secondary border-r border-border flex flex-col justify-center gap-0.5">
                   <span className="text-sm font-medium text-foreground leading-tight">{lift.name}</span>
                   {nextSlotByLift.get(lift.id) === 'now' ? (
                     <span className="text-[10px] font-medium text-success-text leading-none">● зараз</span>
