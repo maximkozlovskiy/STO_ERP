@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+26b3264 docs(tester): record AUTO session — 0 bugs CRM Наряди + Catalog Штрихкоди/Партії ModalTabs
+613aef7 feat(crm,catalog): ModalTabs edit modal for 1-N — WO history + barcodes + batches tabs
 561e08b fix(sync): align /goods/:id/batches response shape in catalog page
 1eec17f docs(memory): record sto-tester session 8c3751e (Bugs #173-#176)
 d5a4f18 docs(skills): add component-vs-test drift + web-suite baseline rules to sto-tester
@@ -90,36 +92,35 @@ f040cde perf(db): 5 composite indexes
 
 Дата: 2026-05-29
 
-## ⏳ Незавершена задача (продовжити в наступній сесії)
-
-**Задача:** Modal + ModalTabs паттерн для 1-до-багатьох зв'язків
-**План:** `C:/Users/m.kozlovskiy/.claude/plans/squishy-launching-knuth.md`
-
-**Порядок виконання:**
-
-**Етап 1** — Додати §14.1–14.3 у `.claude/skills/sto-dev/SKILL.md`:
-  - §14.1 Паттерн Edit Modal + ModalTabs для 1-N (структура, state, race guard, PATCH)
-  - §14.2 Loading/Error у tab.content (Spinner, ErrorBanner, умовні вкладки)
-  - §14.3 Гарячі дані у modal (скидання при відкритті, count на фльоті)
-
-**Етап 2** — `apps/web/src/app/crm/page.tsx` — edit modal 3 вкладки:
-  - **Основне** — поточні поля форми
-  - **Авто {N}** — вже частково є (modalVehicles, race guard e69bf1e), додати vehiclesError
-  - **Історія нарядів** — `GET /work-orders?counterpartyId=&limit=50` + таблиця (read-only)
-  - State: + `modalWorkOrders`, `modalWorkOrdersLoading`, `woReqRef`, `woError`, `vehiclesError`
-
-**Етап 3** — `apps/web/src/app/catalog/page.tsx` — GoodsTab edit modal 3 вкладки:
-  - **Основне** — поточні поля (без змін)
-  - **Штрихкоди {N}** — `GET /goods/:id/barcodes`, форма додавання, таблиця з видаленням
-  - **Партії** — `GET /goods/:id/batches` ✅ endpoint EXISTS (`goods.controller.ts` + `batch.service.getBatchesForGood`)
-  - State: + `modalBarcodes`, `modalBarcodesLoading`, `barcodeReqRef`, `barcodeError`, `modalBatches`, `modalBatchesLoading`, `batchReqRef`, `batchError`, `showAddBarcode`, `addBarcodeForm`
-
-**Після реалізації:** sync-agent → review-agent → tester-agent
-
 ---
 
+## UI: CRM edit modal — вкладка «Наряди» (613aef7)
+
+`apps/web/src/app/crm/page.tsx` — ModalTabs тепер має 2 вкладки:
+- **Авто {N}** — існуюча (+ vehiclesError error banner)
+- **Наряди {N}** — нова: `GET /work-orders?counterpartyId=&limit=50`, read-only таблиця зі статус-badge та кліком на рядок → навігація у наряд
+
+State: `modalWorkOrders[]`, `modalWorkOrdersLoading`, `woError`, `vehiclesError`, `modalWoReqRef` (race guard паралельний із `modalVehiclesReqRef`).
+
+## UI: Catalog GoodsTab edit modal — вкладки «Штрихкоди» + «Партії» (613aef7)
+
+`apps/web/src/app/catalog/page.tsx` GoodsTab — ModalTabs з 2 вкладками:
+- **Штрихкоди {N}** — `GET /goods/:id/barcodes`, inline add (barcode+type select) + delete
+- **Партії {active}** — `GET /goods/:id/batches` (розпаковується `.items`, sync fix 561e08b), read-only grid: партія/накладна, отримано, залишок, собів., ціна продажу, дата
+
+State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showAddBarcode`, `addBarcodeForm`, `addingBarcode2`, `deletingBarcodeId2`, `modalBarcodeReqRef`, `modalBatchReqRef`.
+
+**Gotcha — /goods/:id/batches повертає `{items, total}`, не bare array** (561e08b).
+
+## sto-dev §14 — Modal+ModalTabs паттерн для 1-N (613aef7)
+
+Новий розділ у `.claude/skills/sto-dev/SKILL.md`:
+- **§14.1** Структура Modal з ModalTabs (layout, state-блоки на колекцію, PATCH+оновлення списку)
+- **§14.2** Loading/Error/Empty/List у tab.content (не на рівні ModalTabs), count з поточного state
+- **§14.3** Race guard + скидання стану при відкритті (++reqRef.current, гейт у .then/.catch/.finally)
+
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api + shared) — після sync fix batches shape (561e08b)
+TypeScript: ✅ 0 errors (web + api + shared) — після 613aef7 + sync fixes 561e08b/fc0d1ad
 Latest tester: 2026-05-29 (AUTO, HEAD fa83635 → 613aef7+561e08b+fc0d1ad+fa83635) — CRM Наряди + Catalog Штрихкоди/Партії ModalTabs. **0 нових багів у scope.** API 357/357 + Web 148/148 baseline ✅. Перевірено: race-guard у обох openEdit (`modalVehiclesReqRef`+`modalWoReqRef` у CRM, `modalBarcodeReqRef`+`modalBatchReqRef` у Catalog) — окремі токени для кожного асинхронного джерела, гейт на КОЖНОМУ `.then`/`.catch`/`.finally`; `setModalGarageId` всередині early-return guard'у (не виставляється з stale-даними); StockBatchDto `.items` unwrap після 561e08b узгоджений з бекенд `{items,total}` shape; `/work-orders?counterpartyId=` filter присутній у DTO+service з tenant-isolation; усі 10 WorkOrderStatus покриті у WO_STATUS_LABELS/BADGE; inline add/delete барcode у ModalTabs з guard `if (!editGood) return` + try/catch + toast feedback; error-state не silent (видимий inline у ModalTabs контенті).
 Latest review: 2026-05-29 (auto, HEAD fc0d1ad → 613aef7+561e08b+fc0d1ad) — crm/page.tsx Наряди-таб + catalog/page.tsx Штрихкоди+Партії-таби + sto-dev §14.1–14.3. **0 проблем знайдено**: race-guard ref (modalWoReqRef, modalBarcodeReqRef, modalBatchReqRef) застосовано згідно патерну з e69bf1e; reset похідного стану на старті openEdit/openEditGood; всі 10 WorkOrderStatus покриті у WO_STATUS_LABELS/BADGE; катаlог не імпортує `cn` (не потрібний); BOM-чистий; немає React.X / any / console.log / Tailwind anti-patterns.
 Previous review: 2026-05-29 (auto, HEAD e69bf1e) — modal-tabs.tsx + crm/employees ModalTabs + counterparties showDeleted/deletedAt. 1 Important fix (CRM edit-modal vehicle fetch race + stale modalGarageId). Backend DTO/service вже коректні після cc44f73 (showDeleted @Transform, orgId зберігається при showDeleted=true, toDto включає deletedAt).
