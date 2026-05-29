@@ -15,7 +15,9 @@ import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { DetailPanel } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
+import { useDetailPanel } from '@/hooks/useDetailPanel';
+import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
@@ -84,6 +86,8 @@ export default function StockDocumentsPage() {
   ], []);
 
   const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('stock-documents', COLUMNS);
+
+  const detailPanel = useDetailPanel('stock-documents');
 
   const [docs, setDocs] = useState<StockDoc[]>([]);
   const [total, setTotal] = useState(0);
@@ -295,6 +299,44 @@ export default function StockDocumentsPage() {
   const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'];
   const statuses = ['', 'DRAFT', 'CONFIRMED', 'CANCELLED'];
 
+  const buildDocTabs = (doc: StockDoc): DetailPanelTab[] => [
+    {
+      key: 'info',
+      label: 'Основне',
+      content: (
+        <div className="space-y-3">
+          <PanelField label="Тип" value={<Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>{TYPE_LABELS[doc.type]}</Badge>} />
+          <PanelField label="Статус" value={<Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>{STATUS_LABELS[doc.status]}</Badge>} />
+          <PanelField label="Склад-джерело" value={doc.warehouseName} />
+          {doc.targetWarehouseName && <PanelField label="Склад-призначення" value={doc.targetWarehouseName} />}
+          <PanelField label="Філія" value={doc.branchName} />
+          <PanelField label="Підтверджено" value={doc.confirmedAt ? new Date(doc.confirmedAt).toLocaleDateString('uk-UA') : undefined} />
+          {doc.notes && <PanelField label="Нотатки" value={doc.notes} />}
+        </div>
+      ),
+    },
+    {
+      key: 'lines',
+      label: 'Позиції',
+      content: !doc.lines || doc.lines.length === 0 ? (
+        <p className="text-[13px] text-muted-foreground">Немає позицій</p>
+      ) : (
+        <div className="space-y-2">
+          {doc.lines.map((line, i) => (
+            <div key={line.id ?? i} className="rounded-lg border border-border px-3 py-2 text-[13px]">
+              <p className="font-medium text-foreground">{line.goodName ?? line.goodId}</p>
+              {line.goodSku && <p className="text-muted-foreground text-[12px]">{line.goodSku}</p>}
+              <p className="text-muted-foreground text-[12px] mt-0.5">
+                К-сть: <span className="text-foreground">{line.quantity}</span>
+                {line.price != null && <> · {line.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</>}
+              </p>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="page-container">
       {error && (
@@ -376,12 +418,10 @@ export default function StockDocumentsPage() {
           Показати видалені
         </button>
 
-        <ColumnsDropdown
-          columns={COLUMNS}
-          visibleKeys={colVisible}
-          onToggle={toggleCol}
-          className="ml-auto"
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
+        </div>
       </div>
 
       {/* Bulk actions */}
@@ -441,12 +481,13 @@ export default function StockDocumentsPage() {
                 <TableRow
                   key={doc.id}
                   className={cn(
-                    'cursor-pointer',
+                    detailPanel.enabled && 'cursor-pointer',
+                    'transition-colors',
                     selectedDoc?.id === doc.id && 'bg-secondary',
                     bulkSelect.isSelected(doc.id) && 'bg-primary/5',
                     doc.deletedAt && 'opacity-60',
                   )}
-                  onClick={() => setSelectedDoc(prev => prev?.id === doc.id ? null : doc)}
+                  onClick={() => { if (detailPanel.enabled) setSelectedDoc(prev => prev?.id === doc.id ? null : doc); }}
                 >
                   {features.bulkActionsEnabled && (
                     <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
@@ -510,75 +551,12 @@ export default function StockDocumentsPage() {
 
         {/* Detail panel */}
         <DetailPanel
-          open={!!selectedDoc}
+          open={!!selectedDoc && detailPanel.enabled}
           onClose={() => setSelectedDoc(null)}
-          title={selectedDoc ? selectedDoc.number : ''}
-        >
-          {selectedDoc && (
-            <div className="space-y-4">
-              {/* Badges */}
-              <div className="flex flex-wrap gap-1.5">
-                <Badge variant={TYPE_BADGE[selectedDoc.type] ?? 'secondary'}>
-                  {TYPE_LABELS[selectedDoc.type]}
-                </Badge>
-                <Badge variant={STATUS_BADGE[selectedDoc.status] ?? 'secondary'}>
-                  {STATUS_LABELS[selectedDoc.status]}
-                </Badge>
-              </div>
-
-              {/* Meta */}
-              <div className="space-y-2 text-sm">
-                {selectedDoc.branchName && (
-                  <div>
-                    <span className="text-muted-foreground">Філія:</span>{' '}
-                    <span className="text-foreground">{selectedDoc.branchName}</span>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted-foreground">Склад:</span>{' '}
-                  <span className="text-foreground">{selectedDoc.warehouseName}</span>
-                </div>
-                {selectedDoc.targetWarehouseName && (
-                  <div>
-                    <span className="text-muted-foreground">Склад призначення:</span>{' '}
-                    <span className="text-foreground">{selectedDoc.targetWarehouseName}</span>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted-foreground">Створено:</span>{' '}
-                  <span className="text-foreground">{new Date(selectedDoc.createdAt).toLocaleDateString('uk-UA')}</span>
-                </div>
-                {selectedDoc.confirmedAt && (
-                  <div>
-                    <span className="text-muted-foreground">Підтверджено:</span>{' '}
-                    <span className="text-foreground">{new Date(selectedDoc.confirmedAt).toLocaleString('uk-UA')}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Lines */}
-              {selectedDoc.lines.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Позиції ({selectedDoc.lines.length})
-                  </p>
-                  <div className="space-y-1.5">
-                    {selectedDoc.lines.map((l, i) => (
-                      <div key={i} className="text-xs bg-secondary rounded-lg px-3 py-2">
-                        <p className="font-medium text-foreground">{l.goodName ?? l.goodId}</p>
-                        <p className="text-muted-foreground mt-0.5">
-                          {l.quantity} {l.unit}
-                          {l.price != null && <span> · {l.price.toFixed(2)} ₴</span>}
-                        </p>
-                        {l.goodSku && <p className="text-muted-foreground font-mono">Арт: {l.goodSku}</p>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </DetailPanel>
+          title={selectedDoc?.number ?? ''}
+          subtitle={selectedDoc ? TYPE_LABELS[selectedDoc.type] : undefined}
+          tabs={selectedDoc ? buildDocTabs(selectedDoc) : undefined}
+        />
       </div>
 
       {/* Pagination */}
