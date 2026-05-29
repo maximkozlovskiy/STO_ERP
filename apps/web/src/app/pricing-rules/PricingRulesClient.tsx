@@ -442,11 +442,11 @@ export default function PricingRulesClient() {
     // Узгоджуємо з рештою сторінок (dashboard, work-orders, invoices використовують limit=200).
     Promise.all([
       apiFetch<{ items: Good[] }>('/goods?limit=200'),
-      apiFetch<Brand[]>('/brands'),
+      apiFetch<{ items: Brand[]; total: number }>('/brands'),
     ]).then(([goodsRes, brandsRes]) => {
       if (!cancelled) {
         setGoods(goodsRes.items);
-        setBrands(brandsRes);
+        setBrands(brandsRes.items);
       }
     }).catch((e: unknown) => {
       // Bug #29: не ковтаємо помилку мовчки. Логуємо для діагностики,

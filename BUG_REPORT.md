@@ -1,5 +1,28 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-05-30 — AUTO tester on pricing brand+COST_TIER UI (21a356e)
+
+### Baseline
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 362/362 passed (34 files)
+- Web components — ✅ 148/148 passed (14 files)
+
+---
+
+## Bug #181 — MEDIUM frontend — apiFetch<Brand[]>('/brands') але endpoint повертає { items, total }
+
+**Файл:** `apps/web/src/app/pricing-rules/PricingRulesClient.tsx:443-457`
+**Severity:** MEDIUM
+**Категорія:** frontend
+
+**Опис:** Паралельний fetch брендів робить `apiFetch<Brand[]>('/brands').then(setBrands)` — очікуючи голий масив. Але `GET /brands` повертає `{ items: BrandResponseDto[]; total: number }` (стандарт STO ERP list endpoints). Результат: `brands` state отримує об'єкт `{ items: [...] }` замість масиву → `brands.map(...)` у Select кидає TypeError → бренди ніколи не завантажуються; `.catch()` у `Promise.all` зупиняє також завантаження goods.
+**Очікувана поведінка:** `apiFetch<{ items: Brand[] }>('/brands').then(r => setBrands(r.items))`
+**Фактична поведінка:** `apiFetch<Brand[]>('/brands').then(setBrands)` → type мismatch; `setBrands` отримує `{ items, total }` замість `Brand[]`
+**Статус:** [x] виправлено — `apiFetch<{ items: Brand[]; total: number }>('/brands').then(r => setBrands(r.items))`
+
+---
+
 ## Session 2026-05-30 — AUTO tester on pricing brand+COST_TIER backend (fdcf7ea + 23bf19c)
 
 ### Baseline
