@@ -879,7 +879,13 @@ export default function CalendarPage() {
     try {
       const created = await apiFetch<CounterpartyOption>('/counterparties', {
         method: 'POST',
-        body: JSON.stringify({ type: 'CLIENT', ...newCp }),
+        body: JSON.stringify({
+          type: 'CLIENT',
+          firstName:   newCp.firstName   || undefined,
+          lastName:    newCp.lastName    || undefined,
+          phone:       newCp.phone       || undefined,
+          companyName: newCp.companyName || undefined,
+        }),
       });
       const display = displayCounterparty(created);
       setCpDisplay(display);

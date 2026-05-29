@@ -48,6 +48,7 @@ export default function CrmPage() {
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
   const [form, setForm] = useState({
     type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '',
+    vatPayer: false, notes: '', contactPerson: '',
   });
 
   const load = useCallback(() => {
@@ -86,6 +87,9 @@ export default function CrmPage() {
           phone: form.phone || undefined,
           email: form.email || undefined,
           edrpou: form.edrpou || undefined,
+          vatPayer: form.vatPayer || undefined,
+          notes: form.notes || undefined,
+          contactPerson: form.contactPerson || undefined,
         }),
       });
       setModal(false);
@@ -111,7 +115,7 @@ export default function CrmPage() {
         <Button
           leftIcon={<Plus />}
           onClick={() => {
-            setForm({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '' });
+            setForm({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '', vatPayer: false, notes: '', contactPerson: '' });
             setError(''); setModal(true);
           }}
         >
@@ -370,6 +374,29 @@ export default function CrmPage() {
             onChange={e => setForm(f => ({ ...f, edrpou: e.target.value }))}
             placeholder="12345678"
           />
+
+          <Input
+            label="Контактна особа"
+            value={form.contactPerson}
+            onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value }))}
+            placeholder="Петро Іваненко"
+          />
+
+          <Input
+            label="Нотатки"
+            value={form.notes}
+            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+          />
+
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.vatPayer}
+              onChange={e => setForm(f => ({ ...f, vatPayer: e.target.checked }))}
+              className="h-4 w-4 rounded border-border accent-primary"
+            />
+            <span className="text-sm text-foreground">Платник ПДВ</span>
+          </label>
         </div>
       </Modal>
     </div>
