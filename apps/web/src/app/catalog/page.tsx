@@ -28,6 +28,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
@@ -448,7 +449,7 @@ function WorksTab() {
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
-      <Modal open={modal} onClose={() => { if (worksFormDirty.confirmClose()) setModal(false); }} title="Нова робота"
+      <Modal open={modal} onClose={async () => { if (!(await worksFormDirty.confirmClose())) return; setModal(false); }} title="Нова робота"
         footer={
           <Button onClick={create} loading={saving} disabled={!form.name || !form.categoryId || !form.normoHours || !form.price} className="w-full">
             Зберегти
@@ -509,13 +510,13 @@ function WorksTab() {
         </div>
       </Modal>
 
-      <Modal open={!!editWork} onClose={() => { if (editWorkDirty.confirmClose()) setEditWork(null); }} title="Редагування роботи"
+      <Modal open={!!editWork} onClose={async () => { if (!(await editWorkDirty.confirmClose())) return; setEditWork(null); }} title="Редагування роботи"
         footer={
           <>
             <Button onClick={saveEditWork} loading={editSaving} disabled={!editForm.name || !editForm.categoryId || !editForm.normoHours || !editForm.price}>
               Зберегти
             </Button>
-            <Button variant="outline" onClick={() => { if (editWorkDirty.confirmClose()) setEditWork(null); }}>Скасувати</Button>
+            <Button variant="outline" onClick={async () => { if (!(await editWorkDirty.confirmClose())) return; setEditWork(null); }}>Скасувати</Button>
           </>
         }
       >
@@ -572,6 +573,8 @@ function WorksTab() {
           </label>
         </div>
       </Modal>
+      <DirtyConfirmDialog {...worksFormDirty.dialogProps} />
+      <DirtyConfirmDialog {...editWorkDirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );
@@ -1189,13 +1192,13 @@ function GoodsTab() {
         </p>
       </Modal>
 
-      <Modal open={!!editGood} onClose={() => { if (editGoodDirty.confirmClose()) setEditGood(null); }} title="Редагування товару"
+      <Modal open={!!editGood} onClose={async () => { if (!(await editGoodDirty.confirmClose())) return; setEditGood(null); }} title="Редагування товару"
         footer={
           <>
             <Button onClick={saveEditGood} loading={editGoodSaving} disabled={!editGoodForm.name || !editGoodForm.salePrice}>
               Зберегти
             </Button>
-            <Button variant="outline" onClick={() => { if (editGoodDirty.confirmClose()) setEditGood(null); }}>Скасувати</Button>
+            <Button variant="outline" onClick={async () => { if (!(await editGoodDirty.confirmClose())) return; setEditGood(null); }}>Скасувати</Button>
           </>
         }
       >
@@ -1252,7 +1255,7 @@ function GoodsTab() {
         </div>
       </Modal>
 
-      <Modal open={modal} onClose={() => { if (goodsFormDirty.confirmClose()) setModal(false); }} title="Новий товар / запчастина"
+      <Modal open={modal} onClose={async () => { if (!(await goodsFormDirty.confirmClose())) return; setModal(false); }} title="Новий товар / запчастина"
         footer={
           <Button onClick={create} loading={saving} disabled={!form.name || !form.salePrice} className="w-full">
             Зберегти
@@ -1376,6 +1379,8 @@ function GoodsTab() {
           />
         </div>
       </Modal>
+      <DirtyConfirmDialog {...goodsFormDirty.dialogProps} />
+      <DirtyConfirmDialog {...editGoodDirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );
@@ -1720,7 +1725,7 @@ function ServicesTab() {
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
-      <Modal open={modal} onClose={() => { if (servicesFormDirty.confirmClose()) setModal(false); }} title={editingService ? 'Редагування послуги' : 'Нова комплексна послуга'}
+      <Modal open={modal} onClose={async () => { if (!(await servicesFormDirty.confirmClose())) return; setModal(false); }} title={editingService ? 'Редагування послуги' : 'Нова комплексна послуга'}
         footer={
           <Button onClick={save} loading={saving} disabled={!form.name} className="w-full">
             {editingService ? 'Оновити' : 'Зберегти'}
@@ -1753,6 +1758,7 @@ function ServicesTab() {
           <p className="text-[12px] text-muted-foreground">Роботи та товари можна додати після створення</p>
         </div>
       </Modal>
+      <DirtyConfirmDialog {...servicesFormDirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );
