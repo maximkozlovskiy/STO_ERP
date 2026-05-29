@@ -736,6 +736,16 @@ export default function CalendarPage() {
         setResizing(null);
         setResizePreview(null);
         if (Math.abs(startH - origStartH) < 0.01 && Math.abs(endH - origEndH) < 0.01) return;
+        // Block resize into closed past period
+        const todayKyiv = toDateString(new Date());
+        if (dateRef.current < todayKyiv) {
+          if (mountedRef.current) setError('Не можна змінювати слоти у минулому дні');
+          return;
+        }
+        if (dateRef.current === todayKyiv && startH < minHourRef.current) {
+          if (mountedRef.current) setError('Не можна перемістити початок у минулий час');
+          return;
+        }
         try {
           await apiFetch(`/calendar/slots/${slotId}`, {
             method: 'PATCH',
@@ -809,6 +819,20 @@ export default function CalendarPage() {
     const shiftMs   = Math.round(shiftHours * 3600_000 / (15 * 60_000)) * (15 * 60_000);
     const newStart  = new Date(origStart.getTime() + shiftMs);
     const newEnd    = new Date(origEnd.getTime()   + shiftMs);
+
+    // Block drag into past — compare new startAt date with today
+    const todayKyiv = toDateString(new Date(nowMs || Date.now()));
+    const newStartDate = toDateString(newStart);
+    const newStartH = kyivHours(newStart.toISOString());
+    if (newStartDate < todayKyiv) {
+      if (mountedRef.current) setError('Не можна перемістити запис у минулий день');
+      return;
+    }
+    if (newStartDate === todayKyiv && newStartH < minHour) {
+      if (mountedRef.current) setError('Не можна перемістити запис у минулий час');
+      return;
+    }
+
     try {
       await apiFetch(`/calendar/slots/${slot.id}`, {
         method: 'PATCH',
@@ -822,7 +846,7 @@ export default function CalendarPage() {
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка переміщення слоту');
     }
-  }, [slots, load]);
+  }, [slots, load, nowMs, minHour]);
 
   // ── Add slot (form submit) ────────────────────────────────────────────────
 
