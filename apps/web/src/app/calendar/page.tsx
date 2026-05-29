@@ -325,6 +325,7 @@ interface DroppableLiftRowProps {
   ghost: GhostSlot | null;
   pending: PendingSlot | null;
   editingSlotId: string | null;
+  blockedWidth: number; // % of timeline width that is in the past (0 = nothing blocked)
   onRemove: (id: string) => void;
   onEdit: (slot: CalendarSlot) => void;
   onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
@@ -334,7 +335,7 @@ interface DroppableLiftRowProps {
 }
 
 const DroppableLiftRow = memo(function DroppableLiftRow({
-  liftId, liftSlots, ghost, pending, editingSlotId,
+  liftId, liftSlots, ghost, pending, editingSlotId, blockedWidth,
   onRemove, onEdit, onResizeStart,
   onPendingOpen, onPendingCancel, onPendingResizeStart,
 }: DroppableLiftRowProps) {
@@ -357,6 +358,18 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
           <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-12" />
         ))}
       </div>
+
+      {/* Past-hours overlay — visually blocks hours before current time */}
+      {blockedWidth > 0 && (
+        <div
+          className="absolute inset-y-0 left-0 pointer-events-none z-1"
+          style={{ width: `${blockedWidth}%` }}
+          aria-hidden
+        >
+          <div className="absolute inset-0 bg-muted/40" />
+          <div className="absolute inset-y-0 right-0 w-px bg-border/60" />
+        </div>
+      )}
 
       {/* Ghost while actively drawing */}
       {showGhost && (
@@ -1027,6 +1040,16 @@ export default function CalendarPage() {
     return map;
   }, [slotsByLift, nowMs]);
 
+  // Width (%) of the past-hours overlay on today; 0 on other dates
+  const blockedWidth = useMemo(() => {
+    if (!nowMs || !date) return 0;
+    const todayKyiv = toDateString(new Date(nowMs));
+    if (date !== todayKyiv) return 0;
+    // Block everything strictly before current hour (whole-hour granularity)
+    const blockedHours = Math.max(0, minHour - WINDOW_START);
+    return (blockedHours / TOTAL_HOURS) * 100;
+  }, [nowMs, date, minHour]);
+
   const formatDate = (ds: string) => {
     if (!ds) return '';
     return new Date(ds).toLocaleDateString('uk-UA', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: KYIV_TZ });
@@ -1375,6 +1398,7 @@ export default function CalendarPage() {
                   ghost={ghost}
                   pending={pendingSlot}
                   editingSlotId={editingSlotId}
+                  blockedWidth={blockedWidth}
                   onRemove={removeSlot}
                   onEdit={handleEditSlot}
                   onResizeStart={handleResizeStart}
