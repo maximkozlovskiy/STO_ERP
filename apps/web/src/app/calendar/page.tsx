@@ -35,7 +35,7 @@ interface CalendarSlot {
   counterpartyName?: string;
 }
 interface Lift { id: string; name: string; }
-interface WorkOrderOption { id: string; number: string; counterpartyName?: string; }
+interface WorkOrderOption { id: string; number: string; counterpartyName?: string; counterpartyId?: string | null; }
 interface CounterpartyOption { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; phone?: string | null; }
 interface VehicleOption { id: string; make: string; model: string; licensePlate: string; }
 
@@ -1046,7 +1046,7 @@ export default function CalendarPage() {
   const [newWoCpPickerOpen, setNewWoCpPickerOpen] = useState(false);
 
   type CpItem = SearchPickerItem & { phone?: string | null };
-  type WoItem = SearchPickerItem;
+  type WoItem = SearchPickerItem & { counterpartyId?: string | null; counterpartyName?: string };
 
   const fetchCpItems = useCallback(async (q: string): Promise<CpItem[]> => {
     let url = '/counterparties?limit=50';
@@ -1063,14 +1063,20 @@ export default function CalendarPage() {
   }, []);
 
   const fetchWoItems = useCallback(async (q: string): Promise<WoItem[]> => {
-    const url = q.trim() ? `/work-orders?q=${encodeURIComponent(q)}&limit=30` : '/work-orders?limit=30';
+    // Filter by selected client if one is chosen
+    const cpParam = form.counterpartyId ? `&counterpartyId=${form.counterpartyId}` : '';
+    const url = q.trim()
+      ? `/work-orders?q=${encodeURIComponent(q)}&limit=30${cpParam}`
+      : `/work-orders?limit=30${cpParam}`;
     const data = await apiFetch<{ items: WorkOrderOption[] }>(url);
     return data.items.map(wo => ({
       id: wo.id,
       primary: wo.number,
       secondary: wo.counterpartyName ?? undefined,
+      counterpartyId: wo.counterpartyId,
+      counterpartyName: wo.counterpartyName,
     }));
-  }, []);
+  }, [form.counterpartyId]);
 
   // ── Memoized grouping ─────────────────────────────────────────────────────
 
@@ -1443,13 +1449,52 @@ export default function CalendarPage() {
           <SearchPickerModal<WoItem>
             open={woPickerOpen}
             onClose={() => setWoPickerOpen(false)}
-            title="Оберіть наряд"
+            title={form.counterpartyId ? `Наряди клієнта` : 'Оберіть наряд'}
             selectedId={form.workOrderId}
             fetchItems={fetchWoItems}
-            searchPlaceholder="Номер наряду або клієнт..."
+            searchPlaceholder="Номер наряду..."
             emptyText="Нарядів не знайдено"
             onSelect={item => {
-              const display = item.secondary ? `${item.primary} · ${item.secondary}` : item.primary;
+              const display = item.counterpartyName
+                ? `${item.primary} · ${item.counterpartyName}`
+                : item.primary;
+
+              // If WO has a client different from currently selected — warn and replace
+              if (item.counterpartyId && form.counterpartyId && item.counterpartyId !== form.counterpartyId) {
+                const replace = confirm(
+                  `Наряд належить іншому клієнту (${item.counterpartyName ?? item.counterpartyId}).\nЗамінити поточного клієнта?`
+                );
+                if (replace) {
+                  const cpDisplay = item.counterpartyName ?? '';
+                  setCpDisplay(cpDisplay);
+                  setForm(f => ({
+                    ...f,
+                    workOrderId: item.id,
+                    workOrderDisplay: display,
+                    counterpartyId: item.counterpartyId!,
+                    counterpartyDisplay: cpDisplay,
+                  }));
+                } else {
+                  // Keep current client, just update WO
+                  setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                }
+                return;
+              }
+
+              // If WO has a client and no client selected yet — auto-fill client
+              if (item.counterpartyId && !form.counterpartyId) {
+                const cpDisplay = item.counterpartyName ?? '';
+                setCpDisplay(cpDisplay);
+                setForm(f => ({
+                  ...f,
+                  workOrderId: item.id,
+                  workOrderDisplay: display,
+                  counterpartyId: item.counterpartyId!,
+                  counterpartyDisplay: cpDisplay,
+                }));
+                return;
+              }
+
               setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
             }}
           />
