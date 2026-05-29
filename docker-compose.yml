@@ -24,7 +24,7 @@ services:
       test: ["CMD", "redis-cli", "ping"]
 
   minio:
-    image: minio/minio
+    image: minio/minio:RELEASE.2024-01-16T16-07-38Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -33,7 +33,12 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      # Modern minio/minio images ship NO curl/wget — `curl -f /minio/health/live`
+      # always errors → minio never becomes healthy → api (depends_on service_healthy)
+      # never starts → web+caddy cascade dead. Use the bundled `mc` client instead,
+      # which is offline-safe and present in the server image.
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
 
   api:
     image: ghcr.io/your-org/sto-api:${VERSION:-latest}

@@ -31,7 +31,7 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio
+    image: minio/minio:RELEASE.2024-01-16T16-07-38Z
     restart: unless-stopped
     ports:
       - "9000:9000"   # S3 API
@@ -43,7 +43,8 @@ services:
     volumes:
       - minio_dev_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      # minio/minio ships NO curl/wget — use the bundled `mc` client (see docker-compose.yml note).
+      test: ["CMD", "mc", "ready", "local"]
       interval: 15s
       timeout: 5s
       retries: 5

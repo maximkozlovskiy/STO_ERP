@@ -432,6 +432,10 @@ export default function CalendarPage() {
   type MonthSlots = Record<string, { total: number; byLift: Record<string, number> }>;
   const [monthSlots, setMonthSlots] = useState<MonthSlots>({});
   const [monthLoading, setMonthLoading] = useState(false);
+  // True only when EVERY per-day request in the fan-out failed (server down / session lost) —
+  // distinguishes "genuinely empty month" from "load failed", which the swallowed per-day
+  // .catch() would otherwise hide as a silently blank calendar.
+  const [monthError, setMonthError] = useState(false);
 
   // Stats: period selector + aggregated slots
   type StatsPeriod = 'day' | 'month' | 'custom';
@@ -440,6 +444,8 @@ export default function CalendarPage() {
   const [statsTo, setStatsTo] = useState('');
   const [statsSlots, setStatsSlots] = useState<CalendarSlot[]>([]);
   const [statsLoading, setStatsLoading] = useState(false);
+  // Same all-failed signal as monthError (see above) for the stats fan-out.
+  const [statsError, setStatsError] = useState(false);
   const [form, setForm] = useState({
     liftId: '', employeeId: '',
     counterpartyId: '', counterpartyDisplay: '',
@@ -522,16 +528,18 @@ export default function CalendarPage() {
     const ac = new AbortController();
     monthAbortRef.current = ac;
     setMonthLoading(true);
+    if (mountedRef.current) setMonthError(false);
     try {
       const days = Array.from({ length: daysInMonth }, (_, i) => {
         const d = i + 1;
         return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       });
+      let failures = 0;
       const results = await Promise.all(
         days.map(d =>
           apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal })
             .then(slots => ({ d, slots }))
-            .catch(() => ({ d, slots: [] as CalendarSlot[] }))
+            .catch(() => { failures++; return { d, slots: [] as CalendarSlot[] }; })
         )
       );
       if (ac.signal.aborted) return; // superseded by a newer load
@@ -541,7 +549,11 @@ export default function CalendarPage() {
         for (const s of slots) { if (s.liftId) byLift[s.liftId] = (byLift[s.liftId] ?? 0) + 1; }
         acc[d] = { total: slots.length, byLift };
       }
-      if (mountedRef.current) setMonthSlots(acc);
+      if (mountedRef.current) {
+        setMonthSlots(acc);
+        // Only flag an error when the whole fan-out failed — a few failed days still render.
+        setMonthError(days.length > 0 && failures === days.length);
+      }
     } finally {
       if (mountedRef.current && !ac.signal.aborted) setMonthLoading(false);
     }
@@ -578,6 +590,7 @@ export default function CalendarPage() {
     const ac = new AbortController();
     statsAbortRef.current = ac;
     setStatsLoading(true);
+    if (mountedRef.current) setStatsError(false);
     try {
       // Generate all dates in range, capped to STATS_MAX_DAYS to bound the fan-out
       const days: string[] = [];
@@ -587,13 +600,19 @@ export default function CalendarPage() {
         days.push(toDateString(cur));
         cur.setDate(cur.getDate() + 1);
       }
+      let failures = 0;
       const results = await Promise.all(
         days.map(d =>
-          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal }).catch(() => [] as CalendarSlot[])
+          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal })
+            .catch(() => { failures++; return [] as CalendarSlot[]; })
         )
       );
       if (ac.signal.aborted) return; // superseded by a newer load
-      if (mountedRef.current) setStatsSlots(results.flat());
+      if (mountedRef.current) {
+        setStatsSlots(results.flat());
+        // Only flag an error when every day failed — partial failures still aggregate.
+        setStatsError(days.length > 0 && failures === days.length);
+      }
     } finally {
       if (mountedRef.current && !ac.signal.aborted) setStatsLoading(false);
     }
@@ -1830,7 +1849,12 @@ export default function CalendarPage() {
         return (
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             {monthLoading && <div className="flex justify-center py-12"><Spinner size="md" /></div>}
-            {!monthLoading && (
+            {!monthLoading && monthError && (
+              <div className="px-4 py-8 text-center text-sm text-destructive-text">
+                Не вдалося завантажити календар на місяць. Перевірте з’єднання та оновіть сторінку.
+              </div>
+            )}
+            {!monthLoading && !monthError && (
               <>
                 {/* Day-of-week header */}
                 <div className="grid grid-cols-7 border-b border-border">
@@ -1989,6 +2013,9 @@ export default function CalendarPage() {
             )}
             {statsRangeTooLong && (
               <p className="text-xs text-warning-text">Діапазон задовгий — показано перші {STATS_MAX_DAYS} днів. Звузьте період для повної статистики.</p>
+            )}
+            {statsError && (
+              <p className="text-xs text-destructive-text">Не вдалося завантажити статистику. Перевірте з’єднання та спробуйте ще раз.</p>
             )}
 
             {/* Period label */}
