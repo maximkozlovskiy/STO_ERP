@@ -799,6 +799,7 @@ export default function CalendarPage() {
   const addSlot = async () => {
     if (!form.startAt || !form.endAt) { setError('Вкажіть час початку та завершення'); return; }
     if (form.endAt <= form.startAt)    { setError('Час завершення повинен бути після часу початку'); return; }
+    if (!form.counterpartyId)          { setError('Оберіть клієнта'); return; }
     if (form.workOrderId && !UUID_RE.test(form.workOrderId)) { setError('Оберіть наряд зі списку'); return; }
     // New slots cannot start in the past (editing existing slot is always allowed)
     if (!editingSlotId && nowMs) {
@@ -1149,7 +1150,7 @@ export default function CalendarPage() {
           <div className="grid grid-cols-2 gap-3">
             {/* Клієнт */}
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Клієнт</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Клієнт <span className="text-destructive-text">*</span></label>
               <div className="flex gap-1">
                 <button
                   type="button"
@@ -1309,7 +1310,7 @@ export default function CalendarPage() {
           />
 
           <div className="flex gap-2">
-            <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt}>
+            <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt || !form.counterpartyId}>
               {editingSlotId ? 'Оновити' : 'Зберегти'}
             </Button>
             <Button variant="outline" onClick={() => { setShowAdd(false); setEditingSlotId(null); setError(''); setPendingSlot(null); }}>
