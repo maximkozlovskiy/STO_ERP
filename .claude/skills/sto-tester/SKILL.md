@@ -275,6 +275,18 @@ grep -rn "@Param('id')" apps/api/src/ --include="*.controller.ts" | grep -v "Par
 # Ukrainian error messages
 grep -rn "throw new.*Exception\|throw new.*Error" apps/api/src/modules/ --include="*.ts" \
   | grep -E "['\"](Cannot|Invalid|Not found|Already|Forbidden|Unauthorized|Failed)" | grep -v spec | head -10
+
+# JSON/Record DTO поля без @IsObject() → знімаються whitelist:true → undefined в сервісі (Bug #182)
+# КОЖНЕ поле DTO (включно з non-primitive типами) потребує хоча б одного декоратора
+grep -rn "Record<string\|: object\b\|: Json\b" apps/api/src/modules/ --include="*.dto.ts" | grep -v "//\|spec" | while read line; do
+  file=$(echo "$line" | cut -d: -f1)
+  lineno=$(echo "$line" | cut -d: -f2)
+  # перевірити чи є будь-який @Is decorator на попередніх 3 рядках
+  startline=$((lineno > 3 ? lineno - 3 : 1))
+  if ! sed -n "${startline},$((lineno-1))p" "$file" | grep -q "@Is\|@Validate\|@Allow"; then
+    echo "MISSING DECORATOR on $file:$lineno"
+  fi
+done
 ```
 
 - [ ] Немає `any` (крім `as unknown as T`)
@@ -283,6 +295,7 @@ grep -rn "throw new.*Exception\|throw new.*Error" apps/api/src/modules/ --includ
 - [ ] `@Param(':id')` → `ParseUUIDPipe`
 - [ ] `throw new XxxException('...')` — повідомлення українською
 - [ ] `@IsUUID()` без версії ('all') відхиляє nil-UUID → у **тестах** для UUID-полів: `11111111-1111-4111-8111-111111111111` (v4 layout)
+- [ ] **JSON/Record DTO поля** (`Record<string, unknown>`, `object`, `Json`) → обов'язково `@IsObject()` або `@ValidateNested()`. Без декоратора `whitelist: true` знімає поле мовчки → `dto.value === undefined` → сервіс записує `undefined/null` у БД без помилки (Bug #182). Перевіряти: `grep -A2 "!: Record\|?: Record\|!: object\|?: object" *.dto.ts | grep -v "@Is"`
 
 ---
 
@@ -686,6 +699,15 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-30 — JSON/Record DTO поле без @IsObject() → знімається whitelist:true → undefined в сервісі — backend
+
+**Сигнал:** `UpsertXDto.value: Record<string, unknown>` (або будь-яке JSON/object поле) без жодного class-validator декоратора. `ValidationPipe({ whitelist: true })` видаляє з body будь-яку властивість що НЕ має принаймні одного decorator — навіть якщо поле TypeScript-типізоване. Сервіс отримує `dto.value === undefined` → Prisma `upsert`/`create` з `value: undefined` → TypeError або запис `null` замість реального конфігу.
+**Причина виникнення:** розробник типізує поле через TypeScript (`value!: Record<string, unknown>`) вважаючи що тип = гарантія. `tsc` не скаржиться. Тест з MockService не доходить до ValidationPipe. Баг виявляється лише через `PUT /user-preferences/:key` у runtime — сервер приймає 204 але записує `null`/`undefined`. Особливо часто на JSON/blob полях де немає природного `@IsString()` / `@IsNumber()` / `@IsBoolean()` — розробник не думає "треба @IsObject()".
+**Підхід до виявлення:** для кожного нового `*.dto.ts` — переконатись що КОЖНЕ поле класу (не тільки string/number) має принаймні один `class-validator` декоратор. Спеціально шукати поля типу `Record<string, unknown>`, `object`, `Json`, `T extends object` — вони найчастіше залишаються без декоратора. Grep: `grep -A1 "value!:\|value?:" apps/api/src/modules --include="*.dto.ts" | grep -v "@Is\|@Max\|@Min\|@Array\|@Validate\|class-validator"`. Також: contract spec з `PUT /... payload: { key: 'x' }` (без `value`) повинен повертати 400 — це ловить відсутній `@IsObject()`.
+**Підхід до фіксу:** `@IsObject({ message: 'Значення має бути об\'єктом' })` перед `value`. Якщо поле опціональне — додати `@IsOptional()` перед `@IsObject()`. Для вкладених об'єктів із відомою структурою — `@ValidateNested()` + `@Type(() => XClass)`. Для довільного JSON без схеми — `@IsObject()` достатньо (гарантує що це об'єкт, не примітив/масив).
+**Severity:** HIGH — функціональний баг: PUT приймається (204) але нічого не зберігається; без `@IsObject()` whitelist знімає поле мовчки → данні псуються без будь-якого сигналу.
+**Де шукати ще:** будь-який DTO з JSON-полем (rateScheme, uiFeatures, metadata, config, settings, payload, extra); webhooks DTO з payload; будь-який новий DTO де field-тип не є примітивом string/number/boolean/Date. Особливо: `settings.dto.ts` вже має `@IsObject()` на `uiFeatures` — використати як зразок.
 
 ### 2026-05-30 — apiFetch generic type mismatch: очікує масив, endpoint повертає {items,total} — frontend
 
