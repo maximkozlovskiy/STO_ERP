@@ -305,6 +305,7 @@ function WorksTab() {
           columns={WORKS_COLUMNS}
           visibleKeys={worksColVisible}
           onToggle={toggleWorksCol}
+          className="ml-auto"
         />
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setForm({ categoryId: flat[0]?.id ?? '', name: '', normoHours: '', price: '', description: '', isWarranty: false }); worksFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Робота
@@ -859,6 +860,7 @@ function GoodsTab() {
           columns={GOODS_COLUMNS}
           visibleKeys={goodsColVisible}
           onToggle={toggleGoodsCol}
+          className="ml-auto"
         />
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { goodsFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Товар
@@ -1518,6 +1520,7 @@ function ServicesTab() {
           columns={SERVICES_COLUMNS}
           visibleKeys={servicesColVisible}
           onToggle={toggleServicesCol}
+          className="ml-auto"
         />
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { servicesFormDirty.resetDirty(); setError(''); setModal(true); }}>
           Послуга
