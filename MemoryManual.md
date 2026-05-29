@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+cc44f73 fix(sync): align counterparties API with frontend showDeleted + deletedAt contract
 921afb7 refactor(useDirtyForm): confirmClose returns Promise<boolean>, adds dialogProps
 2a874fb fix(po,sd,wo): async confirmClose + DirtyConfirmDialog
 ca77bec fix(crm,employees,invoices): async confirmClose + DirtyConfirmDialog
@@ -84,7 +85,7 @@ f040cde perf(db): 5 composite indexes
 Дата: 2026-05-29
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api) — після useDirtyForm async refactor (921afb7)
+TypeScript: ✅ 0 errors (web + api) — після sync fix counterparties (cc44f73)
 
 ## UI: useDirtyForm — async confirmClose + DirtyConfirmDialog (921afb7)
 
