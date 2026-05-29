@@ -426,6 +426,9 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [formMounted, setFormMounted] = useState(false);
+  const [formVisible, setFormVisible] = useState(false);
+  const formHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
 
   // View mode: day timeline | month grid | stats
@@ -506,6 +509,19 @@ export default function CalendarPage() {
   }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Animate form open/close: mount → next paint → visible (spring in); hide → transition → unmount
+  useEffect(() => {
+    if (formHideTimerRef.current) clearTimeout(formHideTimerRef.current);
+    if (showAdd) {
+      setFormMounted(true);
+      // double-rAF ensures the browser has painted the initial hidden state before animating in
+      requestAnimationFrame(() => requestAnimationFrame(() => setFormVisible(true)));
+    } else {
+      setFormVisible(false);
+      formHideTimerRef.current = setTimeout(() => setFormMounted(false), 420);
+    }
+  }, [showAdd]);
 
   useEffect(() => { setDate(toDateString(new Date())); }, []);
 
@@ -1030,6 +1046,7 @@ export default function CalendarPage() {
       endAt:   new Date(`${date}T${form.endAt}:00`).toISOString(),
       notes: form.notes || undefined,
     };
+    console.log('[calendar] submit body:', body);
     try {
       if (editingSlotId) {
         await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -1431,8 +1448,27 @@ export default function CalendarPage() {
       </div>}
 
       {/* Add / edit form */}
-      {showAdd && (
-        <div className="bg-surface border border-border rounded-xl p-5 mb-6 space-y-3">
+      {formMounted && (
+        <div
+          className="overflow-hidden"
+          style={{
+            maxHeight: formVisible ? '900px' : '0px',
+            marginBottom: formVisible ? '1.5rem' : '0px',
+            transition: formVisible
+              ? 'max-height 480ms cubic-bezier(0.22,1,0.36,1), margin-bottom 480ms cubic-bezier(0.22,1,0.36,1)'
+              : 'max-height 320ms cubic-bezier(0.4,0,0.6,1), margin-bottom 320ms cubic-bezier(0.4,0,0.6,1)',
+          }}
+        >
+        <div
+          className="bg-surface border border-border rounded-xl p-5 space-y-3"
+          style={{
+            opacity: formVisible ? 1 : 0,
+            transform: formVisible ? 'translateY(0)' : 'translateY(-8px)',
+            transition: formVisible
+              ? 'opacity 350ms 60ms cubic-bezier(0.22,1,0.36,1), transform 350ms 60ms cubic-bezier(0.22,1,0.36,1)'
+              : 'opacity 200ms cubic-bezier(0.4,0,1,1), transform 200ms cubic-bezier(0.4,0,1,1)',
+          }}
+        >
           <h3 className="font-semibold text-foreground text-sm">
             {editingSlotId ? (isEditingPast ? 'Перегляд слоту' : 'Редагування слоту') : pendingSlot ? `Новий слот ${decimalHoursToHHMM(pendingSlot.startH)}–${decimalHoursToHHMM(pendingSlot.endH)} на ${date}` : `Новий слот на ${date}`}
           </h3>
@@ -1812,7 +1848,7 @@ export default function CalendarPage() {
 
           <div className="flex gap-2">
             {!isEditingPast && (
-              <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt || !form.counterpartyId}>
+              <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt || (!form.counterpartyId && !form.workOrderId)}>
                 {editingSlotId ? 'Оновити' : 'Зберегти'}
               </Button>
             )}
@@ -1820,6 +1856,7 @@ export default function CalendarPage() {
               {isEditingPast ? 'Закрити' : 'Скасувати'}
             </Button>
           </div>
+        </div>
         </div>
       )}
 
