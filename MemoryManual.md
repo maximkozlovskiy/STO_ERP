@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+751adcf fix(tester): Bug #163 — regression spec for counterparties ?q= search (plural relation names)
+a0bc034 feat(calendar): read-only view for slots in closed/past period
 d66067b fix(tester): Bugs #161-#162 — org-scoped FK validation in goods + spec
 64dc4ef docs(memory): record goods unitId/brandId review (HEAD 5045007)
 634536c fix(review): remove unused IsUUID import from goods.dto
@@ -47,11 +49,12 @@ f040cde perf(db): 5 composite indexes
 923aea5 perf(api): Redis cache for reference data (5 min TTL)
 ```
 
-Дата: 2026-05-28
+Дата: 2026-05-29
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web --incremental false, api, shared) — після d66067b
-Unit+Contract: ✅ 325/325 passed (31 файл — +goods.service.spec 9 tests)
+TypeScript: ✅ 0 errors (web --incremental false, api, shared) — після 751adcf
+Unit+Contract: ✅ 330/330 passed (32 файли — +counterparties.service.spec 5 tests)
+Latest tester: 2026-05-29 (FULL, HEAD a0bc034) — scope: calendar read-only/past (isEditingPast) + WO picker зі slotStartAt/EndAt/LiftName + client↔WO sync; work-orders.findAll calendarSlots include take:1 + toDto slot mapping; counterparties ?q= relation fix (32e9a49); goods validateFkReferences. Baseline ✅ (tsc api+web+shared 0, unit 325/325). 1 баг: #163 MEDIUM test-coverage — counterparties ?q= fix (singular→plural relation customerGarages→vehicles, що усував PrismaClientValidationError) НЕ мав regression-тесту; HTTP-contract spec мокає сервіс → не виконує реальний where. Фікс: counterparties.service.spec.ts (5 тестів) — findAll(?q=) асертить where.OR з plural relation-іменами + nested deletedAt:null + tenant isolation, без singular. Перевірено без дефектів: isEditingPast minHour-boundary (09:00 при 09:22 → 9.0<9=false → НЕ past, OK); ВСІ timeline px→time converter-и (draw/pending-resize/saved-resize/drag) clamp у [WINDOW_START,WINDOW_END] перед toISOString → Invalid Date неможливий; calendarSlots include nullable lift + toDto ?.[0]?.x??null safe у findOne. Після фіксу: tsc 0, unit 330/330. ⚠️ Урок: query-shape фікс (relation-ім'я, nested where) НЕ ловиться mock-based contract spec — потрібен service-spec що асертить реальний where через Prisma-мок-шпигун.
 Latest optimize: 2026-05-28 (AUTO, HEAD 63640fb) — calendar scope. Backend: createSlot 3 sequential FK findFirst → Promise.all; updateSlot 4 sequential reads (existing+3 FK) → Promise.all (error priority збережено). Frontend: kyivHours/fmtTime/toDateString new Intl.DateTimeFormat на кожен виклик → 4 module-level singletons; TimeSelect new Date().getMinutes() per-option у render → nowMs-derived minMinute prop. DB: CalendarSlot вже добре проіндексований ((orgId,deletedAt),(orgId,liftId,startAt,endAt),(orgId,employeeId,startAt)) — змін не потрібно. 14/14 calendar тестів passed.
 Latest sync: 2026-05-28 (AUTO, HEAD fbe66ad) — 1 bug fixed: branches bare-array vs {items} mismatch
 Latest review: 2026-05-28 (auto, HEAD 5045007 → 634536c) — goods scope (goods.dto.ts + goods.service.ts). 1 Suggestion виправлено (unused IsUUID import). TS 0 errors (web --incremental false, api, shared); 316/316 тестів. Перевірено: unitId/brandId @Matches UUID regex (консистентно з preferredSupplierId, конвенція 4a3cdc0) + @IsOptional; UpdateGoodDto = PartialType(CreateGoodDto) успадковує всі поля; ValidationPipe whitelist:true + forbidNonWhitelisted:true → create() `{...dto, orgId}` spread безпечний (тільки DTO-поля у Prisma); brandId/unitId optional FK без explicit валідації — Prisma P2003 при невалідному ref прийнятний (як preferredSupplierId); toDto() type signature повна + повертає unitId/brandId; frontend Good interface + create/edit форми синхронні (unitId/brandId надсилаються form.X||undefined); findMany мають take; всі find* з orgId+deletedAt:null; немає BOM/any/secrets. Контролер: JwtAuthGuard+RolesGuard+@Roles на кожному методі. Попередній review HEAD b4068a6 — calendar scope, 0 проблем.
