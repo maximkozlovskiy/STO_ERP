@@ -74,7 +74,29 @@ f040cde perf(db): 5 composite indexes
 Дата: 2026-05-29
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api) — після savedFilters/bulkActions/unsavedGuard на 6 сторінках (4b77c87)
+TypeScript: ✅ 0 errors (web + api) — після column management на 6 сторінках (83d88c4)
+
+## UI: Управління колонками — розповсюджено на 6 сторінок (2026-05-29)
+
+`useTableColumns` + `ColumnsDropdown` тепер є на **всіх** сторінках-списках (раніше тільки work-orders):
+
+| Сторінка | Ключ localStorage | Прихованих за замовч. |
+|---|---|---|
+| `employees` | `sto_columns_employees` | rate, zones, lifts |
+| `crm` | `sto_columns_crm` | edrpou |
+| `invoices` | `sto_columns_invoices` | — |
+| `purchase-orders` | `sto_columns_purchase-orders` | — |
+| `stock-documents` | `sto_columns_stock-documents` | — |
+| `catalog-works` | `sto_columns_catalog-works` | — |
+| `catalog-goods` | `sto_columns_catalog-goods` | unit |
+| `catalog-services` | `sto_columns_catalog-services` | — |
+
+**Паттерн** (COLUMNS — не включають чекбокс bulk і кнопки дій):
+```ts
+const COLUMNS = useMemo(() => [{ key: 'name', label: 'Назва', defaultVisible: true }], []);
+const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('page-key', COLUMNS);
+// colSpan: colVisible.size + (features.bulkActionsEnabled ? 2 : 1)
+```
 
 ## UI: Збережені фільтри + Групові дії + Захист змін — розповсюджено на 6 сторінок (2026-05-29)
 
