@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { SearchCombobox, type ComboboxItem } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
@@ -360,14 +361,14 @@ export default function WorkOrderCardPage() {
     partDirty.markDirty();
   };
 
-  const closeLineModal = () => {
-    if (!lineDirty.confirmClose()) return;
+  const closeLineModal = async () => {
+    if (!(await lineDirty.confirmClose())) return;
     setLineModal(false);
     lineDirty.resetDirty();
   };
 
-  const closePartModal = () => {
-    if (!partDirty.confirmClose()) return;
+  const closePartModal = async () => {
+    if (!(await partDirty.confirmClose())) return;
     setPartModal(false);
     setGoodDisplayName('');
     partDirty.resetDirty();
@@ -1106,6 +1107,8 @@ export default function WorkOrderCardPage() {
           </Button>
         </div>
       </Modal>
+      <DirtyConfirmDialog {...lineDirty.dialogProps} />
+      <DirtyConfirmDialog {...partDirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );

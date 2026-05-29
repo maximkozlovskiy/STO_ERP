@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -565,8 +566,8 @@ export default function PurchaseOrdersPage() {
       {/* Create modal */}
       <Modal
         open={showCreate}
-        onClose={() => {
-          if (!dirty.confirmClose()) return;
+        onClose={async () => {
+          if (!(await dirty.confirmClose())) return;
           setShowCreate(false);
           setForm({ supplierId: '', warehouseId: '', notes: '' });
           setSupplierDisplayName('');
@@ -749,7 +750,7 @@ export default function PurchaseOrdersPage() {
       {/* Receive modal */}
       <Modal
         open={!!showReceive}
-        onClose={() => { if (!dirty.confirmClose()) return; setShowReceive(null); dirty.resetDirty(); }}
+        onClose={async () => { if (!(await dirty.confirmClose())) return; setShowReceive(null); dirty.resetDirty(); }}
         title={showReceive ? `Прийом по замовленню ${showReceive.number}` : ''}
         size="lg"
         footer={
@@ -787,6 +788,7 @@ export default function PurchaseOrdersPage() {
           </div>
         )}
       </Modal>
+      <DirtyConfirmDialog {...dirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );

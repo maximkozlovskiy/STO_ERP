@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -270,8 +271,8 @@ export default function StockDocumentsPage() {
     } finally { setSaving(false); }
   };
 
-  const handleCloseCreate = () => {
-    if (!dirty.confirmClose()) return;
+  const handleCloseCreate = async () => {
+    if (!(await dirty.confirmClose())) return;
     dirty.resetDirty();
     setShowCreate(false);
   };
@@ -739,6 +740,7 @@ export default function StockDocumentsPage() {
           </div>
         )}
       </Modal>
+      <DirtyConfirmDialog {...dirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );
