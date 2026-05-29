@@ -514,7 +514,7 @@ export default function InvoicesPage() {
         </div>
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <ColumnsDropdown columns={INVOICE_COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} pageKey="invoices" />
+          <ColumnsDropdown columns={INVOICE_COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
         </div>
       </div>
 

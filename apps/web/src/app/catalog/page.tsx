@@ -309,7 +309,6 @@ function WorksTab() {
             columns={WORKS_COLUMNS}
             visibleKeys={worksColVisible}
             onToggle={toggleWorksCol}
-            pageKey="catalog-works"
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
@@ -857,7 +856,6 @@ function GoodsTab() {
             columns={GOODS_COLUMNS}
             visibleKeys={goodsColVisible}
             onToggle={toggleGoodsCol}
-            pageKey="catalog-goods"
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
@@ -1542,7 +1540,6 @@ function ServicesTab() {
             columns={SERVICES_COLUMNS}
             visibleKeys={servicesColVisible}
             onToggle={toggleServicesCol}
-            pageKey="catalog-services"
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>

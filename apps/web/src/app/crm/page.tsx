@@ -88,7 +88,7 @@ export default function CrmPage() {
     { key: 'balance', label: 'Баланс, ₴',  defaultVisible: true },
   ], []);
 
-  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('crm', CRM_COLUMNS);
+  const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('crm', CRM_COLUMNS);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -386,7 +386,15 @@ export default function CrmPage() {
         </Button>
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <ColumnsDropdown columns={CRM_COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} pageKey="crm" />
+          <ColumnsDropdown
+                  columns={orderedColumns}
+                  visibleKeys={colVisible}
+                  onToggle={toggleCol}
+                  onReorder={reorder}
+                  onRename={renameColumn}
+                  onReset={resetConfig}
+                  hasCustomization={JSON.stringify(order) !== JSON.stringify(CRM_COLUMNS.map(c => c.key)) || Object.keys(customLabels).length > 0}
+                />
         </div>
       </div>
 
@@ -419,25 +427,21 @@ export default function CrmPage() {
                     />
                   </TableHead>
                 )}
-                {colVisible.has('name')    && <TableHead>Контрагент</TableHead>}
-                {colVisible.has('type')    && <TableHead>Тип</TableHead>}
-                {colVisible.has('phone')   && <TableHead>Телефон</TableHead>}
-                {colVisible.has('edrpou')  && <TableHead>ЄДРПОУ</TableHead>}
-                {colVisible.has('balance') && <TableHead>Баланс, ₴</TableHead>}
+                {visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && data?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" size="sm" />
                   </TableCell>
                 </TableRow>
@@ -467,36 +471,30 @@ export default function CrmPage() {
                         />
                       </TableCell>
                     )}
-                    {colVisible.has('name') && (
-                      <TableCell>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-[13px] font-medium text-primary">{displayName(cp)}</p>
-                          {isDeleted && <Badge variant="secondary">видалено</Badge>}
-                        </div>
-                        {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
-                      </TableCell>
-                    )}
-                    {colVisible.has('type') && (
-                      <TableCell>
-                        <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
-                          {TYPE_LABELS[cp.type]}
-                        </Badge>
-                      </TableCell>
-                    )}
-                    {colVisible.has('phone') && (
-                      <TableCell className="text-muted-foreground text-[13px]">{cp.phone ?? '—'}</TableCell>
-                    )}
-                    {colVisible.has('edrpou') && (
-                      <TableCell className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>
-                    )}
-                    {colVisible.has('balance') && (
-                      <TableCell className={cn(
-                        'font-semibold tabular-nums text-[13px]',
-                        cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground',
-                      )}>
-                        {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                      </TableCell>
-                    )}
+                    {visibleColumns.map(col => {
+                      if (col.key === 'name') return (
+                        <TableCell key="name">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-[13px] font-medium text-primary">{displayName(cp)}</p>
+                            {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                          </div>
+                          {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
+                        </TableCell>
+                      );
+                      if (col.key === 'type') return (
+                        <TableCell key="type">
+                          <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>{TYPE_LABELS[cp.type]}</Badge>
+                        </TableCell>
+                      );
+                      if (col.key === 'phone') return <TableCell key="phone" className="text-muted-foreground text-[13px]">{cp.phone ?? '—'}</TableCell>;
+                      if (col.key === 'edrpou') return <TableCell key="edrpou" className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>;
+                      if (col.key === 'balance') return (
+                        <TableCell key="balance" className={cn('font-semibold tabular-nums text-[13px]', cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground')}>
+                          {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                        </TableCell>
+                      );
+                      return null;
+                    })}
                     <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         {!isDeleted && (

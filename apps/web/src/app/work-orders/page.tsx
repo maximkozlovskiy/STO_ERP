@@ -488,7 +488,6 @@ export default function WorkOrdersPage() {
           columns={WO_COLUMNS}
           visibleKeys={colVisible}
           onToggle={toggleCol}
-          pageKey="work-orders"
           className="ml-auto"
         />
       </div>
