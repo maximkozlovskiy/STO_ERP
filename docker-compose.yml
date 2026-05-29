@@ -51,8 +51,16 @@ services:
       NODE_ENV: production
       TZ: Europe/Kyiv
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      # node:20-alpine has no curl; use Node's built-in http (always present).
+      # Path is /api/health because main.ts calls setGlobalPrefix('api').
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://localhost:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
       interval: 30s
+      timeout: 5s
+      retries: 5
       start_period: 60s
 
   web:

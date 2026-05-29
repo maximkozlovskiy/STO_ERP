@@ -1,0 +1,60 @@
+# Both Dockerfiles do `COPY . .` in the builder stage. Without this file Docker
+# ships the entire repo as build context: host node_modules (often Linux-incompatible
+# native binaries like bcrypt built on Windows), full .git history, stale build
+# outputs, and — critically — .env secrets. Keep the context lean and safe.
+
+# Dependencies (reinstalled inside the image via pnpm install)
+**/node_modules
+.pnpm-store
+
+# Build outputs (regenerated inside the image)
+**/dist
+**/build
+**/.next
+**/out
+apps/api/public
+*.tsbuildinfo
+
+# VCS & tooling
+.git
+.gitignore
+.claude
+.vscode
+.idea
+
+# Environment / secrets — never copy into an image
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Tests, reports, coverage
+**/*.spec.ts
+**/*.test.ts
+**/*.test.tsx
+**/__tests__
+apps/web/e2e
+apps/web/test-results
+apps/web/playwright-report
+apps/web/.playwright
+coverage
+
+# Docs & installer artifacts (not needed at build time)
+docs
+installer/bundle
+installer/output
+BUG_REPORT.md
+MemoryManual.md
+*.md
+
+# Local data / logs
+.docker-data
+*.log
+.DS_Store
+Thumbs.db
+
+# Docker meta itself
+Dockerfile
+**/Dockerfile
+docker-compose*.yml
+.dockerignore

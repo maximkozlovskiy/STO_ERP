@@ -52,6 +52,17 @@ cat MemoryManual.md | head -50
 
 TS або unit червоні → зафіксуй як Bug #0, виправ ПЕРШИМ.
 
+**ОБОВ'ЯЗКОВО: перевірити `[x]`-маркери попередніх сесій проти реального стану файлів.**
+Попередня сесія могла позначити баги `[x] виправлено`, але закомітити лише docs (`MemoryManual.md`/`BUG_REPORT.md`) — фікси у коді відсутні. `[x]` без парного diff = хибно-зелений, гірший за відкритий баг (приховує блокер).
+```bash
+# Для кожного нещодавнього [x]-бага у BUG_REPORT.md що згадує конкретний файл:рядок —
+# перевірити чи фікс РЕАЛЬНО у файлі (не довіряти статусу).
+git log --oneline -5 --stat   # останній "fix(tester)" commit змінив код, чи лише *.md?
+# якщо останній tester-commit чіпає ТІЛЬКИ MemoryManual.md/BUG_REPORT.md → фікси не застосовані
+grep -n "Статус.*\[x\]" BUG_REPORT.md | tail -10   # звірити кожен з grep по реальному файлу
+```
+Якщо `[x]`-баг не виправлений у коді → переклас на відкритий, виправити РЕАЛЬНО, додати meta-bug про хибний маркер.
+
 **AUTO: матриця що перевіряти за типом зміни**
 
 | Тип зміни | Секції Кроку 1 |
@@ -201,6 +212,30 @@ for f in $(grep -rl "\$transaction(async" apps/api/src --include="*.ts" | grep -
 done
 ```
 - [ ] Кожен `$transaction(async callback)` має `{ timeout: N }` (5000–15000ms)
+
+#### Deploy / infra (docker-compose, Dockerfile, nginx, reverse-proxy)
+```bash
+# healthcheck бінарник vs базовий образ + шлях vs globalPrefix
+grep -n "healthcheck\|curl\|wget\|/health\|HEALTHCHECK" docker-compose*.yml apps/*/Dockerfile 2>/dev/null
+grep -n "setGlobalPrefix\|app.use('/api" apps/api/src/main.ts
+
+# root .dockerignore присутній (COPY . . без нього шле node_modules/.git/.env у контекст)
+test -f .dockerignore && echo ".dockerignore OK" || echo ".dockerignore MISSING"
+grep -c "COPY \. \.\|COPY \./" apps/*/Dockerfile 2>/dev/null
+
+# build-скрипт копіює у шлях що НІХТО не обслуговує (dead output)
+grep -rn "apps/api/public\|Copy-Item\|cp -r" scripts/ 2>/dev/null
+grep -n "useStaticAssets\|@fastify/static\|express.static" apps/api/src/main.ts
+
+# PowerShell $PSScriptRoot (порожній при dot-source) без fallback
+grep -rn "PSScriptRoot" scripts/ installer/ 2>/dev/null | grep -v "MyInvocation\|if (\$PSScriptRoot)"
+```
+- [ ] Кожен compose healthcheck: бінарник є у базовому образі (alpine → НЕ curl; node → `node -e http.get`); шлях узгоджений з `setGlobalPrefix`/proxy-prefix (`/api/health` не `/health`)
+- [ ] Перевірити blast-radius: сервіси з `depends_on: X: { condition: service_healthy }` не стартують якщо healthcheck X завжди FAIL → CRITICAL
+- [ ] Root `.dockerignore` присутній якщо будь-який Dockerfile робить `COPY . .` (інакше node_modules/.git/.env/out у контексті — повільно + ризик leak)
+- [ ] Build-скрипт не копіює у мертвий шлях (`apps/api/public` коли API не реєструє `@fastify/static`/`useStaticAssets`)
+- [ ] `$PSScriptRoot` має fallback `if ($PSScriptRoot) {...} else { Split-Path -Parent $MyInvocation.MyCommand.Path }` (порожній при dot-source)
+- [ ] nginx Next.js static export: `location /_next/static/` з `expires 1y; immutable`; `gzip_types` включає `text/javascript image/svg+xml application/xml`
 
 ---
 
@@ -615,6 +650,24 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-05-29 — `[x] виправлено` без парного code-diff (docs-only commit) → хибно-зелений приховує release-blocker — process, test-coverage
+
+**Сигнал:** BUG_REPORT.md має нещодавні баги з `**Статус:** [x] виправлено`, але `git log --stat` останнього `fix(tester)`/tester-commit показує що змінено ЛИШЕ `MemoryManual.md`/`BUG_REPORT.md` (docs-only) — жодного файлу з коду/конфігу. Перевірка реального файлу за вказаним `Файл: ...:рядок` показує що дефект ЖИВИЙ (healthcheck все ще `/health`, `.dockerignore` все ще відсутній тощо). Часто з'являється коли попередня сесія коректно ПРОаналізувала баги, написала фікс-опис, але через переривання/rate-limit/помилку не застосувала Edit/Write і одразу перейшла до фінального docs-commit, поставивши `[x]` «за планом».
+**Причина виникнення:** агент-тестувальник ставить `[x]` на основі НАМІРУ виправити (фікс описаний у звіті), а не на основі застосованого diff. Якщо між «записати звіт» і «застосувати фікс» стається переривання, або кроки переплутані місцями, статус і робоче дерево розходяться. Наступні сесії читають `[x]` + MemoryManual «5 bugs fixed» і вважають стек готовим — особливо небезпечно для CRITICAL deploy-блокерів, які ніхто більше не перевіряє бо «вже вирішено».
+**Підхід до виявлення:** на Кроці 0, ПЕРЕД новим аналізом — пройти останні N `[x]`-багів BUG_REPORT і для кожного звірити реальний файл проти опису. Не довіряти статусу. Швидкий тест: чи останній tester-commit змінив код, чи лише `*.md`? Docs-only tester-commit з купою `[x]` поряд = червоний прапор. `[x]` = «diff застосовано І верифіковано (tsc/test/`docker compose config`)», не «фікс описано».
+**Підхід до фіксу:** реально застосувати кожен втрачений фікс (аналіз попередньої сесії зазвичай коректний — переюзати його); додати окремий meta-bug HIGH про хибний маркер щоб слід лишився; правило самій собі — ставити `[x]` ТІЛЬКИ після Edit/Write + проходження верифікації, ніколи «наперед».
+**Severity:** HIGH (а якщо приховані баги CRITICAL — фактично CRITICAL): хибно-зелений гірший за відкритий баг бо знімає увагу з блокера.
+**Де шукати ще:** будь-яка сесія що завершилась docs-only commit-ом при наявності щойно-доданих `[x]`; будь-який HEAD що вказаний у завданні РАНІШЕ за останній «fix»-commit (ознака що «фікс» був лише записом); infra/deploy багами особливо (їх не перевіряють unit-тести → легко лишити невиправленими непомітно).
+
+### 2026-05-29 — Container healthcheck шлях/бінарник не узгоджений з образом і globalPrefix → стек не стартує — backend, deploy
+
+**Сигнал:** `docker-compose.yml` healthcheck `test: ["CMD", "curl", "-f", "http://localhost:PORT/health"]` для сервісу чий образ — `node:20-alpine` (немає curl) АБО чий застосунок робить `setGlobalPrefix('api')` (реальний шлях `/api/health`, не `/health`). Інші сервіси мають `depends_on: <api>: { condition: service_healthy }` → якщо healthcheck назавжди FAIL, залежні сервіси НІКОЛИ не стартують → уся production-топологія мертва.
+**Причина виникнення:** healthcheck пишуть «за звичкою» (`curl -f /health`) без перевірки (а) чи бінарник curl є у базовому образі (alpine-варіанти його НЕ містять), (б) чи шлях збігається з реальним роутом після `setGlobalPrefix`/router-mount. Healthcheck не покривається unit-тестами і не запускається локально без `docker compose up` → дефект невидимий до спроби деплою.
+**Підхід до виявлення:** для кожного healthcheck у compose — звірити (1) бінарник проти базового образу сервісу (alpine → НЕ curl/wget-gnu; node-образ → є `node`); (2) шлях проти `setGlobalPrefix`/router prefix застосунку (grep `setGlobalPrefix`, `app.use('/api'`, mount-prefix). Перевірити blast-radius: хто `depends_on ... service_healthy`?
+**Підхід до фіксу:** для node-образів — list-form healthcheck через вбудований `http`: `["CMD","node","-e","require('http').get('http://localhost:PORT/REAL_PATH',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]` (без зовнішніх бінарників, offline-safe). Завжди узгодити шлях з globalPrefix. Додати `timeout`+`retries`.
+**Severity:** CRITICAL — release-blocker; уся система не піднімається у production.
+**Де шукати ще:** будь-який compose healthcheck на alpine-образі; `Dockerfile` `HEALTHCHECK` директива; `Update.ps1`/installer health-probe; будь-який сервіс за reverse-proxy з префіксом.
+
 ### 2026-05-29 — Query-shape фікс (relation-ім'я / nested where) без service-spec → невидима регресія — backend, test-coverage
 
 **Сигнал:** fix-commit (часто з повідомленням «fix PrismaClientValidationError on search») змінює **relation-ім'я** у вкладеному `where` (`customerGarage`→`customerGarages`, singular→plural), форму `some`/`every`/`OR`, або `include`/`select` shape. Прод-код тепер коректний, але парного **service-spec немає** — є лише `*.contract.spec.ts`, який реєструє `{ provide: XService, useValue: serviceMock }`. Mock повністю заміняє сервіс → реальний `where` ніколи не доходить до Prisma → регресія назад до неправильного relation-імені пройде всі тести зеленими і впаде тільки на runtime з 500/`PrismaClientValidationError`.
@@ -771,6 +824,7 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 - ✅ Security headers (X-Content-Type-Options, X-Frame-Options, HSTS via @fastify/helmet@11)
 - ✅ SSRF guard: webhooks.processor (validatePublicUrl + redirect: 'manual')
 - ✅ ArrayMaxSize: inspection.dto, webhook payload
+- ✅ Deploy/infra (phase18): docker-compose healthcheck node-http /api/health (Bug #164/#165); root .dockerignore (Bug #166); build-prod.ps1 export→apps/web/out + $PSScriptRoot fallback (Bug #167); nginx _next/static immutable + gzip_types svg/js (Bug #168)
 
 **Frontend:**
 - ✅ cancelled flag: AuthProvider, всі mount-fetches (settings, crm, work-orders)
