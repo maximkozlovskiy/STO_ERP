@@ -8,6 +8,7 @@ import { Plus, ChevronLeft, ChevronRight, Trash2, X, UserPlus, FilePlus, Search,
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
+import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -910,11 +911,11 @@ export default function CalendarPage() {
         // Block resize into closed past period
         const todayKyiv = toDateString(new Date());
         if (dateRef.current < todayKyiv) {
-          if (mountedRef.current) setError('Не можна змінювати слоти у минулому дні');
+          toast.warning('Не можна змінювати слоти у минулому дні');
           return;
         }
         if (dateRef.current === todayKyiv && startH < minHourRef.current) {
-          if (mountedRef.current) setError('Не можна перемістити початок у минулий час');
+          toast.warning('Не можна перемістити початок у минулий час');
           return;
         }
         try {
@@ -924,7 +925,7 @@ export default function CalendarPage() {
           });
           load();
         } catch (err: unknown) {
-          if (mountedRef.current) setError(err instanceof Error ? err.message : 'Помилка оновлення слоту');
+          toast.error(err instanceof Error ? err.message : 'Помилка оновлення слоту');
           load();
         }
       }
@@ -996,11 +997,11 @@ export default function CalendarPage() {
     const newStartDate = toDateString(newStart);
     const newStartH = kyivHours(newStart.toISOString());
     if (newStartDate < todayKyiv) {
-      if (mountedRef.current) setError('Не можна перемістити запис у минулий день');
+      toast.warning('Не можна перемістити запис у минулий день');
       return;
     }
     if (newStartDate === todayKyiv && newStartH < minHour) {
-      if (mountedRef.current) setError('Не можна перемістити запис у минулий час');
+      toast.warning('Не можна перемістити запис у минулий час');
       return;
     }
 
@@ -1015,7 +1016,7 @@ export default function CalendarPage() {
       });
       load();
     } catch (e: unknown) {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка переміщення слоту');
+      toast.error(e instanceof Error ? e.message : 'Помилка переміщення слоту');
     }
   }, [slots, load, nowMs, minHour]);
 
@@ -1049,8 +1050,10 @@ export default function CalendarPage() {
     try {
       if (editingSlotId) {
         await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'PATCH', body: JSON.stringify(body) });
+        toast.success('Слот оновлено');
       } else {
         await apiFetch<CalendarSlot>('/calendar/slots', { method: 'POST', body: JSON.stringify(body) });
+        toast.success('Слот створено');
       }
       setShowAdd(false);
       setEditingSlotId(null);
@@ -1058,14 +1061,14 @@ export default function CalendarPage() {
       setForm({ liftId: '', employeeId: '', counterpartyId: '', counterpartyDisplay: '', workOrderId: '', workOrderDisplay: '', startAt: '', endAt: '', notes: '', normoHours: '' });
       setCpDisplay('');
       load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка збереження'); }
     finally { setSaving(false); }
   };
 
   const removeSlot = useCallback(async (id: string) => {
     if (!(await confirm({ title: 'Видалити слот?', variant: 'destructive' }))) return;
-    try { await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' }); load(); }
-    catch (e: unknown) { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка видалення'); }
+    try { await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' }); toast.success('Слот видалено'); load(); }
+    catch (e: unknown) { if (mountedRef.current) toast.error(e instanceof Error ? e.message : 'Помилка видалення'); }
   }, [load, confirm]);
 
   // ── Work-order search ─────────────────────────────────────────────────────
@@ -1232,9 +1235,10 @@ export default function CalendarPage() {
       });
       const display = `${created.number}${newWo.counterpartyDisplay ? ` · ${newWo.counterpartyDisplay}` : ''}`;
       setForm(f => ({ ...f, workOrderId: created.id, workOrderDisplay: display }));
+      toast.success('Наряд створено');
       setShowNewWo(false);
       setNewWo({ counterpartyId: '', counterpartyDisplay: '', vehicleId: '', branchId: '', description: '' });
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка створення наряду'); }
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка створення наряду'); }
     finally { setSavingWo(false); }
   };
 
@@ -1389,9 +1393,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {error && !showAdd && (
-        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
-      )}
+
 
       {/* Date / month navigation — hidden in stats view (has its own period selector) */}
       {calView !== 'stats' && <div className="flex items-center gap-4 mb-6">
