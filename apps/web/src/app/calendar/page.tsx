@@ -1371,8 +1371,8 @@ export default function CalendarPage() {
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
 
-      {/* Date / month navigation */}
-      <div className="flex items-center gap-4 mb-6">
+      {/* Date / month navigation — hidden in stats view (has its own period selector) */}
+      {calView !== 'stats' && <div className="flex items-center gap-4 mb-6">
         {calView === 'month' ? (
           // Month navigation
           <>
@@ -1422,7 +1422,7 @@ export default function CalendarPage() {
             </Button>
           </>
         )}
-      </div>
+      </div>}
 
       {/* Add / edit form */}
       {showAdd && (
