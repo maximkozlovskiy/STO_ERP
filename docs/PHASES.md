@@ -1027,11 +1027,16 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 > Залежності: Фази 13–19 (фінальна стабільна версія).  
 > Мета: `.exe` installer + auto-update + production hardening.
 
-- [ ] `[sto-installer]` Inno Setup скрипт: завантаження/розпакування Docker images, `docker compose up`, Windows service
-- [ ] `[sto-installer]` PowerShell `Update.ps1`: pull нових images + `migrate deploy` + restart
-- [ ] `[sto-installer]` PowerShell `Backup.ps1`: `pg_dump` + архів MinIO + ротація 30 днів
+- [x] `[sto-installer]` Inno Setup скрипт: завантаження/розпакування Docker images, `docker compose up`, Windows service
+    > `installer/inno/setup.iss`. LZMA2/ultra64, Tasks (desktopicon/autostart), PowerShell scripts chain: Check-Requirements → Install-Docker → Setup-Stack → First-Run → Register-Service (NSSM). CI: `.github/workflows/release.yml` — Docker images build/save/bundle, NSSM download, Inno Setup → .exe → GitHub Release на тег v*.
+- [x] `[sto-installer]` PowerShell `Update.ps1`: pull нових images + `migrate deploy` + restart
+    > `installer/scripts/Update.ps1`. Backup → pull api+web → stop api+web → prisma migrate deploy → up api+web → health check loop (60s timeout на http://localhost:3000/api/health).
+- [x] `[sto-installer]` PowerShell `Backup.ps1`: `pg_dump` + архів MinIO + ротація 30 днів
+    > `installer/scripts/Backup.ps1`. pg_dump + .env copy + mc mirror MinIO → Compress-Archive → ротація KeepCount=30 по LastWriteTime.
 - [x] `[sto-backend]` `GET /health` → детальний статус: DB, Redis, MinIO, BullMQ queues
-- [ ] `[sto-web]` Production Next.js build + статичний експорт в `apps/api/public/`
+    > `apps/api/src/health/`. Promise.allSettled([prisma.$queryRaw, smsQueue.getWaitingCount]) → { status, uptime, services: { database, queue } }.
+- [x] `[sto-web]` Production Next.js build + статичний експорт в `apps/api/public/`
+    > `apps/api/Dockerfile` + `apps/web/Dockerfile` (nginx:alpine, static export з /out). `Caddyfile` (reverse proxy api:3000 + web:80). `scripts/build-prod.ps1` — next build → copy out/ → apps/api/public/. `apps/web/nginx.conf` (SPA fallback, gzip, asset cache).
 - [ ] `[sto-mobile]` EAS Build: APK (Android) + TestFlight (iOS)
 - [ ] Фінальне тестування: smoke test після установки на чистій Windows VM
 
