@@ -127,7 +127,7 @@ function WorksTab() {
     { key: 'price', label: 'Ціна, ₴', defaultVisible: true },
   ], []);
 
-  const { visibleKeys: worksColVisible, toggle: toggleWorksCol } = useTableColumns('catalog-works', WORKS_COLUMNS);
+  const { visibleKeys: worksColVisible, visibleColumns: worksVisibleColumns, orderedColumns: worksOrderedColumns, order: worksOrder, customLabels: worksCustomLabels, toggle: toggleWorksCol, reorder: reorderWorks, renameColumn: renameWorksCol, resetConfig: resetWorksConfig } = useTableColumns('catalog-works', WORKS_COLUMNS);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -306,9 +306,13 @@ function WorksTab() {
         />
         <div className="flex items-center gap-2 ml-auto">
           <ColumnsDropdown
-            columns={WORKS_COLUMNS}
+            columns={worksOrderedColumns}
             visibleKeys={worksColVisible}
             onToggle={toggleWorksCol}
+            onReorder={reorderWorks}
+            onRename={renameWorksCol}
+            onReset={resetWorksConfig}
+            hasCustomization={JSON.stringify(worksOrder) !== JSON.stringify(WORKS_COLUMNS.map(c=>c.key)) || Object.keys(worksCustomLabels).length > 0}
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
@@ -344,24 +348,21 @@ function WorksTab() {
                     />
                   </TableHead>
                 )}
-                {worksColVisible.has('name') && <TableHead>Назва</TableHead>}
-                {worksColVisible.has('category') && <TableHead>Категорія</TableHead>}
-                {worksColVisible.has('normo') && <TableHead>Нормо-год</TableHead>}
-                {worksColVisible.has('price') && <TableHead>Ціна, ₴</TableHead>}
+                {worksVisibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={worksColVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
+                  <TableCell colSpan={worksVisibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && works?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={worksColVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                  <TableCell colSpan={worksVisibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={BookOpen} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -383,15 +384,19 @@ function WorksTab() {
                       />
                     </TableCell>
                   )}
-                  {worksColVisible.has('name') && (
-                    <TableCell>
-                      <p className="text-[13px] font-medium text-foreground">{w.name}</p>
-                      {w.description && <p className="text-[12px] text-muted-foreground mt-0.5">{w.description}</p>}
-                    </TableCell>
-                  )}
-                  {worksColVisible.has('category') && <TableCell className="text-muted-foreground">{w.categoryName}</TableCell>}
-                  {worksColVisible.has('normo') && <TableCell className="text-muted-foreground">{w.normoHours}</TableCell>}
-                  {worksColVisible.has('price') && <TableCell className="font-medium text-foreground">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>}
+                  {worksVisibleColumns.map(col => {
+                    if (col.key === 'name') return (
+                      <TableCell key="name">
+                        <p className="text-[13px] font-medium text-foreground">{w.name}</p>
+                        {w.isWarranty && <span className="text-[11px] text-success">Гарантійна</span>}
+                        {w.description && <p className="text-[12px] text-muted-foreground mt-0.5">{w.description}</p>}
+                      </TableCell>
+                    );
+                    if (col.key === 'category') return <TableCell key="category" className="text-[13px] text-muted-foreground">{w.categoryName}</TableCell>;
+                    if (col.key === 'normo') return <TableCell key="normo" className="text-[13px]">{w.normoHours}</TableCell>;
+                    if (col.key === 'price') return <TableCell key="price" className="font-medium text-[13px]">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>;
+                    return null;
+                  })}
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditWork(w); }}>
@@ -612,7 +617,7 @@ function GoodsTab() {
     { key: 'sale', label: 'Продаж, ₴', defaultVisible: true },
   ], []);
 
-  const { visibleKeys: goodsColVisible, toggle: toggleGoodsCol } = useTableColumns('catalog-goods', GOODS_COLUMNS);
+  const { visibleKeys: goodsColVisible, visibleColumns: goodsVisibleColumns, orderedColumns: goodsOrderedColumns, order: goodsOrder, customLabels: goodsCustomLabels, toggle: toggleGoodsCol, reorder: reorderGoods, renameColumn: renameGoodsCol, resetConfig: resetGoodsConfig } = useTableColumns('catalog-goods', GOODS_COLUMNS);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -853,9 +858,13 @@ function GoodsTab() {
         />
         <div className="flex items-center gap-2 ml-auto">
           <ColumnsDropdown
-            columns={GOODS_COLUMNS}
+            columns={goodsOrderedColumns}
             visibleKeys={goodsColVisible}
             onToggle={toggleGoodsCol}
+            onReorder={reorderGoods}
+            onRename={renameGoodsCol}
+            onReset={resetGoodsConfig}
+            hasCustomization={JSON.stringify(goodsOrder) !== JSON.stringify(GOODS_COLUMNS.map(c=>c.key)) || Object.keys(goodsCustomLabels).length > 0}
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
@@ -891,26 +900,22 @@ function GoodsTab() {
                     />
                   </TableHead>
                 )}
-                {goodsColVisible.has('name') && <TableHead>Назва / Артикул</TableHead>}
-                {goodsColVisible.has('category') && <TableHead>Категорія</TableHead>}
+                {goodsVisibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
                 <TableHead>Тип</TableHead>
-                {goodsColVisible.has('unit') && <TableHead>Од.</TableHead>}
-                {goodsColVisible.has('purchase') && <TableHead>Закупка, ₴</TableHead>}
-                {goodsColVisible.has('sale') && <TableHead>Продаж, ₴</TableHead>}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={goodsColVisible.size + (features.bulkActionsEnabled ? 3 : 2)} className="py-10 text-center">
+                  <TableCell colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && goods?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={goodsColVisible.size + (features.bulkActionsEnabled ? 3 : 2)} className="p-0">
+                  <TableCell colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)} className="p-0">
                     <EmptyState icon={Package} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -932,22 +937,24 @@ function GoodsTab() {
                       />
                     </TableCell>
                   )}
-                  {goodsColVisible.has('name') && (
-                    <TableCell>
-                      <p className="text-[13px] font-medium text-foreground">{g.name}</p>
-                      {g.sku && <p className="text-[12px] text-muted-foreground mt-0.5">Арт: {g.sku}</p>}
-                      {g.barcode && <p className="text-[12px] text-muted-foreground">Штрих: {g.barcode}</p>}
-                    </TableCell>
-                  )}
-                  {goodsColVisible.has('category') && <TableCell className="text-muted-foreground">{g.category ?? '—'}</TableCell>}
+                  {goodsVisibleColumns.map(col => {
+                    if (col.key === 'name') return (
+                      <TableCell key="name">
+                        <p className="font-medium">{g.name}</p>
+                        {g.sku && <p className="text-muted-foreground text-[12px]">{g.sku}</p>}
+                      </TableCell>
+                    );
+                    if (col.key === 'category') return <TableCell key="category" className="text-[13px] text-muted-foreground">{g.category ?? '—'}</TableCell>;
+                    if (col.key === 'unit') return <TableCell key="unit" className="text-[13px] text-muted-foreground">{g.unit}</TableCell>;
+                    if (col.key === 'purchase') return <TableCell key="purchase" className="text-[13px]">{g.purchasePrice != null ? `${g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : '—'}</TableCell>;
+                    if (col.key === 'sale') return <TableCell key="sale" className="font-medium text-[13px]">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</TableCell>;
+                    return null;
+                  })}
                   <TableCell>
                     {g.goodType
                       ? <Badge variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}>{GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}</Badge>
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
-                  {goodsColVisible.has('unit') && <TableCell className="text-muted-foreground">{g.unit}</TableCell>}
-                  {goodsColVisible.has('purchase') && <TableCell className="text-muted-foreground">{g.purchasePrice != null ? g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}</TableCell>}
-                  {goodsColVisible.has('sale') && <TableCell className="font-medium text-foreground">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>}
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditGood(g); }}>
@@ -1398,7 +1405,7 @@ function ServicesTab() {
     { key: 'price', label: 'Ціна, ₴', defaultVisible: true },
   ], []);
 
-  const { visibleKeys: servicesColVisible, toggle: toggleServicesCol } = useTableColumns('catalog-services', SERVICES_COLUMNS);
+  const { visibleKeys: servicesColVisible, visibleColumns: servicesVisibleColumns, orderedColumns: servicesOrderedColumns, order: servicesOrder, customLabels: servicesCustomLabels, toggle: toggleServicesCol, reorder: reorderServices, renameColumn: renameServicesCol, resetConfig: resetServicesConfig } = useTableColumns('catalog-services', SERVICES_COLUMNS);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -1537,9 +1544,13 @@ function ServicesTab() {
         </div>
         <div className="flex items-center gap-2 ml-auto">
           <ColumnsDropdown
-            columns={SERVICES_COLUMNS}
+            columns={servicesOrderedColumns}
             visibleKeys={servicesColVisible}
             onToggle={toggleServicesCol}
+            onReorder={reorderServices}
+            onRename={renameServicesCol}
+            onReset={resetServicesConfig}
+            hasCustomization={JSON.stringify(servicesOrder) !== JSON.stringify(SERVICES_COLUMNS.map(c=>c.key)) || Object.keys(servicesCustomLabels).length > 0}
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
@@ -1575,24 +1586,23 @@ function ServicesTab() {
                     />
                   </TableHead>
                 )}
-                {servicesColVisible.has('name') && <TableHead>Назва</TableHead>}
+                {servicesVisibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
                 <TableHead>Роботи</TableHead>
                 <TableHead>Товари</TableHead>
-                {servicesColVisible.has('price') && <TableHead>Ціна, ₴</TableHead>}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={servicesColVisible.size + (features.bulkActionsEnabled ? 4 : 3)} className="py-10 text-center">
+                  <TableCell colSpan={servicesVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && services?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={servicesColVisible.size + (features.bulkActionsEnabled ? 4 : 3)} className="p-0">
+                  <TableCell colSpan={servicesVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)} className="p-0">
                     <EmptyState icon={Layers} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -1614,19 +1624,22 @@ function ServicesTab() {
                       />
                     </TableCell>
                   )}
-                  {servicesColVisible.has('name') && (
-                    <TableCell>
-                      <p className="text-[13px] font-medium text-foreground">{s.name}</p>
-                      {s.description && <p className="text-[12px] text-muted-foreground mt-0.5">{s.description}</p>}
-                    </TableCell>
-                  )}
+                  {servicesVisibleColumns.map(col => {
+                    if (col.key === 'name') return (
+                      <TableCell key="name">
+                        <p className="text-[13px] font-medium">{s.name}</p>
+                        {s.description && <p className="text-[12px] text-muted-foreground">{s.description}</p>}
+                      </TableCell>
+                    );
+                    if (col.key === 'price') return (
+                      <TableCell key="price" className="font-medium text-foreground">
+                        {s.price != null ? `${s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : 'авто'}
+                      </TableCell>
+                    );
+                    return null;
+                  })}
                   <TableCell className="text-muted-foreground">{s.works.length > 0 ? s.works.map(w => w.workName).join(', ') : '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{s.goods.length > 0 ? s.goods.map(g => g.goodName).join(', ') : '—'}</TableCell>
-                  {servicesColVisible.has('price') && (
-                    <TableCell className="font-medium text-foreground">
-                      {s.price != null ? s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : 'авто'}
-                    </TableCell>
-                  )}
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       <Button

@@ -167,7 +167,7 @@ export default function WorkOrdersPage() {
     { key: 'dueDate',   label: 'Дедлайн' },
   ], []);
 
-  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('work-orders', WO_COLUMNS);
+  const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('work-orders', WO_COLUMNS);
 
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
   const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<WOFilters>('work-orders');
@@ -485,9 +485,13 @@ export default function WorkOrdersPage() {
         </Button>
 
         <ColumnsDropdown
-          columns={WO_COLUMNS}
+          columns={orderedColumns}
           visibleKeys={colVisible}
           onToggle={toggleCol}
+          onReorder={reorder}
+          onRename={renameColumn}
+          onReset={resetConfig}
+          hasCustomization={JSON.stringify(order) !== JSON.stringify(WO_COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
           className="ml-auto"
         />
       </div>
@@ -521,20 +525,18 @@ export default function WorkOrdersPage() {
                     />
                   </TableHead>
                 )}
-                {colVisible.has('number')    && <TableHead>Номер</TableHead>}
-                {colVisible.has('client')    && <TableHead>Клієнт / Авто</TableHead>}
-                {colVisible.has('status')    && <TableHead>Статус</TableHead>}
-                {colVisible.has('priority')  && <TableHead>Пріоритет</TableHead>}
-                {colVisible.has('amount')    && <TableHead>Сума, ₴</TableHead>}
-                {colVisible.has('plannedAt') && <TableHead>Заплановано</TableHead>}
-                {colVisible.has('dueDate')   && <TableHead>Дедлайн</TableHead>}
+                {visibleColumns.map(col => (
+                  col.key === 'amount'
+                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
+                    : <TableHead key={col.key}>{col.label}</TableHead>
+                ))}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
@@ -542,7 +544,7 @@ export default function WorkOrdersPage() {
 
               {!loading && data?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState
                       icon={ClipboardList}
                       title="Нарядів не знайдено"
@@ -573,110 +575,113 @@ export default function WorkOrdersPage() {
                       />
                     </TableCell>
                   )}
-                  {colVisible.has('number') && (
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
-                          {wo.hasActiveWarranty && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20">
-                              Гарантія
-                            </span>
+                  {visibleColumns.map(col => {
+                    if (col.key === 'number') return (
+                      <TableCell key="number">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
+                            {wo.hasActiveWarranty && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20">
+                                Гарантія
+                              </span>
+                            )}
+                          </div>
+                          {wo.repairCategory && (
+                            <p className="text-[11px] text-muted-foreground">
+                              {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
+                            </p>
                           )}
                         </div>
-                        {wo.repairCategory && (
-                          <p className="text-[11px] text-muted-foreground">
-                            {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
-                          </p>
+                      </TableCell>
+                    );
+                    if (col.key === 'client') return (
+                      <TableCell key="client">
+                        <p className="text-[13px] font-medium text-foreground">{wo.counterpartyName ?? '—'}</p>
+                        <p className="text-[12px] text-muted-foreground mt-0.5">{wo.vehicleSummary ?? '—'}</p>
+                      </TableCell>
+                    );
+                    if (col.key === 'status') return (
+                      <TableCell key="status">
+                        <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>
+                          {STATUS_LABELS[wo.status] ?? wo.status}
+                        </Badge>
+                      </TableCell>
+                    );
+                    if (col.key === 'priority') return (
+                      <TableCell key="priority" onClick={e => e.stopPropagation()}>
+                        {inlineEdit.isEditing(wo.id, 'priority') ? (
+                          <select
+                            defaultValue={inlineEdit.editing?.value ?? wo.priority}
+                            onChange={e => { void inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
+                            onBlur={() => inlineEdit.cancelEdit()}
+                            onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancelEdit(); }}
+                            disabled={inlineEdit.saving}
+                            autoFocus
+                            className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
+                          >
+                            {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
+                              <option key={v} value={v}>{l}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <InlineViewCell
+                            value={wo.priority}
+                            enabled={features.inlineEditEnabled}
+                            onClick={() => inlineEdit.startEdit(wo.id, 'priority', wo.priority)}
+                          >
+                            <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
+                              {PRIORITY_LABELS[wo.priority] ?? wo.priority}
+                            </Badge>
+                          </InlineViewCell>
                         )}
-                      </div>
-                    </TableCell>
-                  )}
-                  {colVisible.has('client') && (
-                    <TableCell>
-                      <p className="text-[13px] font-medium text-foreground">{wo.counterpartyName ?? '—'}</p>
-                      <p className="text-[12px] text-muted-foreground mt-0.5">{wo.vehicleSummary ?? '—'}</p>
-                    </TableCell>
-                  )}
-                  {colVisible.has('status') && (
-                    <TableCell>
-                      <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>
-                        {STATUS_LABELS[wo.status] ?? wo.status}
-                      </Badge>
-                    </TableCell>
-                  )}
-                  {colVisible.has('priority') && (
-                    <TableCell onClick={e => e.stopPropagation()}>
-                      {inlineEdit.isEditing(wo.id, 'priority') ? (
-                        <select
-                          defaultValue={inlineEdit.editing?.value ?? wo.priority}
-                          onChange={e => { void inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
-                          onBlur={() => inlineEdit.cancelEdit()}
-                          onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancelEdit(); }}
-                          disabled={inlineEdit.saving}
-                          autoFocus
-                          className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
-                        >
-                          {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
-                            <option key={v} value={v}>{l}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <InlineViewCell
-                          value={wo.priority}
-                          enabled={features.inlineEditEnabled}
-                          onClick={() => inlineEdit.startEdit(wo.id, 'priority', wo.priority)}
-                        >
-                          <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
-                            {PRIORITY_LABELS[wo.priority] ?? wo.priority}
-                          </Badge>
-                        </InlineViewCell>
-                      )}
-                    </TableCell>
-                  )}
-                  {colVisible.has('amount') && (
-                    <TableCell className="font-medium text-foreground tabular-nums">
-                      {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
-                    </TableCell>
-                  )}
-                  {colVisible.has('plannedAt') && (
-                    <TableCell className="text-muted-foreground text-[12px]">
-                      {wo.plannedAt
-                        ? new Date(wo.plannedAt).toLocaleString('uk-UA', {
-                            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                          })
-                        : '—'}
-                    </TableCell>
-                  )}
-                  {colVisible.has('dueDate') && (
-                    <TableCell className="text-[12px]" onClick={e => e.stopPropagation()}>
-                      {inlineEdit.isEditing(wo.id, 'dueDate') ? (
-                        <InlineEditCell
-                          value={wo.dueDate ? wo.dueDate.slice(0, 10) : ''}
-                          saving={inlineEdit.saving}
-                          onCommit={v => { void inlineEdit.commitEdit(v).catch(() => {}); }}
-                          onCancel={inlineEdit.cancelEdit}
-                          type="date"
-                          className="w-36"
-                        />
-                      ) : (
-                        <InlineViewCell
-                          value={wo.dueDate ?? ''}
-                          enabled={features.inlineEditEnabled}
-                          onClick={() => inlineEdit.startEdit(wo.id, 'dueDate', wo.dueDate ? wo.dueDate.slice(0, 10) : '')}
-                        >
-                          {wo.dueDate ? (
-                            <span className={cn(
-                              'font-medium',
-                              isOverdue(wo.dueDate, nowMs) ? 'text-warning' : 'text-muted-foreground',
-                            )}>
-                              {formatDate(wo.dueDate)}
-                            </span>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </InlineViewCell>
-                      )}
-                    </TableCell>
-                  )}
+                      </TableCell>
+                    );
+                    if (col.key === 'amount') return (
+                      <TableCell key="amount" className="font-medium text-foreground tabular-nums text-right">
+                        {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                    );
+                    if (col.key === 'plannedAt') return (
+                      <TableCell key="plannedAt" className="text-muted-foreground text-[12px]">
+                        {wo.plannedAt
+                          ? new Date(wo.plannedAt).toLocaleString('uk-UA', {
+                              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                            })
+                          : '—'}
+                      </TableCell>
+                    );
+                    if (col.key === 'dueDate') return (
+                      <TableCell key="dueDate" className="text-[12px]" onClick={e => e.stopPropagation()}>
+                        {inlineEdit.isEditing(wo.id, 'dueDate') ? (
+                          <InlineEditCell
+                            value={wo.dueDate ? wo.dueDate.slice(0, 10) : ''}
+                            saving={inlineEdit.saving}
+                            onCommit={v => { void inlineEdit.commitEdit(v).catch(() => {}); }}
+                            onCancel={inlineEdit.cancelEdit}
+                            type="date"
+                            className="w-36"
+                          />
+                        ) : (
+                          <InlineViewCell
+                            value={wo.dueDate ?? ''}
+                            enabled={features.inlineEditEnabled}
+                            onClick={() => inlineEdit.startEdit(wo.id, 'dueDate', wo.dueDate ? wo.dueDate.slice(0, 10) : '')}
+                          >
+                            {wo.dueDate ? (
+                              <span className={cn(
+                                'font-medium',
+                                isOverdue(wo.dueDate, nowMs) ? 'text-warning' : 'text-muted-foreground',
+                              )}>
+                                {formatDate(wo.dueDate)}
+                              </span>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </InlineViewCell>
+                        )}
+                      </TableCell>
+                    );
+                    return null;
+                  })}
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
