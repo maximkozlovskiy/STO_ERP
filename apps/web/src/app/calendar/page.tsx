@@ -138,21 +138,22 @@ function pxToHours(px: number, timelineW: number): number {
 interface TimeSelectProps {
   value: string;      // "HH:mm"
   onChange: (v: string) => void;
-  minHour?: number;   // hours before this are disabled (past hours on today)
-  minMinute?: number; // when h === minHour, minutes before this are disabled (current minute on today)
+  minHour?: number;
+  minMinute?: number;
+  disabled?: boolean;
 }
 
-function TimeSelect({ value, onChange, minHour = 0, minMinute = 0 }: TimeSelectProps) {
+function TimeSelect({ value, onChange, minHour = 0, minMinute = 0, disabled = false }: TimeSelectProps) {
   const { h, m } = value ? parseHHMM(value) : { h: HOURS[0], m: 0 };
-  const cls = 'w-1/2 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50';
+  const cls = 'w-1/2 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed';
   return (
     <div className="flex gap-1">
-      <select className={cls} value={h} onChange={e => onChange(buildHHMM(Number(e.target.value), m))}>
+      <select className={cls} value={h} disabled={disabled} onChange={e => onChange(buildHHMM(Number(e.target.value), m))}>
         {PICK_HOURS.map(hh => (
           <option key={hh} value={hh} disabled={hh < minHour}>{pad(hh)}</option>
         ))}
       </select>
-      <select className={cls} value={m} onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}>
+      <select className={cls} value={m} disabled={disabled} onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}>
         {PICK_MINUTES.map(mm => (
           <option key={mm} value={mm} disabled={h === minHour && mm < minMinute}>
             {pad(mm)}
@@ -1165,6 +1166,18 @@ export default function CalendarPage() {
     return (blockedHours / TOTAL_HOURS) * 100;
   }, [nowMs, date, minHour]);
 
+  // True when editing an existing slot that started in the closed/past period
+  const isEditingPast = useMemo(() => {
+    if (!editingSlotId || !nowMs) return false;
+    const slot = slots.find(s => s.id === editingSlotId);
+    if (!slot) return false;
+    const todayKyiv = toDateString(new Date(nowMs));
+    const slotDate = toDateString(new Date(slot.startAt));
+    if (slotDate < todayKyiv) return true;
+    if (slotDate === todayKyiv) return kyivHours(slot.startAt) < minHour;
+    return false;
+  }, [editingSlotId, slots, nowMs, minHour]);
+
   const formatDate = (ds: string) => {
     if (!ds) return '';
     return new Date(ds).toLocaleDateString('uk-UA', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: KYIV_TZ });
@@ -1219,14 +1232,21 @@ export default function CalendarPage() {
       {showAdd && (
         <div className="bg-surface border border-border rounded-xl p-5 mb-6 space-y-3">
           <h3 className="font-semibold text-foreground text-sm">
-            {editingSlotId ? 'Редагування слоту' : pendingSlot ? `Новий слот ${decimalHoursToHHMM(pendingSlot.startH)}–${decimalHoursToHHMM(pendingSlot.endH)} на ${date}` : `Новий слот на ${date}`}
+            {editingSlotId ? (isEditingPast ? 'Перегляд слоту' : 'Редагування слоту') : pendingSlot ? `Новий слот ${decimalHoursToHHMM(pendingSlot.startH)}–${decimalHoursToHHMM(pendingSlot.endH)} на ${date}` : `Новий слот на ${date}`}
           </h3>
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
+
+          {isEditingPast && (
+            <div className="flex items-center gap-2 text-[13px] text-warning-text bg-warning-subtle border border-warning/20 rounded-lg px-3 py-2">
+              <span>🔒</span>
+              <span>Слот у закритому періоді — редагування недоступне</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-4 gap-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Підйомник</label>
-              <Select value={form.liftId} onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}>
+              <Select value={form.liftId} disabled={isEditingPast} onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}>
                 <option value="">— будь-який —</option>
                 {lifts.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </Select>
@@ -1237,6 +1257,7 @@ export default function CalendarPage() {
                 value={form.startAt}
                 minHour={editingSlotId ? HOURS[0] : minHour}
                 minMinute={0}
+                disabled={isEditingPast}
                 onChange={start => {
                   setForm(f => {
                     let next = { ...f, startAt: start };
@@ -1262,7 +1283,7 @@ export default function CalendarPage() {
                 Норм-год <span className="font-normal text-muted-foreground/70">(авто кінець)</span>
               </label>
               <Input
-                type="number" step="0.5" min="0.5" value={form.normoHours}
+                type="number" step="0.5" min="0.5" value={form.normoHours} disabled={isEditingPast}
                 onChange={e => {
                   const nh = e.target.value;
                   setForm(f => {
@@ -1289,6 +1310,7 @@ export default function CalendarPage() {
                 value={form.endAt}
                 minHour={editingSlotId ? HOURS[0] : minHour}
                 minMinute={0}
+                disabled={isEditingPast}
                 onChange={endAt => {
                   setForm(f => ({ ...f, endAt }));
                   if (pendingSlotRef.current) {
@@ -1308,23 +1330,26 @@ export default function CalendarPage() {
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setCpPickerOpen(true)}
-                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9"
+                  disabled={isEditingPast}
+                  onClick={() => !isEditingPast && setCpPickerOpen(true)}
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <span className={form.counterpartyDisplay ? 'text-foreground truncate' : 'text-muted-foreground'}>
                     {form.counterpartyDisplay || 'Обрати клієнта…'}
                   </span>
                   <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 </button>
-                {form.counterpartyDisplay && (
+                {form.counterpartyDisplay && !isEditingPast && (
                   <button type="button" onClick={() => { setCpDisplay(''); setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' })); }}
                     className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors" aria-label="Очистити">
                     <X className="h-4 w-4" />
                   </button>
                 )}
-                <Button variant="outline" size="sm" onClick={openNewCpWizard} title="Новий клієнт" className="h-9 w-9 p-0 shrink-0">
-                  <UserPlus className="h-4 w-4" />
-                </Button>
+                {!isEditingPast && (
+                  <Button variant="outline" size="sm" onClick={openNewCpWizard} title="Новий клієнт" className="h-9 w-9 p-0 shrink-0">
+                    <UserPlus className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -1334,23 +1359,26 @@ export default function CalendarPage() {
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setWoPickerOpen(true)}
-                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9"
+                  disabled={isEditingPast}
+                  onClick={() => !isEditingPast && setWoPickerOpen(true)}
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <span className={form.workOrderDisplay ? 'text-foreground truncate' : 'text-muted-foreground'}>
                     {form.workOrderDisplay || 'Обрати наряд…'}
                   </span>
                   <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 </button>
-                {form.workOrderDisplay && (
+                {form.workOrderDisplay && !isEditingPast && (
                   <button type="button" onClick={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
                     className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors" aria-label="Очистити">
                     <X className="h-4 w-4" />
                   </button>
                 )}
-                <Button variant="outline" size="sm" onClick={openNewWo} title="Новий наряд" className="h-9 w-9 p-0 shrink-0">
-                  <FilePlus className="h-4 w-4" />
-                </Button>
+                {!isEditingPast && (
+                  <Button variant="outline" size="sm" onClick={openNewWo} title="Новий наряд" className="h-9 w-9 p-0 shrink-0">
+                    <FilePlus className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -1466,7 +1494,7 @@ export default function CalendarPage() {
           {/* Notes */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Нотатки</label>
-            <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+            <Input value={form.notes} disabled={isEditingPast} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
 
           {/* Picker modals */}
@@ -1578,11 +1606,13 @@ export default function CalendarPage() {
           />
 
           <div className="flex gap-2">
-            <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt || !form.counterpartyId}>
-              {editingSlotId ? 'Оновити' : 'Зберегти'}
-            </Button>
+            {!isEditingPast && (
+              <Button onClick={addSlot} loading={saving} disabled={!form.startAt || !form.endAt || !form.counterpartyId}>
+                {editingSlotId ? 'Оновити' : 'Зберегти'}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => { setShowAdd(false); setEditingSlotId(null); setError(''); setPendingSlot(null); }}>
-              Скасувати
+              {isEditingPast ? 'Закрити' : 'Скасувати'}
             </Button>
           </div>
         </div>
