@@ -200,12 +200,17 @@ grep -n "AVG_COST\|avgCost\|totalCost" apps/api/src/modules/inventory/batch.serv
 
 # Decimal cast у recalcTotals
 grep -n "Number(l\.\|Number(p\.\|totalLabor\|totalParts" apps/api/src/modules/work-orders/work-orders.service.ts | head -5
+
+# Bug #178: bulk-apply scope-consistency — applyRuleToGoods where має всі scope-поля правила
+# Для кожного scope-поля у PricingRule (goodId, goodCategory, goodType, brandId) — є в where?
+grep -n "brandId\|goodCategory\|goodType\|goodId" apps/api/src/modules/inventory/pricing.service.ts | grep "where\|rule\." | head -20
 ```
 - [ ] FEFO: `[{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }]`
 - [ ] `PERCENT` = `cost * (1 + pct/100)`; `FIXED_AMOUNT` = `cost + delta`; `FIXED_PRICE` fallback = `fixedPrice ?? costPrice`
 - [ ] Округлення = `Math.round(result / r) * r`; захист від від'ємної ціни = `Math.max(0, result)`
 - [ ] `recalcTotals`: `Number(l.amount)` cast (Decimal без cast → рядкова конкатенація)
 - [ ] Batch loop: `Math.min(remaining, batch.remainingQty)`; якщо `remaining > 0` після циклу → `BadRequestException`
+- [ ] **Bulk-apply scope-consistency (Bug #178):** `applyRuleToGoods` `where`-умова містить ВСІ scope-поля правила (`goodId`, `goodCategory`, `goodType`, `brandId`). Будь-яке нове scope-поле у `PricingRule` → одразу оновити `where` у bulk-apply. Відсутнє scope-поле = правило застосовується до зайвих товарів → неправильна salePrice у БД без помилки.
 
 #### $transaction timeout
 ```bash
@@ -674,6 +679,15 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-05-30 — Bulk-apply scope-inconsistency після додавання нового scope-поля — backend, business-logic
+
+**Сигнал:** метод `applyRuleToGoods` / `applyRuleToAll` / `bulkRecalc` будує `where`-умову для `findMany` що відображає scope правила (`goodId`/`goodCategory`/`goodType`), але не включає нове щойно-додане scope-поле (`brandId`). Результат: правило brand-scoped застосовується до ВСІХ товарів org замість лише тих що мають цей бренд.
+**Причина виникнення:** нове scope-поле додають до моделі та до `calculateSalePrice` (яка правильно фільтрує через OR+find), але `applyRuleToGoods` має свою `where`-умову окремо — її не оновлюють синхронно. Розробник думає «логіку ціноутворення виправив», але bulk-apply ще досі широкий. Ніякого TS-error нема (Prisma where-об'єкт валідний без нового поля). Тест `applyRuleToGoods` мокає `findMany` і не перевіряє форму `where`.
+**Підхід до виявлення:** після будь-якого commit що додає нове scope-поле у `PricingRule` (або аналогічну ruling-модель) — знайти в тому ж сервісі всі методи що будують `where`-умову для `findMany` по сутності якою правило управляє. Звірити `where`-поля зі scope-полями правила. Будь-яке scope-поле відсутнє у `where` = bug.
+**Підхід до фіксу:** `...(rule.newScopeField && !rule.higherPriorityField ? { newScopeField: rule.newScopeField } : {})` — аналогічно існуючим scope-полям. Додати service-spec що мокає `findMany` і асертить форму `where.brandId` для brand-scoped правила.
+**Severity:** HIGH — перерахунок ціни для невідповідних товарів → неправильна salePrice у БД; дані псуються без будь-якого error.
+**Де шукати ще:** будь-який bulk-apply метод у pricing, promotion, discount, tax-rate сервісах що мають multi-field scope; будь-який `applyToAll` / `recalculateAll` що самостійно будує `where` замість делегування у `calculateX`.
+
 ### 2026-05-30 — Нова browser-API залежність у shared-компоненті без jsdom-стабу → каскадне падіння всіх тестів які монтують компонент — frontend, test-coverage
 
 **Сигнал:** після введення `new ResizeObserver(...)` / `new IntersectionObserver(...)` / `new MutationObserver(...)` / `matchMedia(...)` у `useEffect` shared-компонента (Modal, Drawer, Tooltip, Combobox, будь-що з `components/ui/`) — раптово N component-тестів які раніше були зеленими падають з `ReferenceError: X is not defined`. Падіння — НЕ у тесті самого компонента, а у тестах ДОВКОЛА (`getByText` → "not found", бо React error-boundary unmount-ить дерево після useEffect-exception). Виявляється ТІЛЬКИ при повному прогоні web-suite на Кроці 0, бо TypeScript мовчить (типи `ResizeObserver`/`IntersectionObserver` живуть у `lib.dom.d.ts` — завжди present), а dev/prod сервер коректний (браузер має API нативно).
@@ -888,7 +902,8 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 **Tests:**
 - ✅ Contract specs: auth, work-orders, warehouses, counterparties, sync, settings, audit, pricing-rules, batches, currencies, bank-accounts, exchange-rates, cash-registers, calendar (GET/POST/PATCH/DELETE — resize/drag PATCH endpoint)
 - ✅ Service specs (query-shape): goods (FK validation), counterparties (?q= plural relation customerGarages→vehicles — Bug #163), work-orders (findAll calendarSlots include: plural relation + take:1 + deletedAt + orderBy asc; ?q= counterparty nested; employeeId some soft-delete — Bug #171)
+- ✅ Pricing service specs: COST_TIER tier matching (first/mid/last/none), brandId priority over goodType (Bug #179)
 - ✅ Calendar timeline px→time clamp: усі гілки (draw/pending-resize/saved-resize/drag) clamp у [WINDOW_START,WINDOW_END]; isEditingPast minHour-boundary (slot==minHour → НЕ past)
 - ✅ Property-based invariants: inventory, settlements, FSM (26 invariants)
-- ✅ Component tests: 139/139 passed (13 файлів)
+- ✅ Component tests: 148/148 passed (14 файлів)
 - ✅ E2E: 42/42 passed (smoke, console-errors serial mode, inventory, api-errors)
