@@ -40,7 +40,8 @@ export class EmployeesService {
         employeeBranches: { select: { branchId: true } },
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
-      take: 200,
+      take: query.limit ?? 200,
+      skip: query.page && query.limit ? (query.page - 1) * query.limit : 0,
     });
     return items.map(item => this.toDto(item));
   }
