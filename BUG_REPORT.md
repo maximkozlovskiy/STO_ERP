@@ -1,5 +1,25 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-05-30 — AUTO tester: AnimatedBody inline forms (Етап C) (aa7ca6e)
+
+Scope: `feat(ui): AnimatedBody on all inline form sections` — 5 файлів: `vehicles/[id]/PageClient.tsx` (showAddNode, showAddSchedule), `work-orders/[id]/PageClient.tsx` (showInspection), `crm/page.tsx` (showAddVehicle), `catalog/page.tsx` (showAddBarcode), `crm/[id]/PageClient.tsx` (showAddGarage).
+
+### Baseline
+- TypeScript web — ✅ 0 errors
+- API unit + contract — ✅ 362/362 passed (34 files)
+- Web components — ✅ 148/148 passed (14 files)
+
+### Аналіз §1.3 (frontend)
+
+- AnimatedBody: import коректний у всіх 5 файлах, className переходить на inner div, outer div має `overflow:hidden` — OK.
+- ResizeObserver вже застабований у `apps/web/src/__tests__/setup.ts` (виправлено у Bug #177) — жодних нових jsdom-падінь.
+- Swallowed catches у vehicles/work-orders — pre-existing, не у scope (опціональні secondary fetches, не критичні контроли).
+- 148/148 web tests зелені після змін.
+
+**0 нових багів у scope Етапу C.** Анімація розкриття реалізована коректно у всіх 6 секціях (5 файлів).
+
+---
+
 ## Session 2026-05-30 — AUTO tester on pricing brand+COST_TIER UI (21a356e)
 
 ### Baseline

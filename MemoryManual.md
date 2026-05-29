@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+aa7ca6e feat(ui): AnimatedBody on all inline form sections — smooth expand animation
 21587cf fix(tester): Bug #181 — brands fetch shape mismatch ({ items } not Brand[])
 21a356e feat(pricing): brand + COST_TIER grade pricing UI — brand select + tier table
 c5e8714 docs(skills): add bulk-apply scope-inconsistency pattern to sto-tester (Bug #178)
@@ -113,6 +114,11 @@ f040cde perf(db): 5 composite indexes
 **Де застосований:**
 - Modal body — автоматично (всі `<Modal>` у проекті)
 - `calendar/page.tsx` — форма нового слоту (замінено `maxHeight:'900px'` magic)
+- `vehicles/[id]/PageClient.tsx` — showAddNode, showAddSchedule (Етап C)
+- `work-orders/[id]/PageClient.tsx` — showInspection (Етап C)
+- `crm/page.tsx` — showAddVehicle у ModalTabs (Етап C)
+- `catalog/page.tsx` — showAddBarcode у ModalTabs (Етап C)
+- `crm/[id]/PageClient.tsx` — showAddGarage (Етап C)
 
 **Gotcha — jsdom (Bug #177, 8491975):** `ResizeObserver` відсутній у jsdom → 9/10 modal.test.tsx падали. Фікс: noop-стаб у `apps/web/src/__tests__/setup.ts`. Правило: будь-який новий browser API у `components/ui/` потребує jsdom-стабу.
 
@@ -172,7 +178,9 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 **Migration:** `20260530100000_add_pricing_brand_cost_tier` — ALTER TYPE + ALTER TABLE + CREATE TABLE + FK constraints.
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api + shared) — після 21587cf pricing UI tester fix
+TypeScript: ✅ 0 errors (web + api + shared) — після aa7ca6e AnimatedBody inline forms
+Latest tester: 2026-05-30 (AUTO, HEAD aa7ca6e) — AnimatedBody inline forms Етап C. **0 нових багів у scope.** 6 секцій у 5 файлах анімовані: showAddNode+showAddSchedule (vehicles/[id]), showInspection (work-orders/[id]), showAddVehicle (crm/page), showAddBarcode (catalog/page), showAddGarage (crm/[id]). ResizeObserver вже застабований (Bug #177). API 362/362 + Web 148/148 baseline ✅.
+Previous tester: 2026-05-30 (AUTO, HEAD 21a356e → 21587cf)
 Latest review: 2026-05-30 (auto, HEAD fdcf7ea → 23bf19c) — pricing brand+COST_TIER backend. 2 Important fixes: (1) `cleanValuesForType` не мав `case 'COST_TIER'` → при збереженні COST_TIER правила старі `percentValue`/`fixedAmount`/`fixedPrice` лишались у БД; (2) `$transaction(async tx)` для replace-semantics тірів без `{ timeout: 10_000 }`. 1 IMPORTANT структурне: `@@index([orgId, brandId])` відсутній у PricingRule (нове FK поле без індексу). Всі виправлено у 23bf19c. tsc 0 errors, 357/357 tests.
 Latest tester: 2026-05-30 (AUTO, HEAD 21a356e → 21587cf) — pricing brand+COST_TIER UI. **1 баг виправлено:** #181 MEDIUM frontend — `apiFetch<Brand[]>('/brands')` очікував голий масив, але endpoint повертає `{ items, total }` (стандарт STO ERP) → `brands.map()` TypeError → бренди не завантажувались у Select. Фікс: `apiFetch<{ items: Brand[]; total: number }>('/brands').then(r => setBrands(r.items))`. Після фіксу: tsc 0 errors, 362/362 + 148/148 ✅.
 Previous tester: 2026-05-30 (AUTO, HEAD fdcf7ea+23bf19c → e7b0cbf) — pricing brand+COST_TIER backend. **3 баги виправлено:** #178 HIGH business-logic — `applyRuleToGoods` не фільтрував товари по `brandId` коли правило brand-scoped → всі товари org перераховувались; #179 MEDIUM test-coverage — 0 тестів для COST_TIER типу і brandId пріоритету; #180 MEDIUM business-logic — `normalizeScope` не очищала `brandId` при заданому `goodId` (порушення ієрархії priority 1>2). Після фіксів: tsc 0 errors, 362/362 tests (+5 нових COST_TIER+brandId).
