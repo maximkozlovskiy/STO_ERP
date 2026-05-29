@@ -4,7 +4,7 @@ import {
   useEffect, useState, useCallback, useMemo, useRef, memo,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Trash2, X, UserPlus, FilePlus, Search } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Trash2, X, UserPlus, FilePlus, Search, CalendarDays, BarChart2, CalendarRange } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -418,6 +418,18 @@ export default function CalendarPage() {
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
+
+  // View mode: day timeline | month grid | stats
+  type CalView = 'day' | 'month' | 'stats';
+  const [calView, setCalView] = useState<CalView>('day');
+
+  // Month data: map YYYY-MM-DD → slot count per lift
+  type MonthSlots = Record<string, { total: number; byLift: Record<string, number> }>;
+  const [monthSlots, setMonthSlots] = useState<MonthSlots>({});
+  const [monthLoading, setMonthLoading] = useState(false);
+
+  // Stats period: day or month
+  const [statsPeriod, setStatsPeriod] = useState<'day' | 'month'>('day');
   const [form, setForm] = useState({
     liftId: '', employeeId: '',
     counterpartyId: '', counterpartyDisplay: '',
@@ -485,6 +497,44 @@ export default function CalendarPage() {
       .catch((e: unknown) => { if (mountedRef.current && !cached) setError(e instanceof Error ? e.message : 'Помилка завантаження'); });
   }, []);
 
+  // Load all slots for a calendar month (parallel per-day requests)
+  const loadMonth = useCallback(async (yearMonth: string) => {
+    // yearMonth: 'YYYY-MM'
+    const [y, m] = yearMonth.split('-').map(Number);
+    if (!y || !m) return;
+    const daysInMonth = new Date(y, m, 0).getDate();
+    setMonthLoading(true);
+    try {
+      const days = Array.from({ length: daysInMonth }, (_, i) => {
+        const d = i + 1;
+        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      });
+      const results = await Promise.all(
+        days.map(d =>
+          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`)
+            .then(slots => ({ d, slots }))
+            .catch(() => ({ d, slots: [] as CalendarSlot[] }))
+        )
+      );
+      const acc: MonthSlots = {};
+      for (const { d, slots } of results) {
+        const byLift: Record<string, number> = {};
+        for (const s of slots) { if (s.liftId) byLift[s.liftId] = (byLift[s.liftId] ?? 0) + 1; }
+        acc[d] = { total: slots.length, byLift };
+      }
+      if (mountedRef.current) setMonthSlots(acc);
+    } finally {
+      if (mountedRef.current) setMonthLoading(false);
+    }
+  }, []);
+
+  // Derive current year-month from date
+  const yearMonth = date ? date.slice(0, 7) : '';
+
+  useEffect(() => {
+    if (calView === 'month' && yearMonth) loadMonth(yearMonth);
+  }, [calView, yearMonth, loadMonth]);
+
   const load = useCallback(() => {
     if (!date) return;
     setLoading(true);
@@ -495,6 +545,11 @@ export default function CalendarPage() {
   }, [date]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Reload day slots when switching to stats view
+  useEffect(() => {
+    if (calView === 'stats' && date) load();
+  }, [calView, date, load]);
 
   const prevDay = () => { const d = new Date(date); d.setDate(d.getDate() - 1); setDate(toDateString(d)); };
   const nextDay = () => { const d = new Date(date); d.setDate(d.getDate() + 1); setDate(toDateString(d)); };
@@ -1189,7 +1244,21 @@ export default function CalendarPage() {
     <div className="page-container">
       <div className="page-header mb-6">
         <h1 className="page-title">Календар</h1>
-        <Button onClick={() => {
+        <div className="flex items-center gap-2">
+          {/* View switcher */}
+          <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+            {([['day', 'День', CalendarDays], ['month', 'Місяць', CalendarRange], ['stats', 'Статистика', BarChart2]] as const).map(([v, label, Icon]) => (
+              <button
+                key={v}
+                onClick={() => setCalView(v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors ${calView === v ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted-foreground hover:bg-secondary'}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+          <Button onClick={() => {
           setPendingSlot(null);
           setEditingSlotId(null);
           setError('');
@@ -1197,35 +1266,67 @@ export default function CalendarPage() {
           setForm({ liftId: '', employeeId: '', counterpartyId: '', counterpartyDisplay: '', workOrderId: '', workOrderDisplay: '', startAt: '', endAt: '', notes: '', normoHours: '' });
           setShowAdd(v => !v);
         }}>
-          <Plus className="h-4 w-4" />
-          Слот
-        </Button>
+            <Plus className="h-4 w-4" />
+            Слот
+          </Button>
+        </div>
       </div>
 
       {error && !showAdd && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
       )}
 
-      {/* Date navigation */}
+      {/* Date / month navigation */}
       <div className="flex items-center gap-4 mb-6">
-        <Button variant="outline" size="sm" onClick={prevDay}>
-          <ChevronLeft className="h-4 w-4" />
-          Попередній
-        </Button>
-        <div className="flex items-center gap-2">
-          <DatePickerInput value={date} onChange={setDate} placeholder="Дата" className="w-48" />
-          <span className={`text-sm capitalize ${nowMs && date < toDateString(new Date(nowMs)) ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}>
-            {formatDate(date)}
-            {nowMs && date < toDateString(new Date(nowMs)) && ' — минулий день'}
-          </span>
-        </div>
-        <Button variant="outline" size="sm" onClick={nextDay}>
-          Наступний
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setDate(toDateString(new Date()))}>
-          Сьогодні
-        </Button>
+        {calView === 'month' ? (
+          // Month navigation
+          <>
+            <Button variant="outline" size="sm" onClick={() => {
+              const [y, m] = yearMonth.split('-').map(Number);
+              const d = new Date(y, m - 2, 1);
+              setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+            }}>
+              <ChevronLeft className="h-4 w-4" />
+              Попередній
+            </Button>
+            <span className="text-sm font-medium text-foreground capitalize">
+              {date ? new Date(date + 'T12:00:00').toLocaleDateString('uk-UA', { month: 'long', year: 'numeric', timeZone: KYIV_TZ }) : ''}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => {
+              const [y, m] = yearMonth.split('-').map(Number);
+              const d = new Date(y, m, 1);
+              setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+            }}>
+              Наступний
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setDate(toDateString(new Date()))}>
+              Цей місяць
+            </Button>
+          </>
+        ) : (
+          // Day navigation
+          <>
+            <Button variant="outline" size="sm" onClick={prevDay}>
+              <ChevronLeft className="h-4 w-4" />
+              Попередній
+            </Button>
+            <div className="flex items-center gap-2">
+              <DatePickerInput value={date} onChange={setDate} placeholder="Дата" className="w-48" />
+              <span className={`text-sm capitalize ${nowMs && date < toDateString(new Date(nowMs)) ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}>
+                {formatDate(date)}
+                {nowMs && date < toDateString(new Date(nowMs)) && ' — минулий день'}
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={nextDay}>
+              Наступний
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setDate(toDateString(new Date()))}>
+              Сьогодні
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Add / edit form */}
@@ -1618,28 +1719,190 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* Hint */}
-      {!loading && lifts.length > 0 && !pendingSlot && !showAdd && (
+      {/* Hint — day view only */}
+      {calView === 'day' && !loading && lifts.length > 0 && !pendingSlot && !showAdd && (
         <p className="text-xs text-muted-foreground mb-2">
           Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї для зміни тривалості. Натисніть на проміжок щоб зберегти.
         </p>
       )}
-      {pendingSlot && !showAdd && (
+      {calView === 'day' && pendingSlot && !showAdd && (
         <p className="text-xs text-primary mb-2 font-medium">
           ↑ Налаштуйте проміжок і натисніть на нього щоб відкрити форму збереження.
         </p>
       )}
 
-      {/* Timeline grid */}
-      {loading && <div className="flex justify-center py-8"><Spinner size="md" /></div>}
+      {/* ── MONTH VIEW ─────────────────────────────────────────── */}
+      {calView === 'month' && (() => {
+        const [y, m] = yearMonth ? yearMonth.split('-').map(Number) : [0, 0];
+        if (!y || !m) return null;
+        const firstDay = new Date(y, m - 1, 1);
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const todayStr = nowMs ? toDateString(new Date(nowMs)) : '';
+        // Monday-first: 0=Mon … 6=Sun
+        const startOffset = (firstDay.getDay() + 6) % 7;
+        const cells: (string | null)[] = [
+          ...Array(startOffset).fill(null),
+          ...Array.from({ length: daysInMonth }, (_, i) => {
+            const d = i + 1;
+            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          }),
+        ];
+        // Pad to full weeks
+        while (cells.length % 7 !== 0) cells.push(null);
+        const DAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+        const maxSlots = Math.max(1, ...Object.values(monthSlots).map(v => v.total));
+        return (
+          <div className="bg-surface border border-border rounded-xl overflow-hidden">
+            {monthLoading && <div className="flex justify-center py-12"><Spinner size="md" /></div>}
+            {!monthLoading && (
+              <>
+                {/* Day-of-week header */}
+                <div className="grid grid-cols-7 border-b border-border">
+                  {DAY_LABELS.map(d => (
+                    <div key={d} className="py-2 text-center text-xs font-medium text-muted-foreground bg-secondary">
+                      {d}
+                    </div>
+                  ))}
+                </div>
+                {/* Weeks */}
+                {Array.from({ length: cells.length / 7 }, (_, wi) => (
+                  <div key={wi} className="grid grid-cols-7 border-b border-border last:border-b-0">
+                    {cells.slice(wi * 7, wi * 7 + 7).map((dayStr, di) => {
+                      if (!dayStr) return <div key={di} className="min-h-20 bg-secondary/40 border-r border-border last:border-r-0" />;
+                      const info = monthSlots[dayStr];
+                      const total = info?.total ?? 0;
+                      const isToday = dayStr === todayStr;
+                      const isPast = nowMs && dayStr < todayStr;
+                      const load = total / maxSlots;
+                      const bgAlpha = total === 0 ? 0 : Math.max(0.08, load * 0.5);
+                      const dayNum = parseInt(dayStr.slice(8), 10);
+                      return (
+                        <button
+                          key={dayStr}
+                          type="button"
+                          onClick={() => { setDate(dayStr); setCalView('day'); }}
+                          className={`min-h-20 border-r border-border last:border-r-0 p-2 text-left transition-colors hover:bg-primary/5 flex flex-col gap-1 ${isPast ? 'opacity-60' : ''}`}
+                          style={total > 0 ? { backgroundColor: `rgba(var(--color-primary-rgb, 59,130,246), ${bgAlpha})` } : undefined}
+                        >
+                          <span className={`text-sm font-semibold leading-none ${isToday ? 'flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs' : 'text-foreground'}`}>
+                            {dayNum}
+                          </span>
+                          {total > 0 && (
+                            <span className="text-[11px] text-primary font-medium leading-none">
+                              {total} {total === 1 ? 'запис' : total < 5 ? 'записи' : 'записів'}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
-      {!loading && lifts.length === 0 && (
+      {/* ── STATS VIEW ─────────────────────────────────────────── */}
+      {calView === 'stats' && (() => {
+        const todayStr = nowMs ? toDateString(new Date(nowMs)) : '';
+        const statsSlots = slots; // already loaded via load() effect when calView=stats
+        const WINDOW_H = WINDOW_END - WINDOW_START; // 11 hours
+
+        // Per-lift stats for current day
+        const liftStats = lifts.map(lift => {
+          const ls = statsSlots.filter(s => s.liftId === lift.id);
+          const totalMinutes = ls.reduce((acc, s) => {
+            const dur = (new Date(s.endAt).getTime() - new Date(s.startAt).getTime()) / 60000;
+            return acc + dur;
+          }, 0);
+          const loadPct = Math.round((totalMinutes / 60 / WINDOW_H) * 100);
+          return { lift, count: ls.length, totalMinutes, loadPct };
+        });
+        const totalSlots = statsSlots.length;
+        const totalMinAll = liftStats.reduce((a, x) => a + x.totalMinutes, 0);
+
+        return (
+          <div className="space-y-4">
+            {/* Period / date display */}
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">
+                {statsPeriod === 'day'
+                  ? `День: ${formatDate(date)}`
+                  : `Місяць: ${date ? new Date(date + 'T12:00:00').toLocaleDateString('uk-UA', { month: 'long', year: 'numeric', timeZone: KYIV_TZ }) : ''}`}
+              </span>
+              {loading && <Spinner size="sm" />}
+            </div>
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: 'Всього записів', value: String(totalSlots) },
+                { label: 'Загальний час', value: `${Math.floor(totalMinAll / 60)}г ${Math.round(totalMinAll % 60)}хв` },
+                { label: 'Середнє завант.', value: liftStats.length ? `${Math.round(liftStats.reduce((a, x) => a + x.loadPct, 0) / liftStats.length)}%` : '—' },
+              ].map(({ label, value }) => (
+                <div key={label} className="bg-surface border border-border rounded-xl p-4">
+                  <div className="text-xs text-muted-foreground mb-1">{label}</div>
+                  <div className="text-2xl font-bold text-foreground">{value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Per-lift table */}
+            <div className="bg-surface border border-border rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-secondary">
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Пост</th>
+                    <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">Записів</th>
+                    <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">Час</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Завантаженість</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liftStats.map(({ lift, count, totalMinutes, loadPct }) => (
+                    <tr key={lift.id} className="border-b border-border last:border-b-0 hover:bg-secondary/50">
+                      <td className="px-4 py-3 font-medium text-foreground">{lift.name}</td>
+                      <td className="px-4 py-3 text-center text-muted-foreground">{count}</td>
+                      <td className="px-4 py-3 text-center text-muted-foreground">
+                        {Math.floor(totalMinutes / 60)}г {Math.round(totalMinutes % 60)}хв
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, loadPct)}%`,
+                                backgroundColor: loadPct >= 80 ? 'var(--color-destructive)' : loadPct >= 50 ? 'var(--color-warning, #f59e0b)' : 'var(--color-primary)',
+                              }}
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground w-9 text-right">{loadPct}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {liftStats.length === 0 && (
+                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">Немає даних</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── DAY VIEW ───────────────────────────────────────────── */}
+      {calView === 'day' && loading && <div className="flex justify-center py-8"><Spinner size="md" /></div>}
+
+      {calView === 'day' && !loading && lifts.length === 0 && (
         <div className="bg-surface border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
           Немає підйомників. Додайте їх у розділі <a href="/infrastructure" className="text-primary hover:underline">Інфраструктура</a>.
         </div>
       )}
 
-      {!loading && lifts.length > 0 && (
+      {calView === 'day' && !loading && lifts.length > 0 && (
         <DndContext sensors={sensors} onDragEnd={e => { void handleDragEnd(e); }}>
           <div ref={timelineRef} className="bg-surface border border-border rounded-xl overflow-hidden">
             <div className="grid border-b border-border" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
@@ -1681,8 +1944,8 @@ export default function CalendarPage() {
         </DndContext>
       )}
 
-      {/* Unassigned slots */}
-      {unassignedSlots.length > 0 && (
+      {/* Unassigned slots — day view only */}
+      {calView === 'day' && unassignedSlots.length > 0 && (
         <div className="mt-6 bg-surface border border-border rounded-xl p-5">
           <h3 className="font-semibold text-foreground mb-3 text-sm">Без підйомника</h3>
           <div className="space-y-2">
