@@ -421,18 +421,6 @@ export default function WorkOrdersPage() {
         ))}
       </div>
 
-      {/* Saved filters */}
-      {features.savedFiltersEnabled && (
-        <SavedFiltersBar<WOFilters>
-          saved={savedFilters}
-          activeId={activeSavedFilterId}
-          onApply={applyFilter}
-          onSave={handleSaveFilter}
-          onRemove={removeFilter}
-          className="mb-3"
-        />
-      )}
-
       {/* "Мої наряди" quick filter chip */}
       {employee && (
         <div className="flex gap-2 mb-3">
@@ -449,6 +437,18 @@ export default function WorkOrdersPage() {
             Мої наряди
           </button>
         </div>
+      )}
+
+      {/* Saved filters */}
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<WOFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          className="mb-3"
+        />
       )}
 
       {/* Search + category filter + showDeleted controls */}

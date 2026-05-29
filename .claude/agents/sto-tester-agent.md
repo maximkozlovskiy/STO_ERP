@@ -27,17 +27,14 @@ This file is the single source of truth. Follow its algorithm exactly — it may
 ## Algorithm summary (full detail in SKILL.md)
 
 ```
-1. Крок 0: tsc baseline + unit tests
-2. Крок 1: Static analysis §1.1–§1.5 — check every checklist item
+1. Крок 0: tsc baseline + unit tests + scope (git diff)
+2. Крок 1: Static analysis §1.1–§1.7 — grep кожного розділу
 3. Крок 2: Write ALL found bugs to BUG_REPORT.md (append, don't overwrite)
 4. Крок 3: Fix CRITICAL→LOW, one by one, tsc after each
-5. Крок 4: Verify — tsc + unit tests green
-6. Крок 4.3: Contract tests (supertest)
-7. Крок 4.4: Property-based (fast-check)
-8. Крок 4.5: E2E Playwright — manage server if needed
-9. Крок 4.6: Component tests (Testing Library)
-10. Крок 5: Final report
-11. Update MemoryManual.md
+5. Крок 4: Verify — tsc + unit + contract tests green
+6. Крок 5: Розширені тести (property-based, E2E, component) — FULL режим
+7. Крок 6: git commit + Update MemoryManual.md
+8. Крок 7: Self-improvement — update SKILL.md with new patterns
 ```
 
 ## Dev server management (non-blocking)
@@ -77,6 +74,29 @@ docs(memory): update MemoryManual with test results
 - After each bug fix: run tsc to verify
 - Read actual source files before writing tests — never assume component/service API
 - If a test fails after writing it: fix the TEST (not the component) unless it's a real bug
+
+## Self-improvement (ОБОВ'ЯЗКОВО після кожного запуску)
+
+After fixing all bugs — ask yourself:
+> "Did I find any bug that wasn't covered by an existing checklist item in §1.1–§1.7?"
+
+If YES — update SKILL.md:
+1. Add the checklist item to the right section (§1.1 business logic, §1.2 TS, §1.3 frontend, etc.)
+2. Add a grep command if the bug is detectable statically
+3. Add a new entry to the **"Накопичені підходи"** section with this format:
+   ```
+   ### [Date] — [Bug type] — [Area: backend / frontend / db / contract]
+
+   **Сигнал:** static or runtime signal that reveals this bug
+   **Причина виникнення:** why developers write this (reasonable assumption that's wrong)
+   **Підхід до виявлення:** general detection principle (not a specific file)
+   **Підхід до фіксу:** general fix principle (not specific code)
+   **Severity:** CRITICAL / HIGH / MEDIUM / LOW
+   **Де шукати ще:** related modules where the same pattern may exist
+   ```
+4. Commit: `docs(skills): add <bug pattern> approach to sto-tester`
+
+**Goal:** every missed bug makes the next run smarter. Approaches outlive specific code.
 
 ## Output format
 ```

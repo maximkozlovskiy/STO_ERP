@@ -573,6 +573,7 @@ model Counterparty {
   reconciliationActs ReconciliationAct[]
   goodsAsSupplier   Good[]             @relation("GoodSupplier")
   warranties        Warranty[]
+  calendarSlots     CalendarSlot[]
 
   @@index([orgId, type, deletedAt])
   @@index([orgId, syncVersion])
@@ -1453,23 +1454,25 @@ model ReconciliationAct {
 // ─── SCHEDULING ──────────────────────────────────────────
 
 model CalendarSlot {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId       String    @db.Uuid
-  liftId      String?            @db.Uuid
-  employeeId  String?            @db.Uuid
-  workOrderId String?            @db.Uuid
-  startAt     DateTime
-  endAt       DateTime
-  status      CalendarSlotStatus @default(BOOKED)
-  type        CalendarSlotType   @default(WORK)
-  notes       String?
-  syncVersion BigInt             @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String    @db.Uuid
+  liftId          String?   @db.Uuid
+  employeeId      String?   @db.Uuid
+  workOrderId     String?   @db.Uuid
+  counterpartyId  String?   @db.Uuid
+  startAt         DateTime
+  endAt           DateTime
+  status          CalendarSlotStatus @default(BOOKED)
+  type            CalendarSlotType   @default(WORK)
+  notes           String?
+  syncVersion     BigInt    @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
-  lift      Lift?      @relation(fields: [liftId], references: [id])
-  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+  lift         Lift?         @relation(fields: [liftId], references: [id])
+  workOrder    WorkOrder?    @relation(fields: [workOrderId], references: [id])
+  counterparty Counterparty? @relation(fields: [counterpartyId], references: [id])
 
   @@index([orgId, deletedAt])
   @@index([orgId, liftId, startAt, endAt])

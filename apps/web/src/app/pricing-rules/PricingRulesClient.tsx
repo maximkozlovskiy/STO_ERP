@@ -516,7 +516,7 @@ export default function PricingRulesClient() {
                       size="sm"
                       onClick={() => deleteRule(rule.id)}
                       disabled={deletingId === rule.id}
-                      className="text-destructive/60 hover:text-destructive"
+                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                       title="Видалити"
                       aria-label="Видалити правило"
                     >

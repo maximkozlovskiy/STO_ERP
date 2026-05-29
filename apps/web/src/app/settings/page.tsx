@@ -941,7 +941,7 @@ export default function SettingsPage() {
                   aria-label="Видалити логотип"
                   onClick={removeLogo}
                   disabled={removingLogo || uploadingLogo}
-                  className="mt-1 text-muted-foreground hover:text-destructive-text transition-colors disabled:opacity-40"
+                  className="mt-1 text-destructive/70 hover:text-destructive transition-colors disabled:opacity-40"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -980,7 +980,7 @@ export default function SettingsPage() {
                   aria-label="Очистити рахунок"
                   type="button"
                   onClick={() => setOrgInfoForm({ ...orgInfoForm, bankAccountId: '', bankAccountDisplay: '' })}
-                  className="text-muted-foreground hover:text-destructive-text transition-colors"
+                  className="text-destructive/70 hover:text-destructive transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -1010,7 +1010,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex gap-2">
                   <button aria-label="Редагувати валюту" onClick={() => openCurrencyModal(c)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
-                  <button aria-label="Видалити валюту" onClick={() => deleteCurrency(c.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <button aria-label="Видалити валюту" onClick={() => deleteCurrency(c.id)} className="text-destructive/70 hover:text-destructive transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
@@ -1036,7 +1036,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex gap-2">
                   <button aria-label="Редагувати курс" onClick={() => openRateModal(r)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
-                  <button aria-label="Видалити курс" onClick={() => deleteRate(r.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <button aria-label="Видалити курс" onClick={() => deleteRate(r.id)} className="text-destructive/70 hover:text-destructive transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
@@ -1064,7 +1064,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex gap-2">
                   <button aria-label="Редагувати рахунок" onClick={() => openBaModal(b)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
-                  <button aria-label="Видалити рахунок" onClick={() => deleteBa(b.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <button aria-label="Видалити рахунок" onClick={() => deleteBa(b.id)} className="text-destructive/70 hover:text-destructive transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
@@ -1090,7 +1090,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex gap-2">
                   <button aria-label="Редагувати касу" onClick={() => openCrModal(c)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil className="w-4 h-4" /></button>
-                  <button aria-label="Видалити касу" onClick={() => deleteCr(c.id)} className="text-muted-foreground hover:text-destructive-text transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <button aria-label="Видалити касу" onClick={() => deleteCr(c.id)} className="text-destructive/70 hover:text-destructive transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
@@ -1374,7 +1374,7 @@ export default function SettingsPage() {
                   <button onClick={() => openEditPayment(pm)} className="p-1 text-muted-foreground hover:text-foreground">
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => deletePaymentMethod(pm.id)} className="p-1 text-destructive/60 hover:text-destructive">
+                  <button onClick={() => deletePaymentMethod(pm.id)} className="p-1 text-destructive/70 hover:text-destructive hover:bg-destructive/10 rounded">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -1512,7 +1512,7 @@ export default function SettingsPage() {
                       <button onClick={() => openEditTaxRate(tr)} className="p-1 text-muted-foreground hover:text-foreground">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <button onClick={() => deleteTaxRate(tr.id)} className="p-1 text-destructive/60 hover:text-destructive">
+                      <button onClick={() => deleteTaxRate(tr.id)} className="p-1 text-destructive/70 hover:text-destructive hover:bg-destructive/10 rounded">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>

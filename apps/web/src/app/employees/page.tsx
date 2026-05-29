@@ -622,7 +622,7 @@ export default function EmployeesPage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                           title="Помітити на видалення"
                           disabled={isMarking || !!markingId || isDeleted}
                           onClick={() => markForDeletion(emp.id)}

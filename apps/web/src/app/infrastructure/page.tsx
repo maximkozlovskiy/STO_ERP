@@ -250,7 +250,7 @@ export default function InfrastructurePage() {
                         <Button variant="ghost" size="sm" onClick={() => openEditModal('branch', b.id, { name: b.name, address: b.address })} className="text-muted-foreground hover:text-foreground">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => remove('/branches', b.id)} className="text-destructive/60 hover:text-destructive">
+                        <Button variant="ghost" size="sm" onClick={() => remove('/branches', b.id)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -287,7 +287,7 @@ export default function InfrastructurePage() {
                         <Button variant="ghost" size="sm" onClick={() => openEditModal('zone', z.id, { branchId: z.branchId, name: z.name, type: z.type })} className="text-muted-foreground hover:text-foreground">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => remove('/zones', z.id)} className="text-destructive/60 hover:text-destructive">
+                        <Button variant="ghost" size="sm" onClick={() => remove('/zones', z.id)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -384,7 +384,7 @@ export default function InfrastructurePage() {
                         <Button variant="ghost" size="sm" onClick={() => openEditModal('warehouse', w.id, { branchId: w.branchId, name: w.name, type: w.type, isMain: w.isMain ? 'true' : '' })} className="text-muted-foreground hover:text-foreground">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => remove('/warehouses', w.id)} className="text-destructive/60 hover:text-destructive">
+                        <Button variant="ghost" size="sm" onClick={() => remove('/warehouses', w.id)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -564,7 +564,7 @@ function LiftRow({ lift, zoneName, onEdit, onRemove, nowMs }: { lift: Lift; zone
               variant="ghost"
               size="sm"
               onClick={e => { e.stopPropagation(); onRemove(); }}
-              className="text-destructive/60 hover:text-destructive"
+              className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>

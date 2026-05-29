@@ -398,7 +398,7 @@ function WorksTab() {
                         onClick={e => { e.stopPropagation(); remove(w.id); }}
                         disabled={deletingId === w.id}
                         loading={deletingId === w.id}
-                        className="text-destructive/60 hover:text-destructive"
+                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -960,7 +960,7 @@ function GoodsTab() {
                         variant="ghost"
                         size="sm"
                         onClick={e => { e.stopPropagation(); setConfirmDeleteId(g.id); }}
-                        className="text-destructive/60 hover:text-destructive"
+                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                         title="Помітити на видалення"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -1102,7 +1102,7 @@ function GoodsTab() {
                             )}
                             <button
                               onClick={() => deleteBarcode(selectedGood.id, bc.id)}
-                              className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive transition-colors"
+                              className="h-5 w-5 flex items-center justify-center rounded text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors"
                               title="Видалити"
                             >
                               <Trash2 className="h-3 w-3" />
@@ -1640,7 +1640,7 @@ function ServicesTab() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                         title="Видалити"
                         onClick={() => remove(s.id)}
                         disabled={deletingId === s.id}
@@ -1862,7 +1862,7 @@ function UnitsTab() {
                       variant="ghost"
                       size="sm"
                       onClick={() => remove(u.id)}
-                      className="text-destructive/60 hover:text-destructive"
+                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -2022,7 +2022,7 @@ function BrandsTab() {
                       size="sm"
                       loading={deletingId === b.id}
                       onClick={() => remove(b.id)}
-                      className="text-destructive/60 hover:text-destructive"
+                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>

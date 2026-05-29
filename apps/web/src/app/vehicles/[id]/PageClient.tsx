@@ -362,7 +362,7 @@ export default function VehicleCardPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => removeNode(n.id)}
-                    className="text-destructive/60 hover:text-destructive"
+                    className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -470,7 +470,7 @@ export default function VehicleCardPage() {
                   size="sm"
                   loading={deletingScheduleId === sc.id}
                   onClick={() => removeSchedule(sc.id)}
-                  className="text-destructive/60 hover:text-destructive shrink-0"
+                  className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 shrink-0"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
