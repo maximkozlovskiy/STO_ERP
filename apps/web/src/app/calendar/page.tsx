@@ -1444,6 +1444,15 @@ export default function CalendarPage() {
             searchPlaceholder="Ім'я, телефон, компанія..."
             emptyText="Клієнтів не знайдено"
             onSelect={item => {
+              if (form.workOrderId && form.counterpartyId && item.id !== form.counterpartyId) {
+                const ok = confirm(
+                  `Зміна клієнта очистить прив'язаний наряд «${form.workOrderDisplay}».\nПродовжити?`
+                );
+                if (!ok) return;
+                setCpDisplay(item.primary);
+                setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary, workOrderId: '', workOrderDisplay: '' }));
+                return;
+              }
               setCpDisplay(item.primary);
               setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary }));
             }}
