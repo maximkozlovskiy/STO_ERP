@@ -1288,11 +1288,11 @@ export default function CalendarPage() {
             {/* Клієнт */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Клієнт <span className="text-destructive-text">*</span></label>
-              <div className="flex gap-1">
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setCpPickerOpen(true)}
-                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0"
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9"
                 >
                   <span className={form.counterpartyDisplay ? 'text-foreground truncate' : 'text-muted-foreground'}>
                     {form.counterpartyDisplay || 'Обрати клієнта…'}
@@ -1301,11 +1301,11 @@ export default function CalendarPage() {
                 </button>
                 {form.counterpartyDisplay && (
                   <button type="button" onClick={() => { setCpDisplay(''); setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' })); }}
-                    className="px-2 text-muted-foreground hover:text-foreground" aria-label="Очистити">
+                    className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors" aria-label="Очистити">
                     <X className="h-4 w-4" />
                   </button>
                 )}
-                <Button variant="outline" size="sm" onClick={openNewCpWizard} title="Новий клієнт">
+                <Button variant="outline" size="sm" onClick={openNewCpWizard} title="Новий клієнт" className="h-9 w-9 p-0 shrink-0">
                   <UserPlus className="h-4 w-4" />
                 </Button>
               </div>
@@ -1314,11 +1314,11 @@ export default function CalendarPage() {
             {/* Наряд */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Наряд</label>
-              <div className="flex gap-1">
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setWoPickerOpen(true)}
-                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0"
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9"
                 >
                   <span className={form.workOrderDisplay ? 'text-foreground truncate' : 'text-muted-foreground'}>
                     {form.workOrderDisplay || 'Обрати наряд…'}
@@ -1327,11 +1327,11 @@ export default function CalendarPage() {
                 </button>
                 {form.workOrderDisplay && (
                   <button type="button" onClick={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
-                    className="px-2 text-muted-foreground hover:text-foreground" aria-label="Очистити">
+                    className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors" aria-label="Очистити">
                     <X className="h-4 w-4" />
                   </button>
                 )}
-                <Button variant="outline" size="sm" onClick={openNewWo} title="Новий наряд">
+                <Button variant="outline" size="sm" onClick={openNewWo} title="Новий наряд" className="h-9 w-9 p-0 shrink-0">
                   <FilePlus className="h-4 w-4" />
                 </Button>
               </div>
