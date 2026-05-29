@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+561e08b fix(sync): align /goods/:id/batches response shape in catalog page
+1eec17f docs(memory): record sto-tester session 8c3751e (Bugs #173-#176)
 d5a4f18 docs(skills): add component-vs-test drift + web-suite baseline rules to sto-tester
 8c3751e fix(tester): Bugs #173-#176 — test coverage ModalTabs/employees assignments/counterparties showDeleted + saved-filters empty-state
 e69bf1e fix(review): guard CRM edit-modal vehicle fetch against stale-CP race
@@ -88,8 +90,36 @@ f040cde perf(db): 5 composite indexes
 
 Дата: 2026-05-29
 
+## ⏳ Незавершена задача (продовжити в наступній сесії)
+
+**Задача:** Modal + ModalTabs паттерн для 1-до-багатьох зв'язків
+**План:** `C:/Users/m.kozlovskiy/.claude/plans/squishy-launching-knuth.md`
+
+**Порядок виконання:**
+
+**Етап 1** — Додати §14.1–14.3 у `.claude/skills/sto-dev/SKILL.md`:
+  - §14.1 Паттерн Edit Modal + ModalTabs для 1-N (структура, state, race guard, PATCH)
+  - §14.2 Loading/Error у tab.content (Spinner, ErrorBanner, умовні вкладки)
+  - §14.3 Гарячі дані у modal (скидання при відкритті, count на фльоті)
+
+**Етап 2** — `apps/web/src/app/crm/page.tsx` — edit modal 3 вкладки:
+  - **Основне** — поточні поля форми
+  - **Авто {N}** — вже частково є (modalVehicles, race guard e69bf1e), додати vehiclesError
+  - **Історія нарядів** — `GET /work-orders?counterpartyId=&limit=50` + таблиця (read-only)
+  - State: + `modalWorkOrders`, `modalWorkOrdersLoading`, `woReqRef`, `woError`, `vehiclesError`
+
+**Етап 3** — `apps/web/src/app/catalog/page.tsx` — GoodsTab edit modal 3 вкладки:
+  - **Основне** — поточні поля (без змін)
+  - **Штрихкоди {N}** — `GET /goods/:id/barcodes`, форма додавання, таблиця з видаленням
+  - **Партії** — `GET /goods/:id/batches` ✅ endpoint EXISTS (`goods.controller.ts` + `batch.service.getBatchesForGood`)
+  - State: + `modalBarcodes`, `modalBarcodesLoading`, `barcodeReqRef`, `barcodeError`, `modalBatches`, `modalBatchesLoading`, `batchReqRef`, `batchError`, `showAddBarcode`, `addBarcodeForm`
+
+**Після реалізації:** sync-agent → review-agent → tester-agent
+
+---
+
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api) — після CRM stale-fetch race-guard (e69bf1e)
+TypeScript: ✅ 0 errors (web + api) — після sync fix batches shape (561e08b)
 Latest review: 2026-05-29 (auto, HEAD e69bf1e) — modal-tabs.tsx + crm/employees ModalTabs + counterparties showDeleted/deletedAt. 1 Important fix (CRM edit-modal vehicle fetch race + stale modalGarageId). Backend DTO/service вже коректні після cc44f73 (showDeleted @Transform, orgId зберігається при showDeleted=true, toDto включає deletedAt).
 
 ## UI: ModalTabs — нижній таб-секція модалок для 1→N зв'язків (6b886ae)
@@ -421,6 +451,18 @@ Latest optimize: 2026-05-28 (AUTO, HEAD 5afbadd) — регресійний пр
 Latest review:   2026-05-28 (perf optimization series 016f041..945e264 — HEAD 19a4c22) — AUTO review всіх perf-коммітів. 0 Critical / 0 Important. 1 Suggestion фіксовано (19a4c22): employees create()/update() використовували `include: { employeeZones: true, ... }` (SELECT *) замість `select: { zoneId: true }` як у findAll/findOne — звужено для консистентності. Перевірено: (1) CacheService — try/catch на всіх Redis-викликах (get/set/del/delPattern), offline-first never breaks request; (2) інвалідація кешу на КОЖНОМУ мутаторі (create/update/remove) у всіх 7 ref-сервісах (branches/warehouses/zones+lifts/work-categories/brands/units/payment-methods); (3) delPattern `ref:X:${orgId}*` коректно чистить і unfiltered, і branch/zone-scoped ключі (warehouses+branchId, zones+branchId, lifts+zoneId); single-key сервіси (branches/brands/units/payment-methods/work-categories) використовують del(); (4) RedisModule @Global + у app.module → всі 7 сервісів інжектять CacheService (tsc 0 errors підтверджує DI); жоден інший модуль не пише в ці моделі повз cached-сервіси; (5) purchase-orders toDto: `lines: (po.lines ?? []).map(...)` + `linesCount: po._count?.lines ?? po.lines?.length ?? 0` — no crash коли lines=undefined у findAll (lines omitted, _count.lines використано); frontend loadDetail() перевіряє `po.linesCount === 0` перед on-demand findOne; (6) useDebounce — cleanup clearTimeout; усі 8 сторінок (work-orders/purchase-orders/invoices/inventory/employees/crm/catalog×3) використовують debouncedX у deps+URL, ніде raw X; (7) ReportsCharts типи (RevenueRow/SettlementRow/LoadRow/ProfitabilityData) точно збігаються з reports/page.tsx; dynamic import named exports коректний; (8) SW skipWaiting тепер ВСЕРЕДИНІ waitUntil ПІСЛЯ cache.addAll — новий SW не перехоплює control mid-precache; (9) ref-cache.ts SSR-safe (typeof window guard + try/catch); усі getCached/setCache у effects, 0 lazy useState(getCached(...)) initializers. Suggestion-only (не фіксовано): Redis client lazyConnect+enableOfflineQueue може повільно фейлити offline (немає connectTimeout/maxRetriesPerRequest) — змінювати connection semantics ризиковано; delPattern використовує redis.keys() O(N) — прийнятно для малих ref-наборів.
 Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — повний AUTO review feature surface: 4 нові модулі (currencies/exchange-rates/bank-accounts/cash-registers), settings org-info endpoint (logoUrl/legalAddress/actualAddress/bankAccountId + explicit orgSelect виключає BigInt syncVersion), web settings 4 нові вкладки + Organisation tab з logo upload (apiMultipartFetch), TopShell public-route guard перед employee-check. 0 Critical / 0 Important — код чистий (пройшов попередній review ebbf746 + tester bb26737). TS 0 errors api+web. Перевірено: tenant isolation (orgId у всіх query), cross-tenant FK guard на create+update, soft-delete, toDto Decimal→Number + syncVersion виключено, sync-ready schema (всі моделі мають id/orgId/syncVersion/timestamps + @@index orgId,deletedAt/syncVersion), PULL_TABLES обґрунтовано виключені (admin reference data, не для mobile mechanic), Select placeholder уникає async-init race (§8.2.1), SearchCombobox paired displayName reset (§8.2). Suggestion-only (не фіксовано): saveUiFeatures unguarded toast (pre-existing phase19); BankAccount/CashRegister currencyId/branchId без dedicated @@index (малі settings-таблиці take:200); combobox q-param ігнориться бекендом (client-side display, OK для малих таблиць).
 ```
+
+### Gotcha — /sto-sync 2026-05-29 (commit 561e08b)
+
+**Direction 3 — /goods/:id/batches повертає { items, total }, але фронт очікував bare array:**
+`GoodsController.getBatches()` повертає `{ items: StockBatchDto[], total: number }` (пагінований shape),
+але `catalog/page.tsx` викликав `apiFetch<StockBatchDto[]>('/goods/${g.id}/batches')` і
+присвоював відповідь напряму до `modalBatches: StockBatchDto[]` — масив був об'єктом.
+Результат: таб «Партії» в edit modal каталогу падав із `TypeError: data.filter is not a function`.
+Фікс: `apiFetch<{ items: StockBatchDto[]; total: number }>` → `.then(data => setModalBatches(data.items))`.
+**Правило:** sub-resource endpoints на goods controller (`/batches`, `/price-history`) пагіновані
+і повертають `{ items, total }` — на відміну від `/barcodes` який повертає plain array.
+Перевіряти контролер перед типізацією apiFetch для кожного sub-resource.
 
 ### Gotcha — /sto-sync 2026-05-28 (commit fbe66ad)
 
