@@ -347,12 +347,26 @@ done
 # Застарілий mock-call-count: сервіс спрощено до 1 findFirst, але spec мокає двічі
 grep -rn "mockResolvedValueOnce(null)" apps/api/src --include="*.spec.ts" -A1 | grep "mockResolvedValueOnce" | head -10
 # → для кожного звірити кількість findFirst у відповідному service.create()/update()
+
+# Query-shape фікс (relation-ім'я / nested where) БЕЗ service-spec (Bug #163)
+# fix-commit що змінює relation-ім'я або форму вкладеного where → contract spec мокає сервіс → НЕ ловить
+git log --oneline -15 | grep -iE "PrismaClientValidationError|relation|nested|where|search|q=" | head
+# для кожного fix що чіпав where/include/relation: чи є service-spec що асертить реальний where через Prisma-мок?
+for svc in $(git log --oneline -15 --name-only | grep "service.ts$" | sort -u); do
+  spec="${svc%.ts}.spec.ts"
+  if grep -lq "PrismaService, useValue: {}" "${svc%/*}"/*.contract.spec.ts 2>/dev/null && [ ! -f "$spec" ]; then
+    echo "QUERY-SHAPE GAP: $svc змінено, contract мокає сервіс, service-spec відсутній";
+  fi
+done
 ```
 
 **Стала spec після рефактору сервісу (Bug #153-#155):**
 - [ ] Кожен `private readonly X: Type` у конструкторі сервісу → є `{ provide: Type, useValue: mock }` у `Test.createTestingModule({ providers })` спеки (інакше NestJS DI fail на всіх тестах файлу)
 - [ ] Кеш-мок: `CacheService.get` → `mockResolvedValue(null)` (cache miss → fallthrough на БД); `set/del/delPattern` → no-op
 - [ ] Якщо `service.create()/update()` спрощено з N `findFirst` до 1 (single round-trip resurrection/dup-check) → spec мокає `findFirst` РІВНО стільки разів скільки реальних викликів (не успадкований `mockResolvedValueOnce(null).mockResolvedValueOnce(...)`)
+
+**Query-shape фікс потребує service-spec, не contract-spec (Bug #163):**
+- [ ] Fix що змінив **relation-ім'я** (`customerGarage`→`customerGarages`), **форму вкладеного `where`** (`some`/`every`/nested `OR`), `include`/`select` shape, або `mode: 'insensitive'` → це **runtime `PrismaClientValidationError`**, який mock-based contract spec (`{ provide: Service, useValue: serviceMock }`) НЕ виконує. Потрібен **service-spec** який будує реальний `where` через `{ provide: PrismaService, useValue: { model: { findMany: vi.fn() }, $transaction: ops => Promise.all(ops) } }` і асертить форму `findMany.mock.calls[0][0].where` (правильні relation-імена + nested `deletedAt: null` + tenant `orgId`). Перевіряти ОБИДВА напрями: правильне ім'я присутнє AND singular/старе ім'я відсутнє
 
 **Обов'язкові contract тести для нових endpoints:**
 - `GET /X` → 200 + `{ items, total }`; 401 без токена
@@ -601,6 +615,15 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-05-29 — Query-shape фікс (relation-ім'я / nested where) без service-spec → невидима регресія — backend, test-coverage
+
+**Сигнал:** fix-commit (часто з повідомленням «fix PrismaClientValidationError on search») змінює **relation-ім'я** у вкладеному `where` (`customerGarage`→`customerGarages`, singular→plural), форму `some`/`every`/`OR`, або `include`/`select` shape. Прод-код тепер коректний, але парного **service-spec немає** — є лише `*.contract.spec.ts`, який реєструє `{ provide: XService, useValue: serviceMock }`. Mock повністю заміняє сервіс → реальний `where` ніколи не доходить до Prisma → регресія назад до неправильного relation-імені пройде всі тести зеленими і впаде тільки на runtime з 500/`PrismaClientValidationError`.
+**Причина виникнення:** `PrismaClientValidationError` — це валідація форми запиту на рівні Prisma-клієнта (не TypeScript: `mode`, nested relation names, `some/every` приймаються типами як loose object). Розробник фіксить relation-ім'я, бачить що сторінка працює, і не додає тест бо «contract spec вже є». Але contract spec для list-endpoint майже завжди мокає сервіс (щоб не піднімати реальну БД) → він тестує HTTP-shape (`{items,total}`, 401, 400), а НЕ query-shape. Жоден рівень не виконує справжній `where`.
+**Підхід до виявлення:** для кожного fix що чіпав `where`/`include`/`select`/relation-ім'я/`mode` — перевірити чи існує `*.service.spec.ts` (не лише `*.contract.spec.ts`). Якщо contract spec мокає сервіс (`useValue: serviceMock` / `PrismaService, useValue: {}`) і service-spec відсутній → query-shape gap. Не зараховувати contract spec як покриття query-логіки.
+**Підхід до фіксу:** service-spec з реальним сервісом + Prisma-мок-шпигуном: `{ provide: PrismaService, useValue: { model: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) }, $transaction: (ops) => Promise.all(ops) } }`. Викликати `service.findAll(orgId, { q })` і асертити `findMany.mock.calls[0][0].where` — правильні relation-імена присутні, старі/singular відсутні (`expect(branch).not.toHaveProperty('customerGarage')`), nested `deletedAt: null`, tenant `orgId`. Якщо `findAll` обгорнутий у `$transaction([...])` — мок `$transaction` має виконати масив через `Promise.all`.
+**Severity:** MEDIUM — прод-код коректний на момент фіксу, але нуль захисту від регресії; relation-ім'я легко зламати назад при наступному рефакторі → 500 для користувача без жодного сигналу в CI.
+**Де шукати ще:** будь-який list-сервіс з пошуком `?q=` через nested relation (`work-orders` counterparty-search, `goods` через preferredSupplier, vehicles через garage); будь-який `where.OR` з `some`/`every`; модулі що мають лише `*.contract.spec.ts` без `*.service.spec.ts` (counterparties було таким до Bug #163).
+
 ### 2026-05-28 — Optional FK у spread без org-scoped перевірки → cross-tenant leak — backend, tenant-isolation
 
 **Сигнал:** сервіс пише `data: { ...dto, orgId }` (або `data: dto` в update) де DTO має optional FK-поля (`brandId?`, `unitId?`, `preferredSupplierId?`, `vehicleId?`...), і сервіс НЕ робить `findFirst({ id: dto.XId, orgId })` перед write. Часто з'являється коли FK-поле щойно додали до DTO (раніше whitelist його зрізав, P2003 не виникав, тому ніхто не думав про валідацію). База даних має лише звичайний FK constraint без `orgId` у ньому.
@@ -759,6 +782,8 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 
 **Tests:**
 - ✅ Contract specs: auth, work-orders, warehouses, counterparties, sync, settings, audit, pricing-rules, batches, currencies, bank-accounts, exchange-rates, cash-registers, calendar (GET/POST/PATCH/DELETE — resize/drag PATCH endpoint)
+- ✅ Service specs (query-shape): goods (FK validation), counterparties (?q= plural relation customerGarages→vehicles — Bug #163)
+- ✅ Calendar timeline px→time clamp: усі гілки (draw/pending-resize/saved-resize/drag) clamp у [WINDOW_START,WINDOW_END]; isEditingPast minHour-boundary (slot==minHour → НЕ past)
 - ✅ Property-based invariants: inventory, settlements, FSM (26 invariants)
 - ✅ Component tests: 139/139 passed (13 файлів)
 - ✅ E2E: 42/42 passed (smoke, console-errors serial mode, inventory, api-errors)
