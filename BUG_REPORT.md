@@ -5487,3 +5487,29 @@ Baseline: API tsc 0 errors, Web tsc 0 errors, Shared tsc 0 errors, 334/334 API u
 **Очікувана поведінка:** при `saved=[]` і `!saveOpen` → inline-hint «Немає збережених фільтрів».
 **Фактична поведінка:** порожній стан без жодного тексту → тест падав.
 **Статус:** [x] виправлено — у `saved-filters-bar.tsx` empty-стан тепер рендерить `<span className="text-[12px] text-muted-foreground">Немає збережених фільтрів</span>` коли `saved.length === 0 && !saveOpen` (точно як очікує тест: hide коли save-dialog відкритий). Виправлено компонент (не тест), бо тест документує легітимний UX-намір. Web suite 148/148 passed.
+
+---
+
+## Session 2026-05-29 — AUTO tester: CRM Наряди + Catalog Штрихкоди/Партії ModalTabs (HEAD fa83635)
+
+Scope: 4 комміти — `613aef7` (feat: ModalTabs edit modal для 1-N — CRM Наряди вкладка + Catalog Штрихкоди/Партії вкладки з race-guarded parallel fetch), `561e08b` (fix sync: розпакування `.items` для `/goods/:id/batches`), `fc0d1ad` + `fa83635` (docs-only).
+Baseline: API tsc 0 errors, Web tsc 0 errors, Shared tsc 0 errors, 357/357 API unit/contract passed, 148/148 web component passed.
+
+**Перевірки коду із завдання (підтверджено OK, не баги):**
+
+- **#1 CRM `openEdit` race-guard:** дві окремі `reqRef` (`modalVehiclesReqRef`, `modalWoReqRef`); кожна fetch-гілка робить `++ref.current` на старті, далі кожен `.then`/`.catch`/`.finally` гейтить `ref.current === reqId` перед мутацією state. `setModalGarageId(defaultGarage.id)` всередині першого `.then` для vehicles захищений тим самим check'ом (early return при mismatch — `setModalGarageId` ніколи не викликається з stale-даними). Перевірено всі 4 race-сценарії: (а) edit→edit на іншу CP, (б) edit→close→edit на ту саму CP, (в) close mid-fetch, (г) close→reopen на ту саму CP. Race-guard коректний у всіх. OK.
+- **#2 Catalog `openEditGood` race-guard:** дві окремі `reqRef` (`modalBarcodeReqRef`, `modalBatchReqRef`); ідентичний патерн до CRM. OK.
+- **#3 StockBatchDto fetch після 561e08b:** `apiFetch<{ items: StockBatchDto[]; total: number }>(/goods/:id/batches)` → `setModalBatches(data.items)`. Бекенд `getBatches` повертає `{ items, total }` (controller line 120). Шейп узгоджений. OK.
+- **#4 Бекенд `/work-orders?counterpartyId=` фільтр:** DTO має `counterpartyId?` з UUID-regex, сервіс `findAll` додає `where.counterpartyId = query.counterpartyId` коли передано (line 51). Tenant-isolation через `orgId` у where ЗАВЖДИ. Повертає `PaginatedWorkOrdersDto = { items, total, page, limit }`. OK.
+- **#5 Бекенд `/goods/:id/batches`:** controller робить org-scoped `findFirst` для good (line 109-112), потім `Promise.all([getBatchesForGood, count])` з warehouseId-фільтром. Повертає `{ items, total }`. OK.
+- **#6 Race-guard для `setModalGarageId`:** перший `.then(garages)` робить `if (ref.current !== vReqId) return [] as Vehicle[][]` ПЕРЕД `setModalGarageId(defaultGarage.id)` — stale token → early return → setter ніколи не викликається з застарілою garage. OK.
+- **#7 BadgeVariant у `WO_STATUS_BADGE`:** `info`, `warning`, `success`, `secondary`, `default`, `destructive` — усі присутні у Badge variants. Усі 10 WorkOrderStatus-enum значень мають парний label та badge. OK.
+- **#8 toLocaleString/toLocaleDateString — кореа форматування:** `wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })`, `new Date(wo.createdAt).toLocaleDateString('uk-UA')`, `b.salePrice.toLocaleString(...)` — `uk-UA` locale, deterministic (не залежить від render-time). OK.
+- **#9 ModalTabs count badge включає 0:** `count !== undefined` ловить `0` (рендерить `<span>0</span>`). У CRM `count: modalWorkOrders.length` і `modalVehicles.length`, у Catalog `count: modalBarcodes.length` і `modalBatches.filter(b => b.remainingQty > 0).length` — усі 4 видимі під час loading-стану як `0`. Нюанс UX (показує 0 поки fetch не завершився), але не баг — після fetch миттєво оновлюється.
+- **#10 Inline add/delete барcode у catalog ModalTabs:** `if (!editGood) return` guard на старті; try/catch навколо apiFetch; toast.success/error для feedback; локальна state-mutation `setModalBarcodes(prev => [...prev, created])` (оптимістичне додавання після відповіді сервера). OK.
+- **#11 Cleanup orphaned стан після рефактору:** `loadBarcodes`/`addBarcode`/`deleteBarcode` (detail-panel), `barcodes`/`newBarcode`/`addingBarcode`/`barcodesLoading` стани (detail-panel) лишаються бо detail-panel табів ще використовує їх (lines 1138-1196). Не мертвий код — обидва UI (detail-panel + ModalTabs) активні. OK.
+- **#12 `displayName` у CRM:** використовує `??` з `join(' ')` — pre-existing bug (commit 22fc649), НЕ у scope.
+- **#13 `.catch(() => setBarcodes([]))` (catalog line 774):** pre-existing silent-error у detail-panel (phase16), НЕ у scope.
+- **#14 Barcode trim-inconsistency у `createBarcode` (service line 122 vs 127):** pre-existing (phase16), НЕ у scope.
+
+**Підсумок:** реалізація race-guarded fetch у обох сценаріях (CRM і Catalog) — взірцева. Окремі reqRef для кожного асинхронного джерела даних (запобігає крос-впливу між vehicles↔WO і barcodes↔batches), token check на КОЖНОМУ `.then`/`.catch`/`.finally`, error-state не silent (видимий inline у ModalTabs контенті), не покладається на cancellation flag (бо openEdit — event handler, не useEffect). 0 нових багів у scope. Базові suite зелені (357 API + 148 web).
