@@ -430,6 +430,9 @@ export default function CalendarPage() {
   const [formMounted, setFormMounted] = useState(false);
   const [formVisible, setFormVisible] = useState(false);
   const formHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Refs for ResizeObserver-driven height animation (replaces maxHeight magic number)
+  const formCollapseRef = useRef<HTMLDivElement>(null);
+  const formInnerRef = useRef<HTMLDivElement>(null);
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
 
   // View mode: day timeline | month grid | stats
@@ -519,10 +522,39 @@ export default function CalendarPage() {
       // double-rAF ensures the browser has painted the initial hidden state before animating in
       requestAnimationFrame(() => requestAnimationFrame(() => setFormVisible(true)));
     } else {
+      // Animate collapse: drive height to 0 before unmounting
+      const outer = formCollapseRef.current;
+      if (outer) {
+        outer.style.height = `${outer.scrollHeight}px`; // pin current height
+        requestAnimationFrame(() => {
+          if (formCollapseRef.current) {
+            formCollapseRef.current.style.transition = 'height 320ms cubic-bezier(0.4,0,0.6,1), margin-bottom 320ms cubic-bezier(0.4,0,0.6,1)';
+            formCollapseRef.current.style.height = '0px';
+            formCollapseRef.current.style.marginBottom = '0px';
+          }
+        });
+      }
       setFormVisible(false);
       formHideTimerRef.current = setTimeout(() => setFormMounted(false), 420);
     }
   }, [showAdd]);
+
+  // ResizeObserver: keep form collapse wrapper height in sync with actual content
+  useEffect(() => {
+    if (!formMounted) return;
+    const outer = formCollapseRef.current;
+    const inner = formInnerRef.current;
+    if (!outer || !inner) return;
+    const ro = new ResizeObserver(() => {
+      if (!formCollapseRef.current || !formInnerRef.current) return;
+      // Only update if form is visible (not collapsing)
+      if (formVisible) {
+        formCollapseRef.current.style.height = `${formInnerRef.current.scrollHeight}px`;
+      }
+    });
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, [formMounted, formVisible]);
 
   useEffect(() => { setDate(toDateString(new Date())); }, []);
 
@@ -1448,19 +1480,21 @@ export default function CalendarPage() {
         )}
       </div>}
 
-      {/* Add / edit form */}
+      {/* Add / edit form — height driven by ResizeObserver (no magic max-height number) */}
       {formMounted && (
         <div
+          ref={formCollapseRef}
           className="overflow-hidden"
           style={{
-            maxHeight: formVisible ? '900px' : '0px',
+            height: formVisible ? undefined : '0px',
             marginBottom: formVisible ? '1.5rem' : '0px',
             transition: formVisible
-              ? 'max-height 480ms cubic-bezier(0.22,1,0.36,1), margin-bottom 480ms cubic-bezier(0.22,1,0.36,1)'
-              : 'max-height 320ms cubic-bezier(0.4,0,0.6,1), margin-bottom 320ms cubic-bezier(0.4,0,0.6,1)',
+              ? 'height 480ms cubic-bezier(0.22,1,0.36,1), margin-bottom 480ms cubic-bezier(0.22,1,0.36,1)'
+              : undefined,
           }}
         >
         <div
+          ref={formInnerRef}
           className="bg-surface border border-border rounded-xl p-5 space-y-3"
           style={{
             opacity: formVisible ? 1 : 0,

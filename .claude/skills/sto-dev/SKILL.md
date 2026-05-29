@@ -1025,6 +1025,7 @@ UX/UI Features
   [ ] useSavedFilters: Array.isArray guard при читанні localStorage
   [ ] NotificationCenter delete button: group/group-hover + focus:opacity-100
   [ ] onKeyDown на role="button" обгортках: guard e.target !== e.currentTarget
+  [ ] Collapsible секція поза Modal: AnimatedBody з @/components/ui/modal, не maxHeight magic number
 
 Tailwind
   [ ] `[var(--x)]` → `(--x)` або canonical token
@@ -1356,6 +1357,85 @@ const openEdit = (cp) => {
 // ❌ catch без error state — юзер бачить порожній список замість помилки
 .catch(() => {})  // ← ковтаємо помилку
 ```
+
+### §14.4 — AnimatedBody: плавна зміна висоти Modal та collapsible-секцій
+
+`AnimatedBody` вбудований у `<Modal>` — **всі `<Modal>` компоненти анімують висоту автоматично**, нічого окремо робити не потрібно.
+
+Застосовуй `AnimatedBody` безпосередньо (імпорт з `@/components/ui/modal`) коли:
+- Accordion / collapse-секція поза Modal
+- Панель що розгортається при кліку (show/hide форми на сторінці)
+- Будь-який контейнер де висота змінюється динамічно і `transition-all max-h-[Npx]` дає стрибок або потребує магічного числа
+
+```tsx
+import { AnimatedBody } from '@/components/ui/modal';
+
+// ✅ Accordion / collapsible section
+{isOpen && (
+  <AnimatedBody className="px-4 py-3">
+    {/* вміст довільної висоти — анімується автоматично */}
+    <p>Рядок 1</p>
+    <p>Рядок 2</p>
+  </AnimatedBody>
+)}
+```
+
+❌ НЕ використовувати:
+- `maxHeight: '900px'` як magic number для collapse — стрибає при контенті більшому/меншому за число
+- `transition: 'max-height ...'` без ResizeObserver — потребує підбору константи, ламається при зміні вмісту
+- `transition-all` на контейнері з `overflow:hidden` — анімує всі CSS-властивості, важко передбачити
+
+✅ Паттерн для collapse з анімацією 0 ↔ контент (коли потрібна анімація закриття до 0):
+
+```tsx
+// refs
+const outerRef = useRef<HTMLDivElement>(null);
+const innerRef = useRef<HTMLDivElement>(null);
+
+// ResizeObserver — оновлює висоту при зміні вмісту
+useEffect(() => {
+  if (!mounted) return;
+  const ro = new ResizeObserver(() => {
+    if (outerRef.current && innerRef.current && isVisible) {
+      outerRef.current.style.height = `${innerRef.current.scrollHeight}px`;
+    }
+  });
+  if (innerRef.current) ro.observe(innerRef.current);
+  return () => ro.disconnect();
+}, [mounted, isVisible]);
+
+// Анімація відкриття — ResizeObserver встановить реальну висоту
+// Анімація закриття — вручну через rAF:
+const closePanel = () => {
+  const outer = outerRef.current;
+  if (outer) {
+    outer.style.height = `${outer.scrollHeight}px`; // закріпити
+    requestAnimationFrame(() => {
+      if (outerRef.current) {
+        outerRef.current.style.transition = 'height 320ms cubic-bezier(0.4,0,0.6,1)';
+        outerRef.current.style.height = '0px';
+      }
+    });
+  }
+  setVisible(false);
+  setTimeout(() => setMounted(false), 420);
+};
+
+// JSX
+{mounted && (
+  <div
+    ref={outerRef}
+    style={{ overflow: 'hidden', height: isVisible ? undefined : '0px',
+      transition: isVisible ? 'height 480ms cubic-bezier(0.22,1,0.36,1)' : undefined }}
+  >
+    <div ref={innerRef} className="px-4 py-3">
+      {children}
+    </div>
+  </div>
+)}
+```
+
+> Реальний приклад: `apps/web/src/app/calendar/page.tsx` — форма слоту (showAdd → formMounted/formVisible).
 
 ---
 

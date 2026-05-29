@@ -33,7 +33,8 @@ const TRANSITION = 'cubic-bezier(0.4,0,0.2,1)';
 // Animates its height to match content via ResizeObserver.
 // outer: overflow:hidden — clips during transition, no scrollbar flash.
 // inner: holds padding + content, measured via scrollHeight.
-function AnimatedBody({ children, className }: { children: ReactNode; className?: string }) {
+// Exported for use in accordions / collapsible sections outside Modal.
+export function AnimatedBody({ children, className }: { children: ReactNode; className?: string }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
 
