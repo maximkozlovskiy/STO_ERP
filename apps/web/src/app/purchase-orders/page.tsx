@@ -22,9 +22,11 @@ import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-ba
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useTableColumns } from '@/hooks/useTableColumns';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
@@ -80,6 +82,17 @@ export default function PurchaseOrdersPage() {
 
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+
+  const COLUMNS = useMemo(() => [
+    { key: 'number',    label: 'Номер',        defaultVisible: true },
+    { key: 'supplier',  label: 'Постачальник', defaultVisible: true },
+    { key: 'warehouse', label: 'Склад',        defaultVisible: true },
+    { key: 'status',    label: 'Статус',       defaultVisible: true },
+    { key: 'amount',    label: 'Сума',         defaultVisible: true },
+    { key: 'date',      label: 'Дата',         defaultVisible: true },
+  ], []);
+
+  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('purchase-orders', COLUMNS);
 
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [total, setTotal] = useState(0);
@@ -350,6 +363,13 @@ export default function PurchaseOrdersPage() {
           {showDeleted ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           Показати видалені
         </button>
+
+        <ColumnsDropdown
+          columns={COLUMNS}
+          visibleKeys={colVisible}
+          onToggle={toggleCol}
+          className="ml-auto"
+        />
       </div>
 
       {/* Status filters */}
@@ -399,26 +419,26 @@ export default function PurchaseOrdersPage() {
                     />
                   </TableHead>
                 )}
-                <TableHead>Номер</TableHead>
-                <TableHead>Постачальник</TableHead>
-                <TableHead>Склад</TableHead>
-                <TableHead>Статус</TableHead>
-                <TableHead className="text-right">Сума</TableHead>
-                <TableHead>Дата</TableHead>
+                {colVisible.has('number')    && <TableHead>Номер</TableHead>}
+                {colVisible.has('supplier')  && <TableHead>Постачальник</TableHead>}
+                {colVisible.has('warehouse') && <TableHead>Склад</TableHead>}
+                {colVisible.has('status')    && <TableHead>Статус</TableHead>}
+                {colVisible.has('amount')    && <TableHead className="text-right">Сума</TableHead>}
+                {colVisible.has('date')      && <TableHead>Дата</TableHead>}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="py-10 text-center">
+                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && orders.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="p-0">
+                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={ShoppingCart} title="Замовлень не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -445,21 +465,25 @@ export default function PurchaseOrdersPage() {
                       />
                     </TableCell>
                   )}
-                  <TableCell className="font-mono font-medium text-foreground">
-                    {po.number}
-                    {po.deletedAt && (
-                      <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-foreground-muted">{po.supplierName ?? '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{po.warehouseName ?? '—'}</TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>
-                      {STATUS_LABELS[po.status]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right font-medium">{fmt(po.totalAmount)}</TableCell>
-                  <TableCell className="text-foreground-faint text-xs">{new Date(po.createdAt).toLocaleDateString('uk-UA')}</TableCell>
+                  {colVisible.has('number') && (
+                    <TableCell className="font-mono font-medium text-foreground">
+                      {po.number}
+                      {po.deletedAt && (
+                        <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
+                      )}
+                    </TableCell>
+                  )}
+                  {colVisible.has('supplier')  && <TableCell className="text-foreground-muted">{po.supplierName ?? '—'}</TableCell>}
+                  {colVisible.has('warehouse') && <TableCell className="text-muted-foreground">{po.warehouseName ?? '—'}</TableCell>}
+                  {colVisible.has('status') && (
+                    <TableCell>
+                      <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>
+                        {STATUS_LABELS[po.status]}
+                      </Badge>
+                    </TableCell>
+                  )}
+                  {colVisible.has('amount') && <TableCell className="text-right font-medium">{fmt(po.totalAmount)}</TableCell>}
+                  {colVisible.has('date')   && <TableCell className="text-foreground-faint text-xs">{new Date(po.createdAt).toLocaleDateString('uk-UA')}</TableCell>}
                   <TableCell>
                     <Button
                       variant="ghost"
