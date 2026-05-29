@@ -986,6 +986,19 @@ export default function CalendarPage() {
     if (!showAdd) { setShowNewWo(false); }
   }, [showAdd]);
 
+  // Open new-WO form pre-filled with the currently selected client (if any) + auto-select vehicle if only 1
+  const openNewWo = useCallback(async () => {
+    setShowNewWo(v => !v);
+    if (!form.counterpartyId) return;
+    setNewWo(v => ({ ...v, counterpartyId: form.counterpartyId, counterpartyDisplay: form.counterpartyDisplay }));
+    const garages = await apiFetch<{ id: string }[]>(`/counterparties/${form.counterpartyId}/garages`).catch(() => [] as { id: string }[]);
+    const all = (await Promise.all(garages.map(g =>
+      apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(() => [] as VehicleOption[])
+    ))).flat();
+    setNewWoVehicles(all);
+    if (all.length === 1) setNewWo(v => ({ ...v, vehicleId: all[0]!.id }));
+  }, [form.counterpartyId, form.counterpartyDisplay]);
+
   // Load branches once — surface errors so the required «Філія» select isn't silently empty (Bug #159)
   useEffect(() => {
     apiFetch<{ id: string; name: string }[]>('/branches')
@@ -1289,7 +1302,7 @@ export default function CalendarPage() {
                     <X className="h-4 w-4" />
                   </button>
                 )}
-                <Button variant="outline" size="sm" onClick={() => setShowNewWo(v => !v)} title="Новий наряд">
+                <Button variant="outline" size="sm" onClick={openNewWo} title="Новий наряд">
                   <FilePlus className="h-4 w-4" />
                 </Button>
               </div>
