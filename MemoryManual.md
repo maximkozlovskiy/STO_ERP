@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+a6f9aea fix(review): cancel close-rAF + cleanup form hide-timer/rAF on unmount in calendar
 b5add44 feat(ui): export AnimatedBody, apply ResizeObserver height to calendar form, document §14.4
 26b3264 docs(tester): record AUTO session — 0 bugs CRM Наряди + Catalog Штрихкоди/Партії ModalTabs
 613aef7 feat(crm,catalog): ModalTabs edit modal for 1-N — WO history + barcodes + batches tabs
@@ -121,9 +122,10 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 - **§14.3** Race guard + скидання стану при відкритті (++reqRef.current, гейт у .then/.catch/.finally)
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api + shared) — після 613aef7 + sync fixes 561e08b/fc0d1ad
+TypeScript: ✅ 0 errors (web + api + shared) — після a6f9aea calendar cleanup
+Latest review: 2026-05-30 (auto, HEAD a6f9aea → b5add44) — AnimatedBody export + calendar collapse refactor + sto-dev §14.4. **1 Important fix:** close-branch `requestAnimationFrame` не зберігав id → неможливо скасувати при rapid re-open/unmount → stale rAF писав height=0 на щойно відкриту форму; `formHideTimerRef` і новий `formCloseRafRef` не мали unmount-cleanup. Виправлено: id-capture у `formCloseRafRef`, `cancelAnimationFrame` на старті ефекту і в окремому unmount-only useEffect; ResizeObserver-cleanup і так був коректний (disconnect у return). Перевірено `AnimatedBody`: rAF guard через `if (outerRef.current)` достатній (ref → null після detach), RO.disconnect у cleanup ✓.
 Latest tester: 2026-05-29 (AUTO, HEAD fa83635 → 613aef7+561e08b+fc0d1ad+fa83635) — CRM Наряди + Catalog Штрихкоди/Партії ModalTabs. **0 нових багів у scope.** API 357/357 + Web 148/148 baseline ✅. Перевірено: race-guard у обох openEdit (`modalVehiclesReqRef`+`modalWoReqRef` у CRM, `modalBarcodeReqRef`+`modalBatchReqRef` у Catalog) — окремі токени для кожного асинхронного джерела, гейт на КОЖНОМУ `.then`/`.catch`/`.finally`; `setModalGarageId` всередині early-return guard'у (не виставляється з stale-даними); StockBatchDto `.items` unwrap після 561e08b узгоджений з бекенд `{items,total}` shape; `/work-orders?counterpartyId=` filter присутній у DTO+service з tenant-isolation; усі 10 WorkOrderStatus покриті у WO_STATUS_LABELS/BADGE; inline add/delete барcode у ModalTabs з guard `if (!editGood) return` + try/catch + toast feedback; error-state не silent (видимий inline у ModalTabs контенті).
-Latest review: 2026-05-29 (auto, HEAD fc0d1ad → 613aef7+561e08b+fc0d1ad) — crm/page.tsx Наряди-таб + catalog/page.tsx Штрихкоди+Партії-таби + sto-dev §14.1–14.3. **0 проблем знайдено**: race-guard ref (modalWoReqRef, modalBarcodeReqRef, modalBatchReqRef) застосовано згідно патерну з e69bf1e; reset похідного стану на старті openEdit/openEditGood; всі 10 WorkOrderStatus покриті у WO_STATUS_LABELS/BADGE; катаlог не імпортує `cn` (не потрібний); BOM-чистий; немає React.X / any / console.log / Tailwind anti-patterns.
+Previous review: 2026-05-29 (auto, HEAD fc0d1ad → 613aef7+561e08b+fc0d1ad) — crm/page.tsx Наряди-таб + catalog/page.tsx Штрихкоди+Партії-таби + sto-dev §14.1–14.3. **0 проблем знайдено**: race-guard ref (modalWoReqRef, modalBarcodeReqRef, modalBatchReqRef) застосовано згідно патерну з e69bf1e; reset похідного стану на старті openEdit/openEditGood; всі 10 WorkOrderStatus покриті у WO_STATUS_LABELS/BADGE; катаlог не імпортує `cn` (не потрібний); BOM-чистий; немає React.X / any / console.log / Tailwind anti-patterns.
 Previous review: 2026-05-29 (auto, HEAD e69bf1e) — modal-tabs.tsx + crm/employees ModalTabs + counterparties showDeleted/deletedAt. 1 Important fix (CRM edit-modal vehicle fetch race + stale modalGarageId). Backend DTO/service вже коректні після cc44f73 (showDeleted @Transform, orgId зберігається при showDeleted=true, toDto включає deletedAt).
 
 ## UI: ModalTabs — нижній таб-секція модалок для 1→N зв'язків (6b886ae)

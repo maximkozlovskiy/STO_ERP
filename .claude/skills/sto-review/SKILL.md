@@ -238,6 +238,14 @@ grep -rnE "closest\(['\"]?\[data-(dnd-draggable|dnd|rdnd)" apps/web/src/ --inclu
 # pointer interaction state (drawing/resizing) — leave-handler має скидати ВСІ режими
 grep -rn "onPointerLeave\|PointerLeave" apps/web/src/app --include="*.tsx"
 # Для кожного — звірити що скидаються всі pointer-режими (ghost + resize + draw), не лише один
+
+# requestAnimationFrame без id-capture (cancelAnimationFrame неможливий)
+grep -rnE "^\s*requestAnimationFrame\(" apps/web/src/app apps/web/src/components --include="*.tsx"
+# Для кожного — якщо callback мутує DOM (style.height/transition) або викликає setState — id має бути збережений у ref для cancelAnimationFrame на rapid toggle/unmount
+
+# imperative style.* мутації у callback (rAF/RO/setTimeout) — перевірити що мають component-level unmount cleanup
+grep -rnE "\.style\.(height|transition|marginBottom|opacity|transform)\s*=" apps/web/src/app --include="*.tsx"
+# Для кожного — звірити що є cleanup рекордера (formHideTimerRef, formCloseRafRef) у dedicated unmount-only useEffect (() => () => {...}, [])
 ```
 - [ ] `addEventListener` → `return () => removeEventListener`
 - [ ] `setInterval` / `setTimeout` → `return () => clearInterval / clearTimeout`
@@ -248,6 +256,8 @@ grep -rn "onPointerLeave\|PointerLeave" apps/web/src/app --include="*.tsx"
 - [ ] Inline `ref={el => el.indeterminate = x}` → `useRef` + `useEffect([dep])` (крихко при React Compiler)
 - [ ] `target.closest('[data-X]')` guard → атрибут реально рендериться у DOM (dnd-kit/radix НЕ ставлять `data-dnd-draggable`); додати власний маркер `data-Y` + перевіряти його
 - [ ] `onPointerLeave` / cancel-handler → скидає **ВСІ** pointer-режими (drawing **і** resizing), не лише перший
+- [ ] `requestAnimationFrame` що мутує DOM/state → зберегти id у `useRef<number|null>(null)`; `cancelAnimationFrame` на старті наступного toggle-ефекту + у component-level unmount cleanup `useEffect(() => () => {...}, [])`. Інакше rapid toggle лишає stale rAF що перезаписує щойно-відкритий стан (height='0px' на open form).
+- [ ] Pair `setTimeout` + `requestAnimationFrame` для open/close-анімації → обидва id у refs; обидва cleanup-ються у dedicated unmount-effect (`useEffect(() => () => { clearTimeout(t); cancelAnimationFrame(r); }, [])`) — недостатньо чистити лише на наступному toggle, бо unmount між циклами зловить.
 
 #### §3.2 Backend
 ```bash
@@ -811,6 +821,17 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 **Підхід до фіксу:** (1) `const ac = new AbortController(); ref.current?.abort(); ref.current = ac;` на старті loader; передати `{ signal: ac.signal }` у кожен apiFetch; `if (ac.signal.aborted) return` перед setState. (2) cap довжину масиву (`while (cur <= end && n < MAX_N)`); clamp будь-який знаменник що залежить від days до того ж cap; UI-підказка коли діапазон обрізано
 **Критичність:** IMPORTANT — stale-data race + потенційне перевантаження (degradation без помилки)
 **Де шукати ще:** calendar month/stats, будь-який per-day/per-id loader; bulk-prefetch на dashboard
+
+---
+
+### 2026-05-30 — close-animation rAF без id-capture + missing unmount cleanup — §3.1 Memory Leaks
+
+**Сигнал:** `requestAnimationFrame(() => {...})` всередині close-branch toggle-ефекту мутує DOM (`outer.style.height='0px'`); id не зберігається; rapid toggle (close → open у тому ж frame) лишає pending rAF що перезаписує щойно-відкритий стан. Парний `setTimeout(setMounted(false), 420)` теж без component-unmount cleanup.
+**Причина виникнення:** розробник додає collapse-анімацію (height→0 перед unmount); цикл toggle-ефекту чистить timer на наступному переході (`if (timerRef.current) clearTimeout(...)`), але забуває: (1) rAF взагалі не captureться → cancelAnimationFrame неможливий; (2) unmount між циклами не запускає toggle-логіку → pending timer/rAF переживає unmount, fire-ить setState/style на мертвий компонент. Тип помилки невидимий статично (TS зелений, RO має cleanup), проявляється лише при швидкому повторному відкритті або при навігації під час анімації.
+**Підхід до виявлення:** grep `requestAnimationFrame(` у компонентах → перевірити чи id зберігається у ref; для пари (setTimeout + rAF) у toggle-ефекті — звірити що **обидва** cleanup-ються у dedicated unmount-only `useEffect(() => () => {...}, [])`, не лише на наступному toggle.
+**Підхід до фіксу:** (1) `const rafRef = useRef<number|null>(null); rafRef.current = requestAnimationFrame(() => { rafRef.current = null; ... })`; (2) на старті toggle-ефекту `if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)`; (3) окремий unmount-effect `useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); }, [])`.
+**Критичність:** IMPORTANT — visual glitch (height=0 на щойно-відкриту форму) + React warning "setState on unmounted component"; degradation без crash.
+**Де шукати ще:** будь-який open/close-анімований компонент з парою (rAF + setTimeout) — Drawer, Sheet, Accordion, custom Modal-like; collapse-секції з ResizeObserver-driven height.
 
 ---
 
