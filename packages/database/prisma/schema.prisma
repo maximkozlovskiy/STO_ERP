@@ -446,6 +446,7 @@ model Employee {
   uploadedMedia          WorkOrderMedia[]
   auditEvents            AuditEvent[]
   inspectionReports      InspectionReport[]
+  preferences            UserPreference[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -1895,4 +1896,21 @@ model CashRegister {
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("cash_registers")
+}
+
+// ─── USER PREFERENCES ────────────────────────────────────
+
+model UserPreference {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId      String   @db.Uuid
+  employeeId String   @db.Uuid
+  key        String
+  value      Json
+  updatedAt  DateTime @updatedAt
+
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([orgId, employeeId, key])
+  @@index([orgId, employeeId])
+  @@map("user_preferences")
 }

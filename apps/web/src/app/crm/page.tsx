@@ -22,6 +22,7 @@ import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
+import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -88,6 +89,7 @@ export default function CrmPage() {
   const features = useUiFeatures();
   const { confirm, dialogProps } = useConfirm();
   const detailPanel = useDetailPanel('crm');
+  const panelConfig = useDetailPanelConfig('crm');
 
   // ── Vehicles for selected counterparty (detail panel) ───────────────────────
   const [cpVehicles, setCpVehicles] = useState<{ id: string; make: string; model: string; year: number | null; licensePlate: string }[]>([]);
@@ -376,25 +378,46 @@ export default function CrmPage() {
 
   const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
 
+  const CRM_CONFIG_FIELD_DEFS = [
+    { key: 'phone', label: 'Телефон' },
+    { key: 'email', label: 'Email' },
+    { key: 'edrpou', label: 'ЄДРПОУ' },
+    { key: 'balance', label: 'Баланс' },
+    { key: 'contactPerson', label: 'Контактна особа' },
+    { key: 'type', label: 'Тип контрагента' },
+  ] as const;
+
+  const crmPanelConfigFields = CRM_CONFIG_FIELD_DEFS.map(f => ({
+    ...f,
+    hidden: panelConfig.isFieldHidden(f.key),
+  }));
+
   const buildCpTabs = (cp: Counterparty): DetailPanelTab[] => [
     {
       key: 'info',
       label: 'Основне',
       content: (
         <div className="space-y-3">
-          <div className="flex flex-wrap gap-1.5">
-            <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>{TYPE_LABELS[cp.type]}</Badge>
-            {cp.vatPayer && <Badge variant="warning">ПДВ</Badge>}
-            {cp.deletedAt && <Badge variant="secondary">видалено</Badge>}
-          </div>
-          <PanelField label="Телефон" value={cp.phone} />
-          <PanelField label="Email" value={cp.email} />
-          <PanelField label="ЄДРПОУ" value={cp.edrpou} />
-          <PanelField label="Баланс" value={
-            <span className={cn('font-semibold', cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground')}>
-              {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-            </span>
-          } />
+          {!panelConfig.isFieldHidden('type') && (
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>{TYPE_LABELS[cp.type]}</Badge>
+              {cp.vatPayer && <Badge variant="warning">ПДВ</Badge>}
+              {cp.deletedAt && <Badge variant="secondary">видалено</Badge>}
+            </div>
+          )}
+          <PanelField label="Телефон" value={cp.phone} fieldKey="phone" hidden={panelConfig.isFieldHidden('phone')} />
+          <PanelField label="Email" value={cp.email} fieldKey="email" hidden={panelConfig.isFieldHidden('email')} />
+          <PanelField label="ЄДРПОУ" value={cp.edrpou} fieldKey="edrpou" hidden={panelConfig.isFieldHidden('edrpou')} />
+          <PanelField
+            label="Баланс"
+            fieldKey="balance"
+            hidden={panelConfig.isFieldHidden('balance')}
+            value={
+              <span className={cn('font-semibold', cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground')}>
+                {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+              </span>
+            }
+          />
         </div>
       ),
     },
@@ -653,6 +676,9 @@ export default function CrmPage() {
           onClose={() => setSelectedCp(null)}
           title={selectedCp ? displayName(selectedCp) : ''}
           tabs={selectedCp ? buildCpTabs(selectedCp) : undefined}
+          configFields={crmPanelConfigFields}
+          onToggleField={panelConfig.toggleField}
+          onReset={panelConfig.reset}
         />
       </div>
 

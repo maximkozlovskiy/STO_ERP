@@ -51,6 +51,7 @@ import { CurrenciesModule } from './modules/currencies/currencies.module';
 import { ExchangeRatesModule } from './modules/exchange-rates/exchange-rates.module';
 import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
 import { CashRegistersModule } from './modules/cash-registers/cash-registers.module';
+import { UserPreferencesModule } from './modules/user-preferences/user-preferences.module';
 
 @Module({
   imports: [
@@ -114,6 +115,7 @@ import { CashRegistersModule } from './modules/cash-registers/cash-registers.mod
     ExchangeRatesModule,
     BankAccountsModule,
     CashRegistersModule,
+    UserPreferencesModule,
   ],
 })
 export class AppModule {}

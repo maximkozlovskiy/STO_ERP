@@ -27,6 +27,7 @@ import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
+import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTableColumns } from '@/hooks/useTableColumns';
@@ -121,6 +122,7 @@ export default function EmployeesPage() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
   const detailPanel = useDetailPanel('employees');
+  const panelConfig = useDetailPanelConfig('employees');
 
   const COLUMNS = useMemo(() => [
     { key: 'name',   label: 'ПІБ',               defaultVisible: true },
@@ -442,18 +444,32 @@ export default function EmployeesPage() {
 
   const flatCats = flattenTree(workCategories);
 
+  const EMP_CONFIG_FIELD_DEFS = [
+    { key: 'status', label: 'Статус' },
+    { key: 'role', label: 'Посада' },
+    { key: 'phone', label: 'Телефон' },
+    { key: 'email', label: 'Email' },
+    { key: 'rateScheme', label: 'Схема нарахування' },
+    { key: 'dateOfHire', label: 'Дата прийняття' },
+  ] as const;
+
+  const employeesPanelConfigFields = EMP_CONFIG_FIELD_DEFS.map(f => ({
+    ...f,
+    hidden: panelConfig.isFieldHidden(f.key),
+  }));
+
   const buildEmployeeTabs = (emp: Employee): DetailPanelTab[] => [
     {
       key: 'info',
       label: 'Основне',
       content: (
         <div className="space-y-3">
-          <PanelField label="Статус" value={<Badge variant={STATUS_BADGE[emp.status]}>{STATUS_LABELS[emp.status]}</Badge>} />
-          <PanelField label="Посада" value={ROLE_LABELS[emp.role]} />
-          <PanelField label="Телефон" value={emp.phone} />
-          <PanelField label="Email" value={emp.email} />
-          <PanelField label="Схема нарахування" value={emp.rateScheme ? RATE_LABELS[emp.rateScheme.type] : undefined} />
-          <PanelField label="Дата прийняття" value={emp.dateOfHire ? new Date(emp.dateOfHire).toLocaleDateString('uk-UA') : undefined} />
+          <PanelField label="Статус" fieldKey="status" hidden={panelConfig.isFieldHidden('status')} value={<Badge variant={STATUS_BADGE[emp.status]}>{STATUS_LABELS[emp.status]}</Badge>} />
+          <PanelField label="Посада" fieldKey="role" hidden={panelConfig.isFieldHidden('role')} value={ROLE_LABELS[emp.role]} />
+          <PanelField label="Телефон" fieldKey="phone" hidden={panelConfig.isFieldHidden('phone')} value={emp.phone} />
+          <PanelField label="Email" fieldKey="email" hidden={panelConfig.isFieldHidden('email')} value={emp.email} />
+          <PanelField label="Схема нарахування" fieldKey="rateScheme" hidden={panelConfig.isFieldHidden('rateScheme')} value={emp.rateScheme ? RATE_LABELS[emp.rateScheme.type] : undefined} />
+          <PanelField label="Дата прийняття" fieldKey="dateOfHire" hidden={panelConfig.isFieldHidden('dateOfHire')} value={emp.dateOfHire ? new Date(emp.dateOfHire).toLocaleDateString('uk-UA') : undefined} />
           {emp.status === 'FIRED' && emp.dateOfFire && (
             <PanelField label="Дата звільнення" value={new Date(emp.dateOfFire).toLocaleDateString('uk-UA')} />
           )}
@@ -705,6 +721,9 @@ export default function EmployeesPage() {
           title={selectedEmp ? `${selectedEmp.firstName} ${selectedEmp.lastName}` : ''}
           subtitle={selectedEmp ? ROLE_LABELS[selectedEmp.role] : ''}
           tabs={selectedEmp ? buildEmployeeTabs(selectedEmp) : undefined}
+          configFields={employeesPanelConfigFields}
+          onToggleField={panelConfig.toggleField}
+          onReset={panelConfig.reset}
         />
       </div>
 
