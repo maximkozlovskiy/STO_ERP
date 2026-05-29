@@ -428,8 +428,13 @@ export default function CalendarPage() {
   const [monthSlots, setMonthSlots] = useState<MonthSlots>({});
   const [monthLoading, setMonthLoading] = useState(false);
 
-  // Stats period: day or month
-  const [statsPeriod, setStatsPeriod] = useState<'day' | 'month'>('day');
+  // Stats: period selector + aggregated slots
+  type StatsPeriod = 'day' | 'month' | 'custom';
+  const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('day');
+  const [statsFrom, setStatsFrom] = useState('');
+  const [statsTo, setStatsTo] = useState('');
+  const [statsSlots, setStatsSlots] = useState<CalendarSlot[]>([]);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [form, setForm] = useState({
     liftId: '', employeeId: '',
     counterpartyId: '', counterpartyDisplay: '',
@@ -535,6 +540,50 @@ export default function CalendarPage() {
     if (calView === 'month' && yearMonth) loadMonth(yearMonth);
   }, [calView, yearMonth, loadMonth]);
 
+  // Resolve stats date range from period + current date
+  const statsRange = useMemo((): { from: string; to: string } | null => {
+    if (!date) return null;
+    if (statsPeriod === 'day') return { from: date, to: date };
+    if (statsPeriod === 'month') {
+      const [y, m] = date.split('-').map(Number);
+      const from = `${y}-${String(m).padStart(2, '0')}-01`;
+      const last = new Date(y, m, 0).getDate();
+      const to = `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+      return { from, to };
+    }
+    if (statsPeriod === 'custom' && statsFrom && statsTo && statsFrom <= statsTo)
+      return { from: statsFrom, to: statsTo };
+    return null;
+  }, [statsPeriod, date, statsFrom, statsTo]);
+
+  const loadStats = useCallback(async (from: string, to: string) => {
+    setStatsLoading(true);
+    try {
+      // Generate all dates in range
+      const days: string[] = [];
+      const cur = new Date(from + 'T12:00:00');
+      const end = new Date(to + 'T12:00:00');
+      while (cur <= end) {
+        days.push(toDateString(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+      const results = await Promise.all(
+        days.map(d =>
+          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`).catch(() => [] as CalendarSlot[])
+        )
+      );
+      if (mountedRef.current) setStatsSlots(results.flat());
+    } finally {
+      if (mountedRef.current) setStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (calView === 'stats' && statsRange) {
+      void loadStats(statsRange.from, statsRange.to);
+    }
+  }, [calView, statsRange, loadStats]);
+
   const load = useCallback(() => {
     if (!date) return;
     setLoading(true);
@@ -546,10 +595,6 @@ export default function CalendarPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Reload day slots when switching to stats view
-  useEffect(() => {
-    if (calView === 'stats' && date) load();
-  }, [calView, date, load]);
 
   const prevDay = () => { const d = new Date(date); d.setDate(d.getDate() - 1); setDate(toDateString(d)); };
   const nextDay = () => { const d = new Date(date); d.setDate(d.getDate() + 1); setDate(toDateString(d)); };
@@ -1805,39 +1850,112 @@ export default function CalendarPage() {
 
       {/* ── STATS VIEW ─────────────────────────────────────────── */}
       {calView === 'stats' && (() => {
-        const todayStr = nowMs ? toDateString(new Date(nowMs)) : '';
-        const statsSlots = slots; // already loaded via load() effect when calView=stats
-        const WINDOW_H = WINDOW_END - WINDOW_START; // 11 hours
+        const WINDOW_H = WINDOW_END - WINDOW_START; // 11 h
 
-        // Per-lift stats for current day
+        // Per-lift aggregation over statsSlots (multi-day range)
+        const days = statsRange
+          ? (() => {
+              const d: string[] = [];
+              const cur = new Date(statsRange.from + 'T12:00:00');
+              const end = new Date(statsRange.to + 'T12:00:00');
+              while (cur <= end) { d.push(toDateString(cur)); cur.setDate(cur.getDate() + 1); }
+              return d.length;
+            })()
+          : 1;
+
         const liftStats = lifts.map(lift => {
           const ls = statsSlots.filter(s => s.liftId === lift.id);
-          const totalMinutes = ls.reduce((acc, s) => {
-            const dur = (new Date(s.endAt).getTime() - new Date(s.startAt).getTime()) / 60000;
-            return acc + dur;
-          }, 0);
-          const loadPct = Math.round((totalMinutes / 60 / WINDOW_H) * 100);
+          const totalMinutes = ls.reduce((acc, s) => acc + (new Date(s.endAt).getTime() - new Date(s.startAt).getTime()) / 60000, 0);
+          // Load % = totalMinutes / (WINDOW_H hours × days × 60 min)
+          const loadPct = days > 0 ? Math.round((totalMinutes / 60 / (WINDOW_H * days)) * 100) : 0;
           return { lift, count: ls.length, totalMinutes, loadPct };
         });
-        const totalSlots = statsSlots.length;
         const totalMinAll = liftStats.reduce((a, x) => a + x.totalMinutes, 0);
+
+        const periodLabel = statsRange
+          ? statsRange.from === statsRange.to
+            ? formatDate(statsRange.from)
+            : `${statsRange.from.split('-').reverse().join('.')} — ${statsRange.to.split('-').reverse().join('.')}`
+          : '—';
 
         return (
           <div className="space-y-4">
-            {/* Period / date display */}
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">
-                {statsPeriod === 'day'
-                  ? `День: ${formatDate(date)}`
-                  : `Місяць: ${date ? new Date(date + 'T12:00:00').toLocaleDateString('uk-UA', { month: 'long', year: 'numeric', timeZone: KYIV_TZ }) : ''}`}
-              </span>
-              {loading && <Spinner size="sm" />}
+            {/* Period selector */}
+            <div className="bg-surface border border-border rounded-xl p-4 flex flex-wrap items-end gap-4">
+              {/* Pill switcher */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5">Період</p>
+                <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+                  {([['day', 'День'], ['month', 'Місяць'], ['custom', 'Довільний']] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      onClick={() => setStatsPeriod(v)}
+                      className={`px-3 py-1.5 transition-colors ${statsPeriod === v ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted-foreground hover:bg-secondary'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Day: date picker */}
+              {statsPeriod === 'day' && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1.5">День</p>
+                  <DatePickerInput value={date} onChange={setDate} className="w-40" />
+                </div>
+              )}
+
+              {/* Month: month+year picker via date (use first of month) */}
+              {statsPeriod === 'month' && (
+                <div className="flex items-center gap-2">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1.5">Місяць</p>
+                    <div className="flex items-center gap-1">
+                      <Button variant="outline" size="sm" onClick={() => {
+                        const [y, m] = date.split('-').map(Number);
+                        const d = new Date(y, m - 2, 1);
+                        setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+                      }}><ChevronLeft className="h-3.5 w-3.5" /></Button>
+                      <span className="text-sm font-medium px-2 capitalize min-w-32 text-center">
+                        {new Date(date + 'T12:00:00').toLocaleDateString('uk-UA', { month: 'long', year: 'numeric', timeZone: KYIV_TZ })}
+                      </span>
+                      <Button variant="outline" size="sm" onClick={() => {
+                        const [y, m] = date.split('-').map(Number);
+                        const d = new Date(y, m, 1);
+                        setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+                      }}><ChevronRight className="h-3.5 w-3.5" /></Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Custom: from–to date pickers */}
+              {statsPeriod === 'custom' && (
+                <>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1.5">Від</p>
+                    <DatePickerInput value={statsFrom} onChange={v => { setStatsFrom(v); if (!statsTo) setStatsTo(v); }} className="w-36" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1.5">До</p>
+                    <DatePickerInput value={statsTo} onChange={setStatsTo} className="w-36" />
+                  </div>
+                </>
+              )}
+
+              {statsLoading && <Spinner size="sm" />}
             </div>
+
+            {/* Period label */}
+            <p className="text-xs text-muted-foreground">
+              {statsRange ? `${days} ${days === 1 ? 'день' : days < 5 ? 'дні' : 'днів'} · ${periodLabel}` : 'Оберіть діапазон'}
+            </p>
 
             {/* Summary cards */}
             <div className="grid grid-cols-3 gap-4">
               {[
-                { label: 'Всього записів', value: String(totalSlots) },
+                { label: 'Всього записів', value: String(statsSlots.length) },
                 { label: 'Загальний час', value: `${Math.floor(totalMinAll / 60)}г ${Math.round(totalMinAll % 60)}хв` },
                 { label: 'Середнє завант.', value: liftStats.length ? `${Math.round(liftStats.reduce((a, x) => a + x.loadPct, 0) / liftStats.length)}%` : '—' },
               ].map(({ label, value }) => (
@@ -1856,7 +1974,9 @@ export default function CalendarPage() {
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Пост</th>
                     <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">Записів</th>
                     <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">Час</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Завантаженість</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                      Завантаженість {days > 1 ? `(за ${days} д.)` : '(11 год)'}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1870,21 +1990,20 @@ export default function CalendarPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full"
-                              style={{
-                                width: `${Math.min(100, loadPct)}%`,
-                                backgroundColor: loadPct >= 80 ? 'var(--color-destructive)' : loadPct >= 50 ? 'var(--color-warning, #f59e0b)' : 'var(--color-primary)',
-                              }}
-                            />
+                            <div className="h-full rounded-full" style={{
+                              width: `${Math.min(100, loadPct)}%`,
+                              backgroundColor: loadPct >= 80 ? 'var(--color-destructive)' : loadPct >= 50 ? '#f59e0b' : 'var(--color-primary)',
+                            }} />
                           </div>
                           <span className="text-xs text-muted-foreground w-9 text-right">{loadPct}%</span>
                         </div>
                       </td>
                     </tr>
                   ))}
-                  {liftStats.length === 0 && (
-                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">Немає даних</td></tr>
+                  {liftStats.length === 0 && !statsLoading && (
+                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                      {statsRange ? 'Записів за цей період немає' : 'Оберіть діапазон дат'}
+                    </td></tr>
                   )}
                 </tbody>
               </table>
