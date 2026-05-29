@@ -491,6 +491,10 @@ export default function CalendarPage() {
   const showAddRef = useRef(showAdd);
   showAddRef.current = showAdd;
 
+  // minHour for today's date — used inside window pointer listeners (closure needs ref)
+  const minHourRef = useRef(minHour);
+  minHourRef.current = minHour;
+
   // ── Open form from pending slot ───────────────────────────────────────────
 
   const openFormFromPending = useCallback(() => {
@@ -600,7 +604,10 @@ export default function CalendarPage() {
       // Discard previous pending slot when starting a new draw
       setPendingSlot(null);
 
-      const startH = snapTo15(pxToDecimalHours(e.clientX));
+      // On today: clamp draw start to current time so past slots can't be drawn
+      const todayKyiv = toDateString(new Date());
+      const pastClamp = dateRef.current === todayKyiv ? minHourRef.current : HOURS[0];
+      const startH = Math.max(snapTo15(pxToDecimalHours(e.clientX)), pastClamp);
       drawingRef.current = { liftId, startH };
       setGhost({ liftId, startH, endH: startH + 1 });
     };
@@ -621,8 +628,10 @@ export default function CalendarPage() {
         const rect = timelineRef.current?.getBoundingClientRect();
         if (!rect) return;
         const deltaH = pxToHours(e.clientX - pr.pointerStartX, rect.width - SIDEBAR_W);
+        const todayKyiv2 = toDateString(new Date());
+        const pastFloor = dateRef.current === todayKyiv2 ? minHourRef.current : WINDOW_START;
         if (pr.edge === 'start') {
-          const newStartH = snapTo15(Math.max(WINDOW_START, Math.min(pr.origStartH + deltaH, pr.origEndH - 0.25)));
+          const newStartH = snapTo15(Math.max(pastFloor, Math.min(pr.origStartH + deltaH, pr.origEndH - 0.25)));
           setPendingSlot(p => p ? { ...p, startH: newStartH } : null);
         } else {
           const newEndH = snapTo15(Math.min(WINDOW_END, Math.max(pr.origEndH + deltaH, pr.origStartH + 0.25)));
@@ -791,6 +800,14 @@ export default function CalendarPage() {
     if (!form.startAt || !form.endAt) { setError('Вкажіть час початку та завершення'); return; }
     if (form.endAt <= form.startAt)    { setError('Час завершення повинен бути після часу початку'); return; }
     if (form.workOrderId && !UUID_RE.test(form.workOrderId)) { setError('Оберіть наряд зі списку'); return; }
+    // New slots cannot start in the past (editing existing slot is always allowed)
+    if (!editingSlotId && nowMs) {
+      const todayKyiv = toDateString(new Date(nowMs));
+      if (date === todayKyiv) {
+        const slotStart = new Date(`${date}T${form.startAt}:00`).getTime();
+        if (slotStart < nowMs) { setError('Не можна створити запис у минулому'); return; }
+      }
+    }
     setSaving(true); setError('');
     const body = {
       liftId:      form.liftId      || undefined,
