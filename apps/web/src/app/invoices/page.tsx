@@ -27,6 +27,8 @@ import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useTableColumns } from '@/hooks/useTableColumns';
+import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
 
@@ -81,6 +83,17 @@ export default function InvoicesPage() {
 
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+
+  const INVOICE_COLUMNS = useMemo(() => [
+    { key: 'number', label: 'Номер', defaultVisible: true },
+    { key: 'counterparty', label: 'Контрагент', defaultVisible: true },
+    { key: 'workOrder', label: 'Наряд', defaultVisible: true },
+    { key: 'status', label: 'Статус', defaultVisible: true },
+    { key: 'amount', label: 'Сума', defaultVisible: true },
+    { key: 'dueDate', label: 'Термін оплати', defaultVisible: true },
+  ], []);
+
+  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('invoices', INVOICE_COLUMNS);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -409,8 +422,8 @@ export default function InvoicesPage() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="mb-5">
+      {/* Search + Columns */}
+      <div className="mb-5 flex items-center gap-3">
         <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
@@ -420,6 +433,11 @@ export default function InvoicesPage() {
             className="pl-9"
           />
         </div>
+        <ColumnsDropdown
+          columns={INVOICE_COLUMNS}
+          visibleKeys={colVisible}
+          onToggle={toggleCol}
+        />
       </div>
 
       {/* Bulk actions */}
@@ -451,26 +469,26 @@ export default function InvoicesPage() {
                     />
                   </TableHead>
                 )}
-                <TableHead>Номер</TableHead>
-                <TableHead>Контрагент</TableHead>
-                <TableHead>Наряд</TableHead>
-                <TableHead>Статус</TableHead>
-                <TableHead className="text-right">Сума</TableHead>
-                <TableHead>Термін оплати</TableHead>
+                {colVisible.has('number') && <TableHead>Номер</TableHead>}
+                {colVisible.has('counterparty') && <TableHead>Контрагент</TableHead>}
+                {colVisible.has('workOrder') && <TableHead>Наряд</TableHead>}
+                {colVisible.has('status') && <TableHead>Статус</TableHead>}
+                {colVisible.has('amount') && <TableHead className="text-right">Сума</TableHead>}
+                {colVisible.has('dueDate') && <TableHead>Термін оплати</TableHead>}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="py-10 text-center">
+                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && invoices.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="p-0">
+                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={Receipt} title="Рахунків не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -495,18 +513,30 @@ export default function InvoicesPage() {
                       />
                     </TableCell>
                   )}
-                  <TableCell className="font-mono font-medium text-foreground">{inv.number}</TableCell>
-                  <TableCell className="text-foreground-muted">{inv.counterpartyName ?? '—'}</TableCell>
-                  <TableCell className="text-muted-foreground text-xs font-mono">{inv.workOrderNumber ?? '—'}</TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
-                      {STATUS_LABELS[inv.status]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">{fmt(inv.amount)}</TableCell>
-                  <TableCell className="text-foreground-faint text-xs">
-                    {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : '—'}
-                  </TableCell>
+                  {colVisible.has('number') && (
+                    <TableCell className="font-mono font-medium text-foreground">{inv.number}</TableCell>
+                  )}
+                  {colVisible.has('counterparty') && (
+                    <TableCell className="text-foreground-muted">{inv.counterpartyName ?? '—'}</TableCell>
+                  )}
+                  {colVisible.has('workOrder') && (
+                    <TableCell className="text-muted-foreground text-xs font-mono">{inv.workOrderNumber ?? '—'}</TableCell>
+                  )}
+                  {colVisible.has('status') && (
+                    <TableCell>
+                      <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
+                        {STATUS_LABELS[inv.status]}
+                      </Badge>
+                    </TableCell>
+                  )}
+                  {colVisible.has('amount') && (
+                    <TableCell className="text-right font-semibold">{fmt(inv.amount)}</TableCell>
+                  )}
+                  {colVisible.has('dueDate') && (
+                    <TableCell className="text-foreground-faint text-xs">
+                      {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : '—'}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <div
                       className="flex gap-1.5 justify-end"
