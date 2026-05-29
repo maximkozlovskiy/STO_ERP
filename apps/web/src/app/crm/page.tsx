@@ -19,9 +19,11 @@ import {
 import { DetailPanel } from '@/components/ui/detail-panel';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useTableColumns } from '@/hooks/useTableColumns';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
@@ -65,6 +67,17 @@ export default function CrmPage() {
   });
 
   const features = useUiFeatures();
+
+  // ── Column visibility ────────────────────────────────────────────────────────
+  const CRM_COLUMNS = useMemo(() => [
+    { key: 'name',    label: 'Контрагент',  defaultVisible: true },
+    { key: 'type',    label: 'Тип',         defaultVisible: true },
+    { key: 'phone',   label: 'Телефон',     defaultVisible: true },
+    { key: 'edrpou',  label: 'ЄДРПОУ',     defaultVisible: false },
+    { key: 'balance', label: 'Баланс, ₴',  defaultVisible: true },
+  ], []);
+
+  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('crm', CRM_COLUMNS);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -241,6 +254,12 @@ export default function CrmPage() {
         >
           {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
         </Button>
+        <ColumnsDropdown
+          columns={CRM_COLUMNS}
+          visibleKeys={colVisible}
+          onToggle={toggleCol}
+          className="ml-auto"
+        />
       </div>
 
       {/* Bulk actions */}
@@ -272,24 +291,24 @@ export default function CrmPage() {
                     />
                   </TableHead>
                 )}
-                <TableHead>Контрагент</TableHead>
-                <TableHead>Тип</TableHead>
-                <TableHead>Телефон</TableHead>
-                <TableHead>ЄДРПОУ</TableHead>
-                <TableHead>Баланс, ₴</TableHead>
+                {colVisible.has('name')    && <TableHead>Контрагент</TableHead>}
+                {colVisible.has('type')    && <TableHead>Тип</TableHead>}
+                {colVisible.has('phone')   && <TableHead>Телефон</TableHead>}
+                {colVisible.has('edrpou')  && <TableHead>ЄДРПОУ</TableHead>}
+                {colVisible.has('balance') && <TableHead>Баланс, ₴</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="py-12 text-center">
+                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && data?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 6 : 5} className="p-0">
+                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" size="sm" />
                   </TableCell>
                 </TableRow>
@@ -318,26 +337,36 @@ export default function CrmPage() {
                         />
                       </TableCell>
                     )}
-                    <TableCell>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-[13px] font-medium text-primary">{displayName(cp)}</p>
-                        {isDeleted && <Badge variant="secondary">видалено</Badge>}
-                      </div>
-                      {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
-                        {TYPE_LABELS[cp.type]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-[13px]">{cp.phone ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>
-                    <TableCell className={cn(
-                      'font-semibold tabular-nums text-[13px]',
-                      cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground',
-                    )}>
-                      {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                    </TableCell>
+                    {colVisible.has('name') && (
+                      <TableCell>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-[13px] font-medium text-primary">{displayName(cp)}</p>
+                          {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                        </div>
+                        {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
+                      </TableCell>
+                    )}
+                    {colVisible.has('type') && (
+                      <TableCell>
+                        <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
+                          {TYPE_LABELS[cp.type]}
+                        </Badge>
+                      </TableCell>
+                    )}
+                    {colVisible.has('phone') && (
+                      <TableCell className="text-muted-foreground text-[13px]">{cp.phone ?? '—'}</TableCell>
+                    )}
+                    {colVisible.has('edrpou') && (
+                      <TableCell className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>
+                    )}
+                    {colVisible.has('balance') && (
+                      <TableCell className={cn(
+                        'font-semibold tabular-nums text-[13px]',
+                        cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground',
+                      )}>
+                        {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
