@@ -28,6 +28,7 @@ import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-ba
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
@@ -658,8 +659,8 @@ export default function InvoicesPage() {
       {/* Create modal */}
       <Modal
         open={showCreate}
-        onClose={() => {
-          if (!dirty.confirmClose()) return;
+        onClose={async () => {
+          if (!(await dirty.confirmClose())) return;
           dirty.resetDirty();
           setShowCreate(false);
           setForm({ counterpartyId: '', amount: '', dueDate: '' });
@@ -766,6 +767,7 @@ export default function InvoicesPage() {
           </div>
         )}
       </Modal>
+      <DirtyConfirmDialog {...dirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );

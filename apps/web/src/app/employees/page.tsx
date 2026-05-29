@@ -28,6 +28,7 @@ import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
@@ -293,7 +294,7 @@ export default function EmployeesPage() {
 
   const closeModal = async () => {
     if (modal === 'create') {
-      if (!createDirty.confirmClose()) return;
+      if (!(await createDirty.confirmClose())) return;
     }
     setModal(null); setSelected(null); setError('');
   };
@@ -385,8 +386,8 @@ export default function EmployeesPage() {
     setModal('edit');
   };
 
-  const closeEditModal = () => {
-    if (!editDirty.confirmClose()) return;
+  const closeEditModal = async () => {
+    if (!(await editDirty.confirmClose())) return;
     setModal(null); setEditEmp(null);
   };
 
@@ -918,6 +919,8 @@ export default function EmployeesPage() {
           )}
         </div>
       </Modal>
+      <DirtyConfirmDialog {...createDirty.dialogProps} />
+      <DirtyConfirmDialog {...editDirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );

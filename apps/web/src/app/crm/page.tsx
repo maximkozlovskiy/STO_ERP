@@ -27,6 +27,7 @@ import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -204,7 +205,7 @@ export default function CrmPage() {
   };
 
   const handleCloseModal = async () => {
-    if (!dirty.confirmClose()) return;
+    if (!(await dirty.confirmClose())) return;
     setModal(false);
     setEditingCp(null);
   };
@@ -649,6 +650,7 @@ export default function CrmPage() {
           </label>
         </div>
       </Modal>
+      <DirtyConfirmDialog {...dirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );
