@@ -881,25 +881,23 @@ export default function CalendarPage() {
 
   // New counterparty wizard modal (3 steps: client → garage → vehicle)
   const [newCpOpen, setNewCpOpen] = useState(false);
-  const [newCpStep, setNewCpStep] = useState<1 | 2 | 3>(1);
+  const [newCpStep, setNewCpStep] = useState<1 | 2>(1);
   const [newCp, setNewCp] = useState({ firstName: '', lastName: '', phone: '', companyName: '', email: '' });
-  const [newGarage, setNewGarage] = useState({ name: 'Основний', address: '' });
   const [newVehicle, setNewVehicle] = useState({ make: '', model: '', year: '', licensePlate: '', vin: '' });
   const [savingCp, setSavingCp] = useState(false);
   const [cpWizardError, setCpWizardError] = useState('');
-  // ids created during wizard
   const [createdCpId, setCreatedCpId] = useState('');
   const [createdGarageId, setCreatedGarageId] = useState('');
 
   const openNewCpWizard = () => {
     setNewCp({ firstName: '', lastName: '', phone: '', companyName: '', email: '' });
-    setNewGarage({ name: 'Основний', address: '' });
     setNewVehicle({ make: '', model: '', year: '', licensePlate: '', vin: '' });
     setCreatedCpId(''); setCreatedGarageId('');
     setCpWizardError(''); setNewCpStep(1);
     setNewCpOpen(true);
   };
 
+  // Step 1: create counterparty → backend auto-creates default garage → fetch it
   const saveWizardStep1 = async () => {
     if (!newCp.firstName && !newCp.lastName && !newCp.companyName) {
       setCpWizardError("Вкажіть ім'я або назву компанії"); return;
@@ -918,28 +916,18 @@ export default function CalendarPage() {
         }),
       });
       setCreatedCpId(created.id);
+      // Fetch the auto-created default garage id (needed for vehicle linking)
+      const garages = await apiFetch<{ id: string; isDefault: boolean }[]>(`/counterparties/${created.id}/garages`).catch(() => [] as { id: string; isDefault: boolean }[]);
+      const defaultGarage = garages.find(g => g.isDefault) ?? garages[0];
+      if (defaultGarage) setCreatedGarageId(defaultGarage.id);
       setNewCpStep(2);
     } catch (e: unknown) { setCpWizardError(e instanceof Error ? e.message : 'Помилка'); }
     finally { setSavingCp(false); }
   };
 
+  // Step 2: optionally add vehicle to default garage, then finish
   const saveWizardStep2 = async (skip = false) => {
-    if (skip) { setNewCpStep(3); return; }
-    if (!newGarage.name.trim()) { setCpWizardError('Вкажіть назву гаражу'); return; }
-    setSavingCp(true); setCpWizardError('');
-    try {
-      const garage = await apiFetch<{ id: string }>(`/counterparties/${createdCpId}/garages`, {
-        method: 'POST',
-        body: JSON.stringify({ name: newGarage.name, address: newGarage.address || undefined }),
-      });
-      setCreatedGarageId(garage.id);
-      setNewCpStep(3);
-    } catch (e: unknown) { setCpWizardError(e instanceof Error ? e.message : 'Помилка'); }
-    finally { setSavingCp(false); }
-  };
-
-  const saveWizardStep3 = async (skip = false) => {
-    if (!skip && createdGarageId) {
+    if (!skip) {
       if (!newVehicle.make.trim() || !newVehicle.model.trim()) {
         setCpWizardError('Вкажіть марку та модель авто'); return;
       }
@@ -959,9 +947,8 @@ export default function CalendarPage() {
       } catch (e: unknown) { setCpWizardError(e instanceof Error ? e.message : 'Помилка'); setSavingCp(false); return; }
       finally { setSavingCp(false); }
     }
-    // Finish wizard — select the created client
-    const cp = await apiFetch<CounterpartyOption>(`/counterparties/${createdCpId}`).catch(() => null);
-    const display = cp ? displayCounterparty(cp) : newCp.companyName || [newCp.lastName, newCp.firstName].filter(Boolean).join(' ') || '(без імені)';
+    // Select created client in form
+    const display = newCp.companyName || [newCp.lastName, newCp.firstName].filter(Boolean).join(' ') || '(без імені)';
     setCpDisplay(display);
     setForm(f => ({ ...f, counterpartyId: createdCpId, counterpartyDisplay: display }));
     setNewCpOpen(false);
@@ -1313,20 +1300,20 @@ export default function CalendarPage() {
           <Modal
             open={newCpOpen}
             onClose={() => setNewCpOpen(false)}
-            title={newCpStep === 1 ? 'Новий клієнт' : newCpStep === 2 ? 'Гараж клієнта' : 'Автомобіль'}
+            title={newCpStep === 1 ? 'Новий клієнт' : 'Автомобіль клієнта'}
             size="md"
           >
-            {/* Step indicator */}
+            {/* Step indicator — 2 steps */}
             <div className="flex items-center gap-2 mb-5">
-              {([1, 2, 3] as const).map(s => (
+              {([1, 2] as const).map(s => (
                 <div key={s} className="flex items-center gap-2">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${s === newCpStep ? 'bg-primary text-primary-foreground' : s < newCpStep ? 'bg-success-text text-white' : 'bg-secondary text-muted-foreground border border-border'}`}>
                     {s < newCpStep ? '✓' : s}
                   </div>
                   <span className={`text-xs ${s === newCpStep ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                    {s === 1 ? 'Клієнт' : s === 2 ? 'Гараж' : 'Авто'}
+                    {s === 1 ? 'Клієнт' : 'Авто'}
                   </span>
-                  {s < 3 && <div className="w-8 h-px bg-border mx-1" />}
+                  {s < 2 && <div className="w-8 h-px bg-border mx-1" />}
                 </div>
               ))}
             </div>
@@ -1335,7 +1322,7 @@ export default function CalendarPage() {
               <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2 mb-4">{cpWizardError}</p>
             )}
 
-            {/* Step 1 — Client */}
+            {/* Step 1 — Client (garage «Основний» created automatically by backend) */}
             {newCpStep === 1 && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
@@ -1356,22 +1343,8 @@ export default function CalendarPage() {
               </div>
             )}
 
-            {/* Step 2 — Garage */}
+            {/* Step 2 — Vehicle (optional) */}
             {newCpStep === 2 && (
-              <div className="space-y-3">
-                <Input label="Назва гаражу" placeholder="Основний" value={newGarage.name} onChange={e => setNewGarage(v => ({ ...v, name: e.target.value }))} />
-                <Input label="Адреса (необов'язково)" placeholder="вул. Хрещатик, 1, Київ" value={newGarage.address} onChange={e => setNewGarage(v => ({ ...v, address: e.target.value }))} />
-                <div className="flex gap-2 pt-2">
-                  <Button onClick={() => saveWizardStep2(false)} loading={savingCp} disabled={!newGarage.name.trim()}>
-                    Далі →
-                  </Button>
-                  <Button variant="outline" onClick={() => saveWizardStep2(true)}>Пропустити</Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3 — Vehicle */}
-            {newCpStep === 3 && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <Input label="Марка" placeholder="Toyota" value={newVehicle.make} onChange={e => setNewVehicle(v => ({ ...v, make: e.target.value }))} />
@@ -1383,10 +1356,10 @@ export default function CalendarPage() {
                 </div>
                 <Input label="VIN (необов'язково)" placeholder="1HGBH41JXMN109186" value={newVehicle.vin} onChange={e => setNewVehicle(v => ({ ...v, vin: e.target.value }))} />
                 <div className="flex gap-2 pt-2">
-                  <Button onClick={() => saveWizardStep3(false)} loading={savingCp} disabled={!newVehicle.make.trim() || !newVehicle.model.trim()}>
+                  <Button onClick={() => saveWizardStep2(false)} loading={savingCp} disabled={!newVehicle.make.trim() || !newVehicle.model.trim()}>
                     Зберегти
                   </Button>
-                  <Button variant="outline" onClick={() => saveWizardStep3(true)}>Пропустити</Button>
+                  <Button variant="outline" onClick={() => saveWizardStep2(true)}>Пропустити</Button>
                 </div>
               </div>
             )}
