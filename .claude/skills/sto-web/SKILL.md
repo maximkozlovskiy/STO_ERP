@@ -133,7 +133,13 @@ export default function MyListPage() {
     { key: 'status', label: 'Статус',  defaultVisible: true },
     { key: 'extra',  label: 'Додатково', defaultVisible: false },  // прихована за замовч.
   ], []);
-  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('my-page', COLUMNS);
+  // visibleColumns — видимі у user-defined порядку з кастомними label
+  // orderedColumns — всі у user-defined порядку (для ColumnsDropdown)
+  const {
+    visibleKeys: colVisible, visibleColumns, orderedColumns,
+    order, customLabels,
+    toggle: toggleCol, reorder, renameColumn, resetConfig,
+  } = useTableColumns('my-page', COLUMNS);
 
   // ── Saved Filters ────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -254,7 +260,17 @@ export default function MyListPage() {
           <option value="ACTIVE">Активні</option>
         </Select>
         {/* ColumnsDropdown — завжди ml-auto, останній у рядку */}
-        <ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} className="ml-auto" />
+        {/* columns={orderedColumns} — НЕ COLUMNS: відображає user-defined порядок і кастомні label */}
+        <ColumnsDropdown
+          columns={orderedColumns}
+          visibleKeys={colVisible}
+          onToggle={toggleCol}
+          onReorder={reorder}
+          onRename={renameColumn}
+          onReset={resetConfig}
+          hasCustomization={JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
+          className="ml-auto"
+        />
       </div>
 
       {/* Bulk Actions Bar */}
@@ -273,17 +289,16 @@ export default function MyListPage() {
                   onChange={bulkSelect.toggleAll} className="h-3.5 w-3.5 rounded border-border" />
               </TableHead>
             )}
-            {colVisible.has('name')   && <TableHead>Назва</TableHead>}
-            {colVisible.has('status') && <TableHead>Статус</TableHead>}
-            {colVisible.has('extra')  && <TableHead>Додатково</TableHead>}
-            <TableHead />
+            {/* ✅ map по visibleColumns — порядок і назви з user config */}
+            {visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+            <TableHead /> {/* actions */}
           </TableRow>
         </TableHeader>
         <TableBody>
           {loading ? (
-            <TableRow><TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center"><Spinner /></TableCell></TableRow>
+            <TableRow><TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center"><Spinner /></TableCell></TableRow>
           ) : !data?.items.length ? (
-            <TableRow><TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0"><EmptyState title="Нічого не знайдено" /></TableCell></TableRow>
+            <TableRow><TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0"><EmptyState title="Нічого не знайдено" /></TableCell></TableRow>
           ) : data.items.map(item => (
             <TableRow key={item.id} className={cn(item.status === 'DELETED' && 'opacity-50')}>
               {features.bulkActionsEnabled && (
@@ -292,9 +307,13 @@ export default function MyListPage() {
                     onChange={() => bulkSelect.toggle(item.id)} className="h-3.5 w-3.5 rounded border-border" />
                 </TableCell>
               )}
-              {colVisible.has('name')   && <TableCell className="font-medium">{item.name}</TableCell>}
-              {colVisible.has('status') && <TableCell>{item.status}</TableCell>}
-              {colVisible.has('extra')  && <TableCell>—</TableCell>}
+              {/* ✅ map по visibleColumns — кожна комірка через if/key */}
+              {visibleColumns.map(col => {
+                if (col.key === 'name')   return <TableCell key="name" className="font-medium">{item.name}</TableCell>;
+                if (col.key === 'status') return <TableCell key="status">{item.status}</TableCell>;
+                if (col.key === 'extra')  return <TableCell key="extra">—</TableCell>;
+                return null;
+              })}
               <TableCell className="text-right">
                 <Button variant="ghost" size="sm" onClick={() => openEdit(item)}>Редагувати</Button>
               </TableCell>
@@ -374,33 +393,60 @@ import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 const COLUMNS = useMemo<ColumnDef[]>(() => [
   { key: 'name',   label: 'Назва',      defaultVisible: true },
   { key: 'status', label: 'Статус',     defaultVisible: true },
-  { key: 'phone',  label: 'Телефон',    defaultVisible: true },
-  { key: 'extra',  label: 'Додатково',  defaultVisible: false },  // прихована за замовч.
+  { key: 'extra',  label: 'Додатково',  defaultVisible: false },
 ], []);
 
-// 2. Підключи хук (зберігає у localStorage під ключем 'sto_columns_<pageKey>')
-const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('my-page', COLUMNS);
+// 2. Підключи хук — повний набір:
+// visibleColumns — видимі у USER-DEFINED порядку з кастомними label ← рендерь таблицю по ньому
+// orderedColumns — всі колонки в user-defined порядку ← передавай в ColumnsDropdown
+// order, customLabels — для hasCustomization
+// reorder/renameColumn/resetConfig — callbacks для ColumnsDropdown
+const {
+  visibleKeys: colVisible,  // Set — для colSpan або додаткових перевірок
+  visibleColumns,           // ← ПО ЦЬОМУ рендерь TableHead і TableCell
+  orderedColumns,           // ← ЦЕ передавай в ColumnsDropdown
+  order, customLabels,
+  toggle: toggleCol, reorder, renameColumn, resetConfig,
+} = useTableColumns('my-page', COLUMNS);
 
-// 3. ColumnsDropdown — у рядку фільтрів, ml-auto
-<ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} className="ml-auto" />
+// 3. ColumnsDropdown — columns={orderedColumns} (НЕ COLUMNS!)
+<ColumnsDropdown
+  columns={orderedColumns}
+  visibleKeys={colVisible}
+  onToggle={toggleCol}
+  onReorder={reorder}
+  onRename={renameColumn}
+  onReset={resetConfig}
+  hasCustomization={
+    JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c => c.key)) ||
+    Object.keys(customLabels).length > 0
+  }
+  className="ml-auto"
+/>
 
-// 4. TableHead — умовний рендер
-{colVisible.has('name')  && <TableHead>Назва</TableHead>}
-{colVisible.has('extra') && <TableHead>Додатково</TableHead>}
+// 4. TableHead — через map, НЕ colVisible.has()
+{visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
 
-// 5. TableCell — ті самі умови
-{colVisible.has('name')  && <TableCell>{item.name}</TableCell>}
-{colVisible.has('extra') && <TableCell>—</TableCell>}
+// 5. TableCell — через map з if/key на кожну колонку
+{visibleColumns.map(col => {
+  if (col.key === 'name')   return <TableCell key="name">{item.name}</TableCell>;
+  if (col.key === 'status') return <TableCell key="status">{item.status}</TableCell>;
+  if (col.key === 'extra')  return <TableCell key="extra">—</TableCell>;
+  return null;
+})}
 
-// 6. colSpan для loading/empty рядків
-colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)}
-// +2 = чекбокс + кнопки дій; +1 = тільки кнопки дій
+// 6. colSpan — visibleColumns.length (НЕ colVisible.size!)
+colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
 ```
 
 **Правила:**
+- `❌ {colVisible.has('X') && <TableHead>}` — СТАРИЙ паттерн, не порушує порядок
+- `✅ {visibleColumns.map(col => ...)}` — ПРАВИЛЬНИЙ паттерн, порядок з user config
+- `columns={orderedColumns}` в ColumnsDropdown — НЕ `COLUMNS` (щоб label і порядок відображались)
 - Чекбокс bulk-select і колонка кнопок дій — **НЕ** входять у `COLUMNS`
-- `COLUMNS` у `useMemo` — обов'язково, щоб референція була стабільною
-- Ключ `'my-page'` — унікальний по сторінці; для вкладок: `'catalog-works'`, `'catalog-goods'`
+- `COLUMNS` у `useMemo` — обов'язково (стабільна референція)
+- Ключ унікальний по сторінці; для вкладок: `'catalog-works'`, `'catalog-goods'`, `'catalog-services'`
+- localStorage keys: `sto_columns_<key>` (visible), `sto_col_order_<key>`, `sto_col_labels_<key>`
 
 ---
 
@@ -613,15 +659,19 @@ useEffect(() => {
 - [ ] `useRequireAuth(['OWNER', 'ADMIN', ...])` — перший рядок компоненту
 - [ ] `mountedRef` guard на всіх `setState` в async callback
 - [ ] `let cancelled = false` + `return () => { cancelled = true }` у `useEffect` з fetch
-- [ ] `useTableColumns` + `ColumnsDropdown` (className="ml-auto")
+- [ ] `useTableColumns` повна деструктуризація: `{ visibleColumns, orderedColumns, order, customLabels, toggle, reorder, renameColumn, resetConfig }`
+- [ ] `ColumnsDropdown` отримує `columns={orderedColumns}` (не COLUMNS!) + `onReorder/onRename/onReset/hasCustomization`
+- [ ] TableHead рендериться через `visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)`
+- [ ] TableCell рендериться через `visibleColumns.map(col => { if(col.key==='X') return <TableCell key="X">...</TableCell>; return null; })`
+- [ ] `colSpan = visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)` — НЕ `colVisible.size`
 - [ ] `useBulkSelect` + `BulkActionsBar` + чекбокси в TableHead/TableRow
 - [ ] `useSavedFilters` + `SavedFiltersBar`
 - [ ] `useDirtyForm` на кожній формі (markDirty на onChange, confirmClose перед закриттям)
 - [ ] `useConfirm` + `<ConfirmDialog {...dialogProps} />` для видалень
 - [ ] `toast.success/error/warning` замість `alert()` або `window.confirm()`
 - [ ] `Promise.allSettled` для bulk-операцій (ніколи `Promise.all`)
-- [ ] `colSpan = colVisible.size + (features.bulkActionsEnabled ? 2 : 1)` на loading/empty рядках
 - [ ] Фільтри скидають `setActiveSavedFilterId(null)` при зміні
+- [ ] Кнопки видалення: `className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"`
 - [ ] `pnpm --filter @sto/web exec tsc --noEmit` — 0 помилок
 
 ---
