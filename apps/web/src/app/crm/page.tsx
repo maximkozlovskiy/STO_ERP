@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Users, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -62,6 +62,7 @@ export default function CrmPage() {
   const [page, setPage] = useState(1);
   const [showDeleted, setShowDeleted] = useState(false);
   const [modal, setModal] = useState(false);
+  const [editingCp, setEditingCp] = useState<Counterparty | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
@@ -205,6 +206,58 @@ export default function CrmPage() {
   const handleCloseModal = async () => {
     if (!dirty.confirmClose()) return;
     setModal(false);
+    setEditingCp(null);
+  };
+
+  const openEdit = (cp: Counterparty) => {
+    setEditingCp(cp);
+    setForm({
+      type: cp.type,
+      firstName: cp.firstName ?? '',
+      lastName: cp.lastName ?? '',
+      companyName: cp.companyName ?? '',
+      phone: cp.phone ?? '',
+      email: cp.email ?? '',
+      edrpou: cp.edrpou ?? '',
+      vatPayer: cp.vatPayer,
+      notes: '',
+      contactPerson: '',
+    });
+    dirty.resetDirty();
+    setError('');
+    setModal(true);
+  };
+
+  const update = async () => {
+    if (!editingCp) return;
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) { setError('Некоректний email'); return; }
+    if (form.edrpou && !/^\d{8}$/.test(form.edrpou)) { setError('ЄДРПОУ повинен містити рівно 8 цифр'); return; }
+    if (form.phone && !/^\+?[\d\s\-()+]{7,20}$/.test(form.phone)) { setError('Некоректний номер телефону'); return; }
+    setSaving(true); setError('');
+    try {
+      await apiFetch(`/counterparties/${editingCp.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          type: form.type,
+          firstName: form.firstName || undefined,
+          lastName: form.lastName || undefined,
+          companyName: form.companyName || undefined,
+          phone: form.phone || undefined,
+          email: form.email || undefined,
+          edrpou: form.edrpou || undefined,
+          vatPayer: form.vatPayer || undefined,
+          notes: form.notes || undefined,
+          contactPerson: form.contactPerson || undefined,
+        }),
+      });
+      dirty.resetDirty();
+      setModal(false);
+      setEditingCp(null);
+      if (selectedCp?.id === editingCp.id) setSelectedCp(null);
+      toast.success('Контрагента збережено');
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+    finally { setSaving(false); }
   };
 
   const markDeleted = async (id: string) => {
@@ -278,6 +331,7 @@ export default function CrmPage() {
         <Button
           leftIcon={<Plus />}
           onClick={() => {
+            setEditingCp(null);
             setForm({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '', vatPayer: false, notes: '', contactPerson: '' });
             dirty.resetDirty();
             setError(''); setModal(true);
@@ -332,7 +386,7 @@ export default function CrmPage() {
         </Button>
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <ColumnsDropdown columns={CRM_COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
+          <ColumnsDropdown columns={CRM_COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} pageKey="crm" />
         </div>
       </div>
 
@@ -444,17 +498,29 @@ export default function CrmPage() {
                       </TableCell>
                     )}
                     <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      {!isDeleted && (
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                          title="Позначити на видалення"
-                          onClick={() => markDeleted(cp.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {!isDeleted && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            title="Редагувати"
+                            onClick={() => openEdit(cp)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {!isDeleted && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                            title="Позначити на видалення"
+                            onClick={() => markDeleted(cp.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -491,13 +557,15 @@ export default function CrmPage() {
         />
       </div>
 
-      {/* Create modal */}
+      {/* Create / Edit modal */}
       <Modal
         open={modal}
         onClose={handleCloseModal}
-        title="Новий контрагент"
+        title={editingCp ? 'Редагування контрагента' : 'Новий контрагент'}
         footer={
-          <Button onClick={create} loading={saving}>Зберегти</Button>
+          <Button onClick={editingCp ? update : create} loading={saving}>
+            {editingCp ? 'Оновити' : 'Зберегти'}
+          </Button>
         }
       >
         {error && (

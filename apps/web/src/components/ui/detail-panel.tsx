@@ -62,16 +62,16 @@ export function DetailPanel({ open, onClose, title, subtitle, tabs, children, de
 
       {/* Tabs */}
       {tabs && tabs.length > 1 && (
-        <div className="flex border-b border-border shrink-0 px-1 pt-1 gap-0.5 overflow-x-auto">
+        <div className="flex border-b border-border shrink-0 overflow-x-auto">
           {tabs.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={cn(
-                'px-3 py-1.5 text-[12px] font-medium rounded-t-md transition-colors whitespace-nowrap border-b-2 -mb-px',
+                'px-4 py-2.5 text-[12px] font-medium transition-colors whitespace-nowrap border-b-2 shrink-0',
                 activeTab === tab.key
-                  ? 'text-primary border-primary bg-primary/5'
-                  : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-secondary',
+                  ? 'text-primary border-primary'
+                  : 'text-muted-foreground border-transparent hover:text-foreground',
               )}
             >
               {tab.label}

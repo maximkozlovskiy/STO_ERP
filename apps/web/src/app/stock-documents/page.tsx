@@ -420,7 +420,7 @@ export default function StockDocumentsPage() {
 
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
+          <ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} pageKey="stock-documents" />
         </div>
       </div>
 
