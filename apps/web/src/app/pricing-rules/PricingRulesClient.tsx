@@ -20,11 +20,20 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Good { id: string; name: string; sku: string | null; }
+interface Brand { id: string; name: string; }
+
+interface PricingRuleTier {
+  id?: string;
+  costMin: number;
+  costMax: number | null;
+  percentValue: number;
+  sortOrder: number;
+}
 
 interface PricingRule {
   id: string;
   name: string;
-  type: 'PERCENT' | 'FIXED_AMOUNT' | 'FIXED_PRICE' | 'COMPETITOR_PLUS';
+  type: 'PERCENT' | 'FIXED_AMOUNT' | 'FIXED_PRICE' | 'COMPETITOR_PLUS' | 'COST_TIER';
   priority: number;
   goodId: string | null;
   good: Good | null;
@@ -36,6 +45,9 @@ interface PricingRule {
   roundTo: number | null;
   isActive: boolean;
   createdAt: string;
+  brandId?: string | null;
+  brandName?: string | null;
+  tiers?: PricingRuleTier[];
 }
 
 type RuleForm = {
@@ -50,6 +62,8 @@ type RuleForm = {
   fixedPrice: string;
   roundTo: string;
   isActive: boolean;
+  brandId: string;
+  tiers: PricingRuleTier[];
 };
 
 const EMPTY_FORM: RuleForm = {
@@ -57,13 +71,16 @@ const EMPTY_FORM: RuleForm = {
   goodId: '', goodCategory: '', goodType: '',
   percentValue: '', fixedAmount: '', fixedPrice: '',
   roundTo: '', isActive: true,
+  brandId: '',
+  tiers: [],
 };
 
 const TYPE_LABELS: Record<string, string> = {
   PERCENT: 'Відсоток від собівартості',
   FIXED_AMOUNT: 'Фіксована надбавка',
   FIXED_PRICE: 'Фіксована ціна',
-  COMPETITOR_PLUS: 'Конкурент + %',
+  COMPETITOR_PLUS: 'Від ціни конкурента',
+  COST_TIER: 'Грейди (за собівартістю)',
 };
 
 const GOOD_TYPE_OPTIONS = [
@@ -90,6 +107,8 @@ function valueLabel(rule: PricingRule): string {
       return rule.fixedAmount != null ? `+${rule.fixedAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : '—';
     case 'FIXED_PRICE':
       return rule.fixedPrice != null ? `${rule.fixedPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : '—';
+    case 'COST_TIER':
+      return rule.tiers && rule.tiers.length > 0 ? `${rule.tiers.length} грейд(ів)` : '—';
     default:
       return '—';
   }
@@ -98,13 +117,14 @@ function valueLabel(rule: PricingRule): string {
 // ─── Rule Form Modal ──────────────────────────────────────────────────────────
 
 function RuleFormModal({
-  open, onClose, onSave, initial, goods,
+  open, onClose, onSave, initial, goods, brands,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (form: RuleForm) => Promise<void>;
   initial: RuleForm;
   goods: Good[];
+  brands: Brand[];
 }) {
   const [form, setForm] = useState<RuleForm>(initial);
   const [saving, setSaving] = useState(false);
@@ -113,6 +133,35 @@ function RuleFormModal({
   useEffect(() => { if (open) { setForm(initial); setError(''); } }, [open, initial]);
 
   const set = (patch: Partial<RuleForm>) => setForm(f => ({ ...f, ...patch }));
+
+  // ─── Tier management ───────────────────────────────────────────────────────
+
+  const addTier = () => {
+    const prev = form.tiers;
+    const lastMax = prev.length > 0 ? prev[prev.length - 1].costMax : 0;
+    setForm(f => ({
+      ...f,
+      tiers: [...f.tiers, {
+        costMin: lastMax ?? 0,
+        costMax: null,
+        percentValue: 0,
+        sortOrder: f.tiers.length,
+      }],
+    }));
+  };
+
+  const updateTier = (idx: number, field: keyof PricingRuleTier, value: number | null) => {
+    setForm(f => ({
+      ...f,
+      tiers: f.tiers.map((t, i) => i === idx ? { ...t, [field]: value } : t),
+    }));
+  };
+
+  const removeTier = (idx: number) => {
+    setForm(f => ({ ...f, tiers: f.tiers.filter((_, i) => i !== idx) }));
+  };
+
+  // ─── Submit ────────────────────────────────────────────────────────────────
 
   const submit = async () => {
     if (!form.name.trim()) { setError('Введіть назву правила'); return; }
@@ -124,6 +173,20 @@ function RuleFormModal({
     }
     if (form.type === 'FIXED_PRICE') {
       if (!form.fixedPrice || Number(form.fixedPrice) <= 0) { setError('Введіть фіксовану ціну'); return; }
+    }
+    if (form.type === 'COST_TIER') {
+      if (form.tiers.length === 0) { setError('Додайте хоча б один грейд'); return; }
+      for (let i = 0; i < form.tiers.length; i++) {
+        const t = form.tiers[i];
+        if (t.costMax !== null && t.costMin >= t.costMax) {
+          setError(`Грейд ${i + 1}: значення "До" має бути більше "Від"`);
+          return;
+        }
+        if (t.percentValue < 0 || t.percentValue > 999) {
+          setError(`Грейд ${i + 1}: відсоток має бути від 0 до 999`);
+          return;
+        }
+      }
     }
     setSaving(true); setError('');
     try { await onSave(form); onClose(); }
@@ -162,10 +225,22 @@ function RuleFormModal({
           label="Тип"
           required
           value={form.type}
-          onChange={e => set({ type: e.target.value as PricingRule['type'] })}
+          onChange={e => set({ type: e.target.value as PricingRule['type'], tiers: e.target.value === 'COST_TIER' && form.tiers.length === 0 ? [{ costMin: 0, costMax: 100, percentValue: 30, sortOrder: 0 }] : form.tiers })}
         >
           {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </Select>
+
+        {/* Brand selector — shown when no specific good is selected */}
+        {!form.goodId && (
+          <Select
+            label="Бренд (для правила по бренду)"
+            value={form.brandId}
+            onChange={e => set({ brandId: e.target.value })}
+          >
+            <option value="">— Будь-який бренд —</option>
+            {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+        )}
 
         {/* Dynamic value fields */}
         {(form.type === 'PERCENT' || form.type === 'COMPETITOR_PLUS') && (
@@ -197,6 +272,60 @@ function RuleFormModal({
             onChange={e => set({ fixedPrice: e.target.value })}
             placeholder="320"
           />
+        )}
+
+        {/* COST_TIER grade section */}
+        {form.type === 'COST_TIER' && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] font-medium text-foreground">Грейди за собівартістю</span>
+              <Button size="sm" variant="outline" leftIcon={<Plus className="h-3.5 w-3.5" />}
+                onClick={addTier}>
+                Додати грейд
+              </Button>
+            </div>
+            {form.tiers.length === 0 && (
+              <p className="text-[13px] text-muted-foreground text-center py-3">
+                Додайте хоча б один грейд
+              </p>
+            )}
+            {form.tiers.map((tier, idx) => (
+              <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
+                <Input
+                  label={idx === 0 ? 'Від (₴)' : ''}
+                  type="number"
+                  min="0"
+                  value={idx === 0 ? '0' : String(tier.costMin)}
+                  disabled={idx === 0}
+                  onChange={e => updateTier(idx, 'costMin', Number(e.target.value))}
+                />
+                <Input
+                  label={idx === 0 ? 'До (₴)' : ''}
+                  type="number"
+                  min="0"
+                  placeholder={idx === form.tiers.length - 1 ? '∞' : ''}
+                  value={tier.costMax == null ? '' : String(tier.costMax)}
+                  onChange={e => updateTier(idx, 'costMax', e.target.value === '' ? null : Number(e.target.value))}
+                />
+                <Input
+                  label={idx === 0 ? 'Націнка (%)' : ''}
+                  type="number"
+                  min="0"
+                  max="999"
+                  value={String(tier.percentValue)}
+                  onChange={e => updateTier(idx, 'percentValue', Number(e.target.value))}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeTier(idx)}
+                  className="text-destructive/70 hover:text-destructive p-1.5 rounded mb-0.5"
+                  aria-label="Видалити грейд"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
         )}
 
         <Input
@@ -274,6 +403,7 @@ export default function PricingRulesClient() {
   const { confirm, dialogProps } = useConfirm();
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [goods, setGoods] = useState<Good[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modal, setModal] = useState(false);
@@ -310,13 +440,19 @@ export default function PricingRulesClient() {
     let cancelled = false;
     // Bug #32: `/goods?limit=500` валиться на ValidationPipe (GoodQueryDto.@Max(200)).
     // Узгоджуємо з рештою сторінок (dashboard, work-orders, invoices використовують limit=200).
-    apiFetch<{ items: Good[] }>('/goods?limit=200')
-      .then(r => { if (!cancelled) setGoods(r.items); })
-      .catch((e: unknown) => {
-        // Bug #29: не ковтаємо помилку мовчки. Логуємо для діагностики,
-        // але не блокуємо UI (правила можна редагувати без списку товарів).
-        console.warn('Не вдалося завантажити товари для форми правила:', e);
-      });
+    Promise.all([
+      apiFetch<{ items: Good[] }>('/goods?limit=200'),
+      apiFetch<Brand[]>('/brands'),
+    ]).then(([goodsRes, brandsRes]) => {
+      if (!cancelled) {
+        setGoods(goodsRes.items);
+        setBrands(brandsRes);
+      }
+    }).catch((e: unknown) => {
+      // Bug #29: не ковтаємо помилку мовчки. Логуємо для діагностики,
+      // але не блокуємо UI (правила можна редагувати без списку товарів/брендів).
+      console.warn('Не вдалося завантажити довідники для форми правила:', e);
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -326,6 +462,7 @@ export default function PricingRulesClient() {
     const isPercent = form.type === 'PERCENT' || form.type === 'COMPETITOR_PLUS';
     const isFixedAmount = form.type === 'FIXED_AMOUNT';
     const isFixedPrice = form.type === 'FIXED_PRICE';
+    const isCostTier = form.type === 'COST_TIER';
     return {
       name: form.name,
       type: form.type,
@@ -333,10 +470,14 @@ export default function PricingRulesClient() {
       goodId: form.goodId || undefined,
       goodCategory: form.goodId ? undefined : (form.goodCategory || undefined),
       goodType: form.goodId || form.goodCategory ? undefined : (form.goodType || undefined),
+      brandId: form.brandId || undefined,
       percentValue: isPercent && form.percentValue ? Number(form.percentValue) : undefined,
       fixedAmount: isFixedAmount && form.fixedAmount ? Number(form.fixedAmount) : undefined,
       fixedPrice: isFixedPrice && form.fixedPrice ? Number(form.fixedPrice) : undefined,
       roundTo: form.roundTo ? Number(form.roundTo) : undefined,
+      tiers: isCostTier
+        ? form.tiers.map((t, i) => ({ ...t, sortOrder: i }))
+        : undefined,
     };
   };
 
@@ -385,7 +526,7 @@ export default function PricingRulesClient() {
     }
   };
 
-  const editFormInitial = editRule ? {
+  const editFormInitial: RuleForm = editRule ? {
     name: editRule.name,
     type: editRule.type,
     priority: String(editRule.priority),
@@ -397,6 +538,8 @@ export default function PricingRulesClient() {
     fixedPrice: editRule.fixedPrice != null ? String(editRule.fixedPrice) : '',
     roundTo: editRule.roundTo != null ? String(editRule.roundTo) : '',
     isActive: editRule.isActive,
+    brandId: editRule.brandId ?? '',
+    tiers: editRule.tiers ?? [],
   } : EMPTY_FORM;
 
   return (
@@ -476,10 +619,25 @@ export default function PricingRulesClient() {
                   {TYPE_LABELS[rule.type] ?? rule.type}
                 </TableCell>
                 <TableCell className="text-[13px] text-muted-foreground">
-                  {scopeLabel(rule)}
+                  <div className="space-y-0.5">
+                    <div>{scopeLabel(rule)}</div>
+                    {rule.brandName && (
+                      <Badge variant="secondary">{rule.brandName}</Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-[13px] font-medium text-foreground">
-                  {valueLabel(rule)}
+                  {rule.type === 'COST_TIER' && rule.tiers && rule.tiers.length > 0 ? (
+                    <div className="text-[12px] text-muted-foreground space-y-0.5">
+                      {rule.tiers.map((t, i) => (
+                        <div key={i}>
+                          {t.costMin}–{t.costMax ?? '∞'} ₴ → {t.percentValue}%
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    valueLabel(rule)
+                  )}
                 </TableCell>
                 <TableCell className="text-[13px] text-muted-foreground text-center">
                   {rule.priority}
@@ -537,6 +695,7 @@ export default function PricingRulesClient() {
         onSave={createRule}
         initial={EMPTY_FORM}
         goods={goods}
+        brands={brands}
       />
 
       {/* Edit rule modal */}
@@ -546,6 +705,7 @@ export default function PricingRulesClient() {
         onSave={updateRule}
         initial={editFormInitial}
         goods={goods}
+        brands={brands}
       />
       <ConfirmDialog {...dialogProps} />
     </div>
