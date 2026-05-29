@@ -9,6 +9,16 @@
 ## Останній commit
 
 ```
+4b77c87 feat(catalog): savedFilters + bulkActions + unsavedGuard
+4c4fee2 feat(stock-documents): savedFilters + bulkActions + unsavedGuard
+6817180 feat(purchase-orders): savedFilters + bulkActions + unsavedGuard
+54ef4fc feat(invoices): savedFilters + bulkActions + unsavedGuard
+7527261 feat(crm): savedFilters + bulkActions + unsavedGuard
+49e80d0 feat(employees): savedFilters + bulkActions + unsavedGuard
+8346b16 feat(calendar): replace inline errors with toast notifications
+e1bf870 feat(calendar): smoother form open/close animation + fix Save button disabled state
+5a0515c fix(calendar): save and restore counterpartyId on slots without work order
+ea454ff fix(work-orders): transition response lacks lines/parts — merge instead of replace
 ff87285 feat(ui): replace native confirm() with ConfirmDialog + useConfirm hook
 (pending) fix(tester): Bugs #170-#172 — minio mc-ready healthcheck, work-orders query-shape spec, calendar fan-out error surface
 ed3d043 docs(skills): add rgba(var()-phantom-var) + unbounded-fan-out checks to sto-review
@@ -62,7 +72,68 @@ f040cde perf(db): 5 composite indexes
 Дата: 2026-05-29
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web --incremental false, api, shared) — після ConfirmDialog refactor (ff87285)
+TypeScript: ✅ 0 errors (web + api) — після savedFilters/bulkActions/unsavedGuard на 6 сторінках (4b77c87)
+
+## UI: Збережені фільтри + Групові дії + Захист змін — розповсюджено на 6 сторінок (2026-05-29)
+
+Три UI-фічі керовані через `useUiFeatures()` (`savedFiltersEnabled`, `bulkActionsEnabled`, `unsavedGuardEnabled`) тепер є на **всіх** сторінках-списках:
+
+| Сторінка | Збережені фільтри | Групові дії | Захист змін |
+|---|---|---|---|
+| `work-orders` | ✅ (еталон) | ✅ (еталон) | ✅ (еталон) |
+| `employees` | search+role+showDeleted | Видалити/Звільнити | create+edit |
+| `crm` | search+type+showDeleted | Видалити | create |
+| `invoices` | search+status | Скасувати | create |
+| `purchase-orders` | status+search+showDeleted | Видалити | create+receive |
+| `stock-documents` | type+status+showDeleted | Видалити | create |
+| `catalog` | search/tab (works/goods/services) | Видалити (кожна вкладка) | 5 форм |
+
+**Готові хуки/компоненти** (не треба писати з нуля):
+- `apps/web/src/hooks/useSavedFilters.ts` — localStorage пресети фільтрів
+- `apps/web/src/hooks/useBulkSelect.ts` — Set-based вибір рядків
+- `apps/web/src/hooks/useDirtyForm.ts` — захист форми від втрати змін (sync `confirmClose()`)
+- `apps/web/src/components/ui/saved-filters-bar.tsx` — UI панель пресетів
+- `apps/web/src/components/ui/bulk-actions-bar.tsx` — UI панель групових дій
+
+**Паттерн підключення** (дивись `work-orders/page.tsx` рядки 155-200, 424-570 як еталон):
+```ts
+const features = useUiFeatures();
+const { saved, save, remove } = useSavedFilters<Filters>('page-key');
+const bulkSelect = useBulkSelect(items);
+const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+```
+
+**Перемикачі** в Налаштування → Інтерфейс — діють для всієї організації.
+
+## UI: Toast-сповіщення в calendar/page.tsx (8346b16)
+
+`apps/web/src/app/calendar/page.tsx` тепер використовує `toast` з `@/lib/toast` замість inline `setError`:
+- `toast.success` — створення/оновлення/видалення слоту, створення наряду
+- `toast.warning` — drag/resize у минулий час або день
+- `toast.error` — всі API помилки
+- Валідаційні помилки **всередині форми** лишилися inline (поряд з полями)
+
+**Toast-система** (`@/lib/toast` + `ToastContainer` у `TopShell`) вже підключена. Додавати на нові сторінки просто: `import { toast } from '@/lib/toast'`.
+
+## UI: Анімація форми в calendar/page.tsx (e1bf870)
+
+Двошарова анімація відкриття/закриття панелі слоту:
+- Зовнішній wrapper: `max-height 0→900px`, spring `cubic-bezier(0.22,1,0.36,1)` 480ms
+- Внутрішня панель: `opacity + translateY`, з затримкою 60ms (stagger)
+- Закриття: 280-320ms ease-in, unmount через 420ms
+
+Паттерн: `showAdd` → `formMounted` (монтування) + `formVisible` (CSS стан) через double-rAF.
+
+## Fix: calendar counterpartyId збереження (5a0515c)
+
+**Проблема:** `CalendarSlot` має пряме поле `counterpartyId` в БД (міграція `20260529120000`), але до фіксу воно не зберігалось і не поверталось.
+
+**Що виправлено:**
+- `calendar.service.ts`: `toDto()` тепер повертає `counterpartyId` (зі слоту або fallback з `workOrder.counterpartyId`); всі три методи (`findSlots`/`createSlot`/`updateSlot`) include `counterparty` напряму
+- `calendar.dto.ts`: `CalendarSlotResponseDto` має поле `counterpartyId`
+- `calendar/page.tsx`: `handleEditSlot` відновлює `counterpartyId` зі слоту; валідація дозволяє `workOrderId` як альтернативу; `disabled` кнопки враховує обидва поля
+
+**Gotcha:** якщо API сервер запущений до змін коду і `nest start --watch` не підхопив нові файли — `counterpartyId` не буде в response навіть якщо код правильний. Перевіряти через `Get-NetTCPConnection -LocalPort 3000 | Select OwningProcess` і дату запуску процесу vs дату останнього зміненого файлу.
 
 ## UI: ConfirmDialog + useConfirm (ff87285)
 Нативні `window.confirm()` у компонентах замінено на промісний `useConfirm()` хук + `<ConfirmDialog>` (на базі Modal/Button).
