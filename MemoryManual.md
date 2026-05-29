@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+dfd5c3e fix(review): align catalog ColumnsDropdown with ml-auto like work-orders
+3a11f60 feat(catalog): column visibility management — 3 tabs (works/goods/services), independent useTableColumns keys
 4b77c87 feat(catalog): savedFilters + bulkActions + unsavedGuard
 4c4fee2 feat(stock-documents): savedFilters + bulkActions + unsavedGuard
 6817180 feat(purchase-orders): savedFilters + bulkActions + unsavedGuard
