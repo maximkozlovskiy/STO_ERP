@@ -364,20 +364,13 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
       {blockedWidth > 0 && (
         <div
           className="absolute inset-y-0 left-0 pointer-events-none z-1"
-          style={{ width: `${blockedWidth}%` }}
+          style={{
+            width: `${blockedWidth}%`,
+            backgroundImage: 'repeating-linear-gradient(135deg, transparent 0px, transparent 6px, rgba(0,0,0,0.08) 6px, rgba(0,0,0,0.08) 8px)',
+            backgroundColor: 'rgba(0,0,0,0.04)',
+          }}
           aria-hidden
         >
-          {/* Base tint */}
-          <div className="absolute inset-0 bg-foreground/[0.07]" />
-          {/* Diagonal stripe pattern */}
-          <div
-            className="absolute inset-0 opacity-30"
-            style={{
-              backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 4px, currentColor 4px, currentColor 5px)',
-              color: 'var(--color-foreground)',
-            }}
-          />
-          {/* Right border — boundary line */}
           {blockedWidth < 100 && (
             <div className="absolute inset-y-0 right-0 w-0.5 bg-foreground/20" />
           )}
