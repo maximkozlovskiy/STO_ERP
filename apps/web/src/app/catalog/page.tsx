@@ -845,8 +845,8 @@ function GoodsTab() {
       .finally(() => { if (modalBarcodeReqRef.current === bReqId) setModalBarcodesLoading(false); });
 
     setModalBatchesLoading(true);
-    apiFetch<StockBatchDto[]>(`/goods/${g.id}/batches`)
-      .then(data => { if (modalBatchReqRef.current === btReqId) setModalBatches(data); })
+    apiFetch<{ items: StockBatchDto[]; total: number }>(`/goods/${g.id}/batches`)
+      .then(data => { if (modalBatchReqRef.current === btReqId) setModalBatches(data.items); })
       .catch(err => { if (modalBatchReqRef.current === btReqId) setBatchError(err instanceof Error ? err.message : 'Помилка завантаження партій'); })
       .finally(() => { if (modalBatchReqRef.current === btReqId) setModalBatchesLoading(false); });
   };
