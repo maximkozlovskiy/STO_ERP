@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { cn, daysUntil } from '@/lib/utils';
+import { AnimatedBody } from '@/components/ui/modal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -503,7 +504,7 @@ export default function CounterpartyCardPage() {
           </div>
 
           {showAddGarage && (
-            <div className="p-4 bg-secondary rounded-xl border border-border space-y-3">
+            <AnimatedBody className="p-4 bg-secondary rounded-xl border border-border space-y-3">
               <Input
                 label="Назва гаражу"
                 required
@@ -525,7 +526,7 @@ export default function CounterpartyCardPage() {
                   Скасувати
                 </Button>
               </div>
-            </div>
+            </AnimatedBody>
           )}
 
           {garagesLoading && (

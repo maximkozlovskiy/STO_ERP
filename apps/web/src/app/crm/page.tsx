@@ -8,7 +8,7 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
-import { Modal } from '@/components/ui/modal';
+import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
@@ -783,7 +783,7 @@ export default function CrmPage() {
                   )}
                 </div>
                 {showAddVehicle && (
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
+                  <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
                     <div className="grid grid-cols-2 gap-2">
                       <Input label="Марка" required value={addVehicleForm.make}
                         onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))} placeholder="Toyota" />
@@ -808,7 +808,7 @@ export default function CrmPage() {
                         Зберегти
                       </Button>
                     </div>
-                  </div>
+                  </AnimatedBody>
                 )}
                 {modalVehicles.length > 0 && (
                   <div className="rounded-xl border border-border overflow-hidden">

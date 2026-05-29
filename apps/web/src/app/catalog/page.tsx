@@ -7,7 +7,7 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
-import { Modal } from '@/components/ui/modal';
+import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
@@ -1333,7 +1333,7 @@ function GoodsTab() {
                         )}
                       </div>
                       {showAddBarcode && (
-                        <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
+                        <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
                           <div className="grid grid-cols-2 gap-2">
                             <Input label="Штрихкод" required value={addBarcodeForm.barcode}
                               onChange={e => setAddBarcodeForm(f => ({ ...f, barcode: e.target.value }))}
@@ -1372,7 +1372,7 @@ function GoodsTab() {
                               Зберегти
                             </Button>
                           </div>
-                        </div>
+                        </AnimatedBody>
                       )}
                       {modalBarcodes.length > 0 && (
                         <div className="rounded-xl border border-border overflow-hidden">

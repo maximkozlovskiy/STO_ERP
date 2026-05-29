@@ -7,7 +7,7 @@ import { apiFetch, apiBlobFetch, apiMultipartFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Modal } from '@/components/ui/modal';
+import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -825,7 +825,7 @@ export default function WorkOrderCardPage() {
             ))}
           </div>
         ) : showInspection ? (
-          <div className="p-4 space-y-3">
+          <AnimatedBody className="p-4 space-y-3">
             <Input
               label="Пробіг (км)"
               type="number"
@@ -869,7 +869,7 @@ export default function WorkOrderCardPage() {
             <Button onClick={() => void saveInspection()} loading={savingInspection} className="w-full">
               Зберегти огляд
             </Button>
-          </div>
+          </AnimatedBody>
         ) : (
           <div className="p-4 text-center text-muted-foreground text-[13px]">Огляд не проводився</div>
         )}

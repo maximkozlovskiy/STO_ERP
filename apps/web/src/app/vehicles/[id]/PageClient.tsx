@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
-import { Modal } from '@/components/ui/modal';
+import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ExpiryBadge } from '@/components/ui/expiry-badge';
@@ -296,7 +296,7 @@ export default function VehicleCardPage() {
         </div>
 
         {showAddNode && (
-          <div className="mb-4 p-3 bg-secondary rounded-lg space-y-2">
+          <AnimatedBody className="mb-4 p-3 bg-secondary rounded-lg space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Категорія</label>
@@ -336,7 +336,7 @@ export default function VehicleCardPage() {
                 Скасувати
               </Button>
             </div>
-          </div>
+          </AnimatedBody>
         )}
 
         {Object.keys(grouped).length === 0 && !showAddNode && (
@@ -384,7 +384,7 @@ export default function VehicleCardPage() {
         </div>
 
         {showAddSchedule && (
-          <div className="mb-4 p-3 bg-secondary rounded-lg space-y-2">
+          <AnimatedBody className="mb-4 p-3 bg-secondary rounded-lg space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <Input
                 label="Тип ТО"
@@ -440,7 +440,7 @@ export default function VehicleCardPage() {
                 Скасувати
               </Button>
             </div>
-          </div>
+          </AnimatedBody>
         )}
 
         {schedules.length === 0 ? (
