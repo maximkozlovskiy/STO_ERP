@@ -19,12 +19,14 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
-import { DetailPanel } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField, PanelSection, type DetailPanelTab } from '@/components/ui/detail-panel';
+import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
@@ -116,6 +118,7 @@ export default function EmployeesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+  const detailPanel = useDetailPanel('employees');
 
   const COLUMNS = useMemo(() => [
     { key: 'name',   label: 'ПІБ',               defaultVisible: true },
@@ -426,6 +429,46 @@ export default function EmployeesPage() {
 
   const flatCats = flattenTree(workCategories);
 
+  const buildEmployeeTabs = (emp: Employee): DetailPanelTab[] => [
+    {
+      key: 'info',
+      label: 'Основне',
+      content: (
+        <div className="space-y-3">
+          <PanelField label="Статус" value={<Badge variant={STATUS_BADGE[emp.status]}>{STATUS_LABELS[emp.status]}</Badge>} />
+          <PanelField label="Посада" value={ROLE_LABELS[emp.role]} />
+          <PanelField label="Телефон" value={emp.phone} />
+          <PanelField label="Email" value={emp.email} />
+          <PanelField label="Схема нарахування" value={emp.rateScheme ? RATE_LABELS[emp.rateScheme.type] : undefined} />
+          <PanelField label="Дата прийняття" value={emp.dateOfHire ? new Date(emp.dateOfHire).toLocaleDateString('uk-UA') : undefined} />
+          {emp.status === 'FIRED' && emp.dateOfFire && (
+            <PanelField label="Дата звільнення" value={new Date(emp.dateOfFire).toLocaleDateString('uk-UA')} />
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'zones',
+      label: 'Зони/Підйомники',
+      content: (
+        <div className="space-y-3">
+          <PanelSection title="Зони">
+            {emp.zoneIds.length === 0
+              ? <p className="text-[13px] text-muted-foreground">Не призначено</p>
+              : emp.zoneIds.map(id => <p key={id} className="text-[13px] text-foreground">{id}</p>)
+            }
+          </PanelSection>
+          <PanelSection title="Підйомники">
+            {emp.liftIds.length === 0
+              ? <p className="text-[13px] text-muted-foreground">Не призначено</p>
+              : emp.liftIds.map(id => <p key={id} className="text-[13px] text-foreground">{id}</p>)
+            }
+          </PanelSection>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="page-container">
       <div className="page-header">
@@ -479,12 +522,10 @@ export default function EmployeesPage() {
         >
           {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
         </Button>
-        <ColumnsDropdown
-          columns={COLUMNS}
-          visibleKeys={colVisible}
-          onToggle={toggleCol}
-          className="ml-auto"
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} />
+        </div>
       </div>
 
       {/* Bulk actions */}
@@ -547,12 +588,13 @@ export default function EmployeesPage() {
                   <TableRow
                     key={emp.id}
                     className={cn(
-                      'cursor-pointer',
+                      'transition-colors',
                       isDeleted && 'opacity-60',
+                      detailPanel.enabled && 'cursor-pointer',
                       selectedEmp?.id === emp.id && 'bg-secondary',
                       bulkSelect.isSelected(emp.id) && 'bg-primary/5',
                     )}
-                    onClick={() => setSelectedEmp(prev => prev?.id === emp.id ? null : emp)}
+                    onClick={() => { if (detailPanel.enabled) setSelectedEmp(prev => prev?.id === emp.id ? null : emp); }}
                   >
                     {features.bulkActionsEnabled && (
                       <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
@@ -641,108 +683,10 @@ export default function EmployeesPage() {
         <DetailPanel
           open={!!selectedEmp}
           onClose={() => setSelectedEmp(null)}
-          title={selectedEmp ? `${selectedEmp.lastName} ${selectedEmp.firstName}` : ''}
-        >
-          {selectedEmp && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant={ROLE_BADGE[selectedEmp.role] ?? 'secondary'}>
-                    {ROLE_LABELS[selectedEmp.role] ?? selectedEmp.role}
-                  </Badge>
-                  <Badge variant={STATUS_BADGE[selectedEmp.status] ?? 'secondary'}>
-                    {STATUS_LABELS[selectedEmp.status] ?? selectedEmp.status}
-                  </Badge>
-                  {selectedEmp.deletedAt && <Badge variant="secondary">видалено</Badge>}
-                </div>
-                {selectedEmp.rateScheme && (
-                  <p className="text-[13px] text-muted-foreground">
-                    {RATE_LABELS[selectedEmp.rateScheme.type] ?? selectedEmp.rateScheme.type}
-                    {selectedEmp.rateScheme.type === 'percent_normo' ? ` ${selectedEmp.rateScheme.params.percent}%` : ''}
-                  </p>
-                )}
-                {selectedEmp.phone && (
-                  <p className="text-[13px] text-muted-foreground">{selectedEmp.phone}</p>
-                )}
-                {selectedEmp.email && (
-                  <p className="text-[13px] text-muted-foreground">{selectedEmp.email}</p>
-                )}
-                {selectedEmp.dateOfHire && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[12px] text-muted-foreground">Прийнятий:</span>
-                    <span className="text-[13px] text-foreground">
-                      {new Date(selectedEmp.dateOfHire).toLocaleDateString('uk-UA')}
-                    </span>
-                  </div>
-                )}
-                {selectedEmp.dateOfFire && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[12px] text-muted-foreground">Звільнений:</span>
-                    <span className="text-[13px] text-foreground">
-                      {new Date(selectedEmp.dateOfFire).toLocaleDateString('uk-UA')}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {selectedEmp.zoneIds.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Зони</p>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedEmp.zoneIds.map(id => {
-                      const z = zones.find(z => z.id === id);
-                      return <Badge key={id} variant="secondary">{z?.name ?? id}</Badge>;
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {selectedEmp.liftIds.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Підйомники</p>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedEmp.liftIds.map(id => {
-                      const l = lifts.find(l => l.id === id);
-                      return <Badge key={id} variant="secondary">{l?.name ?? id}</Badge>;
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {selectedEmp.workCategoryIds.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Категорії робіт</p>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedEmp.workCategoryIds.map(id => {
-                      const c = flatCats.find(c => c.id === id);
-                      return <Badge key={id} variant="secondary">{c?.name ?? id}</Badge>;
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="pt-2 border-t border-border space-y-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => openEditEmp(selectedEmp)}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Редагувати дані
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => openCard(selectedEmp)}
-                >
-                  Редагувати прив'язки
-                </Button>
-              </div>
-            </div>
-          )}
-        </DetailPanel>
+          title={selectedEmp ? `${selectedEmp.firstName} ${selectedEmp.lastName}` : ''}
+          subtitle={selectedEmp ? ROLE_LABELS[selectedEmp.role] : ''}
+          tabs={selectedEmp ? buildEmployeeTabs(selectedEmp) : undefined}
+        />
       </div>
 
       {/* Create modal */}
