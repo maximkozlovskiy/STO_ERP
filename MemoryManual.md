@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+b5add44 feat(ui): export AnimatedBody, apply ResizeObserver height to calendar form, document §14.4
 26b3264 docs(tester): record AUTO session — 0 bugs CRM Наряди + Catalog Штрихкоди/Партії ModalTabs
 613aef7 feat(crm,catalog): ModalTabs edit modal for 1-N — WO history + barcodes + batches tabs
 561e08b fix(sync): align /goods/:id/batches response shape in catalog page
@@ -334,6 +335,15 @@ const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 - `calendar/page.tsx`: `handleEditSlot` відновлює `counterpartyId` зі слоту; валідація дозволяє `workOrderId` як альтернативу; `disabled` кнопки враховує обидва поля
 
 **Gotcha:** якщо API сервер запущений до змін коду і `nest start --watch` не підхопив нові файли — `counterpartyId` не буде в response навіть якщо код правильний. Перевіряти через `Get-NetTCPConnection -LocalPort 3000 | Select OwningProcess` і дату запуску процесу vs дату останнього зміненого файлу.
+
+## UI: AnimatedBody — плавна зміна висоти (b5add44)
+
+`AnimatedBody` (ResizeObserver + overflow:hidden outer + transition:height inner) вбудований у `<Modal>` та тепер **експортується** з `apps/web/src/components/ui/modal.tsx`.
+
+- **Всі `<Modal>` компоненти** анімують висоту автоматично — нічого додаткового не потрібно.
+- **Поза Modal** (accordion, collapsible panel) — імпортувати `AnimatedBody` або копіювати паттерн з refs.
+- **calendar/page.tsx форма слоту** — замінено `maxHeight: '900px'` magic number на ResizeObserver-driven height (outer `formCollapseRef` + inner `formInnerRef`). Тепер форма коректно розширюється коли відкривається "Новий наряд" mini-form.
+- **Gotcha:** AnimatedBody анімує висоту ВГОРУ (0→контент). Для анімації закриття (контент→0) потрібен додатковий rAF: спочатку пін поточної висоти, потім transition до 0. Дивись §14.4 SKILL.md та `calendar/page.tsx::showAdd useEffect`.
 
 ## UI: ConfirmDialog + useConfirm (ff87285)
 Нативні `window.confirm()` у компонентах замінено на промісний `useConfirm()` хук + `<ConfirmDialog>` (на базі Modal/Button).
