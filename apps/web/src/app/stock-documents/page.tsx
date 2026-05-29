@@ -21,10 +21,12 @@ import {
 } from '@/components/ui/table';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useTableColumns } from '@/hooks/useTableColumns';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
@@ -71,6 +73,17 @@ export default function StockDocumentsPage() {
 
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+
+  const COLUMNS = useMemo(() => [
+    { key: 'number',    label: 'Номер' },
+    { key: 'type',      label: 'Тип' },
+    { key: 'warehouse', label: 'Склад' },
+    { key: 'status',    label: 'Статус' },
+    { key: 'lines',     label: 'Позицій' },
+    { key: 'date',      label: 'Дата' },
+  ], []);
+
+  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('stock-documents', COLUMNS);
 
   const [docs, setDocs] = useState<StockDoc[]>([]);
   const [total, setTotal] = useState(0);
@@ -362,6 +375,13 @@ export default function StockDocumentsPage() {
           {showDeleted ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           Показати видалені
         </button>
+
+        <ColumnsDropdown
+          columns={COLUMNS}
+          visibleKeys={colVisible}
+          onToggle={toggleCol}
+          className="ml-auto"
+        />
       </div>
 
       {/* Bulk actions */}
@@ -393,26 +413,26 @@ export default function StockDocumentsPage() {
                     />
                   </TableHead>
                 )}
-                <TableHead>Номер</TableHead>
-                <TableHead>Тип</TableHead>
-                <TableHead>Склад</TableHead>
-                <TableHead>Статус</TableHead>
-                <TableHead className="text-right">Позицій</TableHead>
-                <TableHead>Дата</TableHead>
+                {colVisible.has('number')    && <TableHead>Номер</TableHead>}
+                {colVisible.has('type')      && <TableHead>Тип</TableHead>}
+                {colVisible.has('warehouse') && <TableHead>Склад</TableHead>}
+                {colVisible.has('status')    && <TableHead>Статус</TableHead>}
+                {colVisible.has('lines')     && <TableHead className="text-right">Позицій</TableHead>}
+                {colVisible.has('date')      && <TableHead>Дата</TableHead>}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="py-10 text-center">
+                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && docs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="p-0">
+                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={FileText} title="Документів не знайдено" />
                   </TableCell>
                 </TableRow>
@@ -439,28 +459,40 @@ export default function StockDocumentsPage() {
                       />
                     </TableCell>
                   )}
-                  <TableCell className="font-mono font-medium text-foreground">
-                    {doc.number}
-                    {doc.deletedAt && (
-                      <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>
-                      {TYPE_LABELS[doc.type]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-foreground-muted">
-                    {doc.warehouseName}
-                    {doc.targetWarehouseName && <span className="text-muted-foreground"> → {doc.targetWarehouseName}</span>}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>
-                      {STATUS_LABELS[doc.status]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">{doc.lines.length}</TableCell>
-                  <TableCell className="text-foreground-faint text-xs">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</TableCell>
+                  {colVisible.has('number') && (
+                    <TableCell className="font-mono font-medium text-foreground">
+                      {doc.number}
+                      {doc.deletedAt && (
+                        <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
+                      )}
+                    </TableCell>
+                  )}
+                  {colVisible.has('type') && (
+                    <TableCell>
+                      <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>
+                        {TYPE_LABELS[doc.type]}
+                      </Badge>
+                    </TableCell>
+                  )}
+                  {colVisible.has('warehouse') && (
+                    <TableCell className="text-foreground-muted">
+                      {doc.warehouseName}
+                      {doc.targetWarehouseName && <span className="text-muted-foreground"> → {doc.targetWarehouseName}</span>}
+                    </TableCell>
+                  )}
+                  {colVisible.has('status') && (
+                    <TableCell>
+                      <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>
+                        {STATUS_LABELS[doc.status]}
+                      </Badge>
+                    </TableCell>
+                  )}
+                  {colVisible.has('lines') && (
+                    <TableCell className="text-right text-muted-foreground">{doc.lines.length}</TableCell>
+                  )}
+                  {colVisible.has('date') && (
+                    <TableCell className="text-foreground-faint text-xs">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</TableCell>
+                  )}
                   <TableCell>
                     <Button
                       variant="ghost"
