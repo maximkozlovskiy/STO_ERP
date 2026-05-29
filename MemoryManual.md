@@ -9,6 +9,10 @@
 ## Останній commit
 
 ```
+c5e8714 docs(skills): add bulk-apply scope-inconsistency pattern to sto-tester (Bug #178)
+e7b0cbf fix(tester): Bugs #178-#180 — pricing brandId scope + COST_TIER coverage + normalizeScope hierarchy
+23bf19c fix(review): pricing COST_TIER cleanValues + $transaction timeout + brandId index
+fdcf7ea feat(pricing): brand markup + COST_TIER grade pricing — DB schema + backend
 8491975 fix(tester): Bug #177 — stub ResizeObserver/IntersectionObserver in jsdom setup
 f2410ae docs(skills,memory): record close-rAF id-capture + unmount cleanup pattern in sto-review
 a6f9aea fix(review): cancel close-rAF + cleanup form hide-timer/rAF on unmount in calendar
@@ -137,8 +141,36 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 - **§14.2** Loading/Error/Empty/List у tab.content (не на рівні ModalTabs), count з поточного state
 - **§14.3** Race guard + скидання стану при відкритті (++reqRef.current, гейт у .then/.catch/.finally)
 
+## Pricing: brand markup + COST_TIER grade pricing (fdcf7ea)
+
+**Нові можливості:**
+- `PricingRuleType.COST_TIER` — ціноутворення на основі градацій собівартості (тіри)
+- `brandId` поле у `PricingRule` — прив'язка правила до бренду (пріоритет 2 у ієрархії)
+- `PricingRuleTier` модель — тіри з `costMin/costMax/percentValue/sortOrder` (cascade delete, без soft-delete)
+
+**Ієрархія пріоритетів `calculateSalePrice`:**
+1. `goodId` — конкретний товар
+2. `brandId` — бренд товару
+3. `goodCategory` — категорія
+4. `goodType` — тип (SPARE_PART/CONSUMABLE/...)
+5. all (null scope) — загальне правило
+
+**COST_TIER логіка:** знайти тір де `costMin <= costPrice < costMax` (або `costMax IS NULL` = останній); `percentValue` тіру = markup %.
+
+**API зміни:**
+- `GET /pricing-rules` — тепер включає `brand`, `tiers` у response
+- `POST /pricing-rules` — приймає `brandId`, `tiers[]`
+- `PATCH /pricing-rules/:id` — replace-semantics для тірів (deleteMany + createMany в $transaction)
+- Response shape: `{ brandId, brandName, tiers: [{id,costMin,costMax,percentValue,sortOrder}] }`
+
+**Spec coverage:** pricing.service.spec.ts оновлено (нова 6-arg сигнатура), pricing-rules.contract.spec.ts оновлено (brand/tiers у mock, pricingRuleTier mock).
+
+**Migration:** `20260530100000_add_pricing_brand_cost_tier` — ALTER TYPE + ALTER TABLE + CREATE TABLE + FK constraints.
+
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api + shared) — після a6f9aea calendar cleanup
+TypeScript: ✅ 0 errors (web + api + shared) — після e7b0cbf pricing tester fixes
+Latest review: 2026-05-30 (auto, HEAD fdcf7ea → 23bf19c) — pricing brand+COST_TIER backend. 2 Important fixes: (1) `cleanValuesForType` не мав `case 'COST_TIER'` → при збереженні COST_TIER правила старі `percentValue`/`fixedAmount`/`fixedPrice` лишались у БД; (2) `$transaction(async tx)` для replace-semantics тірів без `{ timeout: 10_000 }`. 1 IMPORTANT структурне: `@@index([orgId, brandId])` відсутній у PricingRule (нове FK поле без індексу). Всі виправлено у 23bf19c. tsc 0 errors, 357/357 tests.
+Latest tester: 2026-05-30 (AUTO, HEAD fdcf7ea+23bf19c → e7b0cbf) — pricing brand+COST_TIER backend. **3 баги виправлено:** #178 HIGH business-logic — `applyRuleToGoods` не фільтрував товари по `brandId` коли правило brand-scoped → всі товари org перераховувались; #179 MEDIUM test-coverage — 0 тестів для COST_TIER типу і brandId пріоритету; #180 MEDIUM business-logic — `normalizeScope` не очищала `brandId` при заданому `goodId` (порушення ієрархії priority 1>2). Після фіксів: tsc 0 errors, 362/362 tests (+5 нових COST_TIER+brandId).
 Latest review: 2026-05-30 (auto, HEAD a6f9aea → b5add44) — AnimatedBody export + calendar collapse refactor + sto-dev §14.4. **1 Important fix:** close-branch `requestAnimationFrame` не зберігав id → неможливо скасувати при rapid re-open/unmount → stale rAF писав height=0 на щойно відкриту форму; `formHideTimerRef` і новий `formCloseRafRef` не мали unmount-cleanup. Виправлено: id-capture у `formCloseRafRef`, `cancelAnimationFrame` на старті ефекту і в окремому unmount-only useEffect; ResizeObserver-cleanup і так був коректний (disconnect у return). Перевірено `AnimatedBody`: rAF guard через `if (outerRef.current)` достатній (ref → null після detach), RO.disconnect у cleanup ✓.
 Latest tester: 2026-05-30 (FULL, HEAD f2410ae → b5add44+a6f9aea+eb16f51+f2410ae) — AnimatedBody export + calendar ResizeObserver/close-rAF refactor. **1 Bug #177 HIGH** виправлено: `apps/web/src/__tests__/setup.ts` НЕ стабав `ResizeObserver` → 9 modal.test.tsx падали при mount (`AnimatedBody` нового модалу використовує `new ResizeObserver`). Baseline був ❌ Web 139/148. Фікс: noop-стаби `ResizeObserver` + `IntersectionObserver` під guard `typeof globalThis.X === 'undefined'`. tsc не ловить (типи в `lib.dom.d.ts`), prod browser має API нативно — суто jsdom-polyfill. Після фіксу: API 357/357 + Web 148/148 ✅. Додано до SKILL.md: §1.6 jsdom-stub чек-ліст + §1.3 grep + новий "Накопичений підхід" про browser-API без jsdom-стабу.
 Previous tester: 2026-05-29 (AUTO, HEAD fa83635 → 613aef7+561e08b+fc0d1ad+fa83635) — CRM Наряди + Catalog Штрихкоди/Партії ModalTabs. **0 нових багів у scope.** API 357/357 + Web 148/148 baseline ✅. Перевірено: race-guard у обох openEdit (`modalVehiclesReqRef`+`modalWoReqRef` у CRM, `modalBarcodeReqRef`+`modalBatchReqRef` у Catalog) — окремі токени для кожного асинхронного джерела, гейт на КОЖНОМУ `.then`/`.catch`/`.finally`; `setModalGarageId` всередині early-return guard'у (не виставляється з stale-даними); StockBatchDto `.items` unwrap після 561e08b узгоджений з бекенд `{items,total}` shape; `/work-orders?counterpartyId=` filter присутній у DTO+service з tenant-isolation; усі 10 WorkOrderStatus покриті у WO_STATUS_LABELS/BADGE; inline add/delete барcode у ModalTabs з guard `if (!editGood) return` + try/catch + toast feedback; error-state не silent (видимий inline у ModalTabs контенті).
