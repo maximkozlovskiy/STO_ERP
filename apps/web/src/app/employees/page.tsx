@@ -26,6 +26,8 @@ import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { useTableColumns } from '@/hooks/useTableColumns';
+import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
@@ -114,6 +116,17 @@ export default function EmployeesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+
+  const COLUMNS = useMemo(() => [
+    { key: 'name',   label: 'ПІБ',               defaultVisible: true },
+    { key: 'role',   label: 'Посада',             defaultVisible: true },
+    { key: 'status', label: 'Статус',             defaultVisible: true },
+    { key: 'rate',   label: 'Схема нарахування',  defaultVisible: false },
+    { key: 'zones',  label: 'Зони',               defaultVisible: false },
+    { key: 'lifts',  label: 'Підйомники',         defaultVisible: false },
+  ], []);
+
+  const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('employees', COLUMNS);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -466,6 +479,12 @@ export default function EmployeesPage() {
         >
           {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
         </Button>
+        <ColumnsDropdown
+          columns={COLUMNS}
+          visibleKeys={colVisible}
+          onToggle={toggleCol}
+          className="ml-auto"
+        />
       </div>
 
       {/* Bulk actions */}
@@ -497,26 +516,26 @@ export default function EmployeesPage() {
                     />
                   </TableHead>
                 )}
-                <TableHead>ПІБ</TableHead>
-                <TableHead>Посада</TableHead>
-                <TableHead>Статус</TableHead>
-                <TableHead>Схема нарахування</TableHead>
-                <TableHead>Зони</TableHead>
-                <TableHead>Підйомники</TableHead>
+                {colVisible.has('name') && <TableHead>ПІБ</TableHead>}
+                {colVisible.has('role') && <TableHead>Посада</TableHead>}
+                {colVisible.has('status') && <TableHead>Статус</TableHead>}
+                {colVisible.has('rate') && <TableHead>Схема нарахування</TableHead>}
+                {colVisible.has('zones') && <TableHead>Зони</TableHead>}
+                {colVisible.has('lifts') && <TableHead>Підйомники</TableHead>}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="py-10 text-center">
+                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
                     <div className="flex justify-center"><Spinner size="md" /></div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && employees.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={features.bulkActionsEnabled ? 8 : 7} className="p-0">
+                  <TableCell colSpan={colVisible.size + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
                     <EmptyState icon={Users} title="Немає співробітників" description="Додайте першого співробітника" />
                   </TableCell>
                 </TableRow>
@@ -546,38 +565,50 @@ export default function EmployeesPage() {
                         />
                       </TableCell>
                     )}
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[13px] font-medium text-foreground">
-                          {emp.lastName} {emp.firstName}
-                        </span>
-                        {isDeleted && <Badge variant="secondary">видалено</Badge>}
-                      </div>
-                      {emp.phone && <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
-                        {ROLE_LABELS[emp.role] ?? emp.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={STATUS_BADGE[emp.status] ?? 'secondary'}>{STATUS_LABELS[emp.status] ?? emp.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {emp.rateScheme
-                        ? (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) + (emp.rateScheme.type === 'percent_normo' ? ` ${emp.rateScheme.params.percent}%` : '')
-                        : <span className="text-foreground-faint">—</span>}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {emp.zoneIds.length > 0
-                        ? emp.zoneIds.map(id => zones.find(z => z.id === id)?.name ?? id).join(', ')
-                        : <span className="text-foreground-faint">—</span>}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {emp.liftIds.length > 0
-                        ? emp.liftIds.map(id => lifts.find(l => l.id === id)?.name ?? id).join(', ')
-                        : <span className="text-foreground-faint">—</span>}
-                    </TableCell>
+                    {colVisible.has('name') && (
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] font-medium text-foreground">
+                            {emp.lastName} {emp.firstName}
+                          </span>
+                          {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                        </div>
+                        {emp.phone && <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>}
+                      </TableCell>
+                    )}
+                    {colVisible.has('role') && (
+                      <TableCell>
+                        <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
+                          {ROLE_LABELS[emp.role] ?? emp.role}
+                        </Badge>
+                      </TableCell>
+                    )}
+                    {colVisible.has('status') && (
+                      <TableCell>
+                        <Badge variant={STATUS_BADGE[emp.status] ?? 'secondary'}>{STATUS_LABELS[emp.status] ?? emp.status}</Badge>
+                      </TableCell>
+                    )}
+                    {colVisible.has('rate') && (
+                      <TableCell className="text-muted-foreground">
+                        {emp.rateScheme
+                          ? (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) + (emp.rateScheme.type === 'percent_normo' ? ` ${emp.rateScheme.params.percent}%` : '')
+                          : <span className="text-foreground-faint">—</span>}
+                      </TableCell>
+                    )}
+                    {colVisible.has('zones') && (
+                      <TableCell className="text-muted-foreground">
+                        {emp.zoneIds.length > 0
+                          ? emp.zoneIds.map(id => zones.find(z => z.id === id)?.name ?? id).join(', ')
+                          : <span className="text-foreground-faint">—</span>}
+                      </TableCell>
+                    )}
+                    {colVisible.has('lifts') && (
+                      <TableCell className="text-muted-foreground">
+                        {emp.liftIds.length > 0
+                          ? emp.liftIds.map(id => lifts.find(l => l.id === id)?.name ?? id).join(', ')
+                          : <span className="text-foreground-faint">—</span>}
+                      </TableCell>
+                    )}
                     <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <Button
