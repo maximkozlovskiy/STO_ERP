@@ -5190,3 +5190,51 @@ update (OK + чужий FK → throws), findOne (not found → 404).
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-05-29 — FULL tester on calendar read-only/past + work-orders calendarSlots + counterparties search fix + goods FK (HEAD a0bc034)
+
+### Baseline
+
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors (--incremental false)
+- TypeScript shared — ✅ 0 errors
+- Unit + contract (API) — ✅ 325/325 passed (31 files)
+
+### Scope (git diff проти попередньої сесії)
+
+- `apps/web/src/app/calendar/page.tsx` — `isEditingPast` (read-only для слотів у закритому/минулому періоді), блок drag/resize у минуле, reset `editingSlotId` при новому draw, WO picker з датою слота (`slotStartAt/slotEndAt/slotLiftName` + «не заплановано»), sync client↔WO у `onSelect`.
+- `apps/api/src/modules/work-orders/work-orders.service.ts` — `calendarSlots` include `take:1` (найраніший активний слот) у `findAll` + `toDto` мапінг `slotStartAt/slotEndAt/slotLiftName`.
+- `apps/api/src/modules/counterparties/counterparties.service.ts` — fix `PrismaClientValidationError` у пошуку `?q=`: relation-імена виправлено singular→plural (`customerGarages` → `vehicles`).
+- `apps/api/src/modules/goods/goods.service.ts` — `validateFkReferences(brandId/unitId/preferredSupplierId)` (вже покрито Bug #161-#162).
+
+### Перевірено — без дефектів
+
+- **`isEditingPast` edge case (minHour boundary):** слот рівно на `minHour` (09:00 при `nowMs`=09:22) → `kyivHours("09:00")=9.0`, `minHour=9` → `9.0 < 9 = false` → НЕ past → редагування доступне. Відповідає очікуванню. ✅
+- **Timeline drag/resize px→time clamp (рекурентний патерн з «Накопичених підходів»):** усі гілки converter-ів (draw, pending-resize start/end, saved-resize start/end, drag-move pending/saved) clamp-ять у `[WINDOW_START, WINDOW_END]` ПЕРЕД `new Date().toISOString()`; `decimalHoursToHHMM` має hard-clamp `Math.min(24*60, Math.max(0, ...))`; `pxToDecimalHours` clamp-ить у `[HOURS[0], HOURS[last]]`. Invalid Date / RangeError неможливі. ✅
+- **work-orders `calendarSlots` include:** `where deletedAt:null`, `orderBy startAt asc`, `take:1`, `lift Lift?` (nullable у схемі); `toDto` читає `calendarSlots?.[0]?.x ?? null` — `findOne` (без include) → `undefined` → `null` без помилки. 325/325 тестів зелені. ✅
+- **counterparties `?q=` fix:** relation-імена `customerGarages`→`vehicles` збігаються зі схемою (Counterparty.customerGarages[], CustomerGarage.vehicles[]); обидві мають `deletedAt`, nested `deletedAt:null` валідний. ✅
+- **WO picker client↔WO sync:** 3 гілки (інший клієнт→confirm replace; немає клієнта→auto-fill; той самий→лише WO) коректні. ✅
+
+---
+
+## Bug #163 — [MEDIUM] Немає regression-тесту на counterparties `?q=` пошук (PrismaClientValidationError при неправильному relation-імені)
+
+**Файл:** `apps/api/src/modules/counterparties/counterparties.service.ts:32-44` (фікс `32e9a49`)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Фікс `32e9a49` усунув `PrismaClientValidationError`, що виникав через використання
+singular relation-імен (`customerGarage`/`vehicle`) замість plural (`customerGarages`/`vehicles`)
+у вкладеному `where.OR` пошуку за номером авто. Помилка форми Prisma-запиту проявляється ТІЛЬКИ
+коли реальний `where` доходить до Prisma. Існуючий `counterparties.contract.spec.ts` повністю
+мокає `CounterpartiesService`, тому не виконує цей `where` і НЕ зловить регресію назад до
+singular-імен. Сервіс взагалі не мав `*.service.spec.ts`.
+
+**Очікувана поведінка:** service-spec будує `where` з реальним `prisma.counterparty.findMany`
+мок-шпигуном і асертить, що при `?q=` `where.OR` містить
+`customerGarages.some.vehicles.some.licensePlate` (правильні plural relation-імена + nested `deletedAt:null`).
+**Фактична поведінка:** жодного тесту, який передає `query.q` через справжній `findAll` до Prisma-моку.
+
+**Статус:** [x] виправлено
+
+---
