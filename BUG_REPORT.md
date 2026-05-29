@@ -5370,3 +5370,56 @@ singular-імен. Сервіс взагалі не мав `*.service.spec.ts`.
 **Очікувана поведінка:** `[x] виправлено` ставиться ТІЛЬКИ після того як diff у коді застосовано І верифіковано (tsc/test/`docker compose config`); статус і робоче дерево узгоджені.
 **Фактична поведінка:** статуси `[x]`, файли не змінені; блокер у production-конфізі прихований.
 **Статус:** [x] виправлено (фікси #164–#168 реально застосовані цією сесією; додано Крок-0 правило перевіряти реальний стан файлів проти `[x]`-маркерів попередніх сесій)
+
+---
+
+## Session 2026-05-29 — Calendar month/stats fan-out + work-orders calendarSlots + phase18 re-audit (FULL, HEAD efcfd97)
+
+Baseline: API tsc 0 errors, Web tsc 0 errors, 330/330 unit tests passed.
+Scope: `apps/web/src/app/calendar/page.tsx` (month view, stats period filter, loadMonth/loadStats AbortController, color-mix heatmap), `apps/api/src/modules/work-orders/work-orders.service.ts` (calendarSlots take:1 + toDto), phase18 infra (Dockerfile api/web, nginx.conf, Caddyfile, .dockerignore, docker-compose healthchecks).
+
+**Перевірки із завдання (усі підтверджені OK, не баги):**
+- #3 `apiFetch(path, init)` приймає `init?: RequestInit` → `signal` спредиться у `fetch({ ...init })` → abort спрацьовує. Додатково: GET зі `signal` свідомо обходить in-flight dedup (інакше abort одного викликача відхиляв би проміс іншого) — коректно.
+- #4 STATS_MAX_DAYS=92 clamp у `while (cur <= end && days.length < STATS_MAX_DAYS)` — кап під час побудови days-масиву, ДО `Promise.all`. ≤92 запитів. OK.
+- #5 `statsRangeTooLong` (custom > 92 дн) рендерить warning «Діапазон задовгий — показано перші 92 днів». `statsRange` для custom повертає null якщо `from > to` + окремий hint. OK.
+- #6 color-mix: `Math.round(bgAlpha*100)%` де `bgAlpha = Math.max(0.08, load*0.5)` ∈ [0.08, 0.5] → 8%–50%. Коректний відсоток на `var(--color-primary)`. OK.
+- #7 `mountedRef.current` гард на `setMonthSlots/setStatsSlots/setMonthLoading/setStatsLoading` у обох loader-ах. OK.
+
+---
+
+## Bug #170 — [CRITICAL] minio healthcheck `curl -f` — у minio/minio образі немає curl → minio ніколи не healthy → api (depends_on service_healthy) ніколи не стартує → web+caddy каскад мертвий
+
+**Файл:** `docker-compose.yml:36` + `docker-compose.dev.yml:46`
+**Severity:** CRITICAL
+**Категорія:** business-logic (deploy / infra)
+
+**Опис:** Healthcheck `test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]` для сервісу minio. Перевірено емпірично у образі `minio/minio:RELEASE.2024-01-16T16-07-38Z`: `command -v curl` і `command -v wget` — порожні (бінарників немає), є лише `/usr/bin/mc`. `curl` → command-not-found → healthcheck назавжди FAIL → minio статус `unhealthy`. `api` має `depends_on: minio: { condition: service_healthy }` → api НІКОЛИ не стартує → `web` (depends_on api) → `caddy` (depends_on web) → уся production-топологія не піднімається. Той самий blast-radius патерн, що Bug #164/#165, але для minio — пропущений у phase18-фіксах. Образ пінувався неявно (`minio/minio` = latest), тож кожен новий pull тягне curl-less образ.
+**Очікувана поведінка:** healthcheck використовує бінарник, наявний у базовому образі, і узгоджений з offline-режимом.
+**Фактична поведінка:** curl відсутній → minio назавжди unhealthy → стек мертвий.
+**Статус:** [x] виправлено — замінено на `test: ["CMD", "mc", "ready", "local"]` (офіційний MinIO healthcheck; `mc` бандлиться у server-образі, `local`-alias вбудований у контейнері minio — перевірено `mc ready local` → "The cluster is ready", exit 0). Образ запінено `RELEASE.2024-01-16T16-07-38Z` для offline-відтворюваності. `docker compose config` зелений для обох файлів.
+
+---
+
+## Bug #171 — [MEDIUM] Немає work-orders.service.spec.ts — query-shape `calendarSlots` include (take:1, relation-ім'я, deletedAt, orderBy) без regression-захисту
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:77-86` (findAll include) — лише `work-orders.contract.spec.ts` (мокає сервіс через `useValue: serviceMock`)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Комміти b22a5f0/efcfd97 додали `calendarSlots` include (плюральна relation, `take:1`, `orderBy startAt asc`, `where deletedAt:null`) + `slotStartAt/slotEndAt/slotLiftName` у `toDto` для бейджа «↓ наступний слот» на календарі. Контракт-спека реєструє `{ provide: WorkOrdersService, useValue: serviceMock }` — реальний `findAll`-запит ніколи не виконується. Регресія relation-імені (`calendarSlots`→singular), втрата `take:1` (load всієї історії слотів), або зникнення `deletedAt:null` (видалені слоти у бейджі) пройшла б усі тести зеленими і впала б тільки на runtime `PrismaClientValidationError`/неправильні дані. Патерн Bug #163 (query-shape gap).
+**Очікувана поведінка:** є service-spec що будує реальний `where`/`include` через Prisma-мок-шпигун і асертить форму.
+**Фактична поведінка:** нуль захисту query-shape для нового include.
+**Статус:** [x] виправлено — додано `work-orders.service.spec.ts` (4 тести): прямий `new WorkOrdersService(prisma, ...null)` з Prisma-мок-шпигуном + `$transaction(ops => Promise.all(ops))`; асертить `include.calendarSlots` присутній AND `calendarSlot` (singular) відсутній, `where: { deletedAt:null }`, `orderBy: { startAt:'asc' }`, `take:1`, select-форму; tenant `orgId` + `deletedAt:null` у where; `count` той самий where; `?q=` nested counterparty relations; `employeeId` → `some` soft-delete-aware. 334/334 passed.
+
+---
+
+## Bug #172 — [LOW] loadMonth/loadStats ковтають усі per-day помилки → при повному провалі fan-out користувач бачить мовчки порожній календар/статистику без feedback
+
+**Файл:** `apps/web/src/app/calendar/page.tsx` — `loadMonth` (`.catch(() => ({ d, slots: [] }))`), `loadStats` (`.catch(() => [])`)
+**Severity:** LOW
+**Категорія:** frontend
+
+**Опис:** Кожен per-day запит у fan-out має `.catch(() => [])` — це свідомо коректно для часткової стійкості (1 день впав — решта рендериться). Але якщо ВЕСЬ fan-out провалився (сервер лежить, сесія втрачена), користувач бачить порожній місяць/нульову статистику ідентично до «записів справді немає» — без жодного сигналу про помилку. Background-агрегація, не обов'язковий контрол → LOW (на відміну від Bug #159, де swallowed-fetch гейтив submit).
+**Очікувана поведінка:** при повному провалі — inline-hint про помилку завантаження, відмінний від empty-state.
+**Фактична поведінка:** порожній view, не відрізнити від «немає даних».
+**Статус:** [x] виправлено — додано `monthError`/`statsError` стани, що ставляться у `true` ТІЛЬКИ коли `failures === days.length` (весь fan-out провалився; часткові провали все одно агрегуються). Inline-повідомлення у month-панелі та під period-селектором stats. Окремі стани (не form-level `error`) щоб не конфліктувати з day-view. Web tsc 0 errors.
