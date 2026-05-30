@@ -9,8 +9,8 @@
 ## Останній commit
 
 ```
-(pending) fix(tester): Bugs #197-#199 — PricingRulesClient apiMultipartFetch + xlsx purchasePrice=null guard + applyPricing error surface
-(pending) fix(review): useColumnDrag React.X→named + pricing-rules updateMany tenant guard + cleanup dead good:undefined
+c24ffa7 fix(tester): Bugs #197-#199 — PricingRulesClient apiMultipartFetch + xlsx purchasePrice=null guard + applyPricing error surface
+91bafc8 fix(review): pricing-rules update tenant guard + dead orConditions cleanup
 a24b4dc feat(ui): useColumnDrag hook + drag CSS — column reorder via table header drag
 4548036 feat(ui): column drag-and-drop in table headers via useColumnDrag hook
 07fac23 docs(memory,skills): record sto-tester session b04e879 + add new-boolean-prop pattern
@@ -123,6 +123,19 @@ f040cde perf(db): 5 composite indexes
 ```
 
 Дата: 2026-05-30
+
+---
+
+## Pricing: розцінка по PO і по списку XLSX/CSV (e754ad4 + c24ffa7)
+
+### Gotcha #197 — CRITICAL: `apiFetch` + FormData = завжди 406
+`apiFetch` додає `Content-Type: application/json` → browser не може виставити `multipart/form-data; boundary=...` → fastify-multipart кидає "the request is not multipart".
+**ПРАВИЛО:** для upload файлів завжди `apiMultipartFetch(path, formData)` — НЕ `apiFetch` з `body: FormData`.
+Постраждало: `PricingRulesClient.tsx:626` (upload pricing list). Всі інші upload-точки вже правильні.
+
+### Gotcha #198 — HIGH: `calculateSalePrice` при `purchasePrice = null` → затирає ціну у 0
+`PERCENT/COMPETITOR_PLUS/COST_TIER` → `0 * (1 + p/100) = 0` → silent data corruption `Good.salePrice`.
+**ПРАВИЛО:** перед `calculateSalePrice()` перевірити `costPrice > 0`. Якщо 0 або null — пропустити з поміщенням у `notFound[]`, не обчислювати.
 
 ---
 
