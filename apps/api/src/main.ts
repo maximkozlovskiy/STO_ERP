@@ -48,9 +48,16 @@ async function bootstrap() {
 
   app.useGlobalFilters(new HttpExceptionFilter());
 
+  // maxAge: 86400s (24h) → browser caches CORS preflight (OPTIONS) for the
+  // configured time window, so an OPTIONS request fires at most once per
+  // (origin, path, method, header-set) per 24h instead of before every GET.
+  // For the SPA this roughly halves the request count to the API.
+  // Chrome caps maxAge at 7200s (2h) regardless of higher values — that is
+  // still a major improvement over no cache at all.
   app.enableCors({
     origin: process.env.WEB_ORIGIN ?? 'http://localhost:3001',
     credentials: true,
+    maxAge: 86400,
   });
 
   if (process.env.NODE_ENV !== 'production') {

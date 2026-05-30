@@ -226,6 +226,14 @@ export default function SettingsPage() {
   }, [currentFeatures]);
 
   useEffect(() => {
+    // Seed branches from sessionStorage so the workdays tab and dropdowns render
+    // immediately on second mount within the same tab; the fresh fetch below
+    // refreshes the cache without blocking first paint.
+    const cachedBranches = getCached<BranchInfo[]>('cache:branches');
+    if (cachedBranches && cachedBranches.length > 0) {
+      setBranches(cachedBranches);
+      setSelectedBranch(cachedBranches[0].id);
+    }
     apiFetch<OrgSettings>('/settings/organisation')
       .then(s => { setOrgSettings(s); applyTheme(s.brandTheme); if (s.uiFeatures) setUiFeatures(s.uiFeatures); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'));
@@ -242,7 +250,12 @@ export default function SettingsPage() {
       .then(setTaxRates)
       .catch(() => {});
     apiFetch<{ items: BranchInfo[] } | BranchInfo[]>('/branches')
-      .then(d => { const arr = Array.isArray(d) ? d : d.items; setBranches(arr); if (arr.length > 0) setSelectedBranch(arr[0].id); })
+      .then(d => {
+        const arr = Array.isArray(d) ? d : d.items;
+        setBranches(arr);
+        setCache('cache:branches', arr);
+        if (arr.length > 0) setSelectedBranch(prev => prev || arr[0].id);
+      })
       .catch(() => {});
   }, []);
 
