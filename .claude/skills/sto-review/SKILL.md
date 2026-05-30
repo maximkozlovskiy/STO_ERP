@@ -932,6 +932,39 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ---
 
+### 2026-05-30 — Buffer.buffer as ArrayBuffer ігнорує byteOffset/byteLength → читання з пулу — §2.3 Injection / §1 TS
+
+**Сигнал:** `await library.load(buffer.buffer as ArrayBuffer)` (ExcelJS/jszip/protobuf parsers). Buffer.allocUnsafe (типовий шлях для multipart/fastify uploads) — це view над пулом → `buffer.buffer` повертає весь пул, `byteOffset` НЕ 0, `byteLength` < `buffer.buffer.byteLength`. Парсер читає від offset 0 → отримує дані інших buffer-ів у пулі або garbage до actual data.
+**Причина виникнення:** автоматичний рефактор `(workbook.xlsx as any).load(buffer)` → `workbook.xlsx.load(buffer.buffer as ArrayBuffer)`; розробник прибрав `as any` лише типово, не подумав про Buffer pool семантику; tsc приймає (Buffer extends Uint8Array, .buffer типу ArrayBufferLike → cast OK), runtime парсить garbage → "невідома помилка" або silent data corruption
+**Підхід до виявлення:** grep `\.buffer as ArrayBuffer\b` у апі-сервісах → перевірити що `byteOffset === 0` гарантовано (для NEW Buffer(N), Buffer.alloc(N) — так; для Buffer.allocUnsafe, .from(arrayBuffer, offset, len), .subarray — НІ); особливо ризиковано: fastify-multipart, .pipe()-based streams, anything that calls allocUnsafe internally
+**Підхід до фіксу:** helper `private toArrayBuffer(buf: Buffer | Uint8Array): ArrayBuffer { return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer; }`; slice створює copy саме нашого зрізу. Альтернатива: якщо API приймає `Buffer` напряму (ExcelJS `load(buffer: Buffer)`) — не передавати `.buffer` взагалі, тримати Buffer-вхід.
+**Критичність:** CRITICAL — silent data corruption на uploaded xlsx (буде вилазити лише на проді коли pool заповнений); локальний dev часто має byteOffset=0 і фікс не помічається
+**Де шукати ще:** будь-який parser що приймає `ArrayBuffer` (ExcelJS, jspdf, mammoth, protobuf, sharp, browserify-buffer adapters); WebCrypto API (`crypto.subtle.verify(..., data: ArrayBuffer)`) на нодах де data приходить з http body
+
+---
+
+### 2026-05-30 — SSE/EventSource + global ThrottlerGuard → reconnect-loop вичерпує rate-limit — §2 Security / §4 Architecture
+
+**Сигнал:** `@Sse()` endpoint + global `ThrottlerGuard` без явного `@SkipThrottle()` на цьому endpoint. Frontend має auto-reconnect (5s після network error) + browser native EventSource reconnect (1s default) + manual reconnect on token-expiry → під час degradation мережі та сама IP може зробити 50+ reconnect-ів/хв, з'ївши rate-limit budget для всіх tabs/users за NAT.
+**Причина виникнення:** глобальний ThrottlerGuard додають "як defence-in-depth" → забувають що SSE — це довге з'єднання що рахується як 1 запит при відкритті, але EVERY reconnect — це новий запит; під load reconnect-storm моментально валить ліміт; ще гірше — налагоджена на user-experience черга reconnect-ів запускає cascading degradation бо валиться УВЕСЬ API за того ж IP
+**Підхід до виявлення:** `grep '@Sse()\|@Get.*stream\|new EventSource'` → для кожного SSE endpoint у backend перевірити `@SkipThrottle()`; на frontend перевірити що reconnect має exponential backoff (НЕ fixed 5s) + max-attempts cap
+**Підхід до фіксу:** (1) `import { SkipThrottle } from '@nestjs/throttler'` + `@SkipThrottle()` на SSE-endpoint; (2) (опційно) custom throttle on SSE — `@Throttle({ default: { ttl: 60_000, limit: 5 } })` що ліімтує лише opens-per-minute, не самі messages, але потребує custom guard що враховує час життя з'єднання
+**Критичність:** IMPORTANT — degradation під час network instability, потенційний DoS за NAT; не immediate breach, але порушує availability invariant
+**Де шукати ще:** будь-який long-polling endpoint, WebSocket gateway (хоча @WebSocketGateway зазвичай не йде через HTTP guards), `@Get` з `Observable` return type, `@Header('Content-Type', 'text/event-stream')`
+
+---
+
+### 2026-05-30 — Constants exported but unused → orphan API surface — §1 TS / §11 Configuration
+
+**Сигнал:** `export const MAX_QUERY_LIMIT = 1000;` у `@sto/shared/src/constants.ts` — але `grep -rn "MAX_QUERY_LIMIT" apps/` повертає 0 матчів; commit-message обіцяє "MAX_QUERY_LIMIT on findMany" але код не використовує
+**Причина виникнення:** plan-driven рефактор додає constant у shared "для майбутнього використання"; усі findMany вже мають explicit `take:`; розробник лишає експорт як "API hook for future" → з часом стає мертвим кодом, наступна людина копіює його у новий файл не розуміючи що нікому не потрібно
+**Підхід до виявлення:** після кожного commit що додає `export const` у `packages/shared` → `grep -rn "<NAME>" apps/` — якщо 0 → або (а) видалити, або (б) додати TODO-коментар з планом використання + issue link
+**Підхід до фіксу:** для unused constants — або (а) використати у виявлених сирітських findMany (`take: MAX_QUERY_LIMIT` як safety cap де було `take: 1000`), або (б) додати `// TODO: <plan>` коментар; не залишати "голий" export без використання
+**Критичність:** SUGGESTION — не баг; degradation якості API через orphan surface
+**Де шукати ще:** будь-який shared package export після `feat:`/`refactor:` commit; особливо magic numbers extracted до constants без consumer refactor
+
+---
+
 ### 2026-05-29 — event-handler fetch без request-token + stale похідний id — §8.2 UI Стани
 
 **Сигнал:** `openEdit(item)` / `openCard` / `onSelect` (обробник події, НЕ useEffect) робить `apiFetch(...).then(setState)`; при повторному відкритті для іншого id попередній in-flight fetch резолвиться пізніше й перезаписує стан. Додатково: похідний стан (`modalGarageId`, обраний рядок) не скидається на старті handler → на fetch-failure лишається id попередньої сутності
