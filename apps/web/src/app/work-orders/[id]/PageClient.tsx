@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch, apiMultipartFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -328,14 +329,36 @@ export default function WorkOrderCardPage() {
   };
 
   useEffect(() => {
+    // Reference data — paint instantly from sessionStorage, refresh in background.
+    // Без кешу кожне відкриття картки наряду тягне ~600 рядків (works+employees+warehouses)
+    // навіть якщо користувач відкриває третю поспіль картку за хвилину.
+    const cachedWorks = getCached<Work[]>('cache:works');
+    const cachedEmployees = getCached<Employee[]>('cache:employees');
+    const cachedWarehouses = getCached<Warehouse[]>('cache:warehouses');
+    if (cachedWorks) setWorks(cachedWorks);
+    if (cachedEmployees) setEmployees(cachedEmployees);
+    if (cachedWarehouses) {
+      setWarehouses(cachedWarehouses);
+      const mainW = cachedWarehouses.find(x => x.isMain) ?? (cachedWarehouses.length === 1 ? cachedWarehouses[0] : null);
+      if (mainW) setPartForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
+    }
+
     apiFetch<{ items: Work[] }>('/works?limit=200')
-      .then(r => { if (mountedRef.current) setWorks(r.items); })
-      .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
+      .then(r => {
+        setCache('cache:works', r.items);
+        if (mountedRef.current) setWorks(r.items);
+      })
+      .catch((e: unknown) => { if (mountedRef.current && !cachedWorks) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
     apiFetch<{ items: Employee[] }>('/employees?limit=200')
-      .then((r: { items?: Employee[] } | Employee[]) => { if (mountedRef.current) setEmployees(Array.isArray(r) ? r : r.items ?? []); })
-      .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
+      .then((r: { items?: Employee[] } | Employee[]) => {
+        const arr = Array.isArray(r) ? r : r.items ?? [];
+        setCache('cache:employees', arr);
+        if (mountedRef.current) setEmployees(arr);
+      })
+      .catch((e: unknown) => { if (mountedRef.current && !cachedEmployees) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
     apiFetch<Warehouse[]>('/warehouses')
       .then(data => {
+        setCache('cache:warehouses', data);
         if (!mountedRef.current) return;
         setWarehouses(data);
         const mainW = data.find(x => x.isMain) ?? (data.length === 1 ? data[0] : null);
@@ -343,7 +366,7 @@ export default function WorkOrderCardPage() {
         // pre-fill when the field is still empty.
         if (mainW) setPartForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
       })
-      .catch((e: unknown) => { if (mountedRef.current) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
+      .catch((e: unknown) => { if (mountedRef.current && !cachedWarehouses) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
     apiFetch<InspectionPoint[]>(`/work-orders/${id}/inspection/default-points`)
       .then(d => { if (mountedRef.current) setInspectionPoints(d); })
       .catch(() => {});

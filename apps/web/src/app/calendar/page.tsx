@@ -1255,10 +1255,16 @@ export default function CalendarPage() {
   }, [form.counterpartyId, form.counterpartyDisplay]);
 
   // Load branches once — surface errors so the required «Філія» select isn't silently empty (Bug #159)
+  // Reference data — seed from sessionStorage so first-paint dropdowns aren't empty.
   useEffect(() => {
+    const cached = getCached<{ id: string; name: string }[]>('cache:branches');
+    if (cached && mountedRef.current) { setBranches(cached); setBranchesError(''); }
     apiFetch<{ id: string; name: string }[]>('/branches')
-      .then(d => { if (mountedRef.current) { setBranches(d); setBranchesError(''); } })
-      .catch((e: unknown) => { if (mountedRef.current) setBranchesError(e instanceof Error ? e.message : 'Не вдалося завантажити список філій'); });
+      .then(d => {
+        setCache('cache:branches', d);
+        if (mountedRef.current) { setBranches(d); setBranchesError(''); }
+      })
+      .catch((e: unknown) => { if (mountedRef.current && !cached) setBranchesError(e instanceof Error ? e.message : 'Не вдалося завантажити список філій'); });
   }, []);
 
   const loadWoVehicles = useCallback(async (counterpartyId: string) => {
