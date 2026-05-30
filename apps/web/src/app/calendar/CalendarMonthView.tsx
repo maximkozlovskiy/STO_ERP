@@ -2,7 +2,7 @@
 
 import { Spinner } from '@/components/ui/spinner';
 import type { MonthSlots } from './calendar.types';
-import { KYIV_TZ, toDateString } from './calendar.utils';
+import { toDateString } from './calendar.utils';
 
 interface CalendarMonthViewProps {
   yearMonth: string;       // 'YYYY-MM'

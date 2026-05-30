@@ -29,7 +29,7 @@ import {
   HOURS, TOTAL_HOURS, SIDEBAR_W, WINDOW_START, WINDOW_END, STATS_MAX_DAYS,
   KYIV_HOUR_FMT,
   pad, toDateString, kyivHours, fmtTime, decimalHoursToHHMM, decimalHoursToISO,
-  snapTo15, pxToHours, parseHHMM, formatKyivDate,
+  snapTo15, pxToHours, formatKyivDate,
 } from './calendar.utils';
 import { CalendarMonthView } from './CalendarMonthView';
 import { CalendarStatsTab }  from './CalendarStatsTab';

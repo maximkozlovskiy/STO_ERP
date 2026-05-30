@@ -6163,3 +6163,73 @@ if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderSta
 **Статус:** [x] виправлено — додано contract-тест «status guard: 400 коли PO у DRAFT/ORDERED (service кидає BadRequestException)» у `purchase-orders.contract.spec.ts`. Усі contract тести passed.
 
 ---
+
+## Session 2026-05-30 — Архітектурний рефакторинг (throttler + xlsx Buffer→ArrayBuffer + calendar/catalog split)
+
+Scope: commits `8b2a1e0..3726def` (rate limiting via `@nestjs/throttler`, xlsx slice replacement, catalog/calendar page splits)
+
+Baseline (Крок 0): API tsc 0, web tsc 0, shared tsc 0; API unit 419/419 passed; web component 179/179 passed.
+
+---
+
+## Bug #203 — [HIGH] HealthController підпадає під global ThrottlerGuard (200 req/min на IP) — docker healthcheck + nginx upstream healthcheck + моніторинг можуть досягти ліміту → cascade restart
+
+**Файл:** `apps/api/src/health/health.controller.ts:15` + `apps/api/src/app.module.ts:126`
+**Severity:** HIGH
+**Категорія:** deploy / business-logic
+
+**Опис:** `etap 1.3` додав `ThrottlerGuard` глобально через `APP_GUARD` з лімітом 200 req/min на IP. SSE-endpoint `/dashboard/stream` правильно отримав `@SkipThrottle()`. Але `/health` endpoint (єдиний у `HealthController`) — не отримав. У продакшені:
+
+- Docker healthcheck опитує `/health` кожні 30s з `localhost` (1 хіт з контейнерного IP).
+- Nginx healthcheck/upstream-probe опитує `/health` з IP nginx-контейнера.
+- Моніторинг (Prometheus blackbox, Sentry health pings) опитує з власних IP.
+- При багатоінстансовій конфігурації або CI/CD pipeline (`smoke check`) кілька healthcheck-ів одночасно з одного NAT/load-balancer-у легко перетинають 200/min для шумних client IP.
+
+Коли healthcheck отримує `429 Too Many Requests`, Docker `depends_on: condition: service_healthy` валиться → перезапуск контейнерів → cascade restart по всій compose-стеку. STO ERP `docker-compose.yml` і `installer/` build залежать від здорового healthcheck для надійного оновлення / startup.
+
+**Очікувана поведінка:** `/health` НЕ підпадає під rate-limiting; завжди повертає `200 OK` / `degraded` структуру.
+
+**Фактична поведінка:** `/health` підпадає під global 200 req/min throttle. На 201-му запиті за хвилину → `429`. Docker healthcheck/nginx тлумачать це як «нездорово» → перезапуск.
+
+**Підхід до фіксу:** Додати `@SkipThrottle()` декоратор на `HealthController.check()` (або на цілий контролер). Найчистіше — на метод, симетрично до `dashboard/stream`.
+
+**Статус:** [x] виправлено — додано `@SkipThrottle()` на рівні класу `HealthController` (симетрично з тим як `@nestjs/throttler` рекомендує для глобально-незмінних статус-endpoints). Імпорт `SkipThrottle` додано з `@nestjs/throttler`.
+
+---
+
+## Bug #204 — [LOW] `CalendarMonthView.tsx` імпортує `KYIV_TZ` з calendar.utils але не використовує — мертвий імпорт після рефакторингу
+
+**Файл:** `apps/web/src/app/calendar/CalendarMonthView.tsx:5`
+**Severity:** LOW
+**Категорія:** typescript / dead-code
+
+**Опис:** Під час split `calendar/page.tsx` у три файли, у `CalendarMonthView.tsx` залишений імпорт `KYIV_TZ`, який фактично використовується лише у sibling файлах (`CalendarStatsTab.tsx:115`, `CalendarSlotModal.tsx`). У цьому файлі `KYIV_TZ` ніде не згадується. `tsc` пропускає це бо `noUnusedLocals` вимкнено у `apps/web/tsconfig.json`.
+
+**Очікувана поведінка:** Імпортувати тільки те що використовується.
+
+**Фактична поведінка:** Мертвий імпорт `KYIV_TZ` у CalendarMonthView.
+
+**Підхід до фіксу:** Видалити `KYIV_TZ` з імпорт-списку рядка 5 (залишити `toDateString`).
+
+**Статус:** [x] виправлено — `KYIV_TZ` видалено з імпорту, лишено `toDateString`.
+
+---
+
+## Bug #205 — [LOW] `calendar/page.tsx` імпортує `parseHHMM` але не використовує — мертвий імпорт після перенесення TimeSelect у CalendarSlotModal
+
+**Файл:** `apps/web/src/app/calendar/page.tsx:32`
+**Severity:** LOW
+**Категорія:** typescript / dead-code
+
+**Опис:** Під час split `calendar/page.tsx`, логіка з `TimeSelect` (що використовує `parseHHMM`) переїхала у `CalendarSlotModal.tsx`. Сам `parseHHMM` тепер імпортується там окремо. У `page.tsx` він лишився у `import { ... parseHHMM ... }` хоч жодного разу не викликається. `tsc` пропускає це бо `noUnusedLocals` вимкнено.
+
+**Очікувана поведінка:** Імпортувати тільки те що використовується.
+
+**Фактична поведінка:** Мертвий імпорт `parseHHMM` у page.tsx.
+
+**Підхід до фіксу:** Видалити `parseHHMM` з імпорт-списку рядка 32.
+
+**Статус:** [x] виправлено — `parseHHMM` видалено з імпорту calendar/page.tsx; залишилися лише реально використовувані helper-и (`snapTo15`, `pxToHours`, `formatKyivDate`).
+
+---
+
