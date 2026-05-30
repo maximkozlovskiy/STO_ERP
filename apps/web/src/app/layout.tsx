@@ -5,6 +5,7 @@ import { AuthProvider } from '@/lib/auth';
 import { TopShell } from '@/components/TopShell';
 import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import { ColorModeProvider } from '@/components/ColorModeProvider';
+import { QueryProvider } from '@/components/QueryProvider';
 import './globals.css';
 
 const geistSans = Geist({
@@ -40,11 +41,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ServiceWorkerRegistrar />
-        <ColorModeProvider>
-          <AuthProvider>
-            <TopShell>{children}</TopShell>
-          </AuthProvider>
-        </ColorModeProvider>
+        <QueryProvider>
+          <ColorModeProvider>
+            <AuthProvider>
+              <TopShell>{children}</TopShell>
+            </AuthProvider>
+          </ColorModeProvider>
+        </QueryProvider>
       </body>
     </html>
   );
