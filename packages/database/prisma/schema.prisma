@@ -577,6 +577,7 @@ model Counterparty {
   warranties        Warranty[]
   calendarSlots     CalendarSlot[]
 
+  @@index([orgId, deletedAt])
   @@index([orgId, type, deletedAt])
   @@index([orgId, syncVersion])
   @@map("counterparties")
@@ -762,6 +763,7 @@ model Good {
 
   @@index([orgId, deletedAt])
   @@index([orgId, sku])
+  @@index([orgId, goodType, deletedAt])
   @@index([orgId, syncVersion])
   @@map("goods")
 }
@@ -1498,6 +1500,7 @@ model CalendarSlot {
   counterparty Counterparty? @relation(fields: [counterpartyId], references: [id])
 
   @@index([orgId, deletedAt])
+  @@index([orgId, startAt, deletedAt])
   @@index([orgId, liftId, startAt, endAt])
   @@index([orgId, employeeId, startAt])
   @@index([orgId, syncVersion])
