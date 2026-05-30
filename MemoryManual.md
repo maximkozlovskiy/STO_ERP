@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+cef188a fix(sync): align pricing-list template download with API contract
+e754ad4 feat(pricing): apply pricing to PO + list import (XLSX/CSV)
 0ff559c docs(skills): add detail-include-vs-list-include + premature-optimization-rejection patterns to sto-optimize
 b39a25f docs(skills,memory): record Etap A-D review session — 4 new patterns to sto-review
 93ccc25 fix(review): Etap A-D — brandId update normalize + AnimatedBody rAF cleanup + useDetailPanelConfig race + user-prefs key guard
@@ -107,6 +109,24 @@ f040cde perf(db): 5 composite indexes
 ```
 
 Дата: 2026-05-30
+
+---
+
+## Pricing: розцінка по PO і по списку XLSX/CSV (e754ad4 + cef188a)
+
+### Backend
+
+- `POST /purchase-orders/:id/apply-pricing` — розцінює всі лінії PO за `PricingService.calculateSalePrice()`, оновлює `Good.salePrice`, записує `PriceHistory` з reason `PO pricing: {po.number}`. Доступно на статусах ORDERED/PARTIAL/RECEIVED (не перевіряє статус — просто обробляє всі лінії).
+- `POST /xlsx/apply-pricing-from-list` — приймає XLSX або CSV (за розширенням), парсить SKU+barcode, знаходить товари по OR, розцінює, записує PriceHistory з reason `List pricing import`. CSV колонки: `sku`, `barcode`, `name`.
+- `GET /xlsx/templates/pricing-list` — тепер як case у `templates/:type` switch, повертає base64 CSV з BOM.
+
+### Frontend
+
+- `apps/web/src/app/purchase-orders/page.tsx` — кнопка «Розцінити» у рядку таблиці (тільки RECEIVED/PARTIAL), inline result-таблиця (товар/собівартість/стара ціна/нова ціна).
+- `apps/web/src/app/pricing-rules/PricingRulesClient.tsx` — кнопка «Розцінити список» у toolbar, розкривна секція з file input (XLSX/CSV), result-таблиця. Завантаження шаблону через `apiFetch('/xlsx/templates/pricing-list')` + blob download (не raw anchor).
+
+### Gotcha (sync fix cef188a)
+`@Get('templates/:type')` wild-card перехоплює будь-який шлях `templates/X`. Окремий `@Get('templates/pricing-list')` зареєстрований ПІСЛЯ wild-card → ніколи не спрацьовував. Фікс: додати `pricing-list` як case у існуючий switch замість окремого endpoint.
 
 ---
 
