@@ -30,11 +30,22 @@ export function useDetailPanelConfig(pageKey: string) {
 
   useEffect(() => {
     let cancelled = false;
-    // Optimistic: показати з localStorage поки завантажується з API
+    const TS_KEY = `${storageKey}_ts`;
+    const CACHE_TTL_MS = 5 * 60 * 1000; // 5 хв — config змінюється рідко
+
+    // Optimistic: показати з localStorage поки завантажується з API.
+    // Якщо кеш свіжіший за TTL — пропускаємо API запит (config не міг змінитися на сервері).
+    let skipFetch = false;
     try {
       const cached = localStorage.getItem(storageKey);
-      if (cached && !cancelled) setConfig(JSON.parse(cached) as PanelConfig);
+      const ts = Number(localStorage.getItem(TS_KEY) ?? 0);
+      if (cached) {
+        setConfig(JSON.parse(cached) as PanelConfig);
+        if (Date.now() - ts < CACHE_TTL_MS) skipFetch = true;
+      }
     } catch { /* ignore */ }
+
+    if (skipFetch) { setLoading(false); return; }
 
     apiFetch<{ key: string; value: PanelConfig }>(`/user-preferences/${apiKey}`)
       .then(res => {
@@ -44,7 +55,10 @@ export function useDetailPanelConfig(pageKey: string) {
             ? (res.value as PanelConfig)
             : { hiddenFields: [] };
         setConfig(cfg);
-        try { localStorage.setItem(storageKey, JSON.stringify(cfg)); } catch { /* ignore quota */ }
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(cfg));
+          localStorage.setItem(TS_KEY, String(Date.now()));
+        } catch { /* ignore quota */ }
       })
       .catch(() => { /* offline: use localStorage */ })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -59,12 +73,14 @@ export function useDetailPanelConfig(pageKey: string) {
     putAbortRef.current?.abort();
     const ac = new AbortController();
     putAbortRef.current = ac;
+    // Invalidate TTL so next mount re-fetches fresh value from server
+    try { localStorage.setItem(`${STORAGE_PREFIX}${pageKey}_ts`, String(Date.now())); } catch { /* ignore */ }
     apiFetch(`/user-preferences/${apiKey}`, {
       method: 'PUT',
       body: JSON.stringify({ key: apiKey, value: next }),
       signal: ac.signal,
     }).catch(() => { /* AbortError or network: silent — localStorage already updated */ });
-  }, [apiKey]);
+  }, [apiKey, pageKey]);
 
   const isFieldHidden = useCallback(
     (fieldKey: string) => config.hiddenFields.includes(fieldKey),
