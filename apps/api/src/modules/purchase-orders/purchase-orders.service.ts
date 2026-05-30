@@ -232,52 +232,75 @@ export class PurchaseOrdersService {
       },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
+    // Defense-in-depth: розцінювати можна лише отримані товари (UI рендерить кнопку
+    // тільки для RECEIVED/PARTIAL, але клієнт міг бути обійдений)
+    if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderStatus.PARTIAL) {
+      throw new BadRequestException('Розцінити можна лише отримані товари (статус RECEIVED або PARTIAL)');
+    }
 
-    const details: { goodId: string; goodName: string; costPrice: number; oldSalePrice: number; newSalePrice: number }[] = [];
+    // Bug #194: prefetch active rules once — раніше calculateSalePrice fetch-ив правила
+    // у циклі (N+1), та кожна лінія викликала окремий $transaction без timeout.
+    // Тепер: 1 query на правила + 1 транзакція з chunked updates + explicit timeout.
+    const rules = await this.pricingService.getActiveRulesForOrg(orgId);
+
+    type Plan = {
+      goodId: string;
+      goodName: string;
+      costPrice: number;
+      oldSalePrice: number;
+      newSalePrice: number;
+    };
+    const plan: Plan[] = [];
 
     for (const line of po.lines) {
       if (!line.good) continue;
       const costPrice = Number(line.price);
       const oldSalePrice = Number(line.good.salePrice);
-      const newSalePrice = await this.pricingService.calculateSalePrice(
-        orgId,
+      const newSalePrice = this.pricingService.computePriceFromRules(
+        rules,
         line.goodId,
-        line.good.category,
-        line.good.goodType,
-        line.good.brandId,
+        line.good.category ?? undefined,
+        line.good.goodType ?? undefined,
+        line.good.brandId ?? undefined,
         costPrice,
       );
       if (Math.abs(newSalePrice - oldSalePrice) < 0.001) continue;
-
-      // Bug #191: updateMany з orgId — defense-in-depth tenant guard
-      // (line.goodId уже org-trusted через po.lines, але дублюємо щоб патерн був безпечним для копіювання)
-      await this.prisma.$transaction([
-        this.prisma.good.updateMany({
-          where: { id: line.goodId, orgId, deletedAt: null },
-          data: { salePrice: newSalePrice },
-        }),
-        this.prisma.priceHistory.create({
-          data: {
-            orgId,
-            goodId: line.goodId,
-            oldPrice: oldSalePrice,
-            newPrice: newSalePrice,
-            costPrice,
-            reason: `PO pricing: ${po.number}`,
-          },
-        }),
-      ]);
-
-      details.push({
-        goodId: line.goodId,
-        goodName: line.good.name,
-        costPrice,
-        oldSalePrice,
-        newSalePrice,
-      });
+      plan.push({ goodId: line.goodId, goodName: line.good.name, costPrice, oldSalePrice, newSalePrice });
     }
 
-    return { updated: details.length, details };
+    if (plan.length === 0) return { updated: 0, details: [] };
+
+    // Batch у chunks по 100 щоб не лочити велику кількість рядків у одній tx;
+    // explicit { timeout: 10_000 } — array-form $transaction default 5s не вистачає на 100 рядків.
+    const CHUNK = 100;
+    for (let i = 0; i < plan.length; i += CHUNK) {
+      const chunk = plan.slice(i, i + CHUNK);
+      await this.prisma.$transaction(
+        async (tx) => {
+          for (const u of chunk) {
+            // Bug #191: updateMany з orgId — defense-in-depth tenant guard
+            // (u.goodId уже org-trusted через po.lines, але дублюємо щоб патерн був безпечним для копіювання)
+            await tx.good.updateMany({
+              where: { id: u.goodId, orgId, deletedAt: null },
+              data: { salePrice: u.newSalePrice },
+            });
+          }
+          await tx.priceHistory.createMany({
+            data: chunk.map((u) => ({
+              orgId,
+              goodId: u.goodId,
+              oldPrice: u.oldSalePrice,
+              newPrice: u.newSalePrice,
+              costPrice: u.costPrice,
+              reason: `PO pricing: ${po.number}`,
+            })),
+          });
+        },
+        { timeout: 10_000 },
+      );
+    }
+
+    return { updated: plan.length, details: plan };
   }
 
   private toDto(po: {

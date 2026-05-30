@@ -165,8 +165,20 @@ export class PricingService {
     return updates.length;
   }
 
+  // Bug #194: prefetch helper для bulk-операцій (PO apply-pricing, etc.) — повертає всі активні
+  // правила org одним запитом, щоб уникнути N+1 у циклах calculateSalePrice.
+  async getActiveRulesForOrg(orgId: string) {
+    return this.prisma.pricingRule.findMany({
+      where: { orgId, isActive: true, deletedAt: null },
+      include: { tiers: { orderBy: { sortOrder: 'asc' } } },
+      orderBy: { priority: 'asc' },
+      take: 200,
+    });
+  }
+
   // Pure in-memory rule resolution (no DB calls) — used in tight loops like applyRuleToGoods
-  private computePriceFromRules(
+  // Public so PO apply-pricing та інші bulk-операції можуть переиспользовать без re-fetch правил.
+  computePriceFromRules(
     rules: Array<{
       goodId: string | null;
       goodCategory: string | null;

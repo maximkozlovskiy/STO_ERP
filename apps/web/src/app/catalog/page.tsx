@@ -2032,10 +2032,11 @@ function UnitsTab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const load = useCallback(() => {
-    // Seed from cache for instant first-paint, then refresh.
-    // Safe because load() is called after every create/remove mutation.
-    const cached = getCached<Unit[]>('cache:units');
+  const load = useCallback((opts?: { fromCache?: boolean }) => {
+    // Seed from cache for instant first-paint; пропускати кеш після mutations щоб
+    // не показати STALE список між POST/DELETE та фінальним fetch.
+    const fromCache = opts?.fromCache ?? false;
+    const cached = fromCache ? getCached<Unit[]>('cache:units') : null;
     if (cached) { setUnits(cached); setLoading(false); }
     else setLoading(true);
     apiFetch<Unit[]>('/units')
@@ -2044,7 +2045,7 @@ function UnitsTab() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load({ fromCache: true }); }, [load]);
 
   const create = async () => {
     if (!form.name.trim() || !form.shortName.trim()) { setError('Усі поля є обов\'язковими'); return; }
@@ -2204,10 +2205,11 @@ function BrandsTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  const load = useCallback(() => {
-    // Seed from cache for instant first-paint, then refresh.
-    // Safe because load() is called after every save/remove mutation.
-    const cached = getCached<Brand[]>('cache:brands');
+  const load = useCallback((opts?: { fromCache?: boolean }) => {
+    // Seed from cache for instant first-paint; пропускати кеш після mutations щоб
+    // не показати STALE список між POST/DELETE та фінальним fetch.
+    const fromCache = opts?.fromCache ?? false;
+    const cached = fromCache ? getCached<Brand[]>('cache:brands') : null;
     if (cached) { setBrands(cached); setLoading(false); }
     else setLoading(true);
     apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200')
@@ -2216,7 +2218,7 @@ function BrandsTab() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load({ fromCache: true }); }, [load]);
 
   const openCreate = () => { setEditBrand(null); setForm({ name: '' }); setError(''); setModal(true); };
   const openEdit = (b: Brand) => { setEditBrand(b); setForm({ name: b.name }); setError(''); setModal(true); };
