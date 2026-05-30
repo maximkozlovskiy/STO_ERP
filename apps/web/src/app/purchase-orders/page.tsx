@@ -354,6 +354,41 @@ export default function PurchaseOrdersPage() {
           <PanelField label="Позицій" value={po.linesCount != null ? String(po.linesCount) : undefined} />
           {po.notes && <PanelField label="Нотатки" value={po.notes} />}
           <PanelField label="Дата" value={new Date(po.createdAt).toLocaleDateString('uk-UA')} />
+          {(po.status === 'RECEIVED' || po.status === 'PARTIAL') && (
+            <div className="pt-1 space-y-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full"
+                loading={applyingPricingId === po.id}
+                onClick={() => void applyPricing(po)}
+              >
+                Розцінити товари
+              </Button>
+              {pricingResult[po.id] && (
+                <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
+                  <p className="text-[12px] text-muted-foreground">
+                    Оновлено: <span className="font-medium text-foreground">{pricingResult[po.id].updated}</span> товарів
+                  </p>
+                  {pricingResult[po.id].details.length > 0 && (
+                    <div className="space-y-1.5">
+                      {pricingResult[po.id].details.map(d => (
+                        <div key={d.goodId} className="text-[12px]">
+                          <p className="font-medium text-foreground truncate">{d.goodName}</p>
+                          <p className="text-muted-foreground">
+                            {d.costPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴ →{' '}
+                            <span className="line-through">{d.oldSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</span>{' '}
+                            <span className="text-success-text font-medium">{d.newSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</span>
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ),
     },
