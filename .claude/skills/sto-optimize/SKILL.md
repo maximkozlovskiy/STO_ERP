@@ -608,6 +608,17 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-30 — Frontend Intl singletons via dedicated lib helper — масові table-cell `.toLocaleString` у списках
+
+**Сигнал:** на сторінці-списку (таблиця/grid/detail-card) кожна grow-комірка з ціною/датою має inline `value.toLocaleString('uk-UA', {...})` або `new Date(value).toLocaleDateString('uk-UA')`. Або є локальна функція `fmt(n)` у файлі що теж робить inline `toLocaleString`. Множиться через `.map()` × ререндери (search, filter)
+**Причина виникнення:** `.toLocaleString` виглядає як «вбудована JS-фіча, дешеве» — розробник не помічає що під капотом це `new Intl.NumberFormat(...).format(...)` де **конструкція** locale-data дорога. Локальний `fmt` хелпер створює ілюзію оптимізації, але він теж викликає `toLocaleString` під капотом, отже не дає виграшу
+**Підхід до виявлення:** **не точково** по одному файлу — потрібен **systematic sweep**: `grep -rn "toLocaleString\|toLocaleDateString\|toLocaleTimeString\|new Intl\." apps/web/src/app/ --include="*.tsx"`. Для кожного збігу спитати: «це у `.map()` / у table cell / у списку?». Якщо так — кандидат. Локальні `fmt()` хелпери у файлі — теж кандидати (рекурсивно)
+**Підхід до фіксу:** створити `apps/web/src/lib/format.ts` з module-level Intl singletons (`MONEY_FMT`, `DATE_FMT`, `DATETIME_FMT`, `SHORT_DATETIME_FMT`, `INT_FMT`) і експортувати thin wrappers (`fmtMoney(n)`, `fmtDate(d)`, ...). Опції форматерів **зафіксовані як константи** — `uk-UA`, `minimumFractionDigits: 2`. Сторінки імпортують і використовують замість inline `toLocaleString`. Локальні `fmt` хелпери або викидаються, або стають проксі до `lib/format`. Це paralleлить backend pattern (PDF/reports module-level KYIV_DATE_FMT) на фронт
+**Реальний impact:** усуває O(rows × cells × renders) конструкцій Intl об'єкту. Для таблиці 20 рядків × 3 currency cells × 10 ререндерів за сесію — 600 конструкцій → 1. Найпомітніше у списках з фільтрами/пошуком (часті ререндери). Bonus: централізує формат — зміна локалі/precision вимагає правки одного файлу
+**Де шукати ще:** будь-який новий список/таблиця/detail card; будь-який локальний `fmt` хелпер у `.tsx` файлі; reports preview, dashboards, PDF preview-modals. **Перевіряти при кожному додаванні нової сторінки-списку** — це системно повторюваний патерн
+
+---
+
 ### 2026-05-30 — Tenant guard + side-entity fetch sequential — assertX() потім findFirst(X-related) у різних таблицях
 
 **Сигнал:** метод сервісу починається з `await this.assertCounterparty(orgId, cpId)` (або `findFirst` для tenant-guard) потім `await this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } })`. Дві послідовні RTT — перша лише для авторизації, друга для основних даних. Обидва запити мають orgId у where → tenant ізоляція дублюється
@@ -661,6 +672,9 @@ TypeScript: ✅ 0 errors
 - ✅ stock-documents create: 3-FK Promise.all з conditional targetWarehouse (3 RTT → 1)
 - ✅ loyalty getBalance/getTransactions: parallel counterparty guard + loyaltyAccount (-1 RTT)
 - ✅ inspection findByWorkOrder: parallel WO guard + inspectionReport (-1 RTT)
+- ✅ pricing-rules create/update: parallel goodId + brandId FK validation (+ tenant guard merged for update)
+- ✅ goods create: parallel sku-uniqueness check + validateFkReferences (2 RTT → 1)
+- ✅ goods update: parallel findOne tenant guard + sku-uniqueness + FK validation (3 RTT → 1)
 
 **Frontend:**
 - ✅ useDebounce(300ms) на 8 сторінках (work-orders, crm, invoices, purchase-orders, inventory, employees, catalog ×3)
@@ -683,6 +697,7 @@ TypeScript: ✅ 0 errors
 - ✅ img lazy loading + decoding="async"
 - ✅ work-orders/[id] load(): WO + completion-acts + inspection → Promise.all (3 fire-and-forget → 1 batch, з explicit error fan-out)
 - ✅ work-orders/[id] handleMediaUpload: sequential for-await → Promise.allSettled (5 files: ~10s → ~2.5s)
+- ✅ lib/format.ts Intl singletons (fmtMoney/fmtInt/fmtDate/fmtDateTime/fmtShortDateTime): 9 сторінок (catalog/crm/employees/invoices/pricing-rules/purchase-orders/stock-documents/work-orders[list+detail]) — заміна inline `n.toLocaleString('uk-UA', {...})` і `new Date(...).toLocaleDateString(...)` у table-cell rendering hot-path
 
 **DB:**
 - ✅ work_orders: `(orgId, status, branchId, deletedAt)`, `(orgId, completedAt, deletedAt)`

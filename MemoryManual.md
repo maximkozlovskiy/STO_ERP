@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+3d86bdc perf(web): Intl singletons via lib/format — replace per-render toLocaleString in 9 pages
+bb2f2b0 perf(backend): parallel FK validation in pricing-rules + goods create/update
+5077c92 perf(db): GIN trgm for counterparties/goods search + covering indexes for calendar/goods/counterparties list queries
 efbff7a perf(backend): bulk-prefetch xlsx imports + parallel FK validation + Intl singletons
 84f359d docs(memory,skills): record perf optimization session + 5 new patterns
 331e4ca perf(db): covering indexes for audit-by-entity + settlement transactions
