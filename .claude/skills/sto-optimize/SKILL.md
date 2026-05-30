@@ -575,6 +575,50 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-30 — Per-row N+1 у xlsx/csv line importers — будь-який bulk import з for-await пошуком entity per row
+
+**Сигнал:** import-метод приймає масив рядків з файлу (xlsx/csv), для кожного рядка робить `good.findFirst({ where: { OR: [{ sku }, { name }] } })` + `existingLine.findFirst({ where: { goodId, parentId } })` + create/update. На 1000 рядків — 2000-3000 RTT
+**Причина виникнення:** import пишеться як CRUD — рядок прийшов, шукаємо існуючий entity, оновлюємо/створюємо. for-await — найбільш звичний паттерн для error reporting per row (try/catch у тілі). Видається безпечним бо "юзер один раз імпортує", але вже 100 рядків × 30ms RTT = 3 секунди + ризик connection-pool exhaustion при паралельних імпортах
+**Підхід до виявлення:** грепнути `for (const \w+ of rows)` у services, перевірити чи тіло циклу містить `findFirst` за полями що походять з row (sku, name, barcode, externalId). Якщо так — кандидат
+**Підхід до фіксу:** виділити helper `lookupEntitiesBulk(orgId, rows)` що робить ОДИН `findMany({ where: { orgId, OR: [{ sku: { in: skus } }, { name: { in: names } }] } })` і повертає Map<key, entity>. Перед циклом - prefetch existing lines одним `findMany({ where: { parentId, goodId: { in: [...] } } })` теж у Map. Цикл стає чистим: lookup + decide create/update + накопичити в errors. Лишити create/update послідовними якщо вони впливають на той самий аггрегат (сума), або замінити на `createMany` для нових і `updateMany`+CASE для оновлень якщо незалежні
+**Реальний impact:** 1000 рядків × (findFirst + findFirst) ~= 2000 RTT → 2 batch RTT + N localhost Map lookups. Реалістичне прискорення з 60s → 3s для типового імпорту 500 запчастин
+**Де шукати ще:** будь-який importX метод сервісу де X = lines/items/parts — line importers це системно повторюваний паттерн (PO, SD, WO parts, invoice lines, services, інспекція)
+
+---
+
+### 2026-05-30 — Pure compute extraction з async rule resolver — calculateX що внутрішньо тягне правила/конфіг з БД
+
+**Сигнал:** сервіс має метод `calculateX(orgId, ...inputs): Promise<number>` що **завжди** починається з `prisma.rules.findMany({ where: { orgId, isActive } })` потім робить чистий розрахунок. Виклик у hot loop робить N×fetch однієї й тієї ж колекції правил
+**Причина виникнення:** найприродніша інкапсуляція: «один публічний метод який все робить». Викликач не знає про правила — він має просто отримати ціну. Але при batch-операціях (apply pricing to 1000 goods) кожен виклик re-fetch'ить статичні правила. Кешування на рівні методу не допомагає бо TTL не очевидний, а invalidation складна
+**Підхід до виявлення:** для кожного `async calculate*` у сервісі прочитати тіло. Якщо перший await — це `findMany`/`findFirst` для довідника, не для основного entity input — кандидат на split. Перевірити чи метод викликається у циклі деінде (grep `calculateX(`)
+**Підхід до фіксу:** split на дві функції: `getRulesForOrg(orgId)` (async, тримати у PricingService) + `computeFromRules(rules, ...inputs)` (sync, чистий розрахунок). Existing `calculateX` робить обидві операції підряд — зворотно-сумісний. Batch-споживачі викликають `getRulesForOrg` ОДИН раз і map'ять `computeFromRules` синхронно
+**Реальний impact:** для applyPricingFromList з 500 items: 500 fetch правил → 1 fetch + 500 синхронних compute. Раніше було ~15s (500 × 30ms RTT) → < 1s. Аналогічно для tax/discount/loyalty калькуляторів
+**Де шукати ще:** будь-який *Service з методом «розрахуй X»: pricing, tax, discount, loyalty earn, commission. Коли вони викликаються у репортах, bulk-операціях, batch-операціях — extract pure compute
+
+---
+
+### 2026-05-30 — Backend hot-loop Intl construction — звіти, PDF рендеринг, групування по даті
+
+**Сигнал:** хелпер-функція `kyivDate = (d) => new Intl.DateTimeFormat('sv-SE', {...}).format(d)` оголошений у тілі методу, а не на module-level. Викликається у `for (const x of rows)` циклі що проходить 1000+ рядків. Те саме для `fmtMoney`/`fmtDate` у PDF builderах (called per .map cell)
+**Причина виникнення:** Intl.DateTimeFormat/NumberFormat сприймається як «дешевий хелпер» — особливо коли він вкладений у метод, бо опції локалі (`timeZone: 'Europe/Kyiv'`) виглядають як частина «контексту звіту». Але locale-data init — найдорожча частина: ~0.5-1ms на конструкцію. У циклі × 10000 → 5-10 секунд CPU
+**Підхід до виявлення:** grep `new Intl\.(DateTimeFormat|NumberFormat)\(` у `apps/api/src/modules/**/*.service.ts`. Для кожного збігу спитати: «чи цей форматер у hot loop або per-row map?» Reports (revenue, transactions), PDF generators (рядки таблиці накладної), CSV exporters — типові гарячі шляхи. Якщо options константні (TZ/locale фіксовані) — кандидат на hosting
+**Підхід до фіксу:** module-level `const KYIV_DATE_FMT = new Intl.DateTimeFormat(...)`. У хелпері/циклі — лише `.format(d)`. Опції мають бути статичними. Якщо локаль/TZ зчитуються з config — кешувати через Map<key, Formatter>. NestJS DI це не псує — module-level const живе весь час процесу
+**Реальний impact:** для revenue звіту 10000 WO: 10000 конструкцій → 1. PDF з накладною 50 рядків: 100 формат-конструкцій (money+date×2) → 2. Сумарно прибирає 5-10s CPU з кожного важкого звіту
+**Де шукати ще:** reports.service всі методи, pdf.service builders, csv/xlsx export-генератори, settlements act builders, document number formatters (якщо викликається batch-ом)
+
+---
+
+### 2026-05-30 — Tenant guard + side-entity fetch sequential — assertX() потім findFirst(X-related) у різних таблицях
+
+**Сигнал:** метод сервісу починається з `await this.assertCounterparty(orgId, cpId)` (або `findFirst` для tenant-guard) потім `await this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } })`. Дві послідовні RTT — перша лише для авторизації, друга для основних даних. Обидва запити мають orgId у where → tenant ізоляція дублюється
+**Причина виникнення:** assertX() helpers — рекомендована практика для DRY tenant guard у NestJS. Але у вузьких місцях (getBalance, getDetails, getReport) це створює два sequential round-trips де другий має ту саму safety через orgId. Розробник не помічає бо `assertX` виглядає як «дешевий call»
+**Підхід до виявлення:** грепнути `await this\.assert\w+\(` у `*.service.ts`. Для кожного збігу перевірити чи наступний рядок — це `await this.prisma.X.findFirst(...)`. Якщо у `X.findFirst` є orgId фільтр — друге query вже tenant-safe, можна паралелити
+**Підхід до фіксу:** `const [guard, entity] = await Promise.all([assertQuery, entityQuery])`. Перевірку `if (!guard) throw NotFound` робити ПІСЛЯ Promise.all — порядок повідомлень не страждає бо обидва запити вже виконані. Це безпечно навіть якщо entity знайдено для іншого tenant'а — entity query сам перевірив orgId і повернув null
+**Реальний impact:** -1 RTT per call для loyalty.getBalance, getTransactions, inspection.findByWorkOrder. Для часто-викликаних endpoints (live dashboard polling, sidebar widgets) це ~30-50ms × N tabs відкритих
+**Де шукати ще:** будь-який getX/getDetail/getBalance/getReport що починається з assertY guard. Особливо часто: loyalty, settlements, balance APIs, audit-by-entity, comments-by-entity. Перевір кожен «один-помічник-потім-один-запит» паттерн
+
+---
+
 ### 2026-05-28 — Читання `new Date()` / годинника всередині render — компоненти з time-залежним UI
 
 **Сигнал:** `new Date()`, `Date.now()`, `.getMinutes()`/`.getHours()` викликані прямо у JSX або у `.map()` що генерує опції/комірки — особливо для disabled-логіки «минулий час». Це і impure render (різний результат при однакових props), і повторний виклик на кожен елемент
@@ -610,6 +654,13 @@ TypeScript: ✅ 0 errors
 - ✅ Webhooks publish: parallel queue.add for all endpoints (Bull pipelines)
 - ✅ Booking getAvailability: parallel lifts + busy slots + work durations (3 RTT → 1)
 - ✅ Reports stock: parallel stockItems + stockMovements findMany
+- ✅ Reports revenue: KYIV_DATE_FMT module-level Intl singleton (раніше per-row у 10k loop)
+- ✅ PDF service: UAH_FMT/UA_DATE_FMT module-level Intl singletons (раніше per .map() cell)
+- ✅ xlsx importPOLines/importSDLines/importWOParts: bulk lookupGoodsBulk + existing lines IN-prefetch (N+1 → 2 RTT)
+- ✅ xlsx applyPricingFromList: prefetch pricing rules once + sync computePriceFromRules (раніше N×fetch правил)
+- ✅ stock-documents create: 3-FK Promise.all з conditional targetWarehouse (3 RTT → 1)
+- ✅ loyalty getBalance/getTransactions: parallel counterparty guard + loyaltyAccount (-1 RTT)
+- ✅ inspection findByWorkOrder: parallel WO guard + inspectionReport (-1 RTT)
 
 **Frontend:**
 - ✅ useDebounce(300ms) на 8 сторінках (work-orders, crm, invoices, purchase-orders, inventory, employees, catalog ×3)
