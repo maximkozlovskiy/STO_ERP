@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -69,6 +70,23 @@ import { UserPreferencesModule } from './modules/user-preferences/user-preferenc
     }),
     // Global rate limiting: 200 req/min per IP; stricter limits on specific routes
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
+    // Structured JSON logging via pino — production: JSON, development: pretty-print
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? {
+                target: 'pino-pretty',
+                options: { colorize: true, translateTime: 'SYS:standard', ignore: 'pid,hostname' },
+              }
+            : undefined,
+        // Redact sensitive fields from logs
+        redact: ['req.headers.authorization', 'req.headers.cookie'],
+        // Skip health-check noise in logs
+        autoLogging: { ignore: req => req.url === '/api/health' },
+      },
+    }),
     PrismaModule,
     RedisModule,
     HealthModule,

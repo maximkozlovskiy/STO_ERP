@@ -5,6 +5,7 @@
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import fastifyCookie from '@fastify/cookie';
 import fastifyHelmet from '@fastify/helmet';
@@ -44,6 +45,7 @@ async function bootstrap() {
   );
 
   app.useGlobalFilters(new HttpExceptionFilter());
+  app.useLogger(app.get(PinoLogger));
 
   // maxAge: 86400s (24h) → browser caches CORS preflight (OPTIONS) for the
   // configured time window, so an OPTIONS request fires at most once per
