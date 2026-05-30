@@ -181,7 +181,18 @@ export function PanelField({
   hidden?: boolean;
 }) {
   if (hidden) return null;
-  if (value === null || value === undefined || value === '') return null;
+  const isEmpty = value === null || value === undefined || value === '';
+  // When fieldKey is provided (field is part of panel config), show "—" instead
+  // of hiding — so users can see the field exists even when the object has no value.
+  if (isEmpty && !_fieldKey) return null;
+  if (isEmpty) {
+    return (
+      <div className={cn('space-y-0.5', className)}>
+        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
+        <div className="text-[13px] text-muted-foreground">—</div>
+      </div>
+    );
+  }
   return (
     <div className={cn('space-y-0.5', className)}>
       <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
