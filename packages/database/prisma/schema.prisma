@@ -750,6 +750,7 @@ model Good {
   unitOfMeasure      UnitOfMeasure?     @relation(fields: [unitId], references: [id])
   preferredSupplier  Counterparty?      @relation("GoodSupplier", fields: [preferredSupplierId], references: [id])
   barcodes           GoodBarcode[]
+  uoms               GoodUoM[]
   stockItems         StockItem[]
   movements          StockMovement[]
   serviceGoods       ServiceGood[]
@@ -784,6 +785,22 @@ model GoodBarcode {
   @@map("good_barcodes")
 }
 
+model GoodUoM {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String        @db.Uuid
+  goodId          String        @db.Uuid
+  unitOfMeasureId String        @db.Uuid
+  isDefault       Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+
+  good            Good          @relation(fields: [goodId], references: [id], onDelete: Cascade)
+  unitOfMeasure   UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id])
+
+  @@unique([orgId, goodId, unitOfMeasureId])
+  @@index([orgId, goodId])
+  @@map("good_uom")
+}
+
 model UnitOfMeasure {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId       String    @db.Uuid
@@ -802,6 +819,7 @@ model UnitOfMeasure {
   deletedAt   DateTime?
 
   goods       Good[]
+  goodUoms    GoodUoM[]
 
   @@unique([orgId, shortName])
   @@index([orgId, deletedAt])

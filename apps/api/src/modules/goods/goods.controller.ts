@@ -19,7 +19,13 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { GoodsService } from './goods.service';
-import { CreateGoodDto, UpdateGoodDto, GoodQueryDto } from './goods.dto';
+import {
+  CreateGoodDto,
+  UpdateGoodDto,
+  GoodQueryDto,
+  CreateGoodUoMDto,
+  GoodUoMResponseDto,
+} from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 import { BatchService } from '../inventory/batch.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -73,6 +79,52 @@ export class GoodsController {
   @ApiOperation({ summary: 'Видалити товар' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
+  }
+
+  // ─── UoM Sub-resource ────────────────────────────────────────────────────────
+
+  @Get(':goodId/uoms')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC')
+  @ApiOperation({ summary: 'Одиниці виміру товару' })
+  getUoMs(
+    @OrgContext() orgId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+  ): Promise<GoodUoMResponseDto[]> {
+    return this.service.getUoMs(orgId, goodId);
+  }
+
+  @Post(':goodId/uoms')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Додати одиницю виміру до товару' })
+  addUoM(
+    @OrgContext() orgId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+    @Body() dto: CreateGoodUoMDto,
+  ): Promise<GoodUoMResponseDto> {
+    return this.service.addUoM(orgId, goodId, dto);
+  }
+
+  @Patch(':goodId/uoms/:uomId/default')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Встановити одиницю виміру як основну' })
+  setDefaultUoM(
+    @OrgContext() orgId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+    @Param('uomId', ParseUUIDPipe) uomId: string,
+  ): Promise<GoodUoMResponseDto> {
+    return this.service.setDefaultUoM(orgId, goodId, uomId);
+  }
+
+  @Delete(':goodId/uoms/:uomId')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Видалити одиницю виміру з товару' })
+  removeUoM(
+    @OrgContext() orgId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+    @Param('uomId', ParseUUIDPipe) uomId: string,
+  ): Promise<void> {
+    return this.service.removeUoM(orgId, goodId, uomId);
   }
 
   // ─── Barcodes Sub-resource ───────────────────────────────────────────────────

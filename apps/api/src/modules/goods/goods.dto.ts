@@ -93,3 +93,20 @@ export class PaginatedGoodsDto {
   @ApiProperty() page!: number;
   @ApiProperty() limit!: number;
 }
+
+// ─── Good UoM ────────────────────────────────────────────────────────────────
+
+export class CreateGoodUoMDto {
+  @ApiProperty({ description: 'ID одиниці виміру' })
+  @IsUUID()
+  unitOfMeasureId!: string;
+}
+
+export class GoodUoMResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() unitOfMeasureId!: string;
+  @ApiProperty() unitName!: string;
+  @ApiProperty() unitShortName!: string;
+  @ApiProperty() coefficient!: number;
+  @ApiProperty() isDefault!: boolean;
+}

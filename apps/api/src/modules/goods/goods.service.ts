@@ -12,6 +12,8 @@ import {
   GoodQueryDto,
   GoodResponseDto,
   PaginatedGoodsDto,
+  CreateGoodUoMDto,
+  GoodUoMResponseDto,
 } from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 
@@ -203,6 +205,117 @@ export class GoodsService {
     if (!barcode) throw new NotFoundException('Штрихкод не знайдено');
 
     await this.prisma.goodBarcode.delete({ where: { id: barcodeId } });
+  }
+
+  // ─── Good UoM ──────────────────────────────────────────────────────────────
+
+  async getUoMs(orgId: string, goodId: string): Promise<GoodUoMResponseDto[]> {
+    const good = await this.prisma.good.findFirst({
+      where: { id: goodId, orgId, deletedAt: null },
+    });
+    if (!good) throw new NotFoundException('Товар не знайдено');
+    const uoms = await this.prisma.goodUoM.findMany({
+      where: { orgId, goodId },
+      include: { unitOfMeasure: true },
+      orderBy: { isDefault: 'desc' },
+    });
+    return uoms.map(u => this.toUoMDto(u));
+  }
+
+  async addUoM(orgId: string, goodId: string, dto: CreateGoodUoMDto): Promise<GoodUoMResponseDto> {
+    const [good, unit] = await Promise.all([
+      this.prisma.good.findFirst({ where: { id: goodId, orgId, deletedAt: null } }),
+      this.prisma.unitOfMeasure.findFirst({
+        where: { id: dto.unitOfMeasureId, orgId, deletedAt: null },
+      }),
+    ]);
+    if (!good) throw new NotFoundException('Товар не знайдено');
+    if (!unit) throw new NotFoundException('Одиницю виміру не знайдено');
+
+    const existing = await this.prisma.goodUoM.findFirst({
+      where: { orgId, goodId, unitOfMeasureId: dto.unitOfMeasureId },
+    });
+    if (existing) throw new ConflictException('Ця одиниця виміру вже додана до товару');
+
+    const count = await this.prisma.goodUoM.count({ where: { orgId, goodId } });
+    const isFirst = count === 0;
+
+    const uom = await this.prisma.$transaction(async tx => {
+      const created = await tx.goodUoM.create({
+        data: { orgId, goodId, unitOfMeasureId: dto.unitOfMeasureId, isDefault: isFirst },
+        include: { unitOfMeasure: true },
+      });
+      if (isFirst) {
+        await tx.good.update({
+          where: { id: goodId },
+          data: { unitId: dto.unitOfMeasureId, unit: unit.shortName },
+        });
+      }
+      return created;
+    });
+
+    return this.toUoMDto(uom);
+  }
+
+  async setDefaultUoM(orgId: string, goodId: string, uomId: string): Promise<GoodUoMResponseDto> {
+    const uom = await this.prisma.goodUoM.findFirst({
+      where: { id: uomId, orgId, goodId },
+      include: { unitOfMeasure: true },
+    });
+    if (!uom) throw new NotFoundException('Запис одиниці виміру не знайдено');
+
+    await this.prisma.$transaction([
+      this.prisma.goodUoM.updateMany({ where: { orgId, goodId }, data: { isDefault: false } }),
+      this.prisma.goodUoM.update({ where: { id: uomId }, data: { isDefault: true } }),
+      this.prisma.good.update({
+        where: { id: goodId },
+        data: { unitId: uom.unitOfMeasureId, unit: uom.unitOfMeasure.shortName },
+      }),
+    ]);
+
+    return this.toUoMDto({ ...uom, isDefault: true });
+  }
+
+  async removeUoM(orgId: string, goodId: string, uomId: string): Promise<void> {
+    const uom = await this.prisma.goodUoM.findFirst({ where: { id: uomId, orgId, goodId } });
+    if (!uom) throw new NotFoundException('Запис одиниці виміру не знайдено');
+
+    const total = await this.prisma.goodUoM.count({ where: { orgId, goodId } });
+    if (total === 1) throw new BadRequestException('Не можна видалити єдину одиницю виміру');
+
+    await this.prisma.$transaction(async tx => {
+      await tx.goodUoM.delete({ where: { id: uomId } });
+      if (uom.isDefault) {
+        const next = await tx.goodUoM.findFirst({
+          where: { orgId, goodId },
+          include: { unitOfMeasure: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (next) {
+          await tx.goodUoM.update({ where: { id: next.id }, data: { isDefault: true } });
+          await tx.good.update({
+            where: { id: goodId },
+            data: { unitId: next.unitOfMeasureId, unit: next.unitOfMeasure.shortName },
+          });
+        }
+      }
+    });
+  }
+
+  private toUoMDto(u: {
+    id: string;
+    unitOfMeasureId: string;
+    isDefault: boolean;
+    unitOfMeasure: { name: string; shortName: string; coefficient: number };
+  }): GoodUoMResponseDto {
+    return {
+      id: u.id,
+      unitOfMeasureId: u.unitOfMeasureId,
+      unitName: u.unitOfMeasure.name,
+      unitShortName: u.unitOfMeasure.shortName,
+      coefficient: u.unitOfMeasure.coefficient,
+      isDefault: u.isDefault,
+    };
   }
 
   private toBarcodeDto(b: {
