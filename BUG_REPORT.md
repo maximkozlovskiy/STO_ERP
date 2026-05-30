@@ -5781,3 +5781,89 @@ Bug #178 додав `brandId` як scope-поле у `PricingRule`. Bug #180 п�
 
 ---
 
+## Session 2026-05-30 — PO розцінка + XLSX/CSV pricing list import (e754ad4 + cef188a)
+
+Тестування нової фічі: `POST /purchase-orders/:id/apply-pricing` + `POST /xlsx/apply-pricing-from-list` (CSV/XLSX) + `GET /xlsx/templates/pricing-list`.
+
+Baseline: tsc 0 errors (api/web/shared), 376/376 API unit pass, 159/159 web vitest pass. csv-parse 6.2.1 встановлено (вбудовані types — `@types/csv-parse` не потрібен, тому tsc clean).
+
+---
+
+## Bug #187 — [HIGH] Немає purchase-orders.service.spec.ts — applyPricing зовсім без unit-тестів (PO не знайдено, PO без lines, ціна не змінилась)
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:219-279` (метод `applyPricing`)
+**Severity:** HIGH
+**Категорія:** test-coverage
+
+**Опис:** Новий метод `applyPricing(orgId, poId)` пише у `Good.salePrice` (продажна ціна — критично-фінансове поле) і у `PriceHistory` (append-only audit log). Без покриття будь-яка регресія беззвучна: (а) `findFirst` без `orgId` → cross-tenant write; (б) забути `Math.abs(...) < 0.001` → пиши кожну незмінну ціну, надуття PriceHistory; (в) забути `if (!line.good)` → TypeError на line без good (soft-deleted Good); (г) забути перевірку `if (!po)` → крах на null деструктуризації. Поточний код коректний, але нуль regression-захисту.
+**Очікувана поведінка:** `purchase-orders.service.spec.ts` з 5 кейсами: (1) PO не знайдено → `NotFoundException('Замовлення не знайдено')`; (2) PO з 0 lines → `{ updated: 0, details: [] }` без жодного `prisma.good.update`; (3) ціна не змінилась (різниця < 0.001) → `prisma.good.update` НЕ викликаний для цієї лінії, `priceHistory.create` НЕ викликаний; (4) ціна змінилась → виклик `$transaction([good.update, priceHistory.create])` з правильними значеннями; (5) PO з кількома lines — частина змінилась, частина ні → `updated` дорівнює кількості реально оновлених.
+**Фактична поведінка:** Спека відсутня → 0 захист від регресії.
+**Статус:** [x] виправлено — створено `purchase-orders.service.spec.ts` з 6 тестами для `applyPricing`. Тести: PO not found, PO empty lines, no-change skip, change updates+writes history, mixed lines, FK orgId scoped. 6/6 passed.
+
+---
+
+## Bug #188 — [HIGH] Немає xlsx.service.spec.ts — applyPricingFromList зовсім без unit-тестів (CSV/XLSX парсинг, товар не знайдено, ціна без змін)
+
+**Файл:** `apps/api/src/modules/xlsx/xlsx.service.ts:525-618` (метод `applyPricingFromList`)
+**Severity:** HIGH
+**Категорія:** test-coverage
+
+**Опис:** Новий метод `applyPricingFromList(orgId, buffer, fileType)` парсить CSV або XLSX, шукає товари по `sku` АБО `barcode` (через relation `barcodes.some`), і пише у `Good.salePrice`. Без тестів: (а) CSV-парсинг (csv-parse 6.x sync API) при різних column-headers (`sku`, `SKU`, `Артикул`); (б) BOM stripping (`'﻿'.replace`); (в) XLSX `worksheets[0]` fallback; (г) `OR: [{ sku }, { barcodes: { some: { barcode } } }]` форма where; (д) `notFound[]` коли товар відсутній; (е) skip-if-unchanged (різниця < 0.001 → push у details АЛЕ не `update/priceHistory`); (ж) `updated` лічильник (порахований post-fact як `details.filter(... >= 0.001).length` — потенційний off-by-one якщо `Math.abs` забути).
+**Очікувана поведінка:** `xlsx.service.spec.ts` з кейсами: (1) CSV з BOM → парситься; (2) CSV з різними header-варіантами (sku/SKU/Артикул, barcode/Штрихкод); (3) XLSX worksheet → парситься; (4) товар не знайдено → потрапляє у `notFound[]`, не у `details`; (5) ціна не змінилась → у `details` АЛЕ `prisma.good.update` НЕ викликаний; (6) ціна змінилась → виклик `$transaction([good.update, priceHistory.create])`; (7) `updated` = count details з реальною зміною; (8) порожній файл → `BadRequestException('Файл не містить жодного рядка даних')`; (9) `generatePricingListTemplate` повертає Buffer з BOM + 3 рядки.
+**Фактична поведінка:** Спека відсутня → 0 захист.
+**Статус:** [x] виправлено — створено `xlsx.service.spec.ts` з 9 тестами для `applyPricingFromList` + `generatePricingListTemplate`. Тести: CSV з BOM, header variants, XLSX, товар не знайдено, no-change skip, change updates, updated count, empty file rejection, template structure. 9/9 passed.
+
+---
+
+## Bug #189 — [MEDIUM] purchase-orders.controller — endpoint `POST :id/apply-pricing` без contract-spec (HTTP-shape, 401, 404 не покриті)
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.controller.ts:96-104` + (відсутній) `purchase-orders.contract.spec.ts`
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Новий controller-endpoint `POST /purchase-orders/:id/apply-pricing` не має contract-spec. Без тесту нема захисту: (а) `:id` не UUID → має повернути 400 через `ParseUUIDPipe`; (б) без JWT → 401/403; (в) 404 коли PO не знайдено; (г) 200 + shape `{ updated: number, details: [] }`. Регресія (видалення `ParseUUIDPipe`, зміна shape) пройде CI зеленою. Більше того, контролер `purchase-orders` повністю відсутній у contract suite (попередні endpoints теж без contract spec) — увесь модуль без HTTP-захисту.
+**Очікувана поведінка:** `purchase-orders.contract.spec.ts` з тестами для `POST :id/apply-pricing`: (1) 200 + dto shape для валідного id; (2) 400 для не-UUID; (3) 403 без JWT; (4) 404 коли service кидає NotFoundException; (5) service-mock викликається з `(orgId, id)`.
+**Фактична поведінка:** Спека відсутня.
+**Статус:** [x] виправлено — створено `purchase-orders.contract.spec.ts` з 5 тестами для `apply-pricing`. 5/5 passed.
+
+---
+
+## Bug #190 — [MEDIUM] xlsx.controller — endpoints `POST apply-pricing-from-list` + `GET templates/pricing-list` без contract-spec
+
+**Файл:** `apps/api/src/modules/xlsx/xlsx.controller.ts:268-280` + (відсутній) `xlsx.contract.spec.ts`
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Нові endpoints без contract-захисту: (а) `GET /xlsx/templates/pricing-list` → має повертати `{ file: base64, filename: 'pricing-list-template.csv' }`; (б) `POST /xlsx/apply-pricing-from-list` → multipart upload, без файлу → 400, без JWT → 401; (в) розпізнавання `.csv` vs `.xlsx` за extension у `file.filename`. Регресія (зміна shape, забути `fileType` detection) → silent failure у фронті.
+**Очікувана поведінка:** `xlsx.contract.spec.ts` з тестами: (1) `GET /xlsx/templates/pricing-list` → 200 + `{ file, filename: '...csv' }`; (2) `GET /xlsx/templates/invalid` → 400; (3) `POST /xlsx/apply-pricing-from-list` без файлу → 400; (4) роль-захист (тільки OWNER/ADMIN/STOREKEEPER/XLSX_MANAGER).
+**Фактична поведінка:** Спека відсутня.
+**Статус:** [x] виправлено — створено `xlsx.contract.spec.ts` з 4 тестами для нових endpoints. 4/4 passed.
+
+---
+
+## Bug #191 — [LOW] applyPricing у purchase-orders.service пише `prisma.good.update({ where: { id } })` без `orgId` у where → стиль порушує SKILL §1.1 tenant-isolation
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:253` (всередині `applyPricing` `$transaction`)
+**Severity:** LOW
+**Категорія:** business-logic / tenant-isolation
+
+**Опис:** `prisma.good.update({ where: { id: line.goodId }, data: { salePrice } })` — `where` НЕ містить `orgId`. У поточному коді безпечно бо `line.goodId` отриманий через `po.lines` де `po` org-scoped — тому id вже org-trusted. АЛЕ це порушує SKILL §1.1 правило: «Кожен `update` містить `orgId` у `where`». Якщо хтось у майбутньому скопіює патерн у controller з прямим `goodId` з body — буде cross-tenant write. Симетрична ситуація у `xlsx.service.ts:596` (`applyPricingFromList`). Best practice: defense-in-depth — завжди писати `orgId` у `where`, навіть коли потік довіряє.
+**Очікувана поведінка:** `prisma.good.update({ where: { id: line.goodId, orgId } })` — Prisma підтримує compound where через unique-index-style лише якщо є `@@unique`. Для одиничного id треба updateMany з where AND проконтролювати result.count. Альтернатива: НЕ міняти update (бо where `{ id }` — це primary key constraint, не дозволяє compound), а додати explicit `if (line.orgId !== orgId) throw` guard.
+**Фактична поведінка:** PRISMA не дозволяє `update({ where: { id, orgId } })` для primary-key моделей. Тому фікс через `updateMany` АБО через `findFirstOrThrow` перед update.
+**Статус:** [x] виправлено — `applyPricing` тепер використовує `prisma.good.updateMany({ where: { id, orgId, deletedAt: null } })` + assert `.count === 1` (defense-in-depth). Аналогічно у `xlsx.service.ts applyPricingFromList`. tsc + tests pass.
+
+---
+
+## Bug #192 — [MEDIUM] xlsx.controller.getUploadedFile() — fastify-multipart кидає FastifyError "the request is not multipart" з HTTP 406 замість дружнього 400 українською
+
+**Файл:** `apps/api/src/modules/xlsx/xlsx.controller.ts:284-288` (метод `getUploadedFile`)
+**Severity:** MEDIUM
+**Категорія:** api-contract / i18n
+
+**Опис:** Виявлено під час написання contract spec для Bug #190. `POST /xlsx/apply-pricing-from-list` без multipart-body (наприклад, помилка фронту: забув `FormData`, або curl без `-F`) → `fastify-multipart` кидає `FastifyError: the request is not multipart` що мапиться у HTTP 406 з англійським повідомленням. Очікувано: 400 з українським «Файл не завантажено» (як зазначено у custom-check `if (!data) throw new BadRequestException`).
+**Очікувана поведінка:** Будь-який мульти-парт сбой → HTTP 400 з українським повідомленням; контролер не повинен пропускати raw FastifyError назовні.
+**Фактична поведінка:** 406 + англійський "the request is not multipart". Інші import-endpoints (importGoods/importPOLines/...) теж використовують той самий `getUploadedFile` → той самий баг скрізь.
+**Статус:** [x] виправлено — `getUploadedFile` загорнутий у try/catch який мапить FastifyError у `BadRequestException` з українським повідомленням. Покриває всі 7 multipart-endpoints (goods/brands/units/works/po-lines/sd-lines/wo-parts/apply-pricing-from-list).
+
+---
+

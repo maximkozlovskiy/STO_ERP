@@ -249,9 +249,11 @@ export class PurchaseOrdersService {
       );
       if (Math.abs(newSalePrice - oldSalePrice) < 0.001) continue;
 
+      // Bug #191: updateMany з orgId — defense-in-depth tenant guard
+      // (line.goodId уже org-trusted через po.lines, але дублюємо щоб патерн був безпечним для копіювання)
       await this.prisma.$transaction([
-        this.prisma.good.update({
-          where: { id: line.goodId },
+        this.prisma.good.updateMany({
+          where: { id: line.goodId, orgId, deletedAt: null },
           data: { salePrice: newSalePrice },
         }),
         this.prisma.priceHistory.create({

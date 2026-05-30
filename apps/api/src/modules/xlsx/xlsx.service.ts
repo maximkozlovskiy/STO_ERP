@@ -592,8 +592,14 @@ export class XlsxService {
         continue;
       }
 
+      // Bug #191: updateMany з orgId — defense-in-depth tenant guard.
+      // good.id уже org-trusted через `where: { orgId }` у findFirst вище,
+      // але дублюємо щоб патерн був безпечним для копіювання.
       await this.prisma.$transaction([
-        this.prisma.good.update({ where: { id: good.id }, data: { salePrice: newSalePrice } }),
+        this.prisma.good.updateMany({
+          where: { id: good.id, orgId, deletedAt: null },
+          data: { salePrice: newSalePrice },
+        }),
         this.prisma.priceHistory.create({
           data: {
             orgId,
