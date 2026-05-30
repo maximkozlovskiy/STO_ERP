@@ -164,7 +164,7 @@ export class EmployeesQueryDto {
 
 export class AssignBranchesDto {
   @ApiProperty({ type: [String], description: 'Масив UUID філій' })
-  @IsUUID('4', { each: true })
+  @IsUUID(undefined, { each: true })
   branchIds!: string[];
 
   @ApiPropertyOptional({ description: 'Доступ до всіх філій (OWNER/ADMIN)' })
@@ -175,19 +175,19 @@ export class AssignBranchesDto {
 
 export class AssignZonesDto {
   @ApiProperty({ type: [String], description: 'Масив UUID зон' })
-  @IsUUID('4', { each: true })
+  @IsUUID(undefined, { each: true })
   zoneIds!: string[];
 }
 
 export class AssignLiftsDto {
   @ApiProperty({ type: [String], description: 'Масив UUID підйомників' })
-  @IsUUID('4', { each: true })
+  @IsUUID(undefined, { each: true })
   liftIds!: string[];
 }
 
 export class AssignWorkCategoriesDto {
   @ApiProperty({ type: [String], description: 'Масив UUID категорій робіт' })
-  @IsUUID('4', { each: true })
+  @IsUUID(undefined, { each: true })
   workCategoryIds!: string[];
 }
 

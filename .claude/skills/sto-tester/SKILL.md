@@ -285,6 +285,8 @@ done
 - [ ] `$PSScriptRoot` має fallback `if ($PSScriptRoot) {...} else { Split-Path -Parent $MyInvocation.MyCommand.Path }` (порожній при dot-source)
 - [ ] nginx Next.js static export: `location /_next/static/` з `expires 1y; immutable`; `gzip_types` включає `text/javascript image/svg+xml application/xml`
 - [ ] **Global APP_GUARD skip-list audit (Bug #203):** будь-яке введення global guard через `{ provide: APP_GUARD, useClass: XGuard }` потребує аудиту endpoint-ів які мають бути виключені: (а) `/health` — docker healthcheck/nginx upstream/моніторинг опитують часто, ліміт швидко перетинається → cascade restart; (б) `/metrics` — Prometheus scrape кожні 15s; (в) SSE-streams (`@Sse`) — довгоживучі з'єднання повторно retry-ються EventSource при втраті; (г) webhooks з зовнішніх систем (PRRO, payment provider) — клієнт не контролює rate; (д) batch/cron-endpoints. Кожен такий контролер потребує парний skip-декоратор (`@SkipThrottle()`, `@Public()`, `@SkipGuard()`). tsc не ловить, тести не ловять (HEALTH spec звичайно не запускає AppModule з APP_GUARD). Виявляється лише у проді коли docker healthcheck отримує `429` → restart loop.
+- [ ] **Paired logger+middleware request-id link (Bug #216):** коли проєкт додає одночасно (а) HTTP correlation middleware що сетить `x-request-id` header, і (б) structured logger (`nestjs-pino`/`pino-http`) — пересвідчись що ДВА компоненти **поділяють той самий ID source**. Дефолтний `pino-http.genReqId` повертає sequential integers (`1, 2, 3, ...`) — НЕ читає header. Middleware сетить header один UUID, pino пише інший integer у `reqId` лога → cross-correlation мертва. Grep: `grep -n "genReqId\|reqId" apps/api/src` — якщо середовище має CorrelationIdMiddleware АЛЕ нема `genReqId` у pino config → bug. Фікс: `genReqId: req => req.headers['x-request-id']`-based з fallback `randomUUID()`. Захист: контракт-тест що шле `X-Request-Id: <UUID>` і асертить `JSON.parse(stdout).reqId === <UUID>`. Аналогічна перевірка: `customLogLevel`, `customSuccessMessage`, `serializers` що ховають correlation поля. Severity: HIGH (не runtime crash, але feature що додається саме для production-моніторингу — не працює).
+- [ ] **pino redact list — cross-DTO secret-field audit (Bug #217):** після додавання `pino` `redact: [...]` пройти кожен `*.dto.ts` у `apps/api/src/modules/` і знайти ВСІ plaintext-secret поля (`password`, `*Password`, `*Token`, `*Secret`, `*Key`, `*PrivateKey`, `apiKey`, `webhookSecret`). Кожне таке поле має `req.body.X` АБО `req.body.*Password`-glob у redact. Grep: `grep -rnE "(password|Token|Secret|apiKey|webhookSecret)!?\??:.*string" apps/api/src/modules/**/*.dto.ts` → cross-check проти `redact: [...]`. SKILL §1.4 раніше згадував лише `password`/`refreshToken`/`accessToken`; реальні DTO мають теж `ownerPassword` (setup), `prroApiKey` (POS), `webhookSecret` (webhooks). Без full аудиту перший review-раунд накладає redact лише для очевидних auth-полів, а решта secret-полів лишається непокритими — log statement з spread `req.body` витече їх. Severity: MEDIUM (поки немає log statement що spread-ить body — нема leak; додавання stmt стає HIGH).
 
 ---
 
@@ -347,6 +349,7 @@ done
 - [ ] `@IsUUID()` без версії ('all') відхиляє nil-UUID → у **тестах** для UUID-полів: `11111111-1111-4111-8111-111111111111` (v4 layout)
 - [ ] **JSON/Record DTO поля** (`Record<string, unknown>`, `object`, `Json`) → обов'язково `@IsObject()` або `@ValidateNested()`. Без декоратора `whitelist: true` знімає поле мовчки → `dto.value === undefined` → сервіс записує `undefined/null` у БД без помилки (Bug #182). Перевіряти: `grep -A2 "!: Record\|?: Record\|!: object\|?: object" *.dto.ts | grep -v "@Is"`
 - [ ] **Multipart `await req.file()` обгорнутий у try/catch** (Bug #192): `fastify-multipart` кидає FastifyError "the request is not multipart" що мапиться у HTTP **406** з англ. messageом якщо клієнт відправляє НЕ-multipart body. Helper має ловити це і re-throw `BadRequestException` українською. Grep: `grep -rn "await req.file()" apps/api/src/modules/ --include="*.controller.ts"` — кожен виклик у try/catch АБО у helper з try/catch. Contract spec для нового multipart-endpoint вимагає тест `POST без multipart → 400 + укр. msg`
+- [ ] **Mass DTO migration completeness — grep variant audit (Bug #215):** sprint-wide refactor (наприклад «змінити `@Matches(uuid-regex)` → `@IsUUID()` у всіх DTO», «додати `@IsOptional()` до всіх `?:` полів», «замінити `string` → `string | null` для nullable DB полів») часто пропускає **варіантні форми** оригінального паттерну. Розробник grep-ить простий case (`@IsUUID('4')`) і пропускає декорації з додатковими args (`@IsUUID('4', { each: true })`, `@IsUUID('4', { message: '...' })`). Після sprint лишається 2-5 file-points з СТАРОЮ строгістю — тестові fixtures з ТОГО ж sprint можуть пройти бо їх теж зробили v4-layout, але production seeds/demo data з не-v4 UUID (e.g. `00000000-0000-0000-0000-000000000002`) ловлять 400 у dev. Grep: для кожного sprint-wide refactor — пройти ОБИДВА варіанти `@X()` і `@X(arg1, { each|message|... })`. Приклад для UUID: `grep -rn "@IsUUID(" apps/api/src/modules/ --include="*.dto.ts"` (NOT `@IsUUID('4')$`). Severity: HIGH коли блокує dev/seed workflow.
 
 ---
 
@@ -785,6 +788,44 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-31 — Paired correlation middleware + structured logger без спільного req-id source (Bug #216) — backend, logging, observability
+
+**Сигнал:** додано в одному sprint (а) HTTP correlation middleware (`CorrelationIdMiddleware` — сетить `x-request-id` header) і (б) structured logger (`nestjs-pino`/`pino-http` з JSON-форматом). У браузері видно `x-request-id: 7f3d-...-uuid` у response, але JSON-лог пише `{"reqId": 1, ...}` (sequential integer). Перевірка `pino-http@*/logger.js`: `function reqIdGenFactory(func) { ... let nextReqId = 0; return function (req, res) { return req.id || (nextReqId = (nextReqId + 1) & maxInt) } }` — дефолт. Ні tsc, ні existing tests не ловлять (logger output не асертиться; smoke-test перевіряє лише HTTP status code).
+
+**Причина виникнення:** обидва компоненти **окремо валідні**. Розробник реалізує middleware першим — testing-через-curl показує header в response → OK. Потім додає logger — JSON логи виглядають правильно (рівні, redact, формат) → OK. Але **інтеграційна точка** (`pino-http.genReqId` має читати той самий header що middleware сетить) ніде не задокументована як обов'язкова. Розробник вважає що **порядок** (middleware першим → pino другим) автоматично робить лінк, але насправді pino-http реєструється як Fastify `onRequest` hook ВПЕРЕД Nest middleware → pino вже зафіксував `req.id = 1` до того як middleware виставить header.
+
+**Підхід до виявлення:** для будь-якого sprint що додає одночасно correlation middleware + structured logger — перевірити чи pino config має `genReqId: req => req.headers['x-request-id']`-based reader. Grep: `grep -rn "genReqId\|reqId" apps/api/src --include="*.ts"`. Якщо нема `genReqId` і є CorrelationIdMiddleware → gap. Альтернативно — sprint review-checklist має «logger ↔ correlation tested end-to-end?» питання: запит з `X-Request-Id: deadbeef-...` має пройти у логах як `reqId: deadbeef-...`.
+
+**Підхід до фіксу:** `pinoHttp.genReqId = req => { const raw = req.headers['x-request-id']; const c = Array.isArray(raw) ? raw[0] : raw; return (typeof c === 'string' && VALID_RE.test(c)) ? c : randomUUID() }`. Middleware тепер додатково гарантує: (а) inbound header валідовано і нормалізовано перед pino; (б) response header echo з того ж source. Альтернатива: видалити middleware і використовувати лише pino з custom genReqId + onResponse hook що echo-ить `req.id` у response. Гірше — суто на боці middleware (бо тоді треба переписати порядок Fastify hooks щоб middleware впав РАНІШЕ pino).
+
+**Severity:** HIGH — feature що додається для production-моніторингу (Sentry, Loki, ELK) не працює. Не runtime crash; ловиться лише вручну при першому incident-debug коли інженер копіює header value з Sentry і не може знайти точний лог у production.
+
+**Де шукати ще:** будь-яке поєднання `nestjs-pino` + middleware (audit-trail, tenant-context, user-id propagation); інші pairings де (а) public-contract компонент і (б) логуючий компонент мають ділити state — наприклад tenant id, employee id у audit logs. Профілактика: SKILL §1.1 Deploy/infra тепер вимагає paired-component req-id link audit при кожному введенні pino + correlation middleware.
+
+---
+
+### 2026-05-31 — Mass DTO migration completeness: incomplete grep variant coverage (Bug #215) — backend, refactor, sprint-wide
+
+**Сигнал:** sprint-wide commit з повідомленням «змінити X у всіх DTO» (`@IsUUID('4')` → `@IsUUID()`, `@Matches(regex)` → `@IsX()`, `@IsString()` → `@IsString() @MaxLength(N)`) — закомічено 20-30 DTO files. Grep по новому паттерну (`@IsUUID()` без args) показує що всюди застосовано, АЛЕ 2-5 file-points у тому ж проєкті лишаються зі СТАРИМ варіантом тому що grep розробника шукав літерально `@IsUUID('4')` і пропустив:
+
+- `@IsUUID('4', { each: true })` — array-форма
+- `@IsUUID('4', { message: '...' })` — кастомна error message
+- `@IsUUID('4', { groups: [...] })` — validation groups
+
+Кейс з Sprint C4 STO ERP: 22 DTO мігровано, 4 рядки у `employees.dto.ts` (`AssignBranchesDto.branchIds`, `AssignZonesDto.zoneIds`, `AssignLiftsDto.liftIds`, `AssignWorkCategoriesDto.workCategoryIds`) лишилися з `@IsUUID('4', { each: true })`. Тести проходять бо fixtures робилися v4-layout у тій самій сесії. Виявляється лише через dev/seed UUIDs з non-v4 layout (`00000000-0000-0000-0000-000000000002` — BRANCH_ID seed).
+
+**Причина виникнення:** автоматизована migration сесія використовує grep як інструмент знаходження + Edit для заміни. Простий grep (`@IsUUID('4')` як literal) знаходить більшість, але **варіантні форми** з extra args вимагають **regex-grep** або `grep -E "@IsUUID\('4'.*\)"`. Sprint planning описує «замінити X на Y» без явного перерахунку всіх варіантних форм X. Code review зосереджується на правильності нової форми у видимому diff, не аудитує **залишкових** старих форм у inconsистентних file-points.
+
+**Підхід до виявлення:** після кожного sprint-wide refactor — повторити grep з **regex** замість literal. Для UUID: `grep -rnE "@IsUUID\('4'[^)]*\)" apps/api/src/modules/ --include="*.dto.ts"` — кожен match = пропущений file-point. Для `@Matches(uuid-regex)` → `grep -rnE "@Matches\(.*uuid.*\)"`. Для `@IsString()` без `@MaxLength` → bash loop через DTO. Альтернативно: ESLint custom rule («no `@IsUUID('4')` — use `@IsUUID()`») + lint-staged → блокує commit з невирішеним residue. Або: codemod-instrument (`jscodeshift`) який обходить AST і знає про варіантні форми decoratorа.
+
+**Підхід до фіксу:** додати `@IsUUID(undefined, { each: true })` (явний `undefined` як perfix arg) — узгоджує з рештою проєкту. Не міняти `{ each: true }` на лінивий `@IsUUID()` бо це втратить array-validation. Перевірити `@IsUUID('4', { message })` — лишити `message` (i18n)`@IsUUID(undefined, { message })`. Видалити стале коментар у specях що референсить старий стан.
+
+**Severity:** HIGH коли блокує dev/seed workflow (як Bug #215 з branchIds seed); MEDIUM коли блокує лише edge-кейси (v3 UUID з legacy import); LOW коли семантично еквівалентно (рідко — більшість variant forms мають практичні наслідки).
+
+**Де шукати ще:** будь-яка sprint-wide міграція декораторів/типів (validation, swagger, prisma). Особлива увага: Sprint X3-X5 review-сесії що говорять «зробив консистентно у всіх DTO» — review-агент часто не пере-перевіряє повний grep після свого ж фіксу. Профілактика: SKILL §1.2 тепер вимагає regex-grep variant audit після mass DTO refactor.
+
+---
 
 ### 2026-05-30 — React Query migration: cache invalidation gaps між cross-resource mutations (Bug #210-#212) — frontend, react-query, cache-invalidation, sprint-B
 

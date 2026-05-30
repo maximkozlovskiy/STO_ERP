@@ -38,7 +38,8 @@ const mockJwtGuard = {
 };
 const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
 
-// Валідний UUID v4 layout (@IsUUID('4') відхиляє nil-UUID — SKILL §1.2)
+// Валідні UUID-подібні fixtures. Sprint C4+C5 (6d48e9a/99c3781): `@IsUUID()` без версії
+// (lenient) приймає будь-які v1-v5 UUID + nil. v4-layout збережено історично для тестових кейсів.
 const EMP_ID = '11111111-1111-4111-8111-111111111111';
 const FK_A = '22222222-2222-4222-8222-222222222222';
 const FK_B = '33333333-3333-4333-8333-333333333333';

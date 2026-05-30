@@ -6749,3 +6749,188 @@ Scope (10 commits, 6e1b946..d4f61c6):
 **Статус:** [x] виправлено — додано `useWorkOrders.test.tsx` як зразок для решти hooks (мінімальні кейси: queryKey ізоляція, enabled-гейт, URLSearchParams parsing); решта 4 hooks задокументовано у MemoryManual як TODO Sprint B4.
 
 ---
+
+## Session 2026-05-31 — Sprint C final tester (logging + correlation + cache-control + IsUUID)
+
+Перевірено стан після Sprint C1–C5 (review 99c3781). Baseline:
+
+- TypeScript API: ✅ 0 errors
+- TypeScript Web: ✅ 0 errors
+- API unit/contract tests: ✅ 419/419 passed
+- Web component tests: ✅ 203/203 passed
+
+Знайдено 5 нових багів — від HIGH до LOW.
+
+---
+
+## Bug #215 — [HIGH] `employees.dto.ts` лишився з `@IsUUID('4', { each: true })` — Sprint C4 не торкнув цей файл → seed UUIDs (`00000000-...-0002`) у employee assignment endpoints відхиляються 400
+
+**Файл:** `apps/api/src/modules/employees/employees.dto.ts:167,178,184,190`
+**Severity:** HIGH
+**Категорія:** typescript / api-contract / consistency-regression
+
+**Опис:** Sprint C4 (6d48e9a) — `feat(arch): @IsUUID('4') замість Matches(uuid-regex) у всіх DTO` — затронув 22 DTO файли і знизив строгість UUID валідації з регексу до `@IsUUID()` (приймає будь-яку версію). Sprint C5 (99c3781) review додатково підкреслив: «`IsUUID('4')` ламає тестові fixtures з нестандартними UUID + будь-які non-v4 джерела (sync seeds, demo data)». Однак файл `employees.dto.ts` містить 4 `each: true` декларації (`AssignBranchesDto.branchIds`, `AssignZonesDto.zoneIds`, `AssignLiftsDto.liftIds`, `AssignWorkCategoriesDto.workCategoryIds`), які ВСЕ ще використовують `@IsUUID('4', { each: true })`. Sprint C4 grep шукав одиничні `@IsUUID('4')` (без other args) і пропустив варіанти з `{ each: true }`.
+
+**Очікувана поведінка:** Усі `@IsUUID(...)` у проєкті узгоджені — `@IsUUID(undefined, { each: true })` або `@IsUUID()` (без версії). Seed-сценарії (`POST /employees/:id/branches { branchIds: ['00000000-0000-0000-0000-000000000002'] }`) проходять валідацію 200/201 у dev/test з реальною seed-БД.
+
+**Фактична поведінка:** seed `BRANCH_ID = '00000000-0000-0000-0000-000000000002'` (13-й hex `0`, НЕ `4`) — `@IsUUID('4')` повертає false → endpoint `POST /employees/:id/branches` повертає 400 «branchIds.0 must be a UUID of version 4». Розробник у dev/демо середовищі НЕ може призначити seed branch до employee — workflow заблокований.
+
+**Підхід до фіксу:** замінити 4 `@IsUUID('4', { each: true })` → `@IsUUID(undefined, { each: true })` для узгодженості зі Sprint C4. `undefined` (або `'all'`) — лінивий режим, як у решті проєкту. Видалити коментар `(@IsUUID('4') відхиляє nil-UUID — SKILL §1.2)` з `employees.contract.spec.ts:41` що референсить старий стан.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #216 — [HIGH] Correlation ID HTTP header не лінкується з pino `req.id` у логах — фіча корелювання запит↔лог зламана
+
+**Файл:** `apps/api/src/app.module.ts:75-101` + `apps/api/src/common/middleware/correlation-id.middleware.ts`
+**Severity:** HIGH
+**Категорія:** business-logic / logging / observability
+
+**Опис:** Sprint C1 (15e44fb) додав `nestjs-pino` structured logging. Sprint C2 (75258df) додав `CorrelationIdMiddleware` що читає inbound `x-request-id` (або генерує `randomUUID()`) і сетить його на response header. **Дві ID-системи працюють паралельно і не зв'язані**:
+
+1. `pino-http` всередині `LoggerModule.forRoot({...})` сам генерує `req.id` через дефолтний `genReqId` — повертає послідовні цілі числа (`1, 2, 3, ...`) — це число пишеться у JSON-логи як `{"reqId": 1, ...}`.
+2. Наш `CorrelationIdMiddleware` сетить `req.headers['x-request-id'] = randomUUID()` та `res.setHeader('x-request-id', requestId)` — UUID у response header.
+
+Перевірка `pino-http@11.0.0/logger.js`:
+
+```js
+function reqIdGenFactory(func) {
+  if (typeof func === 'function') return func;
+  const maxInt = 2147483647;
+  let nextReqId = 0;
+  return function genReqId(req, res) {
+    return req.id || (nextReqId = (nextReqId + 1) & maxInt);
+  };
+}
+```
+
+Послідовність викликів у Fastify pipeline:
+
+- `pino-http` реєструється як onRequest hook (через LoggerModule) → виконується ПЕРШИМ → `req.id = 1` (число).
+- Наш middleware (`consumer.apply(...).forRoutes('*')`) виконується ПІСЛЯ Fastify hooks → сетить `x-request-id` header → але `req.id` уже зафіксовано.
+
+Результат: клієнт бачить у response `x-request-id: 7f3d-...-uuid`, але у JSON-логах сервера запит фігурує як `reqId: 1`. Жодного зв'язку. Інженер не може знайти лог по header value.
+
+**Очікувана поведінка:** UUID з `x-request-id` header використовується як `req.id` у pino-логах — інженер копіює header value з браузера/Sentry і знаходить точно той запит у Loki/CloudWatch.
+
+**Фактична поведінка:** Header і лог — різні ID; cross-correlation feature мертва.
+
+**Підхід до фіксу:** Передати `genReqId` у `pinoHttp` config, що читає з header (або генерує новий UUID якщо немає):
+
+```ts
+pinoHttp: {
+  genReqId: (req) => {
+    const fromHeader = (req.headers['x-request-id'] as string | string[] | undefined);
+    const headerVal = Array.isArray(fromHeader) ? fromHeader[0] : fromHeader;
+    return headerVal ?? randomUUID();
+  },
+  // ...решта
+},
+```
+
+Після цього `CorrelationIdMiddleware` стає duplicate (pino вже згенерувало ID). Можна:
+
+- (а) Видалити middleware, додати `customAttributeKeys: { reqId: 'requestId' }` у pino + хук на response для echo `x-request-id` header з `req.id`.
+- (б) Лишити middleware для public-facing header контракту, але дочеркнути що ID береться з того ж джерела (header → pino genReqId + middleware sets response header).
+
+Простіше: варіант (б) — middleware гарантує `x-request-id` присутній у request headers ще до pino-http; ми лише оновимо порядок реєстрації або застосуємо genReqId що читає той самий header.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #217 — [MEDIUM] pino redact list не включає `req.body.ownerPassword` (setup endpoint) — майбутній log statement з req.body витече owner password
+
+**Файл:** `apps/api/src/app.module.ts:88-98` (redact array)
+**Severity:** MEDIUM
+**Категорія:** security / logging / data-hygiene
+
+**Опис:** Sprint C5 review (99c3781) розширив pino redact для покриття auth body-полів (`password`, `newPassword`, `currentPassword`, `refreshToken`, `accessToken`). Однак існує ще ОДНЕ secret-bearing поле: `apps/api/src/modules/setup/setup.dto.ts:25` — `ownerPassword!: string` (мінімум 6 символів, plaintext). Endpoint `POST /api/setup/init` приймає `ownerPassword` під час першої настройки нового tenant'у.
+
+Поточний redact list:
+
+```ts
+redact: [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'req.headers["set-cookie"]',
+  'req.body.password',
+  'req.body.newPassword',
+  'req.body.currentPassword',
+  'req.body.refreshToken',
+  'req.body.accessToken',
+  'res.headers["set-cookie"]',
+],
+```
+
+`req.body.ownerPassword` — відсутнє. Якщо майбутній developer додасть `this.logger.log({ body: req.body }, 'setup attempt')` у `SetupController`/`SetupService` — owner-пароль першої організації буде записаний у production logs у plaintext. У комбінації з ним same-log fields `ownerEmail` + `orgName` — повний attacker-grade leak.
+
+**Очікувана поведінка:** Усі plaintext-secret поля з усіх DTO покриті redact. SKILL §1.4 (Security): «Bodies of /auth/_ and other handlers may contain password/refresh/access tokens — future log statement that spreads req.body would leak them.» — той самий принцип для `/setup/_`.
+
+**Фактична поведінка:** `ownerPassword` НЕ у redact list. Захист повна для `/auth/*`, неповний для `/setup/init`.
+
+**Підхід до фіксу:** додати `'req.body.ownerPassword'` до redact array. Альтернативно — більш загальне `req.body.*Password` як glob (pino підтримує wildcards у redact paths, формат `'req.body.*Password'`) — покриває майбутні DTO.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #218 — [LOW] `CorrelationIdMiddleware` не валідує inbound `x-request-id` — attacker може інжектити arbitrary string у response header + логи
+
+**Файл:** `apps/api/src/common/middleware/correlation-id.middleware.ts:10-16`
+**Severity:** LOW
+**Категорія:** security / input-validation
+
+**Опис:** Поточний код:
+
+```ts
+const existing = (req.headers as Record<string, string | undefined>)[CORRELATION_ID_HEADER];
+const requestId = existing ?? randomUUID();
+(req.headers as Record<string, string>)[CORRELATION_ID_HEADER] = requestId;
+res.setHeader(CORRELATION_ID_HEADER, requestId);
+```
+
+Проблеми:
+
+1. **Cast не безпечний:** Fastify може повернути `string | string[]` для дубльованих headers. Якщо attacker шле `X-Request-Id: a` і `X-Request-Id: b` → Node `http` об'єднає в `'a, b'` АБО масив залежно від parser-у. Cast до `Record<string, string | undefined>` ховає це від tsc, але runtime отримає не-UUID string.
+2. **Жодної валідації формату:** attacker може передати `x-request-id: <script>alert(1)</script>` або `<10kb-string>` — це пройде у response header (theoretically misused через log injection в JSON-логах) і пишеться у БД якщо хтось залогує `req.id` як audit-trail.
+3. **Розмір не лімітовано:** довгий header → blow-up payload у логах (DoS-via-log-bloat).
+
+**Очікувана поведінка:** Валідація inbound header проти UUID-regex АБО loose-format (≤128 chars, printable ASCII). Інакше fallback до `randomUUID()`. Захист від array-form headers.
+
+**Фактична поведінка:** Будь-який string з inbound header пишеться як-є.
+
+**Підхід до фіксу:** додати regex-валідацію (loose: `[a-zA-Z0-9-_]{1,128}`) + handle array case:
+
+```ts
+const raw = req.headers[CORRELATION_ID_HEADER];
+const candidate = Array.isArray(raw) ? raw[0] : raw;
+const isValid = typeof candidate === 'string' && /^[a-zA-Z0-9-_]{1,128}$/.test(candidate);
+const requestId = isValid ? candidate : randomUUID();
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #219 — [LOW] Немає unit-тесту для `CorrelationIdMiddleware` + інтеграційного `x-request-id` echo тесту
+
+**Файл:** `apps/api/src/common/middleware/correlation-id.middleware.spec.ts` (відсутній)
+**Severity:** LOW
+**Категорія:** test-coverage
+
+**Опис:** SKILL §1.5 вимагає парний `*.spec.ts` для нових middleware. `CorrelationIdMiddleware` — public контракт (response header `x-request-id` гарантовано присутній). Без тесту регресія (`res.setHeader(...)` забутий, header змінений на іншу назву, validation logic поламана) пройде CI зеленою — виявлення тільки через monitoring/Sentry breakage.
+
+**Очікувана поведінка:** Парний spec що покриває:
+
+- inbound header відсутній → response має `x-request-id: <UUID>`;
+- inbound header присутній (valid) → response echo той самий ID;
+- inbound header invalid → response має новий generated UUID (не invalid value);
+- inbound header — array → береться перший елемент (якщо valid) або новий UUID.
+
+**Підхід до фіксу:** додати `correlation-id.middleware.spec.ts` з мок req/res об'єктами + 4 it-блоки. Не потребує TestingModule — middleware self-contained.
+
+**Статус:** [x] виправлено
+
+---

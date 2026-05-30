@@ -4,7 +4,11 @@ import { BullModule } from '@nestjs/bull';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
-import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { randomUUID } from 'crypto';
+import {
+  CORRELATION_ID_HEADER,
+  CorrelationIdMiddleware,
+} from './common/middleware/correlation-id.middleware';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -82,9 +86,24 @@ import { UserPreferencesModule } from './modules/user-preferences/user-preferenc
                 options: { colorize: true, translateTime: 'SYS:standard', ignore: 'pid,hostname' },
               }
             : undefined,
+        // Bug #216: link pino's req.id to the inbound x-request-id header so logs and the
+        // response header echoed by CorrelationIdMiddleware share the SAME id. Without this
+        // pino-http falls back to its built-in sequential counter (1, 2, 3, ...) — making
+        // correlation between an HTTP response and the JSON log impossible.
+        genReqId: req => {
+          const raw = (req.headers as Record<string, string | string[] | undefined>)[
+            CORRELATION_ID_HEADER
+          ];
+          const candidate = Array.isArray(raw) ? raw[0] : raw;
+          // Loose UUID/correlation-id format (printable ASCII, ≤128 chars).
+          // Rejects unbounded/control-char strings that could bloat or poison logs.
+          const isValid = typeof candidate === 'string' && /^[a-zA-Z0-9-_]{1,128}$/.test(candidate);
+          return isValid ? candidate : randomUUID();
+        },
         // Redact sensitive fields from logs (multi-tenant + secrets hygiene).
         // Bodies of /auth/* and other handlers may contain password/refresh/access tokens —
         // a future log statement that spreads req.body would otherwise leak them.
+        // Bug #217: include ownerPassword (setup endpoint) — same hygiene principle.
         redact: [
           'req.headers.authorization',
           'req.headers.cookie',
@@ -94,6 +113,7 @@ import { UserPreferencesModule } from './modules/user-preferences/user-preferenc
           'req.body.currentPassword',
           'req.body.refreshToken',
           'req.body.accessToken',
+          'req.body.ownerPassword',
           'res.headers["set-cookie"]',
         ],
         // Skip health-check noise in logs
