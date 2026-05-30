@@ -186,6 +186,16 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover { background: hsl(214 32% 68%); }
 
+/* ─── Column drag-and-drop ─── */
+th[draggable="true"] { cursor: grab; user-select: none; }
+th[draggable="true"]:active { cursor: grabbing; }
+th[data-dragover="true"] {
+  background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
 /* ─── Page layout helpers ─── */
 .page-container {
   padding: var(--spacing-page-y) var(--spacing-page-x);
