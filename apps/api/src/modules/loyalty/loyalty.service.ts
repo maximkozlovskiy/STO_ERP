@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -102,12 +103,12 @@ export class LoyaltyService {
     if (points <= 0) return;
 
     const acc = await this.getOrCreateAccount(orgId, counterpartyId);
-    await this.prisma.$transaction([
-      this.prisma.loyaltyAccount.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.loyaltyAccount.update({
         where: { id: acc.id },
         data: { balance: { increment: points } },
-      }),
-      this.prisma.loyaltyTransaction.create({
+      });
+      await tx.loyaltyTransaction.create({
         data: {
           accountId: acc.id,
           type: 'EARN',
@@ -115,8 +116,8 @@ export class LoyaltyService {
           documentId: documentId ?? null,
           documentType: documentId ? 'Payment' : null,
         },
-      }),
-    ]);
+      });
+    }, { timeout: TRANSACTION_TIMEOUT_MS });
   }
 
   /** Списати бали (повертає суму знижки у гривнях) */

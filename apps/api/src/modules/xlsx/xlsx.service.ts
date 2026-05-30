@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { parse as parseCSV } from 'csv-parse/sync';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../inventory/pricing.service';
 
@@ -664,12 +665,12 @@ export class XlsxService {
       }
 
       // Bug #191: updateMany з orgId — defense-in-depth tenant guard.
-      await this.prisma.$transaction([
-        this.prisma.good.updateMany({
+      await this.prisma.$transaction(async (tx) => {
+        await tx.good.updateMany({
           where: { id: good.id, orgId, deletedAt: null },
           data: { salePrice: newSalePrice },
-        }),
-        this.prisma.priceHistory.create({
+        });
+        await tx.priceHistory.create({
           data: {
             orgId,
             goodId: good.id,
@@ -678,8 +679,8 @@ export class XlsxService {
             costPrice,
             reason: 'List pricing import',
           },
-        }),
-      ]);
+        });
+      }, { timeout: TRANSACTION_TIMEOUT_MS });
 
       details.push({ goodId: good.id, goodName: good.name, sku: good.sku, costPrice, oldSalePrice, newSalePrice });
     }
