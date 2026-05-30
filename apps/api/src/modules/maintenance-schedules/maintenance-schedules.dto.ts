@@ -4,7 +4,7 @@ import { Type } from 'class-transformer';
 
 export class CreateMaintenanceScheduleDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   vehicleId!: string;
   @ApiPropertyOptional({ default: 'REGULAR' }) @IsOptional() @IsString() maintenanceType?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) intervalDays?: number;

@@ -14,7 +14,7 @@ import { Type } from 'class-transformer';
 
 export class CreateWorkDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   categoryId!: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
   @ApiProperty({ description: 'Нормо-годин' }) @IsNumber() @Min(0) normoHours!: number;
@@ -36,7 +36,7 @@ export class UpdateWorkDto extends PartialType(CreateWorkDto) {}
 export class WorkQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   categoryId?: string;
 
   @ApiPropertyOptional()

@@ -17,7 +17,7 @@ export class CreateBankAccountDto {
   ibanUA!: string;
 
   @ApiProperty({ example: 'uuid' })
-  @IsUUID('4')
+  @IsUUID()
   @IsNotEmpty()
   currencyId!: string;
 
@@ -28,7 +28,7 @@ export class CreateBankAccountDto {
 
   @ApiPropertyOptional({ example: 'uuid' })
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   branchId?: string;
 
   @ApiPropertyOptional({ example: '305299' })
@@ -63,7 +63,7 @@ export class UpdateBankAccountDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   currencyId?: string;
 
   @ApiPropertyOptional()
@@ -73,7 +73,7 @@ export class UpdateBankAccountDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   branchId?: string | null;
 
   @ApiPropertyOptional()

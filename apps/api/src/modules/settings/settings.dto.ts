@@ -49,7 +49,7 @@ export class UpdateOrganisationSettingsDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   defaultVatRateId?: string;
 
   @ApiPropertyOptional({ minimum: 1, maximum: 365 })
@@ -273,7 +273,7 @@ export class UpdateOrganisationDto {
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.bankAccountId !== null)
-  @IsUUID('4')
+  @IsUUID()
   bankAccountId?: string | null;
 }
 

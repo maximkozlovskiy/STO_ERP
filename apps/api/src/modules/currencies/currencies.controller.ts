@@ -27,7 +27,7 @@ import { CreateCurrencyDto, UpdateCurrencyDto } from './currencies.dto';
 export class CurrenciesController {
   constructor(private readonly service: CurrenciesService) {}
 
-  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
+  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Список валют' })

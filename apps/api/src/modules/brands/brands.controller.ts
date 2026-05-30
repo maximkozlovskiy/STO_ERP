@@ -27,7 +27,7 @@ import { BrandsService } from './brands.service';
 export class BrandsController {
   constructor(private readonly service: BrandsService) {}
 
-  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
+  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список брендів' })

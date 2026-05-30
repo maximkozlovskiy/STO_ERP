@@ -6,22 +6,22 @@ export class CreateCalendarSlotDto {
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.liftId != null)
-  @IsUUID('4')
+  @IsUUID()
   liftId?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.employeeId != null)
-  @IsUUID('4')
+  @IsUUID()
   employeeId?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.workOrderId != null)
-  @IsUUID('4')
+  @IsUUID()
   workOrderId?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.counterpartyId != null)
-  @IsUUID('4')
+  @IsUUID()
   counterpartyId?: string;
   @ApiProperty() @IsISO8601() startAt!: string;
   @ApiProperty() @IsISO8601() endAt!: string;
@@ -42,22 +42,22 @@ export class UpdateCalendarSlotDto {
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.liftId !== null)
-  @IsUUID('4')
+  @IsUUID()
   liftId?: string | null;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.employeeId !== null)
-  @IsUUID('4')
+  @IsUUID()
   employeeId?: string | null;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.workOrderId !== null)
-  @IsUUID('4')
+  @IsUUID()
   workOrderId?: string | null;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.counterpartyId !== null)
-  @IsUUID('4')
+  @IsUUID()
   counterpartyId?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() startAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() endAt?: string;

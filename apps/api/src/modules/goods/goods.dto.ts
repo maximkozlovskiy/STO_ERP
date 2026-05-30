@@ -19,11 +19,11 @@ export class CreateGoodDto {
   @ApiPropertyOptional({ default: 'шт' }) @IsOptional() @IsString() unit?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   unitId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   brandId?: string;
 
   @ApiPropertyOptional()
@@ -40,7 +40,7 @@ export class CreateGoodDto {
   @ApiPropertyOptional({ enum: GoodType }) @IsOptional() @IsEnum(GoodType) goodType?: GoodType;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   preferredSupplierId?: string;
 }
 

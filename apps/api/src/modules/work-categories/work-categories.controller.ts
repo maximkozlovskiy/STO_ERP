@@ -31,7 +31,7 @@ import { WorkCategoriesService } from './work-categories.service';
 export class WorkCategoriesController {
   constructor(private readonly service: WorkCategoriesService) {}
 
-  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
+  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Дерево категорій робіт' })

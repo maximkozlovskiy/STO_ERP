@@ -69,7 +69,7 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   goodId?: string;
 
   @ApiPropertyOptional()
@@ -87,7 +87,7 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   brandId?: string;
 
   @ApiPropertyOptional()
@@ -147,7 +147,7 @@ export class UpdatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   goodId?: string;
 
   @ApiPropertyOptional()
@@ -163,7 +163,7 @@ export class UpdatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   brandId?: string;
 
   @ApiPropertyOptional()

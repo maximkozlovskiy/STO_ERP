@@ -8,12 +8,12 @@ export class CreateCashRegisterDto {
   name!: string;
 
   @ApiProperty({ example: 'uuid' })
-  @IsUUID('4')
+  @IsUUID()
   @IsNotEmpty()
   currencyId!: string;
 
   @ApiProperty({ example: 'uuid' })
-  @IsUUID('4')
+  @IsUUID()
   @IsNotEmpty()
   branchId!: string;
 }
@@ -27,12 +27,12 @@ export class UpdateCashRegisterDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   currencyId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   branchId?: string;
 }
 

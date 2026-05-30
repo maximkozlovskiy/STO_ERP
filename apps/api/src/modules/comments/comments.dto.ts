@@ -10,7 +10,7 @@ export class CreateCommentDto {
   entityType!: CommentEntityType;
 
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   entityId!: string;
 
   @ApiProperty({ minLength: 1, maxLength: 2000 })

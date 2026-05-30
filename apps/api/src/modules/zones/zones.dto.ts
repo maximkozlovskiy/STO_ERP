@@ -15,7 +15,7 @@ import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
 
 export class CreateZoneDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   branchId!: string;
 
   @ApiProperty({ example: 'Механічна зона А' })
@@ -54,7 +54,7 @@ export class ZoneResponseDto {
 
 export class CreateLiftDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   zoneId!: string;
 
   @ApiProperty({ example: 'Підйомник №1' })

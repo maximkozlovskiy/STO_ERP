@@ -13,7 +13,7 @@ import { Type } from 'class-transformer';
 
 export class StockDocumentLineDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   goodId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
@@ -25,15 +25,15 @@ export class CreateStockDocumentDto {
   type!: string;
 
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   branchId!: string;
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   warehouseId!: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   targetWarehouseId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;

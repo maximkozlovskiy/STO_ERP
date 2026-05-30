@@ -13,7 +13,7 @@ import { Type } from 'class-transformer';
 
 export class ServiceWorkItemDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   workId!: string;
 
   @ApiPropertyOptional({ default: 1 })
@@ -25,7 +25,7 @@ export class ServiceWorkItemDto {
 
 export class ServiceGoodItemDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   goodId!: string;
 
   @ApiPropertyOptional({ default: 1 })

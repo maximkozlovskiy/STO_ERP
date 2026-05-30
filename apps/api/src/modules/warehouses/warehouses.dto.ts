@@ -4,7 +4,7 @@ import { WarehouseType } from '@prisma/client';
 
 export class CreateWarehouseDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   branchId!: string;
 
   @ApiProperty({ example: 'Основний склад' })

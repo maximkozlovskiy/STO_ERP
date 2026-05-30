@@ -13,11 +13,11 @@ import { InvoiceStatus } from '@prisma/client';
 
 export class CreateInvoiceDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   counterpartyId!: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   workOrderId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
   @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
@@ -46,11 +46,11 @@ export class CreateInvoiceLineDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) vatRate?: number;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   goodId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   workId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) sortOrder?: number;
 }

@@ -9,7 +9,7 @@ export class CreateWorkCategoryDto {
 
   @ApiPropertyOptional({ description: 'UUID батьківської категорії (null = коренева)' })
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   parentId?: string;
 
   @ApiPropertyOptional()
@@ -32,7 +32,7 @@ export class UpdateWorkCategoryDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   parentId?: string;
 
   @ApiPropertyOptional()

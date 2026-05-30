@@ -142,7 +142,7 @@ export class SettingsController {
   }
 
   @Get('tax-rates')
-  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
+  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список ставок ПДВ' })
   getTaxRates(@OrgContext() orgId: string) {

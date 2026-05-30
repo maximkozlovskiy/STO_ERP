@@ -13,7 +13,7 @@ import {
 
 export class CreateVehicleDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   customerGarageId!: string;
   @ApiProperty({ example: 'Toyota' }) @IsString() @IsNotEmpty() make!: string;
   @ApiProperty({ example: 'Camry' }) @IsString() @IsNotEmpty() model!: string;

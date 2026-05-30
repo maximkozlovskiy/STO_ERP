@@ -19,13 +19,13 @@ import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/clie
 
 export class CreateWorkOrderDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   branchId!: string;
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   vehicleId!: string;
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   counterpartyId!: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
@@ -80,22 +80,22 @@ export class WorkOrderQueryDto {
   priority?: WorkOrderPriority;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   branchId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   counterpartyId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   vehicleId?: string;
 
   // F6: "Мої наряди" chip — filter by assigned mechanic. The filter joins through workOrderLines.employeeId,
   // so an employee sees an order if ANY of its line items reference them as the executor.
   @ApiPropertyOptional({ description: 'Фільтр за виконавцем (через рядки робіт)' })
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   employeeId?: string;
 
   @ApiPropertyOptional({ description: 'Пошук за номером або назвою контрагента' })
@@ -192,14 +192,14 @@ export class PaginatedWorkOrdersDto {
 
 export class CreateWorkOrderLineDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   workId!: string;
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   employeeId!: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   liftId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) normoHours?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) actualHours?: number;
@@ -235,10 +235,10 @@ export class WorkOrderLineResponseDto {
 
 export class CreateWorkOrderPartDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   goodId!: string;
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   warehouseId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;

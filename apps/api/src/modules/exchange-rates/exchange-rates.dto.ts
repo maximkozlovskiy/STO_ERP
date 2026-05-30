@@ -12,7 +12,7 @@ import { Type } from 'class-transformer';
 
 export class CreateExchangeRateDto {
   @ApiProperty({ example: 'uuid' })
-  @IsUUID('4')
+  @IsUUID()
   @IsNotEmpty()
   currencyId!: string;
 

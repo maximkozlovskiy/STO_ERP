@@ -27,7 +27,7 @@ import { UnitsService } from './units.service';
 export class UnitsController {
   constructor(private readonly service: UnitsService) {}
 
-  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
+  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список одиниць виміру' })

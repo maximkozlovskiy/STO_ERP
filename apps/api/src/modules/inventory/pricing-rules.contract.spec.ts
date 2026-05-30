@@ -221,14 +221,14 @@ describe('PricingRules — HTTP Contract', () => {
         payload: {
           name: 'Bosch +25%',
           type: 'PERCENT',
-          brandId: '00000000-0000-0000-0000-000000000099',
+          brandId: '11111111-1111-4111-8111-111111111199',
           percentValue: 25,
         },
       });
       expect(res.statusCode).toBe(201);
       // Перевіряємо що org-scoped перевірка справді викликалась
       expect(prismaMock.brand.findFirst).toHaveBeenCalledWith({
-        where: { id: '00000000-0000-0000-0000-000000000099', orgId: 'org-1', deletedAt: null },
+        where: { id: '11111111-1111-4111-8111-111111111199', orgId: 'org-1', deletedAt: null },
         select: { id: true },
       });
     });
@@ -241,7 +241,7 @@ describe('PricingRules — HTTP Contract', () => {
         payload: {
           name: 'Cross-tenant attempt',
           type: 'PERCENT',
-          brandId: '00000000-0000-0000-0000-000000000099',
+          brandId: '11111111-1111-4111-8111-111111111199',
           percentValue: 25,
         },
       });
@@ -326,7 +326,7 @@ describe('PricingRules — HTTP Contract', () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
         url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
-        payload: { brandId: '00000000-0000-0000-0000-000000000099' },
+        payload: { brandId: '11111111-1111-4111-8111-111111111199' },
       });
       expect(res.statusCode).toBe(404);
       const body = res.json<{ message: string }>();

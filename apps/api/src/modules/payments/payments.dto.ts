@@ -3,15 +3,15 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreatePaymentDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   counterpartyId!: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   workOrderId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   invoiceId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
   @ApiProperty() @IsString() @IsNotEmpty() method!: string;

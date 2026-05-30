@@ -20,7 +20,7 @@ export class TransitionPurchaseOrderDto {
 
 export class PurchaseOrderLineDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   goodId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiProperty() @IsNumber() @Min(0) price!: number;
@@ -28,10 +28,10 @@ export class PurchaseOrderLineDto {
 
 export class CreatePurchaseOrderDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   supplierId!: string;
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   warehouseId!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 
@@ -56,7 +56,7 @@ export class UpdatePurchaseOrderDto {
 
 export class ReceiveLineDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   lineId!: string;
   @ApiProperty() @IsNumber() @Min(0) receivedQty!: number;
 }

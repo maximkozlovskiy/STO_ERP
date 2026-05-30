@@ -82,8 +82,20 @@ import { UserPreferencesModule } from './modules/user-preferences/user-preferenc
                 options: { colorize: true, translateTime: 'SYS:standard', ignore: 'pid,hostname' },
               }
             : undefined,
-        // Redact sensitive fields from logs
-        redact: ['req.headers.authorization', 'req.headers.cookie'],
+        // Redact sensitive fields from logs (multi-tenant + secrets hygiene).
+        // Bodies of /auth/* and other handlers may contain password/refresh/access tokens —
+        // a future log statement that spreads req.body would otherwise leak them.
+        redact: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'req.headers["set-cookie"]',
+          'req.body.password',
+          'req.body.newPassword',
+          'req.body.currentPassword',
+          'req.body.refreshToken',
+          'req.body.accessToken',
+          'res.headers["set-cookie"]',
+        ],
         // Skip health-check noise in logs
         autoLogging: { ignore: req => req.url === '/api/health' },
       },

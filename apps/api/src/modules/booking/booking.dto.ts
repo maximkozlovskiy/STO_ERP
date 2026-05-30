@@ -12,18 +12,18 @@ import {
 export class BookingAvailabilityQueryDto {
   @ApiProperty() @IsDateString() date!: string;
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   branchId!: string;
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
-  @IsUUID('4', { each: true })
+  @IsUUID(undefined, { each: true })
   serviceIds?: string[];
 }
 
 export class CreateBookingRequestDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   branchId!: string;
   @ApiProperty() @IsString() @MaxLength(200) clientName!: string;
   @ApiProperty()
@@ -34,14 +34,14 @@ export class CreateBookingRequestDto {
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
-  @IsUUID('4', { each: true })
+  @IsUUID(undefined, { each: true })
   serviceIds?: string[];
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) notes?: string;
 }
 
 export class ConfirmBookingDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   slotId!: string;
 }
 

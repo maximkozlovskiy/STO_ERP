@@ -3,18 +3,18 @@ import { IsUUID, IsDateString, IsOptional, IsString, MaxLength } from 'class-val
 
 export class CreateWarrantyDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   workOrderId!: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   workOrderLineId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID()
   workOrderPartId?: string;
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   counterpartyId!: string;
   @ApiProperty() @IsDateString() expiresAt!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) description?: string;
@@ -22,7 +22,7 @@ export class CreateWarrantyDto {
 
 export class ClaimWarrantyDto {
   @ApiProperty()
-  @IsUUID('4')
+  @IsUUID()
   claimWoId!: string;
 }
 
