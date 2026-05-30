@@ -12,9 +12,11 @@ const prismaMock = {
   pricingRule: {
     findMany: vi.fn(),
     findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   pricingRuleTier: {
     deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
@@ -313,17 +315,22 @@ describe('PricingRules — HTTP Contract', () => {
 
   describe('DELETE /pricing-rules/:id', () => {
     it('повертає 204 для успішного soft-delete', async () => {
-      prismaMock.pricingRule.findFirst.mockResolvedValueOnce({ id: 'rule-uuid' });
-      prismaMock.pricingRule.update.mockResolvedValueOnce({});
+      // Bug #191 pattern: контролер тепер використовує updateMany з orgId для defense-in-depth
+      prismaMock.pricingRule.updateMany.mockResolvedValueOnce({ count: 1 });
       const res = await (app as NestFastifyApplication).inject({
         method: 'DELETE',
         url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
       });
       expect(res.statusCode).toBe(204);
+      // Перевіряємо що org-scoped where використано
+      expect(prismaMock.pricingRule.updateMany).toHaveBeenCalledWith({
+        where: { id: '00000000-0000-0000-0000-000000000001', orgId: 'org-1', deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
     });
 
     it('повертає 404 для неіснуючого правила', async () => {
-      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(null);
+      prismaMock.pricingRule.updateMany.mockResolvedValueOnce({ count: 0 });
       const res = await (app as NestFastifyApplication).inject({
         method: 'DELETE',
         url: '/pricing-rules/00000000-0000-0000-0000-000000000002',

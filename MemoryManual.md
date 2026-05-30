@@ -9,6 +9,10 @@
 ## Останній commit
 
 ```
+(pending) fix(review): useColumnDrag React.X→named + pricing-rules updateMany tenant guard + cleanup dead good:undefined
+a24b4dc feat(ui): useColumnDrag hook + drag CSS — column reorder via table header drag
+4548036 feat(ui): column drag-and-drop in table headers via useColumnDrag hook
+07fac23 docs(memory,skills): record sto-tester session b04e879 + add new-boolean-prop pattern
 b04e879 fix(tester): Bugs #193-#196 — test coverage for SaveFilterButton/hideSaveButton/AnimatedBody/Modal size
 (pending) docs(skills): add verify-before-fix pattern to sto-optimize (UI perf audit — 0 fixes)
 c922503 feat(ui): SaveFilterButton component — icon-only bookmark button
@@ -241,6 +245,8 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 **Gotcha — CurrentUser decorator:** повертає `AuthenticatedUser` з полем `id` (не `sub`). `sub` є у `JwtPayload` але контролери отримують `AuthenticatedUser` після `validate()`.
 
 ## Поточний стан проєкту
+TypeScript: ✅ 0 errors (web + api + shared) — після useColumnDrag React.X→named + pricing-rules updateMany tenant guard (verified 2026-05-30, HEAD pending)
+Latest review: 2026-05-30 (AUTO, HEAD a24b4dc → pending) — повний review повного scope сесії (Pricing brand+COST_TIER + UserPreference + AnimatedBody + DataTable revert + SaveFilterButton + useColumnDrag + Modal sizes + page-container 96rem + PO apply-pricing + xlsx apply-pricing-from-list). **3 проблеми виправлено:** (1) IMPORTANT — `useColumnDrag.ts` використовував `React.DragEvent` і `React.CSSProperties` namespace types → §1 TypeScript violation (skill вимагає named imports з 'react'). Фікс: `import { type DragEvent, type CSSProperties } from 'react'`. Паралельно user/linter додав 3-й параметр `allColumns: { key }[]` щоб preserve hidden-column slot positions при drag — оновлено 9 call-sites (catalog x3, crm/employees/work-orders/invoices/stock-documents/purchase-orders x1 кожен) щоб передавати `orderedColumns`. (2) IMPORTANT — `pricing-rules.controller.ts` PATCH і DELETE використовували `prisma.pricingRule.update({ where: { id } })` без orgId у where → defense-in-depth tenant guard відсутній (хоч `existing` findFirst раніше перевіряв orgId, race-window між findFirst і update теоретично можливий якщо інша сесія soft-delete-ує правило). Фікс: заміна на `updateMany({ where: { id, orgId, deletedAt: null } })` + окремий `findFirstOrThrow` для повернення з include для PATCH; DELETE використовує `updateMany.count === 0` для 404 (Bug #191 pattern). Тест-мок оновлено: `pricingRule.updateMany` + `pricingRule.findFirstOrThrow`. (3) SUGGESTION — `pricing.service.ts` `orConditions.push({ goodId: null, brandId, good: undefined })` — `good: undefined` dead code (не фільтрує нічого). Фікс: прибрано. **Підтвердження:** API tsc ✅ 0 errors, Web tsc ✅ 0 errors, pricing-rules+pricing.service tests 35/35 passed, цілий блок (user-preferences + xlsx + purchase-orders + inventory) 103/103 passed, web tests (modal+saved-filters+useDetailPanelConfig) 50/50.
 TypeScript: ✅ 0 errors (web + api + shared) — після SaveFilterButton/hideSaveButton/AnimatedBody/Modal size test coverage (verified 2026-05-30, HEAD b04e879)
 Unit+Contract: ✅ 401/401 passed (39 файлів) — без змін за сесію (test-coverage додано лише у web suite)
 Web component suite: ✅ 179/179 passed (15 файлів) — +20 за сесію (saved-filters-bar +11 [8 SaveFilterButton + 3 hideSaveButton], modal +9 [5 size prop + 4 AnimatedBody])

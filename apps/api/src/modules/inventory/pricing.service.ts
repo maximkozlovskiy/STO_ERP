@@ -22,7 +22,7 @@ export class PricingService {
     ];
     if (goodType) orConditions.push({ goodId: null, goodCategory: null, goodType, brandId: null });
     if (goodCategory) orConditions.push({ goodId: null, goodCategory, goodType: null, brandId: null });
-    if (brandId) orConditions.push({ goodId: null, brandId, good: undefined });
+    if (brandId) orConditions.push({ goodId: null, brandId });
     if (goodId) orConditions.push({ goodId, good: { deletedAt: null } });
 
     const rules = await this.prisma.pricingRule.findMany({

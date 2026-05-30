@@ -187,6 +187,8 @@ export class PricingRulesController {
     if (needsTierTx) {
       rule = await this.prisma.$transaction(async (tx) => {
         if (tiers !== undefined || switchedAwayFromCostTier) {
+          // Bug #191 pattern: tier-deleteMany уже org-trusted (pricingRule existing org-checked),
+          // але tiers не мають власного orgId — фільтр по pricingRuleId безпечний.
           await tx.pricingRuleTier.deleteMany({ where: { pricingRuleId: id } });
         }
         if (tiers !== undefined && tiers.length > 0) {
@@ -200,9 +202,12 @@ export class PricingRulesController {
             })),
           });
         }
-        return tx.pricingRule.update({
-          where: { id },
-          data: updateData,
+        // Bug #191 pattern: updateMany з orgId — defense-in-depth tenant guard.
+        // existing.org вже перевірений вище, але дублюємо щоб патерн був безпечним для копіювання
+        // і виключаємо випадок коли інший запит soft-delete-нув правило між findFirst і update.
+        await tx.pricingRule.updateMany({ where: { id, orgId, deletedAt: null }, data: updateData });
+        return tx.pricingRule.findFirstOrThrow({
+          where: { id, orgId },
           include: {
             good: { select: { id: true, name: true, sku: true } },
             brand: { select: { id: true, name: true } },
@@ -211,9 +216,10 @@ export class PricingRulesController {
         });
       }, { timeout: 10_000 });
     } else {
-      rule = await this.prisma.pricingRule.update({
-        where: { id },
-        data: updateData,
+      // Bug #191 pattern: updateMany з orgId — defense-in-depth.
+      await this.prisma.pricingRule.updateMany({ where: { id, orgId, deletedAt: null }, data: updateData });
+      rule = await this.prisma.pricingRule.findFirstOrThrow({
+        where: { id, orgId },
         include: {
           good: { select: { id: true, name: true, sku: true } },
           brand: { select: { id: true, name: true } },
@@ -229,14 +235,12 @@ export class PricingRulesController {
   @HttpCode(204)
   @ApiOperation({ summary: 'Видалити правило ціноутворення' })
   async remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    const existing = await this.prisma.pricingRule.findFirst({
+    // Bug #191 pattern: updateMany з orgId — defense-in-depth tenant guard для soft-delete.
+    const res = await this.prisma.pricingRule.updateMany({
       where: { id, orgId, deletedAt: null },
-    });
-    if (!existing) throw new NotFoundException('Правило не знайдено');
-    await this.prisma.pricingRule.update({
-      where: { id },
       data: { deletedAt: new Date() },
     });
+    if (res.count === 0) throw new NotFoundException('Правило не знайдено');
   }
 
   @Post(':id/apply-all')

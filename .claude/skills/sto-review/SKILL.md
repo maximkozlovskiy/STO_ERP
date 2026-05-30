@@ -890,6 +890,28 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ---
 
+### 2026-05-30 — Soft-delete update без orgId у where → race-window для cross-session reuse — §2.2 Tenant Isolation / §5 Business Rules
+
+**Сигнал:** контролер робить `findFirst({ id, orgId })` для перевірки → потім `prisma.X.update({ where: { id } })` БЕЗ orgId у where. Якщо існує `deletedAt: null` guard у findFirst, але update використовує лише `id` → defense-in-depth відсутній. На soft-delete (`update({ where: { id }, data: { deletedAt: new Date() } })`) ризик особливо тонкий: race-window між findFirst і update — інша сесія може soft-delete-нути запис у тій же org → наш update «воскрешає» його (knock-on: ConflictException на @@unique переходить у silent state corruption)
+**Причина виникнення:** TS не ловить (Prisma приймає `where: { id: string }` бо id — primary key); existing.org перевірка дає false sense of security; копіюючи цей патерн у новий модуль розробник навіть не помічає що orgId guard вже відсутній
+**Підхід до виявлення:** grep `prisma\.X\.update\(\{\s*where:\s*\{\s*id` без `orgId` → перевірити чи попередня findFirst-перевірка є + чи update міняє sensitive поле (deletedAt, foreign keys). Для тенант-захисту патерн — `updateMany({ where: { id, orgId, deletedAt: null } })` з перевіркою `count === 0` → 404
+**Підхід до фіксу:** замінити `update` → `updateMany({ where: { id, orgId, ...filters } })` + `findFirstOrThrow({ where: { id, orgId }, include: ... })` для повернення з relations (бо updateMany не приймає include). Для DELETE — перевіряти `result.count === 0` і кидати NotFoundException замість окремого findFirst. Bug #191 pattern (PO/xlsx apply-pricing) уже встановлено — переносити на ВСІ нові endpoints що update entity
+**Критичність:** IMPORTANT — defense-in-depth gap (не immediate data breach, але порушує консистентність patterns у codebase і відкриває race-window для multi-session writes)
+**Де шукати ще:** будь-який новий PATCH/DELETE handler що приймає `id` через `@Param`, особливо catalog/довідникові endpoints де `@@unique` може спричинити resurrection після cross-session soft-delete
+
+---
+
+### 2026-05-30 — Hook signature change → broken call-sites silently passed by linter — §1 TypeScript
+
+**Сигнал:** новий required parameter додано у експортовану hook (наприклад `useColumnDrag(visibleColumns, reorder, allColumns)` з 2-arg → 3-arg); після рефакторингу tsc на одному pass показує `Expected N arguments, but got M` тільки для тих файлів які ще не оновлені; легко пропустити якщо --incremental cache повертає stale результат
+**Причина виникнення:** автоматичне покращення хука (додавання preserve-hidden-slot логіки) → linter/IDE іноді частково оновлює call-sites через quick-fix, але інші лишаються; web cached tsc видає 0 errors при --incremental true, але --incremental false показує реальний стан
+**Підхід до виявлення:** після будь-якої hook signature зміни — `grep -rn "<hookName>\(" apps/web/src/app` → перевірити що arity у кожному виклику відповідає новій сигнатурі; ОБОВ'ЯЗКОВО запустити tsc з `--incremental false`
+**Підхід до фіксу:** оновити всі call-sites у одному коміті разом з hook; типовий патерн — передавати existing destructured value (`orderedColumns`) яка вже є у scope з `useTableColumns`
+**Критичність:** IMPORTANT — runtime undefined → null deref або silent incorrect behavior (у нашому випадку `allColumns.map(c => c.key)` на undefined → crash при першому drag); TS компілятор ловить, але кеш приховує
+**Де шукати ще:** будь-яка зміна expoрт-ованого hook signature або prop interface shared компонента; завжди --incremental false на финальному tsc check
+
+---
+
 ### 2026-05-29 — event-handler fetch без request-token + stale похідний id — §8.2 UI Стани
 
 **Сигнал:** `openEdit(item)` / `openCard` / `onSelect` (обробник події, НЕ useEffect) робить `apiFetch(...).then(setState)`; при повторному відкритті для іншого id попередній in-flight fetch резолвиться пізніше й перезаписує стан. Додатково: похідний стан (`modalGarageId`, обраний рядок) не скидається на старті handler → на fetch-failure лишається id попередньої сутності
