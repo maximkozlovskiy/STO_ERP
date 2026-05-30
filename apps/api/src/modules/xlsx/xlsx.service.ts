@@ -297,6 +297,12 @@ export class XlsxService {
     return this.generatePOLinesTemplate();
   }
 
+  generatePricingListTemplate(): Buffer {
+    const bom = '﻿';
+    const csv = `${bom}sku,barcode,name\nOIL-5W40,,Масло моторне 5W-40\n,4820123456789,Фільтр оливи\n`;
+    return Buffer.from(csv, 'utf-8');
+  }
+
   // ─── Document line imports ────────────────────────────────────────────────────
 
   async importPOLines(orgId: string, poId: string, buffer: Buffer | Uint8Array): Promise<ImportResult> {

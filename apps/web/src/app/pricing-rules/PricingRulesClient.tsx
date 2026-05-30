@@ -579,9 +579,27 @@ export default function PricingRulesClient() {
         <div className="mb-6 rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-medium text-foreground">Розцінити товари за списком</span>
-            <a href="/api/xlsx/templates/pricing-list" className="text-[12px] text-primary hover:underline">
+            <button
+              type="button"
+              className="text-[12px] text-primary hover:underline"
+              onClick={async () => {
+                try {
+                  const data = await apiFetch<{ file: string; filename: string }>('/xlsx/templates/pricing-list');
+                  const bytes = Uint8Array.from(atob(data.file), c => c.charCodeAt(0));
+                  const blob = new Blob([bytes], { type: 'text/csv; charset=utf-8' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = data.filename;
+                  a.click();
+                  setTimeout(() => URL.revokeObjectURL(url), 100);
+                } catch (e: unknown) {
+                  setError(e instanceof Error ? e.message : 'Помилка завантаження шаблону');
+                }
+              }}
+            >
               Завантажити шаблон CSV
-            </a>
+            </button>
           </div>
           <p className="text-[12px] text-muted-foreground">
             Завантажте XLSX або CSV файл з колонками: <code>sku</code>, <code>barcode</code>, <code>name</code>
