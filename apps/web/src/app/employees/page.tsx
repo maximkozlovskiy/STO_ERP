@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -16,9 +16,7 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from '@/components/ui/table';
+import { DataTable, type DataTableColumn } from '@/components/ui/table';
 import { DetailPanel, PanelField, PanelSection, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
@@ -193,11 +191,6 @@ export default function EmployeesPage() {
 
   // ─── Bulk select ──────────────────────────────────────
   const bulkSelect = useBulkSelect(employees);
-
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-  }, [bulkSelect.someSelected]);
 
   const bulkActions = useMemo<BulkAction[]>(() => [
     {
@@ -579,140 +572,88 @@ export default function EmployeesPage() {
       {/* Table + DetailPanel */}
       <div className="flex gap-0 flex-1 min-h-0 bg-surface rounded-xl border border-border overflow-hidden">
         <div className="flex-1 min-w-0 overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {features.bulkActionsEnabled && (
-                  <TableHead className="w-9 pr-0">
-                    <input
-                      type="checkbox"
-                      checked={bulkSelect.allSelected}
-                      ref={selectAllRef}
-                      onChange={bulkSelect.toggleAll}
-                      className="h-3.5 w-3.5 rounded border-border"
-                      aria-label="Вибрати всі"
-                    />
-                  </TableHead>
-                )}
-                {visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
-                    <div className="flex justify-center"><Spinner size="md" /></div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && employees.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
-                    <EmptyState icon={Users} title="Немає співробітників" description="Додайте першого співробітника" />
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && employees.map(emp => {
+          {loading ? (
+            <div className="flex justify-center py-10"><Spinner size="md" /></div>
+          ) : employees.length === 0 ? (
+            <EmptyState icon={Users} title="Немає співробітників" description="Додайте першого співробітника" />
+          ) : (
+            <DataTable
+              columns={[
+                ...visibleColumns.map((col): DataTableColumn => ({ key: col.key, label: col.label })),
+                { key: 'actions', label: '' },
+              ]}
+              rows={employees.map(emp => {
                 const isDeleted = !!emp.deletedAt;
                 const isMarking = markingId === emp.id;
-                return (
-                  <TableRow
-                    key={emp.id}
-                    className={cn(
-                      'transition-colors',
-                      isDeleted && 'opacity-60',
-                      detailPanel.enabled && 'cursor-pointer',
-                      selectedEmp?.id === emp.id && 'bg-secondary',
-                      bulkSelect.isSelected(emp.id) && 'bg-primary/5',
-                    )}
-                    onClick={() => { if (detailPanel.enabled) setSelectedEmp(prev => prev?.id === emp.id ? null : emp); }}
-                  >
-                    {features.bulkActionsEnabled && (
-                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={bulkSelect.isSelected(emp.id)}
-                          onChange={() => bulkSelect.toggle(emp.id)}
-                          className="h-3.5 w-3.5 rounded border-border"
-                          aria-label={`Вибрати ${emp.lastName} ${emp.firstName}`}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleColumns.map(col => {
-                      if (col.key === 'name') return (
-                        <TableCell key="name">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium text-foreground">
-                              {emp.lastName} {emp.firstName}
-                            </span>
-                            {isDeleted && <Badge variant="secondary">видалено</Badge>}
-                          </div>
-                          {emp.phone && <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>}
-                        </TableCell>
-                      );
-                      if (col.key === 'role') return (
-                        <TableCell key="role">
-                          <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
-                            {ROLE_LABELS[emp.role] ?? emp.role}
-                          </Badge>
-                        </TableCell>
-                      );
-                      if (col.key === 'status') return (
-                        <TableCell key="status">
-                          <Badge variant={STATUS_BADGE[emp.status] ?? 'secondary'}>{STATUS_LABELS[emp.status] ?? emp.status}</Badge>
-                        </TableCell>
-                      );
-                      if (col.key === 'rate') return (
-                        <TableCell key="rate" className="text-muted-foreground">
-                          {emp.rateScheme
-                            ? (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) + (emp.rateScheme.type === 'percent_normo' ? ` ${emp.rateScheme.params.percent}%` : '')
-                            : <span className="text-foreground-faint">—</span>}
-                        </TableCell>
-                      );
-                      if (col.key === 'zones') return (
-                        <TableCell key="zones" className="text-muted-foreground">
-                          {emp.zoneIds.length > 0
-                            ? emp.zoneIds.map(id => zones.find(z => z.id === id)?.name ?? id).join(', ')
-                            : <span className="text-foreground-faint">—</span>}
-                        </TableCell>
-                      );
-                      if (col.key === 'lifts') return (
-                        <TableCell key="lifts" className="text-muted-foreground">
-                          {emp.liftIds.length > 0
-                            ? emp.liftIds.map(id => lifts.find(l => l.id === id)?.name ?? id).join(', ')
-                            : <span className="text-foreground-faint">—</span>}
-                        </TableCell>
-                      );
-                      return null;
-                    })}
-                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          title="Редагувати"
-                          onClick={() => openEditEmp(emp)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                          title="Помітити на видалення"
-                          disabled={isMarking || !!markingId || isDeleted}
-                          onClick={() => markForDeletion(emp.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                return {
+                  id: emp.id,
+                  name: (
+                    <div className={cn(isDeleted && 'opacity-60')}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground">{emp.lastName} {emp.firstName}</span>
+                        {isDeleted && <Badge variant="secondary">видалено</Badge>}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                );
+                      {emp.phone && <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>}
+                    </div>
+                  ),
+                  role: (
+                    <span className={cn(isDeleted && 'opacity-60')}>
+                      <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>{ROLE_LABELS[emp.role] ?? emp.role}</Badge>
+                    </span>
+                  ),
+                  status: (
+                    <span className={cn(isDeleted && 'opacity-60')}>
+                      <Badge variant={STATUS_BADGE[emp.status] ?? 'secondary'}>{STATUS_LABELS[emp.status] ?? emp.status}</Badge>
+                    </span>
+                  ),
+                  rate: (
+                    <span className={cn('text-muted-foreground', isDeleted && 'opacity-60')}>
+                      {emp.rateScheme
+                        ? (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) + (emp.rateScheme.type === 'percent_normo' ? ` ${emp.rateScheme.params.percent}%` : '')
+                        : <span className="text-foreground-faint">—</span>}
+                    </span>
+                  ),
+                  zones: (
+                    <span className={cn('text-muted-foreground', isDeleted && 'opacity-60')}>
+                      {emp.zoneIds.length > 0
+                        ? emp.zoneIds.map(id => zones.find(z => z.id === id)?.name ?? id).join(', ')
+                        : <span className="text-foreground-faint">—</span>}
+                    </span>
+                  ),
+                  lifts: (
+                    <span className={cn('text-muted-foreground', isDeleted && 'opacity-60')}>
+                      {emp.liftIds.length > 0
+                        ? emp.liftIds.map(id => lifts.find(l => l.id === id)?.name ?? id).join(', ')
+                        : <span className="text-foreground-faint">—</span>}
+                    </span>
+                  ),
+                  actions: (
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon-sm" title="Редагувати" onClick={e => { e.stopPropagation(); openEditEmp(emp); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        title="Помітити на видалення"
+                        disabled={isMarking || !!markingId || isDeleted}
+                        onClick={e => { e.stopPropagation(); void markForDeletion(emp.id); }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ),
+                };
               })}
-            </TableBody>
-          </Table>
+              selectable={features.bulkActionsEnabled}
+              selectedIds={bulkSelect.selected}
+              onSelectRow={bulkSelect.toggle}
+              onSelectAll={bulkSelect.toggleAll}
+              onRowClick={detailPanel.enabled ? row => setSelectedEmp(prev => prev?.id === row.id ? null : employees.find(e => e.id === row.id) ?? null) : undefined}
+              emptyText="Немає співробітників"
+            />
+          )}
         </div>
 
         <DetailPanel
