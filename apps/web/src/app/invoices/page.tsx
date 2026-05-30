@@ -7,16 +7,7 @@ import { Plus, Receipt, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
-import {
-  useInvoices,
-  useInvoiceTransition,
-  useDeleteInvoice,
-  useCreatePayment,
-  invoicesKeys,
-  Invoice,
-  InvoicesFilter,
-  PaginatedInvoices,
-} from '@/hooks/api/useInvoices';
+import { useInvoices, invoicesKeys, Invoice } from '@/hooks/api/useInvoices';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -178,11 +169,6 @@ export default function InvoicesPage() {
   });
   const invoices = queryData?.items ?? [];
   const total = queryData?.total ?? 0;
-
-  // Mutations
-  const transitionMutation = useInvoiceTransition();
-  const deleteMutation = useDeleteInvoice();
-  const paymentMutation = useCreatePayment();
 
   const [selectedInv, setSelectedInv] = useState<InvoiceWithOptionals | null>(null);
 
@@ -550,9 +536,9 @@ export default function InvoicesPage() {
 
   return (
     <div className="page-container">
-      {error && (
+      {(error || queryError) && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
-          {error}
+          {error || (queryError instanceof Error ? queryError.message : '')}
         </div>
       )}
       <div className="page-header">

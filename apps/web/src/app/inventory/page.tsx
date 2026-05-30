@@ -131,9 +131,9 @@ export default function InventoryPage() {
 
   return (
     <div className="page-container">
-      {error && (
+      {(error || queryError) && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
-          {error}
+          {error || (queryError instanceof Error ? queryError.message : '')}
         </div>
       )}
       <div className="page-header">

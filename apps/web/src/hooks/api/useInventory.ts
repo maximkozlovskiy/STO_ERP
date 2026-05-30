@@ -18,6 +18,19 @@ export interface StockItem {
   isLow: boolean;
 }
 
+// /stock-items/low returns a flat projection (raw SQL) — no id/reserved/available.
+// Shape differs from StockItem; do not conflate.
+export interface LowStockItem {
+  goodId: string;
+  goodName: string;
+  goodSku: string | null;
+  unit: string;
+  warehouseName: string;
+  quantity: number;
+  minStock: number;
+  deficit: number;
+}
+
 export interface InventoryFilter {
   warehouseId?: string;
   goodId?: string;
@@ -49,7 +62,7 @@ export function useStockItems(filters: InventoryFilter = {}) {
 
 export function useLowStockItems() {
   const { employee } = useAuth();
-  return useQuery<StockItem[]>({
+  return useQuery<LowStockItem[]>({
     queryKey: inventoryKeys.low(),
     queryFn: ({ signal }) => apiFetch('/stock-items/low', { signal }),
     enabled: !!employee,

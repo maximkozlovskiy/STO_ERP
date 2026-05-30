@@ -9,12 +9,8 @@ import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
   usePurchaseOrders,
-  useDeletePurchaseOrder,
-  useApplyPricing,
   purchaseOrdersKeys,
   PurchaseOrder,
-  POLine,
-  PaginatedPurchaseOrders,
 } from '@/hooks/api/usePurchaseOrders';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
@@ -165,10 +161,6 @@ export default function PurchaseOrdersPage() {
   });
   const orders = queryData?.items ?? [];
   const total = queryData?.total ?? 0;
-
-  // Mutations
-  const deleteMutation = useDeletePurchaseOrder();
-  const applyPricingMutation = useApplyPricing();
 
   // Saved filters
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -558,9 +550,9 @@ export default function PurchaseOrdersPage() {
 
   return (
     <div className="page-container">
-      {error && (
+      {(error || queryError) && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
-          {error}
+          {error || (queryError instanceof Error ? queryError.message : '')}
         </div>
       )}
       <div className="page-header">

@@ -8,14 +8,7 @@ import { Plus, ClipboardList, Eye, EyeOff, Search, User } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
-import {
-  useWorkOrders,
-  useWorkOrderTransition,
-  useDeleteWorkOrder,
-  workOrdersKeys,
-  WorkOrder,
-  PaginatedWorkOrders,
-} from '@/hooks/api/useWorkOrders';
+import { useWorkOrders, workOrdersKeys, WorkOrder } from '@/hooks/api/useWorkOrders';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -203,16 +196,13 @@ export default function WorkOrdersPage() {
     page,
     limit,
     status: statusFilter,
+    repairCategory: categoryFilter || undefined,
     q: debouncedSearch,
     showDeleted,
     employeeId: myOrders ? employee?.id : undefined,
   });
   const orders = queryData?.items ?? [];
   const total = queryData?.total ?? 0;
-
-  // Mutations
-  const transitionMutation = useWorkOrderTransition();
-  const deleteMutation = useDeleteWorkOrder();
 
   // Modal & form state
   const [modal, setModal] = useState(false);
@@ -518,9 +508,9 @@ export default function WorkOrdersPage() {
         </Button>
       </div>
 
-      {!modal && error && (
+      {!modal && (error || queryError) && (
         <div className="mb-4 text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-4 py-2.5">
-          {error}
+          {error || (queryError instanceof Error ? queryError.message : '')}
         </div>
       )}
 

@@ -7,13 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
-import {
-  useCounterparties,
-  useDeleteCounterparty,
-  counterpartiesKeys,
-  Counterparty,
-  PaginatedCounterparties,
-} from '@/hooks/api/useCounterparties';
+import { useCounterparties, counterpartiesKeys, Counterparty } from '@/hooks/api/useCounterparties';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
@@ -138,9 +132,6 @@ export default function CrmPage() {
   });
   const counterparties = queryData?.items ?? [];
   const total = queryData?.total ?? 0;
-
-  // Mutations
-  const deleteMutation = useDeleteCounterparty();
 
   // Modal & form state
   const [modal, setModal] = useState(false);
@@ -674,9 +665,9 @@ export default function CrmPage() {
         </Button>
       </div>
 
-      {!modal && error && (
+      {!modal && (error || queryError) && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
-          {error}
+          {error || (queryError instanceof Error ? queryError.message : '')}
         </div>
       )}
 

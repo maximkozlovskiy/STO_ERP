@@ -35,6 +35,7 @@ export interface WorkOrdersFilter {
   counterpartyId?: string;
   vehicleId?: string;
   employeeId?: string;
+  repairCategory?: string;
   q?: string;
   showDeleted?: boolean;
   include?: string;
@@ -64,6 +65,7 @@ export function useWorkOrders(filters: WorkOrdersFilter = {}) {
   if (filters.counterpartyId) params.set('counterpartyId', filters.counterpartyId);
   if (filters.vehicleId) params.set('vehicleId', filters.vehicleId);
   if (filters.employeeId) params.set('employeeId', filters.employeeId);
+  if (filters.repairCategory) params.set('repairCategory', filters.repairCategory);
   if (filters.q) params.set('q', filters.q);
   if (filters.showDeleted) params.set('showDeleted', 'true');
   if (filters.include) params.set('include', filters.include);
