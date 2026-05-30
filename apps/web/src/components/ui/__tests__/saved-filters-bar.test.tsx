@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe } from 'vitest';
-import { SavedFiltersBar } from '../saved-filters-bar';
+import { SavedFiltersBar, SaveFilterButton } from '../saved-filters-bar';
 import { type SavedFilter } from '@/hooks/useSavedFilters';
 
 interface F extends Record<string, unknown> { status: string }
@@ -143,5 +143,147 @@ describe('SavedFiltersBar', () => {
     input.focus();
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByPlaceholderText('Назва фільтру...')).not.toBeInTheDocument();
+  });
+
+  // ─── hideSaveButton prop — інверсна-логіка регресії (Bug #194) ─────────────
+
+  it('hideSaveButton=true приховує inline "Зберегти" button', () => {
+    render(
+      <SavedFiltersBar<F>
+        saved={[]}
+        onApply={vi.fn()}
+        onSave={vi.fn()}
+        onRemove={vi.fn()}
+        hideSaveButton
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /Зберегти/ })).not.toBeInTheDocument();
+  });
+
+  it('hideSaveButton=true приховує "Немає збережених фільтрів" hint навіть при saved=[]', () => {
+    render(
+      <SavedFiltersBar<F>
+        saved={[]}
+        onApply={vi.fn()}
+        onSave={vi.fn()}
+        onRemove={vi.fn()}
+        hideSaveButton
+      />,
+    );
+    expect(screen.queryByText('Немає збережених фільтрів')).not.toBeInTheDocument();
+  });
+
+  it('hideSaveButton=true залишає preset-кнопки і remove-кнопки видимими', () => {
+    const onApply = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <SavedFiltersBar<F>
+        saved={[makePreset('p1', 'Активні'), makePreset('p2', 'Завершені', 'COMPLETED')]}
+        onApply={onApply}
+        onSave={vi.fn()}
+        onRemove={onRemove}
+        hideSaveButton
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Активні' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Завершені' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Видалити фільтр "Активні"/ })).toBeInTheDocument();
+    // sanity: inline save кнопка прихована
+    expect(screen.queryByRole('button', { name: /^Зберегти$/ })).not.toBeInTheDocument();
+  });
+});
+
+// ─── SaveFilterButton — новий standalone icon-only компонент (Bug #193) ──────
+
+describe('SaveFilterButton', () => {
+  it('за замовчуванням рендерить icon-кнопку з title="Зберегти фільтр" (a11y)', () => {
+    render(<SaveFilterButton onSave={vi.fn()} />);
+    const btn = screen.getByRole('button');
+    expect(btn).toHaveAttribute('title', 'Зберегти фільтр');
+    expect(btn).toHaveAttribute('type', 'button');
+    // input ще не показано
+    expect(screen.queryByPlaceholderText('Назва фільтру...')).not.toBeInTheDocument();
+  });
+
+  it('клік по icon-кнопці відкриває inline-input', async () => {
+    render(<SaveFilterButton onSave={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button'));
+    expect(screen.getByPlaceholderText('Назва фільтру...')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeInTheDocument();
+  });
+
+  it('Enter у input викликає onSave з trimmed name і закриває input', async () => {
+    const onSave = vi.fn();
+    render(<SaveFilterButton onSave={onSave} />);
+    await userEvent.click(screen.getByRole('button'));
+    const input = screen.getByPlaceholderText('Назва фільтру...');
+    await userEvent.type(input, '  Мій фільтр  ');
+    await userEvent.keyboard('{Enter}');
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith('Мій фільтр');
+    // Після успішного save — input закривається, icon-кнопка повертається
+    expect(screen.queryByPlaceholderText('Назва фільтру...')).not.toBeInTheDocument();
+    expect(screen.getByRole('button')).toHaveAttribute('title', 'Зберегти фільтр');
+  });
+
+  it('клік по кнопці "Зберегти" викликає onSave з trimmed name', async () => {
+    const onSave = vi.fn();
+    render(<SaveFilterButton onSave={onSave} />);
+    await userEvent.click(screen.getByRole('button'));
+    const input = screen.getByPlaceholderText('Назва фільтру...');
+    await userEvent.type(input, 'Назва');
+    await userEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    expect(onSave).toHaveBeenCalledWith('Назва');
+  });
+
+  it('порожнє name (тільки whitespace) не викликає onSave і "Зберегти" disabled', async () => {
+    const onSave = vi.fn();
+    render(<SaveFilterButton onSave={onSave} />);
+    await userEvent.click(screen.getByRole('button'));
+    const input = screen.getByPlaceholderText('Назва фільтру...');
+    // Кнопка "Зберегти" disabled коли input порожній
+    const saveBtn = screen.getByRole('button', { name: 'Зберегти' });
+    expect(saveBtn).toBeDisabled();
+    // Whitespace не активує
+    await userEvent.type(input, '   ');
+    expect(saveBtn).toBeDisabled();
+    await userEvent.keyboard('{Enter}');
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('Escape у input закриває inline-input і скидає name', async () => {
+    const onSave = vi.fn();
+    render(<SaveFilterButton onSave={onSave} />);
+    await userEvent.click(screen.getByRole('button'));
+    const input = screen.getByPlaceholderText('Назва фільтру...');
+    input.focus();
+    await userEvent.type(input, 'Деяка назва');
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByPlaceholderText('Назва фільтру...')).not.toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    // Re-open — поле має бути порожнє (name скинутий)
+    await userEvent.click(screen.getByRole('button'));
+    const input2 = screen.getByPlaceholderText('Назва фільтру...');
+    expect(input2).toHaveValue('');
+  });
+
+  it('кнопка X закриває inline-input і скидає name', async () => {
+    render(<SaveFilterButton onSave={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button'));
+    const input = screen.getByPlaceholderText('Назва фільтру...');
+    await userEvent.type(input, 'Тест');
+    // X кнопка — друга button після "Зберегти"
+    const buttons = screen.getAllByRole('button');
+    // [icon-bookmark вже не видно бо open], buttons: [Зберегти, X]
+    // Перевірка через querySelector — найпростіше: X має svg.lucide-x
+    const xBtn = buttons.find(b => b.querySelector('svg'));
+    expect(xBtn).toBeTruthy();
+    await userEvent.click(xBtn as HTMLElement);
+    expect(screen.queryByPlaceholderText('Назва фільтру...')).not.toBeInTheDocument();
+  });
+
+  it('className з пропсу застосовується до icon-кнопки', () => {
+    render(<SaveFilterButton onSave={vi.fn()} className="custom-cls" />);
+    expect(screen.getByRole('button').className).toMatch(/custom-cls/);
   });
 });

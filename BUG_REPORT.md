@@ -1,5 +1,92 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-05-30 — FULL tester: SaveFilterButton + hideSaveButton + AnimatedBody + Modal sizes (HEAD c922503)
+
+Scope (5 commits, c922503..1bee096):
+- `SaveFilterButton` — новий компонент у `saved-filters-bar.tsx` (icon-only, inline input при кліку)
+- `hideSaveButton` prop у `SavedFiltersBar` (приховує inline "Зберегти")
+- `AnimatedBody` на inline формах (6 файлів: catalog, crm, crm/[id], vehicles/[id], work-orders/[id], pricing-rules)
+- Modal sizes: `xl` для work-orders, catalog goods, purchase-orders, pricing-rules; `lg` для employees, catalog works, stock-documents
+- `page-container max-width`: 80rem → 96rem (`apps/web/src/app/globals.css:192`)
+
+### Baseline (Крок 0)
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 401/401 passed (39 files)
+- Web components — ✅ 159/159 passed (15 files)
+
+Жодного хибно-зеленого `[x]` маркера (попередні `[x]`-багі у попередніх сесіях покриті реальним кодом — TS+тести зелені).
+
+---
+
+## Bug #193 — MEDIUM test-coverage / frontend
+
+**Файл:** `apps/web/src/components/ui/saved-filters-bar.tsx:125-188` (`SaveFilterButton`)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Новий експортований shared UI-компонент `SaveFilterButton` (icon-only bookmark кнопка з inline-input на клік, використовується у 7 сторінках: work-orders, catalog×3 розділи, employees, invoices, purchase-orders, stock-documents, crm) **не має жодного component-тесту**. Згідно з SKILL §1.6: "Кожен новий shared UI-компонент (`components/ui/`) → парний `*.test.tsx` (render, інтерактив-стани, edge: порожні дані/null-render, badge з 0)".
+
+Регресії, яких поточний suite НЕ ловить:
+- Зміна кнопки з icon-only на текстову → tsc мовчить, всі page-тести мовчать (бо вони hide save-button)
+- Видалення `title="Зберегти фільтр"` (a11y/UX) → нема перевірки
+- Поломка `handleSave` (трим, очистка, закриття input) — нема покриття
+- Escape має закривати inline input і скидати name — нема перевірки
+- Пустий name (whitespace) має блокувати save — нема перевірки
+
+**Очікувана поведінка:** `saved-filters-bar.test.tsx` має describe-блок `SaveFilterButton` з мінімум 6 кейсами (icon render → click opens input → type+Enter calls onSave trimmed → empty whitespace blocked → Escape closes+clears → X-button closes+clears).
+**Фактична поведінка:** 0 тестів для `SaveFilterButton`. Регресія беззвучна — `pnpm vitest run` зелений.
+**Статус:** [x] виправлено — додано `describe('SaveFilterButton')` з 8 кейсами у `saved-filters-bar.test.tsx`: default-icon + title, click→input open, Enter trim+close, кнопка-Зберегти, whitespace blocked + disabled, Escape closes+clears, X-button closes, className prop applied.
+
+---
+
+## Bug #194 — MEDIUM test-coverage / frontend
+
+**Файл:** `apps/web/src/components/ui/saved-filters-bar.tsx:16,27,51,79,113` (`hideSaveButton` prop)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Новий `hideSaveButton?: boolean` prop у `SavedFiltersBar` (8 використань у production: work-orders, catalog×3, employees, invoices, purchase-orders, stock-documents, crm) **не має покриття у тестах**. Існуючий `saved-filters-bar.test.tsx` (147 рядків, 9 it-блоків) тестує **тільки** default-режим (`hideSaveButton` undefined). Регресії, яких suite НЕ ловить:
+- Видалення `!hideSaveButton &&` guard з блоку "Зберегти" (інлайн-кнопка) → у production з'явиться дубль save-кнопки (inline ⊕ SaveFilterButton поряд)
+- Видалення `!hideSaveButton &&` guard з рядка `Немає збережених фільтрів` (line 51) → у `hideSaveButton`-режимі з порожнім list з'явиться зайвий hint (UX baseline для нового шляху).
+- Reverse-логіка (`!!hideSaveButton` замість `!hideSaveButton`) пройде existing-suite зеленою — inverse-condition не покрите.
+
+**Очікувана поведінка:** `saved-filters-bar.test.tsx` має тести: (а) `hideSaveButton=true` приховує inline "Зберегти" button; (б) `hideSaveButton=true` приховує "Немає збережених фільтрів" hint навіть якщо `saved=[]`; (в) `hideSaveButton=true` залишає видимими preset-кнопки і remove-кнопки.
+**Фактична поведінка:** 0 тестів. Інверсія guard буде непомічена.
+**Статус:** [x] виправлено — додано 3 кейси у `describe('SavedFiltersBar')`: hideSaveButton hides inline save button; hideSaveButton hides "Немає збережених фільтрів" hint at saved=[]; hideSaveButton preserves preset buttons + remove buttons.
+
+---
+
+## Bug #195 — LOW test-coverage / frontend
+
+**Файл:** `apps/web/src/components/ui/modal.tsx:37-81` (`AnimatedBody`)
+**Severity:** LOW
+**Категорія:** test-coverage
+
+**Опис:** `AnimatedBody` тепер експортується окремо і використовується у 6 файлах інлайн-форм поза Modal (catalog/page.tsx, crm/page.tsx, crm/[id], vehicles/[id], work-orders/[id], pricing-rules). Згідно з SKILL §1.6 — кожен новий shared UI-компонент потребує `*.test.tsx`. `modal.test.tsx` тестує Modal цілісно, але не пройшовся по `AnimatedBody` як standalone-компонент (mount + render children, cleanup ResizeObserver, rAF cancellation на unmount — критично щоб не було DOM-mutation після disconnect). Жоден тест не падає при регресії наприклад видалення `cancelAnimationFrame(rafRef.current)` у cleanup.
+
+**Очікувана поведінка:** `modal.test.tsx` (або новий `animated-body.test.tsx`) має:
+- `AnimatedBody` рендерить children як standalone-компонент (поза Modal)
+- Unmount чистить ResizeObserver і rAF (mock + assertion)
+**Фактична поведінка:** 0 кейсів — AnimatedBody трактується як приватна Modal-деталь, хоч експортується.
+**Статус:** [x] виправлено — додано `describe('AnimatedBody (standalone)')` з 4 кейсами: render children standalone; className applied to inner; cleanup chains ResizeObserver.disconnect + cancelAnimationFrame на unmount (захист від DOM-mutation після disconnect); Modal-integration smoke test.
+
+---
+
+## Bug #196 — LOW test-coverage / frontend
+
+**Файл:** `apps/web/src/components/ui/modal.tsx:23-29` (`sizeWidths` size prop)
+**Severity:** LOW
+**Категорія:** test-coverage
+
+**Опис:** `size` prop у Modal (`sm`/`md`/`lg`/`xl`/`full`) визначає `maxWidth` через inline-style. Останній комміт використовує `xl` (work-orders/catalog goods/purchase-orders/pricing-rules) і `lg` (employees/catalog works/stock-documents). Жоден тест НЕ перевіряє що `size="xl"` → `max-width: 896px`, `size="lg"` → `672px`. Регресія `sizeWidths.xl = '896px'` → `'500px'` (наприклад при рефакторі), або плутанина у Record-key (lg → xl swap), не буде помічена.
+
+**Очікувана поведінка:** `modal.test.tsx` має кейс що `size="xl"` встановлює `max-width` `896px` через inline-style на panel-елементі.
+**Фактична поведінка:** 0 кейсів для size prop.
+**Статус:** [x] виправлено — додано 5 кейсів у `describe('Modal')`: md (default) = 512px; sm = 384px; lg = 672px (employees, catalog works, stock-documents); xl = 896px (work-orders, catalog goods, purchase-orders, pricing-rules); full = 95vw. Покриває Record-key mismatch і регресію конкретного px-значення.
+
+---
+
 ## Session 2026-05-30 — AUTO tester: Етап D — configurable detail panel (5d003e4)
 
 Scope: `user-preferences` backend module + `useDetailPanelConfig` hook + `DetailPanel` config mode + CRM/Employees wiring.
