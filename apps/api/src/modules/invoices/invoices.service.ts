@@ -227,15 +227,17 @@ export class InvoicesService {
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
     if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Рядки можна додавати лише до чернетки');
 
-    // Cross-tenant FK validation
-    if (dto.goodId) {
-      const good = await this.prisma.good.findFirst({ where: { id: dto.goodId, orgId, deletedAt: null }, select: { id: true } });
-      if (!good) throw new NotFoundException('Запчастину не знайдено');
-    }
-    if (dto.workId) {
-      const work = await this.prisma.work.findFirst({ where: { id: dto.workId, orgId, deletedAt: null }, select: { id: true } });
-      if (!work) throw new NotFoundException('Роботу не знайдено');
-    }
+    // Cross-tenant FK validation — parallel since goodId/workId are independent.
+    const [good, work] = await Promise.all([
+      dto.goodId
+        ? this.prisma.good.findFirst({ where: { id: dto.goodId, orgId, deletedAt: null }, select: { id: true } })
+        : Promise.resolve(null),
+      dto.workId
+        ? this.prisma.work.findFirst({ where: { id: dto.workId, orgId, deletedAt: null }, select: { id: true } })
+        : Promise.resolve(null),
+    ]);
+    if (dto.goodId && !good) throw new NotFoundException('Запчастину не знайдено');
+    if (dto.workId && !work) throw new NotFoundException('Роботу не знайдено');
 
     const vatRate = dto.vatRate ?? 20;
     const priceWithoutVat = dto.quantity * dto.unitPrice;

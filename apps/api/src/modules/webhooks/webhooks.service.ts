@@ -151,25 +151,30 @@ export class WebhooksService {
       take: 50,
     });
 
-    for (const ep of endpoints) {
-      await this.webhookQueue.add(
-        'deliver',
-        {
-          endpointId: ep.id,
-          url: ep.url,
-          secret: ep.secret,
-          event,
-          payload: data,
-        },
-        {
-          // Offline-first: ≥10 retries with exponential backoff so transient
-          // network outages or remote 5xx errors do not lose webhook events.
-          attempts: 10,
-          backoff: { type: 'exponential', delay: 60_000 },
-          removeOnComplete: 100,
-          removeOnFail: 200,
-        },
-      );
-    }
+    // Fan out queue.add in parallel — each call is an independent Redis RTT,
+    // so sequential await serialised N×(net RTT). Promise.all collapses to one
+    // batch of concurrent writes (Bull internally pipelines).
+    await Promise.all(
+      endpoints.map(ep =>
+        this.webhookQueue.add(
+          'deliver',
+          {
+            endpointId: ep.id,
+            url: ep.url,
+            secret: ep.secret,
+            event,
+            payload: data,
+          },
+          {
+            // Offline-first: ≥10 retries with exponential backoff so transient
+            // network outages or remote 5xx errors do not lose webhook events.
+            attempts: 10,
+            backoff: { type: 'exponential', delay: 60_000 },
+            removeOnComplete: 100,
+            removeOnFail: 200,
+          },
+        ),
+      ),
+    );
   }
 }

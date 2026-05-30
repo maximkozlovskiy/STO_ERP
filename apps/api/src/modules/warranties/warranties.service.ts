@@ -45,30 +45,32 @@ export class WarrantiesService {
   }
 
   async create(orgId: string, dto: CreateWarrantyDto): Promise<WarrantyResponseDto> {
-    const wo = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
+    // Parallel cross-tenant FK validation — all four reads are independent
+    // (different tables / different ids). Without this, four sequential RTTs.
+    const [wo, cp, line, part] = await Promise.all([
+      this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null }, select: { id: true } }),
+      this.prisma.counterparty.findFirst({ where: { id: dto.counterpartyId, orgId, deletedAt: null }, select: { id: true } }),
+      // Tenant FK validation: workOrderLineId/workOrderPartId must belong to the same WO
+      // (and therefore same org). Without this, an attacker could attach a warranty to
+      // a line/part from a different work order — possibly cross-tenant — through the
+      // global UUID FK.
+      dto.workOrderLineId
+        ? this.prisma.workOrderLine.findFirst({
+            where: { id: dto.workOrderLineId, orgId, workOrderId: dto.workOrderId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      dto.workOrderPartId
+        ? this.prisma.workOrderPart.findFirst({
+            where: { id: dto.workOrderPartId, orgId, workOrderId: dto.workOrderId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-
-    const cp = await this.prisma.counterparty.findFirst({ where: { id: dto.counterpartyId, orgId, deletedAt: null } });
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
-
-    // Tenant FK validation: workOrderLineId/workOrderPartId must belong to the same WO
-    // (and therefore same org). Without this, an attacker could attach a warranty to
-    // a line/part from a different work order — possibly cross-tenant — through the
-    // global UUID FK.
-    if (dto.workOrderLineId) {
-      const line = await this.prisma.workOrderLine.findFirst({
-        where: { id: dto.workOrderLineId, orgId, workOrderId: dto.workOrderId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!line) throw new NotFoundException('Рядок наряду не знайдено');
-    }
-    if (dto.workOrderPartId) {
-      const part = await this.prisma.workOrderPart.findFirst({
-        where: { id: dto.workOrderPartId, orgId, workOrderId: dto.workOrderId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!part) throw new NotFoundException('Запчастину наряду не знайдено');
-    }
+    if (dto.workOrderLineId && !line) throw new NotFoundException('Рядок наряду не знайдено');
+    if (dto.workOrderPartId && !part) throw new NotFoundException('Запчастину наряду не знайдено');
 
     // expiresAt must be in the future — past-dated warranties make no business sense
     // and would immediately appear as expired in /warranties/expiring.

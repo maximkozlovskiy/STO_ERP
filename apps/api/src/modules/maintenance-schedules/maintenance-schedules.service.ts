@@ -126,20 +126,24 @@ export class MaintenanceSchedulesService {
       where: { orgId, vehicleId, deletedAt: null, isActive: true },
       take: 50,
     });
-    for (const s of schedules) {
-      const nextDate = this.calcNextDate(completedDate, s.intervalDays ?? undefined);
-      const newMileage = mileage !== undefined ? mileage : (s.lastMaintenanceMileage ?? undefined);
-      const nextMileage = this.calcNextMileage(newMileage, s.intervalMileage ?? undefined);
-      await this.prisma.maintenanceSchedule.update({
-        where: { id: s.id, orgId },
-        data: {
-          lastMaintenanceDate: completedDate,
-          ...(mileage !== undefined ? { lastMaintenanceMileage: mileage } : {}),
-          nextMaintenanceDate: nextDate,
-          nextMaintenanceMileage: nextMileage ?? null,
-        },
-      });
-    }
+    // Each schedule update is independent (different `id`) and runs outside any
+    // outer transaction → fan out in parallel to collapse N sequential RTT into one.
+    await Promise.all(
+      schedules.map(s => {
+        const nextDate = this.calcNextDate(completedDate, s.intervalDays ?? undefined);
+        const newMileage = mileage !== undefined ? mileage : (s.lastMaintenanceMileage ?? undefined);
+        const nextMileage = this.calcNextMileage(newMileage, s.intervalMileage ?? undefined);
+        return this.prisma.maintenanceSchedule.update({
+          where: { id: s.id, orgId },
+          data: {
+            lastMaintenanceDate: completedDate,
+            ...(mileage !== undefined ? { lastMaintenanceMileage: mileage } : {}),
+            nextMaintenanceDate: nextDate,
+            nextMaintenanceMileage: nextMileage ?? null,
+          },
+        });
+      }),
+    );
   }
 
   private calcNextDate(lastDate: Date | null | undefined, intervalDays: number | null | undefined): Date | null {

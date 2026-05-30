@@ -173,14 +173,17 @@ export class CompletionActsService {
   async generatePdf(orgId: string, id: string): Promise<Buffer> {
     const act = await this.findOne(orgId, id);
 
-    const org = await this.prisma.organisation.findFirst({ where: { id: orgId } });
-    const wo = await this.prisma.workOrder.findFirst({
-      where: { id: act.workOrderId, orgId },
-      include: {
-        counterparty: { select: { firstName: true, lastName: true, companyName: true, phone: true, actualAddress: true } },
-        vehicle: { select: { make: true, model: true, licensePlate: true } },
-      },
-    });
+    // Parallel — org metadata and WO with relations are independent reads.
+    const [org, wo] = await Promise.all([
+      this.prisma.organisation.findFirst({ where: { id: orgId } }),
+      this.prisma.workOrder.findFirst({
+        where: { id: act.workOrderId, orgId },
+        include: {
+          counterparty: { select: { firstName: true, lastName: true, companyName: true, phone: true, actualAddress: true } },
+          vehicle: { select: { make: true, model: true, licensePlate: true } },
+        },
+      }),
+    ]);
 
     const cp = wo?.counterparty;
     const cpName = (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Клієнт';

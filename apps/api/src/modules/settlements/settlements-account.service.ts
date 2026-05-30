@@ -79,14 +79,17 @@ export class SettlementsAccountService {
     dto: CreateReconciliationActDto,
     userId?: string,
   ) {
-    const counterparty = await this.prisma.counterparty.findFirst({
-      where: { id: counterpartyId, orgId, deletedAt: null },
-    });
+    // Parallel cross-tenant validation — counterparty existence + account lookup
+    // are independent reads on different tables (no FK chain).
+    const [counterparty, account] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+      }),
+      this.prisma.settlementAccount.findFirst({
+        where: { orgId, counterpartyId },
+      }),
+    ]);
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
-
-    const account = await this.prisma.settlementAccount.findFirst({
-      where: { orgId, counterpartyId },
-    });
     if (!account) throw new NotFoundException('Розрахунковий рахунок не знайдено');
 
     // Convert Kyiv calendar boundaries to UTC using Intl (handles DST: UTC+2 winter / UTC+3 summer)

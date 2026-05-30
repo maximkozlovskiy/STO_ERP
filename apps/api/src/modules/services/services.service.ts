@@ -49,16 +49,24 @@ export class ServicesService {
         },
       });
 
+      // Validate works + goods in parallel — independent queries on different tables.
+      // Both are read-only within the transaction, so concurrent execution is safe.
+      const [foundWorks, foundGoods] = await Promise.all([
+        dto.works?.length
+          ? tx.work.findMany({ where: { id: { in: dto.works.map(w => w.workId) }, orgId, deletedAt: null }, take: 1000 })
+          : Promise.resolve([] as Array<{ id: string }>),
+        dto.goods?.length
+          ? tx.good.findMany({ where: { id: { in: dto.goods.map(g => g.goodId) }, orgId, deletedAt: null }, take: 1000 })
+          : Promise.resolve([] as Array<{ id: string }>),
+      ]);
       if (dto.works?.length) {
-        const works = await tx.work.findMany({ where: { id: { in: dto.works.map(w => w.workId) }, orgId, deletedAt: null }, take: 1000 });
-        if (works.length !== dto.works.length) throw new NotFoundException('Одну або кілька робіт не знайдено');
+        if (foundWorks.length !== dto.works.length) throw new NotFoundException('Одну або кілька робіт не знайдено');
         await tx.serviceWork.createMany({
           data: dto.works.map((w) => ({ serviceId: svc.id, workId: w.workId, quantity: w.quantity ?? 1 })),
         });
       }
       if (dto.goods?.length) {
-        const goods = await tx.good.findMany({ where: { id: { in: dto.goods.map(g => g.goodId) }, orgId, deletedAt: null }, take: 1000 });
-        if (goods.length !== dto.goods.length) throw new NotFoundException('Один або кілька товарів не знайдено');
+        if (foundGoods.length !== dto.goods.length) throw new NotFoundException('Один або кілька товарів не знайдено');
         await tx.serviceGood.createMany({
           data: dto.goods.map((g) => ({ serviceId: svc.id, goodId: g.goodId, quantity: g.quantity ?? 1 })),
         });
@@ -89,10 +97,18 @@ export class ServicesService {
         },
       });
 
+      // Parallel cross-tenant FK validation for works + goods (independent reads).
+      const [foundWorks, foundGoods] = await Promise.all([
+        dto.works?.length
+          ? tx.work.findMany({ where: { id: { in: dto.works.map(w => w.workId) }, orgId, deletedAt: null }, take: 1000 })
+          : Promise.resolve([] as Array<{ id: string }>),
+        dto.goods?.length
+          ? tx.good.findMany({ where: { id: { in: dto.goods.map(g => g.goodId) }, orgId, deletedAt: null }, take: 1000 })
+          : Promise.resolve([] as Array<{ id: string }>),
+      ]);
       if (dto.works !== undefined) {
-        if (dto.works.length) {
-          const works = await tx.work.findMany({ where: { id: { in: dto.works.map(w => w.workId) }, orgId, deletedAt: null }, take: 1000 });
-          if (works.length !== dto.works.length) throw new NotFoundException('Одну або кілька робіт не знайдено');
+        if (dto.works.length && foundWorks.length !== dto.works.length) {
+          throw new NotFoundException('Одну або кілька робіт не знайдено');
         }
         await tx.serviceWork.deleteMany({ where: { serviceId: id } });
         if (dto.works.length) {
@@ -102,9 +118,8 @@ export class ServicesService {
         }
       }
       if (dto.goods !== undefined) {
-        if (dto.goods.length) {
-          const goods = await tx.good.findMany({ where: { id: { in: dto.goods.map(g => g.goodId) }, orgId, deletedAt: null }, take: 1000 });
-          if (goods.length !== dto.goods.length) throw new NotFoundException('Один або кілька товарів не знайдено');
+        if (dto.goods.length && foundGoods.length !== dto.goods.length) {
+          throw new NotFoundException('Один або кілька товарів не знайдено');
         }
         await tx.serviceGood.deleteMany({ where: { serviceId: id } });
         if (dto.goods.length) {

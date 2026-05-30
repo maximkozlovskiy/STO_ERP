@@ -44,23 +44,26 @@ export class PaymentsService {
   }
 
   async create(orgId: string, dto: CreatePaymentDto, userId?: string): Promise<PaymentResponseDto> {
+    // Single parallel batch — counterparty + workOrder (with both branchId + status
+    // selected in one query, replacing the prior duplicate findFirst calls).
     const [counterparty, workOrder] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.counterpartyId, orgId, deletedAt: null },
         select: { id: true, phone: true, firstName: true, lastName: true, companyName: true },
       }),
       dto.workOrderId
-        ? this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null }, select: { branchId: true } })
+        ? this.prisma.workOrder.findFirst({
+            where: { id: dto.workOrderId, orgId, deletedAt: null },
+            select: { branchId: true, status: true },
+          })
         : Promise.resolve(null),
     ]);
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
-    // Pre-validate work order status before opening transaction to avoid partial commit
-    if (dto.workOrderId) {
-      const wo = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null } });
-      if (wo && wo.status !== 'INVOICED') {
-        throw new BadRequestException(`Наряд у статусі "${wo.status}" — оплата неможлива`);
-      }
+    // Pre-validate work order status before opening transaction to avoid partial commit.
+    // Status was fetched in the parallel batch above — no extra query needed.
+    if (dto.workOrderId && workOrder && workOrder.status !== 'INVOICED') {
+      throw new BadRequestException(`Наряд у статусі "${workOrder.status}" — оплата неможлива`);
     }
 
     const payment = await this.prisma.$transaction(async (tx) => {

@@ -517,10 +517,12 @@ export class WorkOrdersService {
   async addLine(orgId: string, workOrderId: string, dto: CreateWorkOrderLineDto): Promise<WorkOrderLineResponseDto> {
     await this.getEditableWorkOrder(orgId, workOrderId);
 
-    const work = await this.prisma.work.findFirst({ where: { id: dto.workId, orgId, deletedAt: null } });
+    // Parallel cross-tenant FK validation — both reads are independent.
+    const [work, employee] = await Promise.all([
+      this.prisma.work.findFirst({ where: { id: dto.workId, orgId, deletedAt: null } }),
+      this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } }),
+    ]);
     if (!work) throw new NotFoundException('Роботу не знайдено');
-
-    const employee = await this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } });
     if (!employee) throw new NotFoundException('Співробітника не знайдено');
 
     const normoHours = dto.normoHours ?? work.normoHours;
@@ -576,10 +578,12 @@ export class WorkOrdersService {
   async addPart(orgId: string, workOrderId: string, dto: CreateWorkOrderPartDto): Promise<WorkOrderPartResponseDto> {
     await this.getEditableWorkOrder(orgId, workOrderId);
 
-    const good = await this.prisma.good.findFirst({ where: { id: dto.goodId, orgId, deletedAt: null } });
+    // Parallel cross-tenant FK validation — independent reads on Good and Warehouse.
+    const [good, warehouse] = await Promise.all([
+      this.prisma.good.findFirst({ where: { id: dto.goodId, orgId, deletedAt: null } }),
+      this.prisma.warehouse.findFirst({ where: { id: dto.warehouseId, orgId, deletedAt: null } }),
+    ]);
     if (!good) throw new NotFoundException('Товар не знайдено');
-
-    const warehouse = await this.prisma.warehouse.findFirst({ where: { id: dto.warehouseId, orgId, deletedAt: null } });
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
 
     const price = dto.price !== undefined ? dto.price : Number(good.salePrice);
