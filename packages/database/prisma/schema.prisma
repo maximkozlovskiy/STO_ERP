@@ -1447,7 +1447,9 @@ model SettlementTransaction {
 
   account SettlementAccount @relation(fields: [settlementAccountId], references: [id])
 
-  @@index([orgId, settlementAccountId])
+  // Covering for getTransactions (paginated list per account) + reconciliation period scans:
+  // WHERE settlementAccountId/orgId + ORDER BY createdAt DESC + sometimes BETWEEN periodFrom/periodTo.
+  @@index([orgId, settlementAccountId, createdAt])
   @@index([orgId, documentType, documentId])
   @@map("settlement_transactions")
 }
@@ -1649,7 +1651,9 @@ model AuditEvent {
   org  Organisation @relation(fields: [orgId], references: [id])
   user Employee     @relation(fields: [userId], references: [id])
 
-  @@index([orgId, entityType, entityId])
+  // Covering index for findByEntity (entity timeline tab): WHERE orgId/entityType/entityId
+  // + ORDER BY createdAt DESC. Without createdAt in the index, Postgres sorts matching rows in memory.
+  @@index([orgId, entityType, entityId, createdAt])
   @@index([orgId, createdAt])
   @@map("audit_events")
 }
