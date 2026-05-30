@@ -199,14 +199,16 @@ export default function CrmPage() {
 
   useEffect(() => {
     if (!selectedCp || !detailPanel.enabled) { setCpVehicles([]); return; }
+    let cancelled = false;
     setVehiclesLoading(true);
     apiFetch<{ id: string }[]>(`/counterparties/${selectedCp.id}/garages`)
       .then(garages => Promise.all(garages.map(g =>
         apiFetch<{ id: string; make: string; model: string; year: number | null; licensePlate: string }[]>(`/vehicles?customerGarageId=${g.id}&limit=50`)
       )))
-      .then(results => setCpVehicles(results.flat()))
-      .catch(() => setCpVehicles([]))
-      .finally(() => setVehiclesLoading(false));
+      .then(results => { if (!cancelled) setCpVehicles(results.flat()); })
+      .catch(() => { if (!cancelled) setCpVehicles([]); })
+      .finally(() => { if (!cancelled) setVehiclesLoading(false); });
+    return () => { cancelled = true; };
   }, [selectedCp?.id, detailPanel.enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = async () => {

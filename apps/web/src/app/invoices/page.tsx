@@ -238,12 +238,13 @@ export default function InvoicesPage() {
   // while state still holds 'cash'. POST /payments would then submit an inactive
   // method code. Sync payForm.method to payMethods[0].code when the current
   // value is missing from the loaded list.
+  // payForm.method excluded from deps intentionally: we only need to sync when
+  // payMethods or showPayment changes, not on every keystroke in the form.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!showPayment || payMethods.length === 0) return;
-    if (!payMethods.some(m => m.code === payForm.method)) {
-      setPayForm(f => ({ ...f, method: payMethods[0].code }));
-    }
-  }, [payMethods, showPayment, payForm.method]);
+    setPayForm(f => payMethods.some(m => m.code === f.method) ? f : { ...f, method: payMethods[0].code });
+  }, [payMethods, showPayment]);
 
   const handleCreate = async () => {
     const amt = parseFloat(form.amount);
