@@ -1,8 +1,92 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-05-30 — FULL tester: Sprint A (Prettier + ESLint + Error Boundary + Shared types) (HEAD 539a0ad)
+
+Scope (5 commits, e0457c2..539a0ad):
+
+- `e0457c2` Sprint A1: `.prettierrc.json` + Husky pre-commit + lint-staged + 299 файлів відформатовано
+- `f2a2954` Sprint A2: ESLint `react-hooks/rules-of-hooks: error` + `exhaustive-deps: warn` у `apps/web/.eslintrc.js`
+- `1d254ed` Sprint A3: `apps/web/src/app/error.tsx` (global Error Boundary з `'use client'`) + `loading.tsx` + `not-found.tsx` + 4 route-level loading.tsx (calendar/crm/invoices/work-orders)
+- `6e1b946` Sprint A4: нові summary-типи у `packages/shared/src/types.ts` (`WorkOrderStatus`/`InvoiceStatus`/`PurchaseOrderStatus`/`CounterpartyType` enums + `WorkOrderSummary`/`InvoiceSummary`/`CounterpartySummary`/`GoodSummary`/`BranchSummary` interfaces + `PaginatedSummary<T>` + `formatPersonName` helper + `@deprecated` mark на `PaginatedResponse<T>`)
+- `e64f935` Sprint A review-fix: wire ESLint config into apps/web + deprecate `PaginatedResponse`
+
+### Baseline (Крок 0)
+
+- TypeScript shared — ✅ 0 errors
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 419/419 passed (39 файлів)
+- Web components — ✅ 179/179 passed (15 файлів)
+- API build (webpack) — ✅ successfully
+- Перевірка хибно-зеленого `[x]` (попередні сесії): пройдено — попередні `[x]`-багі покриті реальним кодом, baseline зелений.
+- `PaginatedSummary<T>` vs `PaginatedResponse<T>`: НЕ конфліктують (різні shape — `items` vs `data`); обидва експортуються, `PaginatedResponse` `@deprecated`; не використовується в runtime-коді — лише оголошення.
+- Prettier formatting (299 файлів): жодного семантичного зламу — `tsc` + 598/598 тестів зелені, `pdf`/`xlsx` template-literal сервіси проходять.
+
+### Перевірка специфічна Sprint A
+
+- `apps/web/src/app/error.tsx` має `'use client'` директиву на рядку 1 — ✅
+- `loading.tsx`/`not-found.tsx` без хуків (server components) — ✅ pure presentational JSX
+- 4 route-level `loading.tsx` (calendar/crm/invoices/work-orders) — однакова skeleton-структура з `key={i}` для статичного `Array.from({ length: 8 })` (не reorder/filter) — ✅
+- Husky `.husky/pre-commit` → `npx lint-staged` — ✅
+- `next lint` показує 5 існуючих `exhaustive-deps` warnings (intentional `warn`, не `error`); 0 `rules-of-hooks` errors — Sprint A2 wired коректно
+- `formatPersonName` з shared використовується у 5 backend-сервісах (calendar, reports, purchase-orders, work-orders, payments) — ✅ нема regression
+- Нові summary-типи (`WorkOrderSummary` etc.) поки що не використовуються у `apps/` — це "future-ready" контракти; конфлікту з локальними inline-інтерфейсами немає
+- `dashboard/page.tsx` має локальний `WorkOrderSummary` з іншою shape (`{ status, completedAt, totalAmount }`) — це інша мета (revenue-агрегація), назва не імпортована з shared
+
+---
+
+## Bug #206 — LOW typescript / frontend
+
+**Файл:** `apps/web/src/app/error.tsx:5`
+**Severity:** LOW
+**Категорія:** typescript / next-js-convention
+
+**Опис:** Тип пропсу `error: Error` у `GlobalError` неповний. Next.js App Router передає у error-boundary `Error & { digest?: string }` — `digest` це server-attached ідентифікатор для лог-кореляції/Sentry. Поточний bare `Error` не дозволяє типобезпечно зчитати `error.digest` (tsc reject), хоча у runtime поле там.
+
+**Очікувана поведінка:** `error: Error & { digest?: string }` — як у Next.js docs (App Router > error.js).
+**Фактична поведінка:** `error: Error` — `digest` потенційно undefined у TS, але присутнє у runtime; майбутній моніторинговий код не зможе типобезпечно його прочитати.
+**Статус:** [x] виправлено — оновлено сигнатуру `GlobalError` на `error: Error & { digest?: string }` + додано regression-тест `error.test.tsx` "приймає Error з опціональним digest".
+
+---
+
+## Bug #207 — LOW a11y / frontend
+
+**Файл:** `apps/web/src/app/error.tsx:14-26`
+**Severity:** LOW
+**Категорія:** a11y
+
+**Опис:** Декоративна SVG-іконка (warning-coло) у `GlobalError` не має `aria-hidden="true"`. Без цього screen-reader озвучує SVG як untitled image, що дублює сигнал поряд з заголовком "Виникла помилка" і шумить.
+
+**Очікувана поведінка:** `<svg aria-hidden="true" ...>` бо текст "Виникла помилка" + `error.message` несе семантику самостійно.
+**Фактична поведінка:** SVG без `aria-hidden` — VoiceOver/NVDA озвучує "image" перед заголовком.
+**Статус:** [x] виправлено — додано `aria-hidden="true"` на `<svg>` у error.tsx + regression-тест "декоративна SVG-іконка має aria-hidden='true'".
+
+---
+
+## Bug #208 — LOW test-coverage / frontend
+
+**Файл:** `apps/web/src/app/error.tsx`, `apps/web/src/app/not-found.tsx`
+**Severity:** LOW
+**Категорія:** test-coverage
+
+**Опис:** Нові Next.js App Router convention-файли мають interactive логіку (`reset()` callback, console.error effect, fallback message) і UI-контракти (кириличні тексти, link на `/dashboard`), але **жодного component-тесту немає**. Per SKILL §1.6 — нові shared UI-компоненти потребують `*.test.tsx`. Хоча `error.tsx`/`not-found.tsx` особливі (Next.js convention), вони мають достатньо інтеракції щоб регресії були беззвучними:
+
+- Зміна тексту `"Виникла помилка"` → жоден тест не падає
+- Зміна fallback-повідомлення (`error.message || '...'`) на `error.message ?? '...'` (поведінка різниться для пустого рядка) → беззвучна регресія
+- Видалення `console.error` effect → втрата моніторингу без сигналу
+- Зміна link на `/dashboard` (наприклад, на `/` після рефакторингу) → беззвучна
+- A11y-регресія (видалення `aria-hidden`/`role`/`heading` level) — нема перевірки
+
+**Очікувана поведінка:** `apps/web/src/app/__tests__/error.test.tsx` (8 кейсів) + `not-found.test.tsx` (4 кейси) покривають: heading render, error.message render, fallback при empty message, reset callback клік, navigate button, console.error effect, digest support (regression Bug #206), aria-hidden SVG.
+**Фактична поведінка:** 0 тестів для `error.tsx` і `not-found.tsx`.
+**Статус:** [x] виправлено — створено `apps/web/src/app/__tests__/error.test.tsx` (8 тестів) + `apps/web/src/app/__tests__/not-found.test.tsx` (4 тести); всі 12 тестів зелені.
+
+---
+
 ## Session 2026-05-30 — FULL tester: SaveFilterButton + hideSaveButton + AnimatedBody + Modal sizes (HEAD c922503)
 
 Scope (5 commits, c922503..1bee096):
+
 - `SaveFilterButton` — новий компонент у `saved-filters-bar.tsx` (icon-only, inline input при кліку)
 - `hideSaveButton` prop у `SavedFiltersBar` (приховує inline "Зберегти")
 - `AnimatedBody` на inline формах (6 файлів: catalog, crm, crm/[id], vehicles/[id], work-orders/[id], pricing-rules)
@@ -10,6 +94,7 @@ Scope (5 commits, c922503..1bee096):
 - `page-container max-width`: 80rem → 96rem (`apps/web/src/app/globals.css:192`)
 
 ### Baseline (Крок 0)
+
 - TypeScript API — ✅ 0 errors
 - TypeScript web — ✅ 0 errors
 - Unit + contract (API) — ✅ 401/401 passed (39 files)
@@ -28,6 +113,7 @@ Scope (5 commits, c922503..1bee096):
 **Опис:** Новий експортований shared UI-компонент `SaveFilterButton` (icon-only bookmark кнопка з inline-input на клік, використовується у 7 сторінках: work-orders, catalog×3 розділи, employees, invoices, purchase-orders, stock-documents, crm) **не має жодного component-тесту**. Згідно з SKILL §1.6: "Кожен новий shared UI-компонент (`components/ui/`) → парний `*.test.tsx` (render, інтерактив-стани, edge: порожні дані/null-render, badge з 0)".
 
 Регресії, яких поточний suite НЕ ловить:
+
 - Зміна кнопки з icon-only на текстову → tsc мовчить, всі page-тести мовчать (бо вони hide save-button)
 - Видалення `title="Зберегти фільтр"` (a11y/UX) → нема перевірки
 - Поломка `handleSave` (трим, очистка, закриття input) — нема покриття
@@ -47,6 +133,7 @@ Scope (5 commits, c922503..1bee096):
 **Категорія:** test-coverage
 
 **Опис:** Новий `hideSaveButton?: boolean` prop у `SavedFiltersBar` (8 використань у production: work-orders, catalog×3, employees, invoices, purchase-orders, stock-documents, crm) **не має покриття у тестах**. Існуючий `saved-filters-bar.test.tsx` (147 рядків, 9 it-блоків) тестує **тільки** default-режим (`hideSaveButton` undefined). Регресії, яких suite НЕ ловить:
+
 - Видалення `!hideSaveButton &&` guard з блоку "Зберегти" (інлайн-кнопка) → у production з'явиться дубль save-кнопки (inline ⊕ SaveFilterButton поряд)
 - Видалення `!hideSaveButton &&` guard з рядка `Немає збережених фільтрів` (line 51) → у `hideSaveButton`-режимі з порожнім list з'явиться зайвий hint (UX baseline для нового шляху).
 - Reverse-логіка (`!!hideSaveButton` замість `!hideSaveButton`) пройде existing-suite зеленою — inverse-condition не покрите.
@@ -66,10 +153,11 @@ Scope (5 commits, c922503..1bee096):
 **Опис:** `AnimatedBody` тепер експортується окремо і використовується у 6 файлах інлайн-форм поза Modal (catalog/page.tsx, crm/page.tsx, crm/[id], vehicles/[id], work-orders/[id], pricing-rules). Згідно з SKILL §1.6 — кожен новий shared UI-компонент потребує `*.test.tsx`. `modal.test.tsx` тестує Modal цілісно, але не пройшовся по `AnimatedBody` як standalone-компонент (mount + render children, cleanup ResizeObserver, rAF cancellation на unmount — критично щоб не було DOM-mutation після disconnect). Жоден тест не падає при регресії наприклад видалення `cancelAnimationFrame(rafRef.current)` у cleanup.
 
 **Очікувана поведінка:** `modal.test.tsx` (або новий `animated-body.test.tsx`) має:
+
 - `AnimatedBody` рендерить children як standalone-компонент (поза Modal)
 - Unmount чистить ResizeObserver і rAF (mock + assertion)
-**Фактична поведінка:** 0 кейсів — AnimatedBody трактується як приватна Modal-деталь, хоч експортується.
-**Статус:** [x] виправлено — додано `describe('AnimatedBody (standalone)')` з 4 кейсами: render children standalone; className applied to inner; cleanup chains ResizeObserver.disconnect + cancelAnimationFrame на unmount (захист від DOM-mutation після disconnect); Modal-integration smoke test.
+  **Фактична поведінка:** 0 кейсів — AnimatedBody трактується як приватна Modal-деталь, хоч експортується.
+  **Статус:** [x] виправлено — додано `describe('AnimatedBody (standalone)')` з 4 кейсами: render children standalone; className applied to inner; cleanup chains ResizeObserver.disconnect + cancelAnimationFrame на unmount (захист від DOM-mutation після disconnect); Modal-integration smoke test.
 
 ---
 
@@ -92,6 +180,7 @@ Scope (5 commits, c922503..1bee096):
 Scope: `user-preferences` backend module + `useDetailPanelConfig` hook + `DetailPanel` config mode + CRM/Employees wiring.
 
 ### Baseline
+
 - TypeScript API — ✅ 0 errors
 - TypeScript web — ✅ 0 errors
 - Unit + contract (API) — ✅ 362/362 passed (34 files)
@@ -130,6 +219,7 @@ Scope: `user-preferences` backend module + `useDetailPanelConfig` hook + `Detail
 Scope: `feat(ui): AnimatedBody on all inline form sections` — 5 файлів: `vehicles/[id]/PageClient.tsx` (showAddNode, showAddSchedule), `work-orders/[id]/PageClient.tsx` (showInspection), `crm/page.tsx` (showAddVehicle), `catalog/page.tsx` (showAddBarcode), `crm/[id]/PageClient.tsx` (showAddGarage).
 
 ### Baseline
+
 - TypeScript web — ✅ 0 errors
 - API unit + contract — ✅ 362/362 passed (34 files)
 - Web components — ✅ 148/148 passed (14 files)
@@ -148,6 +238,7 @@ Scope: `feat(ui): AnimatedBody on all inline form sections` — 5 файлів: 
 ## Session 2026-05-30 — AUTO tester on pricing brand+COST_TIER UI (21a356e)
 
 ### Baseline
+
 - TypeScript API — ✅ 0 errors
 - TypeScript web — ✅ 0 errors
 - Unit + contract (API) — ✅ 362/362 passed (34 files)
@@ -171,6 +262,7 @@ Scope: `feat(ui): AnimatedBody on all inline form sections` — 5 файлів: 
 ## Session 2026-05-30 — AUTO tester on pricing brand+COST_TIER backend (fdcf7ea + 23bf19c)
 
 ### Baseline
+
 - TypeScript API — ✅ 0 errors
 - TypeScript web — ✅ 0 errors
 - Unit + contract (API) — ✅ 357/357 passed (34 files)
@@ -250,6 +342,7 @@ all four list endpoints return `{ items, total }`. No backend bugs found.
 **Опис:**
 Вкладки `currencies`, `exchange-rates`, `bank-accounts`, `cash-registers` завантажують
 дані у mount-`useEffect` через `apiFetch(...).then(setX).catch(() => {})`. Проблеми:
+
 1. `loadingCurrencies`/`loadingRates`/`loadingBa`/`loadingCr` оголошені, але `setLoading*(true)`
    ніколи не викликається — прапорці завжди `false`. `loadingRates`/`loadingBa`/`loadingCr`
    взагалі не читаються в JSX (мертвий код).
@@ -301,8 +394,6 @@ Empty-state блимає, помилки приховані, мертвий load
 **42/42 passed**, `/settings — немає console.error` + `/settings — overlay відсутній` зелені.
 Це НЕ код-баг — це stale-server environment issue. Канон додано у sto-tester §4.5.
 
-
-
 ### Baseline (cycle 3 — final)
 
 - TypeScript web/api/shared — ✅ 0 errors
@@ -335,11 +426,11 @@ Final cycle of the 3-cycle FULL sweep. Re-ran the complete §1.1–§1.7 static 
 
 ### Підсумок 3-циклового FULL прогону
 
-| Цикл | Знайдено | Виправлено | Коміт |
-|---|---|---|---|
-| 1/3 | Bug #144 (MEDIUM — work-orders line/part `$transaction` timeouts) | 1 | fb99cab |
-| 2/3 | 0 | 0 | 205cefc (docs) |
-| 3/3 | 0 | 0 | — (docs) |
+| Цикл | Знайдено                                                          | Виправлено | Коміт          |
+| ---- | ----------------------------------------------------------------- | ---------- | -------------- |
+| 1/3  | Bug #144 (MEDIUM — work-orders line/part `$transaction` timeouts) | 1          | fb99cab        |
+| 2/3  | 0                                                                 | 0          | 205cefc (docs) |
+| 3/3  | 0                                                                 | 0          | — (docs)       |
 
 Кодова база стабільна: 271 unit + 42 E2E + 139 component тестів зелені у всіх трьох циклах. TypeScript 0 errors. Build OK. Жодних регресій після fb99cab.
 
@@ -389,6 +480,7 @@ Focused on regression risk after fb99cab (Bug #144 — work-orders line/part `$t
 ### Bugs found this cycle: 1 (MEDIUM)
 
 Full static sweep §1.1–§1.7 was otherwise clean — previous fixes (Bug #127–#143) did not regress:
+
 - FSM via `WORK_ORDER_TRANSITIONS`, RESERVATION_ACTIVE_STATUSES on cancel, 10s timeout on transition tx ✅
 - Settlements: `Number.isFinite(amount) && amount > 0`, NotFoundException, CHARGE=+/PAYMENT=− ✅
 - Inventory: qty=0 / finite / RESERVATION_RELEASE positive-qty / insufficient stock/available/reserved guards ✅
@@ -452,26 +544,31 @@ Full static sweep §1.1–§1.7 was otherwise clean — previous fixes (Bug #127
 `SyncService.model(tableName)` робив наївний `snake_to_camel`: `work_orders → workOrders`, `counterparties → counterparties`, `warranties → warranties`. Але Prisma client експонує моделі у **СІНГУЛЯР** camelCase: `prisma.workOrder`, `prisma.counterparty`, `prisma.warranty`. Тобто `this.model('work_orders')` повертав `undefined`.
 
 У `getStatus()`:
+
 ```ts
 ...PULL_TABLES.map(table =>
   this.model(table).aggregate({...}).catch(...)  // ← .aggregate of undefined → TypeError
 )
 ```
+
 `.catch()` ловить тільки rejected Promise, а синхронне читання `.aggregate` на `undefined` кидає `TypeError` до того як Promise створюється — це не ловиться `Promise.all` catch, і виходить **HTTP 500**.
 
 У `pull()` помилка ховається `try/catch` всередині `.map()` — кожна таблиця "тихо скіпалась" і клієнт отримував завжди порожній масив, маскуючи факт що sync взагалі не працює.
 
 **Очікувана поведінка:**
+
 - `GET /api/sync/status` → 200 з `{ pendingJobs, failedJobs, lastSyncAt, maxSyncVersion }`
 - `GET /api/sync/pull?since=0` → 200 зі справжніми записами PULL_TABLES, а не порожнім масивом
 
 **Фактична поведінка (до фіксу):**
+
 - `GET /api/sync/status` → 500 `Внутрішня помилка сервера`
 - `GET /api/sync/pull` → 200 `[]` (завжди порожньо, незалежно від стану БД)
 - /settings/sync сторінка повністю зламана для всіх користувачів
 
 **Фікс:**
 Додано явний `TABLE_TO_MODEL: Record<string, string>` мапінг `work_orders → workOrder`, `counterparties → counterparty`, `warranties → warranty`, etc. (всі 15 PULL_TABLES). `model()` тепер:
+
 1. Спершу шукає в `TABLE_TO_MODEL` (для snake_case table names з sync).
 2. Fallback на `toCamel()` для прямих camelCase model names (`lift`, `employee`, `workOrder`) з `validateForeignKeys`.
 3. Кидає `Error('Невідома модель Prisma для таблиці: ...')` якщо нічого не знайдено — швидше провалюється на dev, ніж тихо повертає `undefined`.
@@ -491,28 +588,38 @@ Full static sweep §1.1–§1.7 was otherwise clean — previous fixes (Bug #127
 
 **Опис:**
 Після фіксу Bug #127 (`pull` тепер реально знаходить рядки), endpoint впав з новою 500. Причина:
+
 ```ts
-payload = { ...row };  // ← row.syncVersion is BigInt
+payload = { ...row }; // ← row.syncVersion is BigInt
 // ...
 return { table, id, operation, syncVersion: Number(row.syncVersion), payload };
 ```
+
 Outer `syncVersion` сконвертовано через `Number()`, але `payload` все ще містить BigInt-копію поля. Fastify/Nest робить `JSON.stringify(response)` → `TypeError: Do not know how to serialize a BigInt`.
 
 **Очікувана поведінка:**
+
 - `GET /api/sync/pull?since=0` → 200 з масивом записів де **всі** BigInt / Decimal поля конвертовані у `number`.
 
 **Фактична поведінка (до фіксу):**
+
 - `GET /api/sync/pull?since=0` → 500 `Внутрішня помилка сервера`
 
 **Фікс:**
 Замість `payload = { ...row }` робимо ручний прохід по полях:
+
 ```ts
 payload = {};
 for (const [k, v] of Object.entries(row)) {
   if (blacklist?.has(k)) continue;
   if (typeof v === 'bigint') {
     payload[k] = Number(v);
-  } else if (v !== null && typeof v === 'object' && 'toNumber' in v && typeof v.toNumber === 'function') {
+  } else if (
+    v !== null &&
+    typeof v === 'object' &&
+    'toNumber' in v &&
+    typeof v.toNumber === 'function'
+  ) {
     // Prisma.Decimal
     payload[k] = v.toNumber();
   } else {
@@ -520,10 +627,12 @@ for (const [k, v] of Object.entries(row)) {
   }
 }
 ```
+
 Також об'єднано з PULL_FIELD_BLACKLIST (PII filter для counterparties), щоб не робити два проходи.
 
 **Регресія:**
 У `sync.contract.spec.ts`:
+
 - "повертає 200 і коректно серіалізує BigInt syncVersion у payload" — мокає `findMany` з `syncVersion: 5n` і перевіряє, що в response `body.payload.syncVersion === 5` (число).
 
 **Статус:** [x] виправлено
@@ -532,21 +641,21 @@ for (const [k, v] of Object.entries(row)) {
 
 ## Перевірки які НЕ знайшли багів (verified clean)
 
-| Категорія | Покриття | Результат |
-|---|---|---|
-| BigInt sync version у findAll list endpoints (25 шт.) | `/notification-templates`, `/settings/organisation`, `/payment-methods`, `/brands`, `/work-categories`, `/works`, `/services`, `/settings/tax-rates`, `/warehouses`, `/branches`, `/employees`, `/vehicles`, `/goods`, `/counterparties`, `/work-orders`, `/invoices`, `/purchase-orders`, `/stock-documents`, `/stock-items`, `/completion-acts`, `/maintenance-schedules`, `/payments`, `/work-order-templates`, `/lifts`, `/zones` | ✅ all 200 |
-| limit=200 regression | `/work-orders?limit=200`, `/counterparties?limit=200`, `/goods?limit=200`, `/stock-items?limit=200`, `/vehicles?limit=200`, `/invoices?limit=200` | ✅ all 200 |
-| limit=300 still rejected | `/work-orders?limit=300`, `/counterparties?limit=300` | ✅ both 400 |
-| Static assets validity | `favicon.ico` (99 b PNG-as-ico), `icons/icon-192.png` (547 b), `icons/icon-512.png` (1881 b) | ✅ PNG magic headers correct |
-| Manifest icon refs exist | `/manifest.json` icons → `/icons/icon-192.png`, `/icons/icon-512.png` | ✅ both 200 |
-| Hard-delete on soft-deletable | grep `prisma.X.delete(`: 4 found (Comment, GoodBarcode, InvoiceLine, WorkOrderMedia) | ✅ all 4 are line-items/append-only without `deletedAt` field — intentional |
-| Tenant isolation | `findMany`/`findFirst`/`update`/`delete` with `orgId` | ✅ random sample of 30 endpoints OK |
-| Soft delete | `deletedAt: null` filters on all soft-deletable | ✅ |
-| Raw SQL identifier casing | `search.service.ts`, `inventory.service.ts`, `document-number.service.ts`, `dashboard.service.ts` | ✅ all use `"orgId"`/`"deletedAt"`/`"goodId"`/`"reserved"` camelCase double-quoted |
-| Blob URL revoke | invoices/page, reports/page, settlements/page, work-orders/[id]/PageClient (x2), xlsx-import-button | ✅ all 6 have `setTimeout(() => URL.revokeObjectURL(url), 100)` |
-| Inline HSL semantic colors | new files | ✅ no new regressions (documented exceptions in badge/button/input/select остались) |
-| Direct fetch/axios in components | only `/booking/page.tsx` (documented intentional pre-auth) | ✅ |
-| Hydration `new Date()` in render | all wrapped in `useEffect`/handlers or vehicle year placeholder (immutable on mount) | ✅ |
+| Категорія                                             | Покриття                                                                                                                                                                                                                                                                                                                                                                                                                              | Результат                                                                           |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| BigInt sync version у findAll list endpoints (25 шт.) | `/notification-templates`, `/settings/organisation`, `/payment-methods`, `/brands`, `/work-categories`, `/works`, `/services`, `/settings/tax-rates`, `/warehouses`, `/branches`, `/employees`, `/vehicles`, `/goods`, `/counterparties`, `/work-orders`, `/invoices`, `/purchase-orders`, `/stock-documents`, `/stock-items`, `/completion-acts`, `/maintenance-schedules`, `/payments`, `/work-order-templates`, `/lifts`, `/zones` | ✅ all 200                                                                          |
+| limit=200 regression                                  | `/work-orders?limit=200`, `/counterparties?limit=200`, `/goods?limit=200`, `/stock-items?limit=200`, `/vehicles?limit=200`, `/invoices?limit=200`                                                                                                                                                                                                                                                                                     | ✅ all 200                                                                          |
+| limit=300 still rejected                              | `/work-orders?limit=300`, `/counterparties?limit=300`                                                                                                                                                                                                                                                                                                                                                                                 | ✅ both 400                                                                         |
+| Static assets validity                                | `favicon.ico` (99 b PNG-as-ico), `icons/icon-192.png` (547 b), `icons/icon-512.png` (1881 b)                                                                                                                                                                                                                                                                                                                                          | ✅ PNG magic headers correct                                                        |
+| Manifest icon refs exist                              | `/manifest.json` icons → `/icons/icon-192.png`, `/icons/icon-512.png`                                                                                                                                                                                                                                                                                                                                                                 | ✅ both 200                                                                         |
+| Hard-delete on soft-deletable                         | grep `prisma.X.delete(`: 4 found (Comment, GoodBarcode, InvoiceLine, WorkOrderMedia)                                                                                                                                                                                                                                                                                                                                                  | ✅ all 4 are line-items/append-only without `deletedAt` field — intentional         |
+| Tenant isolation                                      | `findMany`/`findFirst`/`update`/`delete` with `orgId`                                                                                                                                                                                                                                                                                                                                                                                 | ✅ random sample of 30 endpoints OK                                                 |
+| Soft delete                                           | `deletedAt: null` filters on all soft-deletable                                                                                                                                                                                                                                                                                                                                                                                       | ✅                                                                                  |
+| Raw SQL identifier casing                             | `search.service.ts`, `inventory.service.ts`, `document-number.service.ts`, `dashboard.service.ts`                                                                                                                                                                                                                                                                                                                                     | ✅ all use `"orgId"`/`"deletedAt"`/`"goodId"`/`"reserved"` camelCase double-quoted  |
+| Blob URL revoke                                       | invoices/page, reports/page, settlements/page, work-orders/[id]/PageClient (x2), xlsx-import-button                                                                                                                                                                                                                                                                                                                                   | ✅ all 6 have `setTimeout(() => URL.revokeObjectURL(url), 100)`                     |
+| Inline HSL semantic colors                            | new files                                                                                                                                                                                                                                                                                                                                                                                                                             | ✅ no new regressions (documented exceptions in badge/button/input/select остались) |
+| Direct fetch/axios in components                      | only `/booking/page.tsx` (documented intentional pre-auth)                                                                                                                                                                                                                                                                                                                                                                            | ✅                                                                                  |
+| Hydration `new Date()` in render                      | all wrapped in `useEffect`/handlers or vehicle year placeholder (immutable on mount)                                                                                                                                                                                                                                                                                                                                                  | ✅                                                                                  |
 
 ---
 
@@ -562,6 +671,7 @@ for (const [k, v] of Object.entries(row)) {
 ## Знайдено багів у cycle 4: 0
 
 Статичний sweep покрив:
+
 - completion-acts.service.ts — orgId/deletedAt/toDto/no-hard-delete ✅
 - maintenance-schedules.service.ts — vehicle relation-filter/selective-recalc/no-hard-delete ✅
 - work-orders.service.ts — FSM via WORK_ORDER_TRANSITIONS/priority+repairCategory/side-effects ✅
@@ -611,6 +721,7 @@ for (const [k, v] of Object.entries(row)) {
 Cycle 3 виявив систематичну невідповідність: 15+ файлів використовують inline `text-[hsl(0_84%_42%)]`, `border-[hsl(0_84%_80%)]`, `text-[hsl(142_71%_30%)]`, `text-[hsl(199_89%_30%)]`, `text-[hsl(38_92%_30%)]` замість канонічних токенів `text-destructive-text`, `border-destructive-border`, `text-success-text`, `text-info-text`, `text-warning-text` (які вже визначені в `@theme` блоці `globals.css`).
 
 **Чому це баг (не cosmetics):**
+
 - Hardcoded HSL **не змінюється у dark mode** — у `.dark { }` блоці токени `--color-destructive-text` перевизначені на `hsl(0 84% 72%)`, але inline `text-[hsl(0_84%_42%)]` залишається темно-червоним → 1.8:1 контраст на темному фоні (WCAG fail).
 - Дублювання — будь-яка зміна палітри (rebrand, redesign) вимагає grep+replace по 15+ файлах замість редагування одного `globals.css`.
 - /sto-dev і /sto-review експліцитно вимагають canonical Tailwind tokens, але checklist досі не мав grep на `text-[hsl(`.
@@ -620,6 +731,7 @@ Cycle 3 виявив систематичну невідповідність: 15
 ## Bug #1 — [MEDIUM] Інлайн `text-[hsl(0_84%_42%)]` замість `text-destructive-text` у error banner-ах
 
 **Файли:**
+
 - `apps/web/src/app/(auth)/login/page.tsx:114`
 - `apps/web/src/app/crm/page.tsx:121,313`
 - `apps/web/src/app/inventory/page.tsx:85`
@@ -639,12 +751,15 @@ Cycle 3 виявив систематичну невідповідність: 15
 
 **Опис:**
 У всіх error banner-ах (і деяких inline ерор-текстах) рядки виглядають так:
+
 ```tsx
 <div className="text-[13px] text-[hsl(0_84%_42%)] bg-destructive-subtle border border-[hsl(0_84%_80%)] rounded-lg ...">
 ```
+
 Тоді як `globals.css` уже визначає `--color-destructive-text` (та `border`), і dark-mode перевизначає їх. Inline HSL не перемикається.
 
 **Очікувана поведінка:**
+
 ```tsx
 <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg ...">
 ```
@@ -659,6 +774,7 @@ Cycle 3 виявив систематичну невідповідність: 15
 ## Bug #2 — [MEDIUM] Інлайн `border-[hsl(0_84%_80%)]` замість `border-destructive-border`
 
 **Файли (ті ж що Bug #1, плюс):**
+
 - Зустрічаються у кількох сторінках одночасно з Bug #1; також у деяких файлах border використано через `border-destructive/20`.
 
 **Severity:** MEDIUM
@@ -674,6 +790,7 @@ Cycle 3 виявив систематичну невідповідність: 15
 ## Bug #3 — [LOW] Інлайн `text-[hsl(142_71%_30%)]` замість `text-success-text` у CRM balance
 
 **Файли:**
+
 - `apps/web/src/app/crm/page.tsx:209,281`
 
 **Severity:** LOW
@@ -689,6 +806,7 @@ Cycle 3 виявив систематичну невідповідність: 15
 ## Bug #4 — [LOW] Інлайн `text-[hsl(199_89%_30%)]` замість `text-info-text` у invoice info banner
 
 **Файл:**
+
 - `apps/web/src/app/invoices/page.tsx:422`
 
 **Severity:** LOW
@@ -704,6 +822,7 @@ Cycle 3 виявив систематичну невідповідність: 15
 ## Bug #5 — [LOW] Інлайн `text-[hsl(38_92%_30%)]` замість `text-warning-text` у inventory warning UI
 
 **Файли:**
+
 - `apps/web/src/app/inventory/page.tsx:95` (кнопка "Нижче мінімуму")
 - `apps/web/src/app/inventory/page.tsx:205` (low-stock detail banner)
 
@@ -720,6 +839,7 @@ Cycle 3 виявив систематичну невідповідність: 15
 ## Bug #6 — [LOW] Skill gap: відсутність checklist-перевірки на inline `text-[hsl(...)]` у /sto-review та /sto-tester
 
 **Файли:**
+
 - `.claude/skills/sto-tester/SKILL.md`
 - `.claude/skills/sto-review/SKILL.md`
 - `.claude/skills/sto-dev/SKILL.md`
@@ -732,12 +852,14 @@ Bugs #1-#5 — це 15+ місць однакового паттерну, яки
 
 **Очікувана поведінка:**
 `/sto-review` і `/sto-tester` мають містити команду:
+
 ```bash
 grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app apps/web/src/components --include="*.tsx"
 # Кожен hit має бути замінений на canonical token або задокументований як виняток (unique design tone без токена)
 ```
 
 **Винятки (acceptable):**
+
 - `badge.tsx` purple variant — `bg-[hsl(270_100%_97%)] text-[hsl(262_83%_44%)] border-[hsl(270_88%_82%)]` (немає purple токена в `@theme`)
 - `inventory/page.tsx:178,234` — `text-[hsl(25_95%_53%)]` для колонки reserved (унікальний помаранчевий, не входить в semantic palette)
 - `button.tsx:41` — `hover:bg-[hsl(0_84%_52%)]` для destructive hover (немає `--color-destructive-hover` токена)
@@ -745,12 +867,14 @@ grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app
 
 **Статус:** [x] частково виправлено — gap задокументовано в BUG_REPORT.md з grep командою та переліком винятків. Edit на `.claude/skills/sto-tester/SKILL.md` був заблокований дозволами (потрібен ручний апдейт користувачем — додати checklist пункт + grep команду нижче в розділ "Tailwind 4 canonical classes" §1.3 sto-tester та §3.3 sto-review):
 
-```markdown
+````markdown
 - [ ] **Жодних inline `text-[hsl(...)]` / `border-[hsl(...)]` / `bg-[hsl(...)]` для семантичних кольорів** — використовуй токени з `@theme`: `text-destructive-text`, `border-destructive-border`, `text-success-text`, `text-warning-text`, `text-info-text`, `bg-destructive-subtle`, etc. Inline HSL не перемикається в dark mode і ламає WCAG контраст.
   ```bash
   grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app apps/web/src/components --include="*.tsx"
   ```
-```
+````
+
+````
 
 ---
 
@@ -793,11 +917,13 @@ Baseline:
 if (dto.type === 'RECEIPT' && dto.quantity > 0 && dto.price) {
   await this.batchService.createFromReceipt(...);
 }
-```
+````
+
 Якщо `price` не передано (undefined) або дорівнює 0 — batch НЕ створюється, але `StockMovement` і `StockItem.quantity` оновлюються. У результаті: фізично товар є на складі, але жодної партії не існує. Подальша `consumeBatch` з режимом FIFO/LIFO/FEFO кине `BadRequestException('Недостатньо партій для списання')` — UI заблокує продаж/списання, хоч кількість > 0.
 
 **Очікувана поведінка:**
 Або:
+
 1. **Reject** — кидати `BadRequestException('Ціна оприбуткування обов\'язкова')` при `RECEIPT` без price; або
 2. **Auto-batch** — створити партію з `costPrice = 0` (партію з нульовою собівартістю можна потім скорегувати); але не залишати quantity без партії.
 
@@ -817,9 +943,11 @@ RECEIPT без price → quantity++, але немає батча → consumeBat
 **Категорія:** business-logic
 
 **Опис:**
+
 ```ts
-this.batchService.getAvgCost(orgId, goodId, warehouseId ?? '')
+this.batchService.getAvgCost(orgId, goodId, warehouseId ?? '');
 ```
+
 Коли `warehouseId` не передано (catalog page), у запит йде порожній рядок `''`. `prisma.stockBatch.findMany({ where: { warehouseId: '' } })` нічого не знайде → `avgCost = 0`. UI у `BatchViewerModal` показує "Сер. собівартість: 0,00 ₴" і ховає блок Маржі (бо `data.avgCostPrice > 0`), хоч у товару є партії в інших складах.
 
 **Очікувана поведінка:**
@@ -844,6 +972,7 @@ Catalog → "Партії" завжди показує середню собів
 Більш поширений випадок: видалений Good не повертає `pricingRule.good` у `findAll` (relation повертає null), тому в UI правило виглядає "Весь асортимент" замість "Товар: <Назва>". Це вводить менеджера в оману.
 
 **Очікувана поведінка:**
+
 1. При soft-delete товару — автоматично soft-delete пов'язаних `PricingRule` (де `goodId` дорівнює видаленому товару).
 2. В `pricing-rules.controller.findAll` — фільтрувати `where: { OR: [{ goodId: null }, { good: { deletedAt: null } }] }`, щоб не показувати правила з видаленими товарами.
 3. В `calculateSalePrice` — додати `OR` фільтр `{ goodId: null } | { good: { deletedAt: null } }`.
@@ -881,12 +1010,15 @@ Catalog → "Партії" завжди показує середню собів
 **Категорія:** typescript
 
 **Опис:**
+
 ```ts
 ...(rule.goodType ? { goodType: rule.goodType as never } : {}),
 ```
+
 `as never` — анти-патерн, який вимикає перевірку типів. `Good.goodType` у схемі: `GoodType?` enum. Правильне рішення — кастувати до `Prisma.EnumGoodTypeFilter` або до `GoodType` (з імпорту `@prisma/client`).
 
 **Очікувана поведінка:**
+
 ```ts
 import { GoodType } from '@prisma/client';
 ...(rule.goodType ? { goodType: rule.goodType as GoodType } : {}),
@@ -984,15 +1116,18 @@ DTO-валідатор: `@ValidateIf((o) => !o.goodId) goodCategory?` і т.д. 
 **Категорія:** frontend
 
 **Опис:**
+
 ```ts
 function margin(sale: number, cost: number) {
   if (!cost) return null;
-  return ((sale - cost) / sale * 100).toFixed(1);
+  return (((sale - cost) / sale) * 100).toFixed(1);
 }
 ```
+
 Захищено від `cost=0`, але ділиться на `sale`. Якщо `sale=0` → `Infinity`/`NaN` → `"NaN%"` у UI.
 
 **Очікувана поведінка:**
+
 ```ts
 if (!sale || !cost) return null;
 ```
@@ -1024,6 +1159,7 @@ if (!sale || !cost) return null;
 інтеграція з `InventoryService`, `StockDocumentsService` як споживач `createMovement(RECEIPT)`.
 
 Baseline:
+
 - `tsc` web/api/shared — ✅ 0 errors
 - Unit/contract/property — ✅ 105/105 passed (12 файлів)
 
@@ -1101,11 +1237,15 @@ Bare array `[]` / `StockBatchDto[]`.
 **Категорія:** frontend / error-handling
 
 **Опис:**
+
 ```typescript
 apiFetch<{ items: Good[] }>('/goods?limit=500')
-  .then(r => { if (!cancelled) setGoods(r.items); })
-  .catch(() => {});  // ← ковтаємо все
+  .then(r => {
+    if (!cancelled) setGoods(r.items);
+  })
+  .catch(() => {}); // ← ковтаємо все
 ```
+
 Порушує §1.1: "Catch не ковтає всі помилки". При API-failure форма правил рендериться з порожнім списком товарів — користувач не знає чому.
 
 **Очікувана поведінка:**
@@ -1167,6 +1307,7 @@ Endpoint `GET /goods/:id/batches` повертає `[]` коли goodId не і�
 ### Знайдено багів у cycle 5: 1
 
 Статичний sweep cycle 4 фіксів покрив:
+
 - `inventory.service.createMovement` — RECEIPT price fallback на good.purchasePrice ✅ (Bug #26 не регресував)
 - `UpdatePricingRuleDto` — @Min(0)/@Max(10000) на percentValue/fixedAmount/fixedPrice ✅ (Bug #27 не регресував)
 - `GoodsController.getBatches/getPriceHistory` — `{ items, total }` paginated shape + 404 коли good відсутній ✅ (Bug #28+#31 не регресували)
@@ -1225,9 +1366,11 @@ ValidationPipe повертає `400 Bad Request: "limit must not be greater tha
 
 **Опис:**
 DTO `CreatePricingRuleDto.goodType` / `UpdatePricingRuleDto.goodType` має лише `@IsString()` без enum-валідації. Сервіс `applyRuleToGoods` (line 84) кастить значення до `GoodType` для filter Good-таблиці:
+
 ```ts
 ...(rule.goodType ? { goodType: rule.goodType as GoodType } : {})
 ```
+
 Якщо адміністратор створює правило з `goodType: 'CONSUMABLE_TYPO'` (опечатка) або через API напряму — endpoint POST `/pricing-rules/:id/apply-all` падає з `500 Internal Server Error`, бо Postgres повертає `invalid input value for enum GoodType: "CONSUMABLE_TYPO"`.
 
 Узгоджується з §1.1 чеклістом: "DTO validators must match runtime contract". Frontend дає select з 4 опціями, але API не валідує і приймає будь-який рядок.
@@ -1253,6 +1396,7 @@ DTO приймає, БД зберігає, `applyRuleToGoods` падає з 500.
 
 **Опис:**
 `findStockItems` фільтрує `StockItem.deletedAt: null`, але `include: { good, warehouse }` без relation-фільтра `deletedAt: null`. Якщо адмін soft-deleted товар або склад, відповідні `StockItem` записи все ще активні (StockMovement пишеться на видалений товар не повинен, але існуючий запас залишається). У результаті:
+
 - сторінка `/inventory` показує позиції з soft-deleted товарами/складами
 - `findLowStockItems` (raw SQL нижче) фільтрує `g.deletedAt IS NULL`/`w.deletedAt IS NULL` — є невідповідність між двома endpoint-ами одного модуля
 
@@ -1266,6 +1410,7 @@ DTO приймає, БД зберігає, `applyRuleToGoods` падає з 500.
 
 **Виправлення:**
 Додати в `where`:
+
 ```ts
 good: { deletedAt: null, ...(q ? { name: { contains: q, mode: 'insensitive' } } : {}) },
 warehouse: { deletedAt: null },
@@ -1283,6 +1428,7 @@ warehouse: { deletedAt: null },
 
 **Опис:**
 `normalizeScope(dto)` коректно очищає менш специфічні поля **лише коли користувач явно передав `goodId`** у DTO. У PATCH-сценарії "змінити правило з `goodId=A` на `goodCategory=X`" клієнт надсилає `{ goodId: null, goodCategory: 'X' }` АБО `{ goodCategory: 'X' }` (без `goodId`). У другому випадку:
+
 - `normalizeScope` бачить `clone.goodId === undefined` → falsy → переходить до `else if (clone.goodCategory)` → нулить `goodType`
 - АЛЕ існуючий `goodId` у БД залишається!
 - Результат: правило має одночасно `goodId` І `goodCategory` → у `applyRuleToGoods` спрацьовує `WHERE id = goodId AND category = goodCategory` → жоден товар не матчиться (ймовірно) → правило виглядає "немає товарів для застосування".
@@ -1299,6 +1445,7 @@ PATCH з `{ goodCategory: 'X' }` (без `goodId`) при правилі з ра
 В `update` PATCH: якщо `dto.goodCategory !== undefined` і `existing.goodId !== null` і `dto.goodId === undefined` → автоматично зануляти `goodId` у нормалізованому payload (merge існуючого з новим scope hierarchy).
 
 Спрощений патч:
+
 ```ts
 const merged = { ...existing, ...dto };
 const normalized = this.normalizeScope(merged);
@@ -1392,6 +1539,7 @@ DTO `UpdateOrganisationSettingsDto.uiFeatures` декларовано як `Part
 
 **Очікувана поведінка:**
 DTO повинен:
+
 1. Білити список ключів (whitelist) — лише 10 boolean-ів з `UiFeatures`.
 2. Або у `settings.service.ts` явно `pick`-ати дозволені ключі перед merge.
 
@@ -1402,6 +1550,7 @@ Validation помилка → 400.
 
 **Виправлення (мінімальне):**
 У `settings.service.ts:64-68` замість `{ ...currentFeatures, ...dto.uiFeatures }` зробити whitelist pick через `UI_FEATURES_DEFAULTS` keys:
+
 ```ts
 const allowedKeys = Object.keys(UI_FEATURES_DEFAULTS) as (keyof UiFeatures)[];
 const sanitized: Partial<UiFeatures> = {};
@@ -1431,6 +1580,7 @@ Phase 19.2 вводить feature flag `unsavedGuardEnabled` (default true) і `
 
 **Очікувана поведінка:**
 Принаймні один modal/форма (типово LineModal / PartModal у WorkOrder PageClient, або templateEditor у Settings) має:
+
 1. Імпортувати `useDirtyForm({ enabled: features.unsavedGuardEnabled })`.
 2. Викликати `markDirty()` у onChange кожного поля.
 3. Викликати `confirmClose()` у onClose обгортці і `resetDirty()` після успішного save.
@@ -1452,11 +1602,12 @@ Hook існує як dead code; feature toggle обіцяє функціонал
 **Категорія:** react / memory-leak
 
 **Опис:**
+
 ```ts
 useEffect(() => {
   const handler = () => {
     invalidateUiFeaturesCache();
-    loadFeatures().then(setFeatures);   // ← no cancelled guard
+    loadFeatures().then(setFeatures); // ← no cancelled guard
   };
   window.addEventListener('sto:ui-features-change', handler);
   return () => window.removeEventListener('sto:ui-features-change', handler);
@@ -1474,15 +1625,21 @@ useEffect(() => {
 Можливий setState після unmount при швидкій навігації.
 
 **Виправлення:**
+
 ```ts
 useEffect(() => {
   let cancelled = false;
   const handler = () => {
     invalidateUiFeaturesCache();
-    loadFeatures().then(f => { if (!cancelled) setFeatures(f); });
+    loadFeatures().then(f => {
+      if (!cancelled) setFeatures(f);
+    });
   };
   window.addEventListener('sto:ui-features-change', handler);
-  return () => { cancelled = true; window.removeEventListener('sto:ui-features-change', handler); };
+  return () => {
+    cancelled = true;
+    window.removeEventListener('sto:ui-features-change', handler);
+  };
 }, []);
 ```
 
@@ -1498,12 +1655,14 @@ useEffect(() => {
 
 **Опис:**
 Новий endpoint `GET /settings/ui-features` доступний всім авторизованим ролям, повертає `UiFeatures` shape. Frontend `useUiFeatures` довіряє цьому контракту і кешує модульно. Відсутність contract-тесту означає що:
+
 - Зміна `OrganisationSettingsResponseDto.uiFeatures` без оновлення мапінгу не буде помічена тестами.
 - Не перевіряється, що `403/401` повертається при відсутньому токені.
 - Не перевіряється partial-merge поведінка `PATCH /settings/organisation` з `uiFeatures`.
 
 **Очікувана поведінка:**
 Contract test у `apps/api/src/modules/settings/settings.contract.spec.ts` що покриває:
+
 - `GET /settings/ui-features` → 200 + boolean keys
 - `PATCH /settings/organisation { uiFeatures: { toastEnabled: false } }` → 200 + merged result
 - `PATCH /settings/organisation { uiFeatures: { unknownKey: true } }` → 200 і unknownKey ВІДКИНУТО (після Bug #38 fix)
@@ -1524,6 +1683,7 @@ Coverage = 0% у settings module.
 Сесія: tester sweep після review fixes (commit 5e74ffb) — `command-palette.tsx`, `commands.ts`, `useKeyboardShortcut.ts`, `useGlobalShortcuts.ts`, `TopShell.tsx`
 
 ### Baseline
+
 - TypeScript web/api/shared — ✅ 0 errors
 - Unit + contract + property API — ✅ 117/117 passed (13 файлів)
 - Component (web vitest) — ✅ 42/42 passed (4 файли)
@@ -1556,6 +1716,7 @@ Outer dialog `<div>` має `onMouseDown={(e) => { if (e.target === e.currentTar
 **Виправлення:**
 Перемістити `onMouseDown` з outer div на backdrop div (бо саме backdrop отримує клік).
 Або додати `onMouseDown` на сам backdrop:
+
 ```tsx
 <div className="absolute inset-0 bg-black/40 ..." onMouseDown={onClose} aria-hidden="true" />
 ```
@@ -1588,9 +1749,11 @@ Outer dialog `<div>` має `onMouseDown={(e) => { if (e.target === e.currentTar
 
 **Виправлення:**
 Замінити `onMouseEnter` на `onMouseMove` — браузер видає `mousemove` лише при реальному русі курсора:
+
 ```tsx
 onMouseMove={() => { if (activeIndex !== idx) setActiveIndex(idx); }}
 ```
+
 Перевірка `if (activeIndex !== idx)` уникає зайвих setState.
 
 **Статус:** [x] виправлено
@@ -1615,6 +1778,7 @@ O(N) рендер: знайти індекс через `Map<Command, number>` �
 
 **Виправлення:**
 Замість `flatList.indexOf(cmd)` побудувати `Map<Command, number>` перед рендером:
+
 ```tsx
 const flatIndex = useMemo(() => {
   const map = new Map<Command, number>();
@@ -1622,6 +1786,7 @@ const flatIndex = useMemo(() => {
   return map;
 }, [flatList]);
 ```
+
 Тоді `const idx = flatIndex.get(cmd)!;` — O(1).
 
 **Статус:** [x] виправлено
@@ -1636,6 +1801,7 @@ const flatIndex = useMemo(() => {
 
 **Опис:**
 Compose-палітра — це паттерн `combobox + listbox`. Поточна реалізація:
+
 - Список результатів — звичайний `<div>`, без `role="listbox"`.
 - Кнопки результатів — `<button>`, без `role="option"` і `aria-selected`.
 - Інпут — без `aria-activedescendant` що вказує на поточний обраний пункт.
@@ -1649,6 +1815,7 @@ ARIA combobox pattern (`role="combobox"` на input, `aria-controls` → listbox
 і `aria-selected={isActive}`).
 
 **Виправлення:**
+
 1. Додати `role="listbox"` + `id` на контейнер результатів.
 2. Кожна `<button>` отримує `role="option"`, `aria-selected={isActive}`, унікальний `id`.
 3. Інпут — `role="combobox"`, `aria-controls={listboxId}`,
@@ -1661,11 +1828,13 @@ ARIA combobox pattern (`role="combobox"` на input, `aria-controls` → listbox
 ## Session 2026-05-26 — Group 3 (Saved Filters + Inline Edit) tester sweep
 
 Базова перевірка:
+
 - `tsc` web/api/shared — ✅ 0 errors
 - Unit + contract + property API — ✅ 117/117 passed (13 файлів)
 - Web component tests — ✅ 55/55 passed (5 файлів)
 
 Аналіз зосереджений на нових файлах Group 3:
+
 - `apps/web/src/hooks/useSavedFilters.ts`
 - `apps/web/src/components/ui/saved-filters-bar.tsx`
 - `apps/web/src/components/ui/inline-edit-cell.tsx`
@@ -1686,6 +1855,7 @@ ARIA combobox pattern (`role="combobox"` на input, `aria-controls` → listbox
 
 **Опис:**
 Глобальний `ValidationPipe` не має `exceptionFactory` що локалізує повідомлення. Тому всі помилки валідації з class-validator повертаються англійською:
+
 - `dueDate must be a valid ISO 8601 date string`
 - `vehicleId must be a UUID`
 - `quantity must be a number conforming to the specified constraints`
@@ -1732,6 +1902,7 @@ Promise rejection обробляється на call-site (мовчазно, б�
 
 **Виправлення:**
 Додати `.catch(() => {})` (тост вже показаний в `onSave`):
+
 ```ts
 onChange={e => { void inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
 onCommit={v => { void inlineEdit.commitEdit(v).catch(() => {}); }}
@@ -1775,9 +1946,11 @@ Text input, користувач має знати формат дати, пом
 **Категорія:** accessibility
 
 **Опис:**
+
 ```tsx
 <span role="button" tabIndex={0} title="Натисніть для редагування" ...>
 ```
+
 Має `title` атрибут (показується як tooltip), але NVDA/JAWS можуть його НЕ озвучити. WAI-ARIA вимагає `aria-label` або текстовий контент для `role="button"`. Якщо `children` — це Badge без тексту або іконка, скрін-рідер прочитає лише "клацабельний елемент".
 
 **Очікувана поведінка:**
@@ -1802,10 +1975,12 @@ Text input, користувач має знати формат дати, пом
 **Категорія:** robustness
 
 **Опис:**
+
 ```ts
 const raw = localStorage.getItem(storageKey);
 return raw ? (JSON.parse(raw) as SavedFilter<T>[]) : [];
 ```
+
 `JSON.parse` повертає що завгодно — `null`, `{...}`, `42`, "string". Якщо інший таб або користувач вставив у DevTools `localStorage.setItem('sto_filters_work-orders', '{}')` — `read()` поверне `{}` як `SavedFilter<T>[]`. Потім `SavedFiltersBar.saved.map(...)` крашиться (`.map is not a function`) і компонент рендерить error boundary.
 
 **Очікувана поведінка:**
@@ -1815,6 +1990,7 @@ return raw ? (JSON.parse(raw) as SavedFilter<T>[]) : [];
 Можливий runtime crash при corrupted localStorage.
 
 **Виправлення:**
+
 ```ts
 const parsed = JSON.parse(raw);
 return Array.isArray(parsed) ? (parsed as SavedFilter<T>[]) : [];
@@ -1836,6 +2012,7 @@ return Array.isArray(parsed) ? (parsed as SavedFilter<T>[]) : [];
 Group 3 додав 4 нові примітиви UI без тестів. Існуючий патерн (`button.test.tsx`, `modal.test.tsx`, `command-palette.test.tsx`) показує що тести компонентів очікувані.
 
 **Очікувана поведінка:**
+
 - `saved-filters-bar.test.tsx` — empty state; рендер пресетів; клік Save → відкриває input; Enter зберігає; Esc закриває; Remove видаляє.
 - `inline-edit-cell.test.tsx` — рендер з value; Enter commit; Escape cancel; Check/X кнопки; aria-labels.
 - `useInlineEdit.test.tsx` — startEdit/commitEdit/cancelEdit; saving guard блокує double-commit; trimmed equal skips save.
@@ -1848,6 +2025,7 @@ Group 3 додав 4 нові примітиви UI без тестів. Існ�
 Додати 4 файли тестів вище. Покриття ≥80% для кожного хука/компонента.
 
 **Реалізація:** додано 4 тестових файли (+45 нових тестів):
+
 - `apps/web/src/components/ui/__tests__/saved-filters-bar.test.tsx` — 9 тестів
 - `apps/web/src/components/ui/__tests__/inline-edit-cell.test.tsx` — 17 тестів (включаючи InlineViewCell)
 - `apps/web/src/hooks/useInlineEdit.test.tsx` — 10 тестів (включаючи savingRef double-commit guard)
@@ -1917,6 +2095,7 @@ useEffect(() => {
 Після зміни джерела `items` (інша сторінка / інші фільтри) Set повинен містити лише ті ID, що **реально присутні** у новому списку. Або хук повинен ефективно фіксувати «потенційно небачені» вибори, або ауто-pruning при зміні масиву.
 
 **Фактична поведінка:**
+
 1. User обирає 5 рядків на сторінці 1.
 2. Перемикається на сторінку 2 — `bulkSelect.count` показує 5, хоча на сторінці 2 нічого не обрано.
 3. `bulkSelect.allSelected` обчислюється від `items.length` → false, але `someSelected` true (плутає UI чекбокса "select all").
@@ -1952,6 +2131,7 @@ useEffect(() => {
 
 **Опис:**
 `bulkCancel` і `bulkArchive` використовують `await Promise.all(ids.map(id => apiFetch(...)))`. При FSM-валідації (наприклад, спроба `ARCHIVE` з не-PAID статусу) сервер кидає `400 BadRequestException`. `Promise.all` rejects при першому fail → success-toast і `bulkSelect.clear()` не викликаються. Частина WO може вже перейти у новий статус, але:
+
 - `setError` показує тільки повідомлення першої помилки
 - `bulkSelect.clear()` не виконується → старі вибрані IDs залишаються в UI
 - `load()` не викликається → таблиця показує застарілі статуси
@@ -2032,6 +2212,7 @@ User натискає "Архівувати" → bulk запит → перши�
 
 **Виправлення:**
 Додати `*.test.tsx` тестові файли:
+
 - `useBulkSelect.test.tsx` — toggle, toggleAll, clear, isSelected, pruning при зміні items
 - `bulk-actions-bar.test.tsx` — рендер кількості, виклик дій з selectedIds, onClear
 - `notification-center.test.tsx` — додавання/markRead/markAllRead/remove, localStorage persist
@@ -2041,10 +2222,10 @@ User натискає "Архівувати" → bulk запит → перши�
 
 ---
 
-
 ## Session 2026-05-26 — Phase 17 InvoiceLine + DetailPanel race protection (commits ce37b48, c938dc0)
 
 Тестування `apps/web/src/app/invoices/page.tsx` після додавання:
+
 - `InvoiceLine` interface + lines table в DetailPanel
 - `OVERDUE` status + transitions
 - VAT breakdown (`totalWithoutVat/totalVat/totalWithVat`)
@@ -2059,6 +2240,7 @@ User натискає "Архівувати" → bulk запит → перши�
 **Категорія:** frontend (state-update race)
 
 **Опис:**
+
 ```typescript
 const handleTransition = async (inv: Invoice, newStatus: string) => {
   ...
@@ -2074,6 +2256,7 @@ const handleTransition = async (inv: Invoice, newStatus: string) => {
 який може вже бути іншим запи��ом.
 
 Сценарій:
+
 1. Користувач відкриває панель з INV-A → `selectedInv=A`
 2. Натискає «Скасувати» на рядку INV-A (`inv=A`, замикання `selectedInv=A`)
 3. До завершення запиту натискає рядок INV-C → `selectedInv=C`
@@ -2082,8 +2265,9 @@ const handleTransition = async (inv: Invoice, newStatus: string) => {
 
 **Очікувана поведінка:**
 Перевірка має бути всередині функціонального setter, щоб порівнювати з актуальним стейтом:
+
 ```typescript
-setSelectedInv(prev => prev?.id === inv.id ? { ...prev, status: newStatus } : prev);
+setSelectedInv(prev => (prev?.id === inv.id ? { ...prev, status: newStatus } : prev));
 ```
 
 **Фактична поведінка:**
@@ -2107,6 +2291,7 @@ totalWithoutVat/Vat/WithVat не оновлено, lines не оновлено).
 
 **Очікувана поведінка:**
 Після успішної оплати потрібно або:
+
 - закрити DetailPanel (`setSelectedInv(null)`), щоб показ був консистентний; або
 - повторно завантажити деталі: `apiFetch<Invoice>(/invoices/${id})` і оновити `selectedInv`.
 
@@ -2125,6 +2310,7 @@ DetailPanel показує `SENT` статус та action button «Оплати
 **Категорія:** frontend (UX / data display)
 
 **Опис:**
+
 ```typescript
 {!detailLoading && selectedInv.totalWithVat != null && (
   <div className="space-y-1.5 pt-2 border-t border-border">
@@ -2143,6 +2329,7 @@ Prisma defaults `totalWithoutVat/totalVat/totalWithVat = 0`. Для рахунк
 
 **Очікувана поведінка:**
 Показувати «Підсумок з ПДВ» лише коли він реально розрахований (є лінії або сума > 0):
+
 ```typescript
 {!detailLoading && (selectedInv.lines?.length ?? 0) > 0 && selectedInv.totalWithVat != null && (
   ...
@@ -2175,6 +2362,7 @@ Prisma defaults `totalWithoutVat/totalVat/totalWithVat = 0`. Для рахунк
 
 **Опис:**
 Прямий запит:
+
 ```sql
 SELECT g.id, g.name, g.sku,
        si.quantity - COALESCE(si."reservedQty", 0) AS available
@@ -2183,6 +2371,7 @@ LEFT JOIN stock_items si ON si."goodId" = g.id AND si."deletedAt" IS NULL
 ```
 
 Колонка в schema.prisma:
+
 ```
 model StockItem {
   reserved    Float     @default(0)
@@ -2208,6 +2397,7 @@ Prisma без `@map` створює Postgres колонку double-quoted **came
 **Категорія:** API contract mismatch / frontend
 
 **Опис:**
+
 ```typescript
 apiFetch<{ items: Branch[] }>('/branches').then(r => setBranches(r.items ?? [])),
 ```
@@ -2217,8 +2407,9 @@ apiFetch<{ items: Branch[] }>('/branches').then(r => setBranches(r.items ?? []))
 `work-orders/page.tsx:219` запитує той самий endpoint правильно: `apiFetch<Branch[]>('/branches').then(setBranches)`.
 
 **Очікувана поведінка:**
+
 ```typescript
-apiFetch<Branch[]>('/branches').then(setBranches)
+apiFetch<Branch[]>('/branches').then(setBranches);
 ```
 
 **Фактична поведінка:**
@@ -2235,6 +2426,7 @@ Multi-select філій порожній, B10 призначення філій 
 **Категорія:** security / frontend / API contract
 
 **Опис:**
+
 ```typescript
 const url = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api'}/invoices/${selectedInv.id}/pdf`;
 const a = document.createElement('a');
@@ -2243,6 +2435,7 @@ a.download = `invoice-...`;
 ```
 
 Дві проблеми:
+
 1. **Bare `<a href>`** не приєднує `Authorization: Bearer …`. JWT-guarded ендпоінт `/invoices/:id/pdf` повертає 401 — користувач отримує сторінку «Сесія недійсна» замість PDF.
 2. **Неконсистентний baseURL**: fallback `'http://localhost:3000/api'` має суфікс `/api`, а env var `NEXT_PUBLIC_API_URL` (за конвенцією WO PageClient) — БЕЗ `/api`. Якщо env var встановлено (production), шлях стане `http(s)://api.example.com/invoices/...` без префіксу `/api` → 404.
 
@@ -2266,11 +2459,13 @@ PDF не завантажується (401), плюс некоректний URL
 
 **Опис:**
 Frontend `employees/page.tsx:128-145` будує параметри `q`, `role`, `showDeleted` і шле їх до `/employees?q=...&role=ADMIN`. Але контролер:
+
 ```typescript
 findAll(@OrgContext() orgId: string) {
   return this.service.findAll(orgId);
 }
 ```
+
 Жодного `@Query()` параметра не визначено. Service фільтрує лише `orgId, deletedAt: null`. Параметри тихо ігноруються (NestJS ValidationPipe `forbidNonWhitelisted` не діє на @Query без DTO).
 
 Результат: пошук, фільтр посади, перемикач «Показати видалені» **нічого не роблять** — список не змінюється.
@@ -2292,6 +2487,7 @@ findAll(@OrgContext() orgId: string) {
 **Категорія:** frontend (UX)
 
 **Опис:**
+
 ```typescript
 perform: ({ router: r }) => {
   const basePath = DATA_ROUTE[item.type] ?? '/';
@@ -2304,6 +2500,7 @@ perform: ({ router: r }) => {
 `/crm/[id]/page.tsx` існує — рішення є. `/catalog` (без [id]) — теж є, тому goods приймаємо як виняток (deeplink не існує, поки що залишаємо `/catalog`).
 
 **Очікувана поведінка:**
+
 - `wo` → `/work-orders/${item.id}` (вже працює)
 - `counterparty` → `/crm/${item.id}` (детальна сторінка)
 - `good` → `/catalog` (deeplink не існує)
@@ -2322,6 +2519,7 @@ perform: ({ router: r }) => {
 **Категорія:** security / tenant isolation
 
 **Опис:**
+
 ```typescript
 async update(orgId, id, dto) {
   await this.findOne(orgId, id);
@@ -2344,8 +2542,11 @@ async remove(orgId, id) {
 `findOne` тут діє як guard, але це лише defense-in-depth — будь-який рефакторинг, що обіймає лише `update()`, втратить tenant ізоляцію.
 
 **Очікувана поведінка:**
+
 ```typescript
-where: { id, orgId }
+where: {
+  (id, orgId);
+}
 ```
 
 **Фактична поведінка:**
@@ -2362,6 +2563,7 @@ where: { id, orgId }
 **Категорія:** frontend (UX) / business-logic
 
 **Опис:**
+
 ```tsx
 <Select ...
   onChange={e => {
@@ -2372,6 +2574,7 @@ where: { id, orgId }
 ```
 
 Обіцянка фічі F10 (per commit message): «select on create pre-fills description». Поточна реалізація:
+
 1. Записує `template.name` у поле опису — тобто опис стає назвою шаблону.
 2. **Не використовує `lines`/`parts` шаблону взагалі** — frontend їх не завантажує (запит `/work-order-templates?limit=100` повертає `{ name, id }` шейп, а lines/parts відкидаються).
 
@@ -2403,8 +2606,12 @@ where: { id, orgId }
 
 **Опис:**
 Поточний код:
+
 ```typescript
-const vfsFonts = require('pdfmake/build/vfs_fonts') as { pdfMake?: { vfs?: Record<string, string> }; vfs?: Record<string, string> };
+const vfsFonts = require('pdfmake/build/vfs_fonts') as {
+  pdfMake?: { vfs?: Record<string, string> };
+  vfs?: Record<string, string>;
+};
 // ...
 const vfs = vfsFonts.pdfMake?.vfs ?? vfsFonts.vfs ?? {};
 pdfMake.setFonts({
@@ -2416,17 +2623,20 @@ pdfMake.setFonts({
 ```
 
 Файл `pdfmake/build/vfs_fonts.js` v0.3.9 експортує **сам vfs словник напряму**:
+
 ```js
-module.exports = vfs;  // { 'Roboto-Italic.ttf': '...', 'Roboto-Medium.ttf': '...', ... }
+module.exports = vfs; // { 'Roboto-Italic.ttf': '...', 'Roboto-Medium.ttf': '...', ... }
 ```
 
 І тип `@types/pdfmake/build/vfs_fonts.d.ts` підтверджує:
+
 ```ts
 declare const vfs: TVirtualFileSystem;
 export = vfs;
 ```
 
 Тому `vfsFonts.pdfMake` і `vfsFonts.vfs` обидва — `undefined`, fallback `?? {}` спрацьовує завжди. Усі чотири шрифти стають `Buffer.from('', 'base64')` — порожні буфери. При першому виклику `generateInvoicePdf` або `generateWorkOrderPdf` pdfmake внутрішньо падає з:
+
 ```
 TypeError: Cannot read properties of undefined (reading 'toLowerCase')
 ```
@@ -2436,14 +2646,15 @@ TypeError: Cannot read properties of undefined (reading 'toLowerCase')
 **Цей баг **повністю ламає** B7 «PDF export для invoices та work-orders».** Користувач натискає «Завантажити PDF» — фронт отримує 500 + повідомлення «Помилка завантаження PDF».
 
 **Очікувана поведінка:**
+
 ```typescript
 // vfs_fonts.js export shape = TVirtualFileSystem (Record<string, string>)
 const vfs = require('pdfmake/build/vfs_fonts') as Record<string, string>;
 pdfMake.setFonts({
   Roboto: {
-    normal:      Buffer.from(vfs['Roboto-Regular.ttf'],      'base64'),
-    bold:        Buffer.from(vfs['Roboto-Medium.ttf'],       'base64'),
-    italics:     Buffer.from(vfs['Roboto-Italic.ttf'],       'base64'),
+    normal: Buffer.from(vfs['Roboto-Regular.ttf'], 'base64'),
+    bold: Buffer.from(vfs['Roboto-Medium.ttf'], 'base64'),
+    italics: Buffer.from(vfs['Roboto-Italic.ttf'], 'base64'),
     bolditalics: Buffer.from(vfs['Roboto-MediumItalic.ttf'], 'base64'),
   },
 });
@@ -2457,14 +2668,17 @@ TypeScript «as» каст приховав реальну форму експо
 
 **Глибше дослідження після експерименту:**
 Навіть коли vfs передається коректно з реальними base64-даними, pdfmake v0.3.9 server-side НЕ приймає `Buffer` у `setFonts()`. Його URLResolver очікує **string path/URL**:
+
 ```
 TypeError: Cannot read properties of undefined (reading 'toLowerCase')
   at URLResolver.resolve(url) — бо url = bufferObject.url = undefined
   at Printer.resolveUrls — обходить font descriptors, передає кожен у URLResolver
 ```
+
 Канонічний server-side рецепт — використати `require('pdfmake/fonts/Roboto')`, який повертає вже готовий descriptor зі шляхами до `.ttf` файлів на диску (`pdfmake/fonts/Roboto/Roboto-Regular.ttf` etc).
 
 **Фікс:**
+
 1. Замість `pdfmake/build/vfs_fonts` → використати `pdfmake/fonts/Roboto` (string paths, не buffers).
 2. Додано boot-time guard: якщо descriptor.Roboto?.normal відсутній — throw з зрозумілим повідомленням.
 3. Додано `pdf.service.spec.ts` з трьома integration тестами (invoice, work-order, empty arrays) — кожен генерує реальний PDF buffer і перевіряє `%PDF` magic header. Регресія тепер буде впійманою при першому ж test run.
@@ -2497,6 +2711,7 @@ TypeError: Cannot read properties of undefined (reading 'toLowerCase')
 
 **Опис:**
 `create()` і `update()` встановлюють `isMain=true` за схемою:
+
 1. Усередині `$transaction`: `updateMany({ where: { orgId, deletedAt: null, id: { not: id } }, data: { isMain: false } })` — знімає прапорець з усіх інших складів.
 2. Потім `create()` / `update()` створює/оновлює потрібний.
 
@@ -2511,6 +2726,7 @@ Frontend код в усіх трьох сторінках вибирає `data.f
 БД не валідує — service-layer race-window дозволяє мати ≥2 main warehouse.
 
 **Фікс:**
+
 1. Створити нову Prisma міграцію `20260526150000_warehouse_is_main_unique`:
    ```sql
    CREATE UNIQUE INDEX "warehouses_orgId_isMain_unique"
@@ -2573,9 +2789,11 @@ MECHANIC отримує 403, форма недоступна.
 
 **Фікс:**
 У `addPart()` (рядок 334) зберігати `warehouseId` при reset:
+
 ```ts
 setPartForm(f => ({ goodId: '', warehouseId: f.warehouseId, quantity: '1', price: '' }));
 ```
+
 Альтернатива — обчислити `mainW.id` у `partForm` initial state через useMemo з warehouses, але це додає circular dependency. Зберегти останній обраний — простіше і UX-краще.
 
 **Статус:** [x] виправлено
@@ -2601,11 +2819,12 @@ Review-фікс у commit 83921d2 додав `vehicleReqRef` guard від stale 
 ```
 
 Сценарій:
+
 1. Користувач обирає клієнта A → `loadVehicles(A)` стартує.
 2. Поки fetch у польоті, користувач **встигає вибрати vehicle вручну** (наприклад, з cached optimistic dropdown — припустимо, в майбутньому).
 3. Fetch повертається з 1-vehicle відповіддю → `setForm(f => ({ ...f, vehicleId: ... }))` **перетирає manual pick**.
 
-У *цьому commit* перетирання не критичне через `disabled={!form.counterpartyId}` на vehicle select, але в інших ауто-селектах (branchId, warehouseId) review-фікс свідомо додав `f.x ? f : {...}` patron. Тут — пропустили.
+У _цьому commit_ перетирання не критичне через `disabled={!form.counterpartyId}` на vehicle select, але в інших ауто-селектах (branchId, warehouseId) review-фікс свідомо додав `f.x ? f : {...}` patron. Тут — пропустили.
 
 Інша проблема: `length === 1` гілка спрацьовує **кожного разу при перемиканні counterparty** на іншого, в якого теж 1 авто — навіть якщо vehicleId уже встановлено (хоч би й до того іншого авто). У такому випадку перетирання потрібне і правильне (бо це новий клієнт), але цей нюанс має бути виправлений через `setForm(f => ({ ...f, counterpartyId, vehicleId: '' }))` у `onChange` клієнта (рядок 820) — який уже є. Тому достатньо в `loadVehicles` додати такий же patron `f.vehicleId ? f : {...}` для консистентності з рештою auto-selects.
 
@@ -2617,8 +2836,10 @@ Review-фікс у commit 83921d2 додав `vehicleReqRef` guard від stale 
 
 **Фікс:**
 Замінити рядок 317:
+
 ```ts
-if (allVehicles.length === 1) setForm(f => (f.vehicleId ? f : { ...f, vehicleId: allVehicles[0].id }));
+if (allVehicles.length === 1)
+  setForm(f => (f.vehicleId ? f : { ...f, vehicleId: allVehicles[0].id }));
 ```
 
 **Статус:** [x] виправлено
@@ -2632,7 +2853,7 @@ if (allVehicles.length === 1) setForm(f => (f.vehicleId ? f : { ...f, vehicleId:
 **Категорія:** test-coverage / regression
 
 **Опис:**
-Тест `показує "Нічого не знайдено" при порожньому фільтрі` пише query 'хххх_неіснуюча_команда' в combobox і одразу очікує `screen.getByText('Нічого не знайдено')`.
+Тест `показує "Нічого не знайдено" при порожньому фільтрі` пише query 'хххх*неіснуюча*команда' в combobox і одразу очікує `screen.getByText('Нічого не знайдено')`.
 
 У component є debounced `useEffect` що при `query.length >= 2` встановлює `setDataLoading(true)` і робить `apiFetch('/search?...')` через 300ms. У jsdom без моку `apiFetch`, цей запит **зависає або кидає** (нема fetch у середовищі) — `dataLoading` лишається `true`, а рендер показує `<p>Пошук у даних…</p>` замість `Нічого не знайдено`. Тест fails.
 
@@ -2665,9 +2886,10 @@ if (allVehicles.length === 1) setForm(f => (f.vehicleId ? f : { ...f, vehicleId:
 
 **Опис:**
 У циклі обчислення собівартості запчастин:
+
 ```ts
 for (const part of wo.parts) {
-  const cost = part.batchCostPrice ?? part.price;  // ❌ part.price це САЛЕ-ціна, не собівартість
+  const cost = part.batchCostPrice ?? part.price; // ❌ part.price це САЛЕ-ціна, не собівартість
   totalCostParts += part.quantity * Number(cost ?? 0);
 }
 ```
@@ -2687,6 +2909,7 @@ Fallback має бути `good.costPrice` (середня собівартіст
 Sale price підставляється як cost — звіт показує нереалістично низький прибуток.
 
 **Фікс:**
+
 1. Розширити `include` у `findMany` на `parts.good.select.costPrice`.
 2. Послідовність fallback: `batchCostPrice ?? good.costPrice ?? 0`.
 3. Якщо `good.costPrice` теж null/0 — повертати `costUnknownPartsCount` у звіті, щоб клієнт міг розрізнити «реально дешеве» vs «без даних».
@@ -2703,6 +2926,7 @@ Sale price підставляється як cost — звіт показує н
 
 **Опис:**
 Після завершення WO виконується:
+
 ```ts
 if (newStatus === 'COMPLETED' && wo.outMileage) {
   this.prisma.vehicle.updateMany({
@@ -2715,6 +2939,7 @@ if (newStatus === 'COMPLETED' && wo.outMileage) {
 Prisma фільтр `currentMileage: { lt: N }` **не матчить рядки де `currentMileage IS NULL`** (NULL не порівнюється з числом — повертає UNKNOWN у SQL, рядок виключається з результату).
 
 Сценарій реального бага:
+
 - Створено авто без поля `currentMileage` (часта ситуація: створюємо авто з номером і VIN, пробіг невідомий).
 - Через місяць — перший наряд із `outMileage = 85000`.
 - Після COMPLETED — `vehicle.currentMileage` залишається NULL.
@@ -2728,6 +2953,7 @@ Prisma фільтр `currentMileage: { lt: N }` **не матчить рядки
 
 **Фікс:**
 Замінити фільтр на OR: `{ currentMileage: null }` або `{ currentMileage: { lt: wo.outMileage } }`:
+
 ```ts
 where: {
   id: wo.vehicleId, orgId,
@@ -2746,6 +2972,7 @@ where: {
 **Категорія:** code-quality / readability
 
 **Опис:**
+
 ```ts
 const amount = totalWithVat || lines.length === 0 ? totalWithVat : totalWithVat;
 ```
@@ -2755,6 +2982,7 @@ const amount = totalWithVat || lines.length === 0 ? totalWithVat : totalWithVat;
 3. Якщо метою було просто «використати totalWithVat» — конструкція абсолютно зайва і misleading.
 
 Це не runtime-краш, але:
+
 - Видача manual-amount інвойсу губиться при додаванні/видаленні будь-якого рядка.
 - Reviewer що дивиться код — намагається зрозуміти умову і витрачає час.
 
@@ -2779,6 +3007,7 @@ Code-smell з невинною поведінкою (амоунт завжди �
 
 **Опис:**
 PDF-завантаження виконується через прямий `fetch(...)` (бо `apiFetch` парсить response як JSON, що ламає бінарний blob). Цей прямий fetch:
+
 - Читає `sessionStorage.getItem(TOKEN_KEY)` напряму
 - Ставить `Authorization: Bearer ${token}`
 - При 401 (access token expired, ~15 хв) — просто кидає `Error('Помилка завантаження PDF (401)')`
@@ -2807,9 +3036,10 @@ PDF-завантаження теж робить silent refresh при 401: ви
 **Категорія:** validation / DTO
 
 **Опис:**
+
 ```ts
 export class CreateInvoiceLineDto {
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) vatRate?: number;  // ❌ no @Max(100)
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) vatRate?: number; // ❌ no @Max(100)
 }
 ```
 
@@ -2838,6 +3068,7 @@ export class CreateInvoiceLineDto {
 
 **Опис:**
 При зміні `startAt` або `normoHours` фронт обчислює `endAt`:
+
 ```ts
 const totalMin = h * 60 + m + Math.round(Number(nh) * 60);
 const endH = Math.floor(totalMin / 60) % 24;
@@ -2867,6 +3098,7 @@ UX проблема — користувач не розуміє чому вал
 **Категорія:** api-contract / consistency
 
 **Опис:**
+
 ```ts
 @Delete(':id')
 @Roles(...)
@@ -2890,11 +3122,11 @@ HTTP 200 з порожнім тілом.
 
 ---
 
-
 ## Session 2026-05-26 — B12 (WorkOrderMedia), B11 (AuditEvent), B9+F7 (SSE Dashboard), B8 (FollowUp CRON), F9 (DatePickerInput), F4 (Clone WO/Invoice), F5 (Print CSS)
 
 Запуск: FULL `/sto-tester`
 Baseline:
+
 - TypeScript: OK (web + api + shared)
 - Unit tests: 142/142 passed (16 test files)
 
@@ -2969,6 +3201,7 @@ KPI картка "Низький залишок" показує загальну
 ## Bug #84 — [HIGH] Frontend settings шле `followUpActive`/`followUpDays`, але бекенд їх не приймає і не повертає
 
 **Файл:**
+
 - `apps/api/src/modules/settings/settings.dto.ts:41-97` (немає полів)
 - `apps/api/src/modules/settings/settings.service.ts:186-216` (mapOrgSettings не повертає)
 - `apps/web/src/app/settings/page.tsx:586-633` (UI шле в PATCH)
@@ -2986,6 +3219,7 @@ PATCH `/settings/organisation` з `{ followUpActive, followUpDays }` має зб
 Тогл "Включити нагадування" у settings нічого не зберігає. Після reload зникає state. Користувач не знає що нічого не записалось — повідомлення «Збережено» вводить в оману.
 
 **Фікс:**
+
 1. Додати `followUpActive?: boolean` (`@IsOptional() @IsBoolean()`) і `followUpDays?: number` (`@IsInt() @Min(30) @Max(365)`) у `UpdateOrganisationSettingsDto`.
 2. Додати поля у `OrganisationSettingsResponseDto`.
 3. Додати у `mapOrgSettings` повернення значень.
@@ -3067,10 +3301,12 @@ PATCH `/settings/organisation` з `{ followUpActive, followUpDays }` має зб
 **Категорія:** api-contract / pagination
 
 **Опис:**
+
 ```ts
 const items = await prisma.auditEvent.findMany({ ..., take: 100 });
 return { items, total: items.length };
 ```
+
 Якщо в БД 150 подій, фронт отримує `total: 100` — і думає що це повна кількість. Pagination ніколи не буде доданий, бо frontend думає що бачить все.
 
 **Очікувана поведінка:**
@@ -3093,6 +3329,7 @@ Frontend не знає що деякі події приховані за меж
 **Категорія:** frontend / a11y / UX
 
 **Опис:**
+
 ```jsx
 {lightboxUrl && (
   <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
@@ -3101,6 +3338,7 @@ Frontend не знає що деякі події приховані за меж
   </div>
 )}
 ```
+
 - Немає `role="dialog"`/`aria-modal`/`aria-label`.
 - Немає keyboard handler — клавіша Escape не закриває.
 - Клавіатурні юзери не можуть закрити модалку.
@@ -3121,6 +3359,7 @@ Mouse-only закриття.
 ## Bug #90 — [LOW] `WorkOrdersService.clone` і `InvoicesService.clone` не перевіряють чи FK-сутності soft-deleted
 
 **Файл:**
+
 - `apps/api/src/modules/work-orders/work-orders.service.ts:201-273`
 - `apps/api/src/modules/invoices/invoices.service.ts:150-199`
 
@@ -3143,19 +3382,18 @@ Mouse-only закриття.
 
 ---
 
-
 ## Session 2026-05-26 — FULL re-run after 0aa4cb3 (verify #81-90 fixes + new sweep on e7e0c83..0aa4cb3)
 
 Запуск: FULL `/sto-tester` (re-verification of previously-open bugs + cover new modules)
 
 Baseline:
+
 - `tsc` api — ❌ 1 error in `settings.service.ts` (Bug #0a / #84 follow-up — mapOrgSettings missing followUpActive/followUpDays in shape; ВИПРАВЛЕНО першим)
 - `tsc` web/shared — ✅ 0 errors
 - Unit + contract + property API — ✅ 142/142 passed (16 test files)
 - Component (web vitest) — ✅ 139/139 passed (13 test files)
 
 ---
-
 
 ## Bug #91 — [HIGH] `InvoicesService.clone` копіює `workOrderId` → дублікат рахунку прив'язаний до того ж наряду
 
@@ -3165,6 +3403,7 @@ Baseline:
 
 **Опис:**
 `clone()` пише `workOrderId: original.workOrderId` у новий рахунок. Якщо оригінал створено з наряду (`createFromWorkOrder`), клон **прив'язується до того ж самого WO**. Наслідки:
+
 - Один WO має 2+ рахунки (`prisma.invoice.findFirst({ where: { workOrderId } })` повертає випадковий).
 - Якщо WO ще не завершено і його завершення викликає авто-створення рахунку — буде створено ТРЕТІЙ рахунок (один з оригіналу, один клон, один авто).
 - Звіт "виручка за WO" дублює суму.
@@ -3181,7 +3420,6 @@ Baseline:
 **Статус:** [x] виправлено (invoices.service.ts clone: `workOrderId: null` явно)
 
 ---
-
 
 ## Bug #92 — [HIGH] `InvoicesController.create` і `createFromWorkOrder` використовують `@CurrentUser() user: { sub: string }`
 
@@ -3207,7 +3445,6 @@ Baseline:
 
 ---
 
-
 ## Bug #93 — [LOW] `WorkOrderMediaResponseDto.fileKey` витікає на frontend без використання
 
 **Файл:** `apps/api/src/modules/work-order-media/work-order-media.dto.ts:6`
@@ -3229,7 +3466,6 @@ DTO не містить internal storage layout. `signedUrl` достатньо.
 **Статус:** [x] виправлено (work-order-media.dto.ts: видалено поле; service.ts toDto: видалено; PageClient.tsx WorkOrderMedia interface: видалено)
 
 ---
-
 
 ## Bug #94 — [LOW] `WorkOrdersService.clone` копіює `actualHours` у клон-DRAFT
 
@@ -3253,10 +3489,10 @@ DTO не містить internal storage layout. `signedUrl` достатньо.
 
 ---
 
-
 ## Bug #95 — [LOW] `WorkOrdersService.clone` і `InvoicesService.clone` без `$transaction` → втрачений document number при FK fail
 
 **Файл:**
+
 - `apps/api/src/modules/work-orders/work-orders.service.ts:225-279`
 - `apps/api/src/modules/invoices/invoices.service.ts:163-209`
 
@@ -3278,7 +3514,6 @@ DTO не містить internal storage layout. `signedUrl` достатньо.
 **Статус:** [ ] відкритий (LOW — мінорний sequence-leak; Bug #90 pre-check тепер ловить більшість FK violations ДО docNumbers.next, що зменшує реальний вплив. Окремий фікс для $transaction інтеграції з document-number raw SQL — у пізнішому скоупі)
 
 ---
-
 
 ## Bug #96 — [LOW] `WorkOrdersService.clone` не пише AuditEvent
 
@@ -3302,7 +3537,6 @@ DTO не містить internal storage layout. `signedUrl` достатньо.
 
 ---
 
-
 ## Bug #0a (baseline) — [CRITICAL] `mapOrgSettings` shape missing `followUpActive`/`followUpDays`
 
 **Файл:** `apps/api/src/modules/settings/settings.service.ts:186-216`
@@ -3311,6 +3545,7 @@ DTO не містить internal storage layout. `signedUrl` достатньо.
 
 **Опис:**
 Bug #84 (попередня сесія) додав `followUpActive`/`followUpDays` у `OrganisationSettingsResponseDto` і DTO, але `mapOrgSettings` параметр-тип і return-об'єкт залишились без цих полів. Кожен tsc виконується з помилкою:
+
 ```
 src/modules/settings/settings.service.ts(201,5): error TS2739: Type '{ ... }' is missing the following properties from type 'OrganisationSettingsResponseDto': followUpActive, followUpDays
 ```
@@ -3328,17 +3563,16 @@ TS компіляція ламається.
 
 ---
 
-
 ## Session 2026-05-26 — B8 FollowUp CRON (commits 3c6d233 + fab5fd1) — /sto-tester FULL
 
 Тестується реалізація B8: `followup.processor.ts` + `followup.scheduler.ts` + `NotificationsModule` (followup queue) + `FOLLOWUP_REMINDER` enum + migration. Phase 18 (Installer) НЕ тестується за прямим вказівкою користувача.
 
 Базова перевірка (Крок 0):
+
 - TS: ✅ 0 errors (api + web + shared).
 - Unit: ✅ 151/151 passed.
 
 ---
-
 
 ## Bug #97 — [CRITICAL] `FollowUpScheduler` додає CRON для soft-deleted організацій
 
@@ -3358,6 +3592,7 @@ TS компіляція ламається.
 CRON для всіх організацій, включно з deleted; daily wake-up на видалені tenant; потенційний SMS-витік з імені "видаленого" СТО.
 
 **Фікс:**
+
 ```typescript
 const orgs = await this.prisma.organisation.findMany({
   where: { deletedAt: null },
@@ -3370,7 +3605,6 @@ const orgs = await this.prisma.organisation.findMany({
 
 ---
 
-
 ## Bug #98 — [HIGH] `FollowUpScheduler` використовує `select: { orgId: true }` замість `{ id: true }` (фрагільна семантика)
 
 **Файл:** `apps/api/src/modules/notifications/followup.scheduler.ts:24,35`
@@ -3379,9 +3613,11 @@ const orgs = await this.prisma.organisation.findMany({
 
 **Опис:**
 Усі FK у схемі (counterparties, vehicles, customer_garages, garage_branches, organisation_settings, notification_templates) ВКАЗУЮТЬ на `organisations.id`:
+
 ```sql
 FOREIGN KEY ("orgId") REFERENCES "organisations"("id")
 ```
+
 Тобто значення, яке "tenants pass around" як `orgId`, — це `Organisation.id`. Колонка `Organisation.orgId` існує і дорівнює `id` лише завдяки самореференції в `setup.service.ts` (`{ orgId: org.id }`). Це фрагільна угода: будь-який майбутній код, що створює Organisation без виставлення `orgId = id`, отримає mismatch.
 
 Усі інші сервіси читають org через `prisma.organisation.findFirst({ where: { id: orgId } })` і `select: { id: true }`. Тут — єдине місце в кодовій базі, що читає `orgId` field. Це порушує consistency convention і ламається при першому Organisation з `id !== orgId`.
@@ -3399,7 +3635,6 @@ FOREIGN KEY ("orgId") REFERENCES "organisations"("id")
 
 ---
 
-
 ## Bug #99 — [HIGH] `FollowUpProcessor` не використовує DST-aware Kyiv `today`
 
 **Файл:** `apps/api/src/modules/notifications/followup.processor.ts:31-36`
@@ -3407,6 +3642,7 @@ FOREIGN KEY ("orgId") REFERENCES "organisations"("id")
 **Категорія:** business-logic / timezone
 
 **Опис:**
+
 ```typescript
 const today = new Date();
 const todayPlusForecast = new Date(today);
@@ -3415,11 +3651,13 @@ todayPlusForecast.setDate(todayPlusForecast.getDate() + 14);
 const cutoffDate = new Date(today);
 cutoffDate.setDate(cutoffDate.getDate() - (settings.followUpDays ?? 90));
 ```
+
 CRON стріляє о 09:00 Kyiv. На UTC-сервері це 06:00 (зимовий час) або 07:00 (літо). `new Date()` повертає UTC-час → `today` все одно вірно для порівняння з ISO datetime, АЛЕ `setDate(d.getDate() + 14)` маніпулює LOCAL date (server local). Якщо локальний tz сервера = UTC, дата зсувається коректно. Якщо локальний tz сервера = Europe/Kyiv (як у Windows-installer для on-prem), `setDate` працює через Kyiv calendar → 14 днів = 14 Kyiv-днів, без врахування DST переходу. У жовтневу/березневу DST-неділю можлива зсувка на ±1 годину.
 
 Згідно MEMORY.md gotcha "DST-aware Kyiv timezone": "never hardcode +03:00; always use kyivOffsetMs() with Intl.DateTimeFormat".
 
 Бізнес-значення:
+
 - `cutoffDate` для `inactive vehicles` (90 днів назад) — допустима похибка ±1h не критична.
 - `todayPlusForecast` для `MaintenanceSchedule.nextMaintenanceDate { lte: ... }` — якщо клієнт призначив "наступне ТО на 14:00 завтра", запит з offset-помилкою може пропустити цей рекорд.
 
@@ -3431,16 +3669,17 @@ Server-local arithmetic. На контейнерах із `TZ=UTC` (станда
 
 **Фікс:**
 Використовувати єдиний helper. Мінімальний фікс — нормалізувати `today` до Kyiv-полудня (12:00 локально), щоб ±1h DST не виштовхнули за межі дня:
+
 ```typescript
 const today = new Date();
 today.setUTCHours(9, 0, 0, 0); // 09:00 UTC = 11/12:00 Kyiv — стабільний полудень
 ```
+
 Або кращий варіант: дотримуватися паттерну `kyivOffsetMs()` з web.
 
 **Статус:** [x] виправлено (followup.processor.ts: `today.setUTCHours(9, 0, 0, 0)` стабілізує Kyiv-полудень)
 
 ---
-
 
 ## Bug #100 — [HIGH] `FollowUpProcessor` бере `findFirst` бранч orgId — multi-branch орг отримує SMS з імені випадкового бранчу
 
@@ -3449,12 +3688,15 @@ today.setUTCHours(9, 0, 0, 0); // 09:00 UTC = 11/12:00 Kyiv — стабільн
 **Категорія:** business-logic / multi-branch
 
 **Опис:**
+
 ```typescript
 const branch = await this.prisma.garageBranch.findFirst({ where: { orgId, deletedAt: null } });
 if (!branch) return;
 ```
+
 `findFirst` без `orderBy` повертає **випадковий** рядок (Postgres heap order, нестабільний). Для multi-branch організацій (одна юр.особа = два СТО з різними `smsSenderName`, `smsApiKey`, `smsProvider`):
-1. Клієнт сервісувався у Branch B (вул. Лесі Українки). 
+
+1. Клієнт сервісувався у Branch B (вул. Лесі Українки).
 2. CRON вибирає Branch A (вул. Шевченка) як випадковий → надсилає SMS клієнту з `senderName=СТО-ШЕВЧЕНКА` про "час на ТО", хоча клієнт ніколи не був у Шевченка.
 3. UX-провал, можливий бренд-конфуз.
 
@@ -3469,18 +3711,19 @@ if (!branch) return;
 Postgres heap-order branch, нестабільно між запусками.
 
 **Фікс:**
+
 ```typescript
 const branch = await this.prisma.garageBranch.findFirst({
   where: { orgId, deletedAt: null },
   orderBy: { createdAt: 'asc' },
 });
 ```
-+ TODO коментар про multi-branch.
+
+- TODO коментар про multi-branch.
 
 **Статус:** [x] виправлено (followup.processor.ts: `orderBy: { createdAt: 'asc' }` + TODO про multi-branch resolved)
 
 ---
-
 
 ## Bug #101 — [HIGH] `inactiveVehicles` запит включає авто без жодного COMPLETED WO ever
 
@@ -3489,6 +3732,7 @@ const branch = await this.prisma.garageBranch.findFirst({
 **Категорія:** business-logic
 
 **Опис:**
+
 ```typescript
 const inactiveVehicles = await this.prisma.vehicle.findMany({
   where: {
@@ -3504,7 +3748,9 @@ const inactiveVehicles = await this.prisma.vehicle.findMany({
   ...
 });
 ```
+
 `workOrders.none` ВКЛЮЧАЄ авто, що ніколи не мали `WorkOrder` (з порожнім зв'язком). Сценарій:
+
 - Адмін щойно зареєстрував новий автомобіль клієнта через CRM.
 - 90 днів пізніше CRON виконується.
 - Авто ніколи не приїздило в СТО (можливо клієнт зареєстрував "про запас" або купив авто і ще не привозив).
@@ -3513,6 +3759,7 @@ const inactiveVehicles = await this.prisma.vehicle.findMany({
 Захист є в подальшому коді (`if (!lastWO?.completedAt) continue;`), але filter на DB-рівні все одно тягне ці авто у пам'ять (memory pressure при `take: 5000` для крупного автопарку) + може створити логіку розсилки для авто без WO в майбутньому (refactor risk).
 
 Краще одразу фільтрувати на DB:
+
 ```typescript
 workOrders: {
   some: {
@@ -3539,7 +3786,6 @@ workOrders: {
 
 ---
 
-
 ## Bug #102 — [HIGH] `MaintenanceSchedule.findMany` не фільтрує `nextMaintenanceDate >= today` → надсилає SMS про прострочене ТО задовго ПІСЛЯ дати
 
 **Файл:** `apps/api/src/modules/notifications/followup.processor.ts:39-56`
@@ -3547,10 +3793,13 @@ workOrders: {
 **Категорія:** business-logic
 
 **Опис:**
+
 ```typescript
 nextMaintenanceDate: { lte: todayPlusForecast },
 ```
+
 Фільтр охоплює УСІ minor расписання що мали `nextMaintenanceDate` колись у минулому. Сценарій:
+
 - Клієнт пропустив ТО 6 місяців тому (`nextMaintenanceDate = '2025-11-26'`).
 - ТО не оновлювалось (не приїздив, schedule не reset).
 - CRON надсилає SMS щодня з 2025-11-26 до моменту коли SMS-провайдер заблокує номер за SPAM.
@@ -3565,15 +3814,16 @@ nextMaintenanceDate: { lte: todayPlusForecast },
 SMS-спам для пропущених ТО.
 
 **Фікс (мінімальний):**
+
 ```typescript
 nextMaintenanceDate: { gte: today, lte: todayPlusForecast },
 ```
-+ TODO коментар про FollowUpLog dedupe між викликами.
+
+- TODO коментар про FollowUpLog dedupe між викликами.
 
 **Статус:** [x] виправлено (followup.processor.ts: `nextMaintenanceDate: { gte: today, lte: todayPlusForecast }`)
 
 ---
-
 
 ## Bug #103 — [MEDIUM] Migration не створює `NotificationTemplate` для `FOLLOWUP_REMINDER` (всі invocations no-op)
 
@@ -3583,6 +3833,7 @@ nextMaintenanceDate: { gte: today, lte: todayPlusForecast },
 
 **Опис:**
 Міграція додає enum-value, АЛЕ:
+
 1. `NotificationsService.send(orgId, 'FOLLOWUP_REMINDER', ...)` шукає шаблон `where: { orgId, eventType: 'FOLLOWUP_REMINDER', channel: 'SMS', isActive: true }` → null → `return` мовчки.
 2. Seed (`seed.ts`) не містить FOLLOWUP_REMINDER template.
 3. На свіжому інсталі feature мовчки не працює: CRON виконується, шукає шаблон, нічого не знаходить, виходить без логування помилки (debug-рівень).
@@ -3596,10 +3847,12 @@ Default template надсилається з міграцією або seed-ом
 Шаблон відсутній → CRON працює "вхолосту" місяцями, доки адмін не помітить.
 
 **Фікс:**
+
 1. Додати INSERT у міграцію (idempotent через WHERE NOT EXISTS, для кожного існуючого orgId).
 2. Додати template у seed.ts.
 
 Шаблон:
+
 ```
 Вітаємо, {{clientName}}! Запрошуємо на планове ТО для {{vehicleMake}} {{vehicleModel}} ({{licensePlate}}){{nextMaintenanceDate}}. Зателефонуйте нам для запису.
 ```
@@ -3608,7 +3861,6 @@ Default template надсилається з міграцією або seed-ом
 
 ---
 
-
 ## Bug #104 — [MEDIUM] Per-message `.catch(() => log.warn(...))` ховає системні помилки, не дає BullMQ retry
 
 **Файл:** `apps/api/src/modules/notifications/followup.processor.ts:104-106, 126-128`
@@ -3616,13 +3868,16 @@ Default template надсилається з міграцією або seed-ом
 **Категорія:** queue resilience
 
 **Опис:**
+
 ```typescript
 await this.notifications.send(orgId, 'FOLLOWUP_REMINDER', { ... })
   .catch((e: Error) => {
     this.logger.warn(`Помилка відправки нагадування: ${e.message}`);
   });
 ```
+
 Згідно SKILL §1.1 "Catch не ковтає всі помилки": шаблон має бути `if (!msg.includes('очікувана_бізнес_помилка')) logger.warn(...)`. Поточний catch ковтає:
+
 - DB connection error (Prisma запит у `send` для template) — мав би бути throw → BullMQ retry.
 - Redis недоступний (`smsQueue.add` в `send`) — мав би throw → BullMQ retry на job-рівні, бо весь batch може запхатись пізніше.
 - Validation error у payload — мав би throw, бо це bug → BullMQ logged + DLQ.
@@ -3632,6 +3887,7 @@ await this.notifications.send(orgId, 'FOLLOWUP_REMINDER', { ... })
 Згідно SKILL §4.9.4: "Кожен @Process() метод обгорнутий у try/catch і прокидає помилку далі (throw e) — без цього BullMQ не буде retry". Тут немає try/catch на рівні всього процесора, є лише per-iteration catch.
 
 **Очікувана поведінка:**
+
 - Per-iteration catch має фільтрувати по типу помилки (наприклад, `NotFoundException` для відсутнього template — нормально, debug log; `Error` — re-throw або хоча б `logger.error` з повним stack).
 - Можна: один failure не повинен валити весь batch (один поганий phone не повинен зупиняти reminders для інших клієнтів). Compromise: catch на рівні мітки, але якщо ВСІ failures → throw в кінці.
 
@@ -3639,6 +3895,7 @@ await this.notifications.send(orgId, 'FOLLOWUP_REMINDER', { ... })
 Системні помилки тихо ковтаються. BullMQ думає що job success.
 
 **Фікс:**
+
 ```typescript
 let sendErrors = 0;
 let lastError: Error | undefined;
@@ -3661,7 +3918,6 @@ if (sendErrors > 0 && sendErrors === (upcomingMaintenance.length + inactiveVehic
 
 ---
 
-
 ## Bug #105 — [MEDIUM] Відсутні тести (unit + contract) для `FollowUpProcessor`, `FollowUpScheduler`
 
 **Файл:** `apps/api/src/modules/notifications/`
@@ -3670,6 +3926,7 @@ if (sendErrors > 0 && sendErrors === (upcomingMaintenance.length + inactiveVehic
 
 **Опис:**
 Згідно SKILL §1.4: новий @Processor → обов'язковий unit test з мок `notifications.send` + мок `prisma.maintenanceSchedule.findMany`. Згідно SKILL §1.4 contract: новий controller не додано (це queue processor), тому contract test не релевантний. АЛЕ unit-тести для логіки `handleSendReminders` обов'язкові:
+
 - `followUpActive=false` → return без виклику send.
 - branch не знайдено (org без бранчів) → return.
 - vehicle deletedAt soft-deleted → не у списку (post-filter перевірка).
@@ -3692,7 +3949,6 @@ if (sendErrors > 0 && sendErrors === (upcomingMaintenance.length + inactiveVehic
 **Статус:** [x] виправлено (followup.processor.spec.ts — 13 тестів: followUpActive=false, no branch, soft-delete filter, phone dedup, no phone, inactive vehicle has last WO, inactive vehicle never had WO, throw на all-fail, no-throw на partial-fail, formatName fallback "клієнте", DB filter shape перевірки)
 
 ---
-
 
 ## Bug #106 — [LOW] `take: 5000` без пагінації для maintenanceSchedule + vehicle — потенційний OOM на крупних автопарках
 
@@ -3720,7 +3976,6 @@ Cursor pagination або зменшити до 1000 з explicit warning. Comprom
 
 ---
 
-
 ## Bug #107 — [LOW] `take: 1000` для організацій без пагінації — multi-tenant cloud може мати >1000 СТО
 
 **Файл:** `apps/api/src/modules/notifications/followup.scheduler.ts:23-26`
@@ -3728,11 +3983,13 @@ Cursor pagination або зменшити до 1000 з explicit warning. Comprom
 **Категорія:** non-functional / scalability
 
 **Опис:**
+
 ```typescript
 if (orgs.length >= 1000) {
   this.logger.warn('FollowUp scheduler: можливо не всі організації охоплені, потрібна пагінація');
 }
 ```
+
 Warning є, але пагінації немає. На on-prem (1 org per installer) це не проблема, але для multi-tenant cloud-deploy (якщо колись)— орг #1001 не отримає CRON взагалі. Warning легко пропустити в логах.
 
 **Очікувана поведінка:**
@@ -3748,7 +4005,6 @@ TODO коментар з посиланням на ADR-001 і явним ком�
 
 ---
 
-
 ## Bug #108 — [LOW] Re-add jobs at every API restart створює лог-шум
 
 **Файл:** `apps/api/src/modules/notifications/followup.scheduler.ts:17-20, 32-44`
@@ -3756,17 +4012,21 @@ TODO коментар з посиланням на ADR-001 і явним ком�
 **Категорія:** non-functional / observability
 
 **Опис:**
+
 ```typescript
 const existingJobs = await this.followUpQueue.getRepeatableJobs();
 for (const job of existingJobs) {
   await this.followUpQueue.removeRepeatableByKey(job.key);
 }
 ```
+
 При кожному рестарті API:
+
 1. Видаляються всі repeatable jobs.
 2. Додаються заново для всіх orgs.
 
 Це працює, але:
+
 - Створює віконце часу між delete і add, коли немає планувальника. Якщо API в цей момент crash-ить — CRON втрачено до наступного успішного start.
 - Лог "FollowUp CRON зареєстровано для N організацій" з'являється у кожному рестарті, навіть якщо нічого не змінилось.
 
@@ -3785,7 +4045,6 @@ Delete + Add wave кожного рестарту.
 
 ---
 
-
 ## Bug #109 — [LOW] `formatName` повертає порожній рядок для контрагентів без імен → SMS "Вітаємо, !"
 
 **Файл:** `apps/api/src/modules/notifications/followup.processor.ts:134-141`
@@ -3793,12 +4052,14 @@ Delete + Add wave кожного рестарту.
 **Категорія:** UX
 
 **Опис:**
+
 ```typescript
 private formatName(cp: {...}): string {
   const full = [cp.firstName, cp.lastName].map(s => s?.trim()).filter(Boolean).join(' ').trim();
   return full || (cp.companyName?.trim() ?? '');
 }
 ```
+
 Якщо ВСІ три поля null/empty (рідкий випадок: legacy data import), `formatName` повертає `''`. Шаблон `Вітаємо, {{clientName}}!` рендериться як `Вітаємо, !` — UX-вигляд недбалості.
 
 **Очікувана поведінка:**
@@ -3808,15 +4069,16 @@ Fallback на "Шановний клієнте" або skip notification.
 SMS з пустим іменем.
 
 **Фікс:**
+
 ```typescript
 return full || cp.companyName?.trim() || 'клієнте';
 ```
+
 Або: skip notification якщо name пустий (`if (!name) continue;` у processor).
 
 **Статус:** [x] виправлено (followup.processor.ts: `formatName` повертає `'клієнте'` як останній fallback)
 
 ---
-
 
 ## Bug #110 — [LOW] FOLLOWUP_REMINDER відсутній у `PUSH_FIELD_WHITELIST` / channel docs
 
@@ -3826,6 +4088,7 @@ return full || cp.companyName?.trim() || 'клієнте';
 
 **Опис:**
 Новий enum value `FOLLOWUP_REMINDER` додано, але:
+
 1. У `NotificationsController.findTemplates` повертаються всі шаблони — frontend бачить новий enum, але якщо settings/page.tsx має жорсткий перелік enum-strings для UI labels (наприклад мапа `EVENT_LABELS = { WO_COMPLETED: 'Виконано', ... }`), FOLLOWUP_REMINDER не матиме mapped label → відобразиться raw enum string.
 2. `notification_templates` не у `PULL_TABLES` (sync.service.ts) — отже мобільний клієнт не побачить fovollowup templates (вони не sync-яться). Це не баг сам по собі, але якщо мобайл має UI для редагування шаблонів — потрібно перевірити.
 
@@ -3861,10 +4124,13 @@ UI label "Нагадування про планове ТО" для FOLLOWUP_REM
 
 **Опис:**
 Сторінка `/booking` додана до `PUBLIC_ROUTES` у `TopShell.tsx:141` (доступна без логіну — Online Booking widget для клієнтів). АЛЕ всередині `useEffect` робить:
+
 ```typescript
 apiFetch<Branch[]>('/branches').then(...)
 ```
+
 `/branches` — захищений controller-рівневим `@UseGuards(JwtAuthGuard, RolesGuard)`. Для неавторизованого користувача:
+
 1. `apiFetch` додає Bearer (null) → 401
 2. Силент-refresh падає (немає refresh cookie)
 3. `apiFetch` робить `window.location.replace('/login')`
@@ -3872,6 +4138,7 @@ apiFetch<Branch[]>('/branches').then(...)
 В результаті public booking widget **миттєво redirect-ить на /login** при першому завантаженні. Жоден клієнт не може записатись.
 
 **Очікувана поведінка:**
+
 - Публічний endpoint `GET /booking/branches` повертає мінімальну інфу (id, name, address) без auth
 - Сторінка `/booking` використовує `fetch` напряму (без `apiFetch`) для всіх booking endpoints
 
@@ -3889,6 +4156,7 @@ apiFetch<Branch[]>('/branches').then(...)
 **Категорія:** business-logic / security / soft-delete
 
 **Опис:**
+
 ```typescript
 async getAvailability(...) {
   const branch = await this.service['prisma'].garageBranch.findFirst({ where: { id: branchId } });
@@ -3896,7 +4164,9 @@ async getAvailability(...) {
   ...
 }
 ```
+
 Два дефекти:
+
 1. **Інкапсуляція**: `service['prisma']` — bracket-access до приватного поля. TS НЕ ловить це бо `prisma` — `private readonly`, але `service['prisma']` обходить access modifier. Канон: інжектувати `PrismaService` напряму в controller АБО додати explicit public method `service.findBranchForBooking(branchId)`.
 2. **Soft delete**: `findFirst({ where: { id: branchId } })` — НЕ фільтрує `deletedAt: null`. Видалена філія все одно повертає `branchId`, public widget показує slots для неіснуючої філії, SMS відправляється з імені видаленої філії.
 
@@ -3914,6 +4184,7 @@ Soft-deleted філії невидимі для public booking. Доступ д�
 **Категорія:** business-logic / timezone
 
 **Опис:**
+
 ```typescript
 for (let hour = 9; hour < 18; hour++) {
   for (const min of [0, 30]) {
@@ -3922,6 +4193,7 @@ for (let hour = 9; hour < 18; hour++) {
   }
 }
 ```
+
 Літерал `Z` робить дату UTC. Тобто `2026-05-27T09:00:00.000Z` = **09:00 UTC = 12:00 Київ (літо)**. Сторінка `/booking` показує `new Date(s.startAt).toLocaleTimeString('uk-UA', {...})` — конвертує назад у local Київ → показує 12:00. Але користувач очікує що сервіс відкривається о 09:00 Київ (= 06:00 UTC).
 
 Очікувані робочі години Києва (09:00–18:00 Київ) маппяться на 06:00–15:00 UTC влітку, 07:00–16:00 UTC взимку. Поточний код фіксує 09:00 UTC = 12:00/11:00 Київ → користувачі бачать слоти з ОБІДУ і пізно ввечері.
@@ -3945,11 +4217,14 @@ UTC хардкоднено → 12:00 Київ замість 09:00 Київ.
 **Категорія:** security
 
 **Опис:**
+
 ```typescript
 @IsUrl({ require_tld: false })
 url!: string;
 ```
+
 `require_tld: false` дозволяє `http://localhost:6379`, `http://192.168.0.1`, `http://10.0.0.1`, `http://[::1]`. Атакувальник (скомпрометований OWNER/ADMIN акаунт) може створити webhook що пайпає payload-и (з payment data, WO інфою) на:
+
 - Redis admin port (`6379`)
 - Postgres (`5432`)
 - Local services (sidecars)
@@ -3974,6 +4249,7 @@ URL валідується через blocklist: `Net.isPrivate(parsed.hostname)
 **Категорія:** security
 
 **Опис:**
+
 ```typescript
 export class CreateInspectionDto {
   @ApiProperty({ type: [InspectionPointDto] })
@@ -3983,6 +4259,7 @@ export class CreateInspectionDto {
   points!: InspectionPointDto[];
 }
 ```
+
 Немає `@ArrayMaxSize(N)`. POST `{ points: Array(1_000_000).fill({...}) }` — `ValidationPipe` пройде, потім `InspectionService.create` запише ВЕСЬ масив у `points: dto.points as InputJsonValue`. Postgres JSON column обмежений ~1GB row size, але raw heap allocation на 1M об'єктів задихне Node-процес ще до Prisma.
 
 **Очікувана поведінка:**
@@ -3999,6 +4276,7 @@ export class CreateInspectionDto {
 **Категорія:** business-logic / data-consistency
 
 **Опис:**
+
 ```typescript
 async remove(orgId, workOrderId, mediaId) {
   const record = await this.prisma.workOrderMedia.findFirst({...});
@@ -4007,6 +4285,7 @@ async remove(orgId, workOrderId, mediaId) {
   await this.prisma.workOrderMedia.delete({ where: { id: mediaId } });  // ← НЕ викликається
 }
 ```
+
 Якщо `deleteObject` падає (network, MinIO down), DB-запис залишається але fileKey вже не валідний. Наступний `findAll` намагатиметься `getSignedUrl(record.fileKey)` для неіснуючого об'єкту → 404 або signed URL який не працює.
 
 **Очікувана поведінка:**
@@ -4023,11 +4302,13 @@ DB-операція **перед** MinIO. Якщо DB fail → файл лиши
 **Категорія:** non-functional / performance
 
 **Опис:**
+
 ```typescript
 @IsString()
 @MaxLength(100)
 q!: string;
 ```
+
 `@ApiProperty({ minLength: 2 })` — лише документація, не валідація. `q='a'` пройде → `similarity(g.name, 'a') > 0.1` буде match-ити майже все. Pg_trgm GIN-індекс не оптимізований для 1-char queries. Power user або scraper може намагатися enumerate all WO/counterparties/goods через short-query DoS.
 
 **Очікувана поведінка:**
@@ -4065,6 +4346,7 @@ q!: string;
 **Категорія:** typescript / api-quality
 
 **Опис:**
+
 ```typescript
 @Get('availability')
 async getAvailability(
@@ -4073,11 +4355,13 @@ async getAvailability(
   @Query('serviceIds') serviceIds?: string,
 ) { ... }
 ```
+
 Невалідний UUID (`?branchId=abc`) → Prisma P2023 → HTTP 500 замість 400. Це endpoint **public** — будь-хто може тригерити 500 errors у logs (log noise + alerting fatigue).
 
 Те ж саме для `@Query('date')` без `@IsISO8601()` — `?date=not-a-date` → service попробує `new Date('not-a-date T00:00:00.000Z')` → Invalid Date → 500.
 
 **Очікувана поведінка:**
+
 - `@Query('branchId', new ParseUUIDPipe())` → 400 при невалідному
 - `@Query('date')` через DTO з `@Matches(/^\d{4}-\d{2}-\d{2}$/)` → 400
 
@@ -4101,12 +4385,14 @@ async getAvailability(
 **Категорія:** business-logic / api-contract
 
 **Опис:**
+
 ```typescript
 async getBatches(...) {
   const items = await this.batchService.getBatchesForGood(orgId, id, warehouseId);
   return { items, total: items.length };  // ← BUG
 }
 ```
+
 `batchService.getBatchesForGood` робить `take: 200` (batch.service.ts:231). Якщо у товару понад 200 партій (легко при тривалому використанні з частими RECEIPT-ами), `total` дорівнюватиме саме 200 — а не реальній кількості. Класичний Bug #88 регрес.
 
 **Очікувана поведінка:**
@@ -4165,6 +4451,7 @@ DTO `total!: number` без коментаря — потенційно ввод
 
 **Опис:**
 Helper перевіряє тільки IPv4-mapped IPv6 (`::ffff:a.b.c.d`), але існує ще IPv4-compatible IPv6 (`::a.b.c.d`, deprecated RFC 4291) яка може резолвитись. URL `http://[::127.0.0.1]/` пройде:
+
 - `host.includes(':')` → true (IPv6 branch)
 - ULA regex `/^f[cd]/` → false
 - link-local regex `/^fe[89ab]/` → false
@@ -4193,6 +4480,7 @@ SSRF bypass через IPv4-compatible IPv6 / hex-encoded loopback.
 SSRF-захист `validatePublicUrl` — критичний security helper. Cycle-1 (PR base) мав попередню regex що мовчки пропускала IPv6 ULA через brackets — баг знайдений тільки на cycle-2 review (через візуальний static analysis). Без unit-тестів regress майже гарантований при будь-якій майбутній зміні regex/literal-листа.
 
 Потрібні тест-кейси:
+
 - ALLOW: `https://example.com`, `http://api.public.io:8080/path`, `https://www.google.com`
 - BLOCK loopback: `http://127.0.0.1`, `http://localhost`, `http://[::1]`, `http://0.0.0.0`
 - BLOCK RFC1918: `http://10.1.2.3`, `http://172.16.0.1`, `http://172.31.255.254`, `http://192.168.1.1`
@@ -4228,6 +4516,7 @@ SSRF-захист `validatePublicUrl` — критичний security helper. Cy
 Один webhookDelivery record на одну спробу доставки незалежно від типу помилки.
 
 **Фактична поведінка:**
+
 - 2xx success: 1 запис (OK)
 - 5xx fail: 1 запис (OK)
 - 3xx redirect: 2 записи (BUG)
@@ -4247,12 +4536,14 @@ SSRF-захист `validatePublicUrl` — критичний security helper. Cy
 
 **Опис:**
 Webhook processor містить дві critical-security перевірки cycle-2:
+
 1. `validatePublicUrl(url)` defense-in-depth перед `fetch` (захист від DNS rebinding)
 2. `redirect: 'manual'` + явна обробка 3xx (захист від SSRF через redirect)
 
 Жоден з цих критичних шляхів не тестується. Якщо майбутній рефакторинг видалить `redirect: 'manual'` (бо "Node fetch стандартно follows") — SSRF буде відкритий.
 
 Потрібні тест-кейси:
+
 - блокує SSRF URL на pre-flight check + пише FAILED delivery + не throw
 - 200 → status='DELIVERED' + body trimmed to 4000 chars
 - 302 → status='FAILED' + responseBody містить "Redirect to ... blocked" + delivery throw для retry
@@ -4268,6 +4559,7 @@ Webhook processor містить дві critical-security перевірки cyc
 **Статус:** [x] виправлено
 
 ---
+
 ## Session 2026-05-27 — /sto-tester FULL pass (post-Sentry integration)
 
 Запущено `/sto-tester` FULL після інтеграції Sentry + console-errors E2E + SSE auth fixes.
@@ -4277,7 +4569,7 @@ Baseline: tsc green (api+web+shared), 258/258 unit tests passed.
 
 ## Bug #127 — [HIGH] 86 endpoints без `ParseUUIDPipe` для `@Param('id')` → 500 замість 400 при некоректному UUID
 
-**Файл:** систематично у `apps/api/src/modules/*/`*`.controller.ts` (86 endpoints)
+**Файл:** систематично у `apps/api/src/modules/*/`\*`.controller.ts` (86 endpoints)
 **Severity:** HIGH
 **Категорія:** security / api-contract / sentry-noise
 
@@ -4285,6 +4577,7 @@ Baseline: tsc green (api+web+shared), 258/258 unit tests passed.
 Більшість контролерів використовують `@Param('id') id: string` без `ParseUUIDPipe`. Коли клієнт надсилає некоректний UUID (`not-a-uuid`, `abc`, тощо), сервіс передає його у Prisma `findFirst({ where: { id: 'not-a-uuid', orgId, deletedAt: null } })`, що кидає `PrismaClientKnownRequestError P2023` ("Inconsistent column data: invalid input syntax for type uuid"). Ця помилка НЕ є `HttpException`, тому глобальний `HttpExceptionFilter` повертає 500 + `Sentry.captureException` (з прод-середовища).
 
 Підтверджено live:
+
 ```
 $ curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/branches/not-a-uuid
 Status: 500
@@ -4296,21 +4589,25 @@ $ curl ... /api/invoices/not-uuid        → 500
 ```
 
 Перевірка по всіх файлах:
+
 ```bash
 grep -rn "@Param('id')" apps/api/src --include="*.controller.ts" | grep -v ParseUUIDPipe | wc -l  # 86
 grep -rn "@Param('id'" apps/api/src --include="*.controller.ts" | grep ParseUUIDPipe | wc -l      # 23 (правильно)
 ```
 
 **Очікувана поведінка:**
+
 - Некоректний UUID → `400 Bad Request` (валідація на рівні pipe)
 - Sentry НЕ отримує false-positive 5xx алерту
 
 **Фактична поведінка:**
+
 - Некоректний UUID → `500 Internal Server Error`
 - `Sentry.captureException(prismaError)` спрацьовує у проді → шум у моніторингу
 - Користувач бачить generic "Внутрішня помилка сервера" замість змістовного 400
 
 **Фікс:** додати handling до `HttpExceptionFilter` для `Prisma.PrismaClientKnownRequestError`:
+
 - P2023 (malformed UUID/data) → 400 Bad Request з повідомленням "Некоректний формат ідентифікатора"
 - P2025 (record not found in update/delete) → 404 NotFound
 - P2002 (unique constraint) → 409 Conflict
@@ -4334,6 +4631,7 @@ grep -rn "@Param('id'" apps/api/src --include="*.controller.ts" | grep ParseUUID
 
 **Опис:**
 `HttpExceptionFilter.catch()` обробляє тільки `instanceof HttpException`. Будь-який не-HTTP exception (включно з `PrismaClientKnownRequestError` для P2002/P2023/P2025) потрапляє у `else` гілку, де:
+
 1. Логується як unhandled exception
 2. Повертається status 500
 3. **Відправляється у Sentry** через `if (status >= 500)` блок
@@ -4341,6 +4639,7 @@ grep -rn "@Param('id'" apps/api/src --include="*.controller.ts" | grep ParseUUID
 Сервіси як `WarehousesService` мають локальний catch для P2002 → ConflictException — але це **defensive duplication**. Системно цей конверт повинен бути у filter.
 
 Поточні наслідки:
+
 - Кожен `prisma.X.update({ where: { id: 'wrong-uuid' } })` → 500 → Sentry alert
 - Дубльоване створення (unique constraint) у будь-якій моделі без локального catch → 500 → Sentry
 - update неіснуючого запису → 500 замість 404
@@ -4360,10 +4659,13 @@ grep -rn "@Param('id'" apps/api/src --include="*.controller.ts" | grep ParseUUID
 
 **Опис:**
 Колонка "Резерв" та поле у DetailPanel використовують inline HSL:
+
 ```tsx
 <TableCell className="text-right text-[hsl(25_95%_53%)]">
 ```
+
 Це orange колір (#F58817), який:
+
 - **Не перемикається у dark mode** — у темній темі залишається той самий тон
 - Не відповідає Tailwind 4 канонічному стилю проекту
 - Не входить у виключення з `/sto-tester` SKILL.md §1.3 (виключення: `badge.tsx purple`, `button.tsx destructive-hover`, `input.tsx`/`select.tsx` focus-ring)
@@ -4383,6 +4685,7 @@ Hardcoded HSL → у dark mode стає погано читаним (контр�
 ## Bug #130 — [LOW] `$transaction` interactive callbacks без явного `timeout` опції
 
 **Файли:**
+
 - `apps/api/src/modules/work-orders/work-orders.service.ts:356`
 - `apps/api/src/modules/inspection/inspection.service.ts:93`
 - `apps/api/src/modules/calendar/calendar.service.ts:62`
@@ -4394,6 +4697,7 @@ Hardcoded HSL → у dark mode стає погано читаним (контр�
 
 **Опис:**
 Жоден `$transaction(async (tx) => {...})` callback в коді не має явного `timeout: N`. Prisma 5 default = 5000ms, що адекватно, але:
+
 - При navigation/FK queries у callback час може зрости (особливо work-orders.transition COMPLETED — write-off + reserve-release + settlement в одній)
 - Без явного timeout складніше моніторити які транзакції повільні
 - Best practice (§4.9.3 SKILL.md) — явний `{ timeout: 5000 }` для документації invariant
@@ -4407,6 +4711,7 @@ Hardcoded HSL → у dark mode стає погано читаним (контр�
 Default 5s, не задокументовано в коді.
 
 **Статус:** [x] виправлено — додано явні timeouts:
+
 - `work-orders.service.ts:380`: `{ timeout: 10_000 }` (WRITEOFF + RESERVE_RELEASE loop)
 - `inspection.service.ts:148`: `{ timeout: 10_000 }` (workOrderLine.create loop)
 - `calendar.service.ts:101`: `{ timeout: 5_000 }` (conflict checks + create)
@@ -4425,11 +4730,13 @@ Default 5s, не задокументовано в коді.
 `AuthProvider.useEffect` на mount беззастережно викликає `refreshToken()` →
 `POST /api/auth/refresh`. Якщо користувач щойно прийшов на `/login` або `/setup`
 (чистий браузер без refresh-cookie), API повертає 401 → браузер логує:
+
 ```
 Failed to load resource: the server responded with a status of 401 (Unauthorized)
 ```
 
 Це не JS exception, але:
+
 - E2E тест `console-errors.spec.ts` падає на цій помилці для `/login` і `/setup`
 - Sentry може фіксувати network errors з браузера
 - Користувач (відкривши DevTools) бачить помилку → виглядає як баг
@@ -4449,6 +4756,7 @@ Failed to load resource: the server responded with a status of 401 (Unauthorized
 ## Session 2026-05-27 — FULL `/sto-tester` sweep (audit-after-Bug-#130)
 
 ### Baseline
+
 - TypeScript api/web/shared — ✅ 0 errors
 - Unit + contract tests — ✅ 271/271 passed (23 files)
 - Dev servers: API:3000 ✅ (всі 15 smoke endpoints 200, <200ms), WEB:3001 ✅
@@ -4464,6 +4772,7 @@ Failed to load resource: the server responded with a status of 401 (Unauthorized
 ## Bug #132 — [MEDIUM] $transaction interactive callbacks без `{ timeout }` у 11 сервісах (продовження Bug #130)
 
 **Файли:** (без `{ timeout: ... }` опції)
+
 - `apps/api/src/modules/setup/setup.service.ts:29` — bootstrap 14+ writes (CRITICAL якщо timeout=5s default — інсталяція може провалитись)
 - `apps/api/src/modules/settlements/settlements.service.ts:62` — створення транзакції + update балансу (викликається з WO COMPLETED)
 - `apps/api/src/modules/inventory/batch.service.ts:137,266` — consumeBatch / returnToBatch у standalone-режимі (без outer tx)
@@ -4483,12 +4792,14 @@ Failed to load resource: the server responded with a status of 401 (Unauthorized
 Bug #130 додав `{ timeout: ... }` до 5 найкритичніших сервісів (work-orders, inspection, calendar, completion-acts, document-number). Решта 16 викликів `prisma.$transaction(callback)` досі без explicit timeout → Prisma 5 використовує default `5000ms`.
 
 Найбільш ризикові:
+
 1. **setup.service.ts** — 14+ INSERT-ів за одну транзакцію (Organisation → OrganisationSettings → 8× DocumentNumberConfig → 5× PaymentMethodConfig → 3× TaxRate → Branch → BranchSettings → Warehouse → Employee → AuthAccount). На повільному диску першого запуску може перевищити 5s → інсталятор покаже помилку при першому setup.
 2. **stock-documents post()** — викликає `inventoryService.createMovement` для **кожної лінії** у документі. 50-рядковий приймальний документ → 50 батчевих створень → ризик timeout.
 3. **purchase-orders receivePartial** — loop по lines з `consumeBatch` + `createMovement`.
 
 **Очікувана поведінка:**
 Кожен `$transaction(callback, { timeout: N })` має явний timeout відповідний до обсягу роботи:
+
 - Setup (одноразово, ~14 INSERTs): `{ timeout: 15_000 }`
 - Складські документи з N лініями: `{ timeout: 10_000 }`
 - Інші взаємодії (1-3 write): `{ timeout: 5_000 }`
@@ -4511,9 +4822,11 @@ Default 5s — на повільних дисках / під навантаже�
 
 **Опис:**
 Поточний код:
+
 ```ts
 costMethod === 'FEFO' ? [{ expiryDate: 'asc' }, { createdAt: 'asc' }] :
 ```
+
 SKILL §1.1 (FEFO): `[{ expiryDate: 'asc', nulls: 'last' }, { createdAt: 'asc' }]` — товари без терміну йдуть В КІНЦІ, не на початку.
 
 Хоча Postgres ASC за замовчуванням ставить NULLS LAST, це **database-specific** поведінка. У майбутній міграції на іншу БД або при ввімкненні `NULLS FIRST` режиму це може дати silent regression: партії без терміну будуть споживатись першими, а партії що скоро прострочаться — залишатись на складі.
@@ -4525,6 +4838,7 @@ SKILL §1.1 (FEFO): `[{ expiryDate: 'asc', nulls: 'last' }, { createdAt: 'asc' }
 Працює коректно випадково через дефолт Postgres, але контракт не зафіксований у коді.
 
 **Фікс:**
+
 ```ts
 costMethod === 'FEFO' ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }] :
 ```
@@ -4553,6 +4867,7 @@ costMethod === 'FEFO' ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { creat
 3/22 тестів flaky при cold cache; всі passing при warm cache. CI flake rate ~5-10%.
 
 **Фікс:**
+
 1. Додати `workers: 1` для `console-errors.spec.ts` через `test.describe.configure({ mode: 'serial' })` — тести однієї describe-групи запускаються послідовно (інші тести залишаються паралельними).
 2. Або (агресивніше) — побудувати prod build перед запуском console-errors (`next build` + `next start`), щоб chunks були готові.
 
@@ -4565,6 +4880,7 @@ costMethod === 'FEFO' ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { creat
 ## Session 2026-05-27 — FULL tester sweep #2 (security headers regression)
 
 ### Baseline
+
 - TypeScript web/api/shared — ✅ 0 errors
 - Unit/contract/property tests — ✅ 271/271 passed (23 files)
 - Component tests (web) — ✅ 139/139 passed (13 files)
@@ -4572,6 +4888,7 @@ costMethod === 'FEFO' ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { creat
 - Dev servers: API:3000 ✅ WEB:3001 ✅
 
 ### Scope of analysis
+
 Повний прохід §1.1–§1.5 + §4.9 (нефункціональне). Знайшов 1 новий баг рівня HIGH: відсутні security headers на API. Решта checklist'ів — clean (FSM, інвентар, settlements, tenant isolation, soft delete, raw SQL casing, blob URL revoke, EventSource SSE, pricing formulas, FEFO ordering — все виправлено попередніми сесіями).
 
 ---
@@ -4584,6 +4901,7 @@ costMethod === 'FEFO' ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { creat
 
 **Опис:**
 `curl -I http://localhost:3000/api/health` повертає тільки CORS + content-type. Відсутні:
+
 - `X-Content-Type-Options: nosniff` — захист від MIME sniffing атак (старі браузери інтерпретують `text/plain` як HTML, виконують inline JS)
 - `X-Frame-Options: DENY` — захист від clickjacking (зловмисник embed-ить API responses в iframe для UI redress attack)
 - `Strict-Transport-Security` — не критично у dev, але потрібно у prod
@@ -4594,6 +4912,7 @@ Per skill checklist §4.9.2 — `X-Content-Type-Options: nosniff` і `X-Frame-Op
 `apps/api/package.json` не містить `@fastify/helmet`. NestJS Fastify adapter не додає security headers за замовчуванням (на відміну від Express + helmet).
 
 **Очікувана поведінка:**
+
 ```
 HTTP/1.1 200 OK
 X-Content-Type-Options: nosniff
@@ -4603,25 +4922,30 @@ Cross-Origin-Resource-Policy: same-site
 ```
 
 **Фактична поведінка:**
+
 ```
 HTTP/1.1 200 OK
 access-control-allow-origin: http://localhost:3001
 access-control-allow-credentials: true
 content-type: application/json; charset=utf-8
 ```
+
 Жодних security headers.
 
 **Фікс:**
+
 1. `pnpm --filter @sto/api add @fastify/helmet`
 2. У `apps/api/src/main.ts`: `await app.register((await import('@fastify/helmet')).default, { contentSecurityPolicy: false, crossOriginEmbedderPolicy: false });` — CSP вимкнено бо Swagger UI використовує inline scripts
 3. Додати E2E smoke-тест у `apps/web/e2e/smoke.spec.ts` що `GET /api/health` повертає security headers (contract test не годиться — helmet реєструється у `bootstrap()`, не у `app.init()` що використовується тестами).
 
 **Фактичний фікс:**
+
 - `apps/api/package.json`: додано `@fastify/helmet@^11.1.1` (версія 11 для Fastify 4; 12+/13 потребують Fastify 5)
 - `apps/api/src/main.ts`: `await app.register(fastifyHelmet, { contentSecurityPolicy: false, crossOriginEmbedderPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } })` — CSP та COEP вимкнено щоб не ламати Swagger UI і файлові завантаження
 - `apps/web/e2e/smoke.spec.ts`: новий describe "Smoke — API security headers (Bug #135)" перевіряє `x-content-type-options`, `x-frame-options`, `strict-transport-security`, `cross-origin-resource-policy` проти живого API
 
 **Перевірка після фіксу:**
+
 ```
 $ curl -I http://localhost:3000/api/health
 HTTP/1.1 200 OK
@@ -4665,6 +4989,7 @@ X-XSS-Protection: 0
 Новий функціонал "Pencil edit buttons + PATCH for all 4 tabs" зламаний — фронтенд `save()` надсилає в PATCH body поля, яких **немає** у `UpdateZoneDto` / `UpdateLiftDto` / `UpdateWarehouseDto`. У `main.ts` ValidationPipe налаштовано з `forbidNonWhitelisted: true`, тому будь-яке невідоме поле → 400 `property X should not exist`.
 
 Конкретно:
+
 - Edit Zone: PATCH body містить `branchId` (рядок 121), але `UpdateZoneDto` має лише `name?`, `type?`.
 - Edit Lift: PATCH body містить `zoneId` (рядок 129), але `UpdateLiftDto` не дозволяє `zoneId`.
 - Edit Warehouse: PATCH body містить `branchId` (рядок 143), але `UpdateWarehouseDto` має лише `name?`, `type?`, `isMain?`.
@@ -4719,6 +5044,7 @@ NestJS class-validator повертає `{ message: string[] }` при 400. `api
 
 **Опис:**
 Bug #130 + #132 додали `{ timeout: 5_000 }` до критичних транзакцій. Але 6 інтерактивних callback transactions у work-orders.service для CRUD ліній і запчастин не отримали timeout. Кожна з них:
+
 - 1 mutation (create/update/soft-delete)
 - `recalcTotals(workOrderId, tx, orgId)` — 2 findMany з `take: 1000` + reduce + workOrder.update
 
@@ -4751,6 +5077,7 @@ Bug #130 + #132 додали `{ timeout: 5_000 }` до критичних тра
 Але важливіше — коли `companyName === null` і обидва `lastName/firstName === null` — `filter(Boolean).join(' ')` повертає `''` (порожній рядок). У комбобоксі `primary: ''` → рядок з порожнім текстом, користувач бачить порожній dropdown item.
 
 **Очікувана поведінка:**
+
 1. Прибрати dead `?? ''` (cosmetic).
 2. Якщо всі імена null — fallback на `'(без імені)'` для UI.
 
@@ -4774,6 +5101,7 @@ Cosmetic dead code; функціонально працює, але дивно �
 `const showSelected = !!value && !!displayValue && !query;` — якщо `value` (id) задано, але `displayValue` (відображувана назва) ще не завантажилась (асинхронний fetch), компонент рендерить пустий combobox замість selected pill. Користувач думає що вибір втрачено.
 
 Сценарій:
+
 1. Користувач завантажує сторінку Edit Work Order — `partForm.goodId` встановлено з server response.
 2. `goodDisplayName` встановлюється пізніше (з того ж response, але можливо у іншому ефекті).
 3. На мить combobox показує порожній input замість вибраного товару.
@@ -4796,6 +5124,7 @@ Cosmetic dead code; функціонально працює, але дивно �
 **Контекст:** FULL `/sto-tester` запуск після 3 останніх комітів (full-text search combobox + UoM columns + infrastructure edit + auth/booking message join + WAI-ARIA combobox).
 **Стан до сесії:** TS 0 errors (web/api/shared), 271 unit/contract tests passed.
 **Що перевірялось:**
+
 - Bug #136 (infrastructure PATCH) — підтверджено виправлено в commit 15e451e
 - Bug #137 (login/booking publicFetch `message: string[]`) — підтверджено виправлено в commit 4953500
 - Bug #138 (work-orders.service `$transaction` timeout) — підтверджено виправлено для work-orders, warehouses залишається
@@ -4814,6 +5143,7 @@ Cosmetic dead code; функціонально працює, але дивно �
 
 **Опис:**
 Bug #138 виправило 6 transactions у work-orders.service, але пропустило 2 у warehouses.service. Кожна транзакція робить:
+
 1. `updateMany({ where: { orgId, deletedAt: null, ...maybeNotId }, data: { isMain: false } })` — touch всі warehouses організації
 2. `create` або `update`
 
@@ -4868,18 +5198,18 @@ Updated `work-orders.contract.spec.ts` — замінено `'wo-1'` на вал
 
 ### Аудит решти сторінок (всі чисті)
 
-| Сторінка | Async-loaded options | Patern безпечний? | Чому |
-|---|---|---|---|
-| `calendar/page.tsx` (lift) | `lifts` | ✅ | `<option value="">— будь-який —</option>` placeholder; backend приймає `liftId: undefined` |
-| `purchase-orders/page.tsx` | `warehouses` | ✅ | `placeholder="Оберіть склад"` рендерить `<option value="" disabled>`; `disabled={!form.warehouseId}` блокує submit |
-| `stock-documents/page.tsx` | `branches`, `warehouses` | ✅ | Усі Select мають `placeholder`; submit disabled на пусті ID |
-| `work-orders/page.tsx` | `branches`, `vehicles` | ✅ | Усі мають `<option value="">— Оберіть —</option>`; `disabled={!form.branchId || !form.vehicleId || !form.counterpartyId}` |
-| `work-orders/[id]/PageClient.tsx` | `works`, `employees`, `warehouses` | ✅ | Усі мають `<option value="">— Оберіть —</option>`; submit disabled |
-| `infrastructure/page.tsx` (zone/lift/warehouse) | `branches`, `zones` | ✅ | `loading` блокує рендер кнопок до завершення `Promise.all([…])`; race window закрите |
-| `pricing-rules/PricingRulesClient.tsx` | `goods` | ✅ | `goodId` опціональний; defaults `'PERCENT'` для type — hardcoded enum |
-| `employees/page.tsx` | (hardcoded enums) | ✅ | Statyсhні `ROLE_LABELS`/`STATUS_LABELS`/`RATE_LABELS` — не async |
-| `vehicles/new/PageClient.tsx` | (hardcoded enums) | ✅ | Усі IDs опціональні; submit перевіряє `make` + `model` only |
-| `crm/page.tsx` | (hardcoded enum) | ✅ | `type: 'CLIENT'` — hardcoded |
+| Сторінка                                        | Async-loaded options               | Patern безпечний? | Чому                                                                                                               |
+| ----------------------------------------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------ | --- | --------------- | --- | ---------------------- |
+| `calendar/page.tsx` (lift)                      | `lifts`                            | ✅                | `<option value="">— будь-який —</option>` placeholder; backend приймає `liftId: undefined`                         |
+| `purchase-orders/page.tsx`                      | `warehouses`                       | ✅                | `placeholder="Оберіть склад"` рендерить `<option value="" disabled>`; `disabled={!form.warehouseId}` блокує submit |
+| `stock-documents/page.tsx`                      | `branches`, `warehouses`           | ✅                | Усі Select мають `placeholder`; submit disabled на пусті ID                                                        |
+| `work-orders/page.tsx`                          | `branches`, `vehicles`             | ✅                | Усі мають `<option value="">— Оберіть —</option>`; `disabled={!form.branchId                                       |     | !form.vehicleId |     | !form.counterpartyId}` |
+| `work-orders/[id]/PageClient.tsx`               | `works`, `employees`, `warehouses` | ✅                | Усі мають `<option value="">— Оберіть —</option>`; submit disabled                                                 |
+| `infrastructure/page.tsx` (zone/lift/warehouse) | `branches`, `zones`                | ✅                | `loading` блокує рендер кнопок до завершення `Promise.all([…])`; race window закрите                               |
+| `pricing-rules/PricingRulesClient.tsx`          | `goods`                            | ✅                | `goodId` опціональний; defaults `'PERCENT'` для type — hardcoded enum                                              |
+| `employees/page.tsx`                            | (hardcoded enums)                  | ✅                | Statyсhні `ROLE_LABELS`/`STATUS_LABELS`/`RATE_LABELS` — не async                                                   |
+| `vehicles/new/PageClient.tsx`                   | (hardcoded enums)                  | ✅                | Усі IDs опціональні; submit перевіряє `make` + `model` only                                                        |
+| `crm/page.tsx`                                  | (hardcoded enum)                   | ✅                | `type: 'CLIENT'` — hardcoded                                                                                       |
 
 ### Знайдено: 1 баг
 
@@ -4916,6 +5246,7 @@ useEffect(() => {
 ```
 
 Race window:
+
 1. Модалка відкривається → `payMethods = []` → fallback `<option value="cash">` рендериться → state `'cash'`, візуально `'Готівка'` — узгоджено.
 2. `apiFetch('/payment-methods')` resolves → `payMethods` оновлюється до активних методів організації.
 3. Якщо адмін **деактивував `cash`** через `PaymentMethodConfig` (UI у /settings) — `payMethods` не містить `'cash'`:
@@ -4953,7 +5284,8 @@ useEffect(() => {
 
 Тестувались: 4 нові модулі (currencies, exchange-rates, bank-accounts, cash-registers),
 розширення settings (org-info endpoint, logo upload), фронт settings page з 4 новими вкладками
-+ Organisation вкладка. tsc (api/web/shared) 0 errors, 287/287 unit tests passed на старті.
+
+- Organisation вкладка. tsc (api/web/shared) 0 errors, 287/287 unit tests passed на старті.
 
 ---
 
@@ -4987,7 +5319,7 @@ bank-accounts), а `cash-registers` — ні. За §1.4 sto-tester новий `
 **Категорія:** frontend
 
 **Опис:**
-Поля "Назва *" та "Код *" позначені зірочкою як обовʼязкові, але `saveCurrency`
+Поля "Назва _" та "Код _" позначені зірочкою як обовʼязкові, але `saveCurrency`
 надсилає `currencyForm` напряму без перевірки. При порожніх полях користувач отримує
 сирий серверний 400 (`name should not be empty; code should not be empty`) у загальному
 банері `error`, а не inline-підказку біля поля. BA/CR модалі вже мають inline-валідацію
@@ -5135,10 +5467,10 @@ soft-deleted рядка з тим самим унікальним ключем; 
 
 ---
 
-
 ## Session 2026-05-28 — AUTO tester after docs-only change (skill files rewrite)
 
 ### Baseline
+
 - TypeScript API — ✅ 0 errors
 - TypeScript web — ✅ 0 errors
 - TypeScript shared — ✅ 0 errors
@@ -5278,18 +5610,19 @@ clamp у `[0, 24*60]` як остання лінія оборони.
 
 ## Session 2026-05-28 — AUTO після review (LiftType migration, BOM strip, SearchPicker error state)
 
-Scope (git show 9d454d3): 22×*.dto.ts (BOM strip), search-picker-modal.tsx (error state),
+Scope (git show 9d454d3): 22×\*.dto.ts (BOM strip), search-picker-modal.tsx (error state),
 infrastructure/page.tsx (WarehouseMainCheckbox), migration 20260528150000_add_lift_type_pit_ramp.
 
 Baseline: TS api/web/shared OK 0 errors; unit 316/316 OK (incl. calendar.contract 14).
 Перевірено за матрицею:
-- *.dto.ts → §1.2: `@Matches(/^[0-9a-f]{8}-.../i)` замінив `@IsUUID()` — анкерований, hex-only,
+
+- \*.dto.ts → §1.2: `@Matches(/^[0-9a-f]{8}-.../i)` замінив `@IsUUID()` — анкерований, hex-only,
   не послаблює (з whitelist:true non-string відхиляється `@Matches` як і `@IsUUID`). IBAN
   `@Matches(/^UA\d{27}$/)` і phone `@Matches(/^\+380\d{9}$/)` цілі. OK
 - migration + schema → §1.1: enum LiftType має PIT/RAMP; міграція idempotent `ADD VALUE IF NOT EXISTS`;
   frontend LIFT_TYPE_LABELS = {PIT:'Яма', RAMP:'Естакада'} синхронні. OK
 - search-picker-modal.tsx → §1.3: error state + mountedRef + clearTimeout cleanup + setLoading(true)
-  + key={item.id}. Канонічний шаблон дотримано. OK
+  - key={item.id}. Канонічний шаблон дотримано. OK
 - infrastructure/page.tsx → §1.3: WarehouseMainCheckbox — чиста екстракція, логіка ідентична. OK
 - calendar.service.ts (active area, не у scope): orgId+deletedAt на всіх findFirst/findMany,
   $transaction {timeout:5000}, NOT:{id} у resize conflict-check. OK
@@ -5381,6 +5714,7 @@ commit 634536c — review fix видалив зайвий IsUUID import).
 чужий ID → `BadRequestException` українською. Tenant isolation (CLAUDE.md правило #6) дотримано.
 
 **Фактична поведінка:**
+
 1. `brandId`/`unitId`/`preferredSupplierId` з ІНШОЇ org проходить DB FK constraint →
    товар одного tenant вказує на бренд/одиницю/постачальника іншого tenant (cross-tenant витік даних).
 2. Неіснуючий ID → Prisma P2003 → загальне 400 "Порушення зовнішнього ключа: пов'язаний запис
@@ -5557,11 +5891,13 @@ singular-імен. Сервіс взагалі не мав `*.service.spec.ts`.
 **HEAD на момент запуску:** 507a7e8. Попередня сесія (commit fc87206) записала Bugs #164–#168 з коректним аналізом і позначила всі `[x] виправлено`, АЛЕ commit fc87206 — **docs-only** (`MemoryManual.md` 1 файл). Жоден код-фікс не потрапив у робоче дерево. Перевірка реальних файлів підтвердила: усі п'ять дефектів ЖИВІ.
 
 ### Baseline (Крок 0)
+
 - TypeScript API — ✅ 0 errors
 - TypeScript Web (`--incremental false`) — ✅ 0 errors
 - Unit + contract (API) — ✅ 330/330 passed (32 files)
 
 ### Re-verification реальних файлів (NOT-fixed despite `[x]`)
+
 - **#164** `docker-compose.yml:54` — healthcheck все ще `curl -f http://localhost:3000/health` (а не `/api/health`). `main.ts:38` `setGlobalPrefix('api')` без винятків → реальний шлях `/api/health`. ЖИВИЙ.
 - **#165** той самий рядок — `curl` у `node:20-alpine`; `apps/api/Dockerfile` не містить `apk add curl`/`wget`/`HEALTHCHECK`. ЖИВИЙ.
 - **#166** root `.dockerignore` — ВІДСУТНІЙ (`ls`, `git log --all -- .dockerignore` порожній). ЖИВИЙ.
@@ -5569,6 +5905,7 @@ singular-імен. Сервіс взагалі не мав `*.service.spec.ts`.
 - **#168** `apps/web/nginx.conf:18` — `gzip_types` без `image/svg+xml`/`text/javascript`. ЖИВИЙ.
 
 ### Застосовані фікси (цього разу — реально у код)
+
 - **#164 + #165** → healthcheck переписано на list-form з Node-one-liner `require('http').get('http://localhost:3000/api/health', r => exit(r.statusCode===200?0:1))` — без зовнішніх бінарників, правильний `/api` префікс; додано `timeout: 5s`, `retries: 5`. `docker compose config` валідний.
 - **#166** → створено root `.dockerignore`: виключає `**/node_modules`, `.git`, `**/dist`/`**/build`/`**/.next`/`**/out`, `apps/api/public`, `.env*`, `.claude`, тести/e2e/доки, `*.md`, `Dockerfile`/`docker-compose*`. Prisma schema/migrations НЕ виключені (потрібні для `prisma generate` у builder).
 - **#167** → `build-prod.ps1`: прибрано копіювання у `apps/api/public`; export лишається у `apps/web/out` (саме її пакує `apps/web/Dockerfile`); додано `Test-Path $outDir` guard.
@@ -5596,6 +5933,7 @@ Baseline: API tsc 0 errors, Web tsc 0 errors, 330/330 unit tests passed.
 Scope: `apps/web/src/app/calendar/page.tsx` (month view, stats period filter, loadMonth/loadStats AbortController, color-mix heatmap), `apps/api/src/modules/work-orders/work-orders.service.ts` (calendarSlots take:1 + toDto), phase18 infra (Dockerfile api/web, nginx.conf, Caddyfile, .dockerignore, docker-compose healthchecks).
 
 **Перевірки із завдання (усі підтверджені OK, не баги):**
+
 - #3 `apiFetch(path, init)` приймає `init?: RequestInit` → `signal` спредиться у `fetch({ ...init })` → abort спрацьовує. Додатково: GET зі `signal` свідомо обходить in-flight dedup (інакше abort одного викликача відхиляв би проміс іншого) — коректно.
 - #4 STATS_MAX_DAYS=92 clamp у `while (cur <= end && days.length < STATS_MAX_DAYS)` — кап під час побудови days-масиву, ДО `Promise.all`. ≤92 запитів. OK.
 - #5 `statsRangeTooLong` (custom > 92 дн) рендерить warning «Діапазон задовгий — показано перші 92 днів». `statsRange` для custom повертає null якщо `from > to` + окремий hint. OK.
@@ -5649,6 +5987,7 @@ Scope: 3 комміти — `e69bf1e` (CRM openEdit stale-fetch race + modalGara
 Baseline: API tsc 0 errors, Web tsc 0 errors, Shared tsc 0 errors, 334/334 API unit/contract passed, 139/139 web component passed (до фіксів).
 
 **Перевірки коду із завдання (підтверджено OK, не баги):**
+
 - #1 `counterparties.service.findAll`: `where = { orgId, ...(showDeleted ? {} : { deletedAt: null }), ... }` — `showDeleted=true` прибирає `deletedAt`-фільтр, `orgId` ЗАВЖДИ присутній. `count()` використовує той самий `where`. Логіка коректна — БРАКУВАЛО лише spec-покриття (Bug #173).
 - #3 `crm/page.tsx openEdit`: race-guard через `modalVehiclesReqRef` бездоганний — `reqId = ++ref.current` на старті, кожен `.then`/`.finally` гейтить `ref.current === reqId` перед мутацією state. Стара повільніша вкладка не перезапише дані поточного CP. OK.
 - #4 `employees/page.tsx saveEditEmp`: PATCH `/employees/:id`, далі `Promise.all([branches, zones, lifts, work-categories])` — усі 4 паралельно. Усі 4 endpoint-и існують на бекенді з `ParseUUIDPipe` + role-guards + org-scoped FK-валідацією у сервісі (`findMany({ id:{in}, orgId, deletedAt:null })` + count-check). Логіка коректна — БРАКУВАЛО лише contract-spec (Bug #175).
@@ -5740,6 +6079,7 @@ Scope: 4 комміти — `b5add44` (feat ui: export AnimatedBody, apply Resiz
 Зачеплені файли коду: `apps/web/src/components/ui/modal.tsx`, `apps/web/src/app/calendar/page.tsx`.
 
 Baseline:
+
 - API tsc: 0 errors
 - Web tsc: 0 errors
 - Shared tsc: 0 errors
@@ -5775,6 +6115,7 @@ Commit `b5add44` представив `AnimatedBody` усередині `Modal` 
 Scope: pricing brandId + COST_TIER + PricingRuleTier, UserPreference (DB+API+hook), AnimatedBody (6 inline sections), DetailPanel (Settings/showConfig/PanelField.hidden).
 
 **Baseline на Кроці 0:**
+
 - API tsc: 0 errors
 - Web tsc: 0 errors
 - Shared tsc: 0 errors
@@ -5803,12 +6144,14 @@ Scope: pricing brandId + COST_TIER + PricingRuleTier, UserPreference (DB+API+hoo
 
 **Опис:**
 Користувач явно вимагав покриття edge cases. Існуючі COST_TIER тести покривають:
+
 - (а) cost у `першому` тірі (50 у [0,100));
 - (б) cost у `середньому` тірі (200 у [100,500));
 - (в) cost у `останньому` тірі з `costMax=null` (1000 у [500,∞));
 - (г) cost `не потрапляє у жоден тір` (50 при тірах [200,500)).
 
 **НЕ покриті:**
+
 1. **Порожній масив `tiers: []`** — `rule.tiers.find(...)` повертає `undefined` → `result = costPrice`. Інваріант: правило `type=COST_TIER` без тірів не змінює ціну.
 2. **`cost = 0`** — boundary value. Тір [0,100) має `costMin=0`, `0 >= 0 && 0 < 100` → застосувати markup. Інваріант: `cost=0` → `result=0` (бо `0 * (1 + p/100) = 0`).
 3. **`cost === tier.costMax`** — `cost = 100` для тірів [0,100) і [100,500). За кодом `cost < max` (exclusive) — `100 < 100` false → пропускає тір [0,100), переходить до [100,500) де `100 >= 100 && 100 < 500` true → застосовує тір [100,500). Інваріант: cost-точка-на-межі = верхня межа НЕ включена; нижня межа включена (boundary semantics half-open).
@@ -5832,6 +6175,7 @@ Scope: pricing brandId + COST_TIER + PricingRuleTier, UserPreference (DB+API+hoo
 
 **Опис:**
 Hook був доданий у комміті `5d003e4` (Етап D) як основа конфігуроваємості DetailPanel. Користувач експліцитно запитав про цей тест у завданні. Існуючі hook-тести (`useBulkSelect`, `useInlineEdit`, `useSavedFilters`) — це шаблон для нового. Без тесту:
+
 - регресія optimistic-read (наприклад, `localStorage.getItem` всередині `try/catch` мовчки no-op) пройде.
 - регресія cancel-previous PUT (`putAbortRef.current?.abort()`) → race last-arrived-wins → серверу зберігається стале значення.
 - регресія `mountedRef` → setState на unmount → React warning + потенційний memory leak.
@@ -5856,6 +6200,7 @@ Hook був доданий у комміті `5d003e4` (Етап D) як осн�
 Bug #178 додав `brandId` як scope-поле у `PricingRule`. Bug #180 правильно додав FK-валідацію у контролер. Але contract spec покриває лише: paginated shape (Bug #18), goodId-not-uuid 400, type-not-enum 400, PERCENT happy path, `Bug #27 PATCH validation` (3 тести). Brand FK перевірок — 0 тестів.
 
 **Очікувана поведінка:** контракт-spec має асертити що:
+
 - `POST /pricing-rules` з валідним brandId з ЦІЄЇ org → 201
 - `POST /pricing-rules` з brandId з ЧУЖОЇ org → 404 «Бренд не знайдено»
 - `PATCH /pricing-rules/:id` з brandId з ЧУЖОЇ org → 404
@@ -5954,7 +6299,6 @@ Baseline: tsc 0 errors (api/web/shared), 376/376 API unit pass, 159/159 web vite
 
 ---
 
-
 ## Session 2026-05-30 (B) — FULL /sto-tester по PO/XLSX pricing (HEAD 91bafc8)
 
 Повний прогін після попередньої AUTO-сесії b1a083c. Baseline: tsc 0 errors (api/web/shared), 401/401 API unit pass, 179/179 web vitest pass. Перевірка `[x]`-маркерів попередньої сесії (#187-#192): b1a083c торкає РЕАЛЬНИЙ код (179 рядків змін у service.ts, controller.ts, нові spec.ts) — фікси застосовані, не docs-only.
@@ -5976,6 +6320,7 @@ Baseline: tsc 0 errors (api/web/shared), 376/376 API unit pass, 159/159 web vite
 **Фактична поведінка:** Кожен апло��д → 400 «Файл не завантажено: очікується multipart/form-data». До фіксу #192 — взагалі 406 з англомовним повідомленням. У production: користувач натискає «Розцінити» → бачить помилку, нічого не оновлюється у БД, ніяких логів.
 
 **Підхід до фіксу:**
+
 1. Імпортувати `apiMultipartFetch` з `@/lib/api-client` поряд із `apiFetch`.
 2. Замінити `apiFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', { method: 'POST', body: fd })` на `apiMultipartFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', fd)`.
 
@@ -5990,6 +6335,7 @@ Baseline: tsc 0 errors (api/web/shared), 376/376 API unit pass, 159/159 web vite
 **Категорія:** business-logic / data-corruption
 
 **Опис:** `applyPricingFromList` обчислює costPrice як `Number(good.purchasePrice ?? 0)`. У схемі `Good.purchasePrice Decimal? @db.Decimal(12, 2)` — поле опціональне (`?`). Якщо користувач завантажив список SKU де частина товарів НЕ має `purchasePrice` (новий товар, забули заповнити, помилка міграції) — costPrice=0. `PricingService.calculateSalePrice(...)`:
+
 - `PERCENT` / `COMPETITOR_PLUS`: `0 * (1 + p/100) = 0` → newSalePrice=0
 - `COST_TIER` з тіром що покриває `[0, X)`: `0 * (1 + p/100) = 0` → newSalePrice=0
 - `FIXED_AMOUNT`: `0 + fixedAmount = fixedAmount` → newSalePrice=fixedAmount (не зв'язана з реальною собівартістю)
@@ -6006,6 +6352,7 @@ Baseline: tsc 0 errors (api/web/shared), 376/376 API unit pass, 159/159 web vite
 **Фактична поведінка:** `salePrice` затирається у 0 для PERCENT/COMPETITOR_PLUS/COST_TIER правил без попередження.
 
 **Підхід до фіксу:**
+
 1. Перед викликом `calculateSalePrice` перевірити: `if (good.purchasePrice == null || Number(good.purchasePrice) <= 0)`.
 2. Якщо так — push у `notFound` зі sku АБО додати до окремого `skipped` масиву.
 3. `continue` цикл — не оновлювати salePrice.
@@ -6029,20 +6376,21 @@ Baseline: tsc 0 errors (api/web/shared), 376/376 API unit pass, 159/159 web vite
 
 (б) **Race на unmount:** `setApplyingPricingId(null)` у `finally` спрацьовує навіть якщо компонент вже unmount-нутий (користувач перейшов на іншу сторінку під час pending-розцінки). React warning «Can't perform state update on unmounted component». Не критично — SWR/effect cleanup патерн зазвичай ховає це у TS-warning.
 
-**Очікувана поведінка:** 
+**Очікувана поведінка:**
+
 - Помилка завжди показується (через `setError(...)` як в інших handlerах сторінки) — toast є додатком, не заміною.
 - `let cancelled = false; ...; if (!cancelled) setApplyingPricingId(null);` АБО використати `useRef<boolean>` для tracking mounted (як `mountedRef` у PricingRulesClient).
 
 **Фактична поведінка:** Помилки невидимі для tenant з toast вимкнено. Race з unmount → React console warning.
 
 **Підхід до фіксу:**
+
 1. `setError(e instanceof Error ? e.message : 'Помилка розцінки')` додатково до toast (toast все одно лишити для тенентів з toastEnabled=true).
 2. `mountedRef` patterns АБО ігнор race для цього специфічного state (не критично оскільки після unmount setState на компоненті уже не має ефекту, тільки warning).
 
 **Статус:** [x] виправлено (частина (а)) — у `applyPricing` (purchase-orders/page.tsx) catch тепер обов'язково викликає `setError(msg)` поряд з опціональним `toast.error(msg)`. Помилка завжди видима у inline-banner вгорі сторінки. Також `setError('')` перед запитом — щоб новий запит чистив попередню помилку. Частина (б) (unmount race) — залишена як LOW: після unmount setState не має ефекту, лише React console warning у dev режимі; повний `mountedRef`-фікс не вартий комплексності для цього єдиного handler.
 
 ---
-
 
 ## Session 2026-05-30 (C) — /sto-tester FULL після review-сесії e189793 (PO N+1, status guard, catalog cache-stale)
 
@@ -6057,12 +6405,15 @@ Baseline на HEAD e189793: tsc 0 errors (api/web/shared) ✅. Web vitest: 179/1
 **Категорія:** test-coverage / process
 
 **Опис:** Commit c1dc5dd (review-фікс) додав defense-in-depth статус-guard у `applyPricing`:
+
 ```ts
 if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderStatus.PARTIAL) {
   throw new BadRequestException('Розцінити можна лише отримані товари ...');
 }
 ```
+
 Існуючі fixtures у `purchase-orders.service.spec.ts` (Bug #187 регресія) НЕ містять поле `status` у моках `prisma.purchaseOrder.findFirst.mockResolvedValueOnce({...})` — поле є `undefined` → guard кидає BadRequestException ДО будь-якої бізнес-логіки → 5 з 6 тестів падають:
+
 - «PO без lines → { updated: 0, details: [] }»
 - «ціна не змінилась (різниця < 0.001) → skip»
 - «ціна змінилась → виклик $transaction»
@@ -6078,6 +6429,7 @@ if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderSta
 **Фактична поведінка:** 5/6 фейлів у `purchase-orders.service.spec.ts`, повний `vitest run` валиться на 1 файлі (`Test Files: 1 failed | 38 passed`).
 
 **Підхід до фіксу:**
+
 1. Додати імпорт `PurchaseOrderStatus` з `@prisma/client`.
 2. Кожен mock `findFirst.mockResolvedValueOnce({...})` → додати `status: PurchaseOrderStatus.RECEIVED`.
 3. Замінити mock `pricingService.calculateSalePrice` на `getActiveRulesForOrg` (повертає `[]` або список правил) + `computePriceFromRules` (повертає число).
@@ -6096,10 +6448,12 @@ if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderSta
 **Категорія:** test-coverage
 
 **Опис:** Commit c1dc5dd додав ДВА нові публічні методи у `PricingService`:
+
 - `getActiveRulesForOrg(orgId)` — повертає `pricingRule.findMany` з фіксованою where (`isActive: true, deletedAt: null`) + include tiers + orderBy priority asc + take 200
 - `computePriceFromRules(rules, goodId, goodCategory?, goodType?, brandId?, costPrice)` — pure in-memory rule resolution, дублює switch-кейси `calculateSalePrice` але БЕЗ DB-калу
 
 Жодного тесту для них немає у `pricing.service.spec.ts`. Існуючі 19 тестів покривають лише старий `calculateSalePrice` (який тепер працює у legacy-сценаріях applyRuleToGoods, але новий applyPricing у PO використовує саме нові методи). Регресія типу:
+
 - Інверсія priority hierarchy у `computePriceFromRules.find(...)` — мінорна перестановка fallback-ів → PO застосовує НЕ-ту правило (наприклад, default замість brand-specific) → неправильна salePrice
 - Зміна where у `getActiveRulesForOrg` (наприклад, рефактор додає `isPublished: true` фільтр) → активні правила не повертаються → PO applyPricing не змінює нічого → silent corruption (повертає `updated: 0` замість реального оновлення)
 
@@ -6108,8 +6462,9 @@ if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderSta
 **Очікувана поведінка:** Парні тести для нових публічних методів:
 
 `computePriceFromRules`:
+
 - порожній rules array → повертає costPrice (no-op)
-- PERCENT → cost * (1 + p/100)
+- PERCENT → cost \* (1 + p/100)
 - FIXED_AMOUNT → cost + delta
 - FIXED_PRICE → fixedPrice (ігнор cost)
 - COST_TIER з matching tier
@@ -6120,6 +6475,7 @@ if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderSta
 - brandId rule перекриває goodType rule
 
 `getActiveRulesForOrg`:
+
 - викликає findMany з `orgId, isActive: true, deletedAt: null` → асерт shape `where`
 - orderBy `priority: 'asc'`
 - include `tiers` з orderBy sortOrder asc
@@ -6128,6 +6484,7 @@ if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderSta
 **Фактична поведінка:** 0 тестів для обох методів. Регресія беззвучна.
 
 **Підхід до фіксу:** Додати 2 нові `describe` блоки в кінці `pricing.service.spec.ts`:
+
 - `describe('PricingService.computePriceFromRules', () => { ... })` — pure-function тести (просто `new PricingService({} as PrismaService)`)
 - `describe('PricingService.getActiveRulesForOrg', () => { ... })` — через `Test.createTestingModule` з mock prisma
 
@@ -6142,6 +6499,7 @@ if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderSta
 **Категорія:** test-coverage / api-contract
 
 **Опис:** Existing contract spec для `POST /purchase-orders/:id/apply-pricing` (Bug #189) покриває:
+
 - 201 + dto shape для валідного UUID
 - 400 для не-UUID id
 - 403 без JWT
@@ -6149,6 +6507,7 @@ if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderSta
 - 201 + empty details для PO без змін
 
 Але НЕ покриває новий defense-in-depth status guard (c1dc5dd):
+
 - DRAFT/ORDERED/CANCELLED PO → service кидає BadRequestException(400) — НЕ покрито
 - RECEIVED/PARTIAL → нормальний 200 path — частково покрито (тільки 200 з RECEIVED непрямо)
 
@@ -6232,4 +6591,3 @@ Baseline (Крок 0): API tsc 0, web tsc 0, shared tsc 0; API unit 419/419 pass
 **Статус:** [x] виправлено — `parseHHMM` видалено з імпорту calendar/page.tsx; залишилися лише реально використовувані helper-и (`snapTo15`, `pxToHours`, `formatKyivDate`).
 
 ---
-

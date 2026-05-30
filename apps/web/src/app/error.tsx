@@ -2,7 +2,15 @@
 
 import { useEffect } from 'react';
 
-export default function GlobalError({ error, reset }: { error: Error; reset: () => void }) {
+export default function GlobalError({
+  error,
+  reset,
+}: {
+  // Next.js App Router error boundary props: `digest` is server-attached
+  // identifier — required in type для майбутнього SSR/monitoring (Sentry).
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
   useEffect(() => {
     console.error('[GlobalError]', error);
   }, [error]);
@@ -16,6 +24,7 @@ export default function GlobalError({ error, reset }: { error: Error; reset: () 
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
+            aria-hidden="true"
           >
             <path
               strokeLinecap="round"
