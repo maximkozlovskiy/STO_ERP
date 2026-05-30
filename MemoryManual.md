@@ -9,6 +9,11 @@
 ## Останній commit
 
 ```
+99c3781 fix(review): sprint-C — private cache + broader pino redact + lenient IsUUID
+6d48e9a feat(arch): sprint-C4 — @IsUUID('4') (later relaxed to @IsUUID()) у DTO
+0d47afd feat(arch): sprint-C3 — Cache-Control private,max-age=300 на reference data
+75258df feat(arch): sprint-C2 — correlation ID middleware (x-request-id)
+15e44fb feat(arch): sprint-C1 — structured logging via nestjs-pino
 (pending) fix(tester): Bugs #209-#214 — sprint-B cache invalidation + dead code + hook tests
 d4f61c6 docs(memory): record sto-review sprint-B session 3d5136d
 3d5136d fix(review): sprint-B — repairCategory filter restored + LowStockItem type + queryError surfacing
