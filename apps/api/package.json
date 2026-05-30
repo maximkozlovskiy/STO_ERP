@@ -23,6 +23,7 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-fastify": "^10.4.0",
     "@nestjs/swagger": "^8.0.0",
+    "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^5.22.0",
     "@sto/database": "workspace:*",
     "@sto/shared": "workspace:*",
