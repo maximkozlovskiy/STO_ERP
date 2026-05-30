@@ -2,10 +2,21 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Receipt, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
+import {
+  useInvoices,
+  useInvoiceTransition,
+  useDeleteInvoice,
+  useCreatePayment,
+  invoicesKeys,
+  Invoice,
+  InvoicesFilter,
+  PaginatedInvoices,
+} from '@/hooks/api/useInvoices';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -67,36 +78,18 @@ interface InvoiceLine {
   priceWithVat: number;
   sortOrder: number;
 }
-interface Invoice {
-  id: string;
-  number: string;
-  status: string;
-  counterpartyId: string;
-  counterpartyName?: string;
-  workOrderId?: string | null;
-  workOrderNumber?: string | null;
-  amount: number;
-  totalWithoutVat?: number;
-  totalVat?: number;
-  totalWithVat?: number;
-  paidAmount?: number;
-  invoiceType?: string;
-  notes?: string | null;
-  dueDate?: string | null;
-  lines?: InvoiceLine[];
-  createdAt: string;
-  updatedAt: string;
-}
-interface Paginated {
-  items: Invoice[];
-  total: number;
-  page: number;
-  limit: number;
-}
 
 interface InvoiceFilters extends Record<string, unknown> {
   search: string;
   status: string;
+}
+
+// Extend Invoice from hook with optional fields used in this page
+interface InvoiceWithOptionals extends Invoice {
+  workOrderNumber?: string | null;
+  invoiceType?: string | null;
+  paidAmount?: number | null;
+  lines?: InvoiceLine[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -134,6 +127,7 @@ function fmt(n: number) {
 export default function InvoicesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
 
+  const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
 
@@ -162,19 +156,38 @@ export default function InvoicesPage() {
   } = useTableColumns('invoices', INVOICE_COLUMNS);
   const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
   const detailPanel = useDetailPanel('invoices');
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [total, setTotal] = useState(0);
+
+  // Local filter & pagination state
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [selectedInv, setSelectedInv] = useState<Invoice | null>(null);
+  // React Query hooks
+  const limit = 20;
+  const {
+    data: queryData,
+    isLoading: loading,
+    error: queryError,
+  } = useInvoices({
+    page,
+    limit,
+    status,
+    q: debouncedSearch,
+  });
+  const invoices = queryData?.items ?? [];
+  const total = queryData?.total ?? 0;
+
+  // Mutations
+  const transitionMutation = useInvoiceTransition();
+  const deleteMutation = useDeleteInvoice();
+  const paymentMutation = useCreatePayment();
+
+  const [selectedInv, setSelectedInv] = useState<InvoiceWithOptionals | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
-  const [showPayment, setShowPayment] = useState<Invoice | null>(null);
+  const [showPayment, setShowPayment] = useState<InvoiceWithOptionals | null>(null);
 
   const [payMethods, setPayMethods] = useState<{ code: string; name: string }[]>([]);
   const [form, setForm] = useState({ counterpartyId: '', amount: '', dueDate: '' });
@@ -208,8 +221,7 @@ export default function InvoicesPage() {
   );
 
   // Bulk select
-  const [data, setData] = useState<Paginated | null>(null);
-  const bulkSelect = useBulkSelect(data?.items ?? []);
+  const bulkSelect = useBulkSelect(invoices);
 
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -229,7 +241,7 @@ export default function InvoicesPage() {
       const succeeded = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.length - succeeded;
       bulkSelect.clear();
-      load();
+      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
       if (features.toastEnabled) {
         if (succeeded > 0 && failed === 0) {
           toast.success(`Скасовано ${succeeded} ${succeeded === 1 ? 'рахунок' : 'рахунків'}`);
@@ -245,7 +257,7 @@ export default function InvoicesPage() {
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [bulkSelect, features.toastEnabled],
+    [bulkSelect, features.toastEnabled, queryClient],
   );
 
   const bulkActions = useMemo<BulkAction[]>(
@@ -258,41 +270,6 @@ export default function InvoicesPage() {
   // Unsaved guard for create modal
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
-  const limit = 20;
-
-  const mountedRef = useRef(true);
-  const selectTokenRef = useRef(0);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-      if (status) params.set('status', status);
-      if (debouncedSearch) params.set('q', debouncedSearch);
-      const result = await apiFetch<Paginated>(`/invoices?${params}`);
-      if (!mountedRef.current) return;
-      setData(result);
-      setInvoices(result.items);
-      setTotal(result.total);
-    } catch (e: unknown) {
-      if (!mountedRef.current) return;
-      setError(e instanceof Error ? e.message : 'Помилка завантаження');
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, [page, status, debouncedSearch]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
   useEffect(() => {
     if (!showPayment) return;
     let cancelled = false;
@@ -303,10 +280,10 @@ export default function InvoicesPage() {
       .then(d => {
         const active = d.filter(m => m.isActive).map(m => ({ code: m.code, name: m.name }));
         setCache('cache:payment-methods', active);
-        if (!cancelled && mountedRef.current) setPayMethods(active);
+        if (!cancelled) setPayMethods(active);
       })
       .catch((e: unknown) => {
-        if (!cancelled && mountedRef.current && !cached) {
+        if (!cancelled && !cached) {
           setError(e instanceof Error ? e.message : 'Помилка завантаження способів оплати');
         }
       });
@@ -348,20 +325,19 @@ export default function InvoicesPage() {
           dueDate: form.dueDate || undefined,
         }),
       });
-      if (!mountedRef.current) return;
       dirty.resetDirty();
       setShowCreate(false);
       setForm({ counterpartyId: '', amount: '', dueDate: '' });
       setCounterpartyDisplayName('');
-      load();
+      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
     } catch (e: unknown) {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : 'Помилка збереження');
     } finally {
-      if (mountedRef.current) setSaving(false);
+      setSaving(false);
     }
   };
 
-  const handleTransition = async (inv: Invoice, newStatus: string) => {
+  const handleTransition = async (inv: InvoiceWithOptionals, newStatus: string) => {
     if (
       !(await confirm({ title: `Перевести рахунок ${inv.number} → ${STATUS_LABELS[newStatus]}?` }))
     )
@@ -373,24 +349,23 @@ export default function InvoicesPage() {
         method: 'POST',
         body: JSON.stringify({ status: newStatus }),
       });
-      if (!mountedRef.current) return;
       // Sync selectedInv if it still matches the transitioned invoice.
       // Check via functional setter to avoid stale-closure: panel could be
       // switched to another row between click and response — without this guard
       // the new selectedInv would get the wrong status applied.
       setSelectedInv(prev => (prev && prev.id === inv.id ? { ...prev, status: newStatus } : prev));
-      load();
+      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
     } catch (e: unknown) {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
+      setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
     } finally {
-      if (mountedRef.current) setSavingId(null);
+      setSavingId(null);
     }
   };
 
   const handlePay = async () => {
     if (!showPayment) return;
     const rawAmt = parseFloat(payForm.amount);
-    const amt = !payForm.amount || !Number.isFinite(rawAmt) ? showPayment.amount : rawAmt;
+    const amt = !payForm.amount || !Number.isFinite(rawAmt) ? showPayment.totalAmount : rawAmt;
     setSaving(true);
     try {
       await apiFetch<{ id: string }>('/payments', {
@@ -403,7 +378,6 @@ export default function InvoicesPage() {
           notes: payForm.notes || undefined,
         }),
       });
-      if (!mountedRef.current) return;
       const paidInvoiceId = showPayment.id;
       setShowPayment(null);
       setPayForm({ method: 'cash', amount: '', notes: '' });
@@ -413,21 +387,18 @@ export default function InvoicesPage() {
       setSelectedInv(prev =>
         prev && prev.id === paidInvoiceId ? { ...prev, status: 'PAID' } : prev,
       );
-      load();
+      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
     } catch (e: unknown) {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка оплати');
+      setError(e instanceof Error ? e.message : 'Помилка оплати');
     } finally {
-      if (mountedRef.current) setSaving(false);
+      setSaving(false);
     }
   };
 
-  const selectInvoice = useCallback(async (inv: Invoice) => {
-    const token = ++selectTokenRef.current;
+  const selectInvoice = useCallback(async (inv: InvoiceWithOptionals) => {
     setSelectedInv(inv);
     try {
-      const detail = await apiFetch<Invoice>(`/invoices/${inv.id}`);
-      // Discard stale response if another row was clicked or unmounted
-      if (!mountedRef.current || token !== selectTokenRef.current) return;
+      const detail = await apiFetch<InvoiceWithOptionals>(`/invoices/${inv.id}`);
       setSelectedInv(detail);
     } catch {
       // keep basic inv data if detail fetch fails
@@ -436,7 +407,7 @@ export default function InvoicesPage() {
 
   const [cloning, setCloning] = useState(false);
 
-  const downloadPdf = async (inv: Invoice) => {
+  const downloadPdf = async (inv: InvoiceWithOptionals) => {
     // Bug #77: use apiBlobFetch which does silent refresh on 401 — direct fetch
     // breaks when access token expired (~15min) requiring full page reload.
     setError('');
@@ -456,7 +427,7 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleClone = async (inv: Invoice) => {
+  const handleClone = async (inv: InvoiceWithOptionals) => {
     setCloning(true);
     setError('');
     try {
@@ -464,9 +435,9 @@ export default function InvoicesPage() {
         method: 'POST',
       });
       // Reload data to show cloned invoice
-      load();
+      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
       // Select and show the cloned invoice - fetch it first
-      const clonedInvoice = await apiFetch<Invoice>(`/invoices/${cloned.id}`);
+      const clonedInvoice = await apiFetch<InvoiceWithOptionals>(`/invoices/${cloned.id}`);
       selectInvoice(clonedInvoice);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка дублювання');
@@ -477,7 +448,7 @@ export default function InvoicesPage() {
 
   const statuses = ['', 'DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'];
 
-  const buildInvoiceTabs = (inv: Invoice): DetailPanelTab[] => [
+  const buildInvoiceTabs = (inv: InvoiceWithOptionals): DetailPanelTab[] => [
     {
       key: 'info',
       label: 'Основне',
@@ -499,7 +470,7 @@ export default function InvoicesPage() {
           />
           <PanelField
             label="Сума"
-            value={inv.amount != null ? `${fmtMoney(inv.amount)} ₴` : undefined}
+            value={inv.totalAmount != null ? `${fmtMoney(inv.totalAmount)} ₴` : undefined}
           />
           <PanelField
             label="Сплачено"
@@ -769,7 +740,7 @@ export default function InvoicesPage() {
                       if (col.key === 'workOrder')
                         return (
                           <TableCell key="workOrder" className="text-[13px] text-muted-foreground">
-                            {inv.workOrderNumber ?? '—'}
+                            {(inv as InvoiceWithOptionals).workOrderNumber ?? '—'}
                           </TableCell>
                         );
                       if (col.key === 'status')
@@ -783,7 +754,7 @@ export default function InvoicesPage() {
                       if (col.key === 'amount')
                         return (
                           <TableCell key="amount" className="text-right font-semibold text-[13px]">
-                            {fmt(inv.amount)}
+                            {fmt(inv.totalAmount)}
                           </TableCell>
                         );
                       if (col.key === 'dueDate')
@@ -946,7 +917,7 @@ export default function InvoicesPage() {
         {showPayment && (
           <div className="space-y-4">
             <div className="p-3 bg-info-subtle rounded-lg text-sm text-info-text">
-              Сума до оплати: <strong>{fmt(showPayment.amount)}</strong>
+              Сума до оплати: <strong>{fmt(showPayment.totalAmount)}</strong>
             </div>
             <Select
               label="Метод оплати"
@@ -973,7 +944,7 @@ export default function InvoicesPage() {
               type="number"
               value={payForm.amount}
               onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
-              placeholder={String(showPayment.amount)}
+              placeholder={String(showPayment.totalAmount)}
               min="0.01"
               step="0.01"
             />
