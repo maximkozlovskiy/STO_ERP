@@ -3,8 +3,12 @@ import { LiftStatus, LiftType, ZoneType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import {
-  CreateLiftDto, CreateZoneDto, LiftResponseDto,
-  UpdateLiftDto, UpdateZoneDto, ZoneResponseDto,
+  CreateLiftDto,
+  CreateZoneDto,
+  LiftResponseDto,
+  UpdateLiftDto,
+  UpdateZoneDto,
+  ZoneResponseDto,
 } from './zones.dto';
 
 const TTL = 300;
@@ -106,9 +110,15 @@ export class ZonesService {
       where: { id, orgId },
       data: {
         ...rest,
-        ...(purchaseDate !== undefined ? { purchaseDate: purchaseDate ? new Date(purchaseDate) : null } : {}),
-        ...(warrantyUntil !== undefined ? { warrantyUntil: warrantyUntil ? new Date(warrantyUntil) : null } : {}),
-        ...(lastMaintenanceDate !== undefined ? { lastMaintenanceDate: lastMaintenanceDate ? new Date(lastMaintenanceDate) : null } : {}),
+        ...(purchaseDate !== undefined
+          ? { purchaseDate: purchaseDate ? new Date(purchaseDate) : null }
+          : {}),
+        ...(warrantyUntil !== undefined
+          ? { warrantyUntil: warrantyUntil ? new Date(warrantyUntil) : null }
+          : {}),
+        ...(lastMaintenanceDate !== undefined
+          ? { lastMaintenanceDate: lastMaintenanceDate ? new Date(lastMaintenanceDate) : null }
+          : {}),
       },
     });
     await this.cache.delPattern(`ref:lifts:${orgId}*`);
@@ -121,22 +131,59 @@ export class ZonesService {
     await this.cache.delPattern(`ref:lifts:${orgId}*`);
   }
 
-  private toZoneDto(z: { id: string; orgId: string; branchId: string; name: string; type: string; createdAt: Date; updatedAt: Date }): ZoneResponseDto {
-    return { id: z.id, orgId: z.orgId, branchId: z.branchId, name: z.name, type: z.type as ZoneType, createdAt: z.createdAt, updatedAt: z.updatedAt };
+  private toZoneDto(z: {
+    id: string;
+    orgId: string;
+    branchId: string;
+    name: string;
+    type: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }): ZoneResponseDto {
+    return {
+      id: z.id,
+      orgId: z.orgId,
+      branchId: z.branchId,
+      name: z.name,
+      type: z.type as ZoneType,
+      createdAt: z.createdAt,
+      updatedAt: z.updatedAt,
+    };
   }
 
   private toLiftDto(l: {
-    id: string; orgId: string; zoneId: string; name: string; type: string; maxWeightKg: number | null;
-    status: LiftStatus; serialNumber: string | null; purchaseDate: Date | null; warrantyUntil: Date | null;
-    maintenanceIntervalDays: number | null; lastMaintenanceDate: Date | null; nextMaintenanceDate: Date | null;
-    createdAt: Date; updatedAt: Date;
+    id: string;
+    orgId: string;
+    zoneId: string;
+    name: string;
+    type: string;
+    maxWeightKg: number | null;
+    status: LiftStatus;
+    serialNumber: string | null;
+    purchaseDate: Date | null;
+    warrantyUntil: Date | null;
+    maintenanceIntervalDays: number | null;
+    lastMaintenanceDate: Date | null;
+    nextMaintenanceDate: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
   }): LiftResponseDto {
     return {
-      id: l.id, orgId: l.orgId, zoneId: l.zoneId, name: l.name, type: l.type as LiftType, maxWeightKg: l.maxWeightKg,
-      status: l.status, serialNumber: l.serialNumber, purchaseDate: l.purchaseDate, warrantyUntil: l.warrantyUntil,
-      maintenanceIntervalDays: l.maintenanceIntervalDays, lastMaintenanceDate: l.lastMaintenanceDate,
+      id: l.id,
+      orgId: l.orgId,
+      zoneId: l.zoneId,
+      name: l.name,
+      type: l.type as LiftType,
+      maxWeightKg: l.maxWeightKg,
+      status: l.status,
+      serialNumber: l.serialNumber,
+      purchaseDate: l.purchaseDate,
+      warrantyUntil: l.warrantyUntil,
+      maintenanceIntervalDays: l.maintenanceIntervalDays,
+      lastMaintenanceDate: l.lastMaintenanceDate,
       nextMaintenanceDate: l.nextMaintenanceDate,
-      createdAt: l.createdAt, updatedAt: l.updatedAt,
+      createdAt: l.createdAt,
+      updatedAt: l.updatedAt,
     };
   }
 }

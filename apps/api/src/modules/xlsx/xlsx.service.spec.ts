@@ -60,7 +60,7 @@ describe('XlsxService', () => {
       const buf = service.generatePricingListTemplate();
       expect(Buffer.isBuffer(buf)).toBe(true);
       const text = buf.toString('utf-8');
-      expect(text.charCodeAt(0)).toBe(0xFEFF); // BOM
+      expect(text.charCodeAt(0)).toBe(0xfeff); // BOM
       const lines = text.replace(/^﻿/, '').trim().split('\n');
       expect(lines[0]).toBe('sku,barcode,name');
       expect(lines).toHaveLength(3); // header + 2 sample
@@ -76,12 +76,19 @@ describe('XlsxService', () => {
       const csv = '﻿sku,barcode,name\nOIL-5W40,,Масло\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([{
-        id: 'good-1', name: 'Масло', sku: 'OIL-5W40',
-        purchasePrice: 100, salePrice: 130,
-        category: null, goodType: 'CONSUMABLE', brandId: null,
-        barcodes: [],
-      }]);
+      prisma.good.findMany.mockResolvedValueOnce([
+        {
+          id: 'good-1',
+          name: 'Масло',
+          sku: 'OIL-5W40',
+          purchasePrice: 100,
+          salePrice: 130,
+          category: null,
+          goodType: 'CONSUMABLE',
+          brandId: null,
+          barcodes: [],
+        },
+      ]);
       pricingService.computePriceFromRules.mockReturnValueOnce(150);
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
@@ -91,7 +98,11 @@ describe('XlsxService', () => {
       expect(result.notFound).toEqual([]);
       expect(result.details).toHaveLength(1);
       expect(result.details[0]).toMatchObject({
-        goodId: 'good-1', sku: 'OIL-5W40', costPrice: 100, oldSalePrice: 130, newSalePrice: 150,
+        goodId: 'good-1',
+        sku: 'OIL-5W40',
+        costPrice: 100,
+        oldSalePrice: 130,
+        newSalePrice: 150,
       });
 
       // Bug #191: updateMany з orgId
@@ -106,12 +117,19 @@ describe('XlsxService', () => {
       const csv = 'Артикул,Штрихкод,name\nOIL-5W40,4820123456789,Масло\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([{
-        id: 'good-1', name: 'Масло', sku: 'OIL-5W40',
-        purchasePrice: 100, salePrice: 130,
-        category: null, goodType: null, brandId: null,
-        barcodes: [{ barcode: '4820123456789' }],
-      }]);
+      prisma.good.findMany.mockResolvedValueOnce([
+        {
+          id: 'good-1',
+          name: 'Масло',
+          sku: 'OIL-5W40',
+          purchasePrice: 100,
+          salePrice: 130,
+          category: null,
+          goodType: null,
+          brandId: null,
+          barcodes: [{ barcode: '4820123456789' }],
+        },
+      ]);
       pricingService.computePriceFromRules.mockReturnValueOnce(150);
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
@@ -149,12 +167,19 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nOIL,,Масло\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([{
-        id: 'good-1', name: 'Масло', sku: 'OIL',
-        purchasePrice: 100, salePrice: 130,
-        category: null, goodType: null, brandId: null,
-        barcodes: [],
-      }]);
+      prisma.good.findMany.mockResolvedValueOnce([
+        {
+          id: 'good-1',
+          name: 'Масло',
+          sku: 'OIL',
+          purchasePrice: 100,
+          salePrice: 130,
+          category: null,
+          goodType: null,
+          brandId: null,
+          barcodes: [],
+        },
+      ]);
       pricingService.computePriceFromRules.mockReturnValueOnce(130); // no change
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
@@ -168,27 +193,36 @@ describe('XlsxService', () => {
     it('порожній CSV (тільки header) → BadRequestException', async () => {
       const csv = 'sku,barcode,name\n';
       const buffer = Buffer.from(csv, 'utf-8');
-      await expect(service.applyPricingFromList(ORG, buffer, 'csv'))
-        .rejects.toThrow(BadRequestException);
+      await expect(service.applyPricingFromList(ORG, buffer, 'csv')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('CSV з рядками без sku та barcode → відфільтрується → BadRequestException', async () => {
       const csv = 'sku,barcode,name\n,,Лише назва\n';
       const buffer = Buffer.from(csv, 'utf-8');
-      await expect(service.applyPricingFromList(ORG, buffer, 'csv'))
-        .rejects.toThrow(BadRequestException);
+      await expect(service.applyPricingFromList(ORG, buffer, 'csv')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('Bug #198: purchasePrice=null → потрапляє у notFound, не пише good.updateMany (захист від затирання salePrice=0)', async () => {
       const csv = 'sku,barcode,name\nNO-COST-SKU,,Без собівартості\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([{
-        id: 'good-no-cost', name: 'Без собівартості', sku: 'NO-COST-SKU',
-        purchasePrice: null, salePrice: 200,
-        category: null, goodType: null, brandId: null,
-        barcodes: [],
-      }]);
+      prisma.good.findMany.mockResolvedValueOnce([
+        {
+          id: 'good-no-cost',
+          name: 'Без собівартості',
+          sku: 'NO-COST-SKU',
+          purchasePrice: null,
+          salePrice: 200,
+          category: null,
+          goodType: null,
+          brandId: null,
+          barcodes: [],
+        },
+      ]);
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
       expect(result.found).toBe(0); // не пушаємо у details
@@ -205,12 +239,19 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nZERO-COST,,Нуль собівартість\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([{
-        id: 'good-zero', name: 'Нуль', sku: 'ZERO-COST',
-        purchasePrice: 0, salePrice: 200,
-        category: null, goodType: null, brandId: null,
-        barcodes: [],
-      }]);
+      prisma.good.findMany.mockResolvedValueOnce([
+        {
+          id: 'good-zero',
+          name: 'Нуль',
+          sku: 'ZERO-COST',
+          purchasePrice: 0,
+          salePrice: 200,
+          category: null,
+          goodType: null,
+          brandId: null,
+          barcodes: [],
+        },
+      ]);
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
       expect(result.found).toBe(0);
@@ -225,8 +266,28 @@ describe('XlsxService', () => {
       const buffer = Buffer.from(csv, 'utf-8');
 
       prisma.good.findMany.mockResolvedValueOnce([
-        { id: 'g-a', name: 'A', sku: 'A-SKU', purchasePrice: 100, salePrice: 150, category: null, goodType: null, brandId: null, barcodes: [] },
-        { id: 'g-b', name: 'B', sku: 'B-SKU', purchasePrice: 50,  salePrice: 70,  category: null, goodType: null, brandId: null, barcodes: [] },
+        {
+          id: 'g-a',
+          name: 'A',
+          sku: 'A-SKU',
+          purchasePrice: 100,
+          salePrice: 150,
+          category: null,
+          goodType: null,
+          brandId: null,
+          barcodes: [],
+        },
+        {
+          id: 'g-b',
+          name: 'B',
+          sku: 'B-SKU',
+          purchasePrice: 50,
+          salePrice: 70,
+          category: null,
+          goodType: null,
+          brandId: null,
+          barcodes: [],
+        },
       ]);
       pricingService.computePriceFromRules
         .mockReturnValueOnce(150) // no change for A
@@ -251,12 +312,19 @@ describe('XlsxService', () => {
       sheet.addRow(['OIL-5W40', '', 'Масло']);
       const buf = await wb.xlsx.writeBuffer();
 
-      prisma.good.findMany.mockResolvedValueOnce([{
-        id: 'good-1', name: 'Масло', sku: 'OIL-5W40',
-        purchasePrice: 100, salePrice: 130,
-        category: null, goodType: null, brandId: null,
-        barcodes: [],
-      }]);
+      prisma.good.findMany.mockResolvedValueOnce([
+        {
+          id: 'good-1',
+          name: 'Масло',
+          sku: 'OIL-5W40',
+          purchasePrice: 100,
+          salePrice: 130,
+          category: null,
+          goodType: null,
+          brandId: null,
+          barcodes: [],
+        },
+      ]);
       pricingService.computePriceFromRules.mockReturnValueOnce(150);
 
       const result = await service.applyPricingFromList(ORG, buf as Buffer, 'xlsx');
@@ -271,8 +339,9 @@ describe('XlsxService', () => {
       sheet.addRow(['sku', 'barcode', 'name']);
       const buf = await wb.xlsx.writeBuffer();
 
-      await expect(service.applyPricingFromList(ORG, buf as Buffer, 'xlsx'))
-        .rejects.toThrow(BadRequestException);
+      await expect(service.applyPricingFromList(ORG, buf as Buffer, 'xlsx')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

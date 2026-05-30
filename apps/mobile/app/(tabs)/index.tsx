@@ -1,7 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet,
-  RefreshControl, ActivityIndicator,
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Q } from '@nozbe/watermelondb';
@@ -20,21 +25,38 @@ interface WorkOrder {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка', ESTIMATE: 'Кошторис', APPROVED: 'Затверджено',
-  IN_PROGRESS: 'В роботі', ON_HOLD: 'Призупинено', COMPLETED: 'Виконано',
-  INVOICED: 'Виставлено', PAID: 'Оплачено', ARCHIVED: 'Архів', CANCELLED: 'Скасовано',
+  DRAFT: 'Чернетка',
+  ESTIMATE: 'Кошторис',
+  APPROVED: 'Затверджено',
+  IN_PROGRESS: 'В роботі',
+  ON_HOLD: 'Призупинено',
+  COMPLETED: 'Виконано',
+  INVOICED: 'Виставлено',
+  PAID: 'Оплачено',
+  ARCHIVED: 'Архів',
+  CANCELLED: 'Скасовано',
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  DRAFT: '#9ca3af', ESTIMATE: '#d97706', APPROVED: '#2563eb',
-  IN_PROGRESS: '#7c3aed', ON_HOLD: '#ea580c', COMPLETED: '#16a34a',
-  INVOICED: '#0d9488', PAID: '#059669', ARCHIVED: '#6b7280', CANCELLED: '#dc2626',
+  DRAFT: '#9ca3af',
+  ESTIMATE: '#d97706',
+  APPROVED: '#2563eb',
+  IN_PROGRESS: '#7c3aed',
+  ON_HOLD: '#ea580c',
+  COMPLETED: '#16a34a',
+  INVOICED: '#0d9488',
+  PAID: '#059669',
+  ARCHIVED: '#6b7280',
+  CANCELLED: '#dc2626',
 };
 
 const STATUS_FILTER_TABS = ['', 'IN_PROGRESS', 'APPROVED', 'ON_HOLD', 'COMPLETED'] as const;
 const STATUS_FILTER_LABELS: Record<string, string> = {
-  '': 'Всі', IN_PROGRESS: 'В роботі', APPROVED: 'Затверджено',
-  ON_HOLD: 'Призупинено', COMPLETED: 'Виконано',
+  '': 'Всі',
+  IN_PROGRESS: 'В роботі',
+  APPROVED: 'Затверджено',
+  ON_HOLD: 'Призупинено',
+  COMPLETED: 'Виконано',
 };
 
 export default function MyWorkOrdersScreen() {
@@ -46,20 +68,20 @@ export default function MyWorkOrdersScreen() {
 
   const loadFromDb = useCallback(async () => {
     const wos = database.get('work_orders');
-    const query = statusFilter
-      ? wos.query(Q.where('status', statusFilter))
-      : wos.query();
+    const query = statusFilter ? wos.query(Q.where('status', statusFilter)) : wos.query();
     const records = await query.fetch();
-    setItems(records.map((r: any) => ({
-      id: r.id,
-      remoteId: r.remoteId,
-      number: r.number,
-      status: r.status,
-      vehicleSummary: r.vehicleSummary,
-      counterpartyName: r.counterpartyName,
-      totalAmount: r.totalAmount,
-      plannedAt: r.plannedAt,
-    })));
+    setItems(
+      records.map((r: any) => ({
+        id: r.id,
+        remoteId: r.remoteId,
+        number: r.number,
+        status: r.status,
+        vehicleSummary: r.vehicleSummary,
+        counterpartyName: r.counterpartyName,
+        totalAmount: r.totalAmount,
+        plannedAt: r.plannedAt,
+      })),
+    );
   }, [statusFilter]);
 
   useEffect(() => {
@@ -109,7 +131,9 @@ export default function MyWorkOrdersScreen() {
         data={items}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563eb" />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563eb" />
+        }
         ListEmptyComponent={
           <View style={styles.center}>
             <Text style={styles.emptyText}>Нарядів немає</Text>
@@ -186,7 +210,12 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   woNumber: { fontSize: 15, fontWeight: '700', color: '#111827' },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   badgeText: { fontSize: 11, fontWeight: '600' },

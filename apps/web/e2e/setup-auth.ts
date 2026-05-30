@@ -37,27 +37,30 @@ async function globalSetup() {
   // Перехопити refresh cookie через відвідування /login (API ставить httpOnly cookie).
   // Краще: повторно зробити login через browser-side fetch — щоб cookie був у browser context.
   await page.goto(`${baseURL}/login`);
-  const loginResult = await page.evaluate(async ({ email, password, apiBase }) => {
-    const r = await fetch(`${apiBase}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password }),
-    });
-    const json = await r.json();
-    return { ok: r.ok, accessToken: json.accessToken };
-  }, {
-    email: process.env.E2E_EMAIL ?? 'admin@sto.local',
-    password: process.env.E2E_PASSWORD ?? 'admin123',
-    apiBase,
-  });
+  const loginResult = await page.evaluate(
+    async ({ email, password, apiBase }) => {
+      const r = await fetch(`${apiBase}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      });
+      const json = await r.json();
+      return { ok: r.ok, accessToken: json.accessToken };
+    },
+    {
+      email: process.env.E2E_EMAIL ?? 'admin@sto.local',
+      password: process.env.E2E_PASSWORD ?? 'admin123',
+      apiBase,
+    },
+  );
 
   if (!loginResult.ok || !loginResult.accessToken) {
     throw new Error('E2E browser login failed');
   }
 
   // Set access token у sessionStorage (TOKEN_KEY = 'sto_access_token')
-  await page.evaluate((token) => {
+  await page.evaluate(token => {
     sessionStorage.setItem('sto_access_token', token);
   }, loginResult.accessToken);
 

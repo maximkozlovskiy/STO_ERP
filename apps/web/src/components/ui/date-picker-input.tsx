@@ -8,7 +8,7 @@ import { Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface DatePickerInputProps {
-  value: string;           // YYYY-MM-DD для API
+  value: string; // YYYY-MM-DD для API
   onChange: (value: string) => void;
   label?: string;
   hint?: string;
@@ -17,8 +17,8 @@ interface DatePickerInputProps {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
-  min?: string;            // YYYY-MM-DD
-  max?: string;            // YYYY-MM-DD
+  min?: string; // YYYY-MM-DD
+  max?: string; // YYYY-MM-DD
 }
 
 function parseApiDate(value: string): Date | undefined {
@@ -33,8 +33,17 @@ function displayDate(value: string): string {
 }
 
 export function DatePickerInput({
-  value, onChange, label, hint, errorMessage, required, disabled, placeholder = 'ДД.ММ.РРРР', className,
-  min, max,
+  value,
+  onChange,
+  label,
+  hint,
+  errorMessage,
+  required,
+  disabled,
+  placeholder = 'ДД.ММ.РРРР',
+  className,
+  min,
+  max,
 }: DatePickerInputProps) {
   const [open, setOpen] = useState(false);
   const [inputText, setInputText] = useState(displayDate(value));
@@ -98,7 +107,8 @@ export function DatePickerInput({
     <div ref={containerRef} className={cn('relative', className)}>
       {label && (
         <label className="block text-[13px] font-medium text-foreground mb-1">
-          {label}{required && <span className="text-destructive ml-0.5">*</span>}
+          {label}
+          {required && <span className="text-destructive ml-0.5">*</span>}
         </label>
       )}
       <div className="relative">
@@ -114,11 +124,14 @@ export function DatePickerInput({
             'w-full h-9 rounded-lg border bg-input px-3 pr-9 text-sm text-foreground placeholder:text-muted-foreground',
             'focus:outline-none focus:ring-2 focus:ring-ring transition-colors',
             errorMessage ? 'border-destructive-border focus:ring-destructive/20' : 'border-border',
-            disabled && 'opacity-50 cursor-not-allowed'
+            disabled && 'opacity-50 cursor-not-allowed',
           )}
         />
-        <button type="button" onClick={() => !disabled && setOpen(v => !v)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+        <button
+          type="button"
+          onClick={() => !disabled && setOpen(v => !v)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+        >
           <Calendar className="h-4 w-4" />
         </button>
       </div>
@@ -137,7 +150,8 @@ export function DatePickerInput({
             disabled={disabledMatchers.length > 0 ? disabledMatchers : undefined}
             classNames={{
               root: 'rdp-root',
-              month_caption: 'flex justify-center items-center mb-2 font-medium text-sm text-foreground',
+              month_caption:
+                'flex justify-center items-center mb-2 font-medium text-sm text-foreground',
               nav: 'flex items-center gap-1',
               button_previous: 'p-1 rounded hover:bg-secondary text-muted-foreground',
               button_next: 'p-1 rounded hover:bg-secondary text-muted-foreground',
@@ -148,7 +162,7 @@ export function DatePickerInput({
               day: 'w-8 h-8 text-sm',
               day_button: cn(
                 'w-8 h-8 rounded-lg text-sm text-foreground hover:bg-secondary transition-colors',
-                'focus:outline-none focus:ring-2 focus:ring-ring'
+                'focus:outline-none focus:ring-2 focus:ring-ring',
               ),
               selected: 'bg-primary text-primary-foreground hover:bg-primary rounded-lg',
               today: 'font-bold text-primary',

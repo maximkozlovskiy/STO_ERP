@@ -4,7 +4,10 @@ import { cn } from '@/lib/utils';
 function Table({ className, children, ...props }: HTMLAttributes<HTMLTableElement>) {
   return (
     <div className="w-full overflow-auto rounded-lg border border-border">
-      <table className={cn('w-full text-[13px] text-foreground border-collapse', className)} {...props}>
+      <table
+        className={cn('w-full text-[13px] text-foreground border-collapse', className)}
+        {...props}
+      >
         {children}
       </table>
     </div>

@@ -55,41 +55,72 @@ describe('BatchService', () => {
   describe('createFromReceipt', () => {
     it('кидає якщо good не знайдено', async () => {
       prisma.good.findFirst.mockResolvedValue(null);
-      await expect(service.createFromReceipt('org', {
-        goodId: 'g1', warehouseId: 'wh1', stockMovementId: 'm1',
-        receivedQty: 10, costPrice: 100,
-      })).rejects.toThrow(BadRequestException);
+      await expect(
+        service.createFromReceipt('org', {
+          goodId: 'g1',
+          warehouseId: 'wh1',
+          stockMovementId: 'm1',
+          receivedQty: 10,
+          costPrice: 100,
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('створює партію і логує PriceHistory якщо ціна змінилась', async () => {
-      prisma.good.findFirst.mockResolvedValue({ id: 'g1', category: 'X', goodType: 'SPARE_PART', salePrice: 100 });
+      prisma.good.findFirst.mockResolvedValue({
+        id: 'g1',
+        category: 'X',
+        goodType: 'SPARE_PART',
+        salePrice: 100,
+      });
       pricing.calculateSalePrice.mockResolvedValue(150);
       await service.createFromReceipt('org', {
-        goodId: 'g1', warehouseId: 'wh1', stockMovementId: 'm1',
-        receivedQty: 10, costPrice: 100,
+        goodId: 'g1',
+        warehouseId: 'wh1',
+        stockMovementId: 'm1',
+        receivedQty: 10,
+        costPrice: 100,
       });
       expect(prisma.stockBatch.create).toHaveBeenCalled();
-      expect(prisma.good.update).toHaveBeenCalledWith(expect.objectContaining({ data: { salePrice: 150 } }));
+      expect(prisma.good.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { salePrice: 150 } }),
+      );
       expect(prisma.priceHistory.create).toHaveBeenCalled();
     });
 
     it('НЕ логує PriceHistory якщо ціна не змінилась', async () => {
-      prisma.good.findFirst.mockResolvedValue({ id: 'g1', category: null, goodType: null, salePrice: 150 });
+      prisma.good.findFirst.mockResolvedValue({
+        id: 'g1',
+        category: null,
+        goodType: null,
+        salePrice: 150,
+      });
       pricing.calculateSalePrice.mockResolvedValue(150);
       await service.createFromReceipt('org', {
-        goodId: 'g1', warehouseId: 'wh1', stockMovementId: 'm1',
-        receivedQty: 10, costPrice: 100,
+        goodId: 'g1',
+        warehouseId: 'wh1',
+        stockMovementId: 'm1',
+        receivedQty: 10,
+        costPrice: 100,
       });
       expect(prisma.priceHistory.create).not.toHaveBeenCalled();
       expect(prisma.good.update).not.toHaveBeenCalled();
     });
 
     it('Bug #14: безкоштовний прийом (costPrice=0) НЕ змінює Good.salePrice', async () => {
-      prisma.good.findFirst.mockResolvedValue({ id: 'g1', category: null, goodType: null, salePrice: 250 });
+      prisma.good.findFirst.mockResolvedValue({
+        id: 'g1',
+        category: null,
+        goodType: null,
+        salePrice: 250,
+      });
       pricing.calculateSalePrice.mockResolvedValue(0); // pricing service may return 0 from 0 cost
       await service.createFromReceipt('org', {
-        goodId: 'g1', warehouseId: 'wh1', stockMovementId: 'm1',
-        receivedQty: 5, costPrice: 0,
+        goodId: 'g1',
+        warehouseId: 'wh1',
+        stockMovementId: 'm1',
+        receivedQty: 5,
+        costPrice: 0,
       });
       // НЕ перезаписувати ціну продажу
       expect(prisma.good.update).not.toHaveBeenCalled();
@@ -109,7 +140,16 @@ describe('BatchService', () => {
         { remainingQty: 5, costPrice: 100 },
         { remainingQty: 5, costPrice: 200 },
       ]);
-      const result = await service.consumeBatch('org', 'g1', 'wh1', 5, 'WO', 'wo1', undefined, 'AVG_COST');
+      const result = await service.consumeBatch(
+        'org',
+        'g1',
+        'wh1',
+        5,
+        'WO',
+        'wo1',
+        undefined,
+        'AVG_COST',
+      );
       expect(result).toEqual([{ batchId: '', quantity: 5, costPrice: 150 }]);
     });
 
@@ -118,7 +158,16 @@ describe('BatchService', () => {
         { id: 'old', remainingQty: 5, costPrice: 100 },
         { id: 'new', remainingQty: 10, costPrice: 200 },
       ]);
-      const result = await service.consumeBatch('org', 'g1', 'wh1', 8, 'WO', 'wo1', undefined, 'FIFO');
+      const result = await service.consumeBatch(
+        'org',
+        'g1',
+        'wh1',
+        8,
+        'WO',
+        'wo1',
+        undefined,
+        'FIFO',
+      );
       expect(result).toEqual([
         { batchId: 'old', quantity: 5, costPrice: 100 },
         { batchId: 'new', quantity: 3, costPrice: 200 },
@@ -126,9 +175,7 @@ describe('BatchService', () => {
     });
 
     it('кидає якщо партій недостатньо', async () => {
-      prisma.stockBatch.findMany.mockResolvedValue([
-        { id: 'b1', remainingQty: 3, costPrice: 100 },
-      ]);
+      prisma.stockBatch.findMany.mockResolvedValue([{ id: 'b1', remainingQty: 3, costPrice: 100 }]);
       await expect(
         service.consumeBatch('org', 'g1', 'wh1', 10, 'WO', 'wo1', undefined, 'FIFO'),
       ).rejects.toThrow(BadRequestException);
@@ -165,9 +212,9 @@ describe('BatchService', () => {
   describe('returnToBatch', () => {
     it('кидає якщо партію не знайдено', async () => {
       prisma.stockBatch.findFirst.mockResolvedValue(null);
-      await expect(
-        service.returnToBatch('org', 'missing', 5, 'WO', 'wo1'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.returnToBatch('org', 'missing', 5, 'WO', 'wo1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('інкрементує remainingQty і робить isActive=true', async () => {

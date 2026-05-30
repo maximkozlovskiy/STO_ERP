@@ -26,35 +26,45 @@ export function useInlineEdit({ enabled = true, onSave }: UseInlineEditOptions) 
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
-  const startEdit = useCallback((rowId: string, field: string, value: string) => {
-    if (!enabled) return;
-    setEditing({ rowId, field, value });
-  }, [enabled]);
+  const startEdit = useCallback(
+    (rowId: string, field: string, value: string) => {
+      if (!enabled) return;
+      setEditing({ rowId, field, value });
+    },
+    [enabled],
+  );
 
   const cancelEdit = useCallback(() => {
     if (savingRef.current) return;
     setEditing(null);
   }, []);
 
-  const commitEdit = useCallback(async (value: string) => {
-    if (!editing || savingRef.current) return;
-    const trimmed = value.trim();
-    if (trimmed === editing.value) { setEditing(null); return; }
+  const commitEdit = useCallback(
+    async (value: string) => {
+      if (!editing || savingRef.current) return;
+      const trimmed = value.trim();
+      if (trimmed === editing.value) {
+        setEditing(null);
+        return;
+      }
 
-    savingRef.current = true;
-    setSaving(true);
-    try {
-      await onSave(editing.rowId, editing.field, trimmed);
-      setEditing(null);
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
-  }, [editing, onSave]);
+      savingRef.current = true;
+      setSaving(true);
+      try {
+        await onSave(editing.rowId, editing.field, trimmed);
+        setEditing(null);
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
+      }
+    },
+    [editing, onSave],
+  );
 
-  const isEditing = useCallback((rowId: string, field: string) =>
-    editing?.rowId === rowId && editing?.field === field,
-  [editing]);
+  const isEditing = useCallback(
+    (rowId: string, field: string) => editing?.rowId === rowId && editing?.field === field,
+    [editing],
+  );
 
   return { editing, saving, startEdit, commitEdit, cancelEdit, isEditing };
 }

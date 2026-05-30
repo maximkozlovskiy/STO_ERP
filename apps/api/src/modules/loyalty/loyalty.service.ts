@@ -29,12 +29,18 @@ export class LoyaltyService {
     });
   }
 
-  async getBalance(orgId: string, counterpartyId: string): Promise<{ balance: number; counterpartyId: string }> {
+  async getBalance(
+    orgId: string,
+    counterpartyId: string,
+  ): Promise<{ balance: number; counterpartyId: string }> {
     // Parallel: tenant guard + balance fetch — обидва читають за {counterpartyId, orgId},
     // тенант ізоляція дублюється в `acc` query (orgId фільтр), тому assert лишається лише
     // як контракт NotFound для відсутнього CP. -1 RTT per call.
     const [cp, acc] = await Promise.all([
-      this.prisma.counterparty.findFirst({ where: { id: counterpartyId, orgId, deletedAt: null }, select: { id: true } }),
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
       this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } }),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
@@ -44,7 +50,10 @@ export class LoyaltyService {
   async getTransactions(orgId: string, counterpartyId: string) {
     // Parallel: tenant guard + account fetch (same rationale as getBalance).
     const [cp, acc] = await Promise.all([
-      this.prisma.counterparty.findFirst({ where: { id: counterpartyId, orgId, deletedAt: null }, select: { id: true } }),
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
       this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } }),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
@@ -103,21 +112,24 @@ export class LoyaltyService {
     if (points <= 0) return;
 
     const acc = await this.getOrCreateAccount(orgId, counterpartyId);
-    await this.prisma.$transaction(async (tx) => {
-      await tx.loyaltyAccount.update({
-        where: { id: acc.id },
-        data: { balance: { increment: points } },
-      });
-      await tx.loyaltyTransaction.create({
-        data: {
-          accountId: acc.id,
-          type: 'EARN',
-          points,
-          documentId: documentId ?? null,
-          documentType: documentId ? 'Payment' : null,
-        },
-      });
-    }, { timeout: TRANSACTION_TIMEOUT_MS });
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.loyaltyAccount.update({
+          where: { id: acc.id },
+          data: { balance: { increment: points } },
+        });
+        await tx.loyaltyTransaction.create({
+          data: {
+            accountId: acc.id,
+            type: 'EARN',
+            points,
+            documentId: documentId ?? null,
+            documentType: documentId ? 'Payment' : null,
+          },
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   /** Списати бали (повертає суму знижки у гривнях) */
@@ -138,31 +150,34 @@ export class LoyaltyService {
     // `UPDATE ... WHERE balance >= N` is evaluated atomically by Postgres —
     // two concurrent updates cannot both succeed against the same row.
     // If `count === 0`, either the account doesn't exist or balance was too low.
-    const result = await this.prisma.$transaction(async (tx) => {
-      const acc = await tx.loyaltyAccount.findFirst({
-        where: { counterpartyId, orgId },
-        select: { id: true },
-      });
-      if (!acc) throw new NotFoundException('Рахунок лояльності не знайдено');
+    const result = await this.prisma.$transaction(
+      async tx => {
+        const acc = await tx.loyaltyAccount.findFirst({
+          where: { counterpartyId, orgId },
+          select: { id: true },
+        });
+        if (!acc) throw new NotFoundException('Рахунок лояльності не знайдено');
 
-      const updated = await tx.loyaltyAccount.updateMany({
-        where: { id: acc.id, balance: { gte: points } },
-        data: { balance: { decrement: points } },
-      });
-      if (updated.count === 0) {
-        throw new BadRequestException('Недостатньо балів');
-      }
+        const updated = await tx.loyaltyAccount.updateMany({
+          where: { id: acc.id, balance: { gte: points } },
+          data: { balance: { decrement: points } },
+        });
+        if (updated.count === 0) {
+          throw new BadRequestException('Недостатньо балів');
+        }
 
-      await tx.loyaltyTransaction.create({
-        data: {
-          accountId: acc.id,
-          type: 'REDEEM',
-          points,
-          notes: `Списання ${points} балів = ${discountAmount} грн знижки`,
-        },
-      });
-      return discountAmount;
-    }, { timeout: 5_000 }); // Bug #132: explicit timeout — atomic redeem з 2 операціями
+        await tx.loyaltyTransaction.create({
+          data: {
+            accountId: acc.id,
+            type: 'REDEEM',
+            points,
+            notes: `Списання ${points} балів = ${discountAmount} грн знижки`,
+          },
+        });
+        return discountAmount;
+      },
+      { timeout: 5_000 },
+    ); // Bug #132: explicit timeout — atomic redeem з 2 операціями
 
     return { discountAmount: result };
   }

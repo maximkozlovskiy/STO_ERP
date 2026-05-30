@@ -50,7 +50,7 @@ export default function SetupPage() {
   useEffect(() => {
     let cancelled = false;
     apiFetch<{ initialized: boolean }>('/setup/status')
-      .then((d) => {
+      .then(d => {
         if (cancelled) return;
         if (d.initialized) {
           router.replace('/login');
@@ -61,14 +61,16 @@ export default function SetupPage() {
       .catch(() => {
         if (!cancelled) setStep('org');
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const stepIndex = STEPS.indexOf(step);
   const totalSteps = STEPS.length - 1; // exclude 'done'
 
   const update = (field: keyof WizardData, value: string) =>
-    setData((d) => ({ ...d, [field]: value }));
+    setData(d => ({ ...d, [field]: value }));
 
   const next = () => {
     const idx = STEPS.indexOf(step);
@@ -131,8 +133,11 @@ export default function SetupPage() {
 
   const isNextDisabled =
     (step === 'org' &&
-      (!data.orgName.trim() || !data.ownerEmail.trim() || !data.ownerPassword.trim() ||
-        !data.ownerFirstName.trim() || !data.ownerLastName.trim())) ||
+      (!data.orgName.trim() ||
+        !data.ownerEmail.trim() ||
+        !data.ownerPassword.trim() ||
+        !data.ownerFirstName.trim() ||
+        !data.ownerLastName.trim())) ||
     (step === 'branch' && (!data.branchName.trim() || !data.branchAddress.trim()));
 
   return (
@@ -142,12 +147,10 @@ export default function SetupPage() {
         <div className="p-6 border-b border-border">
           <h1 className="text-xl font-bold text-foreground">Перший запуск STO ERP</h1>
           <div className="mt-3 flex gap-1">
-            {STEPS.filter((s) => s !== 'done' && s !== 'checking').map((s, i) => (
+            {STEPS.filter(s => s !== 'done' && s !== 'checking').map((s, i) => (
               <div
                 key={s}
-                className={`h-1 flex-1 rounded-full ${
-                  i <= stepIndex ? 'bg-primary' : 'bg-border'
-                }`}
+                className={`h-1 flex-1 rounded-full ${i <= stepIndex ? 'bg-primary' : 'bg-border'}`}
               />
             ))}
           </div>
@@ -166,15 +169,47 @@ export default function SetupPage() {
 
           {step === 'org' && (
             <>
-              <Field label="Назва організації *" value={data.orgName} onChange={(v) => update('orgName', v)} placeholder="СТО Авто-Майстер" />
-              <Field label="ЄДРПОУ" value={data.edrpou} onChange={(v) => update('edrpou', v)} placeholder="12345678" />
+              <Field
+                label="Назва організації *"
+                value={data.orgName}
+                onChange={v => update('orgName', v)}
+                placeholder="СТО Авто-Майстер"
+              />
+              <Field
+                label="ЄДРПОУ"
+                value={data.edrpou}
+                onChange={v => update('edrpou', v)}
+                placeholder="12345678"
+              />
               <div className="border-t border-border pt-4 mt-2">
                 <p className="text-sm font-medium text-foreground mb-3">Обліковий запис власника</p>
-                <Field label="Email *" value={data.ownerEmail} onChange={(v) => update('ownerEmail', v)} placeholder="owner@sto.local" type="email" />
-                <Field label="Пароль *" value={data.ownerPassword} onChange={(v) => update('ownerPassword', v)} placeholder="мін. 6 символів" type="password" />
+                <Field
+                  label="Email *"
+                  value={data.ownerEmail}
+                  onChange={v => update('ownerEmail', v)}
+                  placeholder="owner@sto.local"
+                  type="email"
+                />
+                <Field
+                  label="Пароль *"
+                  value={data.ownerPassword}
+                  onChange={v => update('ownerPassword', v)}
+                  placeholder="мін. 6 символів"
+                  type="password"
+                />
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Ім'я *" value={data.ownerFirstName} onChange={(v) => update('ownerFirstName', v)} placeholder="Іван" />
-                  <Field label="Прізвище *" value={data.ownerLastName} onChange={(v) => update('ownerLastName', v)} placeholder="Коваль" />
+                  <Field
+                    label="Ім'я *"
+                    value={data.ownerFirstName}
+                    onChange={v => update('ownerFirstName', v)}
+                    placeholder="Іван"
+                  />
+                  <Field
+                    label="Прізвище *"
+                    value={data.ownerLastName}
+                    onChange={v => update('ownerLastName', v)}
+                    placeholder="Коваль"
+                  />
                 </div>
               </div>
             </>
@@ -182,14 +217,29 @@ export default function SetupPage() {
 
           {step === 'branch' && (
             <>
-              <Field label="Назва філії *" value={data.branchName} onChange={(v) => update('branchName', v)} placeholder="Головна філія" />
-              <Field label="Адреса *" value={data.branchAddress} onChange={(v) => update('branchAddress', v)} placeholder="вул. Гагаріна 12, Київ" />
+              <Field
+                label="Назва філії *"
+                value={data.branchName}
+                onChange={v => update('branchName', v)}
+                placeholder="Головна філія"
+              />
+              <Field
+                label="Адреса *"
+                value={data.branchAddress}
+                onChange={v => update('branchAddress', v)}
+                placeholder="вул. Гагаріна 12, Київ"
+              />
             </>
           )}
 
           {step === 'warehouse' && (
             <>
-              <Field label="Назва складу" value={data.warehouseName} onChange={(v) => update('warehouseName', v)} placeholder="Основний склад" />
+              <Field
+                label="Назва складу"
+                value={data.warehouseName}
+                onChange={v => update('warehouseName', v)}
+                placeholder="Основний склад"
+              />
               <p className="text-sm text-muted-foreground">Основний склад запчастин вашого СТО.</p>
             </>
           )}
@@ -264,17 +314,14 @@ function Field({
   type?: string;
 }) {
   // Browser autocomplete hints — purely UX, no security impact (one-shot wizard).
-  const autoComplete =
-    type === 'email' ? 'email' :
-    type === 'password' ? 'new-password' :
-    'off';
+  const autoComplete = type === 'email' ? 'email' : type === 'password' ? 'new-password' : 'off';
   return (
     <div className="mb-3">
       <label className="block text-sm font-medium text-foreground mb-1">{label}</label>
       <input
         type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         autoComplete={autoComplete}
         className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary"

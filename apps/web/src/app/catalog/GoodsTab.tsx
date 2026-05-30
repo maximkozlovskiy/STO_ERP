@@ -21,7 +21,12 @@ import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@/components/ui/table';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
@@ -38,18 +43,68 @@ import { fmtMoney, fmtDate } from '@/lib/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Brand { id: string; name: string; }
-interface Unit { id: string; name: string; shortName: string; isSystem: boolean; coefficient: number; width?: number | null; height?: number | null; depth?: number | null; volume?: number | null; weight?: number | null; }
-interface Good { id: string; sku: string | null; name: string; unit: string; unitId: string | null; purchasePrice: number | null; salePrice: number; category: string | null; barcode: string | null; brandId: string | null; notes: string | null; goodType?: string | null; preferredSupplierId?: string | null; preferredSupplierName?: string | null; }
-interface Supplier { id: string; firstName: string | null; lastName: string | null; companyName: string | null; }
-interface PaginatedGoods { items: Good[]; total: number; page: number; limit: number; }
-interface GoodBarcode { id: string; barcode: string; type: string; isPrimary: boolean; }
+interface Brand {
+  id: string;
+  name: string;
+}
+interface Unit {
+  id: string;
+  name: string;
+  shortName: string;
+  isSystem: boolean;
+  coefficient: number;
+  width?: number | null;
+  height?: number | null;
+  depth?: number | null;
+  volume?: number | null;
+  weight?: number | null;
+}
+interface Good {
+  id: string;
+  sku: string | null;
+  name: string;
+  unit: string;
+  unitId: string | null;
+  purchasePrice: number | null;
+  salePrice: number;
+  category: string | null;
+  barcode: string | null;
+  brandId: string | null;
+  notes: string | null;
+  goodType?: string | null;
+  preferredSupplierId?: string | null;
+  preferredSupplierName?: string | null;
+}
+interface Supplier {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  companyName: string | null;
+}
+interface PaginatedGoods {
+  items: Good[];
+  total: number;
+  page: number;
+  limit: number;
+}
+interface GoodBarcode {
+  id: string;
+  barcode: string;
+  type: string;
+  isPrimary: boolean;
+}
 interface StockBatchDto {
-  id: string; goodId: string; warehouseId: string;
-  batchNumber: string | null; expiryDate: string | null;
-  receivedQty: number; remainingQty: number;
-  costPrice: number; salePrice: number;
-  isActive: boolean; createdAt: string;
+  id: string;
+  goodId: string;
+  warehouseId: string;
+  batchNumber: string | null;
+  expiryDate: string | null;
+  receivedQty: number;
+  remainingQty: number;
+  costPrice: number;
+  salePrice: number;
+  isActive: boolean;
+  createdAt: string;
   purchaseOrderNumber: string | null;
   purchaseOrderLineId: string | null;
 }
@@ -73,17 +128,28 @@ const GOOD_TYPE_BADGE: Record<string, BadgeVariant> = {
   TOOL: 'success',
 };
 
-function Pagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
+function Pagination({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (p: number) => void;
+}) {
   if (totalPages <= 1) return null;
   return (
     <div className="flex justify-center gap-1.5 mt-4">
       {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-        <button key={p} onClick={() => onChange(p)}
+        <button
+          key={p}
+          onClick={() => onChange(p)}
           className={`h-8 w-8 rounded-lg text-[13px] font-medium border transition-colors ${
             p === page
               ? 'bg-primary text-primary-foreground border-primary'
               : 'border-border text-muted-foreground bg-surface hover:bg-secondary'
-          }`}>
+          }`}
+        >
           {p}
         </button>
       ))}
@@ -105,7 +171,20 @@ export default function GoodsTab() {
   const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '', goodType: '', preferredSupplierId: '' });
+  const [form, setForm] = useState({
+    sku: '',
+    name: '',
+    unit: 'шт',
+    unitId: '',
+    purchasePrice: '',
+    salePrice: '',
+    category: '',
+    brandId: '',
+    barcode: '',
+    notes: '',
+    goodType: '',
+    preferredSupplierId: '',
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [selectedGood, setSelectedGood] = useState<Good | null>(null);
@@ -117,7 +196,19 @@ export default function GoodsTab() {
   const [addingBarcode, setAddingBarcode] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editGood, setEditGood] = useState<Good | null>(null);
-  const [editGoodForm, setEditGoodForm] = useState({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', notes: '', goodType: '', preferredSupplierId: '' });
+  const [editGoodForm, setEditGoodForm] = useState({
+    sku: '',
+    name: '',
+    unit: 'шт',
+    unitId: '',
+    purchasePrice: '',
+    salePrice: '',
+    category: '',
+    brandId: '',
+    notes: '',
+    goodType: '',
+    preferredSupplierId: '',
+  });
   const [editGoodSaving, setEditGoodSaving] = useState(false);
   const [editGoodError, setEditGoodError] = useState('');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -139,20 +230,41 @@ export default function GoodsTab() {
   const [batchError, setBatchError] = useState('');
   const modalBatchReqRef = useRef(0);
 
-  const GOODS_COLUMNS = useMemo(() => [
-    { key: 'name', label: 'Назва / Артикул', defaultVisible: true },
-    { key: 'category', label: 'Категорія', defaultVisible: true },
-    { key: 'unit', label: 'Одиниця', defaultVisible: false },
-    { key: 'purchase', label: 'Закупівля, ₴', defaultVisible: true },
-    { key: 'sale', label: 'Продаж, ₴', defaultVisible: true },
-  ], []);
+  const GOODS_COLUMNS = useMemo(
+    () => [
+      { key: 'name', label: 'Назва / Артикул', defaultVisible: true },
+      { key: 'category', label: 'Категорія', defaultVisible: true },
+      { key: 'unit', label: 'Одиниця', defaultVisible: false },
+      { key: 'purchase', label: 'Закупівля, ₴', defaultVisible: true },
+      { key: 'sale', label: 'Продаж, ₴', defaultVisible: true },
+    ],
+    [],
+  );
 
-  const { visibleKeys: goodsColVisible, visibleColumns: goodsVisibleColumns, orderedColumns: goodsOrderedColumns, order: goodsOrder, customLabels: goodsCustomLabels, toggle: toggleGoodsCol, reorder: reorderGoods, renameColumn: renameGoodsCol, resetConfig: resetGoodsConfig } = useTableColumns('catalog-goods', GOODS_COLUMNS);
-  const { dragProps: goodsDragProps } = useColumnDrag(goodsVisibleColumns, reorderGoods, goodsOrderedColumns);
+  const {
+    visibleKeys: goodsColVisible,
+    visibleColumns: goodsVisibleColumns,
+    orderedColumns: goodsOrderedColumns,
+    order: goodsOrder,
+    customLabels: goodsCustomLabels,
+    toggle: toggleGoodsCol,
+    reorder: reorderGoods,
+    renameColumn: renameGoodsCol,
+    resetConfig: resetGoodsConfig,
+  } = useTableColumns('catalog-goods', GOODS_COLUMNS);
+  const { dragProps: goodsDragProps } = useColumnDrag(
+    goodsVisibleColumns,
+    reorderGoods,
+    goodsOrderedColumns,
+  );
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<GoodsFilters>('catalog-goods');
+  const {
+    saved: savedFilters,
+    save: saveFilter,
+    remove: removeFilter,
+  } = useSavedFilters<GoodsFilters>('catalog-goods');
 
   const applyFilter = useCallback((preset: { id: string; filters: GoodsFilters }) => {
     setQ(preset.filters.search ?? '');
@@ -160,11 +272,14 @@ export default function GoodsTab() {
     setActiveSavedFilterId(preset.id);
   }, []);
 
-  const handleSaveFilter = useCallback((name: string) => {
-    const preset = saveFilter(name, { search: q });
-    setActiveSavedFilterId(preset.id);
-    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
-  }, [saveFilter, q, features.toastEnabled]);
+  const handleSaveFilter = useCallback(
+    (name: string) => {
+      const preset = saveFilter(name, { search: q });
+      setActiveSavedFilterId(preset.id);
+      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+    },
+    [saveFilter, q, features.toastEnabled],
+  );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
   const bulkSelect = useBulkSelect(goods?.items ?? []);
@@ -175,25 +290,32 @@ export default function GoodsTab() {
 
   const goodsLoadRef = useRef<(() => void) | null>(null);
 
-  const goodsActions = useMemo<BulkAction[]>(() => [
-    {
-      id: 'delete', label: 'Видалити вибрані', variant: 'destructive',
-      onClick: async (ids) => {
-        if (!window.confirm(`Видалити ${ids.length} ${ids.length === 1 ? 'товар' : 'товарів'}?`)) return;
-        const results = await Promise.allSettled(
-          ids.map(id => apiFetch(`/goods/${id}`, { method: 'DELETE' })),
-        );
-        const succeeded = results.filter(r => r.status === 'fulfilled').length;
-        const failed = results.length - succeeded;
-        bulkSelect.clear();
-        goodsLoadRef.current?.();
-        if (features.toastEnabled) {
-          if (failed === 0) toast.success(`Видалено ${succeeded} ${succeeded === 1 ? 'товар' : 'товарів'}`);
-          else toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
-        }
+  const goodsActions = useMemo<BulkAction[]>(
+    () => [
+      {
+        id: 'delete',
+        label: 'Видалити вибрані',
+        variant: 'destructive',
+        onClick: async ids => {
+          if (!window.confirm(`Видалити ${ids.length} ${ids.length === 1 ? 'товар' : 'товарів'}?`))
+            return;
+          const results = await Promise.allSettled(
+            ids.map(id => apiFetch(`/goods/${id}`, { method: 'DELETE' })),
+          );
+          const succeeded = results.filter(r => r.status === 'fulfilled').length;
+          const failed = results.length - succeeded;
+          bulkSelect.clear();
+          goodsLoadRef.current?.();
+          if (features.toastEnabled) {
+            if (failed === 0)
+              toast.success(`Видалено ${succeeded} ${succeeded === 1 ? 'товар' : 'товарів'}`);
+            else toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+          }
+        },
       },
-    },
-  ], [bulkSelect, features.toastEnabled]);
+    ],
+    [bulkSelect, features.toastEnabled],
+  );
 
   // ── Unsaved guard ────────────────────────────────────────────────────────────
   const goodsFormDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -210,9 +332,14 @@ export default function GoodsTab() {
     if (cSuppliers) setSuppliers(cSuppliers);
 
     Promise.all([
-      apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200').catch(() => ({ items: [], total: 0 })),
+      apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200').catch(() => ({
+        items: [],
+        total: 0,
+      })),
       apiFetch<Unit[]>('/units').catch(() => [] as Unit[]),
-      apiFetch<{ items: Supplier[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200').catch(() => ({ items: [] as Supplier[] })),
+      apiFetch<{ items: Supplier[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200').catch(
+        () => ({ items: [] as Supplier[] }),
+      ),
     ]).then(([brandsRes, unitsRes, suppliersRes]) => {
       setBrands(brandsRes.items);
       setCache('cache:brands', brandsRes.items);
@@ -227,22 +354,36 @@ export default function GoodsTab() {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (debouncedQ) p.set('q', debouncedQ);
-    apiFetch<PaginatedGoods>(`/goods?${p}`).then(setGoods).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
+    apiFetch<PaginatedGoods>(`/goods?${p}`)
+      .then(setGoods)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .finally(() => setLoading(false));
   }, [page, debouncedQ]);
 
   // Keep ref in sync so goodsActions can call load() without depending on it
-  useEffect(() => { goodsLoadRef.current = load; }, [load]);
+  useEffect(() => {
+    goodsLoadRef.current = load;
+  }, [load]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const create = async () => {
     const salePrice = Number(form.salePrice);
-    if (!Number.isFinite(salePrice) || salePrice < 0) { setError('Ціна продажу повинна бути невід\'ємним числом'); return; }
+    if (!Number.isFinite(salePrice) || salePrice < 0) {
+      setError("Ціна продажу повинна бути невід'ємним числом");
+      return;
+    }
     if (form.purchasePrice) {
       const pp = Number(form.purchasePrice);
-      if (!Number.isFinite(pp) || pp < 0) { setError('Ціна закупівлі повинна бути невід\'ємним числом'); return; }
+      if (!Number.isFinite(pp) || pp < 0) {
+        setError("Ціна закупівлі повинна бути невід'ємним числом");
+        return;
+      }
     }
-    setSaving(true); setError('');
+    setSaving(true);
+    setError('');
     try {
       await apiFetch<Good>('/goods', {
         method: 'POST',
@@ -262,11 +403,27 @@ export default function GoodsTab() {
         }),
       });
       setModal(false);
-      setForm({ sku: '', name: '', unit: 'шт', unitId: '', purchasePrice: '', salePrice: '', category: '', brandId: '', barcode: '', notes: '', goodType: '', preferredSupplierId: '' });
+      setForm({
+        sku: '',
+        name: '',
+        unit: 'шт',
+        unitId: '',
+        purchasePrice: '',
+        salePrice: '',
+        category: '',
+        brandId: '',
+        barcode: '',
+        notes: '',
+        goodType: '',
+        preferredSupplierId: '',
+      });
       goodsFormDirty.resetDirty();
       load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
-    finally { setSaving(false); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const loadBarcodes = useCallback((goodId: string) => {
@@ -287,8 +444,11 @@ export default function GoodsTab() {
       });
       setNewBarcode('');
       loadBarcodes(goodId);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка додавання штрихкоду'); }
-    finally { setAddingBarcode(false); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка додавання штрихкоду');
+    } finally {
+      setAddingBarcode(false);
+    }
   };
 
   const deleteBarcode = async (goodId: string, barcodeId: string) => {
@@ -296,19 +456,24 @@ export default function GoodsTab() {
     try {
       await apiFetch<void>(`/goods/${goodId}/barcodes/${barcodeId}`, { method: 'DELETE' });
       loadBarcodes(goodId);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення штрихкоду'); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка видалення штрихкоду');
+    }
   };
 
   const markForDeletion = async (id: string) => {
-    setSaving(true); setError('');
+    setSaving(true);
+    setError('');
     try {
       await apiFetch<void>(`/goods/${id}`, { method: 'DELETE' });
       setConfirmDeleteId(null);
       if (selectedGood?.id === id) setSelectedGood(null);
       load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка видалення');
+    } finally {
+      setSaving(false);
     }
-    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка видалення'); }
-    finally { setSaving(false); }
   };
 
   const selectGood = (g: Good | null) => {
@@ -320,10 +485,16 @@ export default function GoodsTab() {
   const openEditGood = (g: Good) => {
     setEditGood(g);
     setEditGoodForm({
-      sku: g.sku ?? '', name: g.name, unit: g.unit, unitId: g.unitId ?? '',
+      sku: g.sku ?? '',
+      name: g.name,
+      unit: g.unit,
+      unitId: g.unitId ?? '',
       purchasePrice: g.purchasePrice != null ? String(g.purchasePrice) : '',
-      salePrice: String(g.salePrice), category: g.category ?? '',
-      brandId: g.brandId ?? '', notes: g.notes ?? '', goodType: g.goodType ?? '',
+      salePrice: String(g.salePrice),
+      category: g.category ?? '',
+      brandId: g.brandId ?? '',
+      notes: g.notes ?? '',
+      goodType: g.goodType ?? '',
       preferredSupplierId: g.preferredSupplierId ?? '',
     });
     setEditGoodError('');
@@ -342,22 +513,40 @@ export default function GoodsTab() {
 
     setModalBarcodesLoading(true);
     apiFetch<GoodBarcode[]>(`/goods/${g.id}/barcodes`)
-      .then(data => { if (modalBarcodeReqRef.current === bReqId) setModalBarcodes(data); })
-      .catch(err => { if (modalBarcodeReqRef.current === bReqId) setBarcodeError(err instanceof Error ? err.message : 'Помилка завантаження штрихкодів'); })
-      .finally(() => { if (modalBarcodeReqRef.current === bReqId) setModalBarcodesLoading(false); });
+      .then(data => {
+        if (modalBarcodeReqRef.current === bReqId) setModalBarcodes(data);
+      })
+      .catch(err => {
+        if (modalBarcodeReqRef.current === bReqId)
+          setBarcodeError(err instanceof Error ? err.message : 'Помилка завантаження штрихкодів');
+      })
+      .finally(() => {
+        if (modalBarcodeReqRef.current === bReqId) setModalBarcodesLoading(false);
+      });
 
     setModalBatchesLoading(true);
     apiFetch<{ items: StockBatchDto[]; total: number }>(`/goods/${g.id}/batches`)
-      .then(data => { if (modalBatchReqRef.current === btReqId) setModalBatches(data.items); })
-      .catch(err => { if (modalBatchReqRef.current === btReqId) setBatchError(err instanceof Error ? err.message : 'Помилка завантаження партій'); })
-      .finally(() => { if (modalBatchReqRef.current === btReqId) setModalBatchesLoading(false); });
+      .then(data => {
+        if (modalBatchReqRef.current === btReqId) setModalBatches(data.items);
+      })
+      .catch(err => {
+        if (modalBatchReqRef.current === btReqId)
+          setBatchError(err instanceof Error ? err.message : 'Помилка завантаження партій');
+      })
+      .finally(() => {
+        if (modalBatchReqRef.current === btReqId) setModalBatchesLoading(false);
+      });
   };
 
   const saveEditGood = async () => {
     if (!editGood) return;
     const salePrice = Number(editGoodForm.salePrice);
-    if (!Number.isFinite(salePrice) || salePrice < 0) { setEditGoodError('Ціна продажу повинна бути невід\'ємним числом'); return; }
-    setEditGoodSaving(true); setEditGoodError('');
+    if (!Number.isFinite(salePrice) || salePrice < 0) {
+      setEditGoodError("Ціна продажу повинна бути невід'ємним числом");
+      return;
+    }
+    setEditGoodSaving(true);
+    setEditGoodError('');
     try {
       await apiFetch<Good>(`/goods/${editGood.id}`, {
         method: 'PATCH',
@@ -366,7 +555,9 @@ export default function GoodsTab() {
           name: editGoodForm.name,
           unit: editGoodForm.unit || 'шт',
           unitId: editGoodForm.unitId || undefined,
-          purchasePrice: editGoodForm.purchasePrice ? Number(editGoodForm.purchasePrice) : undefined,
+          purchasePrice: editGoodForm.purchasePrice
+            ? Number(editGoodForm.purchasePrice)
+            : undefined,
           salePrice,
           category: editGoodForm.category || undefined,
           brandId: editGoodForm.brandId || undefined,
@@ -378,8 +569,11 @@ export default function GoodsTab() {
       editGoodDirty.resetDirty();
       setEditGood(null);
       load();
-    } catch (e: unknown) { setEditGoodError(e instanceof Error ? e.message : 'Помилка збереження'); }
-    finally { setEditGoodSaving(false); }
+    } catch (e: unknown) {
+      setEditGoodError(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      setEditGoodSaving(false);
+    }
   };
 
   const totalPages = goods ? Math.ceil(goods.total / goods.limit) : 1;
@@ -387,7 +581,9 @@ export default function GoodsTab() {
   return (
     <div>
       {!modal && error && (
-        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
+          {error}
+        </div>
       )}
       {features.savedFiltersEnabled && (
         <SavedFiltersBar<GoodsFilters>
@@ -404,7 +600,16 @@ export default function GoodsTab() {
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); setActiveSavedFilterId(null); }} placeholder="Пошук за назвою, артикулом, штрихкодом..." className="pl-9" />
+          <Input
+            value={q}
+            onChange={e => {
+              setQ(e.target.value);
+              setPage(1);
+              setActiveSavedFilterId(null);
+            }}
+            placeholder="Пошук за назвою, артикулом, штрихкодом..."
+            className="pl-9"
+          />
         </div>
         <XlsxImportButton
           templateType="goods"
@@ -412,9 +617,7 @@ export default function GoodsTab() {
           onImportComplete={load}
         />
         <div className="flex items-center gap-2 ml-auto">
-          {features.savedFiltersEnabled && (
-            <SaveFilterButton onSave={handleSaveFilter} />
-          )}
+          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
             columns={goodsOrderedColumns}
             visibleKeys={goodsColVisible}
@@ -422,11 +625,21 @@ export default function GoodsTab() {
             onReorder={reorderGoods}
             onRename={renameGoodsCol}
             onReset={resetGoodsConfig}
-            hasCustomization={JSON.stringify(goodsOrder) !== JSON.stringify(GOODS_COLUMNS.map(c=>c.key)) || Object.keys(goodsCustomLabels).length > 0}
+            hasCustomization={
+              JSON.stringify(goodsOrder) !== JSON.stringify(GOODS_COLUMNS.map(c => c.key)) ||
+              Object.keys(goodsCustomLabels).length > 0
+            }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { goodsFormDirty.resetDirty(); setError(''); setModal(true); }}>
+        <Button
+          leftIcon={<Plus className="h-4 w-4" />}
+          onClick={() => {
+            goodsFormDirty.resetDirty();
+            setError('');
+            setModal(true);
+          }}
+        >
           Товар
         </Button>
       </div>
@@ -458,7 +671,11 @@ export default function GoodsTab() {
                     />
                   </TableHead>
                 )}
-                {goodsVisibleColumns.map(col => <TableHead key={col.key} {...goodsDragProps(col.key)}>{col.label}</TableHead>)}
+                {goodsVisibleColumns.map(col => (
+                  <TableHead key={col.key} {...goodsDragProps(col.key)}>
+                    {col.label}
+                  </TableHead>
+                ))}
                 <TableHead>Тип</TableHead>
                 <TableHead />
               </TableRow>
@@ -466,71 +683,117 @@ export default function GoodsTab() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)} className="py-10 text-center">
-                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  <TableCell
+                    colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)}
+                    className="py-10 text-center"
+                  >
+                    <div className="flex justify-center">
+                      <Spinner size="md" />
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && goods?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)} className="p-0">
+                  <TableCell
+                    colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)}
+                    className="p-0"
+                  >
                     <EmptyState icon={Package} title="Нічого не знайдено" />
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && goods?.items.map(g => (
-                <TableRow
-                  key={g.id}
-                  className={`cursor-pointer ${selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
-                  onClick={() => { if (detailPanel.enabled) selectGood(selectedGood?.id === g.id ? null : g); }}
-                >
-                  {features.bulkActionsEnabled && (
-                    <TableCell onClick={e => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={bulkSelect.isSelected(g.id)}
-                        onChange={() => bulkSelect.toggle(g.id)}
-                        className="h-4 w-4 accent-primary"
-                        aria-label={`Обрати ${g.name}`}
-                      />
-                    </TableCell>
-                  )}
-                  {goodsVisibleColumns.map(col => {
-                    if (col.key === 'name') return (
-                      <TableCell key="name">
-                        <p className="font-medium">{g.name}</p>
-                        {g.sku && <p className="text-muted-foreground text-[12px]">{g.sku}</p>}
+              {!loading &&
+                goods?.items.map(g => (
+                  <TableRow
+                    key={g.id}
+                    className={`cursor-pointer ${selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
+                    onClick={() => {
+                      if (detailPanel.enabled) selectGood(selectedGood?.id === g.id ? null : g);
+                    }}
+                  >
+                    {features.bulkActionsEnabled && (
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={bulkSelect.isSelected(g.id)}
+                          onChange={() => bulkSelect.toggle(g.id)}
+                          className="h-4 w-4 accent-primary"
+                          aria-label={`Обрати ${g.name}`}
+                        />
                       </TableCell>
-                    );
-                    if (col.key === 'category') return <TableCell key="category" className="text-[13px] text-muted-foreground">{g.category ?? '—'}</TableCell>;
-                    if (col.key === 'unit') return <TableCell key="unit" className="text-[13px] text-muted-foreground">{g.unit}</TableCell>;
-                    if (col.key === 'purchase') return <TableCell key="purchase" className="text-[13px]">{g.purchasePrice != null ? `${fmtMoney(g.purchasePrice)} ₴` : '—'}</TableCell>;
-                    if (col.key === 'sale') return <TableCell key="sale" className="font-medium text-[13px]">{fmtMoney(g.salePrice)} ₴</TableCell>;
-                    return null;
-                  })}
-                  <TableCell>
-                    {g.goodType
-                      ? <Badge variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}>{GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}</Badge>
-                      : <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditGood(g); }}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(g.id); }}
-                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        title="Помітити на видалення"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    )}
+                    {goodsVisibleColumns.map(col => {
+                      if (col.key === 'name')
+                        return (
+                          <TableCell key="name">
+                            <p className="font-medium">{g.name}</p>
+                            {g.sku && <p className="text-muted-foreground text-[12px]">{g.sku}</p>}
+                          </TableCell>
+                        );
+                      if (col.key === 'category')
+                        return (
+                          <TableCell key="category" className="text-[13px] text-muted-foreground">
+                            {g.category ?? '—'}
+                          </TableCell>
+                        );
+                      if (col.key === 'unit')
+                        return (
+                          <TableCell key="unit" className="text-[13px] text-muted-foreground">
+                            {g.unit}
+                          </TableCell>
+                        );
+                      if (col.key === 'purchase')
+                        return (
+                          <TableCell key="purchase" className="text-[13px]">
+                            {g.purchasePrice != null ? `${fmtMoney(g.purchasePrice)} ₴` : '—'}
+                          </TableCell>
+                        );
+                      if (col.key === 'sale')
+                        return (
+                          <TableCell key="sale" className="font-medium text-[13px]">
+                            {fmtMoney(g.salePrice)} ₴
+                          </TableCell>
+                        );
+                      return null;
+                    })}
+                    <TableCell>
+                      {g.goodType ? (
+                        <Badge variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}>
+                          {GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={e => {
+                            e.stopPropagation();
+                            openEditGood(g);
+                          }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setConfirmDeleteId(g.id);
+                          }}
+                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          title="Помітити на видалення"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </div>
@@ -544,14 +807,19 @@ export default function GoodsTab() {
             <div className="space-y-3 text-sm">
               {/* Detail tabs */}
               <div className="flex gap-1 bg-secondary rounded-lg p-0.5 mb-3">
-                {([
-                  { key: 'info' as const, label: 'Інформація', icon: Package },
-                  { key: 'barcodes' as const, label: 'Штрихкоди', icon: Barcode },
-                  { key: 'batches' as const, label: 'Партії', icon: Layers },
-                ] as const).map(({ key, label, icon: Icon }) => (
+                {(
+                  [
+                    { key: 'info' as const, label: 'Інформація', icon: Package },
+                    { key: 'barcodes' as const, label: 'Штрихкоди', icon: Barcode },
+                    { key: 'batches' as const, label: 'Партії', icon: Layers },
+                  ] as const
+                ).map(({ key, label, icon: Icon }) => (
                   <button
                     key={key}
-                    onClick={() => { setGoodDetailTab(key); if (key === 'barcodes') loadBarcodes(selectedGood.id); }}
+                    onClick={() => {
+                      setGoodDetailTab(key);
+                      if (key === 'barcodes') loadBarcodes(selectedGood.id);
+                    }}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[12px] font-medium transition-colors ${goodDetailTab === key ? 'bg-surface text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
                   >
                     <Icon className="h-3 w-3" />
@@ -644,16 +912,25 @@ export default function GoodsTab() {
               {goodDetailTab === 'barcodes' && (
                 <div className="space-y-3">
                   {barcodesLoading ? (
-                    <div className="flex justify-center py-4"><Spinner size="sm" /></div>
+                    <div className="flex justify-center py-4">
+                      <Spinner size="sm" />
+                    </div>
                   ) : (
                     <>
                       {barcodes.length === 0 && (
-                        <p className="text-[12px] text-muted-foreground text-center py-3">Штрихкоди відсутні</p>
+                        <p className="text-[12px] text-muted-foreground text-center py-3">
+                          Штрихкоди відсутні
+                        </p>
                       )}
                       {barcodes.map(bc => (
-                        <div key={bc.id} className="flex items-center justify-between gap-2 bg-secondary rounded-lg px-3 py-2">
+                        <div
+                          key={bc.id}
+                          className="flex items-center justify-between gap-2 bg-secondary rounded-lg px-3 py-2"
+                        >
                           <div className="flex-1 min-w-0">
-                            <p className="text-[12px] font-mono text-foreground truncate">{bc.barcode}</p>
+                            <p className="text-[12px] font-mono text-foreground truncate">
+                              {bc.barcode}
+                            </p>
                             <p className="text-[11px] text-muted-foreground">{bc.type}</p>
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
@@ -677,15 +954,22 @@ export default function GoodsTab() {
 
                   {/* Add barcode form */}
                   <div className="border-t border-border pt-3 space-y-2">
-                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Додати штрихкод</p>
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Додати штрихкод
+                    </p>
                     <Input
                       placeholder="Штрихкод"
                       value={newBarcode}
                       onChange={e => setNewBarcode(e.target.value)}
                     />
-                    <Select value={newBarcodeType} onChange={e => setNewBarcodeType(e.target.value)}>
+                    <Select
+                      value={newBarcodeType}
+                      onChange={e => setNewBarcodeType(e.target.value)}
+                    >
                       {['EAN13', 'UPC', 'QR', 'CODE128'].map(t => (
-                        <option key={t} value={t}>{t}</option>
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
                       ))}
                     </Select>
                     <Button
@@ -723,11 +1007,7 @@ export default function GoodsTab() {
         title="Помітити товар на видалення"
         footer={
           <div className="flex gap-2 w-full">
-            <Button
-              variant="outline"
-              onClick={() => setConfirmDeleteId(null)}
-              className="flex-1"
-            >
+            <Button variant="outline" onClick={() => setConfirmDeleteId(null)} className="flex-1">
               Скасувати
             </Button>
             <Button
@@ -743,62 +1023,177 @@ export default function GoodsTab() {
         }
       >
         <p className="text-sm text-muted-foreground">
-          Товар буде позначено як видалений (soft delete). Він зникне зі списків, але залишиться в базі даних для архіву.
+          Товар буде позначено як видалений (soft delete). Він зникне зі списків, але залишиться в
+          базі даних для архіву.
         </p>
       </Modal>
 
-      <Modal open={!!editGood} onClose={async () => { if (!(await editGoodDirty.confirmClose())) return; setEditGood(null); }} title="Редагування товару"
+      <Modal
+        open={!!editGood}
+        onClose={async () => {
+          if (!(await editGoodDirty.confirmClose())) return;
+          setEditGood(null);
+        }}
+        title="Редагування товару"
         footer={
           <>
-            <Button onClick={saveEditGood} loading={editGoodSaving} disabled={!editGoodForm.name || !editGoodForm.salePrice}>
+            <Button
+              onClick={saveEditGood}
+              loading={editGoodSaving}
+              disabled={!editGoodForm.name || !editGoodForm.salePrice}
+            >
               Зберегти
             </Button>
-            <Button variant="outline" onClick={async () => { if (!(await editGoodDirty.confirmClose())) return; setEditGood(null); }}>Скасувати</Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (!(await editGoodDirty.confirmClose())) return;
+                setEditGood(null);
+              }}
+            >
+              Скасувати
+            </Button>
           </>
         }
       >
         {editGoodError && (
-          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{editGoodError}</div>
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
+            {editGoodError}
+          </div>
         )}
         <div className="space-y-4">
-          <Input label="Назва" required value={editGoodForm.name} onChange={e => { setEditGoodForm(f => ({ ...f, name: e.target.value })); editGoodDirty.markDirty(); }} placeholder="Масло моторне 5W-40" />
+          <Input
+            label="Назва"
+            required
+            value={editGoodForm.name}
+            onChange={e => {
+              setEditGoodForm(f => ({ ...f, name: e.target.value }));
+              editGoodDirty.markDirty();
+            }}
+            placeholder="Масло моторне 5W-40"
+          />
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Артикул (SKU)" value={editGoodForm.sku} onChange={e => { setEditGoodForm(f => ({ ...f, sku: e.target.value })); editGoodDirty.markDirty(); }} placeholder="OIL-5W40" />
-            {units.length > 0 ? (
-              <Select label="Одиниця виміру" value={editGoodForm.unitId} onChange={e => {
-                const unit = units.find(u => u.id === e.target.value);
-                setEditGoodForm(f => ({ ...f, unitId: e.target.value, unit: unit?.shortName ?? f.unit }));
+            <Input
+              label="Артикул (SKU)"
+              value={editGoodForm.sku}
+              onChange={e => {
+                setEditGoodForm(f => ({ ...f, sku: e.target.value }));
                 editGoodDirty.markDirty();
-              }}>
+              }}
+              placeholder="OIL-5W40"
+            />
+            {units.length > 0 ? (
+              <Select
+                label="Одиниця виміру"
+                value={editGoodForm.unitId}
+                onChange={e => {
+                  const unit = units.find(u => u.id === e.target.value);
+                  setEditGoodForm(f => ({
+                    ...f,
+                    unitId: e.target.value,
+                    unit: unit?.shortName ?? f.unit,
+                  }));
+                  editGoodDirty.markDirty();
+                }}
+              >
                 <option value="">— вписати вручну</option>
-                {units.map(u => <option key={u.id} value={u.id}>{u.shortName} ({u.name})</option>)}
+                {units.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.shortName} ({u.name})
+                  </option>
+                ))}
               </Select>
             ) : (
-              <Input label="Одиниця" value={editGoodForm.unit} onChange={e => { setEditGoodForm(f => ({ ...f, unit: e.target.value })); editGoodDirty.markDirty(); }} placeholder="шт" />
+              <Input
+                label="Одиниця"
+                value={editGoodForm.unit}
+                onChange={e => {
+                  setEditGoodForm(f => ({ ...f, unit: e.target.value }));
+                  editGoodDirty.markDirty();
+                }}
+                placeholder="шт"
+              />
             )}
           </div>
           {units.length > 0 && !editGoodForm.unitId && (
-            <Input label="Одиниця (вручну)" value={editGoodForm.unit} onChange={e => setEditGoodForm(f => ({ ...f, unit: e.target.value }))} placeholder="шт" />
+            <Input
+              label="Одиниця (вручну)"
+              value={editGoodForm.unit}
+              onChange={e => setEditGoodForm(f => ({ ...f, unit: e.target.value }))}
+              placeholder="шт"
+            />
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Ціна закупки, ₴" type="number" value={editGoodForm.purchasePrice} onChange={e => { setEditGoodForm(f => ({ ...f, purchasePrice: e.target.value })); editGoodDirty.markDirty(); }} placeholder="350" />
-            <Input label="Ціна продажу, ₴" required type="number" value={editGoodForm.salePrice} onChange={e => { setEditGoodForm(f => ({ ...f, salePrice: e.target.value })); editGoodDirty.markDirty(); }} placeholder="500" />
+            <Input
+              label="Ціна закупки, ₴"
+              type="number"
+              value={editGoodForm.purchasePrice}
+              onChange={e => {
+                setEditGoodForm(f => ({ ...f, purchasePrice: e.target.value }));
+                editGoodDirty.markDirty();
+              }}
+              placeholder="350"
+            />
+            <Input
+              label="Ціна продажу, ₴"
+              required
+              type="number"
+              value={editGoodForm.salePrice}
+              onChange={e => {
+                setEditGoodForm(f => ({ ...f, salePrice: e.target.value }));
+                editGoodDirty.markDirty();
+              }}
+              placeholder="500"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Бренд" value={editGoodForm.brandId} onChange={e => { setEditGoodForm(f => ({ ...f, brandId: e.target.value })); editGoodDirty.markDirty(); }}>
+            <Select
+              label="Бренд"
+              value={editGoodForm.brandId}
+              onChange={e => {
+                setEditGoodForm(f => ({ ...f, brandId: e.target.value }));
+                editGoodDirty.markDirty();
+              }}
+            >
               <option value="">—</option>
-              {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {brands.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
             </Select>
-            <Input label="Категорія" value={editGoodForm.category} onChange={e => { setEditGoodForm(f => ({ ...f, category: e.target.value })); editGoodDirty.markDirty(); }} placeholder="Мастила" />
+            <Input
+              label="Категорія"
+              value={editGoodForm.category}
+              onChange={e => {
+                setEditGoodForm(f => ({ ...f, category: e.target.value }));
+                editGoodDirty.markDirty();
+              }}
+              placeholder="Мастила"
+            />
           </div>
-          <Select label="Тип товару" value={editGoodForm.goodType} onChange={e => { setEditGoodForm(f => ({ ...f, goodType: e.target.value })); editGoodDirty.markDirty(); }}>
+          <Select
+            label="Тип товару"
+            value={editGoodForm.goodType}
+            onChange={e => {
+              setEditGoodForm(f => ({ ...f, goodType: e.target.value }));
+              editGoodDirty.markDirty();
+            }}
+          >
             <option value="">Не вказано</option>
             <option value="SPARE_PART">Запчастина</option>
             <option value="CONSUMABLE">Витратний матеріал</option>
             <option value="MATERIAL">Матеріал</option>
             <option value="TOOL">Інструмент</option>
           </Select>
-          <Select label="Основний постачальник" value={editGoodForm.preferredSupplierId} onChange={e => { setEditGoodForm(f => ({ ...f, preferredSupplierId: e.target.value })); editGoodDirty.markDirty(); }}>
+          <Select
+            label="Основний постачальник"
+            value={editGoodForm.preferredSupplierId}
+            onChange={e => {
+              setEditGoodForm(f => ({ ...f, preferredSupplierId: e.target.value }));
+              editGoodDirty.markDirty();
+            }}
+          >
             <option value="">— Не вказано —</option>
             {suppliers.map(s => (
               <option key={s.id} value={s.id}>
@@ -806,7 +1201,14 @@ export default function GoodsTab() {
               </option>
             ))}
           </Select>
-          <Input label="Нотатки" value={editGoodForm.notes} onChange={e => { setEditGoodForm(f => ({ ...f, notes: e.target.value })); editGoodDirty.markDirty(); }} />
+          <Input
+            label="Нотатки"
+            value={editGoodForm.notes}
+            onChange={e => {
+              setEditGoodForm(f => ({ ...f, notes: e.target.value }));
+              editGoodDirty.markDirty();
+            }}
+          />
         </div>
 
         {/* ModalTabs — штрихкоди та партії */}
@@ -820,7 +1222,9 @@ export default function GoodsTab() {
               content: (
                 <div className="space-y-3">
                   {modalBarcodesLoading && (
-                    <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      Завантаження...
+                    </div>
                   )}
                   {!modalBarcodesLoading && barcodeError && (
                     <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
@@ -830,10 +1234,16 @@ export default function GoodsTab() {
                   {!modalBarcodesLoading && !barcodeError && (
                     <>
                       <div className="flex items-center justify-between">
-                        <span className="text-[13px] text-muted-foreground">{modalBarcodes.length} штрихкодів</span>
+                        <span className="text-[13px] text-muted-foreground">
+                          {modalBarcodes.length} штрихкодів
+                        </span>
                         {!showAddBarcode && (
-                          <Button size="sm" variant="outline" leftIcon={<Plus className="h-3.5 w-3.5" />}
-                            onClick={() => setShowAddBarcode(true)}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            leftIcon={<Plus className="h-3.5 w-3.5" />}
+                            onClick={() => setShowAddBarcode(true)}
+                          >
                             Додати
                           </Button>
                         )}
@@ -841,11 +1251,22 @@ export default function GoodsTab() {
                       {showAddBarcode && (
                         <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
                           <div className="grid grid-cols-2 gap-2">
-                            <Input label="Штрихкод" required value={addBarcodeForm.barcode}
-                              onChange={e => setAddBarcodeForm(f => ({ ...f, barcode: e.target.value }))}
-                              placeholder="4820123456789" />
-                            <Select label="Тип" value={addBarcodeForm.type}
-                              onChange={e => setAddBarcodeForm(f => ({ ...f, type: e.target.value }))}>
+                            <Input
+                              label="Штрихкод"
+                              required
+                              value={addBarcodeForm.barcode}
+                              onChange={e =>
+                                setAddBarcodeForm(f => ({ ...f, barcode: e.target.value }))
+                              }
+                              placeholder="4820123456789"
+                            />
+                            <Select
+                              label="Тип"
+                              value={addBarcodeForm.type}
+                              onChange={e =>
+                                setAddBarcodeForm(f => ({ ...f, type: e.target.value }))
+                              }
+                            >
                               <option value="EAN13">EAN-13</option>
                               <option value="EAN8">EAN-8</option>
                               <option value="CODE128">Code 128</option>
@@ -854,27 +1275,45 @@ export default function GoodsTab() {
                             </Select>
                           </div>
                           <div className="flex gap-2 justify-end">
-                            <Button size="sm" variant="outline"
-                              onClick={() => { setShowAddBarcode(false); setAddBarcodeForm({ barcode: '', type: 'EAN13' }); }}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setShowAddBarcode(false);
+                                setAddBarcodeForm({ barcode: '', type: 'EAN13' });
+                              }}
+                            >
                               Скасувати
                             </Button>
-                            <Button size="sm" loading={addingBarcode2}
+                            <Button
+                              size="sm"
+                              loading={addingBarcode2}
                               disabled={!addBarcodeForm.barcode}
                               onClick={async () => {
                                 if (!editGood) return;
                                 setAddingBarcode2(true);
                                 try {
-                                  const created = await apiFetch<GoodBarcode>(`/goods/${editGood.id}/barcodes`, {
-                                    method: 'POST',
-                                    body: JSON.stringify({ barcode: addBarcodeForm.barcode, type: addBarcodeForm.type }),
-                                  });
+                                  const created = await apiFetch<GoodBarcode>(
+                                    `/goods/${editGood.id}/barcodes`,
+                                    {
+                                      method: 'POST',
+                                      body: JSON.stringify({
+                                        barcode: addBarcodeForm.barcode,
+                                        type: addBarcodeForm.type,
+                                      }),
+                                    },
+                                  );
                                   setModalBarcodes(prev => [...prev, created]);
                                   setAddBarcodeForm({ barcode: '', type: 'EAN13' });
                                   setShowAddBarcode(false);
                                   toast.success('Штрихкод додано');
-                                } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка'); }
-                                finally { setAddingBarcode2(false); }
-                              }}>
+                                } catch (e: unknown) {
+                                  toast.error(e instanceof Error ? e.message : 'Помилка');
+                                } finally {
+                                  setAddingBarcode2(false);
+                                }
+                              }}
+                            >
                               Зберегти
                             </Button>
                           </div>
@@ -885,9 +1324,16 @@ export default function GoodsTab() {
                           <table className="w-full text-[13px]">
                             <thead className="bg-secondary border-b border-border">
                               <tr>
-                                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Штрихкод</th>
-                                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Тип</th>
-                                <th className="w-10 px-3 py-2 text-muted-foreground" title="Основний">
+                                <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                                  Штрихкод
+                                </th>
+                                <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                                  Тип
+                                </th>
+                                <th
+                                  className="w-10 px-3 py-2 text-muted-foreground"
+                                  title="Основний"
+                                >
                                   <Star className="h-3.5 w-3.5" />
                                 </th>
                                 <th className="w-12" />
@@ -895,27 +1341,44 @@ export default function GoodsTab() {
                             </thead>
                             <tbody className="divide-y divide-border">
                               {modalBarcodes.map(bc => (
-                                <tr key={bc.id} className="bg-surface hover:bg-secondary/50 transition-colors">
-                                  <td className="px-3 py-2 font-mono text-foreground">{bc.barcode}</td>
+                                <tr
+                                  key={bc.id}
+                                  className="bg-surface hover:bg-secondary/50 transition-colors"
+                                >
+                                  <td className="px-3 py-2 font-mono text-foreground">
+                                    {bc.barcode}
+                                  </td>
                                   <td className="px-3 py-2 text-muted-foreground">{bc.type}</td>
                                   <td className="px-3 py-2 text-center">
-                                    {bc.isPrimary && <Star className="h-3.5 w-3.5 text-warning-text fill-warning-text" />}
+                                    {bc.isPrimary && (
+                                      <Star className="h-3.5 w-3.5 text-warning-text fill-warning-text" />
+                                    )}
                                   </td>
                                   <td className="px-3 py-2 text-center">
-                                    <button type="button"
+                                    <button
+                                      type="button"
                                       disabled={deletingBarcodeId2 === bc.id}
                                       onClick={async () => {
                                         if (!editGood) return;
                                         setDeletingBarcodeId2(bc.id);
                                         try {
-                                          await apiFetch(`/goods/${editGood.id}/barcodes/${bc.id}`, { method: 'DELETE' });
-                                          setModalBarcodes(prev => prev.filter(b => b.id !== bc.id));
+                                          await apiFetch(
+                                            `/goods/${editGood.id}/barcodes/${bc.id}`,
+                                            { method: 'DELETE' },
+                                          );
+                                          setModalBarcodes(prev =>
+                                            prev.filter(b => b.id !== bc.id),
+                                          );
                                           toast.success('Штрихкод видалено');
-                                        } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка'); }
-                                        finally { setDeletingBarcodeId2(null); }
+                                        } catch (e: unknown) {
+                                          toast.error(e instanceof Error ? e.message : 'Помилка');
+                                        } finally {
+                                          setDeletingBarcodeId2(null);
+                                        }
                                       }}
                                       className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
-                                      title="Видалити">
+                                      title="Видалити"
+                                    >
                                       <X className="h-3.5 w-3.5" />
                                     </button>
                                   </td>
@@ -926,7 +1389,9 @@ export default function GoodsTab() {
                         </div>
                       )}
                       {modalBarcodes.length === 0 && !showAddBarcode && (
-                        <p className="text-[13px] text-muted-foreground text-center py-4">Штрихкодів немає</p>
+                        <p className="text-[13px] text-muted-foreground text-center py-4">
+                          Штрихкодів немає
+                        </p>
                       )}
                     </>
                   )}
@@ -941,7 +1406,9 @@ export default function GoodsTab() {
               content: (
                 <div className="space-y-3">
                   {modalBatchesLoading && (
-                    <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      Завантаження...
+                    </div>
                   )}
                   {!modalBatchesLoading && batchError && (
                     <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
@@ -949,33 +1416,55 @@ export default function GoodsTab() {
                     </div>
                   )}
                   {!modalBatchesLoading && !batchError && modalBatches.length === 0 && (
-                    <p className="text-[13px] text-muted-foreground text-center py-4">Партій немає</p>
+                    <p className="text-[13px] text-muted-foreground text-center py-4">
+                      Партій немає
+                    </p>
                   )}
                   {!modalBatchesLoading && !batchError && modalBatches.length > 0 && (
                     <div className="rounded-xl border border-border overflow-hidden">
                       <table className="w-full text-[13px]">
                         <thead className="bg-secondary border-b border-border">
                           <tr>
-                            <th className="text-left px-3 py-2 text-muted-foreground font-medium">Партія / Накладна</th>
-                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">Отримано</th>
-                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">Залишок</th>
-                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">Собів., ₴</th>
-                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">Продаж, ₴</th>
-                            <th className="text-left px-3 py-2 text-muted-foreground font-medium">Дата</th>
+                            <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                              Партія / Накладна
+                            </th>
+                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">
+                              Отримано
+                            </th>
+                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">
+                              Залишок
+                            </th>
+                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">
+                              Собів., ₴
+                            </th>
+                            <th className="text-right px-3 py-2 text-muted-foreground font-medium">
+                              Продаж, ₴
+                            </th>
+                            <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                              Дата
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
                           {modalBatches.map(b => (
-                            <tr key={b.id} className="bg-surface hover:bg-secondary/50 transition-colors">
+                            <tr
+                              key={b.id}
+                              className="bg-surface hover:bg-secondary/50 transition-colors"
+                            >
                               <td className="px-3 py-2 text-foreground">
                                 {b.batchNumber ?? b.purchaseOrderNumber ?? '—'}
                               </td>
-                              <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">{b.receivedQty}</td>
+                              <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">
+                                {b.receivedQty}
+                              </td>
                               <td className="px-3 py-2 text-right tabular-nums">
-                                {b.remainingQty > 0
-                                  ? <span className="text-foreground">{b.remainingQty}</span>
-                                  : <span className="text-muted-foreground line-through">{b.remainingQty}</span>
-                                }
+                                {b.remainingQty > 0 ? (
+                                  <span className="text-foreground">{b.remainingQty}</span>
+                                ) : (
+                                  <span className="text-muted-foreground line-through">
+                                    {b.remainingQty}
+                                  </span>
+                                )}
                               </td>
                               <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">
                                 {fmtMoney(b.costPrice)}
@@ -999,30 +1488,49 @@ export default function GoodsTab() {
         />
       </Modal>
 
-      <Modal open={modal} onClose={async () => { if (!(await goodsFormDirty.confirmClose())) return; setModal(false); }} title="Новий товар / запчастина"
+      <Modal
+        open={modal}
+        onClose={async () => {
+          if (!(await goodsFormDirty.confirmClose())) return;
+          setModal(false);
+        }}
+        title="Новий товар / запчастина"
         size="xl"
         footer={
-          <Button onClick={create} loading={saving} disabled={!form.name || !form.salePrice} className="w-full">
+          <Button
+            onClick={create}
+            loading={saving}
+            disabled={!form.name || !form.salePrice}
+            className="w-full"
+          >
             Зберегти
           </Button>
         }
       >
         {error && (
-          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">{error}</div>
+          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
+            {error}
+          </div>
         )}
         <div className="space-y-4">
           <Input
             label="Назва"
             required
             value={form.name}
-            onChange={e => { setForm(f => ({ ...f, name: e.target.value })); goodsFormDirty.markDirty(); }}
+            onChange={e => {
+              setForm(f => ({ ...f, name: e.target.value }));
+              goodsFormDirty.markDirty();
+            }}
             placeholder="Масло моторне 5W-40"
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Артикул (SKU)"
               value={form.sku}
-              onChange={e => { setForm(f => ({ ...f, sku: e.target.value })); goodsFormDirty.markDirty(); }}
+              onChange={e => {
+                setForm(f => ({ ...f, sku: e.target.value }));
+                goodsFormDirty.markDirty();
+              }}
               placeholder="OIL-5W40"
             />
             {units.length > 0 ? (
@@ -1036,13 +1544,20 @@ export default function GoodsTab() {
                 }}
               >
                 <option value="">— вписати вручну</option>
-                {units.map(u => <option key={u.id} value={u.id}>{u.shortName} ({u.name})</option>)}
+                {units.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.shortName} ({u.name})
+                  </option>
+                ))}
               </Select>
             ) : (
               <Input
                 label="Одиниця"
                 value={form.unit}
-                onChange={e => { setForm(f => ({ ...f, unit: e.target.value })); goodsFormDirty.markDirty(); }}
+                onChange={e => {
+                  setForm(f => ({ ...f, unit: e.target.value }));
+                  goodsFormDirty.markDirty();
+                }}
                 placeholder="шт"
               />
             )}
@@ -1051,7 +1566,10 @@ export default function GoodsTab() {
             <Input
               label="Одиниця (вручну)"
               value={form.unit}
-              onChange={e => { setForm(f => ({ ...f, unit: e.target.value })); goodsFormDirty.markDirty(); }}
+              onChange={e => {
+                setForm(f => ({ ...f, unit: e.target.value }));
+                goodsFormDirty.markDirty();
+              }}
               placeholder="шт"
             />
           )}
@@ -1060,7 +1578,10 @@ export default function GoodsTab() {
               label="Ціна закупки, ₴"
               type="number"
               value={form.purchasePrice}
-              onChange={e => { setForm(f => ({ ...f, purchasePrice: e.target.value })); goodsFormDirty.markDirty(); }}
+              onChange={e => {
+                setForm(f => ({ ...f, purchasePrice: e.target.value }));
+                goodsFormDirty.markDirty();
+              }}
               placeholder="350"
             />
             <Input
@@ -1068,7 +1589,10 @@ export default function GoodsTab() {
               required
               type="number"
               value={form.salePrice}
-              onChange={e => { setForm(f => ({ ...f, salePrice: e.target.value })); goodsFormDirty.markDirty(); }}
+              onChange={e => {
+                setForm(f => ({ ...f, salePrice: e.target.value }));
+                goodsFormDirty.markDirty();
+              }}
               placeholder="500"
             />
           </div>
@@ -1076,22 +1600,35 @@ export default function GoodsTab() {
             <Select
               label="Бренд"
               value={form.brandId}
-              onChange={e => { setForm(f => ({ ...f, brandId: e.target.value })); goodsFormDirty.markDirty(); }}
+              onChange={e => {
+                setForm(f => ({ ...f, brandId: e.target.value }));
+                goodsFormDirty.markDirty();
+              }}
             >
               <option value="">—</option>
-              {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {brands.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
             </Select>
             <Input
               label="Категорія"
               value={form.category}
-              onChange={e => { setForm(f => ({ ...f, category: e.target.value })); goodsFormDirty.markDirty(); }}
+              onChange={e => {
+                setForm(f => ({ ...f, category: e.target.value }));
+                goodsFormDirty.markDirty();
+              }}
               placeholder="Мастила"
             />
           </div>
           <Select
             label="Тип товару"
             value={form.goodType}
-            onChange={e => { setForm(f => ({ ...f, goodType: e.target.value })); goodsFormDirty.markDirty(); }}
+            onChange={e => {
+              setForm(f => ({ ...f, goodType: e.target.value }));
+              goodsFormDirty.markDirty();
+            }}
           >
             <option value="">Не вказано</option>
             <option value="SPARE_PART">Запчастина</option>
@@ -1102,7 +1639,10 @@ export default function GoodsTab() {
           <Select
             label="Основний постачальник"
             value={form.preferredSupplierId}
-            onChange={e => { setForm(f => ({ ...f, preferredSupplierId: e.target.value })); goodsFormDirty.markDirty(); }}
+            onChange={e => {
+              setForm(f => ({ ...f, preferredSupplierId: e.target.value }));
+              goodsFormDirty.markDirty();
+            }}
           >
             <option value="">— Не вказано —</option>
             {suppliers.map(s => (
@@ -1114,13 +1654,19 @@ export default function GoodsTab() {
           <Input
             label="Штрихкод"
             value={form.barcode}
-            onChange={e => { setForm(f => ({ ...f, barcode: e.target.value })); goodsFormDirty.markDirty(); }}
+            onChange={e => {
+              setForm(f => ({ ...f, barcode: e.target.value }));
+              goodsFormDirty.markDirty();
+            }}
             placeholder="4820000000000"
           />
           <Input
             label="Нотатки"
             value={form.notes}
-            onChange={e => { setForm(f => ({ ...f, notes: e.target.value })); goodsFormDirty.markDirty(); }}
+            onChange={e => {
+              setForm(f => ({ ...f, notes: e.target.value }));
+              goodsFormDirty.markDirty();
+            }}
           />
         </div>
       </Modal>

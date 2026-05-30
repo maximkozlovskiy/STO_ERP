@@ -53,10 +53,22 @@ export default function NewVehiclePageClient() {
   const garageId = searchParams.get('garageId') ?? '';
 
   const [form, setForm] = useState({
-    make: '', model: '', vin: '', licensePlate: '',
-    year: '', engineVolume: '', fuelType: '', currentMileage: '', color: '',
-    transmissionType: '', driveType: '', bodyType: '', engineCode: '',
-    insuranceExpiry: '', inspectionExpiry: '', notes: '',
+    make: '',
+    model: '',
+    vin: '',
+    licensePlate: '',
+    year: '',
+    engineVolume: '',
+    fuelType: '',
+    currentMileage: '',
+    color: '',
+    transmissionType: '',
+    driveType: '',
+    bodyType: '',
+    engineCode: '',
+    insuranceExpiry: '',
+    inspectionExpiry: '',
+    notes: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -72,12 +84,11 @@ export default function NewVehiclePageClient() {
       .finally(() => setGarageLoading(false));
   }, [garageId]);
 
-  const set = (field: string, value: string) =>
-    setForm(f => ({ ...f, [field]: value }));
+  const set = (field: string, value: string) => setForm(f => ({ ...f, [field]: value }));
 
   const handleSubmit = async () => {
     if (!form.make.trim() || !form.model.trim()) {
-      setError('Марка та модель є обов\'язковими полями');
+      setError("Марка та модель є обов'язковими полями");
       return;
     }
     if (!garageId) {
@@ -141,10 +152,11 @@ export default function NewVehiclePageClient() {
         </Button>
         <div>
           <h1 className="text-xl font-bold text-foreground">Новий автомобіль</h1>
-          {garageLoading
-            ? <Spinner size="sm" />
-            : garageName && <p className="text-sm text-muted-foreground">Гараж: {garageName}</p>
-          }
+          {garageLoading ? (
+            <Spinner size="sm" />
+          ) : (
+            garageName && <p className="text-sm text-muted-foreground">Гараж: {garageName}</p>
+          )}
         </div>
       </div>
 
@@ -222,7 +234,11 @@ export default function NewVehiclePageClient() {
             onChange={e => set('fuelType', e.target.value)}
             placeholder="Не вказано"
           >
-            {FUEL_TYPES.map(f => <option key={f} value={f}>{f}</option>)}
+            {FUEL_TYPES.map(f => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
           </Select>
           <Input
             label="Колір"
@@ -242,14 +258,22 @@ export default function NewVehiclePageClient() {
             value={form.transmissionType}
             onChange={e => set('transmissionType', e.target.value)}
           >
-            {TRANSMISSION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            {TRANSMISSION_TYPES.map(t => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
           </Select>
           <Select
             label="Привід"
             value={form.driveType}
             onChange={e => set('driveType', e.target.value)}
           >
-            {DRIVE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            {DRIVE_TYPES.map(t => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
           </Select>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -258,7 +282,11 @@ export default function NewVehiclePageClient() {
             value={form.bodyType}
             onChange={e => set('bodyType', e.target.value)}
           >
-            {BODY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            {BODY_TYPES.map(t => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
           </Select>
           <Input
             label="Код двигуна"

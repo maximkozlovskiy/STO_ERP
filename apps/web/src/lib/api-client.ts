@@ -22,7 +22,7 @@ async function tryRefresh(): Promise<string | null> {
       credentials: 'include',
     });
     if (!res.ok) return null;
-    const data = await res.json() as { accessToken?: string };
+    const data = (await res.json()) as { accessToken?: string };
     if (data.accessToken) {
       setToken(data.accessToken);
       return data.accessToken;
@@ -37,10 +37,7 @@ async function tryRefresh(): Promise<string | null> {
 // double-invoke and rapid UI interactions hitting the same endpoint.
 const inFlight = new Map<string, Promise<unknown>>();
 
-export async function apiFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
   // Only dedup plain GETs. A request carrying an AbortSignal must NOT share a promise:
   // if caller A aborts, the underlying fetch rejects and that rejection would wrongly
@@ -56,10 +53,7 @@ export async function apiFetch<T>(
   return _apiFetch<T>(path, init);
 }
 
-async function _apiFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
 
   const makeRequest = (accessToken: string | null) =>
@@ -107,8 +101,12 @@ async function _apiFetch<T>(
       localStorage.setItem('sto_pending_ops', String(count + 1));
       window.dispatchEvent(new CustomEvent('sto:pending-ops-changed'));
     }
-    const error = await res.json().catch(() => ({ message: res.statusText })) as { message: string | string[] };
-    const msg = Array.isArray(error.message) ? error.message.join('; ') : (error.message ?? res.statusText);
+    const error = (await res.json().catch(() => ({ message: res.statusText }))) as {
+      message: string | string[];
+    };
+    const msg = Array.isArray(error.message)
+      ? error.message.join('; ')
+      : (error.message ?? res.statusText);
     throw new Error(msg);
   }
 
@@ -124,7 +122,7 @@ async function _apiFetch<T>(
   // 204 No Content
   if (res.status === 204) return undefined as T;
 
-  return await res.json() as T;
+  return (await res.json()) as T;
 }
 
 /**
@@ -162,8 +160,11 @@ export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Bl
   if (!res.ok) {
     // Try to parse error body as JSON (most likely shape from NestJS) — fall back to status text.
     // NestJS class-validator returns `message: string[]` on 400 → join with '; '.
-    const errBody = await res.json()
-      .catch(() => ({ message: `Помилка завантаження файлу (${res.status})` })) as { message?: string | string[] };
+    const errBody = (await res
+      .json()
+      .catch(() => ({ message: `Помилка завантаження файлу (${res.status})` }))) as {
+      message?: string | string[];
+    };
     const errMsg = Array.isArray(errBody.message)
       ? errBody.message.join('; ')
       : (errBody.message ?? `Помилка завантаження файлу (${res.status})`);
@@ -213,8 +214,11 @@ export async function apiMultipartFetch<T>(
 
   if (!res.ok) {
     // NestJS class-validator returns `message: string[]` on 400 → join with '; '.
-    const errBody = await res.json()
-      .catch(() => ({ message: `Помилка завантаження (${res.status})` })) as { message?: string | string[] };
+    const errBody = (await res
+      .json()
+      .catch(() => ({ message: `Помилка завантаження (${res.status})` }))) as {
+      message?: string | string[];
+    };
     const errMsg = Array.isArray(errBody.message)
       ? errBody.message.join('; ')
       : (errBody.message ?? `Помилка завантаження (${res.status})`);
@@ -222,5 +226,5 @@ export async function apiMultipartFetch<T>(
   }
 
   if (res.status === 204) return undefined as T;
-  return await res.json() as T;
+  return (await res.json()) as T;
 }

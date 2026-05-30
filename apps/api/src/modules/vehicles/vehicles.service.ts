@@ -1,8 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  CreateVehicleDto, CreateVehicleNodeDto, UpdateVehicleDto,
-  VehicleNodeResponseDto, VehicleResponseDto,
+  CreateVehicleDto,
+  CreateVehicleNodeDto,
+  UpdateVehicleDto,
+  VehicleNodeResponseDto,
+  VehicleResponseDto,
 } from './vehicles.dto';
 
 @Injectable()
@@ -58,7 +61,11 @@ export class VehiclesService {
     return items.map(item => this.toNodeDto(item));
   }
 
-  async createNode(orgId: string, vehicleId: string, dto: CreateVehicleNodeDto): Promise<VehicleNodeResponseDto> {
+  async createNode(
+    orgId: string,
+    vehicleId: string,
+    dto: CreateVehicleNodeDto,
+  ): Promise<VehicleNodeResponseDto> {
     await this.findOne(orgId, vehicleId);
     const item = await this.prisma.vehicleNode.create({ data: { ...dto, orgId, vehicleId } });
     return this.toNodeDto(item);
@@ -70,30 +77,77 @@ export class VehiclesService {
       where: { id: nodeId, vehicleId, orgId, deletedAt: null },
     });
     if (!node) throw new NotFoundException('Вузол не знайдено');
-    await this.prisma.vehicleNode.update({ where: { id: nodeId, orgId }, data: { deletedAt: new Date() } });
+    await this.prisma.vehicleNode.update({
+      where: { id: nodeId, orgId },
+      data: { deletedAt: new Date() },
+    });
   }
 
   private toDto(v: {
-    id: string; orgId: string; customerGarageId: string; make: string; model: string;
-    vin: string | null; licensePlate: string | null; year: number | null;
-    engineVolume: number | null; fuelType: string | null; currentMileage: number | null;
-    color: string | null; notes: string | null;
-    transmissionType: string | null; driveType: string | null; bodyType: string | null;
-    engineCode: string | null; insuranceExpiry: Date | null; inspectionExpiry: Date | null;
-    createdAt: Date; updatedAt: Date;
+    id: string;
+    orgId: string;
+    customerGarageId: string;
+    make: string;
+    model: string;
+    vin: string | null;
+    licensePlate: string | null;
+    year: number | null;
+    engineVolume: number | null;
+    fuelType: string | null;
+    currentMileage: number | null;
+    color: string | null;
+    notes: string | null;
+    transmissionType: string | null;
+    driveType: string | null;
+    bodyType: string | null;
+    engineCode: string | null;
+    insuranceExpiry: Date | null;
+    inspectionExpiry: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
   }): VehicleResponseDto {
     return {
-      id: v.id, orgId: v.orgId, customerGarageId: v.customerGarageId,
-      make: v.make, model: v.model, vin: v.vin, licensePlate: v.licensePlate,
-      year: v.year, engineVolume: v.engineVolume, fuelType: v.fuelType,
-      currentMileage: v.currentMileage, color: v.color, notes: v.notes,
-      transmissionType: v.transmissionType, driveType: v.driveType, bodyType: v.bodyType,
-      engineCode: v.engineCode, insuranceExpiry: v.insuranceExpiry, inspectionExpiry: v.inspectionExpiry,
-      createdAt: v.createdAt, updatedAt: v.updatedAt,
+      id: v.id,
+      orgId: v.orgId,
+      customerGarageId: v.customerGarageId,
+      make: v.make,
+      model: v.model,
+      vin: v.vin,
+      licensePlate: v.licensePlate,
+      year: v.year,
+      engineVolume: v.engineVolume,
+      fuelType: v.fuelType,
+      currentMileage: v.currentMileage,
+      color: v.color,
+      notes: v.notes,
+      transmissionType: v.transmissionType,
+      driveType: v.driveType,
+      bodyType: v.bodyType,
+      engineCode: v.engineCode,
+      insuranceExpiry: v.insuranceExpiry,
+      inspectionExpiry: v.inspectionExpiry,
+      createdAt: v.createdAt,
+      updatedAt: v.updatedAt,
     };
   }
 
-  private toNodeDto(n: { id: string; vehicleId: string; category: string; name: string; mileageAtInstall: number | null; notes: string | null; createdAt: Date }): VehicleNodeResponseDto {
-    return { id: n.id, vehicleId: n.vehicleId, category: n.category, name: n.name, mileageAtInstall: n.mileageAtInstall, notes: n.notes, createdAt: n.createdAt };
+  private toNodeDto(n: {
+    id: string;
+    vehicleId: string;
+    category: string;
+    name: string;
+    mileageAtInstall: number | null;
+    notes: string | null;
+    createdAt: Date;
+  }): VehicleNodeResponseDto {
+    return {
+      id: n.id,
+      vehicleId: n.vehicleId,
+      category: n.category,
+      name: n.name,
+      mileageAtInstall: n.mileageAtInstall,
+      notes: n.notes,
+      createdAt: n.createdAt,
+    };
   }
 }

@@ -24,7 +24,7 @@ const batchServiceMock = {
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { sub: 'emp-1', orgId: 'org-1', role: 'STOREKEEPER' };
@@ -44,8 +44,10 @@ describe('Batches — HTTP Contract', () => {
         { provide: PrismaService, useValue: prismaMock },
       ],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -66,13 +68,26 @@ describe('Batches — HTTP Contract', () => {
   describe('GET /batches/lookup', () => {
     it('повертає 200 + lookup shape { good, avgCostPrice, batches, priceHistory }', async () => {
       prismaMock.good.findFirst.mockResolvedValueOnce({
-        id: 'g-1', name: 'Олива 5W40', sku: 'OIL-001', unit: 'л', salePrice: 250,
+        id: 'g-1',
+        name: 'Олива 5W40',
+        sku: 'OIL-001',
+        unit: 'л',
+        salePrice: 250,
       });
       batchServiceMock.getBatchesForGood.mockResolvedValueOnce([
         {
-          id: 'b-1', goodId: 'g-1', warehouseId: 'wh-1', purchaseOrderLineId: null,
-          batchNumber: null, expiryDate: null, receivedQty: 10, remainingQty: 8,
-          costPrice: 100, salePrice: 250, isActive: true, createdAt: new Date(),
+          id: 'b-1',
+          goodId: 'g-1',
+          warehouseId: 'wh-1',
+          purchaseOrderLineId: null,
+          batchNumber: null,
+          expiryDate: null,
+          receivedQty: 10,
+          remainingQty: 8,
+          costPrice: 100,
+          salePrice: 250,
+          isActive: true,
+          createdAt: new Date(),
           purchaseOrderNumber: null,
         },
       ]);
@@ -108,7 +123,11 @@ describe('Batches — HTTP Contract', () => {
 
     it('Bug #16: getAvgCost викликається з warehouseId=undefined коли query-param відсутній', async () => {
       prismaMock.good.findFirst.mockResolvedValueOnce({
-        id: 'g-1', name: 'X', sku: null, unit: 'шт', salePrice: 100,
+        id: 'g-1',
+        name: 'X',
+        sku: null,
+        unit: 'шт',
+        salePrice: 100,
       });
       batchServiceMock.getBatchesForGood.mockResolvedValueOnce([]);
       prismaMock.priceHistory.findMany.mockResolvedValueOnce([]);
@@ -119,7 +138,11 @@ describe('Batches — HTTP Contract', () => {
         url: '/batches/lookup?goodId=00000000-0000-0000-0000-000000000001',
       });
       // Не передаємо порожній рядок — undefined → агрегація по всіх складах.
-      expect(batchServiceMock.getAvgCost).toHaveBeenCalledWith('org-1', expect.any(String), undefined);
+      expect(batchServiceMock.getAvgCost).toHaveBeenCalledWith(
+        'org-1',
+        expect.any(String),
+        undefined,
+      );
     });
 
     it('повертає 403 коли guard не пропустив', async () => {

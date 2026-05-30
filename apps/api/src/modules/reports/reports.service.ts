@@ -4,7 +4,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName } from '@sto/shared';
 
 function kyivOffsetMs(d: Date): number {
-  const utcStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(d);
+  const utcStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Kyiv',
+    hour: '2-digit',
+    hour12: false,
+  }).format(d);
   const kyivHour = parseInt(utcStr, 10);
   const utcHour = d.getUTCHours();
   return ((kyivHour - utcHour + 24) % 24) * 3_600_000;
@@ -15,7 +19,8 @@ function normalizeDateRange(from: string, to: string) {
   const toEndOfDay = new Date(`${to}T23:59:59.999Z`);
   const fromDate = new Date(fromMidnight.getTime() - kyivOffsetMs(fromMidnight));
   const toDate = new Date(toEndOfDay.getTime() - kyivOffsetMs(toEndOfDay));
-  if (fromDate > toDate) throw new BadRequestException('Дата початку має бути не пізніше дати закінчення');
+  if (fromDate > toDate)
+    throw new BadRequestException('Дата початку має бути не пізніше дати закінчення');
   return { fromDate, toDate };
 }
 
@@ -40,7 +45,9 @@ export class ReportsService {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
     if (branchId) {
-      const branch = await this.prisma.garageBranch.findFirst({ where: { id: branchId, orgId, deletedAt: null } });
+      const branch = await this.prisma.garageBranch.findFirst({
+        where: { id: branchId, orgId, deletedAt: null },
+      });
       if (!branch) throw new NotFoundException('Філію не знайдено');
     }
 
@@ -60,7 +67,10 @@ export class ReportsService {
     });
 
     // Group by date — використовуємо KYIV_DATE_FMT (module-level singleton).
-    const byDate: Record<string, { date: string; revenue: number; labor: number; parts: number; count: number }> = {};
+    const byDate: Record<
+      string,
+      { date: string; revenue: number; labor: number; parts: number; count: number }
+    > = {};
     for (const wo of orders) {
       const date = KYIV_DATE_FMT.format(wo.completedAt!);
       if (!byDate[date]) byDate[date] = { date, revenue: 0, labor: 0, parts: 0, count: 0 };
@@ -81,13 +91,22 @@ export class ReportsService {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
     if (employeeId) {
-      const emp = await this.prisma.employee.findFirst({ where: { id: employeeId, orgId, deletedAt: null } });
+      const emp = await this.prisma.employee.findFirst({
+        where: { id: employeeId, orgId, deletedAt: null },
+      });
       if (!emp) throw new NotFoundException('Співробітника не знайдено');
     }
 
     // Use groupBy for DB-side aggregation — avoids loading up to 10 000 raw rows into memory.
     // groupBy requires a filter on the grouped field, so we join through workOrder via raw SQL.
-    type GroupRow = { employeeId: string; firstName: string; lastName: string; totalNormoHours: number; totalAmount: number; linesCount: bigint };
+    type GroupRow = {
+      employeeId: string;
+      firstName: string;
+      lastName: string;
+      totalNormoHours: number;
+      totalAmount: number;
+      linesCount: bigint;
+    };
     const rows = await this.prisma.$queryRaw<GroupRow[]>`
       SELECT
         wol."employeeId",
@@ -121,20 +140,30 @@ export class ReportsService {
       rows: result,
       totalNormoHours: result.reduce((s, r) => s + r.totalNormoHours, 0),
       totalAmount: result.reduce((s, r) => s + r.totalAmount, 0),
-      from, to,
+      from,
+      to,
     };
   }
 
   async stock(orgId: string, warehouseId?: string, from?: string, to?: string) {
     if (warehouseId) {
-      const wh = await this.prisma.warehouse.findFirst({ where: { id: warehouseId, orgId, deletedAt: null } });
+      const wh = await this.prisma.warehouse.findFirst({
+        where: { id: warehouseId, orgId, deletedAt: null },
+      });
       if (!wh) throw new NotFoundException('Склад не знайдено');
     }
 
-    const stockWhere: { orgId: string; warehouseId?: string; deletedAt: null } = { orgId, deletedAt: null };
+    const stockWhere: { orgId: string; warehouseId?: string; deletedAt: null } = {
+      orgId,
+      deletedAt: null,
+    };
     if (warehouseId) stockWhere.warehouseId = warehouseId;
 
-    const movWhere: { orgId: string; warehouseId?: string; createdAt?: { gte?: Date; lte?: Date } } = { orgId };
+    const movWhere: {
+      orgId: string;
+      warehouseId?: string;
+      createdAt?: { gte?: Date; lte?: Date };
+    } = { orgId };
     if (warehouseId) movWhere.warehouseId = warehouseId;
     if (from) {
       const d = new Date(`${from}T00:00:00Z`);
@@ -236,11 +265,16 @@ export class ReportsService {
     const margin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
     return {
-      totalRevenue, totalCost, totalCostParts, totalCostLabor,
-      grossProfit, margin: Math.round(margin * 100) / 100,
+      totalRevenue,
+      totalCost,
+      totalCostParts,
+      totalCostLabor,
+      grossProfit,
+      margin: Math.round(margin * 100) / 100,
       ordersCount,
       unknownCostPartsCount,
-      from, to,
+      from,
+      to,
     };
   }
 
@@ -251,7 +285,9 @@ export class ReportsService {
     const accounts = await this.prisma.settlementAccount.findMany({
       where,
       include: {
-        counterparty: { select: { firstName: true, lastName: true, companyName: true, type: true } },
+        counterparty: {
+          select: { firstName: true, lastName: true, companyName: true, type: true },
+        },
       },
       orderBy: { balance: 'desc' },
       take: 5000,
@@ -259,7 +295,11 @@ export class ReportsService {
 
     const rows = accounts.map(a => ({
       counterpartyId: a.counterpartyId,
-      counterpartyName: formatPersonName(a.counterparty.lastName, a.counterparty.firstName, a.counterparty.companyName),
+      counterpartyName: formatPersonName(
+        a.counterparty.lastName,
+        a.counterparty.firstName,
+        a.counterparty.companyName,
+      ),
       type: a.counterparty.type,
       balance: Number(a.balance),
     }));
@@ -275,7 +315,9 @@ export class ReportsService {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
     if (branchId) {
-      const branch = await this.prisma.garageBranch.findFirst({ where: { id: branchId, orgId, deletedAt: null } });
+      const branch = await this.prisma.garageBranch.findFirst({
+        where: { id: branchId, orgId, deletedAt: null },
+      });
       if (!branch) throw new NotFoundException('Філію не знайдено');
     }
 
@@ -293,7 +335,10 @@ export class ReportsService {
     });
 
     // Aggregate by lift
-    const byLift: Record<string, { liftId: string; liftName: string; zoneName: string; totalSlots: number; totalHours: number }> = {};
+    const byLift: Record<
+      string,
+      { liftId: string; liftName: string; zoneName: string; totalSlots: number; totalHours: number }
+    > = {};
     for (const slot of slots) {
       const liftId = slot.liftId;
       if (!liftId) continue;
@@ -314,11 +359,13 @@ export class ReportsService {
     const totalDays = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / 86_400_000));
 
     return {
-      rows: Object.values(byLift).map((r) => ({
+      rows: Object.values(byLift).map(r => ({
         ...r,
         loadPercent: Math.round((r.totalHours / (totalDays * WORK_HOURS_PER_DAY)) * 100),
       })),
-      from, to, totalDays,
+      from,
+      to,
+      totalDays,
     };
   }
 }

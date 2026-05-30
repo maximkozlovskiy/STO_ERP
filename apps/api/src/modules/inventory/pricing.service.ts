@@ -21,7 +21,8 @@ export class PricingService {
       { goodId: null, goodCategory: null, goodType: null, brandId: null },
     ];
     if (goodType) orConditions.push({ goodId: null, goodCategory: null, goodType, brandId: null });
-    if (goodCategory) orConditions.push({ goodId: null, goodCategory, goodType: null, brandId: null });
+    if (goodCategory)
+      orConditions.push({ goodId: null, goodCategory, goodType: null, brandId: null });
     if (brandId) orConditions.push({ goodId: null, brandId });
     if (goodId) orConditions.push({ goodId, good: { deletedAt: null } });
 
@@ -43,8 +44,12 @@ export class PricingService {
     const rule =
       (goodId ? rules.find(r => r.goodId === goodId) : undefined) ??
       (brandId ? rules.find(r => !r.goodId && r.brandId === brandId) : undefined) ??
-      (goodCategory ? rules.find(r => !r.goodId && !r.brandId && r.goodCategory === goodCategory) : undefined) ??
-      (goodType ? rules.find(r => !r.goodId && !r.brandId && !r.goodCategory && r.goodType === goodType) : undefined) ??
+      (goodCategory
+        ? rules.find(r => !r.goodId && !r.brandId && r.goodCategory === goodCategory)
+        : undefined) ??
+      (goodType
+        ? rules.find(r => !r.goodId && !r.brandId && !r.goodCategory && r.goodType === goodType)
+        : undefined) ??
       rules.find(r => !r.goodId && !r.brandId && !r.goodCategory && !r.goodType) ??
       rules[0];
 
@@ -68,9 +73,7 @@ export class PricingService {
           const max = t.costMax != null ? Number(t.costMax) : null;
           return costPrice >= min && (max === null || costPrice < max);
         });
-        result = tier
-          ? costPrice * (1 + Number(tier.percentValue) / 100)
-          : costPrice; // no matching tier → no markup
+        result = tier ? costPrice * (1 + Number(tier.percentValue) / 100) : costPrice; // no matching tier → no markup
         break;
       }
       default:
@@ -105,7 +108,14 @@ export class PricingService {
 
     const goods = await this.prisma.good.findMany({
       where,
-      select: { id: true, purchasePrice: true, salePrice: true, category: true, goodType: true, brandId: true },
+      select: {
+        id: true,
+        purchasePrice: true,
+        salePrice: true,
+        category: true,
+        goodType: true,
+        brandId: true,
+      },
       take: 5000,
     });
 
@@ -128,7 +138,12 @@ export class PricingService {
     for (const good of goods) {
       const costPrice = Number(good.purchasePrice ?? good.salePrice);
       const newPrice = this.computePriceFromRules(
-        allRules, good.id, good.category ?? undefined, good.goodType ?? undefined, good.brandId ?? undefined, costPrice,
+        allRules,
+        good.id,
+        good.category ?? undefined,
+        good.goodType ?? undefined,
+        good.brandId ?? undefined,
+        costPrice,
       );
       const oldPrice = Number(good.salePrice);
       if (Math.abs(newPrice - oldPrice) > 0.001) {
@@ -143,7 +158,7 @@ export class PricingService {
     for (let i = 0; i < updates.length; i += CHUNK) {
       const chunk = updates.slice(i, i + CHUNK);
       await this.prisma.$transaction(
-        async (tx) => {
+        async tx => {
           for (const u of chunk) {
             await tx.good.update({ where: { id: u.goodId }, data: { salePrice: u.newPrice } });
           }
@@ -189,7 +204,12 @@ export class PricingService {
       fixedAmount: unknown;
       fixedPrice: unknown;
       roundTo: unknown;
-      tiers: Array<{ costMin: unknown; costMax: unknown | null; percentValue: unknown; sortOrder: number }>;
+      tiers: Array<{
+        costMin: unknown;
+        costMax: unknown | null;
+        percentValue: unknown;
+        sortOrder: number;
+      }>;
     }>,
     goodId: string,
     goodCategory: string | undefined,
@@ -197,12 +217,13 @@ export class PricingService {
     brandId: string | undefined,
     costPrice: number,
   ): number {
-    const candidates = rules.filter(r =>
-      r.goodId === goodId ||
-      (!r.goodId && r.brandId === (brandId ?? null)) ||
-      (!r.goodId && !r.brandId && r.goodCategory === (goodCategory ?? null)) ||
-      (!r.goodId && !r.brandId && !r.goodCategory && r.goodType === (goodType ?? null)) ||
-      (!r.goodId && !r.brandId && !r.goodCategory && !r.goodType),
+    const candidates = rules.filter(
+      r =>
+        r.goodId === goodId ||
+        (!r.goodId && r.brandId === (brandId ?? null)) ||
+        (!r.goodId && !r.brandId && r.goodCategory === (goodCategory ?? null)) ||
+        (!r.goodId && !r.brandId && !r.goodCategory && r.goodType === (goodType ?? null)) ||
+        (!r.goodId && !r.brandId && !r.goodCategory && !r.goodType),
     );
     if (!candidates.length) return costPrice;
 

@@ -35,10 +35,7 @@ export class WebhooksService {
     };
   }
 
-  async create(
-    orgId: string,
-    dto: CreateWebhookDto,
-  ): Promise<WebhookEndpointResponseDto> {
+  async create(orgId: string, dto: CreateWebhookDto): Promise<WebhookEndpointResponseDto> {
     // Bug #114: SSRF defense — reject loopback/private/link-local URLs.
     // @IsUrl({ require_tld: false }) on the DTO accepts `http://localhost:6379`
     // which would let a compromised admin pipe webhook payloads to internal
@@ -57,9 +54,7 @@ export class WebhooksService {
     return this.toDto(e);
   }
 
-  async findAll(
-    orgId: string,
-  ): Promise<{ items: WebhookEndpointResponseDto[]; total: number }> {
+  async findAll(orgId: string): Promise<{ items: WebhookEndpointResponseDto[]; total: number }> {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.webhookEndpoint.findMany({
         where: { orgId, deletedAt: null },
@@ -136,11 +131,7 @@ export class WebhooksService {
    * Dispatch a webhook event to all active matching endpoints.
    * Called from other services (WorkOrders, Payments, Inventory).
    */
-  async dispatchEvent(
-    orgId: string,
-    event: string,
-    data: object,
-  ): Promise<void> {
+  async dispatchEvent(orgId: string, event: string, data: object): Promise<void> {
     const endpoints = await this.prisma.webhookEndpoint.findMany({
       where: {
         orgId,

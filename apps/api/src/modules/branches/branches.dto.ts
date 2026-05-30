@@ -3,11 +3,13 @@ import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateBranchDto {
   @ApiProperty({ example: 'Головна філія' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   name!: string;
 
   @ApiProperty({ example: 'вул. Гагаріна 12, Київ' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   address!: string;
 
   @ApiPropertyOptional({ example: 'Europe/Kyiv' })

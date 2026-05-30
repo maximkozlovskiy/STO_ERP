@@ -55,7 +55,9 @@ export function useRequireAuth(roles?: string[]) {
     }
   }, [auth.employee, auth.isLoading, roles, router]);
 
-  const isAuthorized = !auth.isLoading && !!auth.employee &&
+  const isAuthorized =
+    !auth.isLoading &&
+    !!auth.employee &&
     (!roles || roles.length === 0 || roles.includes(auth.employee.role));
 
   return { ...auth, isAuthorized };

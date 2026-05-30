@@ -34,7 +34,9 @@ export function useSavedFilters<T extends Record<string, unknown>>(pageKey: stri
       // tab, devtools, or older app version with a non-array value. Bail to []
       // instead of crashing the page on .map().
       return Array.isArray(parsed) ? (parsed as SavedFilter<T>[]) : [];
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   }, [storageKey]);
 
   // Always start with [] on both server and first client render to avoid
@@ -45,36 +47,57 @@ export function useSavedFilters<T extends Record<string, unknown>>(pageKey: stri
     setSaved(read());
   }, [read]);
 
-  const save = useCallback((name: string, filters: T) => {
-    const preset: SavedFilter<T> = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      name,
-      filters,
-      createdAt: Date.now(),
-    };
-    setSaved(prev => {
-      const next = [...prev, preset];
-      try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-    return preset;
-  }, [storageKey]);
+  const save = useCallback(
+    (name: string, filters: T) => {
+      const preset: SavedFilter<T> = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name,
+        filters,
+        createdAt: Date.now(),
+      };
+      setSaved(prev => {
+        const next = [...prev, preset];
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+      return preset;
+    },
+    [storageKey],
+  );
 
-  const remove = useCallback((id: string) => {
-    setSaved(prev => {
-      const next = prev.filter(p => p.id !== id);
-      try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, [storageKey]);
+  const remove = useCallback(
+    (id: string) => {
+      setSaved(prev => {
+        const next = prev.filter(p => p.id !== id);
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    },
+    [storageKey],
+  );
 
-  const rename = useCallback((id: string, name: string) => {
-    setSaved(prev => {
-      const next = prev.map(p => p.id === id ? { ...p, name } : p);
-      try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, [storageKey]);
+  const rename = useCallback(
+    (id: string, name: string) => {
+      setSaved(prev => {
+        const next = prev.map(p => (p.id === id ? { ...p, name } : p));
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    },
+    [storageKey],
+  );
 
   return { saved, save, remove, rename };
 }

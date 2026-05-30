@@ -16,7 +16,11 @@ export interface CreateTransactionDto {
 export class SettlementsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createTransaction(orgId: string, dto: CreateTransactionDto, tx?: Prisma.TransactionClient): Promise<void> {
+  async createTransaction(
+    orgId: string,
+    dto: CreateTransactionDto,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
     if (!Number.isFinite(dto.amount) || dto.amount <= 0) {
       throw new BadRequestException('Сума транзакції повинна бути більшою за нуль');
     }

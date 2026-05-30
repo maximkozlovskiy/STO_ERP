@@ -19,10 +19,16 @@ const STORAGE_KEY = 'sto_notifications';
 const MAX_STORED = 50;
 
 const ICONS: Record<NotifType, typeof Info> = {
-  info: Info, success: CheckCircle, warning: AlertTriangle, error: AlertCircle,
+  info: Info,
+  success: CheckCircle,
+  warning: AlertTriangle,
+  error: AlertCircle,
 };
 const ICON_STYLES: Record<NotifType, string> = {
-  info: 'text-info', success: 'text-success', warning: 'text-warning', error: 'text-destructive',
+  info: 'text-info',
+  success: 'text-success',
+  warning: 'text-warning',
+  error: 'text-destructive',
 };
 
 function readStored(): AppNotification[] {
@@ -30,22 +36,34 @@ function readStored(): AppNotification[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function writeStored(items: AppNotification[]) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, MAX_STORED))); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, MAX_STORED)));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function useNotifications() {
   const [items, setItems] = useState<AppNotification[]>([]);
 
-  useEffect(() => { setItems(readStored()); }, []);
+  useEffect(() => {
+    setItems(readStored());
+  }, []);
 
   const add = useCallback((type: NotifType, title: string, body?: string) => {
     const n: AppNotification = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      type, title, body, createdAt: Date.now(), read: false,
+      type,
+      title,
+      body,
+      createdAt: Date.now(),
+      read: false,
     };
     setItems(prev => {
       const next = [n, ...prev].slice(0, MAX_STORED);
@@ -57,7 +75,7 @@ export function useNotifications() {
 
   const markRead = useCallback((id: string) => {
     setItems(prev => {
-      const next = prev.map(n => n.id === id ? { ...n, read: true } : n);
+      const next = prev.map(n => (n.id === id ? { ...n, read: true } : n));
       writeStored(next);
       return next;
     });
@@ -124,7 +142,10 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="text-[13px] font-semibold text-foreground">Сповіщення</span>
             {unreadCount > 0 && (
-              <button onClick={markAllRead} className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+              <button
+                onClick={markAllRead}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
                 <CheckCheck className="h-3.5 w-3.5" />
                 Всі прочитано
               </button>
@@ -134,42 +155,70 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
           <div className="max-h-80 overflow-y-auto divide-y divide-border">
             {items.length === 0 ? (
               <p className="py-8 text-center text-[13px] text-muted-foreground">Немає сповіщень</p>
-            ) : items.map(n => {
-              const Icon = ICONS[n.type];
-              return (
-                <div
-                  key={n.id}
-                  className={cn('group flex gap-3 px-4 py-3 cursor-pointer hover:bg-secondary transition-colors', !n.read && 'bg-primary-subtle/30')}
-                  onClick={() => markRead(n.id)}
-                  role="button"
-                  tabIndex={0}
-                  // Guard: only react when the keydown originated on the row itself,
-                  // not from a nested interactive element (e.g. the delete button).
-                  // Without this, pressing Space on "X" both deletes the notification
-                  // AND marks it read via bubbled keydown.
-                  onKeyDown={e => {
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); markRead(n.id); }
-                  }}
-                >
-                  <Icon className={cn('h-4 w-4 mt-0.5 shrink-0', ICON_STYLES[n.type])} aria-hidden="true" />
-                  <div className="flex-1 min-w-0">
-                    <p className={cn('text-[12px] font-medium text-foreground', !n.read && 'font-semibold')}>{n.title}</p>
-                    {n.body && <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>}
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      {new Date(n.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                  <button
-                    onClick={e => { e.stopPropagation(); remove(n.id); }}
-                    className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                    aria-label="Видалити сповіщення"
+            ) : (
+              items.map(n => {
+                const Icon = ICONS[n.type];
+                return (
+                  <div
+                    key={n.id}
+                    className={cn(
+                      'group flex gap-3 px-4 py-3 cursor-pointer hover:bg-secondary transition-colors',
+                      !n.read && 'bg-primary-subtle/30',
+                    )}
+                    onClick={() => markRead(n.id)}
+                    role="button"
+                    tabIndex={0}
+                    // Guard: only react when the keydown originated on the row itself,
+                    // not from a nested interactive element (e.g. the delete button).
+                    // Without this, pressing Space on "X" both deletes the notification
+                    // AND marks it read via bubbled keydown.
+                    onKeyDown={e => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        markRead(n.id);
+                      }
+                    }}
                   >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              );
-            })}
+                    <Icon
+                      className={cn('h-4 w-4 mt-0.5 shrink-0', ICON_STYLES[n.type])}
+                      aria-hidden="true"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={cn(
+                          'text-[12px] font-medium text-foreground',
+                          !n.read && 'font-semibold',
+                        )}
+                      >
+                        {n.title}
+                      </p>
+                      {n.body && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                          {n.body}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        {new Date(n.createdAt).toLocaleTimeString('uk-UA', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        remove(n.id);
+                      }}
+                      className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      aria-label="Видалити сповіщення"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}

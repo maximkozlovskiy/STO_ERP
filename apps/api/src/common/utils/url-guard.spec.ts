@@ -29,7 +29,7 @@ describe('validatePublicUrl', () => {
       'https://11.0.0.1', // edge: not in 10/8
       'https://126.0.0.1', // edge: not in 127/8
       'https://128.0.0.1', // edge: not in 127/8
-    ])('allows %s', (url) => {
+    ])('allows %s', url => {
       expect(validatePublicUrl(url)).toBeNull();
     });
   });
@@ -63,7 +63,7 @@ describe('validatePublicUrl', () => {
       'http://127.1.2.3',
       'http://127.255.255.254',
       'https://127.0.0.1:8080/admin',
-    ])('rejects %s', (url) => {
+    ])('rejects %s', url => {
       expect(validatePublicUrl(url)).toContain('loopback');
     });
   });
@@ -108,18 +108,15 @@ describe('validatePublicUrl', () => {
       'http://localhost:8080',
       'https://web.localhost',
       'http://0.0.0.0',
-    ])('rejects %s', (url) => {
+    ])('rejects %s', url => {
       expect(validatePublicUrl(url)).toContain('localhost');
     });
   });
 
   describe('BLOCKED — IPv6 loopback', () => {
-    it.each(['http://[::1]', 'http://[::1]:8080', 'http://[::]'])(
-      'rejects %s',
-      (url) => {
-        expect(validatePublicUrl(url)).toContain('localhost');
-      },
-    );
+    it.each(['http://[::1]', 'http://[::1]:8080', 'http://[::]'])('rejects %s', url => {
+      expect(validatePublicUrl(url)).toContain('localhost');
+    });
   });
 
   describe('BLOCKED — IPv6 ULA (fc00::/7)', () => {
@@ -128,7 +125,7 @@ describe('validatePublicUrl', () => {
       'http://[fcab::beef]',
       'http://[fd00::1]:9000',
       'http://[fdab:1234:5678::1]',
-    ])('rejects %s', (url) => {
+    ])('rejects %s', url => {
       expect(validatePublicUrl(url)).toContain('ULA');
     });
   });
@@ -139,7 +136,7 @@ describe('validatePublicUrl', () => {
       'http://[fe80::abcd:1234]',
       'http://[febf::1]',
       'http://[fea0::beef]',
-    ])('rejects %s', (url) => {
+    ])('rejects %s', url => {
       expect(validatePublicUrl(url)).toContain('link-local');
     });
   });

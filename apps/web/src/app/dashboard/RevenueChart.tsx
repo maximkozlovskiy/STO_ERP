@@ -1,7 +1,10 @@
 'use client';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-interface RevenuePoint { date: string; revenue: number }
+interface RevenuePoint {
+  date: string;
+  revenue: number;
+}
 
 function fmt(v: number) {
   return v.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' грн';
@@ -30,10 +33,12 @@ export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
         <Tooltip
           cursor={{ fill: 'var(--color-primary-subtle)' }}
           contentStyle={{
-            borderRadius: 8, border: '1px solid var(--color-border)',
-            fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            borderRadius: 8,
+            border: '1px solid var(--color-border)',
+            fontSize: 12,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
           }}
-          formatter={(v) => [fmt(Number(v ?? 0)), 'Виручка']}
+          formatter={v => [fmt(Number(v ?? 0)), 'Виручка']}
           labelFormatter={d => new Date(d + 'T00:00').toLocaleDateString('uk-UA')}
         />
         <Bar dataKey="revenue" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />

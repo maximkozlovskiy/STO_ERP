@@ -20,10 +20,12 @@ const prismaMock = {
 };
 
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx: { switchToHttp: () => { getRequest: () => { user: unknown } } }) => {
-    ctx.switchToHttp().getRequest().user = { id: 'user-1', orgId: ORG_ID, role: 'ADMIN' };
-    return true;
-  }),
+  canActivate: vi
+    .fn()
+    .mockImplementation((ctx: { switchToHttp: () => { getRequest: () => { user: unknown } } }) => {
+      ctx.switchToHttp().getRequest().user = { id: 'user-1', orgId: ORG_ID, role: 'ADMIN' };
+      return true;
+    }),
 };
 const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
 
@@ -33,13 +35,12 @@ describe('Audit — HTTP Contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [AuditController],
-      providers: [
-        AuditService,
-        { provide: PrismaService, useValue: prismaMock },
-      ],
+      providers: [AuditService, { provide: PrismaService, useValue: prismaMock }],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());

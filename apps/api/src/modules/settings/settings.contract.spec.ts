@@ -77,7 +77,7 @@ const redisMock = {
 let jwtAllow = true;
 let userRole: 'OWNER' | 'ADMIN' | 'RECEPTIONIST' = 'OWNER';
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { sub: 'emp-1', orgId: 'org-1', role: userRole };
@@ -100,12 +100,16 @@ describe('Settings — HTTP Contract', () => {
         { provide: REDIS_CLIENT, useValue: redisMock },
       ],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
+    );
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
   });
@@ -120,13 +124,15 @@ describe('Settings — HTTP Contract', () => {
     freshOrgRow();
     vi.clearAllMocks();
     prismaMock.organisationSettings.findUnique.mockImplementation(() => Promise.resolve(orgRow));
-    prismaMock.organisationSettings.upsert.mockImplementation(({ update }: { update: Record<string, unknown> }) => {
-      const next = { ...orgRow, ...update };
-      if ('uiFeatures' in update) next.uiFeatures = update.uiFeatures as Record<string, unknown>;
-      next.updatedAt = new Date();
-      orgRow = next as typeof orgRow;
-      return Promise.resolve(orgRow);
-    });
+    prismaMock.organisationSettings.upsert.mockImplementation(
+      ({ update }: { update: Record<string, unknown> }) => {
+        const next = { ...orgRow, ...update };
+        if ('uiFeatures' in update) next.uiFeatures = update.uiFeatures as Record<string, unknown>;
+        next.updatedAt = new Date();
+        orgRow = next as typeof orgRow;
+        return Promise.resolve(orgRow);
+      },
+    );
     redisMock.get.mockResolvedValue(null);
   });
 

@@ -29,12 +29,7 @@ describe('EmptyState', () => {
   });
 
   it('рендерить action ReactNode коли передано', () => {
-    render(
-      <EmptyState
-        title="Порожньо"
-        action={<button>Додати наряд</button>}
-      />,
-    );
+    render(<EmptyState title="Порожньо" action={<button>Додати наряд</button>} />);
     expect(screen.getByRole('button', { name: 'Додати наряд' })).toBeInTheDocument();
   });
 
@@ -67,9 +62,7 @@ describe('EmptyState', () => {
   });
 
   it('передає className', () => {
-    const { container } = render(
-      <EmptyState title="Тест" className="custom-empty-state-class" />,
-    );
+    const { container } = render(<EmptyState title="Тест" className="custom-empty-state-class" />);
     expect(container.firstChild).toHaveClass('custom-empty-state-class');
   });
 });

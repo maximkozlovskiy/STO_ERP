@@ -3,7 +3,8 @@ import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Min } from 'c
 
 export class CreateWorkCategoryDto {
   @ApiProperty({ example: 'Двигун' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   name!: string;
 
   @ApiPropertyOptional({ description: 'UUID батьківської категорії (null = коренева)' })

@@ -5,17 +5,13 @@ import { InlineEditCell, InlineViewCell } from '../inline-edit-cell';
 
 describe('InlineEditCell', () => {
   it('рендерить input з початковим value', () => {
-    render(
-      <InlineEditCell value="Hello" onCommit={vi.fn()} onCancel={vi.fn()} />,
-    );
+    render(<InlineEditCell value="Hello" onCommit={vi.fn()} onCancel={vi.fn()} />);
     expect(screen.getByRole('textbox')).toHaveValue('Hello');
   });
 
   it('Enter викликає onCommit з поточним value', async () => {
     const onCommit = vi.fn();
-    render(
-      <InlineEditCell value="Hello" onCommit={onCommit} onCancel={vi.fn()} />,
-    );
+    render(<InlineEditCell value="Hello" onCommit={onCommit} onCancel={vi.fn()} />);
     const input = screen.getByRole('textbox') as HTMLInputElement;
     await userEvent.clear(input);
     await userEvent.type(input, 'World');
@@ -25,9 +21,7 @@ describe('InlineEditCell', () => {
 
   it('Escape викликає onCancel', async () => {
     const onCancel = vi.fn();
-    render(
-      <InlineEditCell value="Hello" onCommit={vi.fn()} onCancel={onCancel} />,
-    );
+    render(<InlineEditCell value="Hello" onCommit={vi.fn()} onCancel={onCancel} />);
     const input = screen.getByRole('textbox');
     input.focus();
     await userEvent.keyboard('{Escape}');
@@ -35,17 +29,13 @@ describe('InlineEditCell', () => {
   });
 
   it('saving=true показує spinner і disable input', () => {
-    render(
-      <InlineEditCell value="x" saving onCommit={vi.fn()} onCancel={vi.fn()} />,
-    );
+    render(<InlineEditCell value="x" saving onCommit={vi.fn()} onCancel={vi.fn()} />);
     expect(screen.getByRole('textbox')).toBeDisabled();
     expect(screen.getByLabelText('Збереження')).toBeInTheDocument();
   });
 
   it('кнопки "Зберегти" і "Скасувати" мають aria-label і type=button', () => {
-    render(
-      <InlineEditCell value="x" onCommit={vi.fn()} onCancel={vi.fn()} />,
-    );
+    render(<InlineEditCell value="x" onCommit={vi.fn()} onCancel={vi.fn()} />);
     const saveBtn = screen.getByRole('button', { name: 'Зберегти' });
     const cancelBtn = screen.getByRole('button', { name: 'Скасувати' });
     expect(saveBtn).toHaveAttribute('type', 'button');
@@ -54,26 +44,20 @@ describe('InlineEditCell', () => {
 
   it('клік "Зберегти" викликає onCommit', async () => {
     const onCommit = vi.fn();
-    render(
-      <InlineEditCell value="Hi" onCommit={onCommit} onCancel={vi.fn()} />,
-    );
+    render(<InlineEditCell value="Hi" onCommit={onCommit} onCancel={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
     expect(onCommit).toHaveBeenCalledWith('Hi');
   });
 
   it('клік "Скасувати" викликає onCancel', async () => {
     const onCancel = vi.fn();
-    render(
-      <InlineEditCell value="Hi" onCommit={vi.fn()} onCancel={onCancel} />,
-    );
+    render(<InlineEditCell value="Hi" onCommit={vi.fn()} onCancel={onCancel} />);
     await userEvent.click(screen.getByRole('button', { name: 'Скасувати' }));
     expect(onCancel).toHaveBeenCalled();
   });
 
   it('type="number" створює numeric input', () => {
-    render(
-      <InlineEditCell value="42" type="number" onCommit={vi.fn()} onCancel={vi.fn()} />,
-    );
+    render(<InlineEditCell value="42" type="number" onCommit={vi.fn()} onCancel={vi.fn()} />);
     const input = screen.getByRole('spinbutton') as HTMLInputElement;
     expect(input.type).toBe('number');
   });

@@ -44,7 +44,7 @@ const serviceMock = {
 // Стан guards — змінюється у тестах для перевірки 401
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { sub: 'emp-1', orgId: 'org-1', role: 'ADMIN' };
@@ -140,12 +140,12 @@ describe('WorkOrders — HTTP Contract', () => {
   });
 
   describe('POST /work-orders', () => {
-    it('повертає 400 без обов\'язкових полів (vehicleId, counterpartyId, branchId)', async () => {
+    it("повертає 400 без обов'язкових полів (vehicleId, counterpartyId, branchId)", async () => {
       jwtAllow = true;
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
         url: '/work-orders',
-        payload: { description: 'без обов\'язкових полів' },
+        payload: { description: "без обов'язкових полів" },
       });
       expect(res.statusCode).toBe(400);
     });
@@ -208,11 +208,21 @@ describe('WorkOrders — HTTP Contract', () => {
       // не довільний рядок типу 'wo-1', інакше отримаємо 400 до сервісу.
       const WO_ID = '00000000-0000-0000-0000-000000000001';
       serviceMock.findOne.mockResolvedValueOnce({
-        id: WO_ID, orgId: 'org-1', number: 'WO-2026-0001', status: 'DRAFT',
-        branchId: 'b-1', vehicleId: 'v-1', counterpartyId: 'c-1',
-        totalLabor: 0, totalParts: 0, totalAmount: 0, paidAmount: 0,
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-        lines: [], parts: [],
+        id: WO_ID,
+        orgId: 'org-1',
+        number: 'WO-2026-0001',
+        status: 'DRAFT',
+        branchId: 'b-1',
+        vehicleId: 'v-1',
+        counterpartyId: 'c-1',
+        totalLabor: 0,
+        totalParts: 0,
+        totalAmount: 0,
+        paidAmount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lines: [],
+        parts: [],
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',

@@ -17,7 +17,7 @@ const serviceMock = {
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { sub: 'emp-1', orgId: 'org-1', role: 'ADMIN' };
@@ -37,13 +37,17 @@ describe('BankAccounts — HTTP Contract', () => {
       controllers: [BankAccountsController],
       providers: [{ provide: BankAccountsService, useValue: serviceMock }],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     // Mirror production pipe (main.ts) so IBAN @Matches → 400.
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
     await app.init();
     await (app as NestFastifyApplication).getHttpAdapter().getInstance().ready();
   });
@@ -60,7 +64,10 @@ describe('BankAccounts — HTTP Contract', () => {
   describe('GET /bank-accounts', () => {
     it('повертає 200 + { items, total } (не голий масив)', async () => {
       serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0 });
-      const res = await (app as NestFastifyApplication).inject({ method: 'GET', url: '/bank-accounts' });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/bank-accounts',
+      });
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(body).toMatchObject({ items: expect.any(Array), total: expect.any(Number) });
@@ -68,7 +75,10 @@ describe('BankAccounts — HTTP Contract', () => {
 
     it('повертає 403 коли guard не пропустив', async () => {
       jwtAllow = false;
-      const res = await (app as NestFastifyApplication).inject({ method: 'GET', url: '/bank-accounts' });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/bank-accounts',
+      });
       expect(res.statusCode).toBe(403);
     });
   });
@@ -96,10 +106,20 @@ describe('BankAccounts — HTTP Contract', () => {
 
     it('повертає 201 + DTO shape при валідному UA IBAN', async () => {
       serviceMock.create.mockResolvedValueOnce({
-        id: 'ba-1', orgId: 'org-1', name: 'Поточний', ibanUA: VALID_IBAN,
-        currencyId: CURRENCY_ID, currencyCode: 'UAH', bankName: null, branchId: null,
-        branchName: null, mfo: null, edrpou: null, bankAddress: null,
-        createdAt: new Date(), updatedAt: new Date(),
+        id: 'ba-1',
+        orgId: 'org-1',
+        name: 'Поточний',
+        ibanUA: VALID_IBAN,
+        currencyId: CURRENCY_ID,
+        currencyCode: 'UAH',
+        bankName: null,
+        branchId: null,
+        branchName: null,
+        mfo: null,
+        edrpou: null,
+        bankAddress: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
@@ -108,8 +128,15 @@ describe('BankAccounts — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(201);
       const body = res.json();
-      expect(body).toMatchObject({ id: expect.any(String), ibanUA: VALID_IBAN, currencyCode: 'UAH' });
-      expect(serviceMock.create).toHaveBeenCalledWith('org-1', expect.objectContaining({ ibanUA: VALID_IBAN }));
+      expect(body).toMatchObject({
+        id: expect.any(String),
+        ibanUA: VALID_IBAN,
+        currencyCode: 'UAH',
+      });
+      expect(serviceMock.create).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ ibanUA: VALID_IBAN }),
+      );
     });
   });
 });

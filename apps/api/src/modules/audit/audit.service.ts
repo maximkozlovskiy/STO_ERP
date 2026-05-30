@@ -59,7 +59,7 @@ export class AuditService {
       this.prisma.auditEvent.count({ where }),
     ]);
     return {
-      items: items.map((ev) => ({
+      items: items.map(ev => ({
         id: ev.id,
         action: ev.action,
         diff: ev.diff as Record<string, unknown>,

@@ -15,7 +15,7 @@ const serviceMock = {
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { sub: 'emp-1', orgId: 'org-1', role: 'ADMIN' };

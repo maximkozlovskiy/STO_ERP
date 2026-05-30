@@ -63,7 +63,7 @@ describe('Inventory — balance invariants (property-based)', () => {
           }),
           { minLength: 1, maxLength: 25 },
         ),
-        (movements) => {
+        movements => {
           const result = applyMovements(movements);
           if (result === null) return true; // невалідна послідовність — пропускаємо
           return result.quantity >= 0 && result.reserved >= 0 && result.available >= 0;
@@ -160,8 +160,8 @@ describe('Inventory — balance invariants (property-based)', () => {
     fc.assert(
       fc.property(
         fc.array(fc.integer({ min: 1, max: 100 }), { minLength: 1, maxLength: 20 }),
-        (receipts) => {
-          const movements = receipts.map((qty) => ({
+        receipts => {
+          const movements = receipts.map(qty => ({
             type: 'RECEIPT' as StockMovementType,
             qty,
           }));

@@ -1,4 +1,10 @@
-import { Injectable, InternalServerErrorException, OnModuleInit, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  OnModuleInit,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -19,7 +25,13 @@ export class FilesService implements OnModuleInit {
   private client: {
     bucketExists(name: string): Promise<boolean>;
     makeBucket(name: string, region: string): Promise<void>;
-    putObject(bucket: string, object: string, stream: Buffer, size: number, meta: Record<string, string>): Promise<unknown>;
+    putObject(
+      bucket: string,
+      object: string,
+      stream: Buffer,
+      size: number,
+      meta: Record<string, string>,
+    ): Promise<unknown>;
     presignedGetObject(bucket: string, object: string, expiry: number): Promise<string>;
     removeObject(bucket: string, object: string): Promise<void>;
   } | null;
@@ -60,7 +72,11 @@ export class FilesService implements OnModuleInit {
     }
   }
 
-  async upload(orgId: string, file: UploadFile, workOrderId?: string): Promise<{ fileId: string; url: string; filename: string }> {
+  async upload(
+    orgId: string,
+    file: UploadFile,
+    workOrderId?: string,
+  ): Promise<{ fileId: string; url: string; filename: string }> {
     if (!this.client) throw new InternalServerErrorException('Сервіс файлів недоступний');
 
     const ext = (file.originalname.split('.').pop() ?? '').toLowerCase();
@@ -86,7 +102,11 @@ export class FilesService implements OnModuleInit {
       throw new InternalServerErrorException('Помилка збереження файлу');
     }
 
-    return { fileId, url: `${this.publicUrl}/${this.bucket}/${objectName}`, filename: file.originalname };
+    return {
+      fileId,
+      url: `${this.publicUrl}/${this.bucket}/${objectName}`,
+      filename: file.originalname,
+    };
   }
 
   async uploadRaw(buffer: Buffer, objectName: string, mimeType: string): Promise<void> {

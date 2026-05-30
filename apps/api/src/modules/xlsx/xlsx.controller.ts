@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Param, ParseUUIDPipe, UseGuards, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  ParseUUIDPipe,
+  UseGuards,
+  BadRequestException,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiConsumes } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
 import { MultipartFile } from '@fastify/multipart';
@@ -98,7 +106,9 @@ export class XlsxController {
       try {
         if (row.sku) {
           // Check if exists
-          const existing = (await this.goodsService.findAll(orgId, { page: 1, limit: 10, q: row.sku })).items.find(g => g.sku === row.sku);
+          const existing = (
+            await this.goodsService.findAll(orgId, { page: 1, limit: 10, q: row.sku })
+          ).items.find(g => g.sku === row.sku);
           if (existing) {
             result.updated++;
             continue;
@@ -269,13 +279,12 @@ export class XlsxController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'XLSX_MANAGER')
   @ApiOperation({ summary: 'Розцінити товари за списком XLSX/CSV' })
   @ApiConsumes('multipart/form-data')
-  async applyPricingFromList(
-    @OrgContext() orgId: string,
-    @Request() req: FastifyRequest,
-  ) {
+  async applyPricingFromList(@OrgContext() orgId: string, @Request() req: FastifyRequest) {
     const file = await this.getUploadedFile(req);
     const buffer = await file.toBuffer();
-    const fileType: 'xlsx' | 'csv' = (file.filename ?? '').toLowerCase().endsWith('.csv') ? 'csv' : 'xlsx';
+    const fileType: 'xlsx' | 'csv' = (file.filename ?? '').toLowerCase().endsWith('.csv')
+      ? 'csv'
+      : 'xlsx';
     return this.xlsxService.applyPricingFromList(orgId, buffer, fileType);
   }
 
@@ -289,7 +298,9 @@ export class XlsxController {
       data = await req.file();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'невідома помилка';
-      throw new BadRequestException(`Файл не завантажено: ${msg.includes('not multipart') ? 'очікується multipart/form-data' : msg}`);
+      throw new BadRequestException(
+        `Файл не завантажено: ${msg.includes('not multipart') ? 'очікується multipart/form-data' : msg}`,
+      );
     }
     if (!data) throw new BadRequestException('Файл не завантажено');
     return data;

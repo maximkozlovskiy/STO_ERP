@@ -38,7 +38,7 @@ export function subscribe(fn: ToastListener): () => void {
 
 export const toast = {
   success: (message: string, duration?: number) => add('success', message, duration),
-  error:   (message: string, duration?: number) => add('error',   message, duration ?? 6000),
+  error: (message: string, duration?: number) => add('error', message, duration ?? 6000),
   warning: (message: string, duration?: number) => add('warning', message, duration),
-  info:    (message: string, duration?: number) => add('info',    message, duration),
+  info: (message: string, duration?: number) => add('info', message, duration),
 };

@@ -23,7 +23,8 @@ export class HealthController {
     ]);
 
     const db = results[0].status === 'fulfilled' ? 'ok' : 'error';
-    const queueWaiting = results[1].status === 'fulfilled' ? (results[1] as PromiseFulfilledResult<number>).value : -1;
+    const queueWaiting =
+      results[1].status === 'fulfilled' ? (results[1] as PromiseFulfilledResult<number>).value : -1;
 
     return {
       status: db === 'ok' ? 'ok' : 'degraded',

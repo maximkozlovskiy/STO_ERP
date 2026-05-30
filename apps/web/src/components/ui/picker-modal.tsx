@@ -51,7 +51,7 @@ export function PickerModal<T extends PickerItem>({
         searchKeys.some(k => {
           const v = (item as Record<string, unknown>)[k];
           return typeof v === 'string' && v.toLowerCase().includes(trimmed.toLowerCase());
-        })
+        }),
       )
     : items;
 
@@ -89,12 +89,15 @@ export function PickerModal<T extends PickerItem>({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => { onSelect(item); handleClose(); }}
+                  onClick={() => {
+                    onSelect(item);
+                    handleClose();
+                  }}
                   className={cn(
                     'w-full text-left px-3 py-2.5 rounded-lg border transition-colors',
                     selected
                       ? 'border-primary bg-primary/5'
-                      : 'border-border bg-surface hover:border-primary hover:bg-primary/5'
+                      : 'border-border bg-surface hover:border-primary hover:bg-primary/5',
                   )}
                 >
                   {renderItem(item, selected)}

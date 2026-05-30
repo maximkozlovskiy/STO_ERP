@@ -4,21 +4,23 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import {
-  CreateStockDocumentDto, UpdateStockDocumentDto,
-  StockDocumentResponseDto, PaginatedStockDocumentsDto,
+  CreateStockDocumentDto,
+  UpdateStockDocumentDto,
+  StockDocumentResponseDto,
+  PaginatedStockDocumentsDto,
 } from './stock-documents.dto';
 
 const DOC_STATUSES = ['DRAFT', 'CONFIRMED', 'CANCELLED'] as const;
-type DocStatus = typeof DOC_STATUSES[number];
+type DocStatus = (typeof DOC_STATUSES)[number];
 
 const DOC_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
-  DRAFT:     ['CONFIRMED', 'CANCELLED'],
+  DRAFT: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: [],
   CANCELLED: [],
 };
 
 const MOVEMENT_TYPES: Partial<Record<StockDocumentType, StockMovementType>> = {
-  WRITEOFF:        StockMovementType.WRITEOFF,
+  WRITEOFF: StockMovementType.WRITEOFF,
   OPENING_BALANCE: StockMovementType.OPENING_BALANCE,
 };
 
@@ -30,7 +32,13 @@ export class StockDocumentsService {
     private readonly docNumbers: DocumentNumberService,
   ) {}
 
-  async findAll(orgId: string, page = 1, limit = 20, type?: string, status?: string): Promise<PaginatedStockDocumentsDto> {
+  async findAll(
+    orgId: string,
+    page = 1,
+    limit = 20,
+    type?: string,
+    status?: string,
+  ): Promise<PaginatedStockDocumentsDto> {
     const where: Prisma.StockDocumentWhereInput = { orgId, deletedAt: null };
     if (type) where.type = type as StockDocumentType;
     if (status) where.status = status as DocStatus;
@@ -38,12 +46,19 @@ export class StockDocumentsService {
     const skip = (page - 1) * limit;
     const [items, total] = await this.prisma.$transaction([
       this.prisma.stockDocument.findMany({
-        where, skip, take: limit, orderBy: { createdAt: 'desc' },
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
         include: {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
           targetWarehouse: { select: { name: true } },
-          lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
+          lines: {
+            where: { deletedAt: null },
+            take: 1000,
+            include: { good: { select: { name: true, sku: true, unit: true } } },
+          },
         },
       }),
       this.prisma.stockDocument.count({ where }),
@@ -59,7 +74,11 @@ export class StockDocumentsService {
         branch: { select: { name: true } },
         warehouse: { select: { name: true } },
         targetWarehouse: { select: { name: true } },
-        lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
+        lines: {
+          where: { deletedAt: null },
+          take: 1000,
+          include: { good: { select: { name: true, sku: true, unit: true } } },
+        },
       },
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');
@@ -73,7 +92,9 @@ export class StockDocumentsService {
       this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }),
       this.prisma.warehouse.findFirst({ where: { id: dto.warehouseId, orgId, deletedAt: null } }),
       dto.targetWarehouseId
-        ? this.prisma.warehouse.findFirst({ where: { id: dto.targetWarehouseId, orgId, deletedAt: null } })
+        ? this.prisma.warehouse.findFirst({
+            where: { id: dto.targetWarehouseId, orgId, deletedAt: null },
+          })
         : Promise.resolve(null),
     ]);
     if (!branch) throw new NotFoundException('Філію не знайдено');
@@ -98,72 +119,107 @@ export class StockDocumentsService {
 
     const lines = dto.lines ?? [];
 
-    const doc = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.stockDocument.create({
-        data: {
-          orgId, branchId: dto.branchId, warehouseId: dto.warehouseId,
-          targetWarehouseId: dto.targetWarehouseId ?? null,
-          type: dto.type as StockDocumentType, number, notes: dto.notes,
-        },
-      });
-      if (lines.length) {
-        await tx.stockDocumentLine.createMany({
-          data: lines.map(l => ({
-            orgId, stockDocumentId: created.id,
-            goodId: l.goodId, quantity: l.quantity, price: l.price ?? null,
-          })),
+    const doc = await this.prisma.$transaction(
+      async tx => {
+        const created = await tx.stockDocument.create({
+          data: {
+            orgId,
+            branchId: dto.branchId,
+            warehouseId: dto.warehouseId,
+            targetWarehouseId: dto.targetWarehouseId ?? null,
+            type: dto.type as StockDocumentType,
+            number,
+            notes: dto.notes,
+          },
         });
-      }
-      return tx.stockDocument.findFirstOrThrow({
-        where: { id: created.id, orgId, deletedAt: null },
-        include: {
-          branch: { select: { name: true } },
-          warehouse: { select: { name: true } },
-          targetWarehouse: { select: { name: true } },
-          lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
-        },
-      });
-    }, { timeout: 5_000 }); // Bug #132: explicit timeout
+        if (lines.length) {
+          await tx.stockDocumentLine.createMany({
+            data: lines.map(l => ({
+              orgId,
+              stockDocumentId: created.id,
+              goodId: l.goodId,
+              quantity: l.quantity,
+              price: l.price ?? null,
+            })),
+          });
+        }
+        return tx.stockDocument.findFirstOrThrow({
+          where: { id: created.id, orgId, deletedAt: null },
+          include: {
+            branch: { select: { name: true } },
+            warehouse: { select: { name: true } },
+            targetWarehouse: { select: { name: true } },
+            lines: {
+              where: { deletedAt: null },
+              take: 1000,
+              include: { good: { select: { name: true, sku: true, unit: true } } },
+            },
+          },
+        });
+      },
+      { timeout: 5_000 },
+    ); // Bug #132: explicit timeout
 
     return this.toDto(doc);
   }
 
-  async update(orgId: string, id: string, dto: UpdateStockDocumentDto): Promise<StockDocumentResponseDto> {
-    const doc = await this.prisma.stockDocument.findFirst({ where: { id, orgId, deletedAt: null } });
+  async update(
+    orgId: string,
+    id: string,
+    dto: UpdateStockDocumentDto,
+  ): Promise<StockDocumentResponseDto> {
+    const doc = await this.prisma.stockDocument.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
     if (!doc) throw new NotFoundException('Документ не знайдено');
     if (doc.status !== 'DRAFT') throw new BadRequestException('Редагувати можна лише чернетку');
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      if (dto.lines !== undefined) {
-        await tx.stockDocumentLine.updateMany({
-          where: { stockDocumentId: id, orgId },
-          data: { deletedAt: new Date() },
-        });
-        if (dto.lines.length) {
-          await tx.stockDocumentLine.createMany({
-            data: dto.lines.map(l => ({
-              orgId, stockDocumentId: id,
-              goodId: l.goodId, quantity: l.quantity, price: l.price ?? null,
-            })),
+    const updated = await this.prisma.$transaction(
+      async tx => {
+        if (dto.lines !== undefined) {
+          await tx.stockDocumentLine.updateMany({
+            where: { stockDocumentId: id, orgId },
+            data: { deletedAt: new Date() },
           });
+          if (dto.lines.length) {
+            await tx.stockDocumentLine.createMany({
+              data: dto.lines.map(l => ({
+                orgId,
+                stockDocumentId: id,
+                goodId: l.goodId,
+                quantity: l.quantity,
+                price: l.price ?? null,
+              })),
+            });
+          }
         }
-      }
-      return tx.stockDocument.update({
-        where: { id, orgId },
-        data: { notes: dto.notes },
-        include: {
-          branch: { select: { name: true } },
-          warehouse: { select: { name: true } },
-          targetWarehouse: { select: { name: true } },
-          lines: { where: { deletedAt: null }, take: 1000, include: { good: { select: { name: true, sku: true, unit: true } } } },
-        },
-      });
-    }, { timeout: 5_000 }); // Bug #132: explicit timeout
+        return tx.stockDocument.update({
+          where: { id, orgId },
+          data: { notes: dto.notes },
+          include: {
+            branch: { select: { name: true } },
+            warehouse: { select: { name: true } },
+            targetWarehouse: { select: { name: true } },
+            lines: {
+              where: { deletedAt: null },
+              take: 1000,
+              include: { good: { select: { name: true, sku: true, unit: true } } },
+            },
+          },
+        });
+      },
+      { timeout: 5_000 },
+    ); // Bug #132: explicit timeout
 
     return this.toDto(updated);
   }
 
-  async transition(orgId: string, id: string, newStatus: DocStatus, userId?: string): Promise<StockDocumentResponseDto> {
+  async transition(
+    orgId: string,
+    id: string,
+    newStatus: DocStatus,
+    userId?: string,
+  ): Promise<StockDocumentResponseDto> {
     const doc = await this.prisma.stockDocument.findFirst({
       where: { id, orgId, deletedAt: null },
       include: { lines: { where: { deletedAt: null }, take: 1000 } },
@@ -172,7 +228,9 @@ export class StockDocumentsService {
 
     const allowed = DOC_TRANSITIONS[doc.status as DocStatus] ?? [];
     if (!allowed.includes(newStatus)) {
-      throw new BadRequestException(`Перехід зі статусу "${doc.status}" в "${newStatus}" неможливий`);
+      throw new BadRequestException(
+        `Перехід зі статусу "${doc.status}" в "${newStatus}" неможливий`,
+      );
     }
 
     if (newStatus === 'CONFIRMED') {
@@ -180,54 +238,70 @@ export class StockDocumentsService {
         throw new BadRequestException('Документ не може бути підтверджено без позицій');
       }
 
-      await this.prisma.$transaction(async (tx) => {
-        const movType = MOVEMENT_TYPES[doc.type as StockDocumentType];
+      await this.prisma.$transaction(
+        async tx => {
+          const movType = MOVEMENT_TYPES[doc.type as StockDocumentType];
 
-        for (const line of doc.lines) {
-          if (doc.type === 'TRANSFER') {
-            // Write off from source
-            await this.inventory.createMovement(orgId, {
-              goodId: line.goodId,
-              warehouseId: doc.warehouseId,
-              type: 'WRITEOFF',
-              quantity: -line.quantity,
-              price: line.price ? Number(line.price) : undefined,
-              documentType: 'StockDocument',
-              documentId: id,
-              createdBy: userId,
-            }, tx);
-            // Receipt at target
-            await this.inventory.createMovement(orgId, {
-              goodId: line.goodId,
-              warehouseId: doc.targetWarehouseId!,
-              type: 'RECEIPT',
-              quantity: line.quantity,
-              price: line.price ? Number(line.price) : undefined,
-              documentType: 'StockDocument',
-              documentId: id,
-              createdBy: userId,
-            }, tx);
-          } else {
-            if (!movType) throw new BadRequestException(`Непідтримуваний тип документу: ${doc.type}`);
-            const quantity = doc.type === 'WRITEOFF' ? -line.quantity : line.quantity;
-            await this.inventory.createMovement(orgId, {
-              goodId: line.goodId,
-              warehouseId: doc.warehouseId,
-              type: movType,
-              quantity,
-              price: line.price ? Number(line.price) : undefined,
-              documentType: 'StockDocument',
-              documentId: id,
-              createdBy: userId,
-            }, tx);
+          for (const line of doc.lines) {
+            if (doc.type === 'TRANSFER') {
+              // Write off from source
+              await this.inventory.createMovement(
+                orgId,
+                {
+                  goodId: line.goodId,
+                  warehouseId: doc.warehouseId,
+                  type: 'WRITEOFF',
+                  quantity: -line.quantity,
+                  price: line.price ? Number(line.price) : undefined,
+                  documentType: 'StockDocument',
+                  documentId: id,
+                  createdBy: userId,
+                },
+                tx,
+              );
+              // Receipt at target
+              await this.inventory.createMovement(
+                orgId,
+                {
+                  goodId: line.goodId,
+                  warehouseId: doc.targetWarehouseId!,
+                  type: 'RECEIPT',
+                  quantity: line.quantity,
+                  price: line.price ? Number(line.price) : undefined,
+                  documentType: 'StockDocument',
+                  documentId: id,
+                  createdBy: userId,
+                },
+                tx,
+              );
+            } else {
+              if (!movType)
+                throw new BadRequestException(`Непідтримуваний тип документу: ${doc.type}`);
+              const quantity = doc.type === 'WRITEOFF' ? -line.quantity : line.quantity;
+              await this.inventory.createMovement(
+                orgId,
+                {
+                  goodId: line.goodId,
+                  warehouseId: doc.warehouseId,
+                  type: movType,
+                  quantity,
+                  price: line.price ? Number(line.price) : undefined,
+                  documentType: 'StockDocument',
+                  documentId: id,
+                  createdBy: userId,
+                },
+                tx,
+              );
+            }
           }
-        }
 
-        await tx.stockDocument.update({
-          where: { id, orgId },
-          data: { status: 'CONFIRMED', confirmedAt: new Date(), confirmedBy: userId ?? null },
-        });
-      }, { timeout: 15_000 }); // Bug #132: explicit timeout — N rows × createMovement (батч-tracking + StockMovement + upsert stockItem)
+          await tx.stockDocument.update({
+            where: { id, orgId },
+            data: { status: 'CONFIRMED', confirmedAt: new Date(), confirmedBy: userId ?? null },
+          });
+        },
+        { timeout: 15_000 },
+      ); // Bug #132: explicit timeout — N rows × createMovement (батч-tracking + StockMovement + upsert stockItem)
     } else {
       await this.prisma.stockDocument.update({ where: { id, orgId }, data: { status: newStatus } });
     }
@@ -236,36 +310,66 @@ export class StockDocumentsService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const doc = await this.prisma.stockDocument.findFirst({ where: { id, orgId, deletedAt: null } });
+    const doc = await this.prisma.stockDocument.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
     if (!doc) throw new NotFoundException('Документ не знайдено');
     if (doc.status !== 'DRAFT') throw new BadRequestException('Видалити можна лише чернетку');
-    await this.prisma.stockDocument.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    await this.prisma.stockDocument.update({
+      where: { id, orgId },
+      data: { deletedAt: new Date() },
+    });
   }
 
   private toDto(doc: {
-    id: string; orgId: string; number: string; type: string; status: string;
-    branchId: string; warehouseId: string; targetWarehouseId: string | null;
-    notes: string | null; confirmedAt: Date | null; createdAt: Date; updatedAt: Date;
+    id: string;
+    orgId: string;
+    number: string;
+    type: string;
+    status: string;
+    branchId: string;
+    warehouseId: string;
+    targetWarehouseId: string | null;
+    notes: string | null;
+    confirmedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
     branch: { name: string } | null;
     warehouse: { name: string } | null;
     targetWarehouse: { name: string } | null;
-    lines: Array<{ id: string; goodId: string; quantity: number; price: Prisma.Decimal | null; good: { name: string; sku: string | null; unit: string } | null }>;
+    lines: Array<{
+      id: string;
+      goodId: string;
+      quantity: number;
+      price: Prisma.Decimal | null;
+      good: { name: string; sku: string | null; unit: string } | null;
+    }>;
   }): StockDocumentResponseDto {
     return {
-      id: doc.id, orgId: doc.orgId, number: doc.number,
-      type: doc.type, status: doc.status,
-      branchId: doc.branchId, branchName: doc.branch?.name,
-      warehouseId: doc.warehouseId, warehouseName: doc.warehouse?.name,
+      id: doc.id,
+      orgId: doc.orgId,
+      number: doc.number,
+      type: doc.type,
+      status: doc.status,
+      branchId: doc.branchId,
+      branchName: doc.branch?.name,
+      warehouseId: doc.warehouseId,
+      warehouseName: doc.warehouse?.name,
       targetWarehouseId: doc.targetWarehouseId ?? null,
       targetWarehouseName: doc.targetWarehouse?.name ?? null,
       notes: doc.notes ?? null,
       confirmedAt: doc.confirmedAt ?? null,
-      lines: (doc.lines ?? []).map((l) => ({
-        id: l.id, goodId: l.goodId,
-        goodName: l.good?.name, goodSku: l.good?.sku ?? null, unit: l.good?.unit,
-        quantity: l.quantity, price: l.price != null ? Number(l.price) : null,
+      lines: (doc.lines ?? []).map(l => ({
+        id: l.id,
+        goodId: l.goodId,
+        goodName: l.good?.name,
+        goodSku: l.good?.sku ?? null,
+        unit: l.good?.unit,
+        quantity: l.quantity,
+        price: l.price != null ? Number(l.price) : null,
       })),
-      createdAt: doc.createdAt, updatedAt: doc.updatedAt,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
     };
   }
 }

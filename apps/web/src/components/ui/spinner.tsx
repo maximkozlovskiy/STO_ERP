@@ -23,12 +23,7 @@ function Spinner({ size = 'md', className, ...props }: SpinnerProps) {
       role="status"
       {...props}
     >
-      <circle
-        className="opacity-20"
-        cx="12" cy="12" r="10"
-        stroke="currentColor"
-        strokeWidth="3"
-      />
+      <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
       <path
         className="opacity-80"
         fill="currentColor"

@@ -73,8 +73,12 @@ export function useUiFeatures(): UiFeatures {
 
   useEffect(() => {
     let cancelled = false;
-    loadFeatures().then(f => { if (!cancelled) setFeatures(f); });
-    return () => { cancelled = true; };
+    loadFeatures().then(f => {
+      if (!cancelled) setFeatures(f);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Re-sync when settings are updated; reset on logout to avoid cross-tenant leak.
@@ -82,7 +86,9 @@ export function useUiFeatures(): UiFeatures {
     let cancelled = false;
     const refresh = () => {
       invalidateUiFeaturesCache();
-      loadFeatures().then(f => { if (!cancelled) setFeatures(f); });
+      loadFeatures().then(f => {
+        if (!cancelled) setFeatures(f);
+      });
     };
     const onLogout = () => {
       invalidateUiFeaturesCache();
@@ -90,7 +96,9 @@ export function useUiFeatures(): UiFeatures {
     };
     const onLogin = () => {
       invalidateUiFeaturesCache();
-      loadFeatures().then(f => { if (!cancelled) setFeatures(f); });
+      loadFeatures().then(f => {
+        if (!cancelled) setFeatures(f);
+      });
     };
     window.addEventListener('sto:ui-features-change', refresh);
     window.addEventListener('sto:logout', onLogout);

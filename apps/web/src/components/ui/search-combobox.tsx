@@ -1,6 +1,14 @@
 'use client';
 
-import { useId, useState, useRef, useEffect, useCallback, type ChangeEvent, type KeyboardEvent } from 'react';
+import {
+  useId,
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from 'react';
 import { Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Spinner } from './spinner';
@@ -27,9 +35,18 @@ interface SearchComboboxProps<T extends { id: string }> {
 }
 
 export function SearchCombobox<T extends { id: string }>({
-  label, placeholder = 'Пошук...', value, displayValue,
-  onSelect, onClear, fetchItems,
-  disabled, required, errorMessage, hint, className,
+  label,
+  placeholder = 'Пошук...',
+  value,
+  displayValue,
+  onSelect,
+  onClear,
+  fetchItems,
+  disabled,
+  required,
+  errorMessage,
+  hint,
+  className,
 }: SearchComboboxProps<T>) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<(T & ComboboxItem)[]>([]);
@@ -71,29 +88,32 @@ export function SearchCombobox<T extends { id: string }>({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const search = useCallback((q: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!q.trim()) {
-      setItems([]);
-      setOpen(false);
-      return;
-    }
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const results = await fetchItems(q.trim());
-        if (mountedRef.current) {
-          setItems(results);
-          setOpen(true);
-          setActiveIndex(-1);
-        }
-      } catch {
-        if (mountedRef.current) setItems([]);
-      } finally {
-        if (mountedRef.current) setLoading(false);
+  const search = useCallback(
+    (q: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (!q.trim()) {
+        setItems([]);
+        setOpen(false);
+        return;
       }
-    }, 300);
-  }, [fetchItems]);
+      debounceRef.current = setTimeout(async () => {
+        setLoading(true);
+        try {
+          const results = await fetchItems(q.trim());
+          if (mountedRef.current) {
+            setItems(results);
+            setOpen(true);
+            setActiveIndex(-1);
+          }
+        } catch {
+          if (mountedRef.current) setItems([]);
+        } finally {
+          if (mountedRef.current) setLoading(false);
+        }
+      }, 300);
+    },
+    [fetchItems],
+  );
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value;
@@ -150,12 +170,14 @@ export function SearchCombobox<T extends { id: string }>({
       )}
       <div className="relative">
         {showSelected ? (
-          <div className={cn(
-            'flex items-center h-9 w-full rounded border text-[14px] text-foreground bg-surface px-3 pr-8',
-            'border-border',
-            hasError && 'border-destructive',
-            disabled && 'opacity-60',
-          )}>
+          <div
+            className={cn(
+              'flex items-center h-9 w-full rounded border text-[14px] text-foreground bg-surface px-3 pr-8',
+              'border-border',
+              hasError && 'border-destructive',
+              disabled && 'opacity-60',
+            )}
+          >
             <span className="truncate flex-1">{displayValue}</span>
             {!disabled && (
               <button
@@ -185,7 +207,10 @@ export function SearchCombobox<T extends { id: string }>({
           </div>
         ) : (
           <>
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+              aria-hidden="true"
+            />
             <input
               ref={inputRef}
               type="text"
@@ -198,7 +223,9 @@ export function SearchCombobox<T extends { id: string }>({
               value={query}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              onFocus={() => { if (query.trim()) setOpen(true); }}
+              onFocus={() => {
+                if (query.trim()) setOpen(true);
+              }}
               placeholder={placeholder}
               disabled={disabled}
               aria-invalid={hasError}
@@ -232,7 +259,10 @@ export function SearchCombobox<T extends { id: string }>({
                 id={optionId(idx)}
                 role="option"
                 aria-selected={idx === activeIndex}
-                onMouseDown={(e) => { e.preventDefault(); handleSelect(item); }}
+                onMouseDown={e => {
+                  e.preventDefault();
+                  handleSelect(item);
+                }}
                 className={cn(
                   'flex flex-col px-3 py-2 cursor-pointer transition-colors',
                   'hover:bg-secondary',
@@ -241,7 +271,9 @@ export function SearchCombobox<T extends { id: string }>({
               >
                 <span className="text-[14px] text-foreground leading-snug">{item.primary}</span>
                 {item.secondary && (
-                  <span className="text-[12px] text-muted-foreground leading-tight">{item.secondary}</span>
+                  <span className="text-[12px] text-muted-foreground leading-tight">
+                    {item.secondary}
+                  </span>
                 )}
               </li>
             ))}
@@ -255,9 +287,7 @@ export function SearchCombobox<T extends { id: string }>({
         )}
       </div>
 
-      {hasError && (
-        <p className="text-[12px] text-destructive leading-tight">{errorMessage}</p>
-      )}
+      {hasError && <p className="text-[12px] text-destructive leading-tight">{errorMessage}</p>}
       {!hasError && hint && (
         <p className="text-[12px] text-muted-foreground leading-tight">{hint}</p>
       )}

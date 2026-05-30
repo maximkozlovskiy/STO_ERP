@@ -1,4 +1,9 @@
-import { INestApplication, ValidationPipe, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  INestApplication,
+  ValidationPipe,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -21,7 +26,7 @@ const serviceMock = {
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { id: 'emp-1', orgId: 'org-1', role: 'OWNER' };
@@ -36,16 +41,18 @@ describe('PurchaseOrders — HTTP Contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [PurchaseOrdersController],
-      providers: [
-        { provide: PurchaseOrdersService, useValue: serviceMock },
-      ],
+      providers: [{ provide: PurchaseOrdersService, useValue: serviceMock }],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
+    );
     await app.init();
     await (app as NestFastifyApplication).getHttpAdapter().getInstance().ready();
   });
@@ -106,7 +113,9 @@ describe('PurchaseOrders — HTTP Contract', () => {
     });
 
     it('Bug #189: 404 коли PO не знайдено (service кидає NotFoundException)', async () => {
-      serviceMock.applyPricing.mockRejectedValueOnce(new NotFoundException('Замовлення не знайдено'));
+      serviceMock.applyPricing.mockRejectedValueOnce(
+        new NotFoundException('Замовлення не знайдено'),
+      );
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
         url: `/purchase-orders/${VALID_UUID}/apply-pricing`,
@@ -128,7 +137,9 @@ describe('PurchaseOrders — HTTP Contract', () => {
     // Bug #202: defense-in-depth status guard (commit c1dc5dd) — лише RECEIVED/PARTIAL
     it('Bug #202 status guard: 400 коли PO у DRAFT/ORDERED (service кидає BadRequestException)', async () => {
       serviceMock.applyPricing.mockRejectedValueOnce(
-        new BadRequestException('Розцінити можна лише отримані товари (статус RECEIVED або PARTIAL)'),
+        new BadRequestException(
+          'Розцінити можна лише отримані товари (статус RECEIVED або PARTIAL)',
+        ),
       );
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',

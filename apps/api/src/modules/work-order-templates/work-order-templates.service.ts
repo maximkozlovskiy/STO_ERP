@@ -26,12 +26,17 @@ export class WorkOrderTemplatesService {
   }
 
   async findOne(orgId: string, id: string): Promise<WorkOrderTemplateResponseDto> {
-    const t = await this.prisma.workOrderTemplate.findFirst({ where: { id, orgId, deletedAt: null } });
+    const t = await this.prisma.workOrderTemplate.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
     if (!t) throw new NotFoundException('Шаблон не знайдено');
     return this.toDto(t);
   }
 
-  async create(orgId: string, dto: CreateWorkOrderTemplateDto): Promise<WorkOrderTemplateResponseDto> {
+  async create(
+    orgId: string,
+    dto: CreateWorkOrderTemplateDto,
+  ): Promise<WorkOrderTemplateResponseDto> {
     const t = await this.prisma.workOrderTemplate.create({
       data: {
         orgId,
@@ -43,7 +48,11 @@ export class WorkOrderTemplatesService {
     return this.toDto(t);
   }
 
-  async update(orgId: string, id: string, dto: UpdateWorkOrderTemplateDto): Promise<WorkOrderTemplateResponseDto> {
+  async update(
+    orgId: string,
+    id: string,
+    dto: UpdateWorkOrderTemplateDto,
+  ): Promise<WorkOrderTemplateResponseDto> {
     await this.findOne(orgId, id);
     // `where: { id, orgId }` keeps tenant isolation at the SQL layer (defense-in-depth) —
     // the findOne above is the primary guard but we don't want a future refactor to leak it.
@@ -67,9 +76,13 @@ export class WorkOrderTemplatesService {
   }
 
   private toDto(t: {
-    id: string; orgId: string; name: string;
-    lines: unknown; parts: unknown;
-    createdAt: Date; updatedAt: Date;
+    id: string;
+    orgId: string;
+    name: string;
+    lines: unknown;
+    parts: unknown;
+    createdAt: Date;
+    updatedAt: Date;
   }): WorkOrderTemplateResponseDto {
     return {
       id: t.id,

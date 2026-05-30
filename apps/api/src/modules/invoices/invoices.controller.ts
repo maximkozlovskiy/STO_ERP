@@ -1,6 +1,17 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query, Res,
-  UseGuards, HttpCode, HttpStatus, ParseUUIDPipe,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  Res,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
@@ -10,7 +21,14 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { InvoicesService } from './invoices.service';
-import { CreateInvoiceDto, UpdateInvoiceDto, TransitionInvoiceDto, InvTransitionStatus, CreateInvoiceLineDto, UpdateInvoiceLineDto } from './invoices.dto';
+import {
+  CreateInvoiceDto,
+  UpdateInvoiceDto,
+  TransitionInvoiceDto,
+  InvTransitionStatus,
+  CreateInvoiceLineDto,
+  UpdateInvoiceLineDto,
+} from './invoices.dto';
 
 @ApiTags('Invoices')
 @Controller('invoices')
@@ -91,10 +109,7 @@ export class InvoicesController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Дублювати рахунок' })
-  clone(
-    @OrgContext() orgId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  clone(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.clone(orgId, id);
   }
 

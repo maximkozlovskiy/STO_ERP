@@ -11,7 +11,10 @@
  * Аналог backend KYIV_DATE_FMT / UAH_FMT (pdf.service, reports.service).
  */
 
-const MONEY_FMT = new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const MONEY_FMT = new Intl.NumberFormat('uk-UA', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 const INT_FMT = new Intl.NumberFormat('uk-UA');
 const DATE_FMT = new Intl.DateTimeFormat('uk-UA');
 const DATETIME_FMT = new Intl.DateTimeFormat('uk-UA', {

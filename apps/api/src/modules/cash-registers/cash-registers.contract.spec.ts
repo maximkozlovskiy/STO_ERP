@@ -17,7 +17,7 @@ const serviceMock = {
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { sub: 'emp-1', orgId: 'org-1', role: 'ADMIN' };
@@ -38,13 +38,17 @@ describe('CashRegisters — HTTP Contract', () => {
       controllers: [CashRegistersController],
       providers: [{ provide: CashRegistersService, useValue: serviceMock }],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     // Mirror production pipe (main.ts) so @IsUUID/@IsNotEmpty → 400.
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
     await app.init();
     await (app as NestFastifyApplication).getHttpAdapter().getInstance().ready();
   });
@@ -61,7 +65,10 @@ describe('CashRegisters — HTTP Contract', () => {
   describe('GET /cash-registers', () => {
     it('повертає 200 + { items, total } (не голий масив)', async () => {
       serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0 });
-      const res = await (app as NestFastifyApplication).inject({ method: 'GET', url: '/cash-registers' });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/cash-registers',
+      });
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(body).toMatchObject({ items: expect.any(Array), total: expect.any(Number) });
@@ -69,13 +76,19 @@ describe('CashRegisters — HTTP Contract', () => {
 
     it('прокидає branchId-фільтр у сервіс', async () => {
       serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0 });
-      await (app as NestFastifyApplication).inject({ method: 'GET', url: `/cash-registers?branchId=${BRANCH_ID}` });
+      await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/cash-registers?branchId=${BRANCH_ID}`,
+      });
       expect(serviceMock.findAll).toHaveBeenCalledWith('org-1', BRANCH_ID);
     });
 
     it('повертає 403 коли guard не пропустив', async () => {
       jwtAllow = false;
-      const res = await (app as NestFastifyApplication).inject({ method: 'GET', url: '/cash-registers' });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/cash-registers',
+      });
       expect(res.statusCode).toBe(403);
     });
   });
@@ -103,10 +116,16 @@ describe('CashRegisters — HTTP Contract', () => {
 
     it('повертає 201 + DTO shape при валідному payload', async () => {
       serviceMock.create.mockResolvedValueOnce({
-        id: 'cr-1', orgId: 'org-1', name: 'Каса №1',
-        currencyId: CURRENCY_ID, currencyCode: 'UAH', currencySymbol: '₴',
-        branchId: BRANCH_ID, branchName: 'Головний офіс',
-        createdAt: new Date(), updatedAt: new Date(),
+        id: 'cr-1',
+        orgId: 'org-1',
+        name: 'Каса №1',
+        currencyId: CURRENCY_ID,
+        currencyCode: 'UAH',
+        currencySymbol: '₴',
+        branchId: BRANCH_ID,
+        branchName: 'Головний офіс',
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
@@ -115,8 +134,16 @@ describe('CashRegisters — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(201);
       const body = res.json();
-      expect(body).toMatchObject({ id: expect.any(String), name: 'Каса №1', currencyCode: 'UAH', branchName: 'Головний офіс' });
-      expect(serviceMock.create).toHaveBeenCalledWith('org-1', expect.objectContaining({ currencyId: CURRENCY_ID, branchId: BRANCH_ID }));
+      expect(body).toMatchObject({
+        id: expect.any(String),
+        name: 'Каса №1',
+        currencyCode: 'UAH',
+        branchName: 'Головний офіс',
+      });
+      expect(serviceMock.create).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ currencyId: CURRENCY_ID, branchId: BRANCH_ID }),
+      );
     });
   });
 });

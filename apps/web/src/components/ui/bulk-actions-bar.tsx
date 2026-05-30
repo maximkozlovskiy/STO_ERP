@@ -22,17 +22,23 @@ interface BulkActionsBarProps {
   className?: string;
 }
 
-export function BulkActionsBar({ count, selectedIds, actions, onClear, className }: BulkActionsBarProps) {
+export function BulkActionsBar({
+  count,
+  selectedIds,
+  actions,
+  onClear,
+  className,
+}: BulkActionsBarProps) {
   if (count === 0) return null;
 
   return (
-    <div className={cn(
-      'flex items-center gap-3 px-4 py-2.5 bg-primary-subtle border border-primary/20 rounded-xl',
-      className,
-    )}>
-      <span className="text-[13px] font-medium text-primary shrink-0">
-        Обрано: {count}
-      </span>
+    <div
+      className={cn(
+        'flex items-center gap-3 px-4 py-2.5 bg-primary-subtle border border-primary/20 rounded-xl',
+        className,
+      )}
+    >
+      <span className="text-[13px] font-medium text-primary shrink-0">Обрано: {count}</span>
       <div className="flex items-center gap-2 flex-wrap flex-1">
         {actions.map(action => (
           <Button

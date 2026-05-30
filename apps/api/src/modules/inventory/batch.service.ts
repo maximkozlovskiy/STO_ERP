@@ -68,9 +68,7 @@ export class BatchService {
     // Bug #14: при безкоштовному прийомі (costPrice=0) використовуємо поточну ціну товару,
     // щоб не записати партію з salePrice=0 і не зламати наступні продажі.
     const salePrice =
-      dto.costPrice > 0 && computedSalePrice > 0
-        ? computedSalePrice
-        : currentSalePriceForBatch;
+      dto.costPrice > 0 && computedSalePrice > 0 ? computedSalePrice : currentSalePriceForBatch;
 
     const batch = await db.stockBatch.create({
       data: {
@@ -92,9 +90,7 @@ export class BatchService {
     // Bug #14: безкоштовний прийом (costPrice=0 → salePrice=0) НЕ повинен затирати поточну salePrice.
     const currentSalePrice = Number(good.salePrice);
     const canUpdateSalePrice =
-      dto.costPrice > 0 &&
-      salePrice > 0 &&
-      Math.abs(salePrice - currentSalePrice) > 0.001;
+      dto.costPrice > 0 && salePrice > 0 && Math.abs(salePrice - currentSalePrice) > 0.001;
     if (canUpdateSalePrice) {
       await db.good.update({
         where: { id: dto.goodId },
@@ -138,7 +134,17 @@ export class BatchService {
       // Bug #132: explicit timeout — batch consume може touchнути 10+ батчів
       return this.prisma.$transaction(
         innerTx =>
-          this.consumeBatch(orgId, goodId, warehouseId, qty, documentType, documentId, documentLineId, costMethod, innerTx),
+          this.consumeBatch(
+            orgId,
+            goodId,
+            warehouseId,
+            qty,
+            documentType,
+            documentId,
+            documentLineId,
+            costMethod,
+            innerTx,
+          ),
         { timeout: 10_000 },
       );
     }
@@ -153,9 +159,11 @@ export class BatchService {
     // Find batches by method
     // Bug #133: FEFO має explicit `nulls: 'last'` — товари без терміну йдуть В КІНЦІ (не випадково через Postgres default).
     const orderBy: Prisma.StockBatchOrderByWithRelationInput[] =
-      costMethod === 'LIFO' ? [{ createdAt: 'desc' }] :
-      costMethod === 'FEFO' ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }] :
-      [{ createdAt: 'asc' }]; // FIFO default
+      costMethod === 'LIFO'
+        ? [{ createdAt: 'desc' }]
+        : costMethod === 'FEFO'
+          ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }]
+          : [{ createdAt: 'asc' }]; // FIFO default
 
     const batches = await db.stockBatch.findMany({
       where: { orgId, goodId, warehouseId, isActive: true, remainingQty: { gt: 0 } },

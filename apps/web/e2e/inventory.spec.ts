@@ -23,7 +23,7 @@ test.describe('Інвентар — API mock states', () => {
 
   test('low-stock API повертає 500 — сторінка не падає', async ({ page }) => {
     // Усі /api/** повертають 500 — auth guard все одно зробить redirect
-    await page.route('**/api/**', (route) =>
+    await page.route('**/api/**', route =>
       route.fulfill({
         status: 500,
         contentType: 'application/json',
@@ -37,7 +37,7 @@ test.describe('Інвентар — API mock states', () => {
 
   test('empty state при порожньому складі (mock)', async ({ page }) => {
     // Mock — і auth/refresh, і stock-items
-    await page.route('**/api/auth/refresh', (route) =>
+    await page.route('**/api/auth/refresh', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -53,7 +53,7 @@ test.describe('Інвентар — API mock states', () => {
         }),
       }),
     );
-    await page.route('**/stock-items*', (route) =>
+    await page.route('**/stock-items*', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -73,7 +73,7 @@ test.describe('Інвентар — API mock states', () => {
   });
 
   test('low-stock badge при API mock з minStock > quantity', async ({ page }) => {
-    await page.route('**/api/auth/refresh', (route) =>
+    await page.route('**/api/auth/refresh', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -89,7 +89,7 @@ test.describe('Інвентар — API mock states', () => {
         }),
       }),
     );
-    await page.route('**/stock-items*', (route) =>
+    await page.route('**/stock-items*', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',

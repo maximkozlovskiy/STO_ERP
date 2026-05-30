@@ -14,14 +14,26 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@/components/ui/table';
 import { fmtMoney } from '@/lib/format';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface Good { id: string; name: string; sku: string | null; }
-interface Brand { id: string; name: string; }
+interface Good {
+  id: string;
+  name: string;
+  sku: string | null;
+}
+interface Brand {
+  id: string;
+  name: string;
+}
 
 interface PricingRuleTier {
   id?: string;
@@ -68,10 +80,17 @@ type RuleForm = {
 };
 
 const EMPTY_FORM: RuleForm = {
-  name: '', type: 'PERCENT', priority: '10',
-  goodId: '', goodCategory: '', goodType: '',
-  percentValue: '', fixedAmount: '', fixedPrice: '',
-  roundTo: '', isActive: true,
+  name: '',
+  type: 'PERCENT',
+  priority: '10',
+  goodId: '',
+  goodCategory: '',
+  goodType: '',
+  percentValue: '',
+  fixedAmount: '',
+  fixedPrice: '',
+  roundTo: '',
+  isActive: true,
   brandId: '',
   tiers: [],
 };
@@ -94,7 +113,8 @@ const GOOD_TYPE_OPTIONS = [
 
 function scopeLabel(rule: PricingRule): string {
   if (rule.goodId && rule.good) return `Товар: ${rule.good.name}`;
-  if (rule.goodType) return `Тип: ${GOOD_TYPE_OPTIONS.find(o => o.value === rule.goodType)?.label ?? rule.goodType}`;
+  if (rule.goodType)
+    return `Тип: ${GOOD_TYPE_OPTIONS.find(o => o.value === rule.goodType)?.label ?? rule.goodType}`;
   if (rule.goodCategory) return `Категорія: ${rule.goodCategory}`;
   return 'Весь асортимент';
 }
@@ -118,7 +138,12 @@ function valueLabel(rule: PricingRule): string {
 // ─── Rule Form Modal ──────────────────────────────────────────────────────────
 
 function RuleFormModal({
-  open, onClose, onSave, initial, goods, brands,
+  open,
+  onClose,
+  onSave,
+  initial,
+  goods,
+  brands,
 }: {
   open: boolean;
   onClose: () => void;
@@ -131,7 +156,12 @@ function RuleFormModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => { if (open) { setForm(initial); setError(''); } }, [open, initial]);
+  useEffect(() => {
+    if (open) {
+      setForm(initial);
+      setError('');
+    }
+  }, [open, initial]);
 
   const set = (patch: Partial<RuleForm>) => setForm(f => ({ ...f, ...patch }));
 
@@ -142,19 +172,22 @@ function RuleFormModal({
     const lastMax = prev.length > 0 ? prev[prev.length - 1].costMax : 0;
     setForm(f => ({
       ...f,
-      tiers: [...f.tiers, {
-        costMin: lastMax ?? 0,
-        costMax: null,
-        percentValue: 0,
-        sortOrder: f.tiers.length,
-      }],
+      tiers: [
+        ...f.tiers,
+        {
+          costMin: lastMax ?? 0,
+          costMax: null,
+          percentValue: 0,
+          sortOrder: f.tiers.length,
+        },
+      ],
     }));
   };
 
   const updateTier = (idx: number, field: keyof PricingRuleTier, value: number | null) => {
     setForm(f => ({
       ...f,
-      tiers: f.tiers.map((t, i) => i === idx ? { ...t, [field]: value } : t),
+      tiers: f.tiers.map((t, i) => (i === idx ? { ...t, [field]: value } : t)),
     }));
   };
 
@@ -165,18 +198,33 @@ function RuleFormModal({
   // ─── Submit ────────────────────────────────────────────────────────────────
 
   const submit = async () => {
-    if (!form.name.trim()) { setError('Введіть назву правила'); return; }
+    if (!form.name.trim()) {
+      setError('Введіть назву правила');
+      return;
+    }
     if (form.type === 'PERCENT' || form.type === 'COMPETITOR_PLUS') {
-      if (!form.percentValue || Number(form.percentValue) < 0) { setError('Введіть відсоток надбавки'); return; }
+      if (!form.percentValue || Number(form.percentValue) < 0) {
+        setError('Введіть відсоток надбавки');
+        return;
+      }
     }
     if (form.type === 'FIXED_AMOUNT') {
-      if (!form.fixedAmount || Number(form.fixedAmount) < 0) { setError('Введіть суму надбавки'); return; }
+      if (!form.fixedAmount || Number(form.fixedAmount) < 0) {
+        setError('Введіть суму надбавки');
+        return;
+      }
     }
     if (form.type === 'FIXED_PRICE') {
-      if (!form.fixedPrice || Number(form.fixedPrice) <= 0) { setError('Введіть фіксовану ціну'); return; }
+      if (!form.fixedPrice || Number(form.fixedPrice) <= 0) {
+        setError('Введіть фіксовану ціну');
+        return;
+      }
     }
     if (form.type === 'COST_TIER') {
-      if (form.tiers.length === 0) { setError('Додайте хоча б один грейд'); return; }
+      if (form.tiers.length === 0) {
+        setError('Додайте хоча б один грейд');
+        return;
+      }
       for (let i = 0; i < form.tiers.length; i++) {
         const t = form.tiers[i];
         if (t.costMax !== null && t.costMin >= t.costMax) {
@@ -189,10 +237,16 @@ function RuleFormModal({
         }
       }
     }
-    setSaving(true); setError('');
-    try { await onSave(form); onClose(); }
-    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка збереження'); }
-    finally { setSaving(false); }
+    setSaving(true);
+    setError('');
+    try {
+      await onSave(form);
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -203,8 +257,12 @@ function RuleFormModal({
       size="xl"
       footer={
         <>
-          <Button onClick={submit} loading={saving} disabled={!form.name}>Зберегти</Button>
-          <Button variant="outline" onClick={onClose}>Скасувати</Button>
+          <Button onClick={submit} loading={saving} disabled={!form.name}>
+            Зберегти
+          </Button>
+          <Button variant="outline" onClick={onClose}>
+            Скасувати
+          </Button>
         </>
       }
     >
@@ -227,9 +285,21 @@ function RuleFormModal({
           label="Тип"
           required
           value={form.type}
-          onChange={e => set({ type: e.target.value as PricingRule['type'], tiers: e.target.value === 'COST_TIER' && form.tiers.length === 0 ? [{ costMin: 0, costMax: 100, percentValue: 30, sortOrder: 0 }] : form.tiers })}
+          onChange={e =>
+            set({
+              type: e.target.value as PricingRule['type'],
+              tiers:
+                e.target.value === 'COST_TIER' && form.tiers.length === 0
+                  ? [{ costMin: 0, costMax: 100, percentValue: 30, sortOrder: 0 }]
+                  : form.tiers,
+            })
+          }
         >
-          {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {Object.entries(TYPE_LABELS).map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
         </Select>
 
         {/* Brand selector — shown when no specific good is selected */}
@@ -240,7 +310,11 @@ function RuleFormModal({
             onChange={e => set({ brandId: e.target.value })}
           >
             <option value="">— Будь-який бренд —</option>
-            {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            {brands.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
           </Select>
         )}
 
@@ -280,9 +354,15 @@ function RuleFormModal({
         {form.type === 'COST_TIER' && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[13px] font-medium text-foreground">Грейди за собівартістю</span>
-              <Button size="sm" variant="outline" leftIcon={<Plus className="h-3.5 w-3.5" />}
-                onClick={addTier}>
+              <span className="text-[13px] font-medium text-foreground">
+                Грейди за собівартістю
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                leftIcon={<Plus className="h-3.5 w-3.5" />}
+                onClick={addTier}
+              >
                 Додати грейд
               </Button>
             </div>
@@ -307,7 +387,13 @@ function RuleFormModal({
                   min="0"
                   placeholder={idx === form.tiers.length - 1 ? '∞' : ''}
                   value={tier.costMax == null ? '' : String(tier.costMax)}
-                  onChange={e => updateTier(idx, 'costMax', e.target.value === '' ? null : Number(e.target.value))}
+                  onChange={e =>
+                    updateTier(
+                      idx,
+                      'costMax',
+                      e.target.value === '' ? null : Number(e.target.value),
+                    )
+                  }
                 />
                 <Input
                   label={idx === 0 ? 'Націнка (%)' : ''}
@@ -340,7 +426,9 @@ function RuleFormModal({
         />
 
         <div className="border-t border-border pt-3 space-y-3">
-          <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">Область застосування</p>
+          <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
+            Область застосування
+          </p>
           <p className="text-[12px] text-muted-foreground">
             Пріоритет: Товар {'>'} Тип товару {'>'} Весь асортимент
           </p>
@@ -352,7 +440,10 @@ function RuleFormModal({
           >
             <option value="">— Не вказано —</option>
             {goods.map(g => (
-              <option key={g.id} value={g.id}>{g.name}{g.sku ? ` (${g.sku})` : ''}</option>
+              <option key={g.id} value={g.id}>
+                {g.name}
+                {g.sku ? ` (${g.sku})` : ''}
+              </option>
             ))}
           </Select>
 
@@ -361,7 +452,11 @@ function RuleFormModal({
             value={form.goodType}
             onChange={e => set({ goodType: e.target.value })}
           >
-            {GOOD_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            {GOOD_TYPE_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
           </Select>
 
           <Input
@@ -421,7 +516,14 @@ export default function PricingRulesClient() {
     found: number;
     updated: number;
     notFound: string[];
-    details: { goodId: string; goodName: string; sku: string | null; costPrice: number; oldSalePrice: number; newSalePrice: number }[];
+    details: {
+      goodId: string;
+      goodName: string;
+      sku: string | null;
+      costPrice: number;
+      oldSalePrice: number;
+      newSalePrice: number;
+    }[];
   }
   const [pricingImportResult, setPricingImportResult] = useState<PricingImportResult | null>(null);
 
@@ -430,7 +532,9 @@ export default function PricingRulesClient() {
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const load = useCallback(async () => {
@@ -456,17 +560,21 @@ export default function PricingRulesClient() {
     Promise.all([
       apiFetch<{ items: Good[] }>('/goods?limit=200'),
       apiFetch<{ items: Brand[]; total: number }>('/brands'),
-    ]).then(([goodsRes, brandsRes]) => {
-      if (!cancelled) {
-        setGoods(goodsRes.items);
-        setBrands(brandsRes.items);
-      }
-    }).catch((e: unknown) => {
-      // Bug #29: не ковтаємо помилку мовчки. Логуємо для діагностики,
-      // але не блокуємо UI (правила можна редагувати без списку товарів/брендів).
-      console.warn('Не вдалося завантажити довідники для форми правила:', e);
-    });
-    return () => { cancelled = true; };
+    ])
+      .then(([goodsRes, brandsRes]) => {
+        if (!cancelled) {
+          setGoods(goodsRes.items);
+          setBrands(brandsRes.items);
+        }
+      })
+      .catch((e: unknown) => {
+        // Bug #29: не ковтаємо помилку мовчки. Логуємо для діагностики,
+        // але не блокуємо UI (правила можна редагувати без списку товарів/брендів).
+        console.warn('Не вдалося завантажити довідники для форми правила:', e);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Bug #23: надсилаємо лише значення, релевантне для обраного type, щоб не зберігати
@@ -481,16 +589,14 @@ export default function PricingRulesClient() {
       type: form.type,
       priority: Number(form.priority) || 10,
       goodId: form.goodId || undefined,
-      goodCategory: form.goodId ? undefined : (form.goodCategory || undefined),
-      goodType: form.goodId || form.goodCategory ? undefined : (form.goodType || undefined),
+      goodCategory: form.goodId ? undefined : form.goodCategory || undefined,
+      goodType: form.goodId || form.goodCategory ? undefined : form.goodType || undefined,
       brandId: form.brandId || undefined,
       percentValue: isPercent && form.percentValue ? Number(form.percentValue) : undefined,
       fixedAmount: isFixedAmount && form.fixedAmount ? Number(form.fixedAmount) : undefined,
       fixedPrice: isFixedPrice && form.fixedPrice ? Number(form.fixedPrice) : undefined,
       roundTo: form.roundTo ? Number(form.roundTo) : undefined,
-      tiers: isCostTier
-        ? form.tiers.map((t, i) => ({ ...t, sortOrder: i }))
-        : undefined,
+      tiers: isCostTier ? form.tiers.map((t, i) => ({ ...t, sortOrder: i })) : undefined,
     };
   };
 
@@ -513,7 +619,8 @@ export default function PricingRulesClient() {
   };
 
   const deleteRule = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити правило ціноутворення?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: 'Видалити правило ціноутворення?', variant: 'destructive' })))
+      return;
     setDeletingId(id);
     try {
       await apiFetch<void>(`/pricing-rules/${id}`, { method: 'DELETE' });
@@ -526,11 +633,20 @@ export default function PricingRulesClient() {
   };
 
   const applyAll = async (rule: PricingRule) => {
-    if (!(await confirm({ title: `Застосувати правило "${rule.name}"?`, message: 'Правило буде застосовано до всіх відповідних товарів. Ціни буде перераховано.' }))) return;
+    if (
+      !(await confirm({
+        title: `Застосувати правило "${rule.name}"?`,
+        message: 'Правило буде застосовано до всіх відповідних товарів. Ціни буде перераховано.',
+      }))
+    )
+      return;
     setApplyingId(rule.id);
     setApplyResult(null);
     try {
-      const result = await apiFetch<{ updated: number; message: string }>(`/pricing-rules/${rule.id}/apply-all`, { method: 'POST' });
+      const result = await apiFetch<{ updated: number; message: string }>(
+        `/pricing-rules/${rule.id}/apply-all`,
+        { method: 'POST' },
+      );
       if (mountedRef.current) setApplyResult({ ruleId: rule.id, message: result.message });
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка застосування');
@@ -539,39 +655,52 @@ export default function PricingRulesClient() {
     }
   };
 
-  const editFormInitial: RuleForm = editRule ? {
-    name: editRule.name,
-    type: editRule.type,
-    priority: String(editRule.priority),
-    goodId: editRule.goodId ?? '',
-    goodCategory: editRule.goodCategory ?? '',
-    goodType: editRule.goodType ?? '',
-    percentValue: editRule.percentValue != null ? String(editRule.percentValue) : '',
-    fixedAmount: editRule.fixedAmount != null ? String(editRule.fixedAmount) : '',
-    fixedPrice: editRule.fixedPrice != null ? String(editRule.fixedPrice) : '',
-    roundTo: editRule.roundTo != null ? String(editRule.roundTo) : '',
-    isActive: editRule.isActive,
-    brandId: editRule.brandId ?? '',
-    tiers: editRule.tiers ?? [],
-  } : EMPTY_FORM;
+  const editFormInitial: RuleForm = editRule
+    ? {
+        name: editRule.name,
+        type: editRule.type,
+        priority: String(editRule.priority),
+        goodId: editRule.goodId ?? '',
+        goodCategory: editRule.goodCategory ?? '',
+        goodType: editRule.goodType ?? '',
+        percentValue: editRule.percentValue != null ? String(editRule.percentValue) : '',
+        fixedAmount: editRule.fixedAmount != null ? String(editRule.fixedAmount) : '',
+        fixedPrice: editRule.fixedPrice != null ? String(editRule.fixedPrice) : '',
+        roundTo: editRule.roundTo != null ? String(editRule.roundTo) : '',
+        isActive: editRule.isActive,
+        brandId: editRule.brandId ?? '',
+        tiers: editRule.tiers ?? [],
+      }
+    : EMPTY_FORM;
 
   return (
     <div className="page-container">
       <div className="page-header mb-6">
         <div>
           <h1 className="page-title">Правила ціноутворення</h1>
-          <p className="page-subtitle">Автоматичне розрахування ціни продажу при оприбуткуванні товарів</p>
+          <p className="page-subtitle">
+            Автоматичне розрахування ціни продажу при оприбуткуванні товарів
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button
             type="button"
             variant="outline"
             leftIcon={<Upload className="h-4 w-4" />}
-            onClick={() => { setShowPricingImport(s => !s); setPricingImportResult(null); }}
+            onClick={() => {
+              setShowPricingImport(s => !s);
+              setPricingImportResult(null);
+            }}
           >
             Розцінити список
           </Button>
-          <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setError(''); setModal(true); }}>
+          <Button
+            leftIcon={<Plus className="h-4 w-4" />}
+            onClick={() => {
+              setError('');
+              setModal(true);
+            }}
+          >
             Додати правило
           </Button>
         </div>
@@ -580,13 +709,17 @@ export default function PricingRulesClient() {
       {showPricingImport && (
         <AnimatedBody className="mb-6 rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[13px] font-medium text-foreground">Розцінити товари за списком</span>
+            <span className="text-[13px] font-medium text-foreground">
+              Розцінити товари за списком
+            </span>
             <button
               type="button"
               className="text-[12px] text-primary hover:underline"
               onClick={async () => {
                 try {
-                  const data = await apiFetch<{ file: string; filename: string }>('/xlsx/templates/pricing-list');
+                  const data = await apiFetch<{ file: string; filename: string }>(
+                    '/xlsx/templates/pricing-list',
+                  );
                   const bytes = Uint8Array.from(atob(data.file), c => c.charCodeAt(0));
                   const blob = new Blob([bytes], { type: 'text/csv; charset=utf-8' });
                   const url = URL.createObjectURL(blob);
@@ -604,13 +737,17 @@ export default function PricingRulesClient() {
             </button>
           </div>
           <p className="text-[12px] text-muted-foreground">
-            Завантажте XLSX або CSV файл з колонками: <code>sku</code>, <code>barcode</code>, <code>name</code>
+            Завантажте XLSX або CSV файл з колонками: <code>sku</code>, <code>barcode</code>,{' '}
+            <code>name</code>
           </p>
           <div className="flex items-center gap-3">
             <input
               type="file"
               accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-              onChange={e => { setPricingFile(e.target.files?.[0] ?? null); setPricingImportResult(null); }}
+              onChange={e => {
+                setPricingFile(e.target.files?.[0] ?? null);
+                setPricingImportResult(null);
+              }}
               className="text-[13px] text-foreground"
             />
             <Button
@@ -626,7 +763,10 @@ export default function PricingRulesClient() {
                   fd.append('file', pricingFile);
                   // Bug #197: FormData потребує multipart/form-data Content-Type з boundary,
                   // що `apiFetch` перетирає на application/json → 400 "не multipart". Використовуємо apiMultipartFetch.
-                  const result = await apiMultipartFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', fd);
+                  const result = await apiMultipartFetch<PricingImportResult>(
+                    '/xlsx/apply-pricing-from-list',
+                    fd,
+                  );
                   setPricingImportResult(result);
                   if (result.updated > 0) setError('');
                 } catch (e: unknown) {
@@ -642,35 +782,69 @@ export default function PricingRulesClient() {
           {pricingImportResult && (
             <div className="space-y-2">
               <div className="flex gap-4 text-[12px]">
-                <span className="text-muted-foreground">Знайдено: <strong className="text-foreground">{pricingImportResult.found}</strong></span>
-                <span className="text-muted-foreground">Оновлено: <strong className="text-success">{pricingImportResult.updated}</strong></span>
+                <span className="text-muted-foreground">
+                  Знайдено: <strong className="text-foreground">{pricingImportResult.found}</strong>
+                </span>
+                <span className="text-muted-foreground">
+                  Оновлено: <strong className="text-success">{pricingImportResult.updated}</strong>
+                </span>
                 {pricingImportResult.notFound.length > 0 && (
-                  <span className="text-muted-foreground">Не знайдено: <strong className="text-destructive">{pricingImportResult.notFound.length}</strong></span>
+                  <span className="text-muted-foreground">
+                    Не знайдено:{' '}
+                    <strong className="text-destructive">
+                      {pricingImportResult.notFound.length}
+                    </strong>
+                  </span>
                 )}
               </div>
               {pricingImportResult.notFound.length > 0 && (
-                <p className="text-[11px] text-destructive">Не знайдено: {pricingImportResult.notFound.join(', ')}</p>
+                <p className="text-[11px] text-destructive">
+                  Не знайдено: {pricingImportResult.notFound.join(', ')}
+                </p>
               )}
               {pricingImportResult.details.length > 0 && (
                 <div className="rounded-lg border border-border overflow-hidden">
                   <table className="w-full text-[12px]">
                     <thead className="bg-secondary border-b border-border">
                       <tr>
-                        <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">Товар</th>
-                        <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">SKU</th>
-                        <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">Собів.</th>
-                        <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">Стара</th>
-                        <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">Нова</th>
+                        <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">
+                          Товар
+                        </th>
+                        <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">
+                          SKU
+                        </th>
+                        <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">
+                          Собів.
+                        </th>
+                        <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">
+                          Стара
+                        </th>
+                        <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">
+                          Нова
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {pricingImportResult.details.map(d => (
-                        <tr key={d.goodId} className={Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001 ? 'bg-surface' : 'bg-surface opacity-60'}>
+                        <tr
+                          key={d.goodId}
+                          className={
+                            Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001
+                              ? 'bg-surface'
+                              : 'bg-surface opacity-60'
+                          }
+                        >
                           <td className="px-3 py-1.5 text-foreground">{d.goodName}</td>
                           <td className="px-3 py-1.5 text-muted-foreground">{d.sku ?? '—'}</td>
-                          <td className="px-3 py-1.5 text-right text-muted-foreground">{fmtMoney(d.costPrice)}</td>
-                          <td className="px-3 py-1.5 text-right text-muted-foreground">{fmtMoney(d.oldSalePrice)}</td>
-                          <td className={`px-3 py-1.5 text-right font-medium ${Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001 ? 'text-foreground' : 'text-muted-foreground'}`}>
+                          <td className="px-3 py-1.5 text-right text-muted-foreground">
+                            {fmtMoney(d.costPrice)}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-muted-foreground">
+                            {fmtMoney(d.oldSalePrice)}
+                          </td>
+                          <td
+                            className={`px-3 py-1.5 text-right font-medium ${Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001 ? 'text-foreground' : 'text-muted-foreground'}`}
+                          >
                             {fmtMoney(d.newSalePrice)} ₴
                           </td>
                         </tr>
@@ -720,7 +894,9 @@ export default function PricingRulesClient() {
             {loading && (
               <TableRow>
                 <TableCell colSpan={7} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
+                  <div className="flex justify-center">
+                    <Spinner size="md" />
+                  </div>
                 </TableCell>
               </TableRow>
             )}
@@ -735,85 +911,84 @@ export default function PricingRulesClient() {
                 </TableCell>
               </TableRow>
             )}
-            {!loading && rules.map(rule => (
-              <TableRow key={rule.id} className={!rule.isActive ? 'opacity-50' : ''}>
-                <TableCell>
-                  <p className="text-[13px] font-medium text-foreground">{rule.name}</p>
-                  {rule.roundTo != null && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Округлення до {rule.roundTo} ₴
-                    </p>
-                  )}
-                </TableCell>
-                <TableCell className="text-[13px] text-muted-foreground">
-                  {TYPE_LABELS[rule.type] ?? rule.type}
-                </TableCell>
-                <TableCell className="text-[13px] text-muted-foreground">
-                  <div className="space-y-0.5">
-                    <div>{scopeLabel(rule)}</div>
-                    {rule.brandName && (
-                      <Badge variant="secondary">{rule.brandName}</Badge>
+            {!loading &&
+              rules.map(rule => (
+                <TableRow key={rule.id} className={!rule.isActive ? 'opacity-50' : ''}>
+                  <TableCell>
+                    <p className="text-[13px] font-medium text-foreground">{rule.name}</p>
+                    {rule.roundTo != null && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Округлення до {rule.roundTo} ₴
+                      </p>
                     )}
-                  </div>
-                </TableCell>
-                <TableCell className="text-[13px] font-medium text-foreground">
-                  {rule.type === 'COST_TIER' && rule.tiers && rule.tiers.length > 0 ? (
-                    <div className="text-[12px] text-muted-foreground space-y-0.5">
-                      {rule.tiers.map((t, i) => (
-                        <div key={i}>
-                          {t.costMin}–{t.costMax ?? '∞'} ₴ → {t.percentValue}%
-                        </div>
-                      ))}
+                  </TableCell>
+                  <TableCell className="text-[13px] text-muted-foreground">
+                    {TYPE_LABELS[rule.type] ?? rule.type}
+                  </TableCell>
+                  <TableCell className="text-[13px] text-muted-foreground">
+                    <div className="space-y-0.5">
+                      <div>{scopeLabel(rule)}</div>
+                      {rule.brandName && <Badge variant="secondary">{rule.brandName}</Badge>}
                     </div>
-                  ) : (
-                    valueLabel(rule)
-                  )}
-                </TableCell>
-                <TableCell className="text-[13px] text-muted-foreground text-center">
-                  {rule.priority}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={rule.isActive ? 'success' : 'secondary'}>
-                    {rule.isActive ? 'Активне' : 'Вимкнено'}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => applyAll(rule)}
-                      disabled={applyingId === rule.id || !rule.isActive}
-                      loading={applyingId === rule.id}
-                      title="Застосувати до всіх товарів"
-                      aria-label="Застосувати правило до всіх товарів"
-                    >
-                      <Zap className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditRule(rule)}
-                      title="Редагувати"
-                      aria-label="Редагувати правило"
-                    >
-                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteRule(rule.id)}
-                      disabled={deletingId === rule.id}
-                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                      title="Видалити"
-                      aria-label="Видалити правило"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                  <TableCell className="text-[13px] font-medium text-foreground">
+                    {rule.type === 'COST_TIER' && rule.tiers && rule.tiers.length > 0 ? (
+                      <div className="text-[12px] text-muted-foreground space-y-0.5">
+                        {rule.tiers.map((t, i) => (
+                          <div key={i}>
+                            {t.costMin}–{t.costMax ?? '∞'} ₴ → {t.percentValue}%
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      valueLabel(rule)
+                    )}
+                  </TableCell>
+                  <TableCell className="text-[13px] text-muted-foreground text-center">
+                    {rule.priority}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={rule.isActive ? 'success' : 'secondary'}>
+                      {rule.isActive ? 'Активне' : 'Вимкнено'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => applyAll(rule)}
+                        disabled={applyingId === rule.id || !rule.isActive}
+                        loading={applyingId === rule.id}
+                        title="Застосувати до всіх товарів"
+                        aria-label="Застосувати правило до всіх товарів"
+                      >
+                        <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditRule(rule)}
+                        title="Редагувати"
+                        aria-label="Редагувати правило"
+                      >
+                        <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteRule(rule.id)}
+                        disabled={deletingId === rule.id}
+                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        title="Видалити"
+                        aria-label="Видалити правило"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
           </TableBody>
         </Table>
       </div>

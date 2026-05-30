@@ -1,7 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
-import { CreateWorkCategoryDto, UpdateWorkCategoryDto, WorkCategoryResponseDto } from './work-categories.dto';
+import {
+  CreateWorkCategoryDto,
+  UpdateWorkCategoryDto,
+  WorkCategoryResponseDto,
+} from './work-categories.dto';
 
 const TTL = 300;
 const cacheKey = (orgId: string) => `ref:work-categories:${orgId}`;
@@ -47,7 +51,11 @@ export class WorkCategoriesService {
     return { ...this.toDto(item), children: [] };
   }
 
-  async update(orgId: string, id: string, dto: UpdateWorkCategoryDto): Promise<WorkCategoryResponseDto> {
+  async update(
+    orgId: string,
+    id: string,
+    dto: UpdateWorkCategoryDto,
+  ): Promise<WorkCategoryResponseDto> {
     await this.findOne(orgId, id);
     if (dto.parentId) {
       const parent = await this.prisma.workCategory.findFirst({
@@ -96,22 +104,45 @@ export class WorkCategoriesService {
   }
 
   private buildTree(
-    all: Array<{ id: string; orgId: string; parentId: string | null; name: string; icon: string | null; sortOrder: number; createdAt: Date; updatedAt: Date }>,
+    all: Array<{
+      id: string;
+      orgId: string;
+      parentId: string | null;
+      name: string;
+      icon: string | null;
+      sortOrder: number;
+      createdAt: Date;
+      updatedAt: Date;
+    }>,
     parentId: string | null,
   ): WorkCategoryResponseDto[] {
     return all
-      .filter((item) => item.parentId === parentId)
-      .map((item) => ({
+      .filter(item => item.parentId === parentId)
+      .map(item => ({
         ...this.toDto(item),
         children: this.buildTree(all, item.id),
       }));
   }
 
-  private toDto(item: { id: string; orgId: string; parentId: string | null; name: string; icon: string | null; sortOrder: number; createdAt: Date; updatedAt: Date }): Omit<WorkCategoryResponseDto, 'children'> {
+  private toDto(item: {
+    id: string;
+    orgId: string;
+    parentId: string | null;
+    name: string;
+    icon: string | null;
+    sortOrder: number;
+    createdAt: Date;
+    updatedAt: Date;
+  }): Omit<WorkCategoryResponseDto, 'children'> {
     return {
-      id: item.id, orgId: item.orgId, parentId: item.parentId,
-      name: item.name, icon: item.icon, sortOrder: item.sortOrder,
-      createdAt: item.createdAt, updatedAt: item.updatedAt,
+      id: item.id,
+      orgId: item.orgId,
+      parentId: item.parentId,
+      name: item.name,
+      icon: item.icon,
+      sortOrder: item.sortOrder,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
     };
   }
 }

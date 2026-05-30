@@ -2,7 +2,11 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateBookingRequestDto, BookingRequestResponseDto, AvailabilitySlotDto } from './booking.dto';
+import {
+  CreateBookingRequestDto,
+  BookingRequestResponseDto,
+  AvailabilitySlotDto,
+} from './booking.dto';
 
 @Injectable()
 export class BookingService {
@@ -16,7 +20,9 @@ export class BookingService {
    * Single source of truth for branch lookup — soft-deleted branches must NEVER
    * leak to public booking, otherwise customers see slots for a closed location.
    */
-  async findBranchForBooking(branchId: string): Promise<{ id: string; orgId: string; name: string } | null> {
+  async findBranchForBooking(
+    branchId: string,
+  ): Promise<{ id: string; orgId: string; name: string } | null> {
     return this.prisma.garageBranch.findFirst({
       where: { id: branchId, deletedAt: null },
       select: { id: true, orgId: true, name: true },
@@ -24,7 +30,9 @@ export class BookingService {
   }
 
   /** Public list of branches for booking widget (no auth required). */
-  async listBranchesForBooking(): Promise<{ id: string; name: string; address: string | null; orgId: string }[]> {
+  async listBranchesForBooking(): Promise<
+    { id: string; name: string; address: string | null; orgId: string }[]
+  > {
     return this.prisma.garageBranch.findMany({
       where: { deletedAt: null },
       select: { id: true, name: true, address: true, orgId: true },
@@ -53,7 +61,12 @@ export class BookingService {
     return `${sign}${h}:${m}`;
   }
 
-  async getAvailability(orgId: string, branchId: string, date: string, serviceIds?: string[]): Promise<AvailabilitySlotDto[]> {
+  async getAvailability(
+    orgId: string,
+    branchId: string,
+    date: string,
+    serviceIds?: string[],
+  ): Promise<AvailabilitySlotDto[]> {
     // Bug #113: day boundaries must be Kyiv-local, not UTC, otherwise a slot
     // requested for "2026-05-27 in Kyiv" would search a misaligned UTC window.
     const offset = this.kyivOffsetForDate(date);
@@ -103,7 +116,7 @@ export class BookingService {
           if (endMinutes > endLimitMinutes) continue;
 
           const isBusy = busySlots.some(
-            (b) =>
+            b =>
               b.liftId === lift.id &&
               new Date(b.startAt) < slotEnd &&
               new Date(b.endAt) > slotStart,
@@ -168,11 +181,13 @@ export class BookingService {
       }),
       this.prisma.bookingRequest.count({ where: { orgId, deletedAt: null } }),
     ]);
-    return { items: items.map((r) => this.toDto(r)), total };
+    return { items: items.map(r => this.toDto(r)), total };
   }
 
   async confirm(orgId: string, id: string): Promise<BookingRequestResponseDto> {
-    const req = await this.prisma.bookingRequest.findFirst({ where: { id, orgId, deletedAt: null } });
+    const req = await this.prisma.bookingRequest.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
     if (!req) throw new NotFoundException('Заявку не знайдено');
     const updated = await this.prisma.bookingRequest.update({
       where: { id },
@@ -182,7 +197,9 @@ export class BookingService {
   }
 
   async cancel(orgId: string, id: string): Promise<void> {
-    const req = await this.prisma.bookingRequest.findFirst({ where: { id, orgId, deletedAt: null } });
+    const req = await this.prisma.bookingRequest.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
     if (!req) throw new NotFoundException('Заявку не знайдено');
     await this.prisma.bookingRequest.update({
       where: { id },

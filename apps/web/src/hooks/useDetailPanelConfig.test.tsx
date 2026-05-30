@@ -23,7 +23,11 @@ describe('useDetailPanelConfig', () => {
 
   it('початковий стан: hiddenFields=[] і loading=true', async () => {
     // API ніколи не резолвиться щоб зафіксувати початковий стан перед completion
-    apiFetchMock.mockReturnValueOnce(new Promise(() => { /* never resolves */ }));
+    apiFetchMock.mockReturnValueOnce(
+      new Promise(() => {
+        /* never resolves */
+      }),
+    );
     const { result } = renderHook(() => useDetailPanelConfig('crm'));
     expect(result.current.config).toEqual({ hiddenFields: [] });
     expect(result.current.loading).toBe(true);
@@ -33,7 +37,11 @@ describe('useDetailPanelConfig', () => {
     // localStorage містить попередній збережений конфіг
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ hiddenFields: ['phone', 'email'] }));
     // API ще не резолвиться
-    apiFetchMock.mockReturnValueOnce(new Promise(() => { /* never resolves */ }));
+    apiFetchMock.mockReturnValueOnce(
+      new Promise(() => {
+        /* never resolves */
+      }),
+    );
 
     const { result } = renderHook(() => useDetailPanelConfig('crm'));
     // localStorage прочитано синхронно — config має одразу містити кеш
@@ -53,11 +61,13 @@ describe('useDetailPanelConfig', () => {
       expect(result.current.config.hiddenFields).toEqual(['balance']);
     });
     // localStorage оновлено для майбутніх optimistic reads
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { hiddenFields: string[] };
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
+      hiddenFields: string[];
+    };
     expect(stored.hiddenFields).toEqual(['balance']);
   });
 
-  it('API повертає невалідне value (не об\'єкт із hiddenFields) → fallback на порожній', async () => {
+  it("API повертає невалідне value (не об'єкт із hiddenFields) → fallback на порожній", async () => {
     apiFetchMock.mockResolvedValueOnce({ key: 'detail_panel_crm', value: { otherField: 1 } });
     const { result } = renderHook(() => useDetailPanelConfig('crm'));
     await waitFor(() => {
@@ -83,45 +93,65 @@ describe('useDetailPanelConfig', () => {
     apiFetchMock.mockClear();
     apiFetchMock.mockResolvedValue(undefined); // PUT resolves
 
-    act(() => { result.current.toggleField('phone'); });
+    act(() => {
+      result.current.toggleField('phone');
+    });
 
     expect(result.current.config.hiddenFields).toEqual(['phone']);
     // localStorage оновлено синхронно
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { hiddenFields: string[] };
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
+      hiddenFields: string[];
+    };
     expect(stored.hiddenFields).toEqual(['phone']);
     // PUT надіслано з правильним body
-    expect(apiFetchMock).toHaveBeenCalledWith(API_PATH, expect.objectContaining({
-      method: 'PUT',
-      body: JSON.stringify({ key: 'detail_panel_crm', value: { hiddenFields: ['phone'] } }),
-    }));
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      API_PATH,
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ key: 'detail_panel_crm', value: { hiddenFields: ['phone'] } }),
+      }),
+    );
   });
 
   it('toggleField повторно для того ж поля — видаляє з hiddenFields', async () => {
-    apiFetchMock.mockResolvedValueOnce({ key: 'detail_panel_crm', value: { hiddenFields: ['phone'] } });
+    apiFetchMock.mockResolvedValueOnce({
+      key: 'detail_panel_crm',
+      value: { hiddenFields: ['phone'] },
+    });
     const { result } = renderHook(() => useDetailPanelConfig('crm'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     apiFetchMock.mockResolvedValue(undefined);
 
-    act(() => { result.current.toggleField('phone'); });
+    act(() => {
+      result.current.toggleField('phone');
+    });
 
     expect(result.current.config.hiddenFields).toEqual([]);
   });
 
   it('reset очищує hiddenFields, видаляє localStorage і викликає PUT з порожнім value', async () => {
-    apiFetchMock.mockResolvedValueOnce({ key: 'detail_panel_crm', value: { hiddenFields: ['phone', 'email'] } });
+    apiFetchMock.mockResolvedValueOnce({
+      key: 'detail_panel_crm',
+      value: { hiddenFields: ['phone', 'email'] },
+    });
     const { result } = renderHook(() => useDetailPanelConfig('crm'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     apiFetchMock.mockClear();
     apiFetchMock.mockResolvedValue(undefined);
 
-    act(() => { result.current.reset(); });
+    act(() => {
+      result.current.reset();
+    });
 
     expect(result.current.config.hiddenFields).toEqual([]);
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
-    expect(apiFetchMock).toHaveBeenCalledWith(API_PATH, expect.objectContaining({
-      method: 'PUT',
-      body: JSON.stringify({ key: 'detail_panel_crm', value: { hiddenFields: [] } }),
-    }));
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      API_PATH,
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ key: 'detail_panel_crm', value: { hiddenFields: [] } }),
+      }),
+    );
   });
 
   it('rapid toggle: попередній PUT abort-нутий перед новим (race protection)', async () => {
@@ -133,12 +163,20 @@ describe('useDetailPanelConfig', () => {
     const signals: AbortSignal[] = [];
     apiFetchMock.mockImplementation((_url: string, init: RequestInit) => {
       if (init?.signal) signals.push(init.signal as AbortSignal);
-      return new Promise(() => { /* never resolves — simulate in-flight */ });
+      return new Promise(() => {
+        /* never resolves — simulate in-flight */
+      });
     });
 
-    act(() => { result.current.toggleField('phone'); });
-    act(() => { result.current.toggleField('email'); });
-    act(() => { result.current.toggleField('balance'); });
+    act(() => {
+      result.current.toggleField('phone');
+    });
+    act(() => {
+      result.current.toggleField('email');
+    });
+    act(() => {
+      result.current.toggleField('balance');
+    });
 
     // 3 виклики, перші 2 signal.aborted=true (abort-нуті), останній — pending
     expect(signals).toHaveLength(3);
@@ -148,8 +186,14 @@ describe('useDetailPanelConfig', () => {
   });
 
   it('різні pageKey мають незалежний storage та API key', async () => {
-    apiFetchMock.mockResolvedValueOnce({ key: 'detail_panel_crm', value: { hiddenFields: ['phone'] } });
-    apiFetchMock.mockResolvedValueOnce({ key: 'detail_panel_employees', value: { hiddenFields: ['role'] } });
+    apiFetchMock.mockResolvedValueOnce({
+      key: 'detail_panel_crm',
+      value: { hiddenFields: ['phone'] },
+    });
+    apiFetchMock.mockResolvedValueOnce({
+      key: 'detail_panel_employees',
+      value: { hiddenFields: ['role'] },
+    });
 
     const { result: crm } = renderHook(() => useDetailPanelConfig('crm'));
     const { result: emp } = renderHook(() => useDetailPanelConfig('employees'));
@@ -167,7 +211,10 @@ describe('useDetailPanelConfig', () => {
   });
 
   it('isFieldHidden повертає true для прихованих полів і false для видимих', async () => {
-    apiFetchMock.mockResolvedValueOnce({ key: 'detail_panel_crm', value: { hiddenFields: ['phone', 'email'] } });
+    apiFetchMock.mockResolvedValueOnce({
+      key: 'detail_panel_crm',
+      value: { hiddenFields: ['phone', 'email'] },
+    });
     const { result } = renderHook(() => useDetailPanelConfig('crm'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.isFieldHidden('phone')).toBe(true);

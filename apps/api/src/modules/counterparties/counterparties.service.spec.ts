@@ -22,7 +22,7 @@ describe('CounterpartiesService', () => {
   };
 
   const query = (partial: Partial<CounterpartyQueryDto> = {}): CounterpartyQueryDto =>
-    ({ page: 1, limit: 20, ...partial } as CounterpartyQueryDto);
+    ({ page: 1, limit: 20, ...partial }) as CounterpartyQueryDto;
 
   beforeEach(async () => {
     prisma = {

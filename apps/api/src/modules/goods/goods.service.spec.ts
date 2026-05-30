@@ -21,12 +21,23 @@ describe('GoodsService', () => {
   };
 
   const goodRow = {
-    id: 'good-1', orgId: 'org-1', sku: 'OIL', name: 'Олива', unit: 'шт',
-    unitId: null, brandId: null,
-    purchasePrice: new Prisma.Decimal(100), salePrice: new Prisma.Decimal(150),
-    category: null, barcode: null, notes: null, goodType: null,
-    preferredSupplierId: null, preferredSupplier: null,
-    createdAt: new Date('2026-01-01'), updatedAt: new Date('2026-01-01'),
+    id: 'good-1',
+    orgId: 'org-1',
+    sku: 'OIL',
+    name: 'Олива',
+    unit: 'шт',
+    unitId: null,
+    brandId: null,
+    purchasePrice: new Prisma.Decimal(100),
+    salePrice: new Prisma.Decimal(150),
+    category: null,
+    barcode: null,
+    notes: null,
+    goodType: null,
+    preferredSupplierId: null,
+    preferredSupplier: null,
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
   };
 
   beforeEach(async () => {
@@ -77,7 +88,11 @@ describe('GoodsService', () => {
     it('Bug #161: brandId з іншої org / неіснуючий → BadRequestException', async () => {
       prisma.brand.findFirst.mockResolvedValueOnce(null); // brand not in org
       await expect(
-        service.create('org-1', { name: 'Олива', salePrice: 150, brandId: '11111111-1111-4111-8111-111111111111' }),
+        service.create('org-1', {
+          name: 'Олива',
+          salePrice: 150,
+          brandId: '11111111-1111-4111-8111-111111111111',
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.good.create).not.toHaveBeenCalled();
     });
@@ -85,7 +100,11 @@ describe('GoodsService', () => {
     it('Bug #161: unitId з іншої org / неіснуючий → BadRequestException', async () => {
       prisma.unitOfMeasure.findFirst.mockResolvedValueOnce(null);
       await expect(
-        service.create('org-1', { name: 'Олива', salePrice: 150, unitId: '22222222-2222-4222-8222-222222222222' }),
+        service.create('org-1', {
+          name: 'Олива',
+          salePrice: 150,
+          unitId: '22222222-2222-4222-8222-222222222222',
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.good.create).not.toHaveBeenCalled();
     });
@@ -93,7 +112,11 @@ describe('GoodsService', () => {
     it('Bug #161: preferredSupplierId з іншої org / неіснуючий → BadRequestException', async () => {
       prisma.counterparty.findFirst.mockResolvedValueOnce(null);
       await expect(
-        service.create('org-1', { name: 'Олива', salePrice: 150, preferredSupplierId: '33333333-3333-4333-8333-333333333333' }),
+        service.create('org-1', {
+          name: 'Олива',
+          salePrice: 150,
+          preferredSupplierId: '33333333-3333-4333-8333-333333333333',
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.good.create).not.toHaveBeenCalled();
     });
@@ -103,12 +126,15 @@ describe('GoodsService', () => {
       prisma.brand.findFirst.mockResolvedValueOnce({ id: 'brand-1' });
       prisma.unitOfMeasure.findFirst.mockResolvedValueOnce({ id: 'unit-1' });
       await service.create('org-1', {
-        name: 'Олива', salePrice: 150,
+        name: 'Олива',
+        salePrice: 150,
         brandId: '11111111-1111-4111-8111-111111111111',
         unitId: '22222222-2222-4222-8222-222222222222',
       });
       expect(prisma.brand.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ orgId: 'org-1', deletedAt: null }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-1', deletedAt: null }),
+        }),
       );
       expect(prisma.good.create).toHaveBeenCalledTimes(1);
     });

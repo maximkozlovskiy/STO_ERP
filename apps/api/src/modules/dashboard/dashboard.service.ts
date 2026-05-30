@@ -84,13 +84,16 @@ export class DashboardService {
         `,
       ]);
 
-    if (activeWoCount.status === 'rejected') this.logger.warn(`activeWo failed: ${activeWoCount.reason}`);
-    if (todayRevenueData.status === 'rejected') this.logger.warn(`todayRevenue failed: ${todayRevenueData.reason}`);
-    if (pendingInvoiceCount.status === 'rejected') this.logger.warn(`pendingInvoices failed: ${pendingInvoiceCount.reason}`);
-    if (lowStockCount.status === 'rejected') this.logger.warn(`lowStock failed: ${lowStockCount.reason}`);
+    if (activeWoCount.status === 'rejected')
+      this.logger.warn(`activeWo failed: ${activeWoCount.reason}`);
+    if (todayRevenueData.status === 'rejected')
+      this.logger.warn(`todayRevenue failed: ${todayRevenueData.reason}`);
+    if (pendingInvoiceCount.status === 'rejected')
+      this.logger.warn(`pendingInvoices failed: ${pendingInvoiceCount.reason}`);
+    if (lowStockCount.status === 'rejected')
+      this.logger.warn(`lowStock failed: ${lowStockCount.reason}`);
 
-    const activeWo =
-      activeWoCount.status === 'fulfilled' ? activeWoCount.value : 0;
+    const activeWo = activeWoCount.status === 'fulfilled' ? activeWoCount.value : 0;
 
     // `amount` у SettlementTransaction — Prisma.Decimal. Через Number() безпечно
     // перетворюємо у JS-число (no `as any`). `_sum.amount` буде null коли немає рядків.
@@ -100,9 +103,7 @@ export class DashboardService {
         : 0;
 
     const pendingInvoices =
-      pendingInvoiceCount.status === 'fulfilled'
-        ? pendingInvoiceCount.value
-        : 0;
+      pendingInvoiceCount.status === 'fulfilled' ? pendingInvoiceCount.value : 0;
 
     // `$queryRaw` returns Array<{ count: bigint }>; extract the single row.
     // `Number(bigint)` is safe — low-stock counts are far below 2^53.

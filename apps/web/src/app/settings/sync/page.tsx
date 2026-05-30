@@ -34,7 +34,9 @@ export default function SyncPage() {
     }
   };
 
-  useEffect(() => { loadStatus(); }, []);
+  useEffect(() => {
+    loadStatus();
+  }, []);
 
   const triggerSync = async () => {
     setSyncing(true);
@@ -52,7 +54,7 @@ export default function SyncPage() {
 
       setMsg(
         `Синхронізація завершена. Отримано ${pulledCount} записів. ` +
-        `Відправлено: ${pushResult.accepted} прийнято, ${pushResult.conflicts} конфліктів.`,
+          `Відправлено: ${pushResult.accepted} прийнято, ${pushResult.conflicts} конфліктів.`,
       );
       await loadStatus();
     } catch (e: unknown) {
@@ -65,22 +67,30 @@ export default function SyncPage() {
   const fmtDate = (iso: string | null) => {
     if (!iso) return '—';
     const d = new Date(iso);
-    return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
-      + ' ' + d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+    return (
+      d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+      ' ' +
+      d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
+    );
   };
 
   return (
     <div className="page-container max-w-2xl">
       <h1 className="page-title mb-2">Cloud Sync</h1>
       <p className="text-sm text-muted-foreground mb-6">
-        Синхронізація між філіями та хмарний резервний бекап. Опціональна функція — система повністю працює без неї.
+        Синхронізація між філіями та хмарний резервний бекап. Опціональна функція — система повністю
+        працює без неї.
       </p>
 
       {msg && (
-        <div className="mb-4 text-sm text-success bg-success-subtle border border-success/20 rounded-lg p-3">{msg}</div>
+        <div className="mb-4 text-sm text-success bg-success-subtle border border-success/20 rounded-lg p-3">
+          {msg}
+        </div>
       )}
       {error && (
-        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">{error}</div>
+        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">
+          {error}
+        </div>
       )}
 
       {loading ? (
@@ -88,20 +98,46 @@ export default function SyncPage() {
           <Spinner size="lg" />
         </div>
       ) : !status ? (
-        <div className="text-center py-12 text-muted-foreground">Не вдалося завантажити статус синхронізації.</div>
+        <div className="text-center py-12 text-muted-foreground">
+          Не вдалося завантажити статус синхронізації.
+        </div>
       ) : (
         <>
           {/* Status cards */}
           <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className={cn('bg-surface rounded-xl border p-4', status.failedJobs > 0 ? 'border-destructive/30' : 'border-border')}>
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Помилки</div>
-              <div className={cn('text-2xl font-bold', status.failedJobs > 0 ? 'text-destructive' : 'text-muted-foreground')}>
+            <div
+              className={cn(
+                'bg-surface rounded-xl border p-4',
+                status.failedJobs > 0 ? 'border-destructive/30' : 'border-border',
+              )}
+            >
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                Помилки
+              </div>
+              <div
+                className={cn(
+                  'text-2xl font-bold',
+                  status.failedJobs > 0 ? 'text-destructive' : 'text-muted-foreground',
+                )}
+              >
                 {status.failedJobs}
               </div>
             </div>
-            <div className={cn('bg-surface rounded-xl border p-4', status.pendingJobs > 0 ? 'border-warning/30' : 'border-border')}>
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Очікують</div>
-              <div className={cn('text-2xl font-bold', status.pendingJobs > 0 ? 'text-warning' : 'text-muted-foreground')}>
+            <div
+              className={cn(
+                'bg-surface rounded-xl border p-4',
+                status.pendingJobs > 0 ? 'border-warning/30' : 'border-border',
+              )}
+            >
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                Очікують
+              </div>
+              <div
+                className={cn(
+                  'text-2xl font-bold',
+                  status.pendingJobs > 0 ? 'text-warning' : 'text-muted-foreground',
+                )}
+              >
                 {status.pendingJobs}
               </div>
             </div>
@@ -117,10 +153,16 @@ export default function SyncPage() {
               <span className="font-medium text-foreground font-mono">{status.maxSyncVersion}</span>
             </div>
             <div className="flex items-center gap-2 pt-1">
-              <div className={cn(
-                'w-2 h-2 rounded-full',
-                status.failedJobs > 0 ? 'bg-destructive' : status.pendingJobs > 0 ? 'bg-warning' : 'bg-success',
-              )} />
+              <div
+                className={cn(
+                  'w-2 h-2 rounded-full',
+                  status.failedJobs > 0
+                    ? 'bg-destructive'
+                    : status.pendingJobs > 0
+                      ? 'bg-warning'
+                      : 'bg-success',
+                )}
+              />
               <span className="text-sm text-muted-foreground">
                 {status.failedJobs > 0
                   ? 'Є помилки синхронізації — перевірте журнал'

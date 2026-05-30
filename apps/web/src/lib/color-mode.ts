@@ -17,8 +17,7 @@ export function applyColorMode(mode?: ColorMode): void {
   if (typeof window === 'undefined') return;
   const m = mode ?? getColorMode();
   const isDark =
-    m === 'dark' ||
-    (m === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    m === 'dark' || (m === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.classList.toggle('dark', isDark);
   document.documentElement.setAttribute('data-color-mode', m);
 }

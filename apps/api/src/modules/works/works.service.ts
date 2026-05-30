@@ -1,7 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateWorkDto, UpdateWorkDto, WorkQueryDto, WorkResponseDto, PaginatedWorksDto } from './works.dto';
+import {
+  CreateWorkDto,
+  UpdateWorkDto,
+  WorkQueryDto,
+  WorkResponseDto,
+  PaginatedWorksDto,
+} from './works.dto';
 
 @Injectable()
 export class WorksService {
@@ -24,7 +30,12 @@ export class WorksService {
       this.prisma.work.count({ where }),
     ]);
 
-    return { items: items.map(item => this.toDto(item)), total, page: query.page, limit: query.limit };
+    return {
+      items: items.map(item => this.toDto(item)),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 
   async findOne(orgId: string, id: string): Promise<WorkResponseDto> {
@@ -78,9 +89,16 @@ export class WorksService {
   }
 
   private toDto(item: {
-    id: string; orgId: string; categoryId: string; name: string; normoHours: number;
-    price: import('@prisma/client').Prisma.Decimal; description: string | null;
-    isWarranty: boolean; createdAt: Date; updatedAt: Date;
+    id: string;
+    orgId: string;
+    categoryId: string;
+    name: string;
+    normoHours: number;
+    price: import('@prisma/client').Prisma.Decimal;
+    description: string | null;
+    isWarranty: boolean;
+    createdAt: Date;
+    updatedAt: Date;
     category: { name: string };
   }): WorkResponseDto {
     return {

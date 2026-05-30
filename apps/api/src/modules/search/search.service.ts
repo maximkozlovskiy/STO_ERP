@@ -19,7 +19,7 @@ export class SearchService {
     // arrive last and be dropped by `slice(0, limit)` while `wo` results dominate.
     const perType = Math.ceil(limit / types.length);
     const buckets = await Promise.all(
-      types.map((type) => this.searchByType(orgId, q, type, perType)),
+      types.map(type => this.searchByType(orgId, q, type, perType)),
     );
     return buckets.flat().slice(0, limit);
   }
@@ -42,7 +42,14 @@ export class SearchService {
 
   private async searchWorkOrders(orgId: string, q: string, limit: number) {
     const rows = await this.prisma.$queryRaw<
-      { id: string; number: string; status: string; firstName: string | null; lastName: string | null; companyName: string | null }[]
+      {
+        id: string;
+        number: string;
+        status: string;
+        firstName: string | null;
+        lastName: string | null;
+        companyName: string | null;
+      }[]
     >`
       SELECT wo.id, wo."number", wo."status",
              cp."firstName", cp."lastName", cp."companyName"
@@ -54,7 +61,7 @@ export class SearchService {
       ORDER BY similarity(wo."number", ${q}) DESC
       LIMIT ${limit}
     `;
-    return rows.map((r) => {
+    return rows.map(r => {
       const personName = [r.firstName, r.lastName].filter(Boolean).join(' ');
       return {
         type: 'wo',
@@ -70,7 +77,13 @@ export class SearchService {
     // Counterparty can be an individual (firstName + lastName) OR a company (companyName).
     // Without the companyName branch, B2B clients are invisible to the command palette.
     const rows = await this.prisma.$queryRaw<
-      { id: string; firstName: string | null; lastName: string | null; companyName: string | null; phone: string | null }[]
+      {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        companyName: string | null;
+        phone: string | null;
+      }[]
     >`
       SELECT id, "firstName", "lastName", "companyName", phone
       FROM counterparties
@@ -87,7 +100,7 @@ export class SearchService {
       ) DESC
       LIMIT ${limit}
     `;
-    return rows.map((r) => ({
+    return rows.map(r => ({
       type: 'counterparty',
       id: r.id,
       label: r.companyName ?? `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim(),
@@ -119,7 +132,7 @@ export class SearchService {
       ORDER BY similarity(g.name, ${q}) DESC
       LIMIT ${limit}
     `;
-    return rows.map((r) => ({
+    return rows.map(r => ({
       type: 'good',
       id: r.id,
       label: r.name,

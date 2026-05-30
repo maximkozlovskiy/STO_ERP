@@ -63,11 +63,7 @@ export class ReportsController {
   @ApiOperation({ summary: 'Рентабельність (виручка vs собівартість)' })
   @ApiQuery({ name: 'from', required: true })
   @ApiQuery({ name: 'to', required: true })
-  profitability(
-    @OrgContext() orgId: string,
-    @Query('from') from: string,
-    @Query('to') to: string,
-  ) {
+  profitability(@OrgContext() orgId: string, @Query('from') from: string, @Query('to') to: string) {
     return this.service.profitability(orgId, from, to);
   }
 

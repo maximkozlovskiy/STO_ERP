@@ -5,11 +5,7 @@ import { cn } from '@/lib/utils';
 function Card({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn(
-        'rounded-lg border border-border bg-surface',
-        'shadow-xs',
-        className,
-      )}
+      className={cn('rounded-lg border border-border bg-surface', 'shadow-xs', className)}
       {...props}
     >
       {children}
@@ -19,7 +15,10 @@ function Card({ className, children, ...props }: HTMLAttributes<HTMLDivElement>)
 
 function CardHeader({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('flex flex-col gap-1 px-5 pt-5 pb-4 border-b border-border', className)} {...props}>
+    <div
+      className={cn('flex flex-col gap-1 px-5 pt-5 pb-4 border-b border-border', className)}
+      {...props}
+    >
       {children}
     </div>
   );
@@ -28,7 +27,10 @@ function CardHeader({ className, children, ...props }: HTMLAttributes<HTMLDivEle
 function CardTitle({ className, children, ...props }: HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn('text-[15px] font-semibold text-foreground leading-tight tracking-[-0.01em]', className)}
+      className={cn(
+        'text-[15px] font-semibold text-foreground leading-tight tracking-[-0.01em]',
+        className,
+      )}
       {...props}
     >
       {children}
@@ -55,7 +57,10 @@ function CardContent({ className, children, ...props }: HTMLAttributes<HTMLDivEl
 function CardFooter({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('flex items-center px-5 py-3 border-t border-border bg-secondary rounded-b-lg', className)}
+      className={cn(
+        'flex items-center px-5 py-3 border-t border-border bg-secondary rounded-b-lg',
+        className,
+      )}
       {...props}
     >
       {children}
@@ -73,7 +78,14 @@ interface KpiCardProps {
   className?: string;
 }
 
-function KpiCard({ label, value, icon, colorClass = 'kpi-card-blue', trend, className }: KpiCardProps) {
+function KpiCard({
+  label,
+  value,
+  icon,
+  colorClass = 'kpi-card-blue',
+  trend,
+  className,
+}: KpiCardProps) {
   return (
     <div
       className={cn(
@@ -91,10 +103,12 @@ function KpiCard({ label, value, icon, colorClass = 'kpi-card-blue', trend, clas
           {value}
         </span>
         {trend && (
-          <span className={cn(
-            'text-[12px] font-medium mt-0.5',
-            trend.up ? 'text-success' : 'text-destructive',
-          )}>
+          <span
+            className={cn(
+              'text-[12px] font-medium mt-0.5',
+              trend.up ? 'text-success' : 'text-destructive',
+            )}
+          >
             {trend.up ? '↑' : '↓'} {trend.value}
           </span>
         )}

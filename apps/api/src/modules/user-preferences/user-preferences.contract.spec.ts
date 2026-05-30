@@ -14,7 +14,7 @@ const serviceMock = {
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { id: 'emp-uuid-1', orgId: 'org-uuid-1', role: 'ADMIN' };
@@ -31,12 +31,16 @@ describe('UserPreferences — HTTP Contract', () => {
       controllers: [UserPreferencesController],
       providers: [{ provide: UserPreferencesService, useValue: serviceMock }],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
     await app.init();
     await (app as NestFastifyApplication).getHttpAdapter().getInstance().ready();
   });
@@ -113,7 +117,7 @@ describe('UserPreferences — HTTP Contract', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('PUT /user-preferences/:key → 400 якщо value не об\'єкт', async () => {
+  it("PUT /user-preferences/:key → 400 якщо value не об'єкт", async () => {
     const res = await (app as NestFastifyApplication).inject({
       method: 'PUT',
       url: '/user-preferences/detail_panel_crm',

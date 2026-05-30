@@ -20,7 +20,7 @@ const serviceMock = {
 let mockRole = 'ADMIN';
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { sub: 'emp-1', orgId: 'org-1', role: mockRole };
@@ -49,9 +49,7 @@ describe('Warehouses — HTTP Contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [WarehousesController],
-      providers: [
-        { provide: WarehousesService, useValue: serviceMock },
-      ],
+      providers: [{ provide: WarehousesService, useValue: serviceMock }],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue(mockJwtGuard)
@@ -100,7 +98,10 @@ describe('Warehouses — HTTP Contract', () => {
         url: '/warehouses?branchId=22222222-2222-4222-8222-222222222222',
       });
       expect(res.statusCode).toBe(200);
-      expect(serviceMock.findAll).toHaveBeenLastCalledWith('org-1', '22222222-2222-4222-8222-222222222222');
+      expect(serviceMock.findAll).toHaveBeenLastCalledWith(
+        'org-1',
+        '22222222-2222-4222-8222-222222222222',
+      );
     });
 
     it('403/401 без авторизації', async () => {

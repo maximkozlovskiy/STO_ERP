@@ -8,8 +8,8 @@ export class UpsertUserPreferenceDto {
   @MaxLength(200)
   key!: string;
 
-  @ApiProperty({ description: 'Значення (JSON-об\'єкт)' })
-  @IsObject({ message: 'Значення має бути об\'єктом' })
+  @ApiProperty({ description: "Значення (JSON-об'єкт)" })
+  @IsObject({ message: "Значення має бути об'єктом" })
   value!: Record<string, unknown>;
 }
 

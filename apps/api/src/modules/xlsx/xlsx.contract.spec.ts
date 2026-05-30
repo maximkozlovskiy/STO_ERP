@@ -32,7 +32,7 @@ const worksServiceMock = { create: vi.fn(), findCategoryByName: vi.fn() };
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { id: 'emp-1', orgId: 'org-1', role: 'OWNER' };
@@ -55,12 +55,16 @@ describe('Xlsx — HTTP Contract', () => {
         { provide: WorksService, useValue: worksServiceMock },
       ],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
+    );
 
     // Реєструємо multipart щоб req.file() працював
     const fastify = (app as NestFastifyApplication).getHttpAdapter().getInstance();
@@ -81,7 +85,9 @@ describe('Xlsx — HTTP Contract', () => {
 
   describe('GET /xlsx/templates/pricing-list', () => {
     it('Bug #190: 200 + { file, filename: .csv } для pricing-list типу', async () => {
-      xlsxServiceMock.generatePricingListTemplate.mockReturnValueOnce(Buffer.from('sku,barcode,name\n', 'utf-8'));
+      xlsxServiceMock.generatePricingListTemplate.mockReturnValueOnce(
+        Buffer.from('sku,barcode,name\n', 'utf-8'),
+      );
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
         url: '/xlsx/templates/pricing-list',

@@ -6,10 +6,7 @@ import { LoyaltyProcessor } from './loyalty.processor';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
-  imports: [
-    PrismaModule,
-    BullModule.registerQueue({ name: 'loyalty' }),
-  ],
+  imports: [PrismaModule, BullModule.registerQueue({ name: 'loyalty' })],
   controllers: [LoyaltyController],
   providers: [LoyaltyService, LoyaltyProcessor],
   exports: [LoyaltyService],

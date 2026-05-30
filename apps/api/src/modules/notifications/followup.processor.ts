@@ -53,68 +53,75 @@ export class FollowUpProcessor {
 
     // Maintenance schedules due within forecast window — exclude already-overdue ones
     // (Bug #102: previously sent SMS daily for missed maintenance months in the past).
-    const upcomingMaintenance = (await this.prisma.maintenanceSchedule.findMany({
-      where: {
-        orgId,
-        deletedAt: null,
-        isActive: true,
-        nextMaintenanceDate: { gte: today, lte: todayPlusForecast },
-      },
-      include: {
-        vehicle: {
-          include: {
-            customerGarage: {
-              include: { counterparty: true },
+    const upcomingMaintenance = (
+      await this.prisma.maintenanceSchedule.findMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          isActive: true,
+          nextMaintenanceDate: { gte: today, lte: todayPlusForecast },
+        },
+        include: {
+          vehicle: {
+            include: {
+              customerGarage: {
+                include: { counterparty: true },
+              },
             },
           },
         },
-      },
-      take: MAX_SCHEDULES_PER_RUN,
-    })).filter(
-      s => !s.vehicle.deletedAt &&
-           !s.vehicle.customerGarage.deletedAt &&
-           !s.vehicle.customerGarage.counterparty.deletedAt,
+        take: MAX_SCHEDULES_PER_RUN,
+      })
+    ).filter(
+      s =>
+        !s.vehicle.deletedAt &&
+        !s.vehicle.customerGarage.deletedAt &&
+        !s.vehicle.customerGarage.counterparty.deletedAt,
     );
 
     if (upcomingMaintenance.length >= MAX_SCHEDULES_PER_RUN) {
-      this.logger.warn(`FollowUp org=${orgId}: maintenance schedules ліміт ${MAX_SCHEDULES_PER_RUN} досягнуто — потрібна пагінація`);
+      this.logger.warn(
+        `FollowUp org=${orgId}: maintenance schedules ліміт ${MAX_SCHEDULES_PER_RUN} досягнуто — потрібна пагінація`,
+      );
     }
 
     // "Inactive" vehicles — had a completed WO before cutoff but none after (Bug #101).
     // Vehicles that NEVER had a completed WO are excluded — they were never our customers
     // for that vehicle, so a "we miss you" SMS would be misleading.
-    const inactiveVehicles = (await this.prisma.vehicle.findMany({
-      where: {
-        orgId,
-        deletedAt: null,
-        workOrders: {
-          some: {
-            deletedAt: null,
-            completedAt: { not: null, lt: cutoffDate },
+    const inactiveVehicles = (
+      await this.prisma.vehicle.findMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          workOrders: {
+            some: {
+              deletedAt: null,
+              completedAt: { not: null, lt: cutoffDate },
+            },
+            none: {
+              deletedAt: null,
+              completedAt: { gte: cutoffDate },
+            },
           },
-          none: {
-            deletedAt: null,
-            completedAt: { gte: cutoffDate },
+        },
+        include: {
+          customerGarage: {
+            include: { counterparty: true },
+          },
+          workOrders: {
+            where: { deletedAt: null, completedAt: { not: null } },
+            orderBy: { completedAt: 'desc' },
+            take: 1,
           },
         },
-      },
-      include: {
-        customerGarage: {
-          include: { counterparty: true },
-        },
-        workOrders: {
-          where: { deletedAt: null, completedAt: { not: null } },
-          orderBy: { completedAt: 'desc' },
-          take: 1,
-        },
-      },
-      take: MAX_VEHICLES_PER_RUN,
-    })).filter(
-      v => !v.customerGarage.deletedAt && !v.customerGarage.counterparty.deletedAt,
-    );
+        take: MAX_VEHICLES_PER_RUN,
+      })
+    ).filter(v => !v.customerGarage.deletedAt && !v.customerGarage.counterparty.deletedAt);
 
     if (inactiveVehicles.length >= MAX_VEHICLES_PER_RUN) {
-      this.logger.warn(`FollowUp org=${orgId}: inactive vehicles ліміт ${MAX_VEHICLES_PER_RUN} досягнуто — потрібна пагінація`);
+      this.logger.warn(
+        `FollowUp org=${orgId}: inactive vehicles ліміт ${MAX_VEHICLES_PER_RUN} досягнуто — потрібна пагінація`,
+      );
     }
 
     const sentTo = new Set<string>();
@@ -189,7 +196,11 @@ export class FollowUpProcessor {
     }
   }
 
-  private formatName(cp: { firstName?: string | null; lastName?: string | null; companyName?: string | null }): string {
+  private formatName(cp: {
+    firstName?: string | null;
+    lastName?: string | null;
+    companyName?: string | null;
+  }): string {
     const full = [cp.firstName, cp.lastName]
       .map(s => s?.trim())
       .filter(Boolean)

@@ -10,11 +10,7 @@ import {
   IsIn,
 } from 'class-validator';
 
-export const WEBHOOK_EVENTS = [
-  'WO_STATUS_CHANGED',
-  'PAYMENT_RECEIVED',
-  'LOW_STOCK_ALERT',
-] as const;
+export const WEBHOOK_EVENTS = ['WO_STATUS_CHANGED', 'PAYMENT_RECEIVED', 'LOW_STOCK_ALERT'] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 export class CreateWebhookDto {

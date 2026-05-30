@@ -17,7 +17,7 @@ const serviceMock = {
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { sub: 'emp-1', orgId: 'org-1', role: 'ADMIN' };
@@ -34,12 +34,16 @@ describe('Currencies — HTTP Contract', () => {
       controllers: [CurrenciesController],
       providers: [{ provide: CurrenciesService, useValue: serviceMock }],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
     await app.init();
     await (app as NestFastifyApplication).getHttpAdapter().getInstance().ready();
   });
@@ -68,27 +72,42 @@ describe('Currencies — HTTP Contract', () => {
 
   it('POST /currencies → 400 коли name/code відсутні', async () => {
     const res = await (app as NestFastifyApplication).inject({
-      method: 'POST', url: '/currencies', payload: {},
+      method: 'POST',
+      url: '/currencies',
+      payload: {},
     });
     expect(res.statusCode).toBe(400);
     expect(serviceMock.create).not.toHaveBeenCalled();
   });
 
   it('POST /currencies → 409 при дублі коду (ConflictException, не 500)', async () => {
-    serviceMock.create.mockRejectedValueOnce(new ConflictException('Валюта з кодом "UAH" вже існує'));
+    serviceMock.create.mockRejectedValueOnce(
+      new ConflictException('Валюта з кодом "UAH" вже існує'),
+    );
     const res = await (app as NestFastifyApplication).inject({
-      method: 'POST', url: '/currencies', payload: { name: 'Гривня', code: 'UAH' },
+      method: 'POST',
+      url: '/currencies',
+      payload: { name: 'Гривня', code: 'UAH' },
     });
     expect(res.statusCode).toBe(409);
   });
 
   it('POST /currencies → 201 при валідних даних', async () => {
     serviceMock.create.mockResolvedValueOnce({
-      id: 'c-1', orgId: 'org-1', name: 'Долар', fullName: null, internationalName: null,
-      code: 'USD', symbol: '$', createdAt: new Date(), updatedAt: new Date(),
+      id: 'c-1',
+      orgId: 'org-1',
+      name: 'Долар',
+      fullName: null,
+      internationalName: null,
+      code: 'USD',
+      symbol: '$',
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
     const res = await (app as NestFastifyApplication).inject({
-      method: 'POST', url: '/currencies', payload: { name: 'Долар', code: 'USD', symbol: '$' },
+      method: 'POST',
+      url: '/currencies',
+      payload: { name: 'Долар', code: 'USD', symbol: '$' },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json()).toMatchObject({ id: expect.any(String), code: 'USD' });

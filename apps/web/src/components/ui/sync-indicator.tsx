@@ -58,10 +58,10 @@ export function SyncIndicator() {
     <div
       className={cn(
         'flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors',
-        status === 'idle'    && 'text-success',
+        status === 'idle' && 'text-success',
         status === 'syncing' && 'text-info',
         status === 'offline' && 'text-warning',
-        status === 'error'   && 'text-destructive',
+        status === 'error' && 'text-destructive',
       )}
       title={lastSync ? `Синхронізовано: ${lastSync.toLocaleTimeString('uk-UA')}` : undefined}
     >
@@ -76,7 +76,9 @@ export function SyncIndicator() {
         {status === 'syncing'
           ? 'Синхронізація...'
           : isOffline
-            ? (pendingOps > 0 ? `${pendingOps} змін очікують` : 'Офлайн')
+            ? pendingOps > 0
+              ? `${pendingOps} змін очікують`
+              : 'Офлайн'
             : status === 'error'
               ? 'Помилка'
               : 'Синхронізовано'}

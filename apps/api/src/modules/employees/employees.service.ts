@@ -2,8 +2,14 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  AssignBranchesDto, AssignLiftsDto, AssignWorkCategoriesDto, AssignZonesDto,
-  CreateEmployeeDto, EmployeeResponseDto, EmployeesQueryDto, UpdateEmployeeDto,
+  AssignBranchesDto,
+  AssignLiftsDto,
+  AssignWorkCategoriesDto,
+  AssignZonesDto,
+  CreateEmployeeDto,
+  EmployeeResponseDto,
+  EmployeesQueryDto,
+  UpdateEmployeeDto,
   rateSchemeSchema,
 } from './employees.dto';
 
@@ -104,7 +110,9 @@ export class EmployeesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.employee.findFirst({ where: { id, orgId, deletedAt: null } });
+    const existing = await this.prisma.employee.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
     if (!existing) throw new NotFoundException('Співробітника не знайдено');
     await this.prisma.employee.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
@@ -124,12 +132,17 @@ export class EmployeesService {
       }
     }
     // Replace assignment atomically using callback form (array form doesn't guarantee atomicity in Prisma 5)
-    await this.prisma.$transaction(async (tx) => {
-      await tx.employeeZone.deleteMany({ where: { employeeId: id } });
-      if (dto.zoneIds.length) {
-        await tx.employeeZone.createMany({ data: dto.zoneIds.map(zoneId => ({ employeeId: id, zoneId })) });
-      }
-    }, { timeout: 5_000 }); // Bug #132: explicit timeout
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.employeeZone.deleteMany({ where: { employeeId: id } });
+        if (dto.zoneIds.length) {
+          await tx.employeeZone.createMany({
+            data: dto.zoneIds.map(zoneId => ({ employeeId: id, zoneId })),
+          });
+        }
+      },
+      { timeout: 5_000 },
+    ); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
 
@@ -144,12 +157,17 @@ export class EmployeesService {
         throw new NotFoundException('Один або кілька підйомників не знайдено');
       }
     }
-    await this.prisma.$transaction(async (tx) => {
-      await tx.employeeLift.deleteMany({ where: { employeeId: id } });
-      if (dto.liftIds.length) {
-        await tx.employeeLift.createMany({ data: dto.liftIds.map(liftId => ({ employeeId: id, liftId })) });
-      }
-    }, { timeout: 5_000 }); // Bug #132: explicit timeout
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.employeeLift.deleteMany({ where: { employeeId: id } });
+        if (dto.liftIds.length) {
+          await tx.employeeLift.createMany({
+            data: dto.liftIds.map(liftId => ({ employeeId: id, liftId })),
+          });
+        }
+      },
+      { timeout: 5_000 },
+    ); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
 
@@ -168,12 +186,17 @@ export class EmployeesService {
         throw new NotFoundException('Одну або кілька категорій не знайдено');
       }
     }
-    await this.prisma.$transaction(async (tx) => {
-      await tx.employeeWorkCategory.deleteMany({ where: { employeeId: id } });
-      if (dto.workCategoryIds.length) {
-        await tx.employeeWorkCategory.createMany({ data: dto.workCategoryIds.map(workCategoryId => ({ employeeId: id, workCategoryId })) });
-      }
-    }, { timeout: 5_000 }); // Bug #132: explicit timeout
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.employeeWorkCategory.deleteMany({ where: { employeeId: id } });
+        if (dto.workCategoryIds.length) {
+          await tx.employeeWorkCategory.createMany({
+            data: dto.workCategoryIds.map(workCategoryId => ({ employeeId: id, workCategoryId })),
+          });
+        }
+      },
+      { timeout: 5_000 },
+    ); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
 
@@ -192,17 +215,20 @@ export class EmployeesService {
         throw new NotFoundException('Одну або кілька філій не знайдено');
       }
     }
-    await this.prisma.$transaction(async (tx) => {
-      await tx.employeeBranch.deleteMany({ where: { employeeId: id } });
-      if (dto.branchIds.length) {
-        await tx.employeeBranch.createMany({
-          data: dto.branchIds.map((branchId) => ({ employeeId: id, branchId, orgId })),
-        });
-      }
-      if (dto.allBranches !== undefined) {
-        await tx.employee.update({ where: { id }, data: { allBranches: dto.allBranches } });
-      }
-    }, { timeout: 5_000 }); // Bug #132: explicit timeout
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.employeeBranch.deleteMany({ where: { employeeId: id } });
+        if (dto.branchIds.length) {
+          await tx.employeeBranch.createMany({
+            data: dto.branchIds.map(branchId => ({ employeeId: id, branchId, orgId })),
+          });
+        }
+        if (dto.allBranches !== undefined) {
+          await tx.employee.update({ where: { id }, data: { allBranches: dto.allBranches } });
+        }
+      },
+      { timeout: 5_000 },
+    ); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
 
@@ -210,17 +236,26 @@ export class EmployeesService {
     const result = rateSchemeSchema.safeParse(scheme);
     if (!result.success) {
       throw new BadRequestException(
-        `Невірна схема нарахування: ${result.error.issues.map((i) => i.message).join(', ')}`,
+        `Невірна схема нарахування: ${result.error.issues.map(i => i.message).join(', ')}`,
       );
     }
   }
 
   private toDto(item: {
-    id: string; orgId: string; userId: string | null; firstName: string; lastName: string;
-    role: string; status: string; rateScheme: unknown;
-    phone?: string | null; email?: string | null;
-    dateOfHire?: Date | null; dateOfFire?: Date | null;
-    createdAt: Date; updatedAt: Date;
+    id: string;
+    orgId: string;
+    userId: string | null;
+    firstName: string;
+    lastName: string;
+    role: string;
+    status: string;
+    rateScheme: unknown;
+    phone?: string | null;
+    email?: string | null;
+    dateOfHire?: Date | null;
+    dateOfFire?: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
     deletedAt?: Date | null;
     allBranches: boolean;
     employeeZones: Array<{ zoneId: string }>;
@@ -241,10 +276,10 @@ export class EmployeesService {
       email: item.email,
       dateOfHire: item.dateOfHire,
       dateOfFire: item.dateOfFire,
-      zoneIds: item.employeeZones.map((z) => z.zoneId),
-      liftIds: item.employeeLifts.map((l) => l.liftId),
-      workCategoryIds: item.employeeWorkCategories.map((c) => c.workCategoryId),
-      branchIds: item.employeeBranches.map((b) => b.branchId),
+      zoneIds: item.employeeZones.map(z => z.zoneId),
+      liftIds: item.employeeLifts.map(l => l.liftId),
+      workCategoryIds: item.employeeWorkCategories.map(c => c.workCategoryId),
+      branchIds: item.employeeBranches.map(b => b.branchId),
       allBranches: item.allBranches,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
@@ -252,5 +287,4 @@ export class EmployeesService {
       deletedAt: item.deletedAt ?? null,
     };
   }
-
 }

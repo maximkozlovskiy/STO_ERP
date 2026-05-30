@@ -14,7 +14,9 @@ export class CurrenciesService {
   ) {}
 
   async findAll(orgId: string): Promise<{ items: CurrencyResponseDto[]; total: number }> {
-    const cached = await this.cache.get<{ items: CurrencyResponseDto[]; total: number }>(cacheKey(orgId));
+    const cached = await this.cache.get<{ items: CurrencyResponseDto[]; total: number }>(
+      cacheKey(orgId),
+    );
     if (cached) return cached;
 
     const [items, total] = await this.prisma.$transaction([
@@ -61,7 +63,9 @@ export class CurrenciesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateCurrencyDto): Promise<CurrencyResponseDto> {
-    const existing = await this.prisma.currency.findFirst({ where: { id, orgId, deletedAt: null } });
+    const existing = await this.prisma.currency.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
     if (!existing) throw new NotFoundException('Валюту не знайдено');
 
     if (dto.code && dto.code !== existing.code) {
@@ -77,22 +81,35 @@ export class CurrenciesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.currency.findFirst({ where: { id, orgId, deletedAt: null } });
+    const existing = await this.prisma.currency.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
     if (!existing) throw new NotFoundException('Валюту не знайдено');
     await this.prisma.currency.update({ where: { id }, data: { deletedAt: new Date() } });
     await this.cache.del(cacheKey(orgId));
   }
 
   private toDto(item: {
-    id: string; orgId: string; name: string; fullName: string | null;
-    internationalName: string | null; code: string; symbol: string | null;
-    createdAt: Date; updatedAt: Date;
+    id: string;
+    orgId: string;
+    name: string;
+    fullName: string | null;
+    internationalName: string | null;
+    code: string;
+    symbol: string | null;
+    createdAt: Date;
+    updatedAt: Date;
   }): CurrencyResponseDto {
     return {
-      id: item.id, orgId: item.orgId, name: item.name,
-      fullName: item.fullName, internationalName: item.internationalName,
-      code: item.code, symbol: item.symbol,
-      createdAt: item.createdAt, updatedAt: item.updatedAt,
+      id: item.id,
+      orgId: item.orgId,
+      name: item.name,
+      fullName: item.fullName,
+      internationalName: item.internationalName,
+      code: item.code,
+      symbol: item.symbol,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
     };
   }
 }

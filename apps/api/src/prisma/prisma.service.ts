@@ -3,19 +3,49 @@ import { PrismaClient } from '@prisma/client';
 
 // Models that carry syncVersion — auto-incremented on every write, set to 1 on create
 const SYNC_VERSION_MODELS = new Set([
-  'Organisation', 'GarageBranch', 'Zone', 'Lift', 'Warehouse',
-  'Employee', 'AuthAccount', 'Counterparty', 'CustomerGarage', 'Vehicle', 'VehicleNode',
-  'WorkCategory', 'Work', 'Good', 'Service',
-  'WorkOrder', 'WorkOrderLine', 'WorkOrderPart',
-  'StockItem', 'PurchaseOrder', 'PurchaseOrderLine',
-  'StockDocument', 'StockDocumentLine',
-  'Invoice', 'CalendarSlot', 'ReconciliationAct',
-  'OrganisationSettings', 'BranchSettings', 'DocumentNumberConfig',
-  'NotificationTemplate', 'TaxRate', 'PaymentMethodConfig', 'SettlementAccount',
+  'Organisation',
+  'GarageBranch',
+  'Zone',
+  'Lift',
+  'Warehouse',
+  'Employee',
+  'AuthAccount',
+  'Counterparty',
+  'CustomerGarage',
+  'Vehicle',
+  'VehicleNode',
+  'WorkCategory',
+  'Work',
+  'Good',
+  'Service',
+  'WorkOrder',
+  'WorkOrderLine',
+  'WorkOrderPart',
+  'StockItem',
+  'PurchaseOrder',
+  'PurchaseOrderLine',
+  'StockDocument',
+  'StockDocumentLine',
+  'Invoice',
+  'CalendarSlot',
+  'ReconciliationAct',
+  'OrganisationSettings',
+  'BranchSettings',
+  'DocumentNumberConfig',
+  'NotificationTemplate',
+  'TaxRate',
+  'PaymentMethodConfig',
+  'SettlementAccount',
   // Phases 16-19 additions
-  'Brand', 'UnitOfMeasure', 'WorkOrderTemplate',
-  'Comment', 'MaintenanceSchedule', 'CompletionAct',
-  'StockBatch', 'PricingRule', 'Payment',
+  'Brand',
+  'UnitOfMeasure',
+  'WorkOrderTemplate',
+  'Comment',
+  'MaintenanceSchedule',
+  'CompletionAct',
+  'StockBatch',
+  'PricingRule',
+  'Payment',
   'SyncJob',
 ]);
 
@@ -24,7 +54,12 @@ function withSyncVersion(client: PrismaClient): PrismaClient {
   return client.$extends({
     query: {
       $allModels: {
-        async $allOperations({ model, operation, args, query }: {
+        async $allOperations({
+          model,
+          operation,
+          args,
+          query,
+        }: {
           model?: string;
           operation: string;
           args: Record<string, unknown>;

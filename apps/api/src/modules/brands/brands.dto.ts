@@ -3,13 +3,15 @@ import { IsNotEmpty, IsString } from 'class-validator';
 
 export class CreateBrandDto {
   @ApiProperty({ example: 'BMW' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   name!: string;
 }
 
 export class UpdateBrandDto {
   @ApiProperty({ example: 'BMW' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   name!: string;
 }
 

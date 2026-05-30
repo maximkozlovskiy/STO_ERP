@@ -6,10 +6,7 @@ import { OutboundWebhookProcessor } from './webhooks.processor';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
-  imports: [
-    PrismaModule,
-    BullModule.registerQueue({ name: 'outbound-webhook' }),
-  ],
+  imports: [PrismaModule, BullModule.registerQueue({ name: 'outbound-webhook' })],
   controllers: [WebhooksController],
   providers: [WebhooksService, OutboundWebhookProcessor],
   exports: [WebhooksService],

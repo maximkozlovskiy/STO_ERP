@@ -52,7 +52,11 @@ export class AuthController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Змінити пароль' })
-  changePassword(@CurrentUser() user: { id: string }, @OrgContext() orgId: string, @Body() dto: ChangePasswordDto) {
+  changePassword(
+    @CurrentUser() user: { id: string },
+    @OrgContext() orgId: string,
+    @Body() dto: ChangePasswordDto,
+  ) {
     return this.authService.changePassword(orgId, user.id, dto.currentPassword, dto.newPassword);
   }
 

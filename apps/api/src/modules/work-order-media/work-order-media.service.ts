@@ -112,7 +112,7 @@ export class WorkOrderMediaService {
     ]);
 
     const items = await Promise.all(
-      records.map(async (r) => {
+      records.map(async r => {
         const signedUrl = await this.files.getSignedUrl(r.fileKey, 3600);
         return this.toDto(r, signedUrl);
       }),

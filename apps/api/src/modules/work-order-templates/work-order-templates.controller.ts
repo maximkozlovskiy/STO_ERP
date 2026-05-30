@@ -1,6 +1,15 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param,
-  UseGuards, HttpCode, HttpStatus, ParseUUIDPipe,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -64,10 +73,7 @@ export class WorkOrderTemplatesController {
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити шаблон' })
-  remove(
-    @OrgContext() orgId: string,
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ): Promise<void> {
+  remove(@OrgContext() orgId: string, @Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     return this.service.remove(orgId, id);
   }
 }

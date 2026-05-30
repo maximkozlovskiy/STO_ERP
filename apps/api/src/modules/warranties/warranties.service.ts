@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateWarrantyDto, ClaimWarrantyDto, WarrantyResponseDto, WarrantyListDto } from './warranties.dto';
+import {
+  CreateWarrantyDto,
+  ClaimWarrantyDto,
+  WarrantyResponseDto,
+  WarrantyListDto,
+} from './warranties.dto';
 
 type WarrantyWithIncludes = {
   id: string;
@@ -15,7 +20,11 @@ type WarrantyWithIncludes = {
   claimWoId: string | null;
   createdAt: Date;
   workOrder?: { number: string } | null;
-  counterparty?: { companyName: string | null; firstName: string | null; lastName: string | null } | null;
+  counterparty?: {
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  } | null;
 };
 
 @Injectable()
@@ -39,7 +48,8 @@ export class WarrantiesService {
       createdAt: w.createdAt.toISOString(),
       workOrderNumber: w.workOrder?.number,
       counterpartyName: w.counterparty
-        ? (w.counterparty.companyName ?? [w.counterparty.lastName, w.counterparty.firstName].filter(Boolean).join(' '))
+        ? (w.counterparty.companyName ??
+          [w.counterparty.lastName, w.counterparty.firstName].filter(Boolean).join(' '))
         : undefined,
     };
   }
@@ -48,21 +58,37 @@ export class WarrantiesService {
     // Parallel cross-tenant FK validation — all four reads are independent
     // (different tables / different ids). Without this, four sequential RTTs.
     const [wo, cp, line, part] = await Promise.all([
-      this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId, deletedAt: null }, select: { id: true } }),
-      this.prisma.counterparty.findFirst({ where: { id: dto.counterpartyId, orgId, deletedAt: null }, select: { id: true } }),
+      this.prisma.workOrder.findFirst({
+        where: { id: dto.workOrderId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.counterparty.findFirst({
+        where: { id: dto.counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
       // Tenant FK validation: workOrderLineId/workOrderPartId must belong to the same WO
       // (and therefore same org). Without this, an attacker could attach a warranty to
       // a line/part from a different work order — possibly cross-tenant — through the
       // global UUID FK.
       dto.workOrderLineId
         ? this.prisma.workOrderLine.findFirst({
-            where: { id: dto.workOrderLineId, orgId, workOrderId: dto.workOrderId, deletedAt: null },
+            where: {
+              id: dto.workOrderLineId,
+              orgId,
+              workOrderId: dto.workOrderId,
+              deletedAt: null,
+            },
             select: { id: true },
           })
         : Promise.resolve(null),
       dto.workOrderPartId
         ? this.prisma.workOrderPart.findFirst({
-            where: { id: dto.workOrderPartId, orgId, workOrderId: dto.workOrderId, deletedAt: null },
+            where: {
+              id: dto.workOrderPartId,
+              orgId,
+              workOrderId: dto.workOrderId,
+              deletedAt: null,
+            },
             select: { id: true },
           })
         : Promise.resolve(null),
@@ -164,7 +190,9 @@ export class WarrantiesService {
         orderBy: { expiresAt: 'asc' },
         take: 200,
       }),
-      this.prisma.warranty.count({ where: { orgId, deletedAt: null, claimedAt: null, expiresAt: { gt: now, lte: until } } }),
+      this.prisma.warranty.count({
+        where: { orgId, deletedAt: null, claimedAt: null, expiresAt: { gt: now, lte: until } },
+      }),
     ]);
     return { items: items.map(w => this.toDto(w)), total };
   }
@@ -206,7 +234,9 @@ export class WarrantiesService {
     }
 
     // Validate claimWo belongs to same org
-    const claimWo = await this.prisma.workOrder.findFirst({ where: { id: dto.claimWoId, orgId, deletedAt: null } });
+    const claimWo = await this.prisma.workOrder.findFirst({
+      where: { id: dto.claimWoId, orgId, deletedAt: null },
+    });
     if (!claimWo) throw new NotFoundException('Гарантійний наряд не знайдено');
 
     const updated = await this.prisma.warranty.update({

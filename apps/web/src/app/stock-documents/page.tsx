@@ -20,7 +20,12 @@ import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/de
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@/components/ui/table';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
@@ -35,24 +40,54 @@ import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtDateTime } from '@/lib/format';
 
-interface Branch { id: string; name: string; }
-interface Warehouse { id: string; name: string; isMain: boolean; }
-interface Good { id: string; name: string; sku: string | null; unit: string; }
+interface Branch {
+  id: string;
+  name: string;
+}
+interface Warehouse {
+  id: string;
+  name: string;
+  isMain: boolean;
+}
+interface Good {
+  id: string;
+  name: string;
+  sku: string | null;
+  unit: string;
+}
 interface DocLine {
-  id?: string; goodId: string; goodName?: string; goodSku?: string | null;
-  unit?: string; quantity: number; price: number | null;
+  id?: string;
+  goodId: string;
+  goodName?: string;
+  goodSku?: string | null;
+  unit?: string;
+  quantity: number;
+  price: number | null;
 }
 interface StockDoc {
-  id: string; number: string; type: string; status: string;
-  branchId: string; branchName?: string;
-  warehouseId: string; warehouseName?: string;
-  targetWarehouseId?: string | null; targetWarehouseName?: string | null;
-  notes: string | null; confirmedAt: string | null;
+  id: string;
+  number: string;
+  type: string;
+  status: string;
+  branchId: string;
+  branchName?: string;
+  warehouseId: string;
+  warehouseName?: string;
+  targetWarehouseId?: string | null;
+  targetWarehouseName?: string | null;
+  notes: string | null;
+  confirmedAt: string | null;
   lines: DocLine[];
-  createdAt: string; updatedAt: string;
+  createdAt: string;
+  updatedAt: string;
   deletedAt?: string | null;
 }
-interface Paginated { items: StockDoc[]; total: number; page: number; limit: number; }
+interface Paginated {
+  items: StockDoc[];
+  total: number;
+  page: number;
+  limit: number;
+}
 
 interface StockDocFilters extends Record<string, unknown> {
   typeFilter: string;
@@ -61,16 +96,24 @@ interface StockDocFilters extends Record<string, unknown> {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  WRITEOFF: 'Списання', TRANSFER: 'Переміщення', OPENING_BALANCE: 'Поч. залишки',
+  WRITEOFF: 'Списання',
+  TRANSFER: 'Переміщення',
+  OPENING_BALANCE: 'Поч. залишки',
 };
 const TYPE_BADGE: Record<string, BadgeVariant> = {
-  WRITEOFF: 'destructive', TRANSFER: 'default', OPENING_BALANCE: 'secondary',
+  WRITEOFF: 'destructive',
+  TRANSFER: 'default',
+  OPENING_BALANCE: 'secondary',
 };
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка', CONFIRMED: 'Підтверджено', CANCELLED: 'Скасовано',
+  DRAFT: 'Чернетка',
+  CONFIRMED: 'Підтверджено',
+  CANCELLED: 'Скасовано',
 };
 const STATUS_BADGE: Record<string, BadgeVariant> = {
-  DRAFT: 'secondary', CONFIRMED: 'success', CANCELLED: 'destructive',
+  DRAFT: 'secondary',
+  CONFIRMED: 'success',
+  CANCELLED: 'destructive',
 };
 
 export default function StockDocumentsPage() {
@@ -79,16 +122,29 @@ export default function StockDocumentsPage() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
 
-  const COLUMNS = useMemo(() => [
-    { key: 'number',    label: 'Номер' },
-    { key: 'type',      label: 'Тип' },
-    { key: 'warehouse', label: 'Склад' },
-    { key: 'status',    label: 'Статус' },
-    { key: 'lines',     label: 'Позицій' },
-    { key: 'date',      label: 'Дата' },
-  ], []);
+  const COLUMNS = useMemo(
+    () => [
+      { key: 'number', label: 'Номер' },
+      { key: 'type', label: 'Тип' },
+      { key: 'warehouse', label: 'Склад' },
+      { key: 'status', label: 'Статус' },
+      { key: 'lines', label: 'Позицій' },
+      { key: 'date', label: 'Дата' },
+    ],
+    [],
+  );
 
-  const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('stock-documents', COLUMNS);
+  const {
+    visibleKeys: colVisible,
+    visibleColumns,
+    orderedColumns,
+    order,
+    customLabels,
+    toggle: toggleCol,
+    reorder,
+    renameColumn,
+    resetConfig,
+  } = useTableColumns('stock-documents', COLUMNS);
   const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
 
   const detailPanel = useDetailPanel('stock-documents');
@@ -109,14 +165,24 @@ export default function StockDocumentsPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [form, setForm] = useState({
-    type: 'WRITEOFF', branchId: '', warehouseId: '', targetWarehouseId: '', notes: '',
+    type: 'WRITEOFF',
+    branchId: '',
+    warehouseId: '',
+    targetWarehouseId: '',
+    notes: '',
   });
-  const [lines, setLines] = useState<{ goodId: string; goodName: string; quantity: string; price: string }[]>([]);
+  const [lines, setLines] = useState<
+    { goodId: string; goodName: string; quantity: string; price: string }[]
+  >([]);
   const [saving, setSaving] = useState(false);
 
   // — Saved filters ——————————————————————————————————————————————————————
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<StockDocFilters>('stock-documents');
+  const {
+    saved: savedFilters,
+    save: saveFilter,
+    remove: removeFilter,
+  } = useSavedFilters<StockDocFilters>('stock-documents');
 
   const applyFilter = useCallback((preset: { id: string; filters: StockDocFilters }) => {
     setTypeFilter(preset.filters.typeFilter ?? '');
@@ -126,11 +192,14 @@ export default function StockDocumentsPage() {
     setActiveSavedFilterId(preset.id);
   }, []);
 
-  const handleSaveFilter = useCallback((name: string) => {
-    const preset = saveFilter(name, { typeFilter, statusFilter, showDeleted });
-    setActiveSavedFilterId(preset.id);
-    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
-  }, [saveFilter, typeFilter, statusFilter, showDeleted, features.toastEnabled]);
+  const handleSaveFilter = useCallback(
+    (name: string) => {
+      const preset = saveFilter(name, { typeFilter, statusFilter, showDeleted });
+      setActiveSavedFilterId(preset.id);
+      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+    },
+    [saveFilter, typeFilter, statusFilter, showDeleted, features.toastEnabled],
+  );
 
   // — Bulk select ————————————————————————————————————————————————————————
   const bulkSelect = useBulkSelect(docs);
@@ -140,38 +209,51 @@ export default function StockDocumentsPage() {
     if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
   }, [bulkSelect.someSelected]);
 
-  const handleBulkDelete = useCallback(async (ids: string[]) => {
-    if (!(await confirm({ title: `Видалити ${ids.length} документ(ів)?`, confirmLabel: 'Видалити', variant: 'destructive' }))) return;
-    const results = await Promise.allSettled(
-      ids.map(id => apiFetch(`/stock-documents/${id}`, { method: 'DELETE' })),
-    );
-    const succeeded = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.length - succeeded;
-    bulkSelect.clear();
-    load();
-    if (features.toastEnabled) {
-      if (succeeded > 0 && failed === 0) {
-        toast.success(`Видалено ${succeeded} документ(ів)`);
-      } else if (succeeded > 0 && failed > 0) {
-        toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
-      } else {
-        toast.error('Не вдалося видалити документи');
+  const handleBulkDelete = useCallback(
+    async (ids: string[]) => {
+      if (
+        !(await confirm({
+          title: `Видалити ${ids.length} документ(ів)?`,
+          confirmLabel: 'Видалити',
+          variant: 'destructive',
+        }))
+      )
+        return;
+      const results = await Promise.allSettled(
+        ids.map(id => apiFetch(`/stock-documents/${id}`, { method: 'DELETE' })),
+      );
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+      bulkSelect.clear();
+      load();
+      if (features.toastEnabled) {
+        if (succeeded > 0 && failed === 0) {
+          toast.success(`Видалено ${succeeded} документ(ів)`);
+        } else if (succeeded > 0 && failed > 0) {
+          toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+        } else {
+          toast.error('Не вдалося видалити документи');
+        }
+      } else if (failed > 0) {
+        setError(`${succeeded} з ${results.length} документів видалено, ${failed} не вдалось`);
       }
-    } else if (failed > 0) {
-      setError(`${succeeded} з ${results.length} документів видалено, ${failed} не вдалось`);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bulkSelect, confirm, features.toastEnabled]);
-
-  const bulkActions = useMemo<BulkAction[]>(() => [
-    {
-      id: 'delete',
-      label: 'Видалити вибрані',
-      variant: 'destructive',
-      icon: <Trash2 className="h-3.5 w-3.5 mr-1.5" />,
-      onClick: handleBulkDelete,
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-  ], [handleBulkDelete]);
+    [bulkSelect, confirm, features.toastEnabled],
+  );
+
+  const bulkActions = useMemo<BulkAction[]>(
+    () => [
+      {
+        id: 'delete',
+        label: 'Видалити вибрані',
+        variant: 'destructive',
+        icon: <Trash2 className="h-3.5 w-3.5 mr-1.5" />,
+        onClick: handleBulkDelete,
+      },
+    ],
+    [handleBulkDelete],
+  );
 
   // — Unsaved guard ——————————————————————————————————————————————————————
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -196,7 +278,9 @@ export default function StockDocumentsPage() {
     }
   }, [page, typeFilter, statusFilter, showDeleted]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     if (!showCreate) return;
@@ -228,24 +312,32 @@ export default function StockDocumentsPage() {
     Promise.all([
       apiFetch<Branch[] | { items: Branch[] }>('/branches'),
       apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses'),
-    ]).then(([b, w]) => {
-      const bList = Array.isArray(b) ? b : b.items;
-      const wList = Array.isArray(w) ? w : w.items;
-      setCache('cache:branches', bList);
-      setCache('cache:warehouses', wList);
-      apply(bList, wList);
-    }).catch((e: unknown) => {
-      if (!cancelled && !cachedB) setError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
-    });
+    ])
+      .then(([b, w]) => {
+        const bList = Array.isArray(b) ? b : b.items;
+        const wList = Array.isArray(w) ? w : w.items;
+        setCache('cache:branches', bList);
+        setCache('cache:warehouses', wList);
+        apply(bList, wList);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled && !cachedB)
+          setError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
+      });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [showCreate]);
 
   const handleCreate = async () => {
     const validLines = lines.filter(l => l.goodId);
     for (const l of validLines) {
       const qty = parseFloat(l.quantity);
-      if (!Number.isFinite(qty) || qty <= 0) { setError('Вкажіть коректну кількість для всіх позицій'); return; }
+      if (!Number.isFinite(qty) || qty <= 0) {
+        setError('Вкажіть коректну кількість для всіх позицій');
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -266,12 +358,20 @@ export default function StockDocumentsPage() {
       });
       dirty.resetDirty();
       setShowCreate(false);
-      setForm({ type: 'WRITEOFF', branchId: '', warehouseId: '', targetWarehouseId: '', notes: '' });
+      setForm({
+        type: 'WRITEOFF',
+        branchId: '',
+        warehouseId: '',
+        targetWarehouseId: '',
+        notes: '',
+      });
       setLines([]);
       load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка збереження');
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCloseCreate = async () => {
@@ -287,17 +387,22 @@ export default function StockDocumentsPage() {
     setError('');
     try {
       await apiFetch<StockDoc>(`/stock-documents/${doc.id}/transition`, {
-        method: 'POST', body: JSON.stringify({ status: newStatus }),
+        method: 'POST',
+        body: JSON.stringify({ status: newStatus }),
       });
       setShowDetail(null);
       load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка зміни статусу'); }
-    finally { setSaving(false); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const addLine = () => setLines(l => [...l, { goodId: '', goodName: '', quantity: '1', price: '' }]);
+  const addLine = () =>
+    setLines(l => [...l, { goodId: '', goodName: '', quantity: '1', price: '' }]);
   const updateLine = (i: number, field: string, value: string) =>
-    setLines(l => l.map((x, idx) => idx === i ? { ...x, [field]: value } : x));
+    setLines(l => l.map((x, idx) => (idx === i ? { ...x, [field]: value } : x)));
   const removeLine = (i: number) => setLines(l => l.filter((_, idx) => idx !== i));
 
   const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'];
@@ -309,12 +414,29 @@ export default function StockDocumentsPage() {
       label: 'Основне',
       content: (
         <div className="space-y-3">
-          <PanelField label="Тип" value={<Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>{TYPE_LABELS[doc.type]}</Badge>} />
-          <PanelField label="Статус" value={<Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>{STATUS_LABELS[doc.status]}</Badge>} />
+          <PanelField
+            label="Тип"
+            value={
+              <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>{TYPE_LABELS[doc.type]}</Badge>
+            }
+          />
+          <PanelField
+            label="Статус"
+            value={
+              <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>
+                {STATUS_LABELS[doc.status]}
+              </Badge>
+            }
+          />
           <PanelField label="Склад-джерело" value={doc.warehouseName} />
-          {doc.targetWarehouseName && <PanelField label="Склад-призначення" value={doc.targetWarehouseName} />}
+          {doc.targetWarehouseName && (
+            <PanelField label="Склад-призначення" value={doc.targetWarehouseName} />
+          )}
           <PanelField label="Філія" value={doc.branchName} />
-          <PanelField label="Підтверджено" value={doc.confirmedAt ? fmtDate(doc.confirmedAt) : undefined} />
+          <PanelField
+            label="Підтверджено"
+            value={doc.confirmedAt ? fmtDate(doc.confirmedAt) : undefined}
+          />
           {doc.notes && <PanelField label="Нотатки" value={doc.notes} />}
         </div>
       ),
@@ -322,29 +444,37 @@ export default function StockDocumentsPage() {
     {
       key: 'lines',
       label: 'Позиції',
-      content: !doc.lines || doc.lines.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">Немає позицій</p>
-      ) : (
-        <div className="space-y-2">
-          {doc.lines.map((line, i) => (
-            <div key={line.id ?? i} className="rounded-lg border border-border px-3 py-2 text-[13px]">
-              <p className="font-medium text-foreground">{line.goodName ?? line.goodId}</p>
-              {line.goodSku && <p className="text-muted-foreground text-[12px]">{line.goodSku}</p>}
-              <p className="text-muted-foreground text-[12px] mt-0.5">
-                К-сть: <span className="text-foreground">{line.quantity}</span>
-                {line.price != null && <> · {fmtMoney(line.price)} ₴</>}
-              </p>
-            </div>
-          ))}
-        </div>
-      ),
+      content:
+        !doc.lines || doc.lines.length === 0 ? (
+          <p className="text-[13px] text-muted-foreground">Немає позицій</p>
+        ) : (
+          <div className="space-y-2">
+            {doc.lines.map((line, i) => (
+              <div
+                key={line.id ?? i}
+                className="rounded-lg border border-border px-3 py-2 text-[13px]"
+              >
+                <p className="font-medium text-foreground">{line.goodName ?? line.goodId}</p>
+                {line.goodSku && (
+                  <p className="text-muted-foreground text-[12px]">{line.goodSku}</p>
+                )}
+                <p className="text-muted-foreground text-[12px] mt-0.5">
+                  К-сть: <span className="text-foreground">{line.quantity}</span>
+                  {line.price != null && <> · {fmtMoney(line.price)} ₴</>}
+                </p>
+              </div>
+            ))}
+          </div>
+        ),
     },
   ];
 
   return (
     <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
+          {error}
+        </div>
       )}
       <div className="page-header">
         <div>
@@ -373,11 +503,17 @@ export default function StockDocumentsPage() {
       <div className="flex flex-wrap items-center gap-3 mb-5">
         {/* Type filters */}
         <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">Тип</span>
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">
+            Тип
+          </span>
           {types.map(t => (
             <button
               key={t}
-              onClick={() => { setTypeFilter(t); setPage(1); setActiveSavedFilterId(null); }}
+              onClick={() => {
+                setTypeFilter(t);
+                setPage(1);
+                setActiveSavedFilterId(null);
+              }}
               className={cn(
                 'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
                 typeFilter === t
@@ -393,11 +529,17 @@ export default function StockDocumentsPage() {
         <div className="h-6 w-px bg-border" />
         {/* Status filters */}
         <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">Статус</span>
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">
+            Статус
+          </span>
           {statuses.map(s => (
             <button
               key={s}
-              onClick={() => { setStatusFilter(s); setPage(1); setActiveSavedFilterId(null); }}
+              onClick={() => {
+                setStatusFilter(s);
+                setPage(1);
+                setActiveSavedFilterId(null);
+              }}
               className={cn(
                 'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
                 statusFilter === s
@@ -411,7 +553,11 @@ export default function StockDocumentsPage() {
         </div>
         {/* Show deleted */}
         <button
-          onClick={() => { setShowDeleted(v => !v); setPage(1); setActiveSavedFilterId(null); }}
+          onClick={() => {
+            setShowDeleted(v => !v);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
           className={cn(
             'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
             showDeleted
@@ -425,18 +571,19 @@ export default function StockDocumentsPage() {
 
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          {features.savedFiltersEnabled && (
-            <SaveFilterButton onSave={handleSaveFilter} />
-          )}
+          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
-                  columns={orderedColumns}
-                  visibleKeys={colVisible}
-                  onToggle={toggleCol}
-                  onReorder={reorder}
-                  onRename={renameColumn}
-                  onReset={resetConfig}
-                  hasCustomization={JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
-                />
+            columns={orderedColumns}
+            visibleKeys={colVisible}
+            onToggle={toggleCol}
+            onReorder={reorder}
+            onRename={renameColumn}
+            onReset={resetConfig}
+            hasCustomization={
+              JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c => c.key)) ||
+              Object.keys(customLabels).length > 0
+            }
+          />
         </div>
       </div>
 
@@ -469,79 +616,135 @@ export default function StockDocumentsPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col => (
-                  col.key === 'lines'
-                    ? <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>{col.label}</TableHead>
-                    : <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>
-                ))}
+                {visibleColumns.map(col =>
+                  col.key === 'lines' ? (
+                    <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  ) : (
+                    <TableHead key={col.key} {...dragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  ),
+                )}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
-                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  <TableCell
+                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                    className="py-10 text-center"
+                  >
+                    <div className="flex justify-center">
+                      <Spinner size="md" />
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && docs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                  <TableCell
+                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                    className="p-0"
+                  >
                     <EmptyState icon={FileText} title="Документів не знайдено" />
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && docs.map(doc => (
-                <TableRow
-                  key={doc.id}
-                  className={cn(
-                    detailPanel.enabled && 'cursor-pointer',
-                    'transition-colors',
-                    selectedDoc?.id === doc.id && 'bg-secondary',
-                    bulkSelect.isSelected(doc.id) && 'bg-primary/5',
-                    doc.deletedAt && 'opacity-60',
-                  )}
-                  onClick={() => { if (detailPanel.enabled) setSelectedDoc(prev => prev?.id === doc.id ? null : doc); }}
-                >
-                  {features.bulkActionsEnabled && (
-                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={bulkSelect.isSelected(doc.id)}
-                        onChange={() => bulkSelect.toggle(doc.id)}
-                        className="h-3.5 w-3.5 rounded border-border"
-                        aria-label={`Вибрати документ ${doc.number}`}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleColumns.map(col => {
-                    if (col.key === 'number') return (
-                      <TableCell key="number" className="font-medium text-[13px]">
-                        {doc.number}
-                        {doc.deletedAt && (
-                          <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
-                        )}
+              {!loading &&
+                docs.map(doc => (
+                  <TableRow
+                    key={doc.id}
+                    className={cn(
+                      detailPanel.enabled && 'cursor-pointer',
+                      'transition-colors',
+                      selectedDoc?.id === doc.id && 'bg-secondary',
+                      bulkSelect.isSelected(doc.id) && 'bg-primary/5',
+                      doc.deletedAt && 'opacity-60',
+                    )}
+                    onClick={() => {
+                      if (detailPanel.enabled)
+                        setSelectedDoc(prev => (prev?.id === doc.id ? null : doc));
+                    }}
+                  >
+                    {features.bulkActionsEnabled && (
+                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={bulkSelect.isSelected(doc.id)}
+                          onChange={() => bulkSelect.toggle(doc.id)}
+                          className="h-3.5 w-3.5 rounded border-border"
+                          aria-label={`Вибрати документ ${doc.number}`}
+                        />
                       </TableCell>
-                    );
-                    if (col.key === 'type') return <TableCell key="type"><Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>{TYPE_LABELS[doc.type]}</Badge></TableCell>;
-                    if (col.key === 'warehouse') return <TableCell key="warehouse" className="text-[13px] text-muted-foreground">{doc.warehouseName ?? '—'}</TableCell>;
-                    if (col.key === 'status') return <TableCell key="status"><Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>{STATUS_LABELS[doc.status]}</Badge></TableCell>;
-                    if (col.key === 'lines') return <TableCell key="lines" className="text-right text-[13px] text-muted-foreground">{doc.lines.length}</TableCell>;
-                    if (col.key === 'date') return <TableCell key="date" className="text-[13px] text-muted-foreground">{fmtDate(doc.createdAt)}</TableCell>;
-                    return null;
-                  })}
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={e => { e.stopPropagation(); setShowDetail(doc); }}
-                    >
-                      Деталі
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    )}
+                    {visibleColumns.map(col => {
+                      if (col.key === 'number')
+                        return (
+                          <TableCell key="number" className="font-medium text-[13px]">
+                            {doc.number}
+                            {doc.deletedAt && (
+                              <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
+                                видалено
+                              </Badge>
+                            )}
+                          </TableCell>
+                        );
+                      if (col.key === 'type')
+                        return (
+                          <TableCell key="type">
+                            <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>
+                              {TYPE_LABELS[doc.type]}
+                            </Badge>
+                          </TableCell>
+                        );
+                      if (col.key === 'warehouse')
+                        return (
+                          <TableCell key="warehouse" className="text-[13px] text-muted-foreground">
+                            {doc.warehouseName ?? '—'}
+                          </TableCell>
+                        );
+                      if (col.key === 'status')
+                        return (
+                          <TableCell key="status">
+                            <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>
+                              {STATUS_LABELS[doc.status]}
+                            </Badge>
+                          </TableCell>
+                        );
+                      if (col.key === 'lines')
+                        return (
+                          <TableCell
+                            key="lines"
+                            className="text-right text-[13px] text-muted-foreground"
+                          >
+                            {doc.lines.length}
+                          </TableCell>
+                        );
+                      if (col.key === 'date')
+                        return (
+                          <TableCell key="date" className="text-[13px] text-muted-foreground">
+                            {fmtDate(doc.createdAt)}
+                          </TableCell>
+                        );
+                      return null;
+                    })}
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setShowDetail(doc);
+                        }}
+                      >
+                        Деталі
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </div>
@@ -559,9 +762,25 @@ export default function StockDocumentsPage() {
       {/* Pagination */}
       {total > limit && (
         <div className="flex justify-center gap-1.5 mt-4">
-          <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Назад</Button>
-          <span className="h-8 w-8 flex items-center justify-center text-sm text-muted-foreground">{page}</span>
-          <Button variant="outline" size="sm" disabled={page * limit >= total} onClick={() => setPage(p => p + 1)}>Вперед →</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 1}
+            onClick={() => setPage(p => p - 1)}
+          >
+            ← Назад
+          </Button>
+          <span className="h-8 w-8 flex items-center justify-center text-sm text-muted-foreground">
+            {page}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page * limit >= total}
+            onClick={() => setPage(p => p + 1)}
+          >
+            Вперед →
+          </Button>
         </div>
       )}
 
@@ -587,7 +806,10 @@ export default function StockDocumentsPage() {
             label="Тип документа"
             required
             value={form.type}
-            onChange={e => { setForm(f => ({ ...f, type: e.target.value })); dirty.markDirty(); }}
+            onChange={e => {
+              setForm(f => ({ ...f, type: e.target.value }));
+              dirty.markDirty();
+            }}
           >
             <option value="WRITEOFF">Списання</option>
             <option value="TRANSFER">Переміщення між складами</option>
@@ -597,35 +819,61 @@ export default function StockDocumentsPage() {
             label="Філія"
             required
             value={form.branchId}
-            onChange={e => { setForm(f => ({ ...f, branchId: e.target.value })); dirty.markDirty(); }}
+            onChange={e => {
+              setForm(f => ({ ...f, branchId: e.target.value }));
+              dirty.markDirty();
+            }}
             placeholder="Оберіть філію"
           >
-            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
           </Select>
           <Select
             label={form.type === 'TRANSFER' ? 'Склад (джерело)' : 'Склад'}
             required
             value={form.warehouseId}
-            onChange={e => { setForm(f => ({ ...f, warehouseId: e.target.value })); dirty.markDirty(); }}
+            onChange={e => {
+              setForm(f => ({ ...f, warehouseId: e.target.value }));
+              dirty.markDirty();
+            }}
             placeholder="Оберіть склад"
           >
-            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            {warehouses.map(w => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
           </Select>
           {form.type === 'TRANSFER' && (
             <Select
               label="Склад призначення"
               required
               value={form.targetWarehouseId}
-              onChange={e => { setForm(f => ({ ...f, targetWarehouseId: e.target.value })); dirty.markDirty(); }}
+              onChange={e => {
+                setForm(f => ({ ...f, targetWarehouseId: e.target.value }));
+                dirty.markDirty();
+              }}
               placeholder="Оберіть склад"
             >
-              {warehouses.filter(w => w.id !== form.warehouseId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              {warehouses
+                .filter(w => w.id !== form.warehouseId)
+                .map(w => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
             </Select>
           )}
           <Input
             label="Примітки"
             value={form.notes}
-            onChange={e => { setForm(f => ({ ...f, notes: e.target.value })); dirty.markDirty(); }}
+            onChange={e => {
+              setForm(f => ({ ...f, notes: e.target.value }));
+              dirty.markDirty();
+            }}
             placeholder="Необов'язково"
           />
 
@@ -633,7 +881,9 @@ export default function StockDocumentsPage() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-foreground">Позиції</span>
-              <Button variant="ghost" size="sm" onClick={addLine}>+ Додати</Button>
+              <Button variant="ghost" size="sm" onClick={addLine}>
+                + Додати
+              </Button>
             </div>
             <div className="space-y-2">
               {lines.map((l, i) => (
@@ -643,15 +893,40 @@ export default function StockDocumentsPage() {
                       placeholder="Товар..."
                       value={l.goodId}
                       displayValue={l.goodName}
-                      onSelect={g => { setLines(ls => ls.map((x, idx) => idx === i ? { ...x, goodId: g.id, goodName: g.name } : x)); dirty.markDirty(); }}
-                      onClear={() => { setLines(ls => ls.map((x, idx) => idx === i ? { ...x, goodId: '', goodName: '' } : x)); dirty.markDirty(); }}
-                      fetchItems={q => apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(g => ({ ...g, primary: g.name, secondary: g.sku ?? undefined })))}
+                      onSelect={g => {
+                        setLines(ls =>
+                          ls.map((x, idx) =>
+                            idx === i ? { ...x, goodId: g.id, goodName: g.name } : x,
+                          ),
+                        );
+                        dirty.markDirty();
+                      }}
+                      onClear={() => {
+                        setLines(ls =>
+                          ls.map((x, idx) => (idx === i ? { ...x, goodId: '', goodName: '' } : x)),
+                        );
+                        dirty.markDirty();
+                      }}
+                      fetchItems={q =>
+                        apiFetch<{ items: Good[] }>(
+                          `/goods?q=${encodeURIComponent(q)}&limit=10`,
+                        ).then(r =>
+                          r.items.map(g => ({
+                            ...g,
+                            primary: g.name,
+                            secondary: g.sku ?? undefined,
+                          })),
+                        )
+                      }
                     />
                   </div>
                   <Input
                     type="number"
                     value={l.quantity}
-                    onChange={e => { updateLine(i, 'quantity', e.target.value); dirty.markDirty(); }}
+                    onChange={e => {
+                      updateLine(i, 'quantity', e.target.value);
+                      dirty.markDirty();
+                    }}
                     placeholder="Кіл."
                     min="0.001"
                     step="0.001"
@@ -660,13 +935,24 @@ export default function StockDocumentsPage() {
                   <Input
                     type="number"
                     value={l.price}
-                    onChange={e => { updateLine(i, 'price', e.target.value); dirty.markDirty(); }}
+                    onChange={e => {
+                      updateLine(i, 'price', e.target.value);
+                      dirty.markDirty();
+                    }}
                     placeholder="Ціна"
                     min="0"
                     step="0.01"
                     className="w-24 text-xs"
                   />
-                  <button onClick={() => { removeLine(i); dirty.markDirty(); }} className="text-destructive/60 hover:text-destructive text-sm px-1">×</button>
+                  <button
+                    onClick={() => {
+                      removeLine(i);
+                      dirty.markDirty();
+                    }}
+                    className="text-destructive/60 hover:text-destructive text-sm px-1"
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
             </div>
@@ -704,11 +990,17 @@ export default function StockDocumentsPage() {
         {showDetail && (
           <div className="space-y-4">
             <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant={TYPE_BADGE[showDetail.type] ?? 'secondary'}>{TYPE_LABELS[showDetail.type]}</Badge>
-              <Badge variant={STATUS_BADGE[showDetail.status] ?? 'secondary'}>{STATUS_LABELS[showDetail.status]}</Badge>
+              <Badge variant={TYPE_BADGE[showDetail.type] ?? 'secondary'}>
+                {TYPE_LABELS[showDetail.type]}
+              </Badge>
+              <Badge variant={STATUS_BADGE[showDetail.status] ?? 'secondary'}>
+                {STATUS_LABELS[showDetail.status]}
+              </Badge>
               <span className="text-muted-foreground text-sm">{showDetail.warehouseName}</span>
               {showDetail.targetWarehouseName && (
-                <span className="text-foreground-faint text-sm">→ {showDetail.targetWarehouseName}</span>
+                <span className="text-foreground-faint text-sm">
+                  → {showDetail.targetWarehouseName}
+                </span>
               )}
             </div>
 
@@ -726,9 +1018,15 @@ export default function StockDocumentsPage() {
                   {showDetail.lines.map((l, i) => (
                     <tr key={i}>
                       <td className="px-3 py-2 text-foreground">{l.goodName}</td>
-                      <td className="px-3 py-2 text-foreground-faint font-mono">{l.goodSku ?? '—'}</td>
-                      <td className="px-3 py-2 text-right font-medium">{l.quantity} {l.unit}</td>
-                      <td className="px-3 py-2 text-right">{l.price != null ? l.price.toFixed(2) + ' ₴' : '—'}</td>
+                      <td className="px-3 py-2 text-foreground-faint font-mono">
+                        {l.goodSku ?? '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right font-medium">
+                        {l.quantity} {l.unit}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {l.price != null ? l.price.toFixed(2) + ' ₴' : '—'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

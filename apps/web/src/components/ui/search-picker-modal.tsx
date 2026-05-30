@@ -44,42 +44,67 @@ export function SearchPickerModal<T extends SearchPickerItem>({
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   // Load initial list when modal opens
   useEffect(() => {
-    if (!open) { setQuery(''); setItems([]); setError(''); return; }
+    if (!open) {
+      setQuery('');
+      setItems([]);
+      setError('');
+      return;
+    }
     setLoading(true);
     setError('');
-    fetchItems('').then(data => {
-      if (mountedRef.current) setItems(data);
-    }).catch((e: unknown) => {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
-    }).finally(() => {
-      if (mountedRef.current) setLoading(false);
-    });
+    fetchItems('')
+      .then(data => {
+        if (mountedRef.current) setItems(data);
+      })
+      .catch((e: unknown) => {
+        if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      })
+      .finally(() => {
+        if (mountedRef.current) setLoading(false);
+      });
   }, [open, fetchItems]);
 
-  const search = useCallback((q: string) => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setError('');
-    timeoutRef.current = setTimeout(() => {
-      setLoading(true);
-      fetchItems(q).then(data => {
-        if (mountedRef.current) { setItems(data); setLoading(false); }
-      }).catch((e: unknown) => {
-        if (mountedRef.current) { setError(e instanceof Error ? e.message : 'Помилка пошуку'); setLoading(false); }
-      });
-    }, 300);
-  }, [fetchItems]);
+  const search = useCallback(
+    (q: string) => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      setError('');
+      timeoutRef.current = setTimeout(() => {
+        setLoading(true);
+        fetchItems(q)
+          .then(data => {
+            if (mountedRef.current) {
+              setItems(data);
+              setLoading(false);
+            }
+          })
+          .catch((e: unknown) => {
+            if (mountedRef.current) {
+              setError(e instanceof Error ? e.message : 'Помилка пошуку');
+              setLoading(false);
+            }
+          });
+      }, 300);
+    },
+    [fetchItems],
+  );
 
   useEffect(() => {
-    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, []);
 
   const handleClose = useCallback(() => {
-    setQuery(''); setItems([]); setError('');
+    setQuery('');
+    setItems([]);
+    setError('');
     onClose();
   }, [onClose]);
 
@@ -96,10 +121,14 @@ export function SearchPickerModal<T extends SearchPickerItem>({
           }}
         />
         {error && (
-          <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</p>
+          <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">
+            {error}
+          </p>
         )}
         {loading ? (
-          <div className="flex justify-center py-6"><Spinner size="sm" /></div>
+          <div className="flex justify-center py-6">
+            <Spinner size="sm" />
+          </div>
         ) : error ? null : items.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">{emptyText}</p>
         ) : (
@@ -110,18 +139,25 @@ export function SearchPickerModal<T extends SearchPickerItem>({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => { onSelect(item); handleClose(); }}
+                  onClick={() => {
+                    onSelect(item);
+                    handleClose();
+                  }}
                   className={cn(
                     'w-full text-left px-3 py-2.5 rounded-lg border transition-colors',
                     selected
                       ? 'border-primary bg-primary/5'
-                      : 'border-border bg-surface hover:border-primary hover:bg-primary/5'
+                      : 'border-border bg-surface hover:border-primary hover:bg-primary/5',
                   )}
                 >
-                  {renderItem ? renderItem(item, selected) : (
+                  {renderItem ? (
+                    renderItem(item, selected)
+                  ) : (
                     <div>
                       <div className="text-sm font-medium text-foreground">{item.primary}</div>
-                      {item.secondary && <div className="text-xs text-muted-foreground mt-0.5">{item.secondary}</div>}
+                      {item.secondary && (
+                        <div className="text-xs text-muted-foreground mt-0.5">{item.secondary}</div>
+                      )}
                     </div>
                   )}
                 </button>

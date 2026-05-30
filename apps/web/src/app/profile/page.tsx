@@ -8,13 +8,21 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 
 interface Me {
-  id: string; orgId: string; firstName: string; lastName: string;
-  role: string; email: string | null;
+  id: string;
+  orgId: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  email: string | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  OWNER: 'Власник', ADMIN: 'Адміністратор', MECHANIC: 'Механік',
-  RECEPTIONIST: 'Адміністратор СТО', STOREKEEPER: 'Комірник', ACCOUNTANT: 'Бухгалтер',
+  OWNER: 'Власник',
+  ADMIN: 'Адміністратор',
+  MECHANIC: 'Механік',
+  RECEPTIONIST: 'Адміністратор СТО',
+  STOREKEEPER: 'Комірник',
+  ACCOUNTANT: 'Бухгалтер',
 };
 
 export default function ProfilePage() {
@@ -32,16 +40,31 @@ export default function ProfilePage() {
   useEffect(() => {
     let cancelled = false;
     apiFetch<Me>('/auth/me')
-      .then(d => { if (!cancelled) setMe(d); })
-      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження профілю'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .then(d => {
+        if (!cancelled) setMe(d);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження профілю');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const changePassword = async () => {
-    setPwError(''); setPwSuccess('');
-    if (pwForm.next !== pwForm.confirm) { setPwError('Паролі не збігаються'); return; }
-    if (pwForm.next.length < 8) { setPwError('Новий пароль має бути не менше 8 символів'); return; }
+    setPwError('');
+    setPwSuccess('');
+    if (pwForm.next !== pwForm.confirm) {
+      setPwError('Паролі не збігаються');
+      return;
+    }
+    if (pwForm.next.length < 8) {
+      setPwError('Новий пароль має бути не менше 8 символів');
+      return;
+    }
     setPwSaving(true);
     try {
       await apiFetch<void>('/auth/change-password', {
@@ -52,22 +75,26 @@ export default function ProfilePage() {
       setPwForm({ current: '', next: '', confirm: '' });
     } catch (e: unknown) {
       setPwError(e instanceof Error ? e.message : 'Помилка зміни пароля');
-    } finally { setPwSaving(false); }
+    } finally {
+      setPwSaving(false);
+    }
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-[40vh]">
-      <Spinner size="lg" />
-    </div>
-  );
-
-  if (error || !me) return (
-    <div className="page-container">
-      <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
-        {error || 'Профіль не знайдено'}
+  if (loading)
+    return (
+      <div className="flex items-center justify-center min-h-[40vh]">
+        <Spinner size="lg" />
       </div>
-    </div>
-  );
+    );
+
+  if (error || !me)
+    return (
+      <div className="page-container">
+        <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
+          {error || 'Профіль не знайдено'}
+        </div>
+      </div>
+    );
 
   return (
     <div className="page-container max-w-lg space-y-6">
@@ -80,7 +107,9 @@ export default function ProfilePage() {
             {(me.firstName?.[0] ?? me.lastName?.[0] ?? '?').toUpperCase()}
           </div>
           <div>
-            <p className="font-semibold text-foreground text-lg">{me.lastName} {me.firstName}</p>
+            <p className="font-semibold text-foreground text-lg">
+              {me.lastName} {me.firstName}
+            </p>
             <p className="text-sm text-muted-foreground">{ROLE_LABELS[me.role] ?? me.role}</p>
           </div>
         </div>

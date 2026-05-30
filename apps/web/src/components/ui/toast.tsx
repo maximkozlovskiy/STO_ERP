@@ -7,23 +7,23 @@ import { cn } from '@/lib/utils';
 
 const ICONS: Record<ToastType, typeof CheckCircle> = {
   success: CheckCircle,
-  error:   AlertCircle,
+  error: AlertCircle,
   warning: AlertTriangle,
-  info:    Info,
+  info: Info,
 };
 
 const STYLES: Record<ToastType, string> = {
   success: 'bg-success-subtle border-success/30 text-success-text',
-  error:   'bg-destructive-subtle border-destructive-border text-destructive-text',
+  error: 'bg-destructive-subtle border-destructive-border text-destructive-text',
   warning: 'bg-warning-subtle border-warning/30 text-warning-text',
-  info:    'bg-info-subtle border-info/30 text-info-text',
+  info: 'bg-info-subtle border-info/30 text-info-text',
 };
 
 const ICON_STYLES: Record<ToastType, string> = {
   success: 'text-success',
-  error:   'text-destructive',
+  error: 'text-destructive',
   warning: 'text-warning',
-  info:    'text-info',
+  info: 'text-info',
 };
 
 function Toast({ item }: { item: ToastItem }) {

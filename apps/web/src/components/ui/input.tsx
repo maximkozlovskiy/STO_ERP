@@ -19,10 +19,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="flex flex-col gap-1">
         {label && (
-          <label
-            htmlFor={inputId}
-            className="text-[13px] font-medium text-foreground leading-none"
-          >
+          <label htmlFor={inputId} className="text-[13px] font-medium text-foreground leading-none">
             {label}
             {props.required && <span className="ml-0.5 text-destructive">*</span>}
           </label>
@@ -45,7 +42,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
               'focus:border-primary focus:ring-3 focus:ring-brand-100',
               'disabled:bg-secondary disabled:opacity-60 disabled:cursor-not-allowed',
               hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)]',
-              leftElement  && 'pl-9',
+              leftElement && 'pl-9',
               rightElement && 'pr-9',
               className,
             )}

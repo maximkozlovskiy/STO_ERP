@@ -21,7 +21,7 @@ const serviceMock = {
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { id: 'emp-1', orgId: 'org-1', role: 'ADMIN' };
@@ -137,7 +137,7 @@ describe('Counterparties — HTTP Contract', () => {
   });
 
   describe('POST /counterparties', () => {
-    it('повертає 400 без обов\'язкового поля type', async () => {
+    it("повертає 400 без обов'язкового поля type", async () => {
       jwtAllow = true;
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
@@ -162,8 +162,12 @@ describe('Counterparties — HTTP Contract', () => {
     it('повертає 201 при валідному body (type=CLIENT)', async () => {
       jwtAllow = true;
       serviceMock.create.mockResolvedValueOnce({
-        id: 'cp-uuid', orgId: 'org-1', type: 'CLIENT',
-        vatPayer: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        id: 'cp-uuid',
+        orgId: 'org-1',
+        type: 'CLIENT',
+        vatPayer: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',

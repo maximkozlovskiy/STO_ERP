@@ -1,16 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsEmail,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MinLength,
-} from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class SetupInitDto {
   // Organisation
   @ApiProperty({ example: 'СТО Авто-Майстер' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   orgName!: string;
 
   @ApiPropertyOptional({ example: '12345678' })
@@ -30,20 +25,24 @@ export class SetupInitDto {
   ownerPassword!: string;
 
   @ApiProperty({ example: 'Іван' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   ownerFirstName!: string;
 
   @ApiProperty({ example: 'Коваль' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   ownerLastName!: string;
 
   // First branch
   @ApiProperty({ example: 'Головна філія' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   branchName!: string;
 
   @ApiProperty({ example: 'вул. Гагаріна 12, Київ' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   branchAddress!: string;
 
   // First warehouse

@@ -14,11 +14,23 @@ describe('CurrenciesService.create', () => {
       update: ReturnType<typeof vi.fn>;
     };
   };
-  let cache: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn>; del: ReturnType<typeof vi.fn>; delPattern: ReturnType<typeof vi.fn> };
+  let cache: {
+    get: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    del: ReturnType<typeof vi.fn>;
+    delPattern: ReturnType<typeof vi.fn>;
+  };
 
   const row = (overrides: Record<string, unknown> = {}) => ({
-    id: 'c-1', orgId: 'org-1', name: 'Долар', fullName: null, internationalName: null,
-    code: 'USD', symbol: '$', createdAt: new Date(), updatedAt: new Date(),
+    id: 'c-1',
+    orgId: 'org-1',
+    name: 'Долар',
+    fullName: null,
+    internationalName: null,
+    code: 'USD',
+    symbol: '$',
+    createdAt: new Date(),
+    updatedAt: new Date(),
     ...overrides,
   });
 
@@ -48,15 +60,18 @@ describe('CurrenciesService.create', () => {
 
   it('кидає ConflictException на активний дубль коду', async () => {
     prisma.currency.findFirst.mockResolvedValueOnce(row()); // active duplicate
-    await expect(service.create('org-1', { name: 'Долар', code: 'USD' }))
-      .rejects.toThrow(ConflictException);
+    await expect(service.create('org-1', { name: 'Долар', code: 'USD' })).rejects.toThrow(
+      ConflictException,
+    );
     expect(prisma.currency.create).not.toHaveBeenCalled();
   });
 
   // Bug #152: повний unique (orgId, code) включає soft-deleted → воскрешаємо.
   // Сервіс робить ОДИН findFirst (fetch any row), потім branch на deletedAt.
   it('воскрешає soft-deleted валюту замість create (Bug #152)', async () => {
-    prisma.currency.findFirst.mockResolvedValueOnce(row({ id: 'c-deleted', deletedAt: new Date() })); // soft-deleted row occupies unique key
+    prisma.currency.findFirst.mockResolvedValueOnce(
+      row({ id: 'c-deleted', deletedAt: new Date() }),
+    ); // soft-deleted row occupies unique key
     await service.create('org-1', { name: 'Долар США', code: 'USD' });
     expect(prisma.currency.update).toHaveBeenCalledWith(
       expect.objectContaining({

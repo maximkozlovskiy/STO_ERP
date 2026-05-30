@@ -1,8 +1,6 @@
 'use client';
 
-import {
-  useEffect, useRef, useCallback, useState,
-} from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { X, UserPlus, FilePlus, Search } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -23,9 +21,15 @@ import type {
   SlotForm,
 } from './calendar.types';
 import {
-  HOURS, UUID_RE, KYIV_TZ,
-  decimalHoursToHHMM, parseHHMM, buildHHMM, pad,
-  displayCounterparty, fmtTime,
+  HOURS,
+  UUID_RE,
+  KYIV_TZ,
+  decimalHoursToHHMM,
+  parseHHMM,
+  buildHHMM,
+  pad,
+  displayCounterparty,
+  fmtTime,
 } from './calendar.utils';
 
 // ─── TimeSelect — hour + minute selects, 15-min step, bounded range ──────────
@@ -41,17 +45,36 @@ interface TimeSelectProps {
   disabled?: boolean;
 }
 
-function TimeSelect({ value, onChange, minHour = 0, minMinute = 0, disabled = false }: TimeSelectProps) {
+function TimeSelect({
+  value,
+  onChange,
+  minHour = 0,
+  minMinute = 0,
+  disabled = false,
+}: TimeSelectProps) {
   const { h, m } = value ? parseHHMM(value) : { h: HOURS[0]!, m: 0 };
-  const cls = 'w-1/2 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed';
+  const cls =
+    'w-1/2 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed';
   return (
     <div className="flex gap-1">
-      <select className={cls} value={h} disabled={disabled} onChange={e => onChange(buildHHMM(Number(e.target.value), m))}>
+      <select
+        className={cls}
+        value={h}
+        disabled={disabled}
+        onChange={e => onChange(buildHHMM(Number(e.target.value), m))}
+      >
         {PICK_HOURS.map(hh => (
-          <option key={hh} value={hh} disabled={hh < minHour}>{pad(hh)}</option>
+          <option key={hh} value={hh} disabled={hh < minHour}>
+            {pad(hh)}
+          </option>
         ))}
       </select>
-      <select className={cls} value={m} disabled={disabled} onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}>
+      <select
+        className={cls}
+        value={m}
+        disabled={disabled}
+        onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}
+      >
         {PICK_MINUTES.map(mm => (
           <option key={mm} value={mm} disabled={h === minHour && mm < minMinute}>
             {pad(mm)}
@@ -128,7 +151,9 @@ export function CalendarSlotModal({
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   // ── Counterparty search state ─────────────────────────────────────────────
@@ -141,8 +166,20 @@ export function CalendarSlotModal({
   // New counterparty wizard modal
   const [newCpOpen, setNewCpOpen] = useState(false);
   const [newCpStep, setNewCpStep] = useState<1 | 2>(1);
-  const [newCp, setNewCp] = useState({ firstName: '', lastName: '', phone: '', companyName: '', email: '' });
-  const [newVehicle, setNewVehicle] = useState({ make: '', model: '', year: '', licensePlate: '', vin: '' });
+  const [newCp, setNewCp] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    companyName: '',
+    email: '',
+  });
+  const [newVehicle, setNewVehicle] = useState({
+    make: '',
+    model: '',
+    year: '',
+    licensePlate: '',
+    vin: '',
+  });
   const [savingCp, setSavingCp] = useState(false);
   const [cpWizardError, setCpWizardError] = useState('');
   const [createdCpId, setCreatedCpId] = useState('');
@@ -151,44 +188,54 @@ export function CalendarSlotModal({
   const openNewCpWizard = () => {
     setNewCp({ firstName: '', lastName: '', phone: '', companyName: '', email: '' });
     setNewVehicle({ make: '', model: '', year: '', licensePlate: '', vin: '' });
-    setCreatedCpId(''); setCreatedGarageId('');
-    setCpWizardError(''); setNewCpStep(1);
+    setCreatedCpId('');
+    setCreatedGarageId('');
+    setCpWizardError('');
+    setNewCpStep(1);
     setNewCpOpen(true);
   };
 
   const saveWizardStep1 = async () => {
     if (!newCp.firstName && !newCp.lastName && !newCp.companyName) {
-      setCpWizardError("Вкажіть ім'я або назву компанії"); return;
+      setCpWizardError("Вкажіть ім'я або назву компанії");
+      return;
     }
-    setSavingCp(true); setCpWizardError('');
+    setSavingCp(true);
+    setCpWizardError('');
     try {
       const created = await apiFetch<CounterpartyOption>('/counterparties', {
         method: 'POST',
         body: JSON.stringify({
           type: 'CLIENT',
-          firstName:   newCp.firstName   || undefined,
-          lastName:    newCp.lastName    || undefined,
-          phone:       newCp.phone       || undefined,
+          firstName: newCp.firstName || undefined,
+          lastName: newCp.lastName || undefined,
+          phone: newCp.phone || undefined,
           companyName: newCp.companyName || undefined,
-          email:       newCp.email       || undefined,
+          email: newCp.email || undefined,
         }),
       });
       setCreatedCpId(created.id);
-      const garages = await apiFetch<{ id: string; isDefault: boolean }[]>(`/counterparties/${created.id}/garages`)
-        .catch(() => [] as { id: string; isDefault: boolean }[]);
+      const garages = await apiFetch<{ id: string; isDefault: boolean }[]>(
+        `/counterparties/${created.id}/garages`,
+      ).catch(() => [] as { id: string; isDefault: boolean }[]);
       const defaultGarage = garages.find(g => g.isDefault) ?? garages[0];
       if (defaultGarage) setCreatedGarageId(defaultGarage.id);
       setNewCpStep(2);
-    } catch (e: unknown) { setCpWizardError(e instanceof Error ? e.message : 'Помилка'); }
-    finally { setSavingCp(false); }
+    } catch (e: unknown) {
+      setCpWizardError(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setSavingCp(false);
+    }
   };
 
   const saveWizardStep2 = async (skip = false) => {
     if (!skip) {
       if (!newVehicle.make.trim() || !newVehicle.model.trim()) {
-        setCpWizardError('Вкажіть марку та модель авто'); return;
+        setCpWizardError('Вкажіть марку та модель авто');
+        return;
       }
-      setSavingCp(true); setCpWizardError('');
+      setSavingCp(true);
+      setCpWizardError('');
       try {
         await apiFetch('/vehicles', {
           method: 'POST',
@@ -205,60 +252,109 @@ export function CalendarSlotModal({
         setCpWizardError(e instanceof Error ? e.message : 'Помилка');
         setSavingCp(false);
         return;
-      } finally { setSavingCp(false); }
+      } finally {
+        setSavingCp(false);
+      }
     }
-    const display = newCp.companyName || [newCp.lastName, newCp.firstName].filter(Boolean).join(' ') || '(без імені)';
+    const display =
+      newCp.companyName ||
+      [newCp.lastName, newCp.firstName].filter(Boolean).join(' ') ||
+      '(без імені)';
     setCpDisplay(display);
     setForm(f => ({ ...f, counterpartyId: createdCpId, counterpartyDisplay: display }));
     setNewCpOpen(false);
   };
 
   useEffect(() => {
-    if (!open) { setCpOptions([]); setCpDisplay(''); setNewCpOpen(false); }
+    if (!open) {
+      setCpOptions([]);
+      setCpDisplay('');
+      setNewCpOpen(false);
+    }
   }, [open, setCpDisplay]);
 
   const searchCounterparties = useCallback((q: string) => {
     if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current);
-    if (!q.trim()) { setCpOptions([]); setShowCpDropdown(false); return; }
+    if (!q.trim()) {
+      setCpOptions([]);
+      setShowCpDropdown(false);
+      return;
+    }
     cpTimeoutRef.current = setTimeout(async () => {
       setCpLoading(true);
       try {
-        const data = await apiFetch<{ items: CounterpartyOption[] }>(`/counterparties?q=${encodeURIComponent(q)}&limit=10`);
-        if (mountedRef.current) { setCpOptions(data.items); setShowCpDropdown(true); }
-      } catch { /* ignore */ }
-      finally { if (mountedRef.current) setCpLoading(false); }
+        const data = await apiFetch<{ items: CounterpartyOption[] }>(
+          `/counterparties?q=${encodeURIComponent(q)}&limit=10`,
+        );
+        if (mountedRef.current) {
+          setCpOptions(data.items);
+          setShowCpDropdown(true);
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        if (mountedRef.current) setCpLoading(false);
+      }
     }, 300);
   }, []);
 
-  useEffect(() => { return () => { if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current); }; }, []);
+  useEffect(() => {
+    return () => {
+      if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current);
+    };
+  }, []);
 
   // ── New work-order mini-form ──────────────────────────────────────────────
 
   const [showNewWo, setShowNewWo] = useState(false);
-  const [newWo, setNewWo] = useState({ counterpartyId: '', counterpartyDisplay: '', vehicleId: '', branchId: '', description: '' });
+  const [newWo, setNewWo] = useState({
+    counterpartyId: '',
+    counterpartyDisplay: '',
+    vehicleId: '',
+    branchId: '',
+    description: '',
+  });
   const [newWoVehicles, setNewWoVehicles] = useState<VehicleOption[]>([]);
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [branchesError, setBranchesError] = useState('');
   const [savingWo, setSavingWo] = useState(false);
 
-  useEffect(() => { if (!open) setShowNewWo(false); }, [open]);
+  useEffect(() => {
+    if (!open) setShowNewWo(false);
+  }, [open]);
 
   const openNewWo = useCallback(async () => {
     setShowNewWo(v => !v);
     if (!form.counterpartyId) return;
-    setNewWo(v => ({ ...v, counterpartyId: form.counterpartyId, counterpartyDisplay: form.counterpartyDisplay }));
-    const garages = await apiFetch<{ id: string }[]>(`/counterparties/${form.counterpartyId}/garages`)
-      .catch(() => [] as { id: string }[]);
-    const all = (await Promise.all(garages.map(g =>
-      apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(() => [] as VehicleOption[])
-    ))).flat();
+    setNewWo(v => ({
+      ...v,
+      counterpartyId: form.counterpartyId,
+      counterpartyDisplay: form.counterpartyDisplay,
+    }));
+    const garages = await apiFetch<{ id: string }[]>(
+      `/counterparties/${form.counterpartyId}/garages`,
+    ).catch(() => [] as { id: string }[]);
+    const all = (
+      await Promise.all(
+        garages.map(g =>
+          apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(
+            () => [] as VehicleOption[],
+          ),
+        ),
+      )
+    ).flat();
     setNewWoVehicles(all);
     if (all.length === 1) setNewWo(v => ({ ...v, vehicleId: all[0]!.id }));
   }, [form.counterpartyId, form.counterpartyDisplay]);
 
   useEffect(() => {
     apiFetch<{ id: string; name: string }[]>('/branches')
-      .then(d => { if (mountedRef.current) { setBranches(d); setBranchesError(''); } })
+      .then(d => {
+        if (mountedRef.current) {
+          setBranches(d);
+          setBranchesError('');
+        }
+      })
       .catch((e: unknown) => {
         if (mountedRef.current)
           setBranchesError(e instanceof Error ? e.message : 'Не вдалося завантажити список філій');
@@ -266,14 +362,23 @@ export function CalendarSlotModal({
   }, []);
 
   const loadWoVehicles = useCallback(async (counterpartyId: string) => {
-    if (!counterpartyId) { setNewWoVehicles([]); return; }
+    if (!counterpartyId) {
+      setNewWoVehicles([]);
+      return;
+    }
     try {
       const garages = await apiFetch<{ id: string }[]>(`/counterparties/${counterpartyId}/garages`);
-      const vehicles = await Promise.all(garages.map(g =>
-        apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(() => [] as VehicleOption[])
-      ));
+      const vehicles = await Promise.all(
+        garages.map(g =>
+          apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(
+            () => [] as VehicleOption[],
+          ),
+        ),
+      );
       setNewWoVehicles(vehicles.flat());
-    } catch { setNewWoVehicles([]); }
+    } catch {
+      setNewWoVehicles([]);
+    }
   }, []);
 
   const saveNewWorkOrder = async () => {
@@ -293,9 +398,18 @@ export function CalendarSlotModal({
       setForm(f => ({ ...f, workOrderId: created.id, workOrderDisplay: display }));
       toast.success('Наряд створено');
       setShowNewWo(false);
-      setNewWo({ counterpartyId: '', counterpartyDisplay: '', vehicleId: '', branchId: '', description: '' });
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка створення наряду'); }
-    finally { setSavingWo(false); }
+      setNewWo({
+        counterpartyId: '',
+        counterpartyDisplay: '',
+        vehicleId: '',
+        branchId: '',
+        description: '',
+      });
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка створення наряду');
+    } finally {
+      setSavingWo(false);
+    }
   };
 
   // ── Picker modals ─────────────────────────────────────────────────────────
@@ -327,60 +441,91 @@ export function CalendarSlotModal({
       }));
   }, []);
 
-  const fetchWoItems = useCallback(async (q: string): Promise<WoItem[]> => {
-    const cpParam = form.counterpartyId ? `&counterpartyId=${form.counterpartyId}` : '';
-    const url = q.trim()
-      ? `/work-orders?q=${encodeURIComponent(q)}&limit=30${cpParam}`
-      : `/work-orders?limit=30${cpParam}`;
-    const data = await apiFetch<{ items: WorkOrderOption[] }>(url);
-    return data.items.map(wo => ({
-      id: wo.id,
-      primary: wo.number,
-      secondary: wo.counterpartyName ?? undefined,
-      counterpartyId: wo.counterpartyId,
-      counterpartyName: wo.counterpartyName,
-      slotStartAt: wo.slotStartAt ?? null,
-      slotEndAt: wo.slotEndAt ?? null,
-      slotLiftName: wo.slotLiftName ?? null,
-    }));
-  }, [form.counterpartyId]);
+  const fetchWoItems = useCallback(
+    async (q: string): Promise<WoItem[]> => {
+      const cpParam = form.counterpartyId ? `&counterpartyId=${form.counterpartyId}` : '';
+      const url = q.trim()
+        ? `/work-orders?q=${encodeURIComponent(q)}&limit=30${cpParam}`
+        : `/work-orders?limit=30${cpParam}`;
+      const data = await apiFetch<{ items: WorkOrderOption[] }>(url);
+      return data.items.map(wo => ({
+        id: wo.id,
+        primary: wo.number,
+        secondary: wo.counterpartyName ?? undefined,
+        counterpartyId: wo.counterpartyId,
+        counterpartyName: wo.counterpartyName,
+        slotStartAt: wo.slotStartAt ?? null,
+        slotEndAt: wo.slotEndAt ?? null,
+        slotLiftName: wo.slotLiftName ?? null,
+      }));
+    },
+    [form.counterpartyId],
+  );
 
   // ── Add / update slot ─────────────────────────────────────────────────────
 
   const addSlot = async () => {
-    if (!form.startAt || !form.endAt) { setError('Вкажіть час початку та завершення'); return; }
-    if (form.endAt <= form.startAt)    { setError('Час завершення повинен бути після часу початку'); return; }
-    if (!form.counterpartyId && !form.workOrderId) { setError('Оберіть клієнта'); return; }
-    if (form.workOrderId && !UUID_RE.test(form.workOrderId)) { setError('Оберіть наряд зі списку'); return; }
+    if (!form.startAt || !form.endAt) {
+      setError('Вкажіть час початку та завершення');
+      return;
+    }
+    if (form.endAt <= form.startAt) {
+      setError('Час завершення повинен бути після часу початку');
+      return;
+    }
+    if (!form.counterpartyId && !form.workOrderId) {
+      setError('Оберіть клієнта');
+      return;
+    }
+    if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
+      setError('Оберіть наряд зі списку');
+      return;
+    }
     if (!editingSlotId && nowMs) {
       const todayKyiv = new Date(nowMs).toLocaleDateString('sv-SE', { timeZone: KYIV_TZ });
-      if (date < todayKyiv) { setError('Не можна створити запис у минулому'); return; }
+      if (date < todayKyiv) {
+        setError('Не можна створити запис у минулому');
+        return;
+      }
       if (date === todayKyiv) {
         const slotHour = parseInt(form.startAt.split(':')[0] ?? '0', 10);
-        if (slotHour < minHour) { setError('Не можна створити запис у минулому'); return; }
+        if (slotHour < minHour) {
+          setError('Не можна створити запис у минулому');
+          return;
+        }
       }
     }
-    setSaving(true); setError('');
+    setSaving(true);
+    setError('');
     const body = {
-      liftId:         form.liftId         || undefined,
-      employeeId:     form.employeeId     || undefined,
-      workOrderId:    form.workOrderId    || undefined,
+      liftId: form.liftId || undefined,
+      employeeId: form.employeeId || undefined,
+      workOrderId: form.workOrderId || undefined,
       counterpartyId: form.counterpartyId || undefined,
       startAt: new Date(`${date}T${form.startAt}:00`).toISOString(),
-      endAt:   new Date(`${date}T${form.endAt}:00`).toISOString(),
+      endAt: new Date(`${date}T${form.endAt}:00`).toISOString(),
       notes: form.notes || undefined,
     };
     try {
       if (editingSlotId) {
-        await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'PATCH', body: JSON.stringify(body) });
+        await apiFetch(`/calendar/slots/${editingSlotId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
         toast.success('Слот оновлено');
       } else {
-        await apiFetch<CalendarSlot>('/calendar/slots', { method: 'POST', body: JSON.stringify(body) });
+        await apiFetch<CalendarSlot>('/calendar/slots', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
         toast.success('Слот створено');
       }
       onSaved();
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка збереження'); }
-    finally { setSaving(false); }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -413,7 +558,9 @@ export function CalendarSlotModal({
         >
           <h3 className="font-semibold text-foreground text-sm">
             {editingSlotId
-              ? (isEditingPast ? 'Перегляд слоту' : 'Редагування слоту')
+              ? isEditingPast
+                ? 'Перегляд слоту'
+                : 'Редагування слоту'
               : pendingSlot
                 ? `Новий слот ${decimalHoursToHHMM(pendingSlot.startH)}–${decimalHoursToHHMM(pendingSlot.endH)} на ${date}`
                 : `Новий слот на ${date}`}
@@ -429,14 +576,26 @@ export function CalendarSlotModal({
 
           <div className="grid grid-cols-4 gap-3">
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Підйомник</label>
-              <Select value={form.liftId} disabled={isEditingPast} onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Підйомник
+              </label>
+              <Select
+                value={form.liftId}
+                disabled={isEditingPast}
+                onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+              >
                 <option value="">— будь-який —</option>
-                {lifts.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                {lifts.map(l => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
               </Select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Початок</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Початок
+              </label>
               <TimeSelect
                 value={form.startAt}
                 minHour={editingSlotId ? HOURS[0] : minHour}
@@ -447,14 +606,22 @@ export function CalendarSlotModal({
                     let next = { ...f, startAt: start };
                     if (start && f.normoHours && Number(f.normoHours) > 0) {
                       const [h, m] = start.split(':').map(Number);
-                      const totalMin = Math.min((h ?? 0) * 60 + (m ?? 0) + Math.round(Number(f.normoHours) * 60), 23 * 60 + 59);
+                      const totalMin = Math.min(
+                        (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(f.normoHours) * 60),
+                        23 * 60 + 59,
+                      );
                       const em = Math.round((totalMin % 60) / 15) * 15;
-                      next = { ...next, endAt: `${pad(Math.floor(totalMin / 60))}:${pad(em >= 60 ? 0 : em)}` };
+                      next = {
+                        ...next,
+                        endAt: `${pad(Math.floor(totalMin / 60))}:${pad(em >= 60 ? 0 : em)}`,
+                      };
                     }
                     if (pendingSlot) {
                       const { h: sh, m: sm } = parseHHMM(start);
                       const { h: eh, m: em } = parseHHMM(next.endAt || start);
-                      setPendingSlot(p => p ? { ...p, startH: sh + sm / 60, endH: eh + em / 60 } : p);
+                      setPendingSlot(p =>
+                        p ? { ...p, startH: sh + sm / 60, endH: eh + em / 60 } : p,
+                      );
                     }
                     return next;
                   });
@@ -466,18 +633,25 @@ export function CalendarSlotModal({
                 Норм-год <span className="font-normal text-muted-foreground/70">(авто кінець)</span>
               </label>
               <Input
-                type="number" step="0.5" min="0.5" value={form.normoHours} disabled={isEditingPast}
+                type="number"
+                step="0.5"
+                min="0.5"
+                value={form.normoHours}
+                disabled={isEditingPast}
                 onChange={e => {
                   const nh = e.target.value;
                   setForm(f => {
                     if (f.startAt && nh && Number(nh) > 0) {
                       const [h, m] = f.startAt.split(':').map(Number);
-                      const totalMin = Math.min((h ?? 0) * 60 + (m ?? 0) + Math.round(Number(nh) * 60), 23 * 60 + 59);
+                      const totalMin = Math.min(
+                        (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(nh) * 60),
+                        23 * 60 + 59,
+                      );
                       const em = Math.round((totalMin % 60) / 15) * 15;
                       const endAt = `${pad(Math.floor(totalMin / 60))}:${pad(em >= 60 ? 0 : em)}`;
                       if (pendingSlot) {
                         const { h: eh, m: em2 } = parseHHMM(endAt);
-                        setPendingSlot(p => p ? { ...p, endH: eh + em2 / 60 } : p);
+                        setPendingSlot(p => (p ? { ...p, endH: eh + em2 / 60 } : p));
                       }
                       return { ...f, normoHours: nh, endAt };
                     }
@@ -498,7 +672,7 @@ export function CalendarSlotModal({
                   setForm(f => ({ ...f, endAt }));
                   if (pendingSlot) {
                     const { h, m } = parseHHMM(endAt);
-                    setPendingSlot(p => p ? { ...p, endH: h + m / 60 } : p);
+                    setPendingSlot(p => (p ? { ...p, endH: h + m / 60 } : p));
                   }
                 }}
               />
@@ -518,7 +692,13 @@ export function CalendarSlotModal({
                   onClick={() => !isEditingPast && setCpPickerOpen(true)}
                   className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <span className={form.counterpartyDisplay ? 'text-foreground truncate' : 'text-muted-foreground'}>
+                  <span
+                    className={
+                      form.counterpartyDisplay
+                        ? 'text-foreground truncate'
+                        : 'text-muted-foreground'
+                    }
+                  >
                     {form.counterpartyDisplay || 'Обрати клієнта…'}
                   </span>
                   <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -526,7 +706,10 @@ export function CalendarSlotModal({
                 {form.counterpartyDisplay && !isEditingPast && (
                   <button
                     type="button"
-                    onClick={() => { setCpDisplay(''); setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' })); }}
+                    onClick={() => {
+                      setCpDisplay('');
+                      setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' }));
+                    }}
                     className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                     aria-label="Очистити"
                   >
@@ -534,7 +717,13 @@ export function CalendarSlotModal({
                   </button>
                 )}
                 {!isEditingPast && (
-                  <Button variant="outline" size="sm" onClick={openNewCpWizard} title="Новий клієнт" className="h-9 w-9 p-0 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openNewCpWizard}
+                    title="Новий клієнт"
+                    className="h-9 w-9 p-0 shrink-0"
+                  >
                     <UserPlus className="h-4 w-4" />
                   </Button>
                 )}
@@ -550,7 +739,11 @@ export function CalendarSlotModal({
                   onClick={() => !isEditingPast && setWoPickerOpen(true)}
                   className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <span className={form.workOrderDisplay ? 'text-foreground truncate' : 'text-muted-foreground'}>
+                  <span
+                    className={
+                      form.workOrderDisplay ? 'text-foreground truncate' : 'text-muted-foreground'
+                    }
+                  >
                     {form.workOrderDisplay || 'Обрати наряд…'}
                   </span>
                   <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -566,7 +759,13 @@ export function CalendarSlotModal({
                   </button>
                 )}
                 {!isEditingPast && (
-                  <Button variant="outline" size="sm" onClick={openNewWo} title="Новий наряд" className="h-9 w-9 p-0 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openNewWo}
+                    title="Новий наряд"
+                    className="h-9 w-9 p-0 shrink-0"
+                  >
                     <FilePlus className="h-4 w-4" />
                   </Button>
                 )}
@@ -584,10 +783,14 @@ export function CalendarSlotModal({
             <div className="flex items-center gap-2 mb-5">
               {([1, 2] as const).map(s => (
                 <div key={s} className="flex items-center gap-2">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${s === newCpStep ? 'bg-primary text-primary-foreground' : s < newCpStep ? 'bg-success-text text-white' : 'bg-secondary text-muted-foreground border border-border'}`}>
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${s === newCpStep ? 'bg-primary text-primary-foreground' : s < newCpStep ? 'bg-success-text text-white' : 'bg-secondary text-muted-foreground border border-border'}`}
+                  >
                     {s < newCpStep ? '✓' : s}
                   </div>
-                  <span className={`text-xs ${s === newCpStep ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                  <span
+                    className={`text-xs ${s === newCpStep ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
+                  >
                     {s === 1 ? 'Клієнт' : 'Авто'}
                   </span>
                   {s < 2 && <div className="w-8 h-px bg-border mx-1" />}
@@ -596,25 +799,59 @@ export function CalendarSlotModal({
             </div>
 
             {cpWizardError && (
-              <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2 mb-4">{cpWizardError}</p>
+              <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2 mb-4">
+                {cpWizardError}
+              </p>
             )}
 
             {newCpStep === 1 && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <Input label="Ім'я" placeholder="Іван" value={newCp.firstName} onChange={e => setNewCp(v => ({ ...v, firstName: e.target.value }))} />
-                  <Input label="Прізвище" placeholder="Коваль" value={newCp.lastName} onChange={e => setNewCp(v => ({ ...v, lastName: e.target.value }))} />
+                  <Input
+                    label="Ім'я"
+                    placeholder="Іван"
+                    value={newCp.firstName}
+                    onChange={e => setNewCp(v => ({ ...v, firstName: e.target.value }))}
+                  />
+                  <Input
+                    label="Прізвище"
+                    placeholder="Коваль"
+                    value={newCp.lastName}
+                    onChange={e => setNewCp(v => ({ ...v, lastName: e.target.value }))}
+                  />
                 </div>
-                <Input label="Назва компанії" placeholder="ТОВ «Авто»" value={newCp.companyName} onChange={e => setNewCp(v => ({ ...v, companyName: e.target.value }))} />
+                <Input
+                  label="Назва компанії"
+                  placeholder="ТОВ «Авто»"
+                  value={newCp.companyName}
+                  onChange={e => setNewCp(v => ({ ...v, companyName: e.target.value }))}
+                />
                 <div className="grid grid-cols-2 gap-3">
-                  <Input label="Телефон" placeholder="+38 (067) 123-45-67" value={newCp.phone} onChange={e => setNewCp(v => ({ ...v, phone: e.target.value }))} />
-                  <Input label="Email" type="email" placeholder="ivan@example.com" value={newCp.email} onChange={e => setNewCp(v => ({ ...v, email: e.target.value }))} />
+                  <Input
+                    label="Телефон"
+                    placeholder="+38 (067) 123-45-67"
+                    value={newCp.phone}
+                    onChange={e => setNewCp(v => ({ ...v, phone: e.target.value }))}
+                  />
+                  <Input
+                    label="Email"
+                    type="email"
+                    placeholder="ivan@example.com"
+                    value={newCp.email}
+                    onChange={e => setNewCp(v => ({ ...v, email: e.target.value }))}
+                  />
                 </div>
                 <div className="flex gap-2 pt-2">
-                  <Button onClick={saveWizardStep1} loading={savingCp} disabled={!newCp.firstName && !newCp.lastName && !newCp.companyName}>
+                  <Button
+                    onClick={saveWizardStep1}
+                    loading={savingCp}
+                    disabled={!newCp.firstName && !newCp.lastName && !newCp.companyName}
+                  >
                     Далі →
                   </Button>
-                  <Button variant="outline" onClick={() => setNewCpOpen(false)}>Скасувати</Button>
+                  <Button variant="outline" onClick={() => setNewCpOpen(false)}>
+                    Скасувати
+                  </Button>
                 </div>
               </div>
             )}
@@ -622,19 +859,50 @@ export function CalendarSlotModal({
             {newCpStep === 2 && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <Input label="Марка" placeholder="Toyota" value={newVehicle.make} onChange={e => setNewVehicle(v => ({ ...v, make: e.target.value }))} />
-                  <Input label="Модель" placeholder="Camry" value={newVehicle.model} onChange={e => setNewVehicle(v => ({ ...v, model: e.target.value }))} />
+                  <Input
+                    label="Марка"
+                    placeholder="Toyota"
+                    value={newVehicle.make}
+                    onChange={e => setNewVehicle(v => ({ ...v, make: e.target.value }))}
+                  />
+                  <Input
+                    label="Модель"
+                    placeholder="Camry"
+                    value={newVehicle.model}
+                    onChange={e => setNewVehicle(v => ({ ...v, model: e.target.value }))}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Input label="Рік" placeholder="2021" value={newVehicle.year} onChange={e => setNewVehicle(v => ({ ...v, year: e.target.value }))} />
-                  <Input label="Держ. номер" placeholder="АА 1234 ВВ" value={newVehicle.licensePlate} onChange={e => setNewVehicle(v => ({ ...v, licensePlate: e.target.value }))} />
+                  <Input
+                    label="Рік"
+                    placeholder="2021"
+                    value={newVehicle.year}
+                    onChange={e => setNewVehicle(v => ({ ...v, year: e.target.value }))}
+                  />
+                  <Input
+                    label="Держ. номер"
+                    placeholder="АА 1234 ВВ"
+                    value={newVehicle.licensePlate}
+                    onChange={e => setNewVehicle(v => ({ ...v, licensePlate: e.target.value }))}
+                  />
                 </div>
-                <Input label="VIN (необов'язково)" placeholder="1HGBH41JXMN109186" value={newVehicle.vin} onChange={e => setNewVehicle(v => ({ ...v, vin: e.target.value }))} />
+                <Input
+                  label="VIN (необов'язково)"
+                  placeholder="1HGBH41JXMN109186"
+                  value={newVehicle.vin}
+                  onChange={e => setNewVehicle(v => ({ ...v, vin: e.target.value }))}
+                />
                 <div className="flex gap-2 pt-2">
-                  <Button onClick={() => saveWizardStep2(false)} loading={savingCp} disabled={!newVehicle.make.trim() || !newVehicle.model.trim()}>
+                  <Button
+                    onClick={() => saveWizardStep2(false)}
+                    loading={savingCp}
+                    disabled={!newVehicle.make.trim() || !newVehicle.model.trim()}
+                  >
                     Зберегти
                   </Button>
-                  <Button variant="outline" onClick={() => saveWizardStep2(true)}>Пропустити</Button>
+                  <Button variant="outline" onClick={() => saveWizardStep2(true)}>
+                    Пропустити
+                  </Button>
                 </div>
               </div>
             )}
@@ -645,36 +913,66 @@ export function CalendarSlotModal({
             <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
               <p className="text-xs font-medium text-foreground">Новий наряд</p>
               <div className="flex gap-1">
-                <button type="button" onClick={() => setNewWoCpPickerOpen(true)}
-                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors">
-                  <span className={newWo.counterpartyDisplay ? 'text-foreground truncate' : 'text-muted-foreground'}>
+                <button
+                  type="button"
+                  onClick={() => setNewWoCpPickerOpen(true)}
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors"
+                >
+                  <span
+                    className={
+                      newWo.counterpartyDisplay
+                        ? 'text-foreground truncate'
+                        : 'text-muted-foreground'
+                    }
+                  >
                     {newWo.counterpartyDisplay || 'Обрати клієнта…'}
                   </span>
                   <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <Select value={newWo.vehicleId} onChange={e => setNewWo(v => ({ ...v, vehicleId: e.target.value }))}
-                  disabled={!newWo.counterpartyId}>
+                <Select
+                  value={newWo.vehicleId}
+                  onChange={e => setNewWo(v => ({ ...v, vehicleId: e.target.value }))}
+                  disabled={!newWo.counterpartyId}
+                >
                   <option value="">— Автомобіль —</option>
                   {newWoVehicles.map(v => (
-                    <option key={v.id} value={v.id}>{v.make} {v.model} ({v.licensePlate})</option>
+                    <option key={v.id} value={v.id}>
+                      {v.make} {v.model} ({v.licensePlate})
+                    </option>
                   ))}
                 </Select>
-                <Select value={newWo.branchId} onChange={e => setNewWo(v => ({ ...v, branchId: e.target.value }))}>
+                <Select
+                  value={newWo.branchId}
+                  onChange={e => setNewWo(v => ({ ...v, branchId: e.target.value }))}
+                >
                   <option value="">— Філія —</option>
-                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
                 </Select>
               </div>
               {branchesError && <p className="text-xs text-destructive-text">{branchesError}</p>}
-              <Input placeholder="Опис (необов'язково)" value={newWo.description}
-                onChange={e => setNewWo(v => ({ ...v, description: e.target.value }))} />
+              <Input
+                placeholder="Опис (необов'язково)"
+                value={newWo.description}
+                onChange={e => setNewWo(v => ({ ...v, description: e.target.value }))}
+              />
               <div className="flex gap-2">
-                <Button size="sm" onClick={saveNewWorkOrder} loading={savingWo}
-                  disabled={!newWo.counterpartyId || !newWo.vehicleId || !newWo.branchId}>
+                <Button
+                  size="sm"
+                  onClick={saveNewWorkOrder}
+                  loading={savingWo}
+                  disabled={!newWo.counterpartyId || !newWo.vehicleId || !newWo.branchId}
+                >
                   Зберегти наряд
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => setShowNewWo(false)}>Скасувати</Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowNewWo(false)}>
+                  Скасувати
+                </Button>
               </div>
             </div>
           )}
@@ -682,7 +980,11 @@ export function CalendarSlotModal({
           {/* Notes */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Нотатки</label>
-            <Input value={form.notes} disabled={isEditingPast} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+            <Input
+              value={form.notes}
+              disabled={isEditingPast}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            />
           </div>
 
           {/* Picker modals */}
@@ -703,7 +1005,13 @@ export function CalendarSlotModal({
                 });
                 if (!ok) return;
                 setCpDisplay(item.primary);
-                setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary, workOrderId: '', workOrderDisplay: '' }));
+                setForm(f => ({
+                  ...f,
+                  counterpartyId: item.id,
+                  counterpartyDisplay: item.primary,
+                  workOrderId: '',
+                  workOrderDisplay: '',
+                }));
                 return;
               }
               setCpDisplay(item.primary);
@@ -720,14 +1028,24 @@ export function CalendarSlotModal({
             emptyText="Нарядів не знайдено"
             renderItem={(item, selected) => (
               <div>
-                <div className={`text-sm font-medium ${selected ? 'text-primary' : 'text-foreground'}`}>{item.primary}</div>
-                {item.secondary && <div className="text-xs text-muted-foreground mt-0.5">{item.secondary}</div>}
+                <div
+                  className={`text-sm font-medium ${selected ? 'text-primary' : 'text-foreground'}`}
+                >
+                  {item.primary}
+                </div>
+                {item.secondary && (
+                  <div className="text-xs text-muted-foreground mt-0.5">{item.secondary}</div>
+                )}
                 {item.slotStartAt ? (
                   <div className="flex items-center gap-1.5 text-xs text-primary mt-0.5">
                     <span>📅</span>
                     <span>
-                      {new Date(item.slotStartAt).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: KYIV_TZ })}
-                      {' '}
+                      {new Date(item.slotStartAt).toLocaleDateString('uk-UA', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        timeZone: KYIV_TZ,
+                      })}{' '}
                       {fmtTime(item.slotStartAt)}–{item.slotEndAt ? fmtTime(item.slotEndAt) : ''}
                       {item.slotLiftName ? ` · ${item.slotLiftName}` : ''}
                     </span>
@@ -742,7 +1060,11 @@ export function CalendarSlotModal({
                 ? `${item.primary} · ${item.counterpartyName}`
                 : item.primary;
 
-              if (item.counterpartyId && form.counterpartyId && item.counterpartyId !== form.counterpartyId) {
+              if (
+                item.counterpartyId &&
+                form.counterpartyId &&
+                item.counterpartyId !== form.counterpartyId
+              ) {
                 const replace = await confirm({
                   title: 'Замінити поточного клієнта?',
                   message: `Наряд належить іншому клієнту (${item.counterpartyName ?? item.counterpartyId}).`,
@@ -788,7 +1110,12 @@ export function CalendarSlotModal({
             searchPlaceholder="Ім'я, телефон..."
             emptyText="Клієнтів не знайдено"
             onSelect={async item => {
-              setNewWo(v => ({ ...v, counterpartyId: item.id, counterpartyDisplay: item.primary, vehicleId: '' }));
+              setNewWo(v => ({
+                ...v,
+                counterpartyId: item.id,
+                counterpartyDisplay: item.primary,
+                vehicleId: '',
+              }));
               await loadWoVehicles(item.id);
             }}
           />
@@ -798,7 +1125,9 @@ export function CalendarSlotModal({
               <Button
                 onClick={addSlot}
                 loading={saving}
-                disabled={!form.startAt || !form.endAt || (!form.counterpartyId && !form.workOrderId)}
+                disabled={
+                  !form.startAt || !form.endAt || (!form.counterpartyId && !form.workOrderId)
+                }
               >
                 {editingSlotId ? 'Оновити' : 'Зберегти'}
               </Button>

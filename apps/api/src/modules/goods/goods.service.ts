@@ -1,7 +1,18 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateGoodDto, UpdateGoodDto, GoodQueryDto, GoodResponseDto, PaginatedGoodsDto } from './goods.dto';
+import {
+  CreateGoodDto,
+  UpdateGoodDto,
+  GoodQueryDto,
+  GoodResponseDto,
+  PaginatedGoodsDto,
+} from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 
 @Injectable()
@@ -22,22 +33,34 @@ export class GoodsService {
     if (query.category) where.category = { contains: query.category, mode: 'insensitive' };
 
     const skip = (query.page - 1) * query.limit;
-    const supplierSelect = { select: { firstName: true, lastName: true, companyName: true } } as const;
+    const supplierSelect = {
+      select: { firstName: true, lastName: true, companyName: true },
+    } as const;
     const [items, total] = await this.prisma.$transaction([
       this.prisma.good.findMany({
-        where, orderBy: { name: 'asc' }, skip, take: query.limit,
+        where,
+        orderBy: { name: 'asc' },
+        skip,
+        take: query.limit,
         include: { preferredSupplier: supplierSelect },
       }),
       this.prisma.good.count({ where }),
     ]);
 
-    return { items: items.map(item => this.toDto(item)), total, page: query.page, limit: query.limit };
+    return {
+      items: items.map(item => this.toDto(item)),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 
   async findOne(orgId: string, id: string): Promise<GoodResponseDto> {
     const item = await this.prisma.good.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } } },
+      include: {
+        preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+      },
     });
     if (!item) throw new NotFoundException('Товар не знайдено');
     return this.toDto(item);
@@ -47,14 +70,20 @@ export class GoodsService {
     // Parallel: sku-uniqueness check + FK validation — обидва незалежні precheck-и.
     const [existing] = await Promise.all([
       dto.sku
-        ? this.prisma.good.findFirst({ where: { orgId, sku: dto.sku, deletedAt: null }, select: { id: true } })
+        ? this.prisma.good.findFirst({
+            where: { orgId, sku: dto.sku, deletedAt: null },
+            select: { id: true },
+          })
         : Promise.resolve(null),
       this.validateFkReferences(orgId, dto),
     ]);
-    if (dto.sku && existing) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
+    if (dto.sku && existing)
+      throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     const item = await this.prisma.good.create({
       data: { ...dto, orgId, unit: dto.unit ?? 'шт' },
-      include: { preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } } },
+      include: {
+        preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+      },
     });
     return this.toDto(item);
   }
@@ -71,10 +100,14 @@ export class GoodsService {
         : Promise.resolve(null),
       this.validateFkReferences(orgId, dto),
     ]);
-    if (dto.sku && skuConflict) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
+    if (dto.sku && skuConflict)
+      throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     const item = await this.prisma.good.update({
-      where: { id, orgId }, data: dto,
-      include: { preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } } },
+      where: { id, orgId },
+      data: dto,
+      include: {
+        preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+      },
     });
     return this.toDto(item);
   }
@@ -97,18 +130,28 @@ export class GoodsService {
   ): Promise<void> {
     const [brand, unit, supplier] = await Promise.all([
       dto.brandId
-        ? this.prisma.brand.findFirst({ where: { id: dto.brandId, orgId, deletedAt: null }, select: { id: true } })
+        ? this.prisma.brand.findFirst({
+            where: { id: dto.brandId, orgId, deletedAt: null },
+            select: { id: true },
+          })
         : Promise.resolve(null),
       dto.unitId
-        ? this.prisma.unitOfMeasure.findFirst({ where: { id: dto.unitId, orgId, deletedAt: null }, select: { id: true } })
+        ? this.prisma.unitOfMeasure.findFirst({
+            where: { id: dto.unitId, orgId, deletedAt: null },
+            select: { id: true },
+          })
         : Promise.resolve(null),
       dto.preferredSupplierId
-        ? this.prisma.counterparty.findFirst({ where: { id: dto.preferredSupplierId, orgId, deletedAt: null }, select: { id: true } })
+        ? this.prisma.counterparty.findFirst({
+            where: { id: dto.preferredSupplierId, orgId, deletedAt: null },
+            select: { id: true },
+          })
         : Promise.resolve(null),
     ]);
     if (dto.brandId && !brand) throw new BadRequestException('Бренд не знайдено');
     if (dto.unitId && !unit) throw new BadRequestException('Одиницю виміру не знайдено');
-    if (dto.preferredSupplierId && !supplier) throw new BadRequestException('Постачальника не знайдено');
+    if (dto.preferredSupplierId && !supplier)
+      throw new BadRequestException('Постачальника не знайдено');
   }
 
   // ─── Barcodes ────────────────────────────────────────────────────────────────
@@ -123,7 +166,11 @@ export class GoodsService {
     return barcodes.map(b => this.toBarcodeDto(b));
   }
 
-  async createBarcode(orgId: string, goodId: string, dto: CreateGoodBarcodeDto): Promise<GoodBarcodeResponseDto> {
+  async createBarcode(
+    orgId: string,
+    goodId: string,
+    dto: CreateGoodBarcodeDto,
+  ): Promise<GoodBarcodeResponseDto> {
     await this.findOne(orgId, goodId);
 
     if (!dto.barcode || !dto.barcode.trim()) {
@@ -159,7 +206,13 @@ export class GoodsService {
   }
 
   private toBarcodeDto(b: {
-    id: string; orgId: string; goodId: string; barcode: string; type: string; isPrimary: boolean; createdAt: Date;
+    id: string;
+    orgId: string;
+    goodId: string;
+    barcode: string;
+    type: string;
+    isPrimary: boolean;
+    createdAt: Date;
   }): GoodBarcodeResponseDto {
     return {
       id: b.id,
@@ -173,14 +226,27 @@ export class GoodsService {
   }
 
   private toDto(item: {
-    id: string; orgId: string; sku: string | null; name: string; unit: string;
-    unitId?: string | null; brandId?: string | null;
-    purchasePrice: import('@prisma/client').Prisma.Decimal | null; salePrice: import('@prisma/client').Prisma.Decimal; category: string | null;
-    barcode: string | null; notes: string | null;
+    id: string;
+    orgId: string;
+    sku: string | null;
+    name: string;
+    unit: string;
+    unitId?: string | null;
+    brandId?: string | null;
+    purchasePrice: import('@prisma/client').Prisma.Decimal | null;
+    salePrice: import('@prisma/client').Prisma.Decimal;
+    category: string | null;
+    barcode: string | null;
+    notes: string | null;
     goodType: import('@prisma/client').GoodType | null;
     preferredSupplierId: string | null;
-    preferredSupplier?: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
-    createdAt: Date; updatedAt: Date;
+    preferredSupplier?: {
+      firstName: string | null;
+      lastName: string | null;
+      companyName: string | null;
+    } | null;
+    createdAt: Date;
+    updatedAt: Date;
   }): GoodResponseDto {
     return {
       id: item.id,
@@ -198,7 +264,9 @@ export class GoodsService {
       goodType: item.goodType ?? null,
       preferredSupplierId: item.preferredSupplierId ?? null,
       preferredSupplierName: item.preferredSupplier
-        ? (item.preferredSupplier.companyName ?? (`${item.preferredSupplier.lastName ?? ''} ${item.preferredSupplier.firstName ?? ''}`.trim() || null))
+        ? (item.preferredSupplier.companyName ??
+          (`${item.preferredSupplier.lastName ?? ''} ${item.preferredSupplier.firstName ?? ''}`.trim() ||
+            null))
         : null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,

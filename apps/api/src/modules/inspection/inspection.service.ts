@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateInspectionDto, InspectionResponseDto } from './inspection.dto';
@@ -20,15 +25,18 @@ export const DEFAULT_INSPECTION_POINTS = [
 export class InspectionService {
   constructor(private prisma: PrismaService) {}
 
-  private toDto(r: {
-    id: string;
-    orgId: string;
-    workOrderId: string;
-    mileage: number | null;
-    points: unknown;
-    createdBy: string;
-    createdAt: Date;
-  }, autoCreatedLines?: number): InspectionResponseDto {
+  private toDto(
+    r: {
+      id: string;
+      orgId: string;
+      workOrderId: string;
+      mileage: number | null;
+      points: unknown;
+      createdBy: string;
+      createdAt: Date;
+    },
+    autoCreatedLines?: number,
+  ): InspectionResponseDto {
     return {
       id: r.id,
       orgId: r.orgId,
@@ -77,7 +85,9 @@ export class InspectionService {
           where: {
             orgId,
             deletedAt: null,
-            OR: criticalPoints.map(p => ({ name: { contains: p.name, mode: 'insensitive' as const } })),
+            OR: criticalPoints.map(p => ({
+              name: { contains: p.name, mode: 'insensitive' as const },
+            })),
           },
           select: { id: true, price: true, normoHours: true, name: true },
           take: 200,
@@ -86,72 +96,71 @@ export class InspectionService {
 
     // Match each critical point to its work by case-insensitive name containment.
     const pickWork = (pointName: string) =>
-      works.find(w => w.name.toLowerCase().includes(pointName.toLowerCase()))
-      ?? null;
+      works.find(w => w.name.toLowerCase().includes(pointName.toLowerCase())) ?? null;
 
     // All side effects in a single transaction to avoid partial state.
     // Bug #130: явний timeout 10s — loop з N workOrderLine.create на critical points
     // (DEFAULT_INSPECTION_POINTS може мати 50+ точок) → потребує більше за 5s default.
-    const { report, autoCreatedLines } = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.inspectionReport.create({
-        data: {
-          orgId,
-          workOrderId,
-          mileage: dto.mileage ?? null,
-          points: dto.points as unknown as Prisma.InputJsonValue,
-          createdBy: userId,
-        },
-      });
-
-      let createdLines = 0;
-      let addedLabor = 0;
-
-      for (const point of criticalPoints) {
-        const work = pickWork(point.name);
-        if (!work) continue;
-
-        const price = Number(work.price);
-        const normoHours = Number(work.normoHours);
-        // Bug pattern §5.1: labour amount = normoHours * price, NOT just price.
-        const amount = normoHours * price;
-
-        await tx.workOrderLine.create({
+    const { report, autoCreatedLines } = await this.prisma.$transaction(
+      async tx => {
+        const created = await tx.inspectionReport.create({
           data: {
             orgId,
             workOrderId,
-            workId: work.id,
-            employeeId: userId,
-            price: work.price,
-            normoHours: work.normoHours,
-            amount,
-            notes: `Авто з огляду: ${point.name} — ${point.value}${point.unit ? ' ' + point.unit : ''}`,
+            mileage: dto.mileage ?? null,
+            points: dto.points as unknown as Prisma.InputJsonValue,
+            createdBy: userId,
           },
         });
-        createdLines += 1;
-        addedLabor += amount;
-      }
 
-      // Recalc WO totals so they match the freshly-inserted labour lines.
-      if (createdLines > 0) {
-        await tx.workOrder.update({
-          where: { id: workOrderId, orgId },
-          data: {
-            totalLabor: { increment: addedLabor },
-            totalAmount: { increment: addedLabor },
-          },
-        });
-      }
+        let createdLines = 0;
+        let addedLabor = 0;
 
-      return { report: created, autoCreatedLines: createdLines };
-    }, { timeout: 10_000 });
+        for (const point of criticalPoints) {
+          const work = pickWork(point.name);
+          if (!work) continue;
+
+          const price = Number(work.price);
+          const normoHours = Number(work.normoHours);
+          // Bug pattern §5.1: labour amount = normoHours * price, NOT just price.
+          const amount = normoHours * price;
+
+          await tx.workOrderLine.create({
+            data: {
+              orgId,
+              workOrderId,
+              workId: work.id,
+              employeeId: userId,
+              price: work.price,
+              normoHours: work.normoHours,
+              amount,
+              notes: `Авто з огляду: ${point.name} — ${point.value}${point.unit ? ' ' + point.unit : ''}`,
+            },
+          });
+          createdLines += 1;
+          addedLabor += amount;
+        }
+
+        // Recalc WO totals so they match the freshly-inserted labour lines.
+        if (createdLines > 0) {
+          await tx.workOrder.update({
+            where: { id: workOrderId, orgId },
+            data: {
+              totalLabor: { increment: addedLabor },
+              totalAmount: { increment: addedLabor },
+            },
+          });
+        }
+
+        return { report: created, autoCreatedLines: createdLines };
+      },
+      { timeout: 10_000 },
+    );
 
     return this.toDto(report, autoCreatedLines);
   }
 
-  async findByWorkOrder(
-    orgId: string,
-    workOrderId: string,
-  ): Promise<InspectionResponseDto | null> {
+  async findByWorkOrder(orgId: string, workOrderId: string): Promise<InspectionResponseDto | null> {
     // Verify WO belongs to org AND fetch report concurrently — обидва читають за orgId,
     // тенант ізоляція дублюється в report query (orgId фільтр). Якщо WO не належить org —
     // повертаємо null незалежно від існування report. -1 RTT per call.

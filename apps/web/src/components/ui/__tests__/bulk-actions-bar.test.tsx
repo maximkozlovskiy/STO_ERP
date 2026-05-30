@@ -12,16 +12,25 @@ describe('BulkActionsBar', () => {
   });
 
   it('показує кількість обраних рядків', () => {
-    render(<BulkActionsBar count={5} selectedIds={['a', 'b', 'c', 'd', 'e']} actions={[]} onClear={vi.fn()} />);
+    render(
+      <BulkActionsBar
+        count={5}
+        selectedIds={['a', 'b', 'c', 'd', 'e']}
+        actions={[]}
+        onClear={vi.fn()}
+      />,
+    );
     expect(screen.getByText('Обрано: 5')).toBeInTheDocument();
   });
 
   it('рендерить всі actions як кнопки', () => {
     const actions: BulkAction[] = [
-      { id: 'cancel',  label: 'Скасувати',  onClick: vi.fn() },
+      { id: 'cancel', label: 'Скасувати', onClick: vi.fn() },
       { id: 'archive', label: 'Архівувати', onClick: vi.fn() },
     ];
-    render(<BulkActionsBar count={2} selectedIds={['1', '2']} actions={actions} onClear={vi.fn()} />);
+    render(
+      <BulkActionsBar count={2} selectedIds={['1', '2']} actions={actions} onClear={vi.fn()} />,
+    );
     expect(screen.getByRole('button', { name: 'Скасувати' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Архівувати' })).toBeInTheDocument();
   });
@@ -29,7 +38,9 @@ describe('BulkActionsBar', () => {
   it('action.onClick отримує selectedIds як аргумент', async () => {
     const onClick = vi.fn();
     const actions: BulkAction[] = [{ id: 'cancel', label: 'Скасувати', onClick }];
-    render(<BulkActionsBar count={2} selectedIds={['1', '2']} actions={actions} onClear={vi.fn()} />);
+    render(
+      <BulkActionsBar count={2} selectedIds={['1', '2']} actions={actions} onClear={vi.fn()} />,
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Скасувати' }));
     expect(onClick).toHaveBeenCalledWith(['1', '2']);
   });

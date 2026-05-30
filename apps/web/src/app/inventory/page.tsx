@@ -14,21 +14,44 @@ import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
 import { cn } from '@/lib/utils';
 
-interface Warehouse { id: string; name: string; }
+interface Warehouse {
+  id: string;
+  name: string;
+}
 interface StockItem {
-  id: string; goodId: string; goodName: string; goodSku: string | null; unit: string;
-  salePrice: number; warehouseId: string; warehouseName: string;
-  quantity: number; reserved: number; available: number;
-  minStock: number | null; isLow: boolean;
+  id: string;
+  goodId: string;
+  goodName: string;
+  goodSku: string | null;
+  unit: string;
+  salePrice: number;
+  warehouseId: string;
+  warehouseName: string;
+  quantity: number;
+  reserved: number;
+  available: number;
+  minStock: number | null;
+  isLow: boolean;
 }
 interface LowStockItem {
-  goodId: string; goodName: string; goodSku: string | null; unit: string;
-  warehouseName: string; quantity: number; minStock: number; deficit: number;
+  goodId: string;
+  goodName: string;
+  goodSku: string | null;
+  unit: string;
+  warehouseName: string;
+  quantity: number;
+  minStock: number;
+  deficit: number;
 }
 
 function fmt(n: number) {
@@ -63,7 +86,9 @@ export default function InventoryPage() {
       const list = Array.isArray(data) ? data : data.items;
       setWarehouses(list);
       setCache('cache:warehouses', list);
-    } catch (e: unknown) { if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження складів'); }
+    } catch (e: unknown) {
+      if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження складів');
+    }
   }, []);
 
   const loadItems = useCallback(async () => {
@@ -86,32 +111,58 @@ export default function InventoryPage() {
       const data = await apiFetch<LowStockItem[]>('/stock-items/low');
       setLowItems(data);
       return true;
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка завантаження'); return false; }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      return false;
+    }
   }, []);
 
   const saveMinStock = async () => {
     if (!selectedItem) return;
     const val = minStockVal.trim() === '' ? null : Number(minStockVal);
-    if (val !== null && (!Number.isFinite(val) || val < 0)) { setError('Некоректне значення мінімального залишку'); return; }
+    if (val !== null && (!Number.isFinite(val) || val < 0)) {
+      setError('Некоректне значення мінімального залишку');
+      return;
+    }
     setSavingMinStock(true);
     try {
-      await apiFetch(`/stock-items/${selectedItem.id}/min-stock`, { method: 'PATCH', body: JSON.stringify({ minStock: val }) });
-      setSelectedItem(prev => prev ? { ...prev, minStock: val, isLow: val !== null && prev.quantity <= val } : prev);
-      setItems(prev => prev.map(i => i.id === selectedItem.id ? { ...i, minStock: val, isLow: val !== null && i.quantity <= val } : i));
+      await apiFetch(`/stock-items/${selectedItem.id}/min-stock`, {
+        method: 'PATCH',
+        body: JSON.stringify({ minStock: val }),
+      });
+      setSelectedItem(prev =>
+        prev ? { ...prev, minStock: val, isLow: val !== null && prev.quantity <= val } : prev,
+      );
+      setItems(prev =>
+        prev.map(i =>
+          i.id === selectedItem.id
+            ? { ...i, minStock: val, isLow: val !== null && i.quantity <= val }
+            : i,
+        ),
+      );
       setEditingMinStock(false);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка збереження'); }
-    finally { setSavingMinStock(false); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      setSavingMinStock(false);
+    }
   };
 
-  useEffect(() => { loadWarehouses(); }, [loadWarehouses]);
-  useEffect(() => { loadItems(); }, [loadItems]);
+  useEffect(() => {
+    loadWarehouses();
+  }, [loadWarehouses]);
+  useEffect(() => {
+    loadItems();
+  }, [loadItems]);
 
   const displayed = showLow ? items.filter(i => i.isLow) : items;
 
   return (
     <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
+          {error}
+        </div>
       )}
       <div className="page-header">
         <div>
@@ -120,7 +171,9 @@ export default function InventoryPage() {
         </div>
         <Button
           variant="outline"
-          onClick={async () => { if (await loadLow()) setShowLowModal(true); }}
+          onClick={async () => {
+            if (await loadLow()) setShowLowModal(true);
+          }}
           className="text-warning-text border-warning-border bg-warning-subtle hover:bg-warning-subtle/80"
         >
           <AlertTriangle className="h-4 w-4" />
@@ -139,12 +192,13 @@ export default function InventoryPage() {
             className="pl-9"
           />
         </div>
-        <Select
-          value={warehouseId}
-          onChange={e => setWarehouseId(e.target.value)}
-        >
+        <Select value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
           <option value="">Всі склади</option>
-          {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+          {warehouses.map(w => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
         </Select>
         <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
           <input
@@ -177,7 +231,9 @@ export default function InventoryPage() {
               {loading && (
                 <TableRow>
                   <TableCell colSpan={8} className="py-10 text-center">
-                    <div className="flex justify-center"><Spinner size="md" /></div>
+                    <div className="flex justify-center">
+                      <Spinner size="md" />
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
@@ -188,36 +244,54 @@ export default function InventoryPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && displayed.map(item => (
-                <TableRow
-                  key={item.id}
-                  onClick={() => setSelectedItem(item)}
-                  className={cn(
-                    item.isLow && 'bg-warning-subtle/40',
-                    selectedItem?.id === item.id && 'bg-primary/5',
-                  )}
-                >
-                  <TableCell className="font-medium text-foreground">
-                    {item.isLow && <AlertTriangle className="inline h-3.5 w-3.5 text-warning mr-1" />}
-                    {item.goodName}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-xs">{item.goodSku ?? '—'}</TableCell>
-                  <TableCell className="text-foreground-muted">{item.warehouseName}</TableCell>
-                  <TableCell className="text-right font-medium">{item.quantity} {item.unit}</TableCell>
-                  <TableCell className="text-right text-warning-text">{item.reserved > 0 ? item.reserved : '—'}</TableCell>
-                  <TableCell className={cn('text-right font-semibold', item.available <= 0 ? 'text-destructive' : 'text-success')}>
-                    {item.available} {item.unit}
-                  </TableCell>
-                  <TableCell className="text-right text-foreground-muted">{fmt(item.salePrice)}</TableCell>
-                  <TableCell>
-                    {item.minStock != null ? (
-                      <Badge variant={item.isLow ? 'warning' : 'secondary'}>
-                        ≥ {item.minStock} {item.unit}
-                      </Badge>
-                    ) : '—'}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {!loading &&
+                displayed.map(item => (
+                  <TableRow
+                    key={item.id}
+                    onClick={() => setSelectedItem(item)}
+                    className={cn(
+                      item.isLow && 'bg-warning-subtle/40',
+                      selectedItem?.id === item.id && 'bg-primary/5',
+                    )}
+                  >
+                    <TableCell className="font-medium text-foreground">
+                      {item.isLow && (
+                        <AlertTriangle className="inline h-3.5 w-3.5 text-warning mr-1" />
+                      )}
+                      {item.goodName}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground font-mono text-xs">
+                      {item.goodSku ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-foreground-muted">{item.warehouseName}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      {item.quantity} {item.unit}
+                    </TableCell>
+                    <TableCell className="text-right text-warning-text">
+                      {item.reserved > 0 ? item.reserved : '—'}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        'text-right font-semibold',
+                        item.available <= 0 ? 'text-destructive' : 'text-success',
+                      )}
+                    >
+                      {item.available} {item.unit}
+                    </TableCell>
+                    <TableCell className="text-right text-foreground-muted">
+                      {fmt(item.salePrice)}
+                    </TableCell>
+                    <TableCell>
+                      {item.minStock != null ? (
+                        <Badge variant={item.isLow ? 'warning' : 'secondary'}>
+                          ≥ {item.minStock} {item.unit}
+                        </Badge>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </div>
@@ -240,7 +314,9 @@ export default function InventoryPage() {
               <div className="space-y-2 text-[13px]">
                 <div>
                   <span className="text-muted-foreground">Артикул (SKU)</span>
-                  <p className="font-mono font-medium text-foreground mt-0.5">{selectedItem.goodSku ?? '—'}</p>
+                  <p className="font-mono font-medium text-foreground mt-0.5">
+                    {selectedItem.goodSku ?? '—'}
+                  </p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Склад</span>
@@ -258,19 +334,25 @@ export default function InventoryPage() {
                 </div>
                 <div className="flex items-center justify-between px-3 py-2 text-[13px]">
                   <span className="text-muted-foreground">Резерв</span>
-                  <span className={cn(
-                    'font-medium tabular-nums',
-                    selectedItem.reserved > 0 ? 'text-warning-text' : 'text-muted-foreground',
-                  )}>
-                    {selectedItem.reserved > 0 ? `${selectedItem.reserved} ${selectedItem.unit}` : '—'}
+                  <span
+                    className={cn(
+                      'font-medium tabular-nums',
+                      selectedItem.reserved > 0 ? 'text-warning-text' : 'text-muted-foreground',
+                    )}
+                  >
+                    {selectedItem.reserved > 0
+                      ? `${selectedItem.reserved} ${selectedItem.unit}`
+                      : '—'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between px-3 py-2 text-[13px]">
                   <span className="text-muted-foreground">Доступно</span>
-                  <span className={cn(
-                    'font-semibold tabular-nums',
-                    selectedItem.available <= 0 ? 'text-destructive' : 'text-success',
-                  )}>
+                  <span
+                    className={cn(
+                      'font-semibold tabular-nums',
+                      selectedItem.available <= 0 ? 'text-destructive' : 'text-success',
+                    )}
+                  >
                     {selectedItem.available} {selectedItem.unit}
                   </span>
                 </div>
@@ -279,7 +361,9 @@ export default function InventoryPage() {
               <div className="space-y-2 text-[13px]">
                 <div>
                   <span className="text-muted-foreground">Ціна продажу</span>
-                  <p className="font-semibold text-foreground mt-0.5">{fmt(selectedItem.salePrice)}</p>
+                  <p className="font-semibold text-foreground mt-0.5">
+                    {fmt(selectedItem.salePrice)}
+                  </p>
                 </div>
                 <div>
                   <div className="flex items-center justify-between">
@@ -287,7 +371,12 @@ export default function InventoryPage() {
                     {!editingMinStock && (
                       <button
                         className="text-xs text-primary hover:underline"
-                        onClick={() => { setMinStockVal(selectedItem.minStock != null ? String(selectedItem.minStock) : ''); setEditingMinStock(true); }}
+                        onClick={() => {
+                          setMinStockVal(
+                            selectedItem.minStock != null ? String(selectedItem.minStock) : '',
+                          );
+                          setEditingMinStock(true);
+                        }}
                       >
                         змінити
                       </button>
@@ -304,8 +393,22 @@ export default function InventoryPage() {
                         step="1"
                         className="h-7 text-sm"
                       />
-                      <Button size="sm" onClick={saveMinStock} loading={savingMinStock} className="h-7 px-2 text-xs">Зберегти</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingMinStock(false)} className="h-7 px-2 text-xs">✕</Button>
+                      <Button
+                        size="sm"
+                        onClick={saveMinStock}
+                        loading={savingMinStock}
+                        className="h-7 px-2 text-xs"
+                      >
+                        Зберегти
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditingMinStock(false)}
+                        className="h-7 px-2 text-xs"
+                      >
+                        ✕
+                      </Button>
                     </div>
                   ) : (
                     <div className="mt-1">
@@ -313,7 +416,9 @@ export default function InventoryPage() {
                         <Badge variant={selectedItem.isLow ? 'warning' : 'secondary'}>
                           ≥ {selectedItem.minStock} {selectedItem.unit}
                         </Badge>
-                      ) : <span className="text-muted-foreground text-[12px]">не встановлено</span>}
+                      ) : (
+                        <span className="text-muted-foreground text-[12px]">не встановлено</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -330,17 +435,24 @@ export default function InventoryPage() {
         title="Товари нижче мінімального залишку"
       >
         {lowItems.length === 0 ? (
-          <p className="text-muted-foreground text-center py-4">Все гаразд — критичних позицій немає</p>
+          <p className="text-muted-foreground text-center py-4">
+            Все гаразд — критичних позицій немає
+          </p>
         ) : (
           <div className="space-y-2">
             {lowItems.map((item, i) => (
-              <div key={i} className="flex items-center justify-between p-3 bg-warning-subtle rounded-lg border border-warning/20">
+              <div
+                key={i}
+                className="flex items-center justify-between p-3 bg-warning-subtle rounded-lg border border-warning/20"
+              >
                 <div>
                   <div className="font-medium text-foreground text-sm">{item.goodName}</div>
                   <div className="text-xs text-muted-foreground">{item.warehouseName}</div>
                 </div>
                 <div className="text-right text-sm">
-                  <div className="font-semibold text-destructive">{item.quantity} {item.unit}</div>
+                  <div className="font-semibold text-destructive">
+                    {item.quantity} {item.unit}
+                  </div>
                   <div className="text-foreground-faint">мін: {item.minStock}</div>
                 </div>
               </div>

@@ -1,10 +1,30 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
-import { CreateLiftDto, CreateZoneDto, LiftResponseDto, UpdateLiftDto, UpdateZoneDto, ZoneResponseDto } from './zones.dto';
+import {
+  CreateLiftDto,
+  CreateZoneDto,
+  LiftResponseDto,
+  UpdateLiftDto,
+  UpdateZoneDto,
+  ZoneResponseDto,
+} from './zones.dto';
 import { ZonesService } from './zones.service';
 
 @ApiTags('Зони')
@@ -19,7 +39,10 @@ export class ZonesController {
   @ApiOperation({ summary: 'Список зон' })
   @ApiQuery({ name: 'branchId', required: false })
   @ApiResponse({ status: 200, type: [ZoneResponseDto] })
-  findAll(@OrgContext() orgId: string, @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string) {
+  findAll(
+    @OrgContext() orgId: string,
+    @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
+  ) {
     return this.service.findAllZones(orgId, branchId);
   }
 
@@ -39,7 +62,11 @@ export class ZonesController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
-  update(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateZoneDto) {
+  update(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateZoneDto,
+  ) {
     return this.service.updateZone(orgId, id, dto);
   }
 
@@ -63,7 +90,10 @@ export class LiftsController {
   @ApiOperation({ summary: 'Список підйомників' })
   @ApiQuery({ name: 'zoneId', required: false })
   @ApiResponse({ status: 200, type: [LiftResponseDto] })
-  findAll(@OrgContext() orgId: string, @Query('zoneId', new ParseUUIDPipe({ optional: true })) zoneId?: string) {
+  findAll(
+    @OrgContext() orgId: string,
+    @Query('zoneId', new ParseUUIDPipe({ optional: true })) zoneId?: string,
+  ) {
     return this.service.findAllLifts(orgId, zoneId);
   }
 
@@ -83,7 +113,11 @@ export class LiftsController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
-  update(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateLiftDto) {
+  update(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateLiftDto,
+  ) {
     return this.service.updateLift(orgId, id, dto);
   }
 

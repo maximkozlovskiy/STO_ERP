@@ -1,4 +1,18 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe, Query, Res, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  Res,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -8,9 +22,14 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { WorkOrdersService } from './work-orders.service';
 import {
-  CreateWorkOrderDto, UpdateWorkOrderDto, TransitionWorkOrderDto, WorkOrderQueryDto,
-  CreateWorkOrderLineDto, UpdateWorkOrderLineDto,
-  CreateWorkOrderPartDto, UpdateWorkOrderPartDto,
+  CreateWorkOrderDto,
+  UpdateWorkOrderDto,
+  TransitionWorkOrderDto,
+  WorkOrderQueryDto,
+  CreateWorkOrderLineDto,
+  UpdateWorkOrderLineDto,
+  CreateWorkOrderPartDto,
+  UpdateWorkOrderPartDto,
 } from './work-orders.dto';
 
 @ApiTags('Work Orders')
@@ -37,7 +56,11 @@ export class WorkOrdersController {
   @Post()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Створити наряд' })
-  create(@OrgContext() orgId: string, @CurrentUser() user: { id: string }, @Body() dto: CreateWorkOrderDto) {
+  create(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreateWorkOrderDto,
+  ) {
     return this.service.create(orgId, dto, user.id);
   }
 
@@ -73,7 +96,11 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити чернетку наряду' })
-  remove(@OrgContext() orgId: string, @CurrentUser() user: { id: string }, @Param('id', ParseUUIDPipe) id: string) {
+  remove(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.service.remove(orgId, id, user.id);
   }
 
@@ -109,7 +136,11 @@ export class WorkOrdersController {
   @Post(':id/lines')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Додати роботу до наряду' })
-  addLine(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateWorkOrderLineDto) {
+  addLine(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateWorkOrderLineDto,
+  ) {
     return this.service.addLine(orgId, id, dto);
   }
 
@@ -129,7 +160,11 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити рядок роботи' })
-  removeLine(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Param('lineId', ParseUUIDPipe) lineId: string) {
+  removeLine(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('lineId', ParseUUIDPipe) lineId: string,
+  ) {
     return this.service.removeLine(orgId, id, lineId);
   }
 
@@ -138,7 +173,11 @@ export class WorkOrdersController {
   @Post(':id/parts')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Додати запчастину до наряду' })
-  addPart(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateWorkOrderPartDto) {
+  addPart(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateWorkOrderPartDto,
+  ) {
     return this.service.addPart(orgId, id, dto);
   }
 
@@ -158,7 +197,11 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити запчастину наряду' })
-  removePart(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Param('partId', ParseUUIDPipe) partId: string) {
+  removePart(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('partId', ParseUUIDPipe) partId: string,
+  ) {
     return this.service.removePart(orgId, id, partId);
   }
 }

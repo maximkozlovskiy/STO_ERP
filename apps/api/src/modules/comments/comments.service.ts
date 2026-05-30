@@ -1,8 +1,16 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  CreateCommentDto, CommentResponseDto, CommentsListResponseDto,
-  COMMENT_ENTITY_TYPES, type CommentEntityType,
+  CreateCommentDto,
+  CommentResponseDto,
+  CommentsListResponseDto,
+  COMMENT_ENTITY_TYPES,
+  type CommentEntityType,
 } from './comments.dto';
 
 function isAllowedEntityType(value: string): value is CommentEntityType {
@@ -36,7 +44,7 @@ export class CommentsService {
       throw new BadRequestException(`Невідомий тип сутності для коментарів: ${entityType}`);
     }
     if (!entityId || typeof entityId !== 'string') {
-      throw new BadRequestException('entityId обов\'язковий');
+      throw new BadRequestException("entityId обов'язковий");
     }
     const [items, total] = await Promise.all([
       this.prisma.comment.findMany({
@@ -49,7 +57,7 @@ export class CommentsService {
     ]);
 
     return {
-      items: items.map((c) => this.toDto(c as CommentWithAuthor)),
+      items: items.map(c => this.toDto(c as CommentWithAuthor)),
       total,
     };
   }
@@ -72,7 +80,7 @@ export class CommentsService {
     // Only the comment author or an owner/admin can delete. Without this check ANY authenticated
     // employee could erase another employee's notes — a moderation/audit problem.
     const isAuthor = comment.authorId === user.id;
-    const isAdmin  = user.role === 'OWNER' || user.role === 'ADMIN';
+    const isAdmin = user.role === 'OWNER' || user.role === 'ADMIN';
     if (!isAuthor && !isAdmin) {
       throw new ForbiddenException('Видаляти коментарі можуть лише автор або адміністратор');
     }

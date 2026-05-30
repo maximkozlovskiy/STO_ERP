@@ -9,7 +9,7 @@ const adapter = new SQLiteAdapter({
   schema,
   migrations: undefined,
   jsi: false,
-  onSetUpError: (error) => {
+  onSetUpError: error => {
     console.error('WatermelonDB setup error:', error);
   },
 });

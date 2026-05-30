@@ -8,25 +8,71 @@ import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 
-const RevenueCharts = dynamic(() => import('./ReportsCharts').then(m => m.RevenueCharts), { ssr: false, loading: () => <div className="h-96 bg-surface-hover animate-pulse rounded-xl" /> });
-const SettlementsChart = dynamic(() => import('./ReportsCharts').then(m => m.SettlementsChart), { ssr: false, loading: () => <div className="h-52 bg-surface-hover animate-pulse rounded-xl" /> });
-const ProfitabilityChart = dynamic(() => import('./ReportsCharts').then(m => m.ProfitabilityChart), { ssr: false, loading: () => <div className="h-56 bg-surface-hover animate-pulse rounded-xl" /> });
-const LoadChart = dynamic(() => import('./ReportsCharts').then(m => m.LoadChart), { ssr: false, loading: () => <div className="h-72 bg-surface-hover animate-pulse rounded-xl" /> });
+const RevenueCharts = dynamic(() => import('./ReportsCharts').then(m => m.RevenueCharts), {
+  ssr: false,
+  loading: () => <div className="h-96 bg-surface-hover animate-pulse rounded-xl" />,
+});
+const SettlementsChart = dynamic(() => import('./ReportsCharts').then(m => m.SettlementsChart), {
+  ssr: false,
+  loading: () => <div className="h-52 bg-surface-hover animate-pulse rounded-xl" />,
+});
+const ProfitabilityChart = dynamic(
+  () => import('./ReportsCharts').then(m => m.ProfitabilityChart),
+  { ssr: false, loading: () => <div className="h-56 bg-surface-hover animate-pulse rounded-xl" /> },
+);
+const LoadChart = dynamic(() => import('./ReportsCharts').then(m => m.LoadChart), {
+  ssr: false,
+  loading: () => <div className="h-72 bg-surface-hover animate-pulse rounded-xl" />,
+});
 
 type Tab = 'revenue' | 'work-orders' | 'stock' | 'settlements' | 'load' | 'profitability';
 
 type RevenueRow = { date: string; revenue: number; labor: number; parts: number; count: number };
-type WorkOrderRow = { employeeId: string; employeeName: string; totalNormoHours: number; linesCount: number; totalAmount: number };
-type StockItem = { goodName: string; goodSku: string | null; warehouseName: string; unit: string; quantity: number; available: number; value: number };
+type WorkOrderRow = {
+  employeeId: string;
+  employeeName: string;
+  totalNormoHours: number;
+  linesCount: number;
+  totalAmount: number;
+};
+type StockItem = {
+  goodName: string;
+  goodSku: string | null;
+  warehouseName: string;
+  unit: string;
+  quantity: number;
+  available: number;
+  value: number;
+};
 type SettlementRow = { counterpartyId: string; counterpartyName: string; balance: number };
-type LoadRow = { liftId: string; liftName: string; zoneName: string; totalSlots: number; totalHours: number; loadPercent: number };
+type LoadRow = {
+  liftId: string;
+  liftName: string;
+  zoneName: string;
+  totalSlots: number;
+  totalHours: number;
+  loadPercent: number;
+};
 
-type ProfitabilityData = { totalRevenue: number; totalCost: number; totalCostParts: number; totalCostLabor: number; grossProfit: number; margin: number; ordersCount: number };
+type ProfitabilityData = {
+  totalRevenue: number;
+  totalCost: number;
+  totalCostParts: number;
+  totalCostLabor: number;
+  grossProfit: number;
+  margin: number;
+  ordersCount: number;
+};
 
 type ReportData =
   | { _tab: 'revenue'; totalRevenue: number; totalOrders: number; rows: RevenueRow[] }
@@ -54,12 +100,12 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
-
 export default function ReportsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
 
   const [tab, setTab] = useState<Tab>('revenue');
-  const kyivDate = (d: Date) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
+  const kyivDate = (d: Date) =>
+    new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [data, setData] = useState<ReportData | null>(null);
@@ -68,7 +114,12 @@ export default function ReportsPage() {
 
   useEffect(() => {
     const now = new Date();
-    const kyivNow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+    const kyivNow = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Kyiv',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
     setFrom(`${kyivNow.slice(0, 4)}-01-01`);
     setTo(kyivDate(now));
   }, []);
@@ -83,7 +134,9 @@ export default function ReportsPage() {
       setData({ ...result, _tab: tab } as ReportData);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка завантаження звіту');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, [tab, from, to]);
 
   const tabs: { id: Tab; label: string }[] = [
@@ -100,7 +153,9 @@ export default function ReportsPage() {
   return (
     <div className="page-container">
       {error && (
-        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
+          {error}
+        </div>
       )}
       <h1 className="page-title mb-6">Звіти</h1>
 
@@ -109,10 +164,15 @@ export default function ReportsPage() {
         {tabs.map(t => (
           <button
             key={t.id}
-            onClick={() => { setTab(t.id); setData(null); }}
+            onClick={() => {
+              setTab(t.id);
+              setData(null);
+            }}
             className={cn(
               'px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
-              tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
+              tab === t.id
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {t.label}
@@ -150,7 +210,10 @@ export default function ReportsPage() {
               const csv = buildCsv(tab, data);
               const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
               const url = URL.createObjectURL(blob);
-              const a = document.createElement('a'); a.href = url; a.download = `${tab}-report.csv`; a.click();
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${tab}-report.csv`;
+              a.click();
               setTimeout(() => URL.revokeObjectURL(url), 100);
             }}
           >
@@ -177,7 +240,10 @@ export default function ReportsPage() {
           <div className="grid grid-cols-3 gap-4">
             <StatCard label="Загальна виручка" value={fmt(data.totalRevenue)} />
             <StatCard label="Кількість нарядів" value={String(data.totalOrders)} />
-            <StatCard label="Середній чек" value={data.totalOrders > 0 ? fmt(data.totalRevenue / data.totalOrders) : '—'} />
+            <StatCard
+              label="Середній чек"
+              value={data.totalOrders > 0 ? fmt(data.totalRevenue / data.totalOrders) : '—'}
+            />
           </div>
           <RevenueCharts rows={data.rows} />
         </div>
@@ -202,11 +268,13 @@ export default function ReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.rows.map((r) => (
+                {data.rows.map(r => (
                   <TableRow key={r.employeeId}>
                     <TableCell className="font-medium text-foreground">{r.employeeName}</TableCell>
                     <TableCell className="text-right">{fmtNum(r.totalNormoHours)}</TableCell>
-                    <TableCell className="text-right text-muted-foreground">{r.linesCount}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {r.linesCount}
+                    </TableCell>
                     <TableCell className="text-right font-semibold">{fmt(r.totalAmount)}</TableCell>
                   </TableRow>
                 ))}
@@ -239,11 +307,20 @@ export default function ReportsPage() {
                   <TableRow key={idx}>
                     <TableCell>
                       <div className="font-medium text-foreground">{i.goodName}</div>
-                      <div className="text-xs text-foreground-faint font-mono">{i.goodSku ?? '—'}</div>
+                      <div className="text-xs text-foreground-faint font-mono">
+                        {i.goodSku ?? '—'}
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{i.warehouseName}</TableCell>
-                    <TableCell className="text-right">{fmtNum(i.quantity)} {i.unit}</TableCell>
-                    <TableCell className={cn('text-right font-medium', i.available <= 0 ? 'text-destructive' : 'text-success')}>
+                    <TableCell className="text-right">
+                      {fmtNum(i.quantity)} {i.unit}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        'text-right font-medium',
+                        i.available <= 0 ? 'text-destructive' : 'text-success',
+                      )}
+                    >
                       {fmtNum(i.available)}
                     </TableCell>
                     <TableCell className="text-right">{fmt(i.value)}</TableCell>
@@ -259,8 +336,16 @@ export default function ReportsPage() {
       {data && data._tab === 'settlements' && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
-            <StatCard label="Дебіторська заборгованість" value={fmt(data.totalDebit)} sub="Клієнти нам" />
-            <StatCard label="Кредиторська заборгованість" value={fmt(data.totalCredit)} sub="Ми постачальникам" />
+            <StatCard
+              label="Дебіторська заборгованість"
+              value={fmt(data.totalDebit)}
+              sub="Клієнти нам"
+            />
+            <StatCard
+              label="Кредиторська заборгованість"
+              value={fmt(data.totalCredit)}
+              sub="Ми постачальникам"
+            />
           </div>
           <div className="grid grid-cols-2 gap-6">
             <SettlementsChart rows={data.rows} />
@@ -273,14 +358,22 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.rows.filter((r) => r.balance !== 0).map((r) => (
-                    <TableRow key={r.counterpartyId}>
-                      <TableCell className="text-foreground">{r.counterpartyName}</TableCell>
-                      <TableCell className={cn('text-right font-semibold', r.balance > 0 ? 'text-destructive' : 'text-success')}>
-                        {r.balance > 0 ? '+' : ''}{fmt(r.balance)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {data.rows
+                    .filter(r => r.balance !== 0)
+                    .map(r => (
+                      <TableRow key={r.counterpartyId}>
+                        <TableCell className="text-foreground">{r.counterpartyName}</TableCell>
+                        <TableCell
+                          className={cn(
+                            'text-right font-semibold',
+                            r.balance > 0 ? 'text-destructive' : 'text-success',
+                          )}
+                        >
+                          {r.balance > 0 ? '+' : ''}
+                          {fmt(r.balance)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             </div>
@@ -292,10 +385,22 @@ export default function ReportsPage() {
       {data && data._tab === 'profitability' && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <StatCard label="Виручка" value={fmt(data.totalRevenue)} sub={`${data.ordersCount} нарядів`} />
-            <StatCard label="Собівартість" value={fmt(data.totalCost)} sub={`Запч: ${fmt(data.totalCostParts)}`} />
+            <StatCard
+              label="Виручка"
+              value={fmt(data.totalRevenue)}
+              sub={`${data.ordersCount} нарядів`}
+            />
+            <StatCard
+              label="Собівартість"
+              value={fmt(data.totalCost)}
+              sub={`Запч: ${fmt(data.totalCostParts)}`}
+            />
             <StatCard label="Валовий прибуток" value={fmt(data.grossProfit)} />
-            <StatCard label="Маржинальність" value={`${data.margin.toFixed(1)}%`} sub={data.margin >= 30 ? '✓ Норма' : '↓ Нижче норми'} />
+            <StatCard
+              label="Маржинальність"
+              value={`${data.margin.toFixed(1)}%`}
+              sub={data.margin >= 30 ? '✓ Норма' : '↓ Нижче норми'}
+            />
           </div>
           <ProfitabilityChart data={data} />
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
@@ -310,16 +415,37 @@ export default function ReportsPage() {
               <TableBody>
                 {[
                   { label: 'Виручка', value: data.totalRevenue, pct: 100 },
-                  { label: '— Запчастини (собівартість)', value: data.totalCostParts, pct: data.totalRevenue > 0 ? (data.totalCostParts / data.totalRevenue) * 100 : 0 },
-                  { label: '— Праця (оцінка 40%)', value: data.totalCostLabor, pct: data.totalRevenue > 0 ? (data.totalCostLabor / data.totalRevenue) * 100 : 0 },
+                  {
+                    label: '— Запчастини (собівартість)',
+                    value: data.totalCostParts,
+                    pct:
+                      data.totalRevenue > 0 ? (data.totalCostParts / data.totalRevenue) * 100 : 0,
+                  },
+                  {
+                    label: '— Праця (оцінка 40%)',
+                    value: data.totalCostLabor,
+                    pct:
+                      data.totalRevenue > 0 ? (data.totalCostLabor / data.totalRevenue) * 100 : 0,
+                  },
                   { label: 'Валовий прибуток', value: data.grossProfit, pct: data.margin },
-                ].map((row) => (
+                ].map(row => (
                   <TableRow key={row.label}>
                     <TableCell className="text-foreground">{row.label}</TableCell>
-                    <TableCell className={cn('text-right font-semibold', row.label === 'Валовий прибуток' ? (row.value >= 0 ? 'text-success' : 'text-destructive') : '')}>
+                    <TableCell
+                      className={cn(
+                        'text-right font-semibold',
+                        row.label === 'Валовий прибуток'
+                          ? row.value >= 0
+                            ? 'text-success'
+                            : 'text-destructive'
+                          : '',
+                      )}
+                    >
                       {fmt(row.value)}
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground">{row.pct.toFixed(1)}%</TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {row.pct.toFixed(1)}%
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -344,7 +470,7 @@ export default function ReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.rows.map((r) => (
+                {data.rows.map(r => (
                   <TableRow key={r.liftId}>
                     <TableCell className="font-medium text-foreground">{r.liftName}</TableCell>
                     <TableCell className="text-muted-foreground">{r.zoneName}</TableCell>
@@ -353,9 +479,21 @@ export default function ReportsPage() {
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <div className="w-24 bg-secondary rounded-full h-2">
-                          <div className="bg-primary h-2 rounded-full" style={{ width: `${Math.min(r.loadPercent, 100)}%` }} />
+                          <div
+                            className="bg-primary h-2 rounded-full"
+                            style={{ width: `${Math.min(r.loadPercent, 100)}%` }}
+                          />
                         </div>
-                        <span className={cn('text-xs font-medium', r.loadPercent >= 80 ? 'text-destructive' : r.loadPercent >= 50 ? 'text-warning' : 'text-success')}>
+                        <span
+                          className={cn(
+                            'text-xs font-medium',
+                            r.loadPercent >= 80
+                              ? 'text-destructive'
+                              : r.loadPercent >= 50
+                                ? 'text-warning'
+                                : 'text-success',
+                          )}
+                        >
                           {r.loadPercent}%
                         </span>
                       </div>
@@ -373,15 +511,24 @@ export default function ReportsPage() {
 
 function buildCsv(tab: Tab, data: ReportData): string {
   if (tab === 'revenue' && data._tab === 'revenue') {
-    const rows = [['Дата', 'Виручка', 'Роботи', 'Запчастини', 'Нарядів'], ...data.rows.map(r => [r.date, r.revenue, r.labor, r.parts, r.count])];
+    const rows = [
+      ['Дата', 'Виручка', 'Роботи', 'Запчастини', 'Нарядів'],
+      ...data.rows.map(r => [r.date, r.revenue, r.labor, r.parts, r.count]),
+    ];
     return rows.map(r => r.join(';')).join('\n');
   }
   if (tab === 'work-orders' && data._tab === 'work-orders') {
-    const rows = [['Механік', 'Норм-год', 'Позицій', 'Сума'], ...data.rows.map(r => [r.employeeName, r.totalNormoHours, r.linesCount, r.totalAmount])];
+    const rows = [
+      ['Механік', 'Норм-год', 'Позицій', 'Сума'],
+      ...data.rows.map(r => [r.employeeName, r.totalNormoHours, r.linesCount, r.totalAmount]),
+    ];
     return rows.map(r => r.join(';')).join('\n');
   }
   if (tab === 'stock' && data._tab === 'stock') {
-    const rows = [['Товар', 'Склад', 'Кількість', 'Доступно', 'Вартість'], ...data.stockItems.map(i => [i.goodName, i.warehouseName, i.quantity, i.available, i.value])];
+    const rows = [
+      ['Товар', 'Склад', 'Кількість', 'Доступно', 'Вартість'],
+      ...data.stockItems.map(i => [i.goodName, i.warehouseName, i.quantity, i.available, i.value]),
+    ];
     return rows.map(r => r.join(';')).join('\n');
   }
   if (tab === 'settlements' && data._tab === 'settlements') {
@@ -389,15 +536,32 @@ function buildCsv(tab: Tab, data: ReportData): string {
     return rows.map(r => r.join(';')).join('\n');
   }
   if (tab === 'load' && data._tab === 'load') {
-    const rows = [['Підйомник', 'Зона', 'Слотів', 'Годин', 'Завантаженість%'], ...data.rows.map(r => [r.liftName, r.zoneName, r.totalSlots, r.totalHours.toFixed(1), r.loadPercent])];
+    const rows = [
+      ['Підйомник', 'Зона', 'Слотів', 'Годин', 'Завантаженість%'],
+      ...data.rows.map(r => [
+        r.liftName,
+        r.zoneName,
+        r.totalSlots,
+        r.totalHours.toFixed(1),
+        r.loadPercent,
+      ]),
+    ];
     return rows.map(r => r.join(';')).join('\n');
   }
   if (tab === 'profitability' && data._tab === 'profitability') {
     const rows = [
       ['Показник', 'Сума', '% до виручки'],
       ['Виручка', data.totalRevenue, '100.0'],
-      ['Запчастини', data.totalCostParts, data.totalRevenue > 0 ? ((data.totalCostParts / data.totalRevenue) * 100).toFixed(1) : '0'],
-      ['Праця', data.totalCostLabor, data.totalRevenue > 0 ? ((data.totalCostLabor / data.totalRevenue) * 100).toFixed(1) : '0'],
+      [
+        'Запчастини',
+        data.totalCostParts,
+        data.totalRevenue > 0 ? ((data.totalCostParts / data.totalRevenue) * 100).toFixed(1) : '0',
+      ],
+      [
+        'Праця',
+        data.totalCostLabor,
+        data.totalRevenue > 0 ? ((data.totalCostLabor / data.totalRevenue) * 100).toFixed(1) : '0',
+      ],
       ['Валовий прибуток', data.grossProfit, data.margin.toFixed(1)],
     ];
     return rows.map(r => r.join(';')).join('\n');

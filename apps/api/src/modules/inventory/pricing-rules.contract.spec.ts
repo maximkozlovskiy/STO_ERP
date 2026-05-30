@@ -43,7 +43,7 @@ const pricingServiceMock = {
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { sub: 'emp-1', orgId: 'org-1', role: 'OWNER' };
@@ -63,12 +63,16 @@ describe('PricingRules — HTTP Contract', () => {
         { provide: PrismaService, useValue: prismaMock },
       ],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
+    );
     await app.init();
     await (app as NestFastifyApplication).getHttpAdapter().getInstance().ready();
   });
@@ -110,7 +114,7 @@ describe('PricingRules — HTTP Contract', () => {
   });
 
   describe('POST /pricing-rules', () => {
-    it('повертає 400 без обов\'язкових полів (name, type)', async () => {
+    it("повертає 400 без обов'язкових полів (name, type)", async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
         url: '/pricing-rules',
@@ -192,11 +196,24 @@ describe('PricingRules — HTTP Contract', () => {
     it('Bug #186: POST з brandId з ЦІЄЇ org → 201 (brand знайдено)', async () => {
       prismaMock.brand.findFirst.mockResolvedValueOnce({ id: 'brand-uuid' });
       prismaMock.pricingRule.create.mockResolvedValueOnce({
-        id: 'rule-uuid', orgId: 'org-1', name: 'Bosch +25%', type: 'PERCENT',
-        priority: 5, goodId: null, goodCategory: null, goodType: null,
-        brandId: 'brand-uuid', percentValue: 25, fixedAmount: null, fixedPrice: null,
-        roundTo: null, isActive: true, createdAt: new Date(),
-        good: null, brand: { id: 'brand-uuid', name: 'Bosch' }, tiers: [],
+        id: 'rule-uuid',
+        orgId: 'org-1',
+        name: 'Bosch +25%',
+        type: 'PERCENT',
+        priority: 5,
+        goodId: null,
+        goodCategory: null,
+        goodType: null,
+        brandId: 'brand-uuid',
+        percentValue: 25,
+        fixedAmount: null,
+        fixedPrice: null,
+        roundTo: null,
+        isActive: true,
+        createdAt: new Date(),
+        good: null,
+        brand: { id: 'brand-uuid', name: 'Bosch' },
+        tiers: [],
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
@@ -264,7 +281,7 @@ describe('PricingRules — HTTP Contract', () => {
 
   describe('PATCH /pricing-rules/:id — Bug #27 validation', () => {
     // ValidationPipe rejects payload before controller body runs — no findFirst mock needed.
-    it('повертає 400 при від\'ємному percentValue (PATCH тепер має @Min(0))', async () => {
+    it("повертає 400 при від'ємному percentValue (PATCH тепер має @Min(0))", async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
         url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
@@ -273,7 +290,7 @@ describe('PricingRules — HTTP Contract', () => {
       expect(res.statusCode).toBe(400);
     });
 
-    it('повертає 400 при від\'ємному fixedPrice', async () => {
+    it("повертає 400 при від'ємному fixedPrice", async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
         url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
@@ -295,8 +312,14 @@ describe('PricingRules — HTTP Contract', () => {
     it('Bug #186: PATCH з brandId з ЧУЖОЇ org → 404 «Бренд не знайдено»', async () => {
       // existing rule знайдено
       prismaMock.pricingRule.findFirst.mockResolvedValueOnce({
-        id: 'rule-uuid', orgId: 'org-1', brandId: null, goodId: null,
-        goodCategory: null, goodType: null, percentValue: 30, name: 'r',
+        id: 'rule-uuid',
+        orgId: 'org-1',
+        brandId: null,
+        goodId: null,
+        goodCategory: null,
+        goodType: null,
+        percentValue: 30,
+        name: 'r',
       });
       // brand для ЧУЖОЇ org → null
       prismaMock.brand.findFirst.mockResolvedValueOnce(null);

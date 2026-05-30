@@ -7,8 +7,8 @@ export interface ColumnDef {
 }
 
 const LS_VISIBLE = (k: string) => `sto_columns_${k}`;
-const LS_ORDER   = (k: string) => `sto_col_order_${k}`;
-const LS_LABELS  = (k: string) => `sto_col_labels_${k}`;
+const LS_ORDER = (k: string) => `sto_col_order_${k}`;
+const LS_LABELS = (k: string) => `sto_col_labels_${k}`;
 
 function readOrder(pageKey: string, defaultKeys: string[]): string[] {
   try {
@@ -22,7 +22,9 @@ function readOrder(pageKey: string, defaultKeys: string[]): string[] {
       defaultKeys.filter(k => !ordered.includes(k)).forEach(k => ordered.push(k));
       return ordered;
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return defaultKeys;
 }
 
@@ -31,8 +33,11 @@ function readLabels(pageKey: string): Record<string, string> {
     const raw = window.localStorage.getItem(LS_LABELS(pageKey));
     if (!raw) return {};
     const stored: unknown = JSON.parse(raw);
-    if (stored && typeof stored === 'object' && !Array.isArray(stored)) return stored as Record<string, string>;
-  } catch { /* ignore */ }
+    if (stored && typeof stored === 'object' && !Array.isArray(stored))
+      return stored as Record<string, string>;
+  } catch {
+    /* ignore */
+  }
   return {};
 }
 
@@ -60,10 +65,12 @@ export function useTableColumns(pageKey: string, columns: ColumnDef[]) {
         if (Array.isArray(parsed) && parsed.every(x => typeof x === 'string'))
           setVisibleKeys(new Set(parsed as string[]));
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setOrder(readOrder(pageKey, defaultKeys));
     setCustomLabels(readLabels(pageKey));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey]);
 
   // Re-sync order when ColumnsDropdown saves (storage event from same tab)
@@ -77,36 +84,57 @@ export function useTableColumns(pageKey: string, columns: ColumnDef[]) {
   }, [pageKey, defaultKeys]);
 
   // Toggle visibility and persist
-  const toggle = useCallback((key: string) => {
-    setVisibleKeys(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        if (next.size <= 1) return prev;
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      try { window.localStorage.setItem(LS_VISIBLE(pageKey), JSON.stringify([...next])); } catch { /* ignore */ }
-      return next;
-    });
-  }, [pageKey]);
+  const toggle = useCallback(
+    (key: string) => {
+      setVisibleKeys(prev => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          if (next.size <= 1) return prev;
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        try {
+          window.localStorage.setItem(LS_VISIBLE(pageKey), JSON.stringify([...next]));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    },
+    [pageKey],
+  );
 
   // Reorder and persist — called by ColumnsDropdown after drag
-  const reorder = useCallback((newOrder: string[]) => {
-    setOrder(newOrder);
-    try { window.localStorage.setItem(LS_ORDER(pageKey), JSON.stringify(newOrder)); } catch { /* ignore */ }
-  }, [pageKey]);
+  const reorder = useCallback(
+    (newOrder: string[]) => {
+      setOrder(newOrder);
+      try {
+        window.localStorage.setItem(LS_ORDER(pageKey), JSON.stringify(newOrder));
+      } catch {
+        /* ignore */
+      }
+    },
+    [pageKey],
+  );
 
   // Update label and persist — called by ColumnsDropdown after rename
-  const renameColumn = useCallback((key: string, label: string | null) => {
-    setCustomLabels(prev => {
-      const next = { ...prev };
-      if (label === null) delete next[key];
-      else next[key] = label;
-      try { window.localStorage.setItem(LS_LABELS(pageKey), JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, [pageKey]);
+  const renameColumn = useCallback(
+    (key: string, label: string | null) => {
+      setCustomLabels(prev => {
+        const next = { ...prev };
+        if (label === null) delete next[key];
+        else next[key] = label;
+        try {
+          window.localStorage.setItem(LS_LABELS(pageKey), JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    },
+    [pageKey],
+  );
 
   // Reset all customization
   const resetConfig = useCallback(() => {
@@ -115,15 +143,19 @@ export function useTableColumns(pageKey: string, columns: ColumnDef[]) {
     try {
       window.localStorage.removeItem(LS_ORDER(pageKey));
       window.localStorage.removeItem(LS_LABELS(pageKey));
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [pageKey, defaultKeys]);
 
   const isVisible = useCallback((key: string) => visibleKeys.has(key), [visibleKeys]);
 
   // Columns in user-defined order, with custom labels applied
   const orderedColumns = useMemo(
-    () => [...columns].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
-      .map(c => ({ ...c, label: customLabels[c.key] ?? c.label })),
+    () =>
+      [...columns]
+        .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
+        .map(c => ({ ...c, label: customLabels[c.key] ?? c.label })),
     [columns, order, customLabels],
   );
 
@@ -133,5 +165,16 @@ export function useTableColumns(pageKey: string, columns: ColumnDef[]) {
     [orderedColumns, visibleKeys],
   );
 
-  return { visibleKeys, visibleColumns, orderedColumns, order, customLabels, toggle, reorder, renameColumn, resetConfig, isVisible };
+  return {
+    visibleKeys,
+    visibleColumns,
+    orderedColumns,
+    order,
+    customLabels,
+    toggle,
+    reorder,
+    renameColumn,
+    resetConfig,
+    isVisible,
+  };
 }

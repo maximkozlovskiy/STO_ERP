@@ -54,10 +54,7 @@ export class OutboundWebhookProcessor {
       timestamp: new Date().toISOString(),
     });
 
-    const signature =
-      secret
-        ? createHmac('sha256', secret).update(body).digest('hex')
-        : '';
+    const signature = secret ? createHmac('sha256', secret).update(body).digest('hex') : '';
 
     let responseCode: number | null = null;
     let status = 'FAILED';
@@ -110,9 +107,7 @@ export class OutboundWebhookProcessor {
     } catch (err) {
       status = 'FAILED';
       deliveryError = err;
-      this.logger.warn(
-        `Webhook delivery failed for endpoint ${endpointId}: ${String(err)}`,
-      );
+      this.logger.warn(`Webhook delivery failed for endpoint ${endpointId}: ${String(err)}`);
     }
 
     // Log every attempt — wrap in its own try/catch so a DB hiccup doesn't mask the

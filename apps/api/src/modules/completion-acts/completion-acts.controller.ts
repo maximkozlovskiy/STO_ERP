@@ -1,4 +1,18 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards, ParseUUIDPipe, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  Res,
+  UseGuards,
+  ParseUUIDPipe,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -7,7 +21,11 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { UserRole } from '@prisma/client';
 import { CompletionActsService } from './completion-acts.service';
-import { CompletionActResponseDto, PaginatedCompletionActsDto, SignCompletionActDto } from './completion-acts.dto';
+import {
+  CompletionActResponseDto,
+  PaginatedCompletionActsDto,
+  SignCompletionActDto,
+} from './completion-acts.dto';
 
 @ApiTags('Completion Acts')
 @Controller('completion-acts')
@@ -19,7 +37,10 @@ export class CompletionActsController {
   @Get()
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER, UserRole.ACCOUNTANT)
   @ApiResponse({ status: 200, type: PaginatedCompletionActsDto })
-  findAll(@OrgContext() orgId: string, @Query('workOrderId', new ParseUUIDPipe({ optional: true })) workOrderId?: string) {
+  findAll(
+    @OrgContext() orgId: string,
+    @Query('workOrderId', new ParseUUIDPipe({ optional: true })) workOrderId?: string,
+  ) {
     return this.service.findAll(orgId, workOrderId);
   }
 
@@ -34,13 +55,18 @@ export class CompletionActsController {
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Generate completion act from work order' })
   @ApiResponse({ status: 201, type: CompletionActResponseDto })
-  createFromWorkOrder(@OrgContext() orgId: string, @Param('workOrderId', ParseUUIDPipe) workOrderId: string) {
+  createFromWorkOrder(
+    @OrgContext() orgId: string,
+    @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
+  ) {
     return this.service.createFromWorkOrder(orgId, workOrderId);
   }
 
   @Patch(':id/sign')
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER)
-  @ApiOperation({ summary: 'Sign completion act → transitions WO to INVOICED and generates Invoice' })
+  @ApiOperation({
+    summary: 'Sign completion act → transitions WO to INVOICED and generates Invoice',
+  })
   @ApiResponse({ status: 200, type: CompletionActResponseDto })
   sign(
     @OrgContext() orgId: string,

@@ -1,10 +1,26 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
-import { CreateWorkCategoryDto, UpdateWorkCategoryDto, WorkCategoryResponseDto } from './work-categories.dto';
+import {
+  CreateWorkCategoryDto,
+  UpdateWorkCategoryDto,
+  WorkCategoryResponseDto,
+} from './work-categories.dto';
 import { WorkCategoriesService } from './work-categories.service';
 
 @ApiTags('Категорії робіт')
@@ -38,7 +54,11 @@ export class WorkCategoriesController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
-  update(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateWorkCategoryDto) {
+  update(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateWorkCategoryDto,
+  ) {
     return this.service.update(orgId, id, dto);
   }
 

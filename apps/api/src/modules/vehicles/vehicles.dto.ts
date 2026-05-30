@@ -1,10 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Min,
+} from 'class-validator';
 
 // ─── Vehicle ─────────────────────────────────────────────
 
 export class CreateVehicleDto {
-  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) customerGarageId!: string;
+  @ApiProperty()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  customerGarageId!: string;
   @ApiProperty({ example: 'Toyota' }) @IsString() @IsNotEmpty() make!: string;
   @ApiProperty({ example: 'Camry' }) @IsString() @IsNotEmpty() model!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() vin?: string;

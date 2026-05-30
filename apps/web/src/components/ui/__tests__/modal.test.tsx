@@ -30,9 +30,7 @@ describe('Modal', () => {
         Вміст
       </Modal>,
     );
-    expect(
-      screen.getByRole('heading', { name: 'Підтвердження' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Підтвердження' })).toBeInTheDocument();
   });
 
   it('рендерить description під title', () => {
@@ -88,9 +86,7 @@ describe('Modal', () => {
         Вміст
       </Modal>,
     );
-    expect(
-      screen.queryByRole('button', { name: 'Закрити' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Закрити' })).not.toBeInTheDocument();
   });
 
   it('footer рендерить кнопки', () => {

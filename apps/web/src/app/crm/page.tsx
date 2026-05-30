@@ -14,9 +14,19 @@ import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@/components/ui/table';
-import { DetailPanel, PanelField, PanelSection, type DetailPanelTab } from '@/components/ui/detail-panel';
+import {
+  DetailPanel,
+  PanelField,
+  PanelSection,
+  type DetailPanelTab,
+} from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
@@ -37,13 +47,25 @@ import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
 interface Counterparty {
-  id: string; type: string;
-  firstName: string | null; lastName: string | null; companyName: string | null;
-  phone: string | null; email: string | null; edrpou: string | null;
-  vatPayer: boolean; balance: number; createdAt: string;
+  id: string;
+  type: string;
+  firstName: string | null;
+  lastName: string | null;
+  companyName: string | null;
+  phone: string | null;
+  email: string | null;
+  edrpou: string | null;
+  vatPayer: boolean;
+  balance: number;
+  createdAt: string;
   deletedAt: string | null;
 }
-interface Paginated { items: Counterparty[]; total: number; page: number; limit: number; }
+interface Paginated {
+  items: Counterparty[];
+  total: number;
+  page: number;
+  limit: number;
+}
 
 interface CrmFilters extends Record<string, unknown> {
   search: string;
@@ -51,21 +73,55 @@ interface CrmFilters extends Record<string, unknown> {
   showDeleted: boolean;
 }
 
-const TYPE_LABELS: Record<string, string> = { CLIENT: 'Клієнт', SUPPLIER: 'Постачальник', BOTH: 'Обидва' };
+const TYPE_LABELS: Record<string, string> = {
+  CLIENT: 'Клієнт',
+  SUPPLIER: 'Постачальник',
+  BOTH: 'Обидва',
+};
 
-type ModalWorkOrder = { id: string; number: string; status: string; totalAmount: number; createdAt: string; vehicleSummary?: string | null };
+type ModalWorkOrder = {
+  id: string;
+  number: string;
+  status: string;
+  totalAmount: number;
+  createdAt: string;
+  vehicleSummary?: string | null;
+};
 const WO_STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка', ESTIMATE: 'Кошторис', APPROVED: 'Затверджено',
-  IN_PROGRESS: 'В роботі', ON_HOLD: 'Призупинено', COMPLETED: 'Виконано',
-  INVOICED: 'Виставлено', PAID: 'Оплачено', ARCHIVED: 'Архів', CANCELLED: 'Скасовано',
+  DRAFT: 'Чернетка',
+  ESTIMATE: 'Кошторис',
+  APPROVED: 'Затверджено',
+  IN_PROGRESS: 'В роботі',
+  ON_HOLD: 'Призупинено',
+  COMPLETED: 'Виконано',
+  INVOICED: 'Виставлено',
+  PAID: 'Оплачено',
+  ARCHIVED: 'Архів',
+  CANCELLED: 'Скасовано',
 };
 const WO_STATUS_BADGE: Record<string, BadgeVariant> = {
-  DRAFT: 'secondary', ESTIMATE: 'info', APPROVED: 'info',
-  IN_PROGRESS: 'warning', ON_HOLD: 'secondary', COMPLETED: 'success',
-  INVOICED: 'default', PAID: 'success', ARCHIVED: 'secondary', CANCELLED: 'destructive',
+  DRAFT: 'secondary',
+  ESTIMATE: 'info',
+  APPROVED: 'info',
+  IN_PROGRESS: 'warning',
+  ON_HOLD: 'secondary',
+  COMPLETED: 'success',
+  INVOICED: 'default',
+  PAID: 'success',
+  ARCHIVED: 'secondary',
+  CANCELLED: 'destructive',
 };
-const TYPE_BADGE: Record<string, BadgeVariant> = { CLIENT: 'default', SUPPLIER: 'secondary', BOTH: 'warning' };
-const TYPE_FILTER_OPTIONS = [['', 'Всі'], ['CLIENT', 'Клієнти'], ['SUPPLIER', 'Постачальники'], ['BOTH', 'Обидва']] as const;
+const TYPE_BADGE: Record<string, BadgeVariant> = {
+  CLIENT: 'default',
+  SUPPLIER: 'secondary',
+  BOTH: 'warning',
+};
+const TYPE_FILTER_OPTIONS = [
+  ['', 'Всі'],
+  ['CLIENT', 'Клієнти'],
+  ['SUPPLIER', 'Постачальники'],
+  ['BOTH', 'Обидва'],
+] as const;
 
 export default function CrmPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT']);
@@ -84,8 +140,16 @@ export default function CrmPage() {
   const [error, setError] = useState('');
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
   const [form, setForm] = useState({
-    type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '',
-    vatPayer: false, notes: '', contactPerson: '',
+    type: 'CLIENT',
+    firstName: '',
+    lastName: '',
+    companyName: '',
+    phone: '',
+    email: '',
+    edrpou: '',
+    vatPayer: false,
+    notes: '',
+    contactPerson: '',
   });
 
   const features = useUiFeatures();
@@ -94,15 +158,29 @@ export default function CrmPage() {
   const panelConfig = useDetailPanelConfig('crm');
 
   // ── Vehicles for selected counterparty (detail panel) ───────────────────────
-  const [cpVehicles, setCpVehicles] = useState<{ id: string; make: string; model: string; year: number | null; licensePlate: string }[]>([]);
+  const [cpVehicles, setCpVehicles] = useState<
+    { id: string; make: string; model: string; year: number | null; licensePlate: string }[]
+  >([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
 
   // ── Vehicles for edit modal ──────────────────────────────────────────────────
-  type Vehicle = { id: string; make: string; model: string; year: number | null; licensePlate: string };
+  type Vehicle = {
+    id: string;
+    make: string;
+    model: string;
+    year: number | null;
+    licensePlate: string;
+  };
   const [modalVehicles, setModalVehicles] = useState<Vehicle[]>([]);
   const [modalVehiclesLoading, setModalVehiclesLoading] = useState(false);
   const [modalGarageId, setModalGarageId] = useState<string | null>(null);
-  const [addVehicleForm, setAddVehicleForm] = useState({ make: '', model: '', year: '', licensePlate: '', vin: '' });
+  const [addVehicleForm, setAddVehicleForm] = useState({
+    make: '',
+    model: '',
+    year: '',
+    licensePlate: '',
+    vin: '',
+  });
   const [addingVehicle, setAddingVehicle] = useState(false);
   const [showAddVehicle, setShowAddVehicle] = useState(false);
   const [deletingVehicleId, setDeletingVehicleId] = useState<string | null>(null);
@@ -120,20 +198,37 @@ export default function CrmPage() {
   const modalWoReqRef = useRef(0);
 
   // ── Column visibility ────────────────────────────────────────────────────────
-  const CRM_COLUMNS = useMemo(() => [
-    { key: 'name',    label: 'Контрагент',  defaultVisible: true },
-    { key: 'type',    label: 'Тип',         defaultVisible: true },
-    { key: 'phone',   label: 'Телефон',     defaultVisible: true },
-    { key: 'edrpou',  label: 'ЄДРПОУ',     defaultVisible: false },
-    { key: 'balance', label: 'Баланс, ₴',  defaultVisible: true },
-  ], []);
+  const CRM_COLUMNS = useMemo(
+    () => [
+      { key: 'name', label: 'Контрагент', defaultVisible: true },
+      { key: 'type', label: 'Тип', defaultVisible: true },
+      { key: 'phone', label: 'Телефон', defaultVisible: true },
+      { key: 'edrpou', label: 'ЄДРПОУ', defaultVisible: false },
+      { key: 'balance', label: 'Баланс, ₴', defaultVisible: true },
+    ],
+    [],
+  );
 
-  const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('crm', CRM_COLUMNS);
+  const {
+    visibleKeys: colVisible,
+    visibleColumns,
+    orderedColumns,
+    order,
+    customLabels,
+    toggle: toggleCol,
+    reorder,
+    renameColumn,
+    resetConfig,
+  } = useTableColumns('crm', CRM_COLUMNS);
   const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<CrmFilters>('crm');
+  const {
+    saved: savedFilters,
+    save: saveFilter,
+    remove: removeFilter,
+  } = useSavedFilters<CrmFilters>('crm');
 
   const applyFilter = useCallback((preset: { id: string; filters: CrmFilters }) => {
     setSearch(preset.filters.search ?? '');
@@ -143,11 +238,14 @@ export default function CrmPage() {
     setActiveSavedFilterId(preset.id);
   }, []);
 
-  const handleSaveFilter = useCallback((name: string) => {
-    const preset = saveFilter(name, { search, typeFilter, showDeleted });
-    setActiveSavedFilterId(preset.id);
-    toast.success(`Фільтр "${name}" збережено`);
-  }, [saveFilter, search, typeFilter, showDeleted]);
+  const handleSaveFilter = useCallback(
+    (name: string) => {
+      const preset = saveFilter(name, { search, typeFilter, showDeleted });
+      setActiveSavedFilterId(preset.id);
+      toast.success(`Фільтр "${name}" збережено`);
+    },
+    [saveFilter, search, typeFilter, showDeleted],
+  );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
   const bulkSelect = useBulkSelect(data?.items ?? []);
@@ -157,29 +255,32 @@ export default function CrmPage() {
     if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
   }, [bulkSelect.someSelected]);
 
-  const bulkActions = useMemo<BulkAction[]>(() => [
-    {
-      id: 'delete',
-      label: 'Видалити вибраних',
-      variant: 'destructive',
-      onClick: async (ids: string[]) => {
-        const results = await Promise.allSettled(
-          ids.map(id => apiFetch(`/counterparties/${id}`, { method: 'DELETE' })),
-        );
-        const succeeded = results.filter(r => r.status === 'fulfilled').length;
-        const failed = results.length - succeeded;
-        bulkSelect.clear();
-        load();
-        if (succeeded > 0 && failed === 0) {
-          toast.success(`Видалено ${succeeded} контрагент${succeeded === 1 ? 'а' : 'ів'}`);
-        } else if (succeeded > 0) {
-          toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
-        } else {
-          toast.error('Не вдалося видалити контрагентів');
-        }
+  const bulkActions = useMemo<BulkAction[]>(
+    () => [
+      {
+        id: 'delete',
+        label: 'Видалити вибраних',
+        variant: 'destructive',
+        onClick: async (ids: string[]) => {
+          const results = await Promise.allSettled(
+            ids.map(id => apiFetch(`/counterparties/${id}`, { method: 'DELETE' })),
+          );
+          const succeeded = results.filter(r => r.status === 'fulfilled').length;
+          const failed = results.length - succeeded;
+          bulkSelect.clear();
+          load();
+          if (succeeded > 0 && failed === 0) {
+            toast.success(`Видалено ${succeeded} контрагент${succeeded === 1 ? 'а' : 'ів'}`);
+          } else if (succeeded > 0) {
+            toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+          } else {
+            toast.error('Не вдалося видалити контрагентів');
+          }
+        },
       },
-    },
-  ], [bulkSelect]); // eslint-disable-line react-hooks/exhaustive-deps
+    ],
+    [bulkSelect],
+  ); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Unsaved guard (modal form) ───────────────────────────────────────────────
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -196,33 +297,62 @@ export default function CrmPage() {
       .finally(() => setLoading(false));
   }, [page, debouncedSearch, typeFilter, showDeleted]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
-    if (!selectedCp || !detailPanel.enabled) { setCpVehicles([]); return; }
+    if (!selectedCp || !detailPanel.enabled) {
+      setCpVehicles([]);
+      return;
+    }
     let cancelled = false;
     setVehiclesLoading(true);
     apiFetch<{ id: string }[]>(`/counterparties/${selectedCp.id}/garages`)
-      .then(garages => Promise.all(garages.map(g =>
-        apiFetch<{ id: string; make: string; model: string; year: number | null; licensePlate: string }[]>(`/vehicles?customerGarageId=${g.id}&limit=50`)
-      )))
-      .then(results => { if (!cancelled) setCpVehicles(results.flat()); })
-      .catch(() => { if (!cancelled) setCpVehicles([]); })
-      .finally(() => { if (!cancelled) setVehiclesLoading(false); });
-    return () => { cancelled = true; };
+      .then(garages =>
+        Promise.all(
+          garages.map(g =>
+            apiFetch<
+              {
+                id: string;
+                make: string;
+                model: string;
+                year: number | null;
+                licensePlate: string;
+              }[]
+            >(`/vehicles?customerGarageId=${g.id}&limit=50`),
+          ),
+        ),
+      )
+      .then(results => {
+        if (!cancelled) setCpVehicles(results.flat());
+      })
+      .catch(() => {
+        if (!cancelled) setCpVehicles([]);
+      })
+      .finally(() => {
+        if (!cancelled) setVehiclesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedCp?.id, detailPanel.enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = async () => {
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      setError('Некоректний email'); return;
+      setError('Некоректний email');
+      return;
     }
     if (form.edrpou && !/^\d{8}$/.test(form.edrpou)) {
-      setError('ЄДРПОУ повинен містити рівно 8 цифр'); return;
+      setError('ЄДРПОУ повинен містити рівно 8 цифр');
+      return;
     }
     if (form.phone && !/^\+?[\d\s\-()+]{7,20}$/.test(form.phone)) {
-      setError('Некоректний номер телефону'); return;
+      setError('Некоректний номер телефону');
+      return;
     }
-    setSaving(true); setError('');
+    setSaving(true);
+    setError('');
     try {
       await apiFetch<Counterparty>('/counterparties', {
         method: 'POST',
@@ -242,8 +372,11 @@ export default function CrmPage() {
       dirty.resetDirty();
       setModal(false);
       load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
-    finally { setSaving(false); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCloseModal = async () => {
@@ -288,19 +421,33 @@ export default function CrmPage() {
         if (modalVehiclesReqRef.current !== vReqId) return [] as Vehicle[][];
         const defaultGarage = garages[0];
         if (defaultGarage) setModalGarageId(defaultGarage.id);
-        return Promise.all(garages.map(g =>
-          apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}&limit=50`)
-        ));
+        return Promise.all(
+          garages.map(g => apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}&limit=50`)),
+        );
       })
-      .then(results => { if (modalVehiclesReqRef.current === vReqId) setModalVehicles(results.flat()); })
-      .catch(err => { if (modalVehiclesReqRef.current === vReqId) setVehiclesError(err instanceof Error ? err.message : 'Помилка завантаження авто'); })
-      .finally(() => { if (modalVehiclesReqRef.current === vReqId) setModalVehiclesLoading(false); });
+      .then(results => {
+        if (modalVehiclesReqRef.current === vReqId) setModalVehicles(results.flat());
+      })
+      .catch(err => {
+        if (modalVehiclesReqRef.current === vReqId)
+          setVehiclesError(err instanceof Error ? err.message : 'Помилка завантаження авто');
+      })
+      .finally(() => {
+        if (modalVehiclesReqRef.current === vReqId) setModalVehiclesLoading(false);
+      });
 
     setModalWorkOrdersLoading(true);
     apiFetch<{ items: ModalWorkOrder[] }>(`/work-orders?counterpartyId=${cp.id}&limit=50`)
-      .then(data => { if (modalWoReqRef.current === woReqId) setModalWorkOrders(data.items); })
-      .catch(err => { if (modalWoReqRef.current === woReqId) setWoError(err instanceof Error ? err.message : 'Помилка завантаження нарядів'); })
-      .finally(() => { if (modalWoReqRef.current === woReqId) setModalWorkOrdersLoading(false); });
+      .then(data => {
+        if (modalWoReqRef.current === woReqId) setModalWorkOrders(data.items);
+      })
+      .catch(err => {
+        if (modalWoReqRef.current === woReqId)
+          setWoError(err instanceof Error ? err.message : 'Помилка завантаження нарядів');
+      })
+      .finally(() => {
+        if (modalWoReqRef.current === woReqId) setModalWorkOrdersLoading(false);
+      });
   };
 
   const addVehicle = async () => {
@@ -322,8 +469,11 @@ export default function CrmPage() {
       setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
       setShowAddVehicle(false);
       toast.success('Авто додано');
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка'); }
-    finally { setAddingVehicle(false); }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setAddingVehicle(false);
+    }
   };
 
   const deleteVehicle = async (id: string) => {
@@ -333,16 +483,29 @@ export default function CrmPage() {
       await apiFetch(`/vehicles/${id}`, { method: 'DELETE' });
       setModalVehicles(v => v.filter(x => x.id !== id));
       toast.success('Авто видалено');
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка'); }
-    finally { setDeletingVehicleId(null); }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setDeletingVehicleId(null);
+    }
   };
 
   const update = async () => {
     if (!editingCp) return;
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) { setError('Некоректний email'); return; }
-    if (form.edrpou && !/^\d{8}$/.test(form.edrpou)) { setError('ЄДРПОУ повинен містити рівно 8 цифр'); return; }
-    if (form.phone && !/^\+?[\d\s\-()+]{7,20}$/.test(form.phone)) { setError('Некоректний номер телефону'); return; }
-    setSaving(true); setError('');
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      setError('Некоректний email');
+      return;
+    }
+    if (form.edrpou && !/^\d{8}$/.test(form.edrpou)) {
+      setError('ЄДРПОУ повинен містити рівно 8 цифр');
+      return;
+    }
+    if (form.phone && !/^\+?[\d\s\-()+]{7,20}$/.test(form.phone)) {
+      setError('Некоректний номер телефону');
+      return;
+    }
+    setSaving(true);
+    setError('');
     try {
       await apiFetch(`/counterparties/${editingCp.id}`, {
         method: 'PATCH',
@@ -364,18 +527,24 @@ export default function CrmPage() {
       if (selectedCp?.id === editingCp.id) setSelectedCp(null);
       toast.success('Контрагента збережено');
       load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
-    finally { setSaving(false); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const markDeleted = async (id: string) => {
-    if (!(await confirm({ title: 'Позначити контрагента на видалення?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: 'Позначити контрагента на видалення?', variant: 'destructive' })))
+      return;
     try {
       await apiFetch(`/counterparties/${id}`, { method: 'DELETE' });
       toast.success('Контрагента позначено на видалення');
       if (selectedCp?.id === id) setSelectedCp(null);
       load();
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка видалення'); }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+    }
   };
 
   const displayName = (cp: Counterparty) =>
@@ -410,15 +579,39 @@ export default function CrmPage() {
               {cp.deletedAt && <Badge variant="secondary">видалено</Badge>}
             </div>
           )}
-          <PanelField label="Телефон" value={cp.phone} fieldKey="phone" hidden={panelConfig.isFieldHidden('phone')} />
-          <PanelField label="Email" value={cp.email} fieldKey="email" hidden={panelConfig.isFieldHidden('email')} />
-          <PanelField label="ЄДРПОУ" value={cp.edrpou} fieldKey="edrpou" hidden={panelConfig.isFieldHidden('edrpou')} />
+          <PanelField
+            label="Телефон"
+            value={cp.phone}
+            fieldKey="phone"
+            hidden={panelConfig.isFieldHidden('phone')}
+          />
+          <PanelField
+            label="Email"
+            value={cp.email}
+            fieldKey="email"
+            hidden={panelConfig.isFieldHidden('email')}
+          />
+          <PanelField
+            label="ЄДРПОУ"
+            value={cp.edrpou}
+            fieldKey="edrpou"
+            hidden={panelConfig.isFieldHidden('edrpou')}
+          />
           <PanelField
             label="Баланс"
             fieldKey="balance"
             hidden={panelConfig.isFieldHidden('balance')}
             value={
-              <span className={cn('font-semibold', cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground')}>
+              <span
+                className={cn(
+                  'font-semibold',
+                  cp.balance < 0
+                    ? 'text-destructive-text'
+                    : cp.balance > 0
+                      ? 'text-success-text'
+                      : 'text-muted-foreground',
+                )}
+              >
                 {fmtMoney(cp.balance)} ₴
               </span>
             }
@@ -430,16 +623,24 @@ export default function CrmPage() {
       key: 'vehicles',
       label: 'Авто',
       content: vehiclesLoading ? (
-        <div className="flex justify-center py-6"><Spinner size="sm" /></div>
+        <div className="flex justify-center py-6">
+          <Spinner size="sm" />
+        </div>
       ) : cpVehicles.length === 0 ? (
         <p className="text-[13px] text-muted-foreground">Авто не додано</p>
       ) : (
         <div className="space-y-2">
           {cpVehicles.map(v => (
-            <div key={v.id} className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px]">
-              <p className="font-medium text-foreground">{v.make} {v.model}</p>
+            <div
+              key={v.id}
+              className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px]"
+            >
+              <p className="font-medium text-foreground">
+                {v.make} {v.model}
+              </p>
               <p className="text-muted-foreground text-[12px] mt-0.5">
-                {v.year && `${v.year} · `}{v.licensePlate || 'без держномера'}
+                {v.year && `${v.year} · `}
+                {v.licensePlate || 'без держномера'}
               </p>
             </div>
           ))}
@@ -453,17 +654,27 @@ export default function CrmPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Контрагенти</h1>
-          <p className="page-subtitle">
-            {data ? `${data.total} записів` : 'Завантаження...'}
-          </p>
+          <p className="page-subtitle">{data ? `${data.total} записів` : 'Завантаження...'}</p>
         </div>
         <Button
           leftIcon={<Plus />}
           onClick={() => {
             setEditingCp(null);
-            setForm({ type: 'CLIENT', firstName: '', lastName: '', companyName: '', phone: '', email: '', edrpou: '', vatPayer: false, notes: '', contactPerson: '' });
+            setForm({
+              type: 'CLIENT',
+              firstName: '',
+              lastName: '',
+              companyName: '',
+              phone: '',
+              email: '',
+              edrpou: '',
+              vatPayer: false,
+              notes: '',
+              contactPerson: '',
+            });
             dirty.resetDirty();
-            setError(''); setModal(true);
+            setError('');
+            setModal(true);
           }}
         >
           Додати
@@ -493,41 +704,58 @@ export default function CrmPage() {
       <div className="flex gap-3 mb-5 flex-wrap">
         <Input
           value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
+          onChange={e => {
+            setSearch(e.target.value);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
           placeholder="Пошук за ім'ям, телефоном, ЄДРПОУ..."
           leftElement={<Search />}
           className="flex-1 min-w-48"
         />
         <Select
           value={typeFilter}
-          onChange={e => { setTypeFilter(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
+          onChange={e => {
+            setTypeFilter(e.target.value);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
           className="w-44"
         >
-          {TYPE_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {TYPE_FILTER_OPTIONS.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
         </Select>
         <Button
           variant="outline"
           size="md"
           leftIcon={showDeleted ? <Eye /> : <EyeOff />}
-          onClick={() => { setShowDeleted(d => !d); setPage(1); setActiveSavedFilterId(null); }}
+          onClick={() => {
+            setShowDeleted(d => !d);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
           className={showDeleted ? 'border-primary text-primary' : ''}
         >
           {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
         </Button>
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          {features.savedFiltersEnabled && (
-            <SaveFilterButton onSave={handleSaveFilter} />
-          )}
+          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
-                  columns={orderedColumns}
-                  visibleKeys={colVisible}
-                  onToggle={toggleCol}
-                  onReorder={reorder}
-                  onRename={renameColumn}
-                  onReset={resetConfig}
-                  hasCustomization={JSON.stringify(order) !== JSON.stringify(CRM_COLUMNS.map(c => c.key)) || Object.keys(customLabels).length > 0}
-                />
+            columns={orderedColumns}
+            visibleKeys={colVisible}
+            onToggle={toggleCol}
+            onReorder={reorder}
+            onRename={renameColumn}
+            onReset={resetConfig}
+            hasCustomization={
+              JSON.stringify(order) !== JSON.stringify(CRM_COLUMNS.map(c => c.key)) ||
+              Object.keys(customLabels).length > 0
+            }
+          />
         </div>
       </div>
 
@@ -560,102 +788,154 @@ export default function CrmPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col => <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>)}
+                {visibleColumns.map(col => (
+                  <TableHead key={col.key} {...dragProps(col.key)}>
+                    {col.label}
+                  </TableHead>
+                ))}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center">
-                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  <TableCell
+                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                    className="py-12 text-center"
+                  >
+                    <div className="flex justify-center">
+                      <Spinner size="md" />
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && data?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
-                    <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" size="sm" />
+                  <TableCell
+                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                    className="p-0"
+                  >
+                    <EmptyState
+                      icon={Users}
+                      title="Нічого не знайдено"
+                      description="Спробуйте змінити параметри пошуку"
+                      size="sm"
+                    />
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && data?.items.map(cp => {
-                const isDeleted = !!cp.deletedAt;
-                return (
-                  <TableRow
-                    key={cp.id}
-                    className={cn(
-                      'transition-colors',
-                      detailPanel.enabled && 'cursor-pointer',
-                      isDeleted && 'opacity-60',
-                      selectedCp?.id === cp.id && 'bg-secondary',
-                      bulkSelect.isSelected(cp.id) && 'bg-primary/5',
-                    )}
-                    onClick={() => { if (detailPanel.enabled) setSelectedCp(prev => prev?.id === cp.id ? null : cp); }}
-                  >
-                    {features.bulkActionsEnabled && (
-                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={bulkSelect.isSelected(cp.id)}
-                          onChange={() => bulkSelect.toggle(cp.id)}
-                          className="h-3.5 w-3.5 rounded border-border"
-                          aria-label={`Вибрати ${displayName(cp)}`}
-                        />
+              {!loading &&
+                data?.items.map(cp => {
+                  const isDeleted = !!cp.deletedAt;
+                  return (
+                    <TableRow
+                      key={cp.id}
+                      className={cn(
+                        'transition-colors',
+                        detailPanel.enabled && 'cursor-pointer',
+                        isDeleted && 'opacity-60',
+                        selectedCp?.id === cp.id && 'bg-secondary',
+                        bulkSelect.isSelected(cp.id) && 'bg-primary/5',
+                      )}
+                      onClick={() => {
+                        if (detailPanel.enabled)
+                          setSelectedCp(prev => (prev?.id === cp.id ? null : cp));
+                      }}
+                    >
+                      {features.bulkActionsEnabled && (
+                        <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={bulkSelect.isSelected(cp.id)}
+                            onChange={() => bulkSelect.toggle(cp.id)}
+                            className="h-3.5 w-3.5 rounded border-border"
+                            aria-label={`Вибрати ${displayName(cp)}`}
+                          />
+                        </TableCell>
+                      )}
+                      {visibleColumns.map(col => {
+                        if (col.key === 'name')
+                          return (
+                            <TableCell key="name">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-[13px] font-medium text-primary">
+                                  {displayName(cp)}
+                                </p>
+                                {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                              </div>
+                              {cp.email && (
+                                <p className="text-[12px] text-muted-foreground mt-0.5">
+                                  {cp.email}
+                                </p>
+                              )}
+                            </TableCell>
+                          );
+                        if (col.key === 'type')
+                          return (
+                            <TableCell key="type">
+                              <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
+                                {TYPE_LABELS[cp.type]}
+                              </Badge>
+                            </TableCell>
+                          );
+                        if (col.key === 'phone')
+                          return (
+                            <TableCell key="phone" className="text-muted-foreground text-[13px]">
+                              {cp.phone ?? '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'edrpou')
+                          return (
+                            <TableCell key="edrpou" className="text-muted-foreground text-[13px]">
+                              {cp.edrpou ?? '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'balance')
+                          return (
+                            <TableCell
+                              key="balance"
+                              className={cn(
+                                'font-semibold tabular-nums text-[13px]',
+                                cp.balance < 0
+                                  ? 'text-destructive-text'
+                                  : cp.balance > 0
+                                    ? 'text-success-text'
+                                    : 'text-muted-foreground',
+                              )}
+                            >
+                              {fmtMoney(cp.balance)} ₴
+                            </TableCell>
+                          );
+                        return null;
+                      })}
+                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          {!isDeleted && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Редагувати"
+                              onClick={() => openEdit(cp)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          {!isDeleted && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                              title="Позначити на видалення"
+                              onClick={() => markDeleted(cp.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
-                    )}
-                    {visibleColumns.map(col => {
-                      if (col.key === 'name') return (
-                        <TableCell key="name">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-[13px] font-medium text-primary">{displayName(cp)}</p>
-                            {isDeleted && <Badge variant="secondary">видалено</Badge>}
-                          </div>
-                          {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
-                        </TableCell>
-                      );
-                      if (col.key === 'type') return (
-                        <TableCell key="type">
-                          <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>{TYPE_LABELS[cp.type]}</Badge>
-                        </TableCell>
-                      );
-                      if (col.key === 'phone') return <TableCell key="phone" className="text-muted-foreground text-[13px]">{cp.phone ?? '—'}</TableCell>;
-                      if (col.key === 'edrpou') return <TableCell key="edrpou" className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>;
-                      if (col.key === 'balance') return (
-                        <TableCell key="balance" className={cn('font-semibold tabular-nums text-[13px]', cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground')}>
-                          {fmtMoney(cp.balance)} ₴
-                        </TableCell>
-                      );
-                      return null;
-                    })}
-                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        {!isDeleted && (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            title="Редагувати"
-                            onClick={() => openEdit(cp)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                        {!isDeleted && (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                            title="Позначити на видалення"
-                            onClick={() => markDeleted(cp.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
 
@@ -698,9 +978,11 @@ export default function CrmPage() {
         title={editingCp ? 'Редагування контрагента' : 'Новий контрагент'}
         size={editingCp ? 'lg' : 'md'}
         footer={
-          editTab === 'main'
-            ? <Button onClick={editingCp ? update : create} loading={saving}>{editingCp ? 'Оновити' : 'Зберегти'}</Button>
-            : null
+          editTab === 'main' ? (
+            <Button onClick={editingCp ? update : create} loading={saving}>
+              {editingCp ? 'Оновити' : 'Зберегти'}
+            </Button>
+          ) : null
         }
       >
         {/* Tab bar — тільки при редагуванні */}
@@ -726,10 +1008,14 @@ export default function CrmPage() {
               >
                 {tab.label}
                 {tab.count !== undefined && (
-                  <span className={cn(
-                    'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-semibold',
-                    editTab === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground',
-                  )}>
+                  <span
+                    className={cn(
+                      'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-semibold',
+                      editTab === tab.key
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-muted-foreground',
+                    )}
+                  >
                     {tab.count}
                   </span>
                 )}
@@ -747,48 +1033,114 @@ export default function CrmPage() {
               </div>
             )}
             <div className="space-y-4">
-              <Select label="Тип" required value={form.type}
-                onChange={e => { setForm(f => ({ ...f, type: e.target.value })); dirty.markDirty(); }}>
-                {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <Select
+                label="Тип"
+                required
+                value={form.type}
+                onChange={e => {
+                  setForm(f => ({ ...f, type: e.target.value }));
+                  dirty.markDirty();
+                }}
+              >
+                {Object.entries(TYPE_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
               </Select>
 
               {form.type !== 'SUPPLIER' && (
                 <div className="grid grid-cols-2 gap-3">
-                  <Input label="Ім'я" value={form.firstName}
-                    onChange={e => { setForm(f => ({ ...f, firstName: e.target.value })); dirty.markDirty(); }}
-                    placeholder="Іван" />
-                  <Input label="Прізвище" value={form.lastName}
-                    onChange={e => { setForm(f => ({ ...f, lastName: e.target.value })); dirty.markDirty(); }}
-                    placeholder="Коваль" />
+                  <Input
+                    label="Ім'я"
+                    value={form.firstName}
+                    onChange={e => {
+                      setForm(f => ({ ...f, firstName: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                    placeholder="Іван"
+                  />
+                  <Input
+                    label="Прізвище"
+                    value={form.lastName}
+                    onChange={e => {
+                      setForm(f => ({ ...f, lastName: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                    placeholder="Коваль"
+                  />
                 </div>
               )}
 
-              <Input label="Назва компанії" value={form.companyName}
-                onChange={e => { setForm(f => ({ ...f, companyName: e.target.value })); dirty.markDirty(); }}
-                placeholder="ТОВ «Авто»" />
+              <Input
+                label="Назва компанії"
+                value={form.companyName}
+                onChange={e => {
+                  setForm(f => ({ ...f, companyName: e.target.value }));
+                  dirty.markDirty();
+                }}
+                placeholder="ТОВ «Авто»"
+              />
 
-              <Input label="Телефон" value={form.phone}
-                onChange={e => { setForm(f => ({ ...f, phone: e.target.value })); dirty.markDirty(); }}
-                placeholder="+38 (067) 123-45-67" />
+              <Input
+                label="Телефон"
+                value={form.phone}
+                onChange={e => {
+                  setForm(f => ({ ...f, phone: e.target.value }));
+                  dirty.markDirty();
+                }}
+                placeholder="+38 (067) 123-45-67"
+              />
 
-              <Input label="Email" type="email" value={form.email}
-                onChange={e => { setForm(f => ({ ...f, email: e.target.value })); dirty.markDirty(); }} />
+              <Input
+                label="Email"
+                type="email"
+                value={form.email}
+                onChange={e => {
+                  setForm(f => ({ ...f, email: e.target.value }));
+                  dirty.markDirty();
+                }}
+              />
 
-              <Input label="ЄДРПОУ" value={form.edrpou}
-                onChange={e => { setForm(f => ({ ...f, edrpou: e.target.value })); dirty.markDirty(); }}
-                placeholder="12345678" />
+              <Input
+                label="ЄДРПОУ"
+                value={form.edrpou}
+                onChange={e => {
+                  setForm(f => ({ ...f, edrpou: e.target.value }));
+                  dirty.markDirty();
+                }}
+                placeholder="12345678"
+              />
 
-              <Input label="Контактна особа" value={form.contactPerson}
-                onChange={e => { setForm(f => ({ ...f, contactPerson: e.target.value })); dirty.markDirty(); }}
-                placeholder="Петро Іваненко" />
+              <Input
+                label="Контактна особа"
+                value={form.contactPerson}
+                onChange={e => {
+                  setForm(f => ({ ...f, contactPerson: e.target.value }));
+                  dirty.markDirty();
+                }}
+                placeholder="Петро Іваненко"
+              />
 
-              <Input label="Нотатки" value={form.notes}
-                onChange={e => { setForm(f => ({ ...f, notes: e.target.value })); dirty.markDirty(); }} />
+              <Input
+                label="Нотатки"
+                value={form.notes}
+                onChange={e => {
+                  setForm(f => ({ ...f, notes: e.target.value }));
+                  dirty.markDirty();
+                }}
+              />
 
               <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input type="checkbox" checked={form.vatPayer}
-                  onChange={e => { setForm(f => ({ ...f, vatPayer: e.target.checked })); dirty.markDirty(); }}
-                  className="h-4 w-4 rounded border-border accent-primary" />
+                <input
+                  type="checkbox"
+                  checked={form.vatPayer}
+                  onChange={e => {
+                    setForm(f => ({ ...f, vatPayer: e.target.checked }));
+                    dirty.markDirty();
+                  }}
+                  className="h-4 w-4 rounded border-border accent-primary"
+                />
                 <span className="text-sm text-foreground">Платник ПДВ</span>
               </label>
             </div>
@@ -809,10 +1161,16 @@ export default function CrmPage() {
             {!modalVehiclesLoading && !vehiclesError && (
               <>
                 <div className="flex items-center justify-between">
-                  <span className="text-[13px] text-muted-foreground">{modalVehicles.length} авто</span>
+                  <span className="text-[13px] text-muted-foreground">
+                    {modalVehicles.length} авто
+                  </span>
                   {!showAddVehicle && (
-                    <Button size="sm" variant="outline" leftIcon={<Plus className="h-3.5 w-3.5" />}
-                      onClick={() => setShowAddVehicle(true)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      leftIcon={<Plus className="h-3.5 w-3.5" />}
+                      onClick={() => setShowAddVehicle(true)}
+                    >
                       Додати авто
                     </Button>
                   )}
@@ -820,26 +1178,67 @@ export default function CrmPage() {
                 {showAddVehicle && (
                   <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
                     <div className="grid grid-cols-2 gap-2">
-                      <Input label="Марка" required value={addVehicleForm.make}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))} placeholder="Toyota" />
-                      <Input label="Модель" required value={addVehicleForm.model}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, model: e.target.value }))} placeholder="Camry" />
+                      <Input
+                        label="Марка"
+                        required
+                        value={addVehicleForm.make}
+                        onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))}
+                        placeholder="Toyota"
+                      />
+                      <Input
+                        label="Модель"
+                        required
+                        value={addVehicleForm.model}
+                        onChange={e => setAddVehicleForm(f => ({ ...f, model: e.target.value }))}
+                        placeholder="Camry"
+                      />
                     </div>
                     <div className="grid grid-cols-3 gap-2">
-                      <Input label="Рік" type="number" value={addVehicleForm.year}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, year: e.target.value }))} placeholder="2020" />
-                      <Input label="Держномер" value={addVehicleForm.licensePlate}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, licensePlate: e.target.value }))} placeholder="АА 1234 ВС" />
-                      <Input label="VIN" value={addVehicleForm.vin}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, vin: e.target.value }))} placeholder="WVWZZZ1JZXW000001" />
+                      <Input
+                        label="Рік"
+                        type="number"
+                        value={addVehicleForm.year}
+                        onChange={e => setAddVehicleForm(f => ({ ...f, year: e.target.value }))}
+                        placeholder="2020"
+                      />
+                      <Input
+                        label="Держномер"
+                        value={addVehicleForm.licensePlate}
+                        onChange={e =>
+                          setAddVehicleForm(f => ({ ...f, licensePlate: e.target.value }))
+                        }
+                        placeholder="АА 1234 ВС"
+                      />
+                      <Input
+                        label="VIN"
+                        value={addVehicleForm.vin}
+                        onChange={e => setAddVehicleForm(f => ({ ...f, vin: e.target.value }))}
+                        placeholder="WVWZZZ1JZXW000001"
+                      />
                     </div>
                     <div className="flex gap-2 justify-end">
-                      <Button size="sm" variant="outline"
-                        onClick={() => { setShowAddVehicle(false); setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' }); }}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setShowAddVehicle(false);
+                          setAddVehicleForm({
+                            make: '',
+                            model: '',
+                            year: '',
+                            licensePlate: '',
+                            vin: '',
+                          });
+                        }}
+                      >
                         Скасувати
                       </Button>
-                      <Button size="sm" onClick={addVehicle} loading={addingVehicle}
-                        disabled={!addVehicleForm.make || !addVehicleForm.model}>
+                      <Button
+                        size="sm"
+                        onClick={addVehicle}
+                        loading={addingVehicle}
+                        disabled={!addVehicleForm.make || !addVehicleForm.model}
+                      >
                         Зберегти
                       </Button>
                     </div>
@@ -850,23 +1249,39 @@ export default function CrmPage() {
                     <table className="w-full text-[13px]">
                       <thead className="bg-secondary border-b border-border">
                         <tr>
-                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">Марка / Модель</th>
-                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">Держномер</th>
-                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">Рік</th>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                            Марка / Модель
+                          </th>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                            Держномер
+                          </th>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                            Рік
+                          </th>
                           <th className="w-16" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
                         {modalVehicles.map(v => (
-                          <tr key={v.id} className="bg-surface hover:bg-secondary/50 transition-colors">
-                            <td className="px-3 py-2 font-medium text-foreground">{v.make} {v.model}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{v.licensePlate || '—'}</td>
+                          <tr
+                            key={v.id}
+                            className="bg-surface hover:bg-secondary/50 transition-colors"
+                          >
+                            <td className="px-3 py-2 font-medium text-foreground">
+                              {v.make} {v.model}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {v.licensePlate || '—'}
+                            </td>
                             <td className="px-3 py-2 text-muted-foreground">{v.year ?? '—'}</td>
                             <td className="px-3 py-2">
-                              <button type="button" onClick={() => deleteVehicle(v.id)}
+                              <button
+                                type="button"
+                                onClick={() => deleteVehicle(v.id)}
                                 disabled={deletingVehicleId === v.id}
                                 className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
-                                title="Видалити">
+                                title="Видалити"
+                              >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
                             </td>
@@ -877,7 +1292,9 @@ export default function CrmPage() {
                   </div>
                 )}
                 {modalVehicles.length === 0 && !showAddVehicle && (
-                  <p className="text-[13px] text-muted-foreground text-center py-8">Авто не додано</p>
+                  <p className="text-[13px] text-muted-foreground text-center py-8">
+                    Авто не додано
+                  </p>
                 )}
               </>
             )}
@@ -903,20 +1320,36 @@ export default function CrmPage() {
                 <table className="w-full text-[13px]">
                   <thead className="bg-secondary border-b border-border">
                     <tr>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Номер</th>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Авто</th>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Статус</th>
-                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">Сума</th>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Дата</th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                        Номер
+                      </th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                        Авто
+                      </th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                        Статус
+                      </th>
+                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">
+                        Сума
+                      </th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                        Дата
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {modalWorkOrders.map(wo => (
-                      <tr key={wo.id}
+                      <tr
+                        key={wo.id}
                         className="bg-surface hover:bg-secondary/50 transition-colors cursor-pointer"
-                        onClick={() => router.push(`/work-orders/${wo.id}`)}>
-                        <td className="px-3 py-2 font-mono font-medium text-foreground">{wo.number}</td>
-                        <td className="px-3 py-2 text-muted-foreground">{wo.vehicleSummary || '—'}</td>
+                        onClick={() => router.push(`/work-orders/${wo.id}`)}
+                      >
+                        <td className="px-3 py-2 font-mono font-medium text-foreground">
+                          {wo.number}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {wo.vehicleSummary || '—'}
+                        </td>
                         <td className="px-3 py-2">
                           <Badge variant={WO_STATUS_BADGE[wo.status] ?? 'secondary'} dot>
                             {WO_STATUS_LABELS[wo.status] ?? wo.status}
@@ -925,9 +1358,7 @@ export default function CrmPage() {
                         <td className="px-3 py-2 text-right text-foreground tabular-nums">
                           {fmtMoney(wo.totalAmount)} ₴
                         </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {fmtDate(wo.createdAt)}
-                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{fmtDate(wo.createdAt)}</td>
                       </tr>
                     ))}
                   </tbody>

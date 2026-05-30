@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { parse as parseCSV } from 'csv-parse/sync';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
@@ -123,9 +128,7 @@ export class XlsxService {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Бренди');
 
-    sheet.columns = [
-      { header: 'Назва бренду', key: 'name', width: 30 },
-    ];
+    sheet.columns = [{ header: 'Назва бренду', key: 'name', width: 30 }];
 
     sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563eb' } };
@@ -196,9 +199,9 @@ export class XlsxService {
       if (idx === 1) return; // Skip header
       rowNum = idx;
       try {
-        const values = row.values as (unknown)[];
+        const values = row.values as unknown[];
         const salePrice = this.parseNumber(values[5]);
-        if (!salePrice) throw new Error('Ціна продажу обов\'язкова');
+        if (!salePrice) throw new Error("Ціна продажу обов'язкова");
         rows.push({
           sku: String(values[1] || '').trim() || undefined,
           name: String(values[2] || '').trim(),
@@ -208,7 +211,9 @@ export class XlsxService {
           category: String(values[6] || '').trim() || undefined,
         });
       } catch (e: unknown) {
-        throw new BadRequestException(`Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`);
+        throw new BadRequestException(
+          `Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`,
+        );
       }
     });
 
@@ -230,7 +235,7 @@ export class XlsxService {
       if (idx === 1) return;
       rowNum = idx;
       try {
-        const values = row.values as (unknown)[];
+        const values = row.values as unknown[];
         const normoHours = this.parseNumber(values[3]);
         const price = this.parseNumber(values[4]);
         rows.push({
@@ -241,7 +246,9 @@ export class XlsxService {
           description: String(values[5] || '').trim() || undefined,
         });
       } catch (e: unknown) {
-        throw new BadRequestException(`Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`);
+        throw new BadRequestException(
+          `Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`,
+        );
       }
     });
 
@@ -263,11 +270,13 @@ export class XlsxService {
       if (idx === 1) return;
       rowNum = idx;
       try {
-        const values = row.values as (unknown)[];
+        const values = row.values as unknown[];
         const name = String(values[1] || '').trim();
         if (name) rows.push({ name });
       } catch (e: unknown) {
-        throw new BadRequestException(`Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`);
+        throw new BadRequestException(
+          `Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`,
+        );
       }
     });
 
@@ -289,12 +298,14 @@ export class XlsxService {
       if (idx === 1) return;
       rowNum = idx;
       try {
-        const values = row.values as (unknown)[];
+        const values = row.values as unknown[];
         const name = String(values[1] || '').trim();
         const shortName = String(values[2] || '').trim();
         if (name && shortName) rows.push({ name, shortName });
       } catch (e: unknown) {
-        throw new BadRequestException(`Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`);
+        throw new BadRequestException(
+          `Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`,
+        );
       }
     });
 
@@ -323,8 +334,10 @@ export class XlsxService {
    * Повертає Map<key, good> де key = `sku:lower` або `name:lower`. Резолвер resolveGood
    * має той самий пріоритет що й оригінальний findFirst (SKU > name).
    */
-  private async lookupGoodsBulk(orgId: string, rows: Array<{ sku?: string; name: string }>):
-    Promise<Map<string, { id: string }>> {
+  private async lookupGoodsBulk(
+    orgId: string,
+    rows: Array<{ sku?: string; name: string }>,
+  ): Promise<Map<string, { id: string }>> {
     const skus = Array.from(new Set(rows.map(r => r.sku).filter((s): s is string => !!s)));
     const names = Array.from(new Set(rows.map(r => r.name).filter(Boolean)));
     if (skus.length === 0 && names.length === 0) return new Map();
@@ -355,7 +368,11 @@ export class XlsxService {
     return byKey.get(`name:${row.name.toLowerCase()}`) ?? null;
   }
 
-  async importPOLines(orgId: string, poId: string, buffer: Buffer | Uint8Array): Promise<ImportResult> {
+  async importPOLines(
+    orgId: string,
+    poId: string,
+    buffer: Buffer | Uint8Array,
+  ): Promise<ImportResult> {
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id: poId, orgId, deletedAt: null },
     });
@@ -368,9 +385,11 @@ export class XlsxService {
     // Bulk prefetch goods + existing lines — раніше N rows × 2 queries (3000 RTT на 1000 рядків).
     // Тепер 2 батч-запити + N локальних lookup у Map.
     const goodsByKey = await this.lookupGoodsBulk(orgId, rows);
-    const goodIds = Array.from(new Set(
-      rows.map(r => this.resolveGood(goodsByKey, r)?.id).filter((id): id is string => !!id),
-    ));
+    const goodIds = Array.from(
+      new Set(
+        rows.map(r => this.resolveGood(goodsByKey, r)?.id).filter((id): id is string => !!id),
+      ),
+    );
     const existingLines = goodIds.length
       ? await this.prisma.purchaseOrderLine.findMany({
           where: { purchaseOrderId: poId, goodId: { in: goodIds }, orgId, deletedAt: null },
@@ -414,7 +433,11 @@ export class XlsxService {
     return result;
   }
 
-  async importSDLines(orgId: string, docId: string, buffer: Buffer | Uint8Array): Promise<ImportResult> {
+  async importSDLines(
+    orgId: string,
+    docId: string,
+    buffer: Buffer | Uint8Array,
+  ): Promise<ImportResult> {
     const doc = await this.prisma.stockDocument.findFirst({
       where: { id: docId, orgId, deletedAt: null },
     });
@@ -426,9 +449,11 @@ export class XlsxService {
 
     // Bulk prefetch — уникає N+1 (раніше 2 RTT × N rows).
     const goodsByKey = await this.lookupGoodsBulk(orgId, rows);
-    const goodIds = Array.from(new Set(
-      rows.map(r => this.resolveGood(goodsByKey, r)?.id).filter((id): id is string => !!id),
-    ));
+    const goodIds = Array.from(
+      new Set(
+        rows.map(r => this.resolveGood(goodsByKey, r)?.id).filter((id): id is string => !!id),
+      ),
+    );
     const existingLines = goodIds.length
       ? await this.prisma.stockDocumentLine.findMany({
           where: { stockDocumentId: docId, goodId: { in: goodIds }, orgId, deletedAt: null },
@@ -472,12 +497,17 @@ export class XlsxService {
     return result;
   }
 
-  async importWOParts(orgId: string, woId: string, buffer: Buffer | Uint8Array): Promise<ImportResult> {
+  async importWOParts(
+    orgId: string,
+    woId: string,
+    buffer: Buffer | Uint8Array,
+  ): Promise<ImportResult> {
     const wo = await this.prisma.workOrder.findFirst({
       where: { id: woId, orgId, deletedAt: null },
     });
     if (!wo) throw new NotFoundException('Наряд-замовлення не знайдено');
-    if (!['DRAFT', 'ESTIMATE'].includes(wo.status)) throw new ForbiddenException('Наряд не в статусі DRAFT або ESTIMATE');
+    if (!['DRAFT', 'ESTIMATE'].includes(wo.status))
+      throw new ForbiddenException('Наряд не в статусі DRAFT або ESTIMATE');
 
     const rows = await this.parsePOLines(buffer);
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
@@ -554,10 +584,10 @@ export class XlsxService {
       if (idx === 1) return;
       rowNum = idx;
       try {
-        const values = row.values as (unknown)[];
+        const values = row.values as unknown[];
         const qty = this.parseNumber(values[3]);
         const price = this.parseNumber(values[4]);
-        if (!qty || !price) throw new Error('К-ть і ціна обов\'язкові');
+        if (!qty || !price) throw new Error("К-ть і ціна обов'язкові");
         rows.push({
           sku: String(values[1] || '').trim() || undefined,
           name: String(values[2] || '').trim(),
@@ -565,7 +595,9 @@ export class XlsxService {
           price,
         });
       } catch (e: unknown) {
-        throw new BadRequestException(`Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`);
+        throw new BadRequestException(
+          `Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`,
+        );
       }
     });
 
@@ -581,17 +613,30 @@ export class XlsxService {
     found: number;
     updated: number;
     notFound: string[];
-    details: { goodId: string; goodName: string; sku: string | null; costPrice: number; oldSalePrice: number; newSalePrice: number }[];
+    details: {
+      goodId: string;
+      goodName: string;
+      sku: string | null;
+      costPrice: number;
+      oldSalePrice: number;
+      newSalePrice: number;
+    }[];
   }> {
     let items: Array<{ sku?: string; barcode?: string }>;
 
     if (fileType === 'csv') {
       const text = buffer.toString('utf-8').replace(/^﻿/, ''); // strip BOM
-      const records = parseCSV(text, { columns: true, skip_empty_lines: true, trim: true }) as Record<string, string>[];
-      items = records.map(r => ({
-        sku: r['sku'] || r['SKU'] || r['Артикул'] || undefined,
-        barcode: r['barcode'] || r['Штрихкод'] || undefined,
-      })).filter(r => r.sku || r.barcode);
+      const records = parseCSV(text, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+      }) as Record<string, string>[];
+      items = records
+        .map(r => ({
+          sku: r['sku'] || r['SKU'] || r['Артикул'] || undefined,
+          barcode: r['barcode'] || r['Штрихкод'] || undefined,
+        }))
+        .filter(r => r.sku || r.barcode);
     } else {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(this.toArrayBuffer(buffer));
@@ -610,7 +655,14 @@ export class XlsxService {
     if (items.length === 0) throw new BadRequestException('Файл не містить жодного рядка даних');
 
     const notFound: string[] = [];
-    const details: { goodId: string; goodName: string; sku: string | null; costPrice: number; oldSalePrice: number; newSalePrice: number }[] = [];
+    const details: {
+      goodId: string;
+      goodName: string;
+      sku: string | null;
+      costPrice: number;
+      oldSalePrice: number;
+      newSalePrice: number;
+    }[] = [];
 
     // Bulk prefetch: усі goods за всіма SKU + barcodes ОДНИМ запитом + усі правила org один раз.
     // Раніше: per-item good.findFirst + per-item calculateSalePrice (який сам фетчить правила) → 2N+ RTT.
@@ -633,8 +685,8 @@ export class XlsxService {
     ]);
 
     // Build lookup maps: SKU → good (case-insensitive) + barcode → good
-    const goodBySku = new Map<string, typeof goods[number]>();
-    const goodByBarcode = new Map<string, typeof goods[number]>();
+    const goodBySku = new Map<string, (typeof goods)[number]>();
+    const goodByBarcode = new Map<string, (typeof goods)[number]>();
     for (const g of goods) {
       if (g.sku) goodBySku.set(g.sku.toLowerCase(), g);
       for (const bc of g.barcodes ?? []) {
@@ -643,7 +695,7 @@ export class XlsxService {
     }
 
     for (const item of items) {
-      let good: typeof goods[number] | undefined;
+      let good: (typeof goods)[number] | undefined;
       if (item.sku) good = goodBySku.get(item.sku.toLowerCase());
       if (!good && item.barcode) good = goodByBarcode.get(item.barcode);
 
@@ -672,29 +724,46 @@ export class XlsxService {
       );
 
       if (Math.abs(newSalePrice - oldSalePrice) < 0.001) {
-        details.push({ goodId: good.id, goodName: good.name, sku: good.sku, costPrice, oldSalePrice, newSalePrice });
+        details.push({
+          goodId: good.id,
+          goodName: good.name,
+          sku: good.sku,
+          costPrice,
+          oldSalePrice,
+          newSalePrice,
+        });
         continue;
       }
 
       // Bug #191: updateMany з orgId — defense-in-depth tenant guard.
-      await this.prisma.$transaction(async (tx) => {
-        await tx.good.updateMany({
-          where: { id: good.id, orgId, deletedAt: null },
-          data: { salePrice: newSalePrice },
-        });
-        await tx.priceHistory.create({
-          data: {
-            orgId,
-            goodId: good.id,
-            oldPrice: oldSalePrice,
-            newPrice: newSalePrice,
-            costPrice,
-            reason: 'List pricing import',
-          },
-        });
-      }, { timeout: TRANSACTION_TIMEOUT_MS });
+      await this.prisma.$transaction(
+        async tx => {
+          await tx.good.updateMany({
+            where: { id: good.id, orgId, deletedAt: null },
+            data: { salePrice: newSalePrice },
+          });
+          await tx.priceHistory.create({
+            data: {
+              orgId,
+              goodId: good.id,
+              oldPrice: oldSalePrice,
+              newPrice: newSalePrice,
+              costPrice,
+              reason: 'List pricing import',
+            },
+          });
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
 
-      details.push({ goodId: good.id, goodName: good.name, sku: good.sku, costPrice, oldSalePrice, newSalePrice });
+      details.push({
+        goodId: good.id,
+        goodName: good.name,
+        sku: good.sku,
+        costPrice,
+        oldSalePrice,
+        newSalePrice,
+      });
     }
 
     return {

@@ -91,10 +91,7 @@ export class SettingsController {
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Оновити налаштування організації' })
   @ApiResponse({ status: 200, type: OrganisationSettingsResponseDto })
-  updateOrganisation(
-    @OrgContext() orgId: string,
-    @Body() dto: UpdateOrganisationSettingsDto,
-  ) {
+  updateOrganisation(@OrgContext() orgId: string, @Body() dto: UpdateOrganisationSettingsDto) {
     return this.service.updateOrganisationSettings(orgId, dto);
   }
 

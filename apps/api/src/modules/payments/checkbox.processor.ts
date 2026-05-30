@@ -37,13 +37,20 @@ export class CheckboxProcessor {
     const response = await fetch(`${apiUrl}/api/v1/receipts/sell`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${branchSettings.checkboxLicenseKey}`,
+        Authorization: `Bearer ${branchSettings.checkboxLicenseKey}`,
         'Content-Type': 'application/json',
         'X-License-Key': branchSettings.checkboxLicenseKey,
       },
       body: JSON.stringify({
-        goods: [{ good: { name: 'Послуги автосервісу', price: Math.round(amount * 100) }, quantity: 1000 }],
-        payments: [{ type: method === 'cash' ? 'CASH' : 'CASHLESS', value: Math.round(amount * 100) }],
+        goods: [
+          {
+            good: { name: 'Послуги автосервісу', price: Math.round(amount * 100) },
+            quantity: 1000,
+          },
+        ],
+        payments: [
+          { type: method === 'cash' ? 'CASH' : 'CASHLESS', value: Math.round(amount * 100) },
+        ],
       }),
     });
 
@@ -52,7 +59,7 @@ export class CheckboxProcessor {
       throw new Error(`Checkbox API error ${response.status}: ${err}`);
     }
 
-    const receipt = await response.json() as { id?: string; fiscal_code?: string };
+    const receipt = (await response.json()) as { id?: string; fiscal_code?: string };
     const fiscalReceiptId = receipt.id ?? receipt.fiscal_code;
 
     await this.prisma.payment.update({

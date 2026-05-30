@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Param, ParseUUIDPipe, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -19,7 +29,10 @@ export class SettlementsController {
   @Get('balance')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Баланс контрагента' })
-  getBalance(@OrgContext() orgId: string, @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string) {
+  getBalance(
+    @OrgContext() orgId: string,
+    @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string,
+  ) {
     return this.service.getBalance(orgId, counterpartyId);
   }
 
@@ -52,7 +65,10 @@ export class SettlementsController {
   @Get('reconciliation-acts')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Акти звірки контрагента' })
-  getActs(@OrgContext() orgId: string, @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string) {
+  getActs(
+    @OrgContext() orgId: string,
+    @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string,
+  ) {
     return this.service.getReconciliationActs(orgId, counterpartyId);
   }
 

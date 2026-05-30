@@ -5,7 +5,9 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
 import {
-  CompletionActResponseDto, CompletionActLineDto, SignCompletionActDto,
+  CompletionActResponseDto,
+  CompletionActLineDto,
+  SignCompletionActDto,
   PaginatedCompletionActsDto,
 } from './completion-acts.dto';
 
@@ -80,12 +82,27 @@ export class CompletionActsService {
         include: {
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           vehicle: { select: { make: true, model: true, licensePlate: true } },
-          lines: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' }, include: { work: { select: { name: true } } }, take: 500 },
-          parts: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' }, include: { good: { select: { name: true, unit: true } } }, take: 500 },
+          lines: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            include: { work: { select: { name: true } } },
+            take: 500,
+          },
+          parts: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            include: { good: { select: { name: true, unit: true } } },
+            take: 500,
+          },
         },
       }),
       this.prisma.completionAct.findFirst({
-        where: { orgId, workOrderId, deletedAt: null, status: { not: CompletionActStatus.CANCELLED } },
+        where: {
+          orgId,
+          workOrderId,
+          deletedAt: null,
+          status: { not: CompletionActStatus.CANCELLED },
+        },
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
@@ -113,39 +130,45 @@ export class CompletionActsService {
     return this.toDto(act, lines);
   }
 
-  async sign(orgId: string, id: string, dto: SignCompletionActDto): Promise<CompletionActResponseDto> {
+  async sign(
+    orgId: string,
+    id: string,
+    dto: SignCompletionActDto,
+  ): Promise<CompletionActResponseDto> {
     let workOrderId: string | null = null;
 
-    await this.prisma.$transaction(async (tx) => {
-      const act = await tx.completionAct.findFirst({
-        where: { id, orgId, deletedAt: null },
-        include: { workOrder: { select: { id: true, status: true } } },
-      });
-      if (!act) throw new NotFoundException('Акт не знайдено');
-      if (act.status !== CompletionActStatus.DRAFT) {
-        throw new BadRequestException('Підписати можна лише чернетку акту');
-      }
-
-      await tx.completionAct.update({
-        where: { id, orgId },
-        data: {
-          status: CompletionActStatus.SIGNED,
-          signedAt: new Date(),
-          signedBy: dto.signedBy ?? null,
-          clientPhone: dto.clientPhone ?? null,
-          notes: dto.notes ?? null,
-        },
-      });
-
-      if (act.workOrder?.status === 'COMPLETED') {
-        await tx.workOrder.update({
-          where: { id: act.workOrder.id, orgId },
-          data: { status: 'INVOICED' },
+    await this.prisma.$transaction(
+      async tx => {
+        const act = await tx.completionAct.findFirst({
+          where: { id, orgId, deletedAt: null },
+          include: { workOrder: { select: { id: true, status: true } } },
         });
-      }
-      workOrderId = act.workOrder?.id ?? null;
-    }, { timeout: 5_000 }); // Bug #130: explicit 5s timeout
+        if (!act) throw new NotFoundException('Акт не знайдено');
+        if (act.status !== CompletionActStatus.DRAFT) {
+          throw new BadRequestException('Підписати можна лише чернетку акту');
+        }
 
+        await tx.completionAct.update({
+          where: { id, orgId },
+          data: {
+            status: CompletionActStatus.SIGNED,
+            signedAt: new Date(),
+            signedBy: dto.signedBy ?? null,
+            clientPhone: dto.clientPhone ?? null,
+            notes: dto.notes ?? null,
+          },
+        });
+
+        if (act.workOrder?.status === 'COMPLETED') {
+          await tx.workOrder.update({
+            where: { id: act.workOrder.id, orgId },
+            data: { status: 'INVOICED' },
+          });
+        }
+        workOrderId = act.workOrder?.id ?? null;
+      },
+      { timeout: 5_000 },
+    ); // Bug #130: explicit 5s timeout
 
     if (workOrderId) {
       try {
@@ -162,12 +185,17 @@ export class CompletionActsService {
   }
 
   async cancel(orgId: string, id: string): Promise<void> {
-    const act = await this.prisma.completionAct.findFirst({ where: { id, orgId, deletedAt: null } });
+    const act = await this.prisma.completionAct.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
     if (!act) throw new NotFoundException('Акт не знайдено');
     if (act.status === CompletionActStatus.SIGNED) {
       throw new BadRequestException('Підписаний акт не можна скасувати');
     }
-    await this.prisma.completionAct.update({ where: { id, orgId }, data: { status: CompletionActStatus.CANCELLED } });
+    await this.prisma.completionAct.update({
+      where: { id, orgId },
+      data: { status: CompletionActStatus.CANCELLED },
+    });
   }
 
   async generatePdf(orgId: string, id: string): Promise<Buffer> {
@@ -179,14 +207,23 @@ export class CompletionActsService {
       this.prisma.workOrder.findFirst({
         where: { id: act.workOrderId, orgId },
         include: {
-          counterparty: { select: { firstName: true, lastName: true, companyName: true, phone: true, actualAddress: true } },
+          counterparty: {
+            select: {
+              firstName: true,
+              lastName: true,
+              companyName: true,
+              phone: true,
+              actualAddress: true,
+            },
+          },
           vehicle: { select: { make: true, model: true, licensePlate: true } },
         },
       }),
     ]);
 
     const cp = wo?.counterparty;
-    const cpName = (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Клієнт';
+    const cpName =
+      (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Клієнт';
     const vehicleLabel = wo?.vehicle
       ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}`
       : '';
@@ -202,16 +239,38 @@ export class CompletionActsService {
       date: act.createdAt,
       signedAt: act.signedAt,
       signedBy: act.signedBy,
-      lines: lines.map(l => ({ description: l.description, quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount })),
+      lines: lines.map(l => ({
+        description: l.description,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        amount: l.amount,
+      })),
       total,
       notes: act.notes,
     });
   }
 
-  private buildLines(wo: {
-    lines: Array<{ normoHours: number; price: import('@prisma/client').Prisma.Decimal; amount: import('@prisma/client').Prisma.Decimal; workId: string; work: { name: string } | null }>;
-    parts: Array<{ quantity: number; price: import('@prisma/client').Prisma.Decimal; amount: import('@prisma/client').Prisma.Decimal; goodId: string; good: { name: string; unit: string } | null }>;
-  } | null | undefined): CompletionActLineDto[] {
+  private buildLines(
+    wo:
+      | {
+          lines: Array<{
+            normoHours: number;
+            price: import('@prisma/client').Prisma.Decimal;
+            amount: import('@prisma/client').Prisma.Decimal;
+            workId: string;
+            work: { name: string } | null;
+          }>;
+          parts: Array<{
+            quantity: number;
+            price: import('@prisma/client').Prisma.Decimal;
+            amount: import('@prisma/client').Prisma.Decimal;
+            goodId: string;
+            good: { name: string; unit: string } | null;
+          }>;
+        }
+      | null
+      | undefined,
+  ): CompletionActLineDto[] {
     if (!wo) return [];
     const lines: CompletionActLineDto[] = [];
     for (const l of wo.lines) {
@@ -235,26 +294,54 @@ export class CompletionActsService {
     return lines;
   }
 
-  private toDto(act: {
-    id: string; orgId: string; workOrderId: string; number: string; status: CompletionActStatus;
-    signedAt: Date | null; signedBy: string | null; clientPhone: string | null; notes: string | null;
-    createdAt: Date; updatedAt: Date;
-    workOrder: {
+  private toDto(
+    act: {
+      id: string;
+      orgId: string;
+      workOrderId: string;
       number: string;
-      counterparty: { firstName: string | null; lastName: string | null; companyName: string | null } | null;
-      vehicle: { make: string; model: string; licensePlate: string | null } | null;
-    } | null;
-  }, lines?: CompletionActLineDto[]): CompletionActResponseDto {
+      status: CompletionActStatus;
+      signedAt: Date | null;
+      signedBy: string | null;
+      clientPhone: string | null;
+      notes: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      workOrder: {
+        number: string;
+        counterparty: {
+          firstName: string | null;
+          lastName: string | null;
+          companyName: string | null;
+        } | null;
+        vehicle: { make: string; model: string; licensePlate: string | null } | null;
+      } | null;
+    },
+    lines?: CompletionActLineDto[],
+  ): CompletionActResponseDto {
     const cp = act.workOrder?.counterparty;
-    const counterpartyName = (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || undefined;
+    const counterpartyName =
+      (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || undefined;
     const v = act.workOrder?.vehicle;
-    const vehicleLabel = v ? `${v.make} ${v.model}${v.licensePlate ? ` (${v.licensePlate})` : ''}` : undefined;
+    const vehicleLabel = v
+      ? `${v.make} ${v.model}${v.licensePlate ? ` (${v.licensePlate})` : ''}`
+      : undefined;
     return {
-      id: act.id, orgId: act.orgId, workOrderId: act.workOrderId, number: act.number, status: act.status,
-      signedAt: act.signedAt, signedBy: act.signedBy, clientPhone: act.clientPhone, notes: act.notes,
-      workOrderNumber: act.workOrder?.number, counterpartyName, vehicleLabel,
+      id: act.id,
+      orgId: act.orgId,
+      workOrderId: act.workOrderId,
+      number: act.number,
+      status: act.status,
+      signedAt: act.signedAt,
+      signedBy: act.signedBy,
+      clientPhone: act.clientPhone,
+      notes: act.notes,
+      workOrderNumber: act.workOrder?.number,
+      counterpartyName,
+      vehicleLabel,
       ...(lines !== undefined ? { lines } : {}),
-      createdAt: act.createdAt, updatedAt: act.updatedAt,
+      createdAt: act.createdAt,
+      updatedAt: act.updatedAt,
     };
   }
 }

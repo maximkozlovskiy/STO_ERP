@@ -14,14 +14,14 @@ const SHIFT_ALIAS: Record<string, string> = {
   '!': '1',
   '@': '2',
   '#': '3',
-  '$': '4',
+  $: '4',
   '%': '5',
   '^': '6',
   '&': '7',
   '*': '8',
   '(': '9',
   ')': '0',
-  '_': '-',
+  _: '-',
   '+': '=',
   '{': '[',
   '}': ']',
@@ -53,10 +53,10 @@ export function useKeyboardShortcut(
     if (!enabled) return;
 
     const parts = key.toLowerCase().split('+');
-    const needsCtrl  = parts.includes('ctrl');
-    const needsAlt   = parts.includes('alt');
+    const needsCtrl = parts.includes('ctrl');
+    const needsAlt = parts.includes('alt');
     const needsShift = parts.includes('shift');
-    const mainKey    = parts[parts.length - 1];
+    const mainKey = parts[parts.length - 1];
 
     const matchesMain = (e: KeyboardEvent): boolean => {
       const k = e.key.toLowerCase();
@@ -72,19 +72,21 @@ export function useKeyboardShortcut(
     };
 
     const listener = (e: KeyboardEvent) => {
-      if (needsCtrl  !== e.ctrlKey)  return;
-      if (needsAlt   !== e.altKey)   return;
+      if (needsCtrl !== e.ctrlKey) return;
+      if (needsAlt !== e.altKey) return;
       if (needsShift !== e.shiftKey) return;
       if (!matchesMain(e)) return;
 
       if (!allowInInput) {
         const target = e.target as HTMLElement | null;
-        if (target && (
-          target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable
-        )) return;
+        if (
+          target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.tagName === 'SELECT' ||
+            target.isContentEditable)
+        )
+          return;
       }
 
       handler(e);

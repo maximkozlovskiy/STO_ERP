@@ -42,17 +42,25 @@ export class WarehousesService {
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
     try {
-      const item = await this.prisma.$transaction(async (tx) => {
-        if (dto.isMain) {
-          await tx.warehouse.updateMany({ where: { orgId, deletedAt: null }, data: { isMain: false } });
-        }
-        return tx.warehouse.create({ data: { ...dto, orgId } });
-      }, { timeout: 5_000 });
+      const item = await this.prisma.$transaction(
+        async tx => {
+          if (dto.isMain) {
+            await tx.warehouse.updateMany({
+              where: { orgId, deletedAt: null },
+              data: { isMain: false },
+            });
+          }
+          return tx.warehouse.create({ data: { ...dto, orgId } });
+        },
+        { timeout: 5_000 },
+      );
       await this.cache.delPattern(`ref:warehouses:${orgId}*`);
       return this.toDto(item);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException('Лише один склад може бути основним у організації. Спробуйте ще раз.');
+        throw new ConflictException(
+          'Лише один склад може бути основним у організації. Спробуйте ще раз.',
+        );
       }
       throw e;
     }
@@ -61,17 +69,25 @@ export class WarehousesService {
   async update(orgId: string, id: string, dto: UpdateWarehouseDto): Promise<WarehouseResponseDto> {
     await this.findOne(orgId, id);
     try {
-      const item = await this.prisma.$transaction(async (tx) => {
-        if (dto.isMain) {
-          await tx.warehouse.updateMany({ where: { orgId, deletedAt: null, id: { not: id } }, data: { isMain: false } });
-        }
-        return tx.warehouse.update({ where: { id, orgId }, data: dto });
-      }, { timeout: 5_000 });
+      const item = await this.prisma.$transaction(
+        async tx => {
+          if (dto.isMain) {
+            await tx.warehouse.updateMany({
+              where: { orgId, deletedAt: null, id: { not: id } },
+              data: { isMain: false },
+            });
+          }
+          return tx.warehouse.update({ where: { id, orgId }, data: dto });
+        },
+        { timeout: 5_000 },
+      );
       await this.cache.delPattern(`ref:warehouses:${orgId}*`);
       return this.toDto(item);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException('Лише один склад може бути основним у організації. Спробуйте ще раз.');
+        throw new ConflictException(
+          'Лише один склад може бути основним у організації. Спробуйте ще раз.',
+        );
       }
       throw e;
     }
@@ -83,7 +99,25 @@ export class WarehousesService {
     await this.cache.delPattern(`ref:warehouses:${orgId}*`);
   }
 
-  private toDto(w: { id: string; orgId: string; branchId: string; name: string; type: string; isMain: boolean; createdAt: Date; updatedAt: Date }): WarehouseResponseDto {
-    return { id: w.id, orgId: w.orgId, branchId: w.branchId, name: w.name, type: w.type as WarehouseType, isMain: w.isMain, createdAt: w.createdAt, updatedAt: w.updatedAt };
+  private toDto(w: {
+    id: string;
+    orgId: string;
+    branchId: string;
+    name: string;
+    type: string;
+    isMain: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  }): WarehouseResponseDto {
+    return {
+      id: w.id,
+      orgId: w.orgId,
+      branchId: w.branchId,
+      name: w.name,
+      type: w.type as WarehouseType,
+      isMain: w.isMain,
+      createdAt: w.createdAt,
+      updatedAt: w.updatedAt,
+    };
   }
 }

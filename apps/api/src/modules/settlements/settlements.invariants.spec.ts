@@ -7,10 +7,7 @@ const BALANCE_INCREASING: TxType[] = ['CHARGE'];
 const BALANCE_DECREASING: TxType[] = ['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'];
 
 /** Кумулятивно застосовує транзакції до початкового балансу. */
-function applyTransactions(
-  txs: { type: TxType; amount: number }[],
-  initialBalance = 0,
-): number {
+function applyTransactions(txs: { type: TxType; amount: number }[], initialBalance = 0): number {
   return txs.reduce((balance, { type, amount }) => {
     if (BALANCE_INCREASING.includes(type)) return balance + amount;
     if (BALANCE_DECREASING.includes(type)) return balance - amount;
@@ -25,7 +22,7 @@ describe('Settlements — balance invariants (property-based)', () => {
 
   it('CHARGE збільшує баланс рівно на amount', () => {
     fc.assert(
-      fc.property(moneyAmount(), (amount) => {
+      fc.property(moneyAmount(), amount => {
         const before = 0;
         const after = applyTransactions([{ type: 'CHARGE', amount }], before);
         return after === before + amount && after > before;
@@ -51,36 +48,29 @@ describe('Settlements — balance invariants (property-based)', () => {
 
   it('сума CHARGE = сума PAYMENT → balance = 0', () => {
     fc.assert(
-      fc.property(
-        fc.array(moneyAmount(), { minLength: 1, maxLength: 10 }),
-        (amounts) => {
-          const total = amounts.reduce((s, a) => s + a, 0);
-          const txs: { type: TxType; amount: number }[] = [
-            ...amounts.map((amount) => ({ type: 'CHARGE' as TxType, amount })),
-            { type: 'PAYMENT', amount: total },
-          ];
-          const balance = applyTransactions(txs);
-          return balance === 0;
-        },
-      ),
+      fc.property(fc.array(moneyAmount(), { minLength: 1, maxLength: 10 }), amounts => {
+        const total = amounts.reduce((s, a) => s + a, 0);
+        const txs: { type: TxType; amount: number }[] = [
+          ...amounts.map(amount => ({ type: 'CHARGE' as TxType, amount })),
+          { type: 'PAYMENT', amount: total },
+        ];
+        const balance = applyTransactions(txs);
+        return balance === 0;
+      }),
       { numRuns: 500 },
     );
   });
 
   it('CHARGE + PAYMENT де payment >= charge → balance ≤ 0 (overpaid)', () => {
     fc.assert(
-      fc.property(
-        moneyAmount(),
-        moneyAmount(),
-        (chargeAmount, paymentAmount) => {
-          fc.pre(paymentAmount >= chargeAmount);
-          const balance = applyTransactions([
-            { type: 'CHARGE', amount: chargeAmount },
-            { type: 'PAYMENT', amount: paymentAmount },
-          ]);
-          return balance <= 0;
-        },
-      ),
+      fc.property(moneyAmount(), moneyAmount(), (chargeAmount, paymentAmount) => {
+        fc.pre(paymentAmount >= chargeAmount);
+        const balance = applyTransactions([
+          { type: 'CHARGE', amount: chargeAmount },
+          { type: 'PAYMENT', amount: paymentAmount },
+        ]);
+        return balance <= 0;
+      }),
       { numRuns: 300 },
     );
   });
@@ -104,12 +94,18 @@ describe('Settlements — balance invariants (property-based)', () => {
       fc.property(
         fc.array(
           fc.record({
-            type: fc.constantFrom<TxType>('CHARGE', 'PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'),
+            type: fc.constantFrom<TxType>(
+              'CHARGE',
+              'PAYMENT',
+              'PREPAYMENT',
+              'REFUND',
+              'CREDIT_NOTE',
+            ),
             amount: moneyAmount(),
           }),
           { minLength: 2, maxLength: 10 },
         ),
-        (txs) => {
+        txs => {
           const balanceA = applyTransactions(txs);
           const reversed = [...txs].reverse();
           const balanceB = applyTransactions(reversed);
@@ -122,7 +118,7 @@ describe('Settlements — balance invariants (property-based)', () => {
 
   it('CREDIT_NOTE робить те саме що PAYMENT (зменшує баланс)', () => {
     fc.assert(
-      fc.property(moneyAmount(), (amount) => {
+      fc.property(moneyAmount(), amount => {
         const balanceA = applyTransactions([{ type: 'CREDIT_NOTE', amount }], 100_000);
         const balanceB = applyTransactions([{ type: 'PAYMENT', amount }], 100_000);
         return balanceA === balanceB;
@@ -133,7 +129,7 @@ describe('Settlements — balance invariants (property-based)', () => {
 
   it('пуста послідовність транзакцій → баланс не змінюється', () => {
     fc.assert(
-      fc.property(fc.integer({ min: -100_000, max: 100_000 }), (initialBalance) => {
+      fc.property(fc.integer({ min: -100_000, max: 100_000 }), initialBalance => {
         const balance = applyTransactions([], initialBalance);
         return balance === initialBalance;
       }),

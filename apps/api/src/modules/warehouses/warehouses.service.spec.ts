@@ -9,7 +9,12 @@ import { CacheService } from '../../redis/cache.service';
 describe('WarehousesService — isMain invariant', () => {
   let service: WarehousesService;
   let prisma: { warehouse: any; garageBranch: any; $transaction: ReturnType<typeof vi.fn> };
-  let cache: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn>; del: ReturnType<typeof vi.fn>; delPattern: ReturnType<typeof vi.fn> };
+  let cache: {
+    get: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    del: ReturnType<typeof vi.fn>;
+    delPattern: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     cache = {
@@ -29,7 +34,9 @@ describe('WarehousesService — isMain invariant', () => {
       garageBranch: {
         findFirst: vi.fn(),
       },
-      $transaction: vi.fn().mockImplementation(async (cb: (tx: typeof prisma) => Promise<unknown>) => cb(prisma)),
+      $transaction: vi
+        .fn()
+        .mockImplementation(async (cb: (tx: typeof prisma) => Promise<unknown>) => cb(prisma)),
     };
 
     const module = await Test.createTestingModule({
@@ -69,8 +76,14 @@ describe('WarehousesService — isMain invariant', () => {
     it('коли isMain=true, скидає isMain у ВСІХ інших складах організації', async () => {
       prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: 'b-1' });
       prisma.warehouse.create.mockResolvedValueOnce({
-        id: 'w-new', orgId: 'org-1', branchId: 'b-1', name: 'Новий',
-        type: 'MAIN', isMain: true, createdAt: new Date(), updatedAt: new Date(),
+        id: 'w-new',
+        orgId: 'org-1',
+        branchId: 'b-1',
+        name: 'Новий',
+        type: 'MAIN',
+        isMain: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
 
       await service.create('org-1', { branchId: 'b-1', name: 'Новий', isMain: true });
@@ -84,8 +97,14 @@ describe('WarehousesService — isMain invariant', () => {
     it('коли isMain не задано, НЕ викликає updateMany', async () => {
       prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: 'b-1' });
       prisma.warehouse.create.mockResolvedValueOnce({
-        id: 'w-2', orgId: 'org-1', branchId: 'b-1', name: 'Другорядний',
-        type: 'WORKSHOP', isMain: false, createdAt: new Date(), updatedAt: new Date(),
+        id: 'w-2',
+        orgId: 'org-1',
+        branchId: 'b-1',
+        name: 'Другорядний',
+        type: 'WORKSHOP',
+        isMain: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
 
       await service.create('org-1', { branchId: 'b-1', name: 'Другорядний' });
@@ -95,9 +114,9 @@ describe('WarehousesService — isMain invariant', () => {
 
     it('кидає NotFoundException якщо branch не знайдено', async () => {
       prisma.garageBranch.findFirst.mockResolvedValueOnce(null);
-      await expect(
-        service.create('org-1', { branchId: 'b-missing', name: 'X' }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.create('org-1', { branchId: 'b-missing', name: 'X' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('конвертує Prisma P2002 у ConflictException з повідомленням українською', async () => {
@@ -119,12 +138,25 @@ describe('WarehousesService — isMain invariant', () => {
   describe('update — isMain UX guard', () => {
     it('коли isMain=true, скидає isMain у інших складах (id != target)', async () => {
       prisma.warehouse.findFirst.mockResolvedValueOnce({
-        id: 'w-1', orgId: 'org-1', branchId: 'b-1', name: 'X', type: 'MAIN',
-        isMain: false, deletedAt: null, createdAt: new Date(), updatedAt: new Date(),
+        id: 'w-1',
+        orgId: 'org-1',
+        branchId: 'b-1',
+        name: 'X',
+        type: 'MAIN',
+        isMain: false,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
       prisma.warehouse.update.mockResolvedValueOnce({
-        id: 'w-1', orgId: 'org-1', branchId: 'b-1', name: 'X', type: 'MAIN',
-        isMain: true, createdAt: new Date(), updatedAt: new Date(),
+        id: 'w-1',
+        orgId: 'org-1',
+        branchId: 'b-1',
+        name: 'X',
+        type: 'MAIN',
+        isMain: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
 
       await service.update('org-1', 'w-1', { isMain: true });
@@ -137,8 +169,15 @@ describe('WarehousesService — isMain invariant', () => {
 
     it('конвертує Prisma P2002 у ConflictException у update теж', async () => {
       prisma.warehouse.findFirst.mockResolvedValueOnce({
-        id: 'w-1', orgId: 'org-1', branchId: 'b-1', name: 'X', type: 'MAIN',
-        isMain: false, deletedAt: null, createdAt: new Date(), updatedAt: new Date(),
+        id: 'w-1',
+        orgId: 'org-1',
+        branchId: 'b-1',
+        name: 'X',
+        type: 'MAIN',
+        isMain: false,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
       const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
         code: 'P2002',
@@ -147,9 +186,9 @@ describe('WarehousesService — isMain invariant', () => {
       });
       prisma.warehouse.update.mockRejectedValueOnce(p2002);
 
-      await expect(
-        service.update('org-1', 'w-1', { isMain: true }),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.update('org-1', 'w-1', { isMain: true })).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 });

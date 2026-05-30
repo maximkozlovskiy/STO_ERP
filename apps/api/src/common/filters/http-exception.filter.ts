@@ -25,11 +25,17 @@ function mapPrismaErrorToHttp(
       // Unique constraint violation
       const target = (e.meta as { target?: string[] } | undefined)?.target;
       const fields = Array.isArray(target) ? target.join(', ') : 'поле';
-      return { status: HttpStatus.CONFLICT, message: `Запис з таким значенням вже існує (${fields})` };
+      return {
+        status: HttpStatus.CONFLICT,
+        message: `Запис з таким значенням вже існує (${fields})`,
+      };
     }
     case 'P2003':
       // Foreign key constraint violation
-      return { status: HttpStatus.BAD_REQUEST, message: 'Порушення зовнішнього ключа: пов\'язаний запис не знайдено' };
+      return {
+        status: HttpStatus.BAD_REQUEST,
+        message: "Порушення зовнішнього ключа: пов'язаний запис не знайдено",
+      };
     case 'P2025':
       // Record not found in update/delete
       return { status: HttpStatus.NOT_FOUND, message: 'Запис не знайдено' };
@@ -41,7 +47,7 @@ function mapPrismaErrorToHttp(
       return { status: HttpStatus.BAD_REQUEST, message: 'Значення занадто довге для поля' };
     case 'P2011':
       // Null constraint violation
-      return { status: HttpStatus.BAD_REQUEST, message: 'Обов\'язкове поле не може бути порожнім' };
+      return { status: HttpStatus.BAD_REQUEST, message: "Обов'язкове поле не може бути порожнім" };
     default:
       return null;
   }

@@ -17,7 +17,12 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
@@ -35,19 +40,56 @@ import { cn, displayCounterpartyName } from '@/lib/utils';
 import { fmtMoney, fmtShortDateTime, fmtDateTime } from '@/lib/format';
 
 interface WorkOrder {
-  id: string; number: string; status: string;
-  vehicleSummary?: string; counterpartyName?: string; branchName?: string;
-  totalAmount: number; plannedAt?: string | null; createdAt: string;
+  id: string;
+  number: string;
+  status: string;
+  vehicleSummary?: string;
+  counterpartyName?: string;
+  branchName?: string;
+  totalAmount: number;
+  plannedAt?: string | null;
+  createdAt: string;
   priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
-  repairCategory?: 'MAINTENANCE' | 'CURRENT_REPAIR' | 'MAJOR_REPAIR' | 'BODY_REPAIR' | 'DIAGNOSTICS' | 'WARRANTY' | 'SEASONAL' | null;
+  repairCategory?:
+    | 'MAINTENANCE'
+    | 'CURRENT_REPAIR'
+    | 'MAJOR_REPAIR'
+    | 'BODY_REPAIR'
+    | 'DIAGNOSTICS'
+    | 'WARRANTY'
+    | 'SEASONAL'
+    | null;
   dueDate?: string | null;
   hasActiveWarranty?: boolean;
 }
-interface Paginated { items: WorkOrder[]; total: number; page: number; limit: number; }
-interface Branch { id: string; name: string; }
-interface Vehicle { id: string; make: string; model: string; licensePlate: string | null; }
-interface Counterparty { id: string; firstName: string | null; lastName: string | null; companyName: string | null; }
-interface WOTemplate { id: string; name: string; lines: { workId: string; quantity: number }[]; parts: { goodId: string; quantity: number }[]; }
+interface Paginated {
+  items: WorkOrder[];
+  total: number;
+  page: number;
+  limit: number;
+}
+interface Branch {
+  id: string;
+  name: string;
+}
+interface Vehicle {
+  id: string;
+  make: string;
+  model: string;
+  licensePlate: string | null;
+}
+interface Counterparty {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  companyName: string | null;
+}
+interface WOTemplate {
+  id: string;
+  name: string;
+  lines: { workId: string; quantity: number }[];
+  parts: { goodId: string; quantity: number }[];
+}
 
 interface WOFilters extends Record<string, unknown> {
   statusFilter: string;
@@ -58,23 +100,43 @@ interface WOFilters extends Record<string, unknown> {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка', ESTIMATE: 'Кошторис', APPROVED: 'Затверджено',
-  IN_PROGRESS: 'В роботі', ON_HOLD: 'Призупинено', COMPLETED: 'Виконано',
-  INVOICED: 'Виставлено', PAID: 'Оплачено', ARCHIVED: 'Архів', CANCELLED: 'Скасовано',
+  DRAFT: 'Чернетка',
+  ESTIMATE: 'Кошторис',
+  APPROVED: 'Затверджено',
+  IN_PROGRESS: 'В роботі',
+  ON_HOLD: 'Призупинено',
+  COMPLETED: 'Виконано',
+  INVOICED: 'Виставлено',
+  PAID: 'Оплачено',
+  ARCHIVED: 'Архів',
+  CANCELLED: 'Скасовано',
 };
 
 const STATUS_BADGE: Record<string, BadgeVariant> = {
-  DRAFT: 'secondary', ESTIMATE: 'warning', APPROVED: 'default',
-  IN_PROGRESS: 'default', ON_HOLD: 'warning', COMPLETED: 'success',
-  INVOICED: 'default', PAID: 'success', ARCHIVED: 'secondary', CANCELLED: 'destructive',
+  DRAFT: 'secondary',
+  ESTIMATE: 'warning',
+  APPROVED: 'default',
+  IN_PROGRESS: 'default',
+  ON_HOLD: 'warning',
+  COMPLETED: 'success',
+  INVOICED: 'default',
+  PAID: 'success',
+  ARCHIVED: 'secondary',
+  CANCELLED: 'destructive',
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
-  LOW: 'Низький', NORMAL: 'Звичайний', HIGH: 'Високий', URGENT: 'Терміново',
+  LOW: 'Низький',
+  NORMAL: 'Звичайний',
+  HIGH: 'Високий',
+  URGENT: 'Терміново',
 };
 
 const PRIORITY_BADGE: Record<string, BadgeVariant> = {
-  LOW: 'secondary', NORMAL: 'default', HIGH: 'warning', URGENT: 'destructive',
+  LOW: 'secondary',
+  NORMAL: 'default',
+  HIGH: 'warning',
+  URGENT: 'destructive',
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -121,7 +183,9 @@ export default function WorkOrdersPage() {
   const router = useRouter();
 
   const [nowMs, setNowMs] = useState(0);
-  useEffect(() => { setNowMs(Date.now()); }, []);
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, []);
 
   const [data, setData] = useState<Paginated | null>(null);
   const [loading, setLoading] = useState(true);
@@ -159,21 +223,38 @@ export default function WorkOrdersPage() {
 
   const features = useUiFeatures();
 
-  const WO_COLUMNS = useMemo(() => [
-    { key: 'number',    label: 'Номер' },
-    { key: 'client',    label: 'Клієнт / Авто' },
-    { key: 'status',    label: 'Статус' },
-    { key: 'priority',  label: 'Пріоритет' },
-    { key: 'amount',    label: 'Сума, ₴' },
-    { key: 'plannedAt', label: 'Заплановано' },
-    { key: 'dueDate',   label: 'Дедлайн' },
-  ], []);
+  const WO_COLUMNS = useMemo(
+    () => [
+      { key: 'number', label: 'Номер' },
+      { key: 'client', label: 'Клієнт / Авто' },
+      { key: 'status', label: 'Статус' },
+      { key: 'priority', label: 'Пріоритет' },
+      { key: 'amount', label: 'Сума, ₴' },
+      { key: 'plannedAt', label: 'Заплановано' },
+      { key: 'dueDate', label: 'Дедлайн' },
+    ],
+    [],
+  );
 
-  const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('work-orders', WO_COLUMNS);
+  const {
+    visibleKeys: colVisible,
+    visibleColumns,
+    orderedColumns,
+    order,
+    customLabels,
+    toggle: toggleCol,
+    reorder,
+    renameColumn,
+    resetConfig,
+  } = useTableColumns('work-orders', WO_COLUMNS);
   const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
 
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<WOFilters>('work-orders');
+  const {
+    saved: savedFilters,
+    save: saveFilter,
+    remove: removeFilter,
+  } = useSavedFilters<WOFilters>('work-orders');
 
   const applyFilter = useCallback((preset: { id: string; filters: WOFilters }) => {
     setStatusFilter(preset.filters.statusFilter ?? '');
@@ -185,11 +266,28 @@ export default function WorkOrdersPage() {
     setActiveSavedFilterId(preset.id);
   }, []);
 
-  const handleSaveFilter = useCallback((name: string) => {
-    const preset = saveFilter(name, { statusFilter, categoryFilter, search, showDeleted, myOrders });
-    setActiveSavedFilterId(preset.id);
-    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
-  }, [saveFilter, statusFilter, categoryFilter, search, showDeleted, myOrders, features.toastEnabled]);
+  const handleSaveFilter = useCallback(
+    (name: string) => {
+      const preset = saveFilter(name, {
+        statusFilter,
+        categoryFilter,
+        search,
+        showDeleted,
+        myOrders,
+      });
+      setActiveSavedFilterId(preset.id);
+      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+    },
+    [
+      saveFilter,
+      statusFilter,
+      categoryFilter,
+      search,
+      showDeleted,
+      myOrders,
+      features.toastEnabled,
+    ],
+  );
 
   const bulkSelect = useBulkSelect(data?.items ?? []);
 
@@ -220,9 +318,15 @@ export default function WorkOrdersPage() {
     },
   });
   const [form, setForm] = useState({
-    branchId: '', vehicleId: '', counterpartyId: '',
-    description: '', inMileage: '', plannedAt: '',
-    priority: 'NORMAL', repairCategory: '', dueDate: '',
+    branchId: '',
+    vehicleId: '',
+    counterpartyId: '',
+    description: '',
+    inMileage: '',
+    plannedAt: '',
+    priority: 'NORMAL',
+    repairCategory: '',
+    dueDate: '',
   });
 
   useEffect(() => {
@@ -232,7 +336,8 @@ export default function WorkOrdersPage() {
     const cachedTemplates = getCached<WOTemplate[]>('cache:wo-templates');
     if (cachedBranches && cachedTemplates) {
       setBranches(cachedBranches);
-      if (cachedBranches.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: cachedBranches[0].id }));
+      if (cachedBranches.length === 1)
+        setForm(f => (f.branchId ? f : { ...f, branchId: cachedBranches[0].id }));
       setTemplates(cachedTemplates);
       return;
     }
@@ -240,22 +345,29 @@ export default function WorkOrdersPage() {
     Promise.all([
       apiFetch<Branch[]>('/branches'),
       apiFetch<{ items: WOTemplate[] }>('/work-order-templates?limit=100'),
-    ]).then(([bs, tmpl]) => {
-      if (cancelled) return;
-      setBranches(bs);
-      if (bs.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: bs[0].id }));
-      setTemplates(tmpl.items);
-      setCache('cache:branches', bs);
-      setCache('cache:wo-templates', tmpl.items);
-    }).catch((e: unknown) => {
-      if (!cancelled) setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити дані');
-    });
-    return () => { cancelled = true; };
+    ])
+      .then(([bs, tmpl]) => {
+        if (cancelled) return;
+        setBranches(bs);
+        if (bs.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: bs[0].id }));
+        setTemplates(tmpl.items);
+        setCache('cache:branches', bs);
+        setCache('cache:wo-templates', tmpl.items);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled)
+          setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити дані');
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Keep employeeId in a ref so load() doesn't re-create when employee object changes identity
   const employeeIdRef = useRef(employee?.id);
-  useEffect(() => { employeeIdRef.current = employee?.id; }, [employee?.id]);
+  useEffect(() => {
+    employeeIdRef.current = employee?.id;
+  }, [employee?.id]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -271,7 +383,9 @@ export default function WorkOrdersPage() {
       .finally(() => setLoading(false));
   }, [page, statusFilter, categoryFilter, debouncedSearch, showDeleted, myOrders]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Bulk transition helper:
   //   - Uses Promise.allSettled so a single FSM-invalid transition doesn't
@@ -282,13 +396,15 @@ export default function WorkOrdersPage() {
   const bulkTransition = useCallback(
     async (ids: string[], status: 'CANCELLED' | 'ARCHIVED', successLabel: string) => {
       const results = await Promise.allSettled(
-        ids.map(id => apiFetch(`/work-orders/${id}/transition`, {
-          method: 'POST',
-          body: JSON.stringify({ status }),
-        })),
+        ids.map(id =>
+          apiFetch(`/work-orders/${id}/transition`, {
+            method: 'POST',
+            body: JSON.stringify({ status }),
+          }),
+        ),
       );
       const succeeded = results.filter(r => r.status === 'fulfilled').length;
-      const failed    = results.length - succeeded;
+      const failed = results.length - succeeded;
 
       bulkSelect.clear();
       load();
@@ -297,13 +413,18 @@ export default function WorkOrdersPage() {
         if (succeeded > 0 && failed === 0) {
           toast.success(`${successLabel} ${succeeded} ${succeeded === 1 ? 'наряд' : 'нарядів'}`);
         } else if (succeeded > 0 && failed > 0) {
-          toast.warning(`${successLabel} ${succeeded} з ${results.length}. ${failed} не змінено (статус не дозволяє)`);
+          toast.warning(
+            `${successLabel} ${succeeded} з ${results.length}. ${failed} не змінено (статус не дозволяє)`,
+          );
         } else {
           // 0 succeeded — surface first error message if any
-          const firstError = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
-          const errMsg = firstError?.reason instanceof Error
-            ? firstError.reason.message
-            : 'жоден наряд не змінено (статус не дозволяє)';
+          const firstError = results.find(
+            (r): r is PromiseRejectedResult => r.status === 'rejected',
+          );
+          const errMsg =
+            firstError?.reason instanceof Error
+              ? firstError.reason.message
+              : 'жоден наряд не змінено (статус не дозволяє)';
           toast.error(errMsg);
         }
       } else if (failed > 0) {
@@ -313,13 +434,22 @@ export default function WorkOrdersPage() {
     [bulkSelect, features.toastEnabled, load],
   );
 
-  const bulkCancel  = useCallback((ids: string[]) => bulkTransition(ids, 'CANCELLED', 'Скасовано'), [bulkTransition]);
-  const bulkArchive = useCallback((ids: string[]) => bulkTransition(ids, 'ARCHIVED',  'Архівовано'), [bulkTransition]);
+  const bulkCancel = useCallback(
+    (ids: string[]) => bulkTransition(ids, 'CANCELLED', 'Скасовано'),
+    [bulkTransition],
+  );
+  const bulkArchive = useCallback(
+    (ids: string[]) => bulkTransition(ids, 'ARCHIVED', 'Архівовано'),
+    [bulkTransition],
+  );
 
-  const bulkActions = useMemo<BulkAction[]>(() => [
-    { id: 'cancel', label: 'Скасувати', variant: 'destructive', onClick: bulkCancel },
-    { id: 'archive', label: 'Архівувати', variant: 'outline', onClick: bulkArchive },
-  ], [bulkCancel, bulkArchive]);
+  const bulkActions = useMemo<BulkAction[]>(
+    () => [
+      { id: 'cancel', label: 'Скасувати', variant: 'destructive', onClick: bulkCancel },
+      { id: 'archive', label: 'Архівувати', variant: 'outline', onClick: bulkArchive },
+    ],
+    [bulkCancel, bulkArchive],
+  );
 
   // Track the most recent vehicle-fetch request so a stale response
   // can't overwrite vehicles/auto-selected vehicleId for the *current* counterparty.
@@ -334,7 +464,7 @@ export default function WorkOrdersPage() {
         const garagesArr = Array.isArray(garages) ? garages : [];
         return Promise.all(
           garagesArr.map(g =>
-            apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`).catch(() => [] as Vehicle[])
+            apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`).catch(() => [] as Vehicle[]),
           ),
         );
       })
@@ -348,7 +478,8 @@ export default function WorkOrdersPage() {
         // when the user switches counterparty, so this guard only protects
         // a freshly-chosen vehicleId for the *current* counterparty from being
         // overwritten by a late-arriving auto-select.
-        if (allVehicles.length === 1) setForm(f => (f.vehicleId ? f : { ...f, vehicleId: allVehicles[0].id }));
+        if (allVehicles.length === 1)
+          setForm(f => (f.vehicleId ? f : { ...f, vehicleId: allVehicles[0].id }));
       })
       .catch((e: unknown) => {
         if (reqId !== vehicleReqRef.current) return;
@@ -359,10 +490,11 @@ export default function WorkOrdersPage() {
   const create = async () => {
     const mileage = form.inMileage ? Number(form.inMileage) : undefined;
     if (mileage !== undefined && (!Number.isFinite(mileage) || mileage < 0)) {
-      setError('Пробіг повинен бути невід\'ємним числом');
+      setError("Пробіг повинен бути невід'ємним числом");
       return;
     }
-    setSaving(true); setError('');
+    setSaving(true);
+    setError('');
     try {
       const wo = await apiFetch<WorkOrder>('/work-orders', {
         method: 'POST',
@@ -380,8 +512,11 @@ export default function WorkOrdersPage() {
       });
       setModal(false);
       router.push(`/work-orders/${wo.id}`);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
-    finally { setSaving(false); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
@@ -391,11 +526,15 @@ export default function WorkOrdersPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Наряди</h1>
-          <p className="page-subtitle">
-            {data ? `${data.total} записів` : 'Завантаження...'}
-          </p>
+          <p className="page-subtitle">{data ? `${data.total} записів` : 'Завантаження...'}</p>
         </div>
-        <Button onClick={() => { setError(''); setModal(true); }} leftIcon={<Plus />}>
+        <Button
+          onClick={() => {
+            setError('');
+            setModal(true);
+          }}
+          leftIcon={<Plus />}
+        >
           Новий наряд
         </Button>
       </div>
@@ -411,7 +550,11 @@ export default function WorkOrdersPage() {
         {STATUS_TABS.map(([v, l]) => (
           <button
             key={v}
-            onClick={() => { setStatusFilter(v); setPage(1); setActiveSavedFilterId(null); }}
+            onClick={() => {
+              setStatusFilter(v);
+              setPage(1);
+              setActiveSavedFilterId(null);
+            }}
             className={cn(
               'px-3 py-1 rounded-full text-[12px] font-medium border transition-all duration-100',
               statusFilter === v
@@ -428,7 +571,11 @@ export default function WorkOrdersPage() {
       {employee && (
         <div className="flex gap-2 mb-3">
           <button
-            onClick={() => { setMyOrders(v => !v); setPage(1); setActiveSavedFilterId(null); }}
+            onClick={() => {
+              setMyOrders(v => !v);
+              setPage(1);
+              setActiveSavedFilterId(null);
+            }}
             className={cn(
               'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-medium border transition-all duration-100',
               myOrders
@@ -461,7 +608,11 @@ export default function WorkOrdersPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
+            onChange={e => {
+              setSearch(e.target.value);
+              setPage(1);
+              setActiveSavedFilterId(null);
+            }}
             placeholder="Пошук за номером або клієнтом..."
             className="pl-9"
           />
@@ -469,19 +620,29 @@ export default function WorkOrdersPage() {
 
         <Select
           value={categoryFilter}
-          onChange={e => { setCategoryFilter(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
+          onChange={e => {
+            setCategoryFilter(e.target.value);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
           className="w-52"
         >
           <option value="">Всі категорії</option>
           {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
+            <option key={value} value={value}>
+              {label}
+            </option>
           ))}
         </Select>
 
         <Button
           variant="outline"
           size="sm"
-          onClick={() => { setShowDeleted(v => !v); setPage(1); setActiveSavedFilterId(null); }}
+          onClick={() => {
+            setShowDeleted(v => !v);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
           className={cn(showDeleted && 'border-primary text-primary bg-primary/5')}
         >
           {showDeleted ? <EyeOff className="h-4 w-4 mr-1.5" /> : <Eye className="h-4 w-4 mr-1.5" />}
@@ -489,9 +650,7 @@ export default function WorkOrdersPage() {
         </Button>
 
         <div className="flex items-center gap-2 ml-auto">
-          {features.savedFiltersEnabled && (
-            <SaveFilterButton onSave={handleSaveFilter} />
-          )}
+          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
             columns={orderedColumns}
             visibleKeys={colVisible}
@@ -499,7 +658,10 @@ export default function WorkOrdersPage() {
             onReorder={reorder}
             onRename={renameColumn}
             onReset={resetConfig}
-            hasCustomization={JSON.stringify(order) !== JSON.stringify(WO_COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
+            hasCustomization={
+              JSON.stringify(order) !== JSON.stringify(WO_COLUMNS.map(c => c.key)) ||
+              Object.keys(customLabels).length > 0
+            }
           />
         </div>
       </div>
@@ -533,170 +695,232 @@ export default function WorkOrdersPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col => (
-                  col.key === 'amount'
-                    ? <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>{col.label}</TableHead>
-                    : <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>
-                ))}
+                {visibleColumns.map(col =>
+                  col.key === 'amount' ? (
+                    <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  ) : (
+                    <TableHead key={col.key} {...dragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  ),
+                )}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center">
-                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  <TableCell
+                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                    className="py-12 text-center"
+                  >
+                    <div className="flex justify-center">
+                      <Spinner size="md" />
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
 
               {!loading && data?.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                  <TableCell
+                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                    className="p-0"
+                  >
                     <EmptyState
                       icon={ClipboardList}
                       title="Нарядів не знайдено"
-                      description={statusFilter ? 'Спробуйте змінити фільтр статусу' : 'Створіть перший наряд, натиснувши кнопку вище'}
+                      description={
+                        statusFilter
+                          ? 'Спробуйте змінити фільтр статусу'
+                          : 'Створіть перший наряд, натиснувши кнопку вище'
+                      }
                       size="sm"
                     />
                   </TableCell>
                 </TableRow>
               )}
 
-              {!loading && data?.items.map(wo => (
-                <TableRow
-                  key={wo.id}
-                  onClick={() => setSelectedWO(wo)}
-                  className={cn(
-                    selectedWO?.id === wo.id && 'bg-primary/5',
-                    bulkSelect.isSelected(wo.id) && 'bg-primary/5',
-                  )}
-                >
-                  {features.bulkActionsEnabled && (
-                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={bulkSelect.isSelected(wo.id)}
-                        onChange={() => bulkSelect.toggle(wo.id)}
-                        className="h-3.5 w-3.5 rounded border-border"
-                        aria-label={`Вибрати наряд ${wo.number}`}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleColumns.map(col => {
-                    if (col.key === 'number') return (
-                      <TableCell key="number">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
-                            {wo.hasActiveWarranty && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20">
-                                Гарантія
-                              </span>
-                            )}
-                          </div>
-                          {wo.repairCategory && (
-                            <p className="text-[11px] text-muted-foreground">
-                              {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
+              {!loading &&
+                data?.items.map(wo => (
+                  <TableRow
+                    key={wo.id}
+                    onClick={() => setSelectedWO(wo)}
+                    className={cn(
+                      selectedWO?.id === wo.id && 'bg-primary/5',
+                      bulkSelect.isSelected(wo.id) && 'bg-primary/5',
+                    )}
+                  >
+                    {features.bulkActionsEnabled && (
+                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={bulkSelect.isSelected(wo.id)}
+                          onChange={() => bulkSelect.toggle(wo.id)}
+                          className="h-3.5 w-3.5 rounded border-border"
+                          aria-label={`Вибрати наряд ${wo.number}`}
+                        />
+                      </TableCell>
+                    )}
+                    {visibleColumns.map(col => {
+                      if (col.key === 'number')
+                        return (
+                          <TableCell key="number">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[13px] font-semibold text-primary">
+                                  {wo.number}
+                                </span>
+                                {wo.hasActiveWarranty && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20">
+                                    Гарантія
+                                  </span>
+                                )}
+                              </div>
+                              {wo.repairCategory && (
+                                <p className="text-[11px] text-muted-foreground">
+                                  {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
+                        );
+                      if (col.key === 'client')
+                        return (
+                          <TableCell key="client">
+                            <p className="text-[13px] font-medium text-foreground">
+                              {wo.counterpartyName ?? '—'}
                             </p>
-                          )}
-                        </div>
-                      </TableCell>
-                    );
-                    if (col.key === 'client') return (
-                      <TableCell key="client">
-                        <p className="text-[13px] font-medium text-foreground">{wo.counterpartyName ?? '—'}</p>
-                        <p className="text-[12px] text-muted-foreground mt-0.5">{wo.vehicleSummary ?? '—'}</p>
-                      </TableCell>
-                    );
-                    if (col.key === 'status') return (
-                      <TableCell key="status">
-                        <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>
-                          {STATUS_LABELS[wo.status] ?? wo.status}
-                        </Badge>
-                      </TableCell>
-                    );
-                    if (col.key === 'priority') return (
-                      <TableCell key="priority" onClick={e => e.stopPropagation()}>
-                        {inlineEdit.isEditing(wo.id, 'priority') ? (
-                          <select
-                            defaultValue={inlineEdit.editing?.value ?? wo.priority}
-                            onChange={e => { void inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
-                            onBlur={() => inlineEdit.cancelEdit()}
-                            onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancelEdit(); }}
-                            disabled={inlineEdit.saving}
-                            autoFocus
-                            className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
-                          >
-                            {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
-                              <option key={v} value={v}>{l}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <InlineViewCell
-                            value={wo.priority}
-                            enabled={features.inlineEditEnabled}
-                            onClick={() => inlineEdit.startEdit(wo.id, 'priority', wo.priority)}
-                          >
-                            <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
-                              {PRIORITY_LABELS[wo.priority] ?? wo.priority}
+                            <p className="text-[12px] text-muted-foreground mt-0.5">
+                              {wo.vehicleSummary ?? '—'}
+                            </p>
+                          </TableCell>
+                        );
+                      if (col.key === 'status')
+                        return (
+                          <TableCell key="status">
+                            <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>
+                              {STATUS_LABELS[wo.status] ?? wo.status}
                             </Badge>
-                          </InlineViewCell>
-                        )}
-                      </TableCell>
-                    );
-                    if (col.key === 'amount') return (
-                      <TableCell key="amount" className="font-medium text-foreground tabular-nums text-right">
-                        {fmtMoney(wo.totalAmount)}
-                      </TableCell>
-                    );
-                    if (col.key === 'plannedAt') return (
-                      <TableCell key="plannedAt" className="text-muted-foreground text-[12px]">
-                        {wo.plannedAt ? fmtShortDateTime(wo.plannedAt) : '—'}
-                      </TableCell>
-                    );
-                    if (col.key === 'dueDate') return (
-                      <TableCell key="dueDate" className="text-[12px]" onClick={e => e.stopPropagation()}>
-                        {inlineEdit.isEditing(wo.id, 'dueDate') ? (
-                          <InlineEditCell
-                            value={wo.dueDate ? wo.dueDate.slice(0, 10) : ''}
-                            saving={inlineEdit.saving}
-                            onCommit={v => { void inlineEdit.commitEdit(v).catch(() => {}); }}
-                            onCancel={inlineEdit.cancelEdit}
-                            type="date"
-                            className="w-36"
-                          />
-                        ) : (
-                          <InlineViewCell
-                            value={wo.dueDate ?? ''}
-                            enabled={features.inlineEditEnabled}
-                            onClick={() => inlineEdit.startEdit(wo.id, 'dueDate', wo.dueDate ? wo.dueDate.slice(0, 10) : '')}
+                          </TableCell>
+                        );
+                      if (col.key === 'priority')
+                        return (
+                          <TableCell key="priority" onClick={e => e.stopPropagation()}>
+                            {inlineEdit.isEditing(wo.id, 'priority') ? (
+                              <select
+                                defaultValue={inlineEdit.editing?.value ?? wo.priority}
+                                onChange={e => {
+                                  void inlineEdit.commitEdit(e.target.value).catch(() => {});
+                                }}
+                                onBlur={() => inlineEdit.cancelEdit()}
+                                onKeyDown={e => {
+                                  if (e.key === 'Escape') inlineEdit.cancelEdit();
+                                }}
+                                disabled={inlineEdit.saving}
+                                autoFocus
+                                className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
+                              >
+                                {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
+                                  <option key={v} value={v}>
+                                    {l}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <InlineViewCell
+                                value={wo.priority}
+                                enabled={features.inlineEditEnabled}
+                                onClick={() => inlineEdit.startEdit(wo.id, 'priority', wo.priority)}
+                              >
+                                <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
+                                  {PRIORITY_LABELS[wo.priority] ?? wo.priority}
+                                </Badge>
+                              </InlineViewCell>
+                            )}
+                          </TableCell>
+                        );
+                      if (col.key === 'amount')
+                        return (
+                          <TableCell
+                            key="amount"
+                            className="font-medium text-foreground tabular-nums text-right"
                           >
-                            {wo.dueDate ? (
-                              <span className={cn(
-                                'font-medium',
-                                isOverdue(wo.dueDate, nowMs) ? 'text-warning' : 'text-muted-foreground',
-                              )}>
-                                {formatDate(wo.dueDate)}
-                              </span>
-                            ) : <span className="text-muted-foreground">—</span>}
-                          </InlineViewCell>
-                        )}
-                      </TableCell>
-                    );
-                    return null;
-                  })}
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={e => { e.stopPropagation(); router.push(`/work-orders/${wo.id}`); }}
-                    >
-                      Відкрити →
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                            {fmtMoney(wo.totalAmount)}
+                          </TableCell>
+                        );
+                      if (col.key === 'plannedAt')
+                        return (
+                          <TableCell key="plannedAt" className="text-muted-foreground text-[12px]">
+                            {wo.plannedAt ? fmtShortDateTime(wo.plannedAt) : '—'}
+                          </TableCell>
+                        );
+                      if (col.key === 'dueDate')
+                        return (
+                          <TableCell
+                            key="dueDate"
+                            className="text-[12px]"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            {inlineEdit.isEditing(wo.id, 'dueDate') ? (
+                              <InlineEditCell
+                                value={wo.dueDate ? wo.dueDate.slice(0, 10) : ''}
+                                saving={inlineEdit.saving}
+                                onCommit={v => {
+                                  void inlineEdit.commitEdit(v).catch(() => {});
+                                }}
+                                onCancel={inlineEdit.cancelEdit}
+                                type="date"
+                                className="w-36"
+                              />
+                            ) : (
+                              <InlineViewCell
+                                value={wo.dueDate ?? ''}
+                                enabled={features.inlineEditEnabled}
+                                onClick={() =>
+                                  inlineEdit.startEdit(
+                                    wo.id,
+                                    'dueDate',
+                                    wo.dueDate ? wo.dueDate.slice(0, 10) : '',
+                                  )
+                                }
+                              >
+                                {wo.dueDate ? (
+                                  <span
+                                    className={cn(
+                                      'font-medium',
+                                      isOverdue(wo.dueDate, nowMs)
+                                        ? 'text-warning'
+                                        : 'text-muted-foreground',
+                                    )}
+                                  >
+                                    {formatDate(wo.dueDate)}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </InlineViewCell>
+                            )}
+                          </TableCell>
+                        );
+                      return null;
+                    })}
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={e => {
+                          e.stopPropagation();
+                          router.push(`/work-orders/${wo.id}`);
+                        }}
+                      >
+                        Відкрити →
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </div>
@@ -728,11 +952,15 @@ export default function WorkOrdersPage() {
                 )}
                 <div>
                   <span className="text-muted-foreground">Клієнт</span>
-                  <p className="font-medium text-foreground mt-0.5">{selectedWO.counterpartyName ?? '—'}</p>
+                  <p className="font-medium text-foreground mt-0.5">
+                    {selectedWO.counterpartyName ?? '—'}
+                  </p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Автомобіль</span>
-                  <p className="font-medium text-foreground mt-0.5">{selectedWO.vehicleSummary ?? '—'}</p>
+                  <p className="font-medium text-foreground mt-0.5">
+                    {selectedWO.vehicleSummary ?? '—'}
+                  </p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Сума</span>
@@ -743,10 +971,12 @@ export default function WorkOrdersPage() {
                 {selectedWO.dueDate && (
                   <div>
                     <span className="text-muted-foreground">Дедлайн</span>
-                    <p className={cn(
-                      'font-medium mt-0.5',
-                      isOverdue(selectedWO.dueDate, nowMs) ? 'text-warning' : 'text-foreground',
-                    )}>
+                    <p
+                      className={cn(
+                        'font-medium mt-0.5',
+                        isOverdue(selectedWO.dueDate, nowMs) ? 'text-warning' : 'text-foreground',
+                      )}
+                    >
                       {formatDate(selectedWO.dueDate)}
                       {isOverdue(selectedWO.dueDate, nowMs) && (
                         <span className="ml-1 text-[11px]">(прострочено)</span>
@@ -810,9 +1040,14 @@ export default function WorkOrdersPage() {
           setVehicles([]);
           setForm(f => ({
             ...f,
-            counterpartyId: '', vehicleId: '',
-            description: '', inMileage: '', plannedAt: '',
-            priority: 'NORMAL', repairCategory: '', dueDate: '',
+            counterpartyId: '',
+            vehicleId: '',
+            description: '',
+            inMileage: '',
+            plannedAt: '',
+            priority: 'NORMAL',
+            repairCategory: '',
+            dueDate: '',
           }));
         }}
         title="Новий наряд"
@@ -851,18 +1086,21 @@ export default function WorkOrdersPage() {
               >
                 <option value="">— Без шаблону —</option>
                 {templates.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
                 ))}
               </Select>
-              {selectedTemplate && (selectedTemplate.lines.length > 0 || selectedTemplate.parts.length > 0) && (
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  Шаблон містить:{' '}
-                  {selectedTemplate.lines.length > 0 && `${selectedTemplate.lines.length} роб.`}
-                  {selectedTemplate.lines.length > 0 && selectedTemplate.parts.length > 0 && ', '}
-                  {selectedTemplate.parts.length > 0 && `${selectedTemplate.parts.length} запч.`}
-                  {' — '} буде додано після відкриття наряду
-                </p>
-              )}
+              {selectedTemplate &&
+                (selectedTemplate.lines.length > 0 || selectedTemplate.parts.length > 0) && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Шаблон містить:{' '}
+                    {selectedTemplate.lines.length > 0 && `${selectedTemplate.lines.length} роб.`}
+                    {selectedTemplate.lines.length > 0 && selectedTemplate.parts.length > 0 && ', '}
+                    {selectedTemplate.parts.length > 0 && `${selectedTemplate.parts.length} запч.`}
+                    {' — '} буде додано після відкриття наряду
+                  </p>
+                )}
             </div>
           )}
 
@@ -883,10 +1121,16 @@ export default function WorkOrdersPage() {
               setForm(f => ({ ...f, counterpartyId: '', vehicleId: '' }));
               setVehicles([]);
             }}
-            fetchItems={q => apiFetch<{ items: Counterparty[] }>(`/counterparties?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(c => ({
-              ...c,
-              primary: displayCounterpartyName(c),
-            })))}
+            fetchItems={q =>
+              apiFetch<{ items: Counterparty[] }>(
+                `/counterparties?q=${encodeURIComponent(q)}&limit=10`,
+              ).then(r =>
+                r.items.map(c => ({
+                  ...c,
+                  primary: displayCounterpartyName(c),
+                })),
+              )
+            }
           />
 
           <Select
@@ -899,7 +1143,8 @@ export default function WorkOrdersPage() {
             <option value="">— Оберіть —</option>
             {vehicles.map(v => (
               <option key={v.id} value={v.id}>
-                {v.make} {v.model}{v.licensePlate ? ` (${v.licensePlate})` : ''}
+                {v.make} {v.model}
+                {v.licensePlate ? ` (${v.licensePlate})` : ''}
               </option>
             ))}
           </Select>
@@ -912,7 +1157,9 @@ export default function WorkOrdersPage() {
           >
             <option value="">— Оберіть —</option>
             {branches.map(b => (
-              <option key={b.id} value={b.id}>{b.name}</option>
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
             ))}
           </Select>
 
@@ -930,7 +1177,9 @@ export default function WorkOrdersPage() {
               onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
             >
               {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
+                <option key={k} value={k}>
+                  {v}
+                </option>
               ))}
             </Select>
             <Select
@@ -940,7 +1189,9 @@ export default function WorkOrdersPage() {
             >
               <option value="">— Не вказано —</option>
               {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
+                <option key={k} value={k}>
+                  {v}
+                </option>
               ))}
             </Select>
           </div>

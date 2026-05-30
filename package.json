@@ -16,12 +16,23 @@
     "db:migrate": "pnpm --filter @sto/database prisma migrate dev",
     "db:studio": "pnpm --filter @sto/database prisma studio",
     "db:seed": "pnpm --filter @sto/database prisma db seed",
-    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\" --ignore-path .gitignore"
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\" --ignore-path .gitignore",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5",
     "prettier": "^3.3.3",
     "turbo": "^2.5.0",
     "typescript": "^5.7.0"
   },
-  "packageManager": "pnpm@11.2.2"
+  "packageManager": "pnpm@11.2.2",
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "prettier --write"
+    ],
+    "*.{js,json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
 }

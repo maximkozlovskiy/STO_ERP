@@ -18,7 +18,10 @@ const mockEmployee = {
 
 describe('AuthService', () => {
   let service: AuthService;
-  let prisma: { employee: { findFirst: ReturnType<typeof vi.fn> }; authAccount: { findFirst: ReturnType<typeof vi.fn> } };
+  let prisma: {
+    employee: { findFirst: ReturnType<typeof vi.fn> };
+    authAccount: { findFirst: ReturnType<typeof vi.fn> };
+  };
   let jwtService: { sign: ReturnType<typeof vi.fn>; verify: ReturnType<typeof vi.fn> };
 
   const mockRes = {
@@ -126,10 +129,7 @@ describe('AuthService', () => {
         employee: { ...mockEmployee },
       });
 
-      const result = await service.login(
-        { email: 'admin@sto.local', password: 'secret' },
-        mockRes,
-      );
+      const result = await service.login({ email: 'admin@sto.local', password: 'secret' }, mockRes);
 
       expect(result.accessToken).toBe('mock.jwt.token');
       expect(result.employee?.id).toBe('emp-1');
@@ -147,9 +147,9 @@ describe('AuthService', () => {
         throw new Error('invalid');
       });
 
-      await expect(
-        service.refresh('invalid.token', mockRes),
-      ).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh('invalid.token', mockRes)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('кидає UnauthorizedException якщо працівника не знайдено', async () => {
@@ -160,9 +160,7 @@ describe('AuthService', () => {
       });
       prisma.employee.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.refresh('valid.token', mockRes),
-      ).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh('valid.token', mockRes)).rejects.toThrow(UnauthorizedException);
     });
 
     it('повертає новий accessToken при валідному refresh', async () => {

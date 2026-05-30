@@ -8,7 +8,7 @@ export const HOURS = Array.from({ length: 12 }, (_, i) => i + 8);
 export const TOTAL_HOURS = HOURS.length;
 export const SIDEBAR_W = 160;
 export const WINDOW_START = HOURS[0]!;
-export const WINDOW_END   = HOURS[HOURS.length - 1]! + 1;
+export const WINDOW_END = HOURS[HOURS.length - 1]! + 1;
 
 // Time picker: exactly the working hours window (08–19)
 export const PICK_HOURS = HOURS; // [8, 9, ..., 19]
@@ -19,13 +19,31 @@ export const STATS_MAX_DAYS = 92; // ≈ one quarter
 
 // Module-level cached Intl formatters
 const DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: KYIV_TZ });
-const KYIV_HM_FMT = new Intl.DateTimeFormat('en-US', { timeZone: KYIV_TZ, hour: 'numeric', minute: 'numeric', hour12: false });
-export const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-US', { timeZone: KYIV_TZ, hour: 'numeric', hour12: false });
-const TIME_FMT = new Intl.DateTimeFormat('uk-UA', { timeZone: KYIV_TZ, hour: '2-digit', minute: '2-digit', hour12: false });
+const KYIV_HM_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: KYIV_TZ,
+  hour: 'numeric',
+  minute: 'numeric',
+  hour12: false,
+});
+export const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: KYIV_TZ,
+  hour: 'numeric',
+  hour12: false,
+});
+const TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: KYIV_TZ,
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
 
-export function pad(n: number) { return String(n).padStart(2, '0'); }
+export function pad(n: number) {
+  return String(n).padStart(2, '0');
+}
 
-export function toDateString(d: Date) { return DATE_FMT.format(d); }
+export function toDateString(d: Date) {
+  return DATE_FMT.format(d);
+}
 
 export function kyivHours(iso: string): number {
   const parts = KYIV_HM_FMT.formatToParts(new Date(iso));
@@ -73,6 +91,10 @@ export function displayCounterparty(cp: CounterpartyOption): string {
 export function formatKyivDate(ds: string): string {
   if (!ds) return '';
   return new Date(ds).toLocaleDateString('uk-UA', {
-    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: KYIV_TZ,
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    timeZone: KYIV_TZ,
   });
 }

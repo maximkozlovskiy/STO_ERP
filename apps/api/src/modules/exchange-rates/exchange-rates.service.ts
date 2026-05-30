@@ -1,7 +1,11 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateExchangeRateDto, ExchangeRateResponseDto, UpdateExchangeRateDto } from './exchange-rates.dto';
+import {
+  CreateExchangeRateDto,
+  ExchangeRateResponseDto,
+  UpdateExchangeRateDto,
+} from './exchange-rates.dto';
 
 // Normalise any ISO-8601 string (including timezone-aware) to a UTC midnight Date
 // that matches what Prisma returns for @db.Date columns.
@@ -73,13 +77,23 @@ export class ExchangeRatesService {
     }
 
     const item = await this.prisma.exchangeRate.create({
-      data: { orgId, currencyId: dto.currencyId, date, rate: dto.rate, coefficient: dto.coefficient ?? 1 },
+      data: {
+        orgId,
+        currencyId: dto.currencyId,
+        date,
+        rate: dto.rate,
+        coefficient: dto.coefficient ?? 1,
+      },
       include: { currency: { select: { code: true, name: true } } },
     });
     return this.toDto(item);
   }
 
-  async update(orgId: string, id: string, dto: UpdateExchangeRateDto): Promise<ExchangeRateResponseDto> {
+  async update(
+    orgId: string,
+    id: string,
+    dto: UpdateExchangeRateDto,
+  ): Promise<ExchangeRateResponseDto> {
     const existing = await this.prisma.exchangeRate.findFirst({
       where: { id, orgId, deletedAt: null },
     });
@@ -93,7 +107,13 @@ export class ExchangeRatesService {
       // Only check for conflicts when the calendar date actually changes
       if (newDate.getTime() !== new Date(existing.date).setUTCHours(0, 0, 0, 0)) {
         const duplicate = await this.prisma.exchangeRate.findFirst({
-          where: { orgId, currencyId: existing.currencyId, date: newDate, NOT: { id }, deletedAt: null },
+          where: {
+            orgId,
+            currencyId: existing.currencyId,
+            date: newDate,
+            NOT: { id },
+            deletedAt: null,
+          },
         });
         if (duplicate) throw new ConflictException('Курс на цю дату вже існує');
       }
@@ -113,22 +133,35 @@ export class ExchangeRatesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.exchangeRate.findFirst({ where: { id, orgId, deletedAt: null } });
+    const existing = await this.prisma.exchangeRate.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
     if (!existing) throw new NotFoundException('Курс валюти не знайдено');
     await this.prisma.exchangeRate.update({ where: { id }, data: { deletedAt: new Date() } });
   }
 
   private toDto(item: {
-    id: string; orgId: string; currencyId: string; date: Date;
-    rate: Decimal; coefficient: Decimal; createdAt: Date; updatedAt: Date;
+    id: string;
+    orgId: string;
+    currencyId: string;
+    date: Date;
+    rate: Decimal;
+    coefficient: Decimal;
+    createdAt: Date;
+    updatedAt: Date;
     currency: { code: string; name: string };
   }): ExchangeRateResponseDto {
     return {
-      id: item.id, orgId: item.orgId, currencyId: item.currencyId,
-      currencyCode: item.currency.code, currencyName: item.currency.name,
+      id: item.id,
+      orgId: item.orgId,
+      currencyId: item.currencyId,
+      currencyCode: item.currency.code,
+      currencyName: item.currency.name,
       date: item.date.toISOString().split('T')[0],
-      rate: Number(item.rate), coefficient: Number(item.coefficient),
-      createdAt: item.createdAt, updatedAt: item.updatedAt,
+      rate: Number(item.rate),
+      coefficient: Number(item.coefficient),
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
     };
   }
 }

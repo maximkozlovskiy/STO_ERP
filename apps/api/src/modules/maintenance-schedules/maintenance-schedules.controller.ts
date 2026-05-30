@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -7,8 +18,10 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { UserRole } from '@prisma/client';
 import { MaintenanceSchedulesService } from './maintenance-schedules.service';
 import {
-  CreateMaintenanceScheduleDto, UpdateMaintenanceScheduleDto,
-  MaintenanceScheduleResponseDto, UpcomingMaintenanceQueryDto,
+  CreateMaintenanceScheduleDto,
+  UpdateMaintenanceScheduleDto,
+  MaintenanceScheduleResponseDto,
+  UpcomingMaintenanceQueryDto,
 } from './maintenance-schedules.dto';
 
 @ApiTags('Maintenance Schedules')
@@ -30,7 +43,10 @@ export class MaintenanceSchedulesController {
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER, UserRole.MECHANIC)
   @ApiOperation({ summary: 'List maintenance schedules' })
   @ApiResponse({ status: 200, type: [MaintenanceScheduleResponseDto] })
-  findAll(@OrgContext() orgId: string, @Query('vehicleId', new ParseUUIDPipe({ optional: true })) vehicleId?: string) {
+  findAll(
+    @OrgContext() orgId: string,
+    @Query('vehicleId', new ParseUUIDPipe({ optional: true })) vehicleId?: string,
+  ) {
     return this.service.findAll(orgId, vehicleId);
   }
 

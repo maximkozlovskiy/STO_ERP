@@ -44,7 +44,9 @@ export function XlsxImportButton({
     try {
       const data = await apiFetch<TemplateResponse>(`/xlsx/templates/${templateType}`);
       const bytes = Uint8Array.from(atob(data.file), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const blob = new Blob([bytes], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -128,9 +130,7 @@ export function XlsxImportButton({
                 {result.errors.slice(0, 10).map((err, i) => (
                   <li key={i}>{err}</li>
                 ))}
-                {result.errors.length > 10 && (
-                  <li>...та ще {result.errors.length - 10}</li>
-                )}
+                {result.errors.length > 10 && <li>...та ще {result.errors.length - 10}</li>}
               </ul>
             </details>
           )}

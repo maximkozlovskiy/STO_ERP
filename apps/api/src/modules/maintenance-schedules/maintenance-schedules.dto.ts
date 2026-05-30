@@ -1,9 +1,20 @@
-import { IsUUID, Matches, IsString, IsOptional, IsBoolean, IsInt, IsDateString, Min } from 'class-validator';
+import {
+  IsUUID,
+  Matches,
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsInt,
+  IsDateString,
+  Min,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class CreateMaintenanceScheduleDto {
-  @ApiProperty() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) vehicleId!: string;
+  @ApiProperty()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  vehicleId!: string;
   @ApiPropertyOptional({ default: 'REGULAR' }) @IsOptional() @IsString() maintenanceType?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) intervalDays?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) intervalMileage?: number;

@@ -16,31 +16,83 @@ import { AnimatedBody } from '@/components/ui/modal';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Counterparty {
-  id: string; type: string; firstName: string | null; lastName: string | null;
-  companyName: string | null; phone: string | null; email: string | null;
-  edrpou: string | null; vatPayer: boolean; balance: number; notes: string | null;
-  legalForm?: string | null; legalAddress?: string | null; actualAddress?: string | null;
-  bankAccount?: string | null; bankName?: string | null; contactPerson?: string | null;
+  id: string;
+  type: string;
+  firstName: string | null;
+  lastName: string | null;
+  companyName: string | null;
+  phone: string | null;
+  email: string | null;
+  edrpou: string | null;
+  vatPayer: boolean;
+  balance: number;
+  notes: string | null;
+  legalForm?: string | null;
+  legalAddress?: string | null;
+  actualAddress?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  contactPerson?: string | null;
   taxNumber?: string | null;
 }
-interface Garage { id: string; name: string; address: string | null; isDefault: boolean; }
+interface Garage {
+  id: string;
+  name: string;
+  address: string | null;
+  isDefault: boolean;
+}
 interface Vehicle {
-  id: string; make: string; model: string; licensePlate: string | null;
-  year: number | null; currentMileage: number | null;
-  transmissionType?: string | null; driveType?: string | null; bodyType?: string | null;
-  engineCode?: string | null; insuranceExpiry?: string | null; inspectionExpiry?: string | null;
+  id: string;
+  make: string;
+  model: string;
+  licensePlate: string | null;
+  year: number | null;
+  currentMileage: number | null;
+  transmissionType?: string | null;
+  driveType?: string | null;
+  bodyType?: string | null;
+  engineCode?: string | null;
+  insuranceExpiry?: string | null;
+  inspectionExpiry?: string | null;
 }
 interface MaintenanceSchedule {
-  id: string; vehicleId: string;
+  id: string;
+  vehicleId: string;
   maintenanceType: string;
-  intervalDays?: number | null; intervalMileage?: number | null;
-  lastMaintenanceDate?: string | null; lastMaintenanceMileage?: number | null;
-  nextMaintenanceDate?: string | null; nextMaintenanceMileage?: number | null;
-  isActive: boolean; notes?: string | null;
+  intervalDays?: number | null;
+  intervalMileage?: number | null;
+  lastMaintenanceDate?: string | null;
+  lastMaintenanceMileage?: number | null;
+  nextMaintenanceDate?: string | null;
+  nextMaintenanceMileage?: number | null;
+  isActive: boolean;
+  notes?: string | null;
 }
-interface Transaction { id: string; type: string; amount: number; documentType: string | null; documentId: string | null; notes: string | null; createdAt: string; }
-interface WorkOrder { id: string; number: string; status: string; vehicleMake: string; vehicleModel: string; createdAt: string; totalAmount: number; }
-interface LoyaltyTransaction { id: string; type: string; points: number; createdAt: string; notes?: string | null; }
+interface Transaction {
+  id: string;
+  type: string;
+  amount: number;
+  documentType: string | null;
+  documentId: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+interface WorkOrder {
+  id: string;
+  number: string;
+  status: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  createdAt: string;
+  totalAmount: number;
+}
+interface LoyaltyTransaction {
+  id: string;
+  type: string;
+  points: number;
+  createdAt: string;
+  notes?: string | null;
+}
 interface Warranty {
   id: string;
   workOrderId: string;
@@ -55,19 +107,37 @@ interface Warranty {
 
 type CrmTab = 'info' | 'garages' | 'settlements' | 'work-orders' | 'warranties' | 'loyalty';
 
-const TYPE_LABELS: Record<string, string> = { CLIENT: 'Клієнт', SUPPLIER: 'Постачальник', BOTH: 'Клієнт / Постачальник' };
-const LEGAL_FORM_LABELS: Record<string, string> = {
-  INDIVIDUAL: 'Фіз. особа', FOP: 'ФОП', TOV: 'ТОВ', AT: 'АТ', PP: 'ПП', OTHER: 'Інше',
+const TYPE_LABELS: Record<string, string> = {
+  CLIENT: 'Клієнт',
+  SUPPLIER: 'Постачальник',
+  BOTH: 'Клієнт / Постачальник',
 };
-const TYPE_BADGE: Record<string, BadgeVariant> = { CLIENT: 'default', SUPPLIER: 'secondary', BOTH: 'warning' };
+const LEGAL_FORM_LABELS: Record<string, string> = {
+  INDIVIDUAL: 'Фіз. особа',
+  FOP: 'ФОП',
+  TOV: 'ТОВ',
+  AT: 'АТ',
+  PP: 'ПП',
+  OTHER: 'Інше',
+};
+const TYPE_BADGE: Record<string, BadgeVariant> = {
+  CLIENT: 'default',
+  SUPPLIER: 'secondary',
+  BOTH: 'warning',
+};
 
 const WO_STATUS_LABELS: Record<string, string> = {
-  NEW: 'Новий', IN_PROGRESS: 'В роботі', DONE: 'Готовий',
-  CLOSED: 'Закрито', CANCELLED: 'Скасовано',
+  NEW: 'Новий',
+  IN_PROGRESS: 'В роботі',
+  DONE: 'Готовий',
+  CLOSED: 'Закрито',
+  CANCELLED: 'Скасовано',
 };
 const WO_STATUS_COLORS: Record<string, string> = {
-  NEW: 'bg-info-subtle text-info', IN_PROGRESS: 'bg-warning-subtle text-warning',
-  DONE: 'bg-success-subtle text-success', CLOSED: 'bg-secondary text-muted-foreground',
+  NEW: 'bg-info-subtle text-info',
+  IN_PROGRESS: 'bg-warning-subtle text-warning',
+  DONE: 'bg-success-subtle text-success',
+  CLOSED: 'bg-secondary text-muted-foreground',
   CANCELLED: 'bg-destructive-subtle text-destructive',
 };
 
@@ -93,7 +163,9 @@ export default function CounterpartyCardPage() {
   const [loadError, setLoadError] = useState('');
   const [todayMs, setTodayMs] = useState(0);
 
-  useEffect(() => { setTodayMs(Date.now()); }, []);
+  useEffect(() => {
+    setTodayMs(Date.now());
+  }, []);
 
   // Garages
   const [garages, setGarages] = useState<Garage[]>([]);
@@ -129,9 +201,16 @@ export default function CounterpartyCardPage() {
   // Editing info
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
-    phone: '', email: '', notes: '',
-    legalForm: '', legalAddress: '', actualAddress: '',
-    bankAccount: '', bankName: '', contactPerson: '', taxNumber: '',
+    phone: '',
+    email: '',
+    notes: '',
+    legalForm: '',
+    legalAddress: '',
+    actualAddress: '',
+    bankAccount: '',
+    bankName: '',
+    contactPerson: '',
+    taxNumber: '',
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -140,10 +219,15 @@ export default function CounterpartyCardPage() {
       .then(c => {
         setCp(c);
         setEditForm({
-          phone: c.phone ?? '', email: c.email ?? '', notes: c.notes ?? '',
-          legalForm: c.legalForm ?? '', legalAddress: c.legalAddress ?? '',
-          actualAddress: c.actualAddress ?? '', bankAccount: c.bankAccount ?? '',
-          bankName: c.bankName ?? '', contactPerson: c.contactPerson ?? '',
+          phone: c.phone ?? '',
+          email: c.email ?? '',
+          notes: c.notes ?? '',
+          legalForm: c.legalForm ?? '',
+          legalAddress: c.legalAddress ?? '',
+          actualAddress: c.actualAddress ?? '',
+          bankAccount: c.bankAccount ?? '',
+          bankName: c.bankName ?? '',
+          contactPerson: c.contactPerson ?? '',
           taxNumber: c.taxNumber ?? '',
         });
       })
@@ -167,13 +251,14 @@ export default function CounterpartyCardPage() {
         // Stage 1 — load all vehicles in parallel (one request per garage)
         const vehiclesByGarage = await Promise.all(
           garages.map(g =>
-            apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`)
-              .catch(() => [] as Vehicle[])
-          )
+            apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`).catch(() => [] as Vehicle[]),
+          ),
         );
         if (cancelled) return;
         const garageMap: Record<string, Vehicle[]> = {};
-        garages.forEach((g, i) => { garageMap[g.id] = vehiclesByGarage[i]; });
+        garages.forEach((g, i) => {
+          garageMap[g.id] = vehiclesByGarage[i];
+        });
         setGarageVehicles(garageMap);
 
         // Stage 2 — load maintenance schedules for all vehicles in parallel
@@ -181,9 +266,10 @@ export default function CounterpartyCardPage() {
         if (allVehicles.length > 0) {
           const scheduleResults = await Promise.all(
             allVehicles.map(v =>
-              apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${v.id}`)
-                .catch(() => [] as MaintenanceSchedule[])
-            )
+              apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${v.id}`).catch(
+                () => [] as MaintenanceSchedule[],
+              ),
+            ),
           );
           if (cancelled) return;
           setMaintenanceSchedules(scheduleResults.flat());
@@ -194,12 +280,16 @@ export default function CounterpartyCardPage() {
         if (!cancelled) setGaragesLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const loadSettlements = useCallback(() => {
     setSettlementsLoading(true);
-    apiFetch<{ items: Transaction[]; total: number }>(`/counterparties/${id}/transactions?page=1&limit=50`)
+    apiFetch<{ items: Transaction[]; total: number }>(
+      `/counterparties/${id}/transactions?page=1&limit=50`,
+    )
       .then(r => setTransactions(r.items ?? []))
       .catch(() => setTransactions([]))
       .finally(() => setSettlementsLoading(false));
@@ -217,10 +307,18 @@ export default function CounterpartyCardPage() {
     let cancelled = false;
     setWarrantiesLoading(true);
     apiFetch<{ items: Warranty[] }>(`/warranties/by-counterparty/${id}`)
-      .then(d => { if (!cancelled) setWarranties(d.items ?? []); })
-      .catch(() => { if (!cancelled) setWarranties([]); })
-      .finally(() => { if (!cancelled) setWarrantiesLoading(false); });
-    return () => { cancelled = true; };
+      .then(d => {
+        if (!cancelled) setWarranties(d.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setWarranties([]);
+      })
+      .finally(() => {
+        if (!cancelled) setWarrantiesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const loadLoyalty = useCallback(() => {
@@ -234,11 +332,15 @@ export default function CounterpartyCardPage() {
         setLoyaltyBalance(bal.balance);
         setLoyaltyTxs(txs.items ?? []);
       })
-      .catch((e: unknown) => setLoyaltyError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .catch((e: unknown) =>
+        setLoyaltyError(e instanceof Error ? e.message : 'Помилка завантаження'),
+      )
       .finally(() => setLoyaltyLoading(false));
   }, [id]);
 
-  useEffect(() => { loadCp(); }, [loadCp]);
+  useEffect(() => {
+    loadCp();
+  }, [loadCp]);
 
   useEffect(() => {
     // loadGarages/loadWarranties return a cancel fn — return it so switching tabs
@@ -256,12 +358,20 @@ export default function CounterpartyCardPage() {
     try {
       await apiFetch<Garage>(`/counterparties/${id}/garages`, {
         method: 'POST',
-        body: JSON.stringify({ name: garageName.trim(), address: garageAddress.trim() || undefined }),
+        body: JSON.stringify({
+          name: garageName.trim(),
+          address: garageAddress.trim() || undefined,
+        }),
       });
-      setGarageName(''); setGarageAddress(''); setShowAddGarage(false);
+      setGarageName('');
+      setGarageAddress('');
+      setShowAddGarage(false);
       loadGarages();
-    } catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка збереження'); }
-    finally { setSavingGarage(false); }
+    } catch (e: unknown) {
+      setLoadError(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      setSavingGarage(false);
+    }
   };
 
   const saveEdit = async () => {
@@ -285,8 +395,11 @@ export default function CounterpartyCardPage() {
       });
       setCp(updated);
       setEditing(false);
-    } catch (e: unknown) { setLoadError(e instanceof Error ? e.message : 'Помилка збереження'); }
-    finally { setSavingEdit(false); }
+    } catch (e: unknown) {
+      setLoadError(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const toggleGarage = (garageId: string) => {
@@ -301,13 +414,18 @@ export default function CounterpartyCardPage() {
   const displayName = (c: Counterparty) =>
     c.companyName ?? [c.lastName, c.firstName].filter(Boolean).join(' ') ?? '—';
 
-  if (!cp) return (
-    <div className="flex items-center justify-center min-h-screen flex-col gap-4">
-      {loadError
-        ? <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{loadError}</p>
-        : <Spinner size="lg" />}
-    </div>
-  );
+  if (!cp)
+    return (
+      <div className="flex items-center justify-center min-h-screen flex-col gap-4">
+        {loadError ? (
+          <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
+            {loadError}
+          </p>
+        ) : (
+          <Spinner size="lg" />
+        )}
+      </div>
+    );
 
   const CRM_TABS: { key: CrmTab; label: string }[] = [
     { key: 'info', label: 'Загальна інформація' },
@@ -321,7 +439,9 @@ export default function CounterpartyCardPage() {
   return (
     <div className="page-container max-w-4xl space-y-6">
       {loadError && (
-        <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{loadError}</div>
+        <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
+          {loadError}
+        </div>
       )}
 
       {/* Header */}
@@ -339,10 +459,16 @@ export default function CounterpartyCardPage() {
             {cp.vatPayer && <Badge variant="secondary">Платник ПДВ</Badge>}
           </div>
         </div>
-        <div className={cn(
-          'text-lg font-semibold',
-          cp.balance < 0 ? 'text-destructive' : cp.balance > 0 ? 'text-success' : 'text-muted-foreground'
-        )}>
+        <div
+          className={cn(
+            'text-lg font-semibold',
+            cp.balance < 0
+              ? 'text-destructive'
+              : cp.balance > 0
+                ? 'text-success'
+                : 'text-muted-foreground',
+          )}
+        >
           {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
           <p className="text-xs font-normal text-muted-foreground text-right">баланс</p>
         </div>
@@ -378,7 +504,25 @@ export default function CounterpartyCardPage() {
               </Button>
             ) : (
               <div className="flex gap-1.5">
-                <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setEditForm({ phone: cp.phone ?? '', email: cp.email ?? '', notes: cp.notes ?? '', legalForm: cp.legalForm ?? '', legalAddress: cp.legalAddress ?? '', actualAddress: cp.actualAddress ?? '', bankAccount: cp.bankAccount ?? '', bankName: cp.bankName ?? '', contactPerson: cp.contactPerson ?? '', taxNumber: cp.taxNumber ?? '' }); }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setEditing(false);
+                    setEditForm({
+                      phone: cp.phone ?? '',
+                      email: cp.email ?? '',
+                      notes: cp.notes ?? '',
+                      legalForm: cp.legalForm ?? '',
+                      legalAddress: cp.legalAddress ?? '',
+                      actualAddress: cp.actualAddress ?? '',
+                      bankAccount: cp.bankAccount ?? '',
+                      bankName: cp.bankName ?? '',
+                      contactPerson: cp.contactPerson ?? '',
+                      taxNumber: cp.taxNumber ?? '',
+                    });
+                  }}
+                >
                   <X className="h-3.5 w-3.5" />
                 </Button>
                 <Button size="sm" loading={savingEdit} onClick={saveEdit}>
@@ -398,22 +542,35 @@ export default function CounterpartyCardPage() {
                 <Field label="ЄДРПОУ" value={cp.edrpou} />
                 <Field label="Нотатки" value={cp.notes} />
               </div>
-              {(cp.legalForm || cp.legalAddress || cp.actualAddress || cp.bankAccount || cp.bankName || cp.contactPerson || cp.taxNumber) && (
+              {(cp.legalForm ||
+                cp.legalAddress ||
+                cp.actualAddress ||
+                cp.bankAccount ||
+                cp.bankName ||
+                cp.contactPerson ||
+                cp.taxNumber) && (
                 <div className="mt-4 pt-4 border-t border-border grid grid-cols-2 gap-x-6 gap-y-2">
-                  {([
-                    ['Форма власності', cp.legalForm ? (LEGAL_FORM_LABELS[cp.legalForm] ?? cp.legalForm) : null],
-                    ['Юр. адреса', cp.legalAddress],
-                    ['Факт. адреса', cp.actualAddress],
-                    ['IBAN', cp.bankAccount],
-                    ['Банк', cp.bankName],
-                    ['Контактна особа', cp.contactPerson],
-                    ['ІПН', cp.taxNumber],
-                  ] as [string, string | null | undefined][]).filter(([, v]) => v).map(([label, value]) => (
-                    <div key={label}>
-                      <div className="text-[12px] text-muted-foreground">{label}:</div>
-                      <div className="text-[13px] text-foreground">{value}</div>
-                    </div>
-                  ))}
+                  {(
+                    [
+                      [
+                        'Форма власності',
+                        cp.legalForm ? (LEGAL_FORM_LABELS[cp.legalForm] ?? cp.legalForm) : null,
+                      ],
+                      ['Юр. адреса', cp.legalAddress],
+                      ['Факт. адреса', cp.actualAddress],
+                      ['IBAN', cp.bankAccount],
+                      ['Банк', cp.bankName],
+                      ['Контактна особа', cp.contactPerson],
+                      ['ІПН', cp.taxNumber],
+                    ] as [string, string | null | undefined][]
+                  )
+                    .filter(([, v]) => v)
+                    .map(([label, value]) => (
+                      <div key={label}>
+                        <div className="text-[12px] text-muted-foreground">{label}:</div>
+                        <div className="text-[13px] text-foreground">{value}</div>
+                      </div>
+                    ))}
                 </div>
               )}
             </>
@@ -441,7 +598,9 @@ export default function CounterpartyCardPage() {
               >
                 <option value="">— Не вказано —</option>
                 {Object.entries(LEGAL_FORM_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
                 ))}
               </Select>
               <Input
@@ -519,7 +678,12 @@ export default function CounterpartyCardPage() {
                 placeholder="вул. Шевченка 1"
               />
               <div className="flex gap-2">
-                <Button size="sm" onClick={addGarage} loading={savingGarage} disabled={!garageName.trim()}>
+                <Button
+                  size="sm"
+                  onClick={addGarage}
+                  loading={savingGarage}
+                  disabled={!garageName.trim()}
+                >
                   Зберегти
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setShowAddGarage(false)}>
@@ -530,109 +694,151 @@ export default function CounterpartyCardPage() {
           )}
 
           {garagesLoading && (
-            <div className="flex justify-center py-8"><Spinner size="md" /></div>
+            <div className="flex justify-center py-8">
+              <Spinner size="md" />
+            </div>
           )}
 
           {!garagesLoading && garages.length === 0 && !showAddGarage && (
             <p className="text-sm text-muted-foreground text-center py-8">Немає гаражів</p>
           )}
 
-          {!garagesLoading && garages.map(garage => (
-            <div key={garage.id} className="bg-surface rounded-xl border border-border overflow-hidden">
-              <button
-                onClick={() => toggleGarage(garage.id)}
-                className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary transition-colors text-left"
+          {!garagesLoading &&
+            garages.map(garage => (
+              <div
+                key={garage.id}
+                className="bg-surface rounded-xl border border-border overflow-hidden"
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{garage.name}</span>
-                  {garage.isDefault && (
-                    <span className="text-[11px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-medium">
-                      Основний
-                    </span>
-                  )}
-                  {garage.address && (
-                    <span className="text-xs text-muted-foreground">· {garage.address}</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    {garageVehicles[garage.id]?.length ?? 0} авто
-                  </span>
-                  <span className={cn('text-muted-foreground transition-transform', expandedGarages.has(garage.id) && 'rotate-180')}>▾</span>
-                </div>
-              </button>
-
-              {expandedGarages.has(garage.id) && (
-                <div className="border-t border-border">
-                  <div className="flex items-center justify-between px-4 py-2 bg-secondary/50">
-                    <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide">Автомобілі</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => router.push(`/vehicles/new?garageId=${garage.id}`)}
-                    >
-                      <Plus className="h-3.5 w-3.5 mr-1" />
-                      Авто
-                    </Button>
+                <button
+                  onClick={() => toggleGarage(garage.id)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary transition-colors text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{garage.name}</span>
+                    {garage.isDefault && (
+                      <span className="text-[11px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-medium">
+                        Основний
+                      </span>
+                    )}
+                    {garage.address && (
+                      <span className="text-xs text-muted-foreground">· {garage.address}</span>
+                    )}
                   </div>
-                  {!garageVehicles[garage.id] ? (
-                    <div className="flex justify-center py-4"><Spinner size="sm" /></div>
-                  ) : garageVehicles[garage.id].length === 0 ? (
-                    <p className="text-sm text-muted-foreground px-4 py-3">Немає автомобілів</p>
-                  ) : (
-                    <div>
-                      {garageVehicles[garage.id].map(v => {
-                        const techParts = [v.transmissionType, v.driveType, v.bodyType].filter(Boolean);
-                        const vSchedules = maintenanceSchedules.filter(s => s.vehicleId === v.id && s.isActive);
-                        return (
-                          <div key={v.id} className="px-4 py-3 border-b border-border last:border-0">
-                            <button
-                              onClick={() => router.push(`/vehicles/${v.id}`)}
-                              className="w-full flex items-center justify-between text-left"
-                            >
-                              <div>
-                                <p className="text-sm font-medium text-foreground">{v.make} {v.model}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {[v.licensePlate, v.year, v.currentMileage ? `${v.currentMileage.toLocaleString()} км` : null].filter(Boolean).join(' · ')}
-                                </p>
-                                {techParts.length > 0 && (
-                                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                                    {techParts.join(' · ')}
-                                  </p>
-                                )}
-                              </div>
-                              <span className="text-muted-foreground text-sm">→</span>
-                            </button>
-                            {vSchedules.length > 0 && (
-                              <div className="mt-2 space-y-1">
-                                {vSchedules.map(s => {
-                                  const diff = daysUntil(s.nextMaintenanceDate, todayMs);
-                                  const isSoon = diff !== null && diff <= 30;
-                                  return (
-                                    <div key={s.id} className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                                      <span>ТО: {s.maintenanceType}</span>
-                                      {s.nextMaintenanceDate && (
-                                        <span>· Наступне: {new Date(s.nextMaintenanceDate).toLocaleDateString('uk-UA')}</span>
-                                      )}
-                                      {isSoon && (
-                                        <span className="px-1.5 py-0.5 bg-warning-subtle text-warning rounded text-[11px] font-medium">
-                                          ⚠ Скоро
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {garageVehicles[garage.id]?.length ?? 0} авто
+                    </span>
+                    <span
+                      className={cn(
+                        'text-muted-foreground transition-transform',
+                        expandedGarages.has(garage.id) && 'rotate-180',
+                      )}
+                    >
+                      ▾
+                    </span>
+                  </div>
+                </button>
+
+                {expandedGarages.has(garage.id) && (
+                  <div className="border-t border-border">
+                    <div className="flex items-center justify-between px-4 py-2 bg-secondary/50">
+                      <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide">
+                        Автомобілі
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => router.push(`/vehicles/new?garageId=${garage.id}`)}
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" />
+                        Авто
+                      </Button>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                    {!garageVehicles[garage.id] ? (
+                      <div className="flex justify-center py-4">
+                        <Spinner size="sm" />
+                      </div>
+                    ) : garageVehicles[garage.id].length === 0 ? (
+                      <p className="text-sm text-muted-foreground px-4 py-3">Немає автомобілів</p>
+                    ) : (
+                      <div>
+                        {garageVehicles[garage.id].map(v => {
+                          const techParts = [v.transmissionType, v.driveType, v.bodyType].filter(
+                            Boolean,
+                          );
+                          const vSchedules = maintenanceSchedules.filter(
+                            s => s.vehicleId === v.id && s.isActive,
+                          );
+                          return (
+                            <div
+                              key={v.id}
+                              className="px-4 py-3 border-b border-border last:border-0"
+                            >
+                              <button
+                                onClick={() => router.push(`/vehicles/${v.id}`)}
+                                className="w-full flex items-center justify-between text-left"
+                              >
+                                <div>
+                                  <p className="text-sm font-medium text-foreground">
+                                    {v.make} {v.model}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {[
+                                      v.licensePlate,
+                                      v.year,
+                                      v.currentMileage
+                                        ? `${v.currentMileage.toLocaleString()} км`
+                                        : null,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' · ')}
+                                  </p>
+                                  {techParts.length > 0 && (
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                      {techParts.join(' · ')}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className="text-muted-foreground text-sm">→</span>
+                              </button>
+                              {vSchedules.length > 0 && (
+                                <div className="mt-2 space-y-1">
+                                  {vSchedules.map(s => {
+                                    const diff = daysUntil(s.nextMaintenanceDate, todayMs);
+                                    const isSoon = diff !== null && diff <= 30;
+                                    return (
+                                      <div
+                                        key={s.id}
+                                        className="flex items-center gap-2 text-[12px] text-muted-foreground"
+                                      >
+                                        <span>ТО: {s.maintenanceType}</span>
+                                        {s.nextMaintenanceDate && (
+                                          <span>
+                                            · Наступне:{' '}
+                                            {new Date(s.nextMaintenanceDate).toLocaleDateString(
+                                              'uk-UA',
+                                            )}
+                                          </span>
+                                        )}
+                                        {isSoon && (
+                                          <span className="px-1.5 py-0.5 bg-warning-subtle text-warning rounded text-[11px] font-medium">
+                                            ⚠ Скоро
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
         </div>
       )}
 
@@ -642,17 +848,25 @@ export default function CounterpartyCardPage() {
           <div className="bg-surface rounded-xl border border-border p-4 flex items-center gap-4">
             <div>
               <p className="text-xs text-muted-foreground mb-0.5">Поточний баланс</p>
-              <p className={cn(
-                'text-xl font-bold',
-                cp.balance < 0 ? 'text-destructive' : cp.balance > 0 ? 'text-success' : 'text-muted-foreground',
-              )}>
+              <p
+                className={cn(
+                  'text-xl font-bold',
+                  cp.balance < 0
+                    ? 'text-destructive'
+                    : cp.balance > 0
+                      ? 'text-success'
+                      : 'text-muted-foreground',
+                )}
+              >
                 {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
               </p>
             </div>
           </div>
 
           {settlementsLoading ? (
-            <div className="flex justify-center py-8"><Spinner size="md" /></div>
+            <div className="flex justify-center py-8">
+              <Spinner size="md" />
+            </div>
           ) : transactions.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">Немає транзакцій</p>
           ) : (
@@ -661,13 +875,22 @@ export default function CounterpartyCardPage() {
                 <div key={t.id} className="flex items-center justify-between px-4 py-3">
                   <div>
                     <p className="text-sm text-foreground">{t.notes ?? t.documentType ?? t.type}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleDateString('uk-UA')}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(t.createdAt).toLocaleDateString('uk-UA')}
+                    </p>
                   </div>
-                  <span className={cn(
-                    'text-sm font-semibold',
-                    ['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type) ? 'text-success' : 'text-destructive-text',
-                  )}>
-                    {['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type) ? '-' : '+'}{Math.abs(t.amount).toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                  <span
+                    className={cn(
+                      'text-sm font-semibold',
+                      ['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type)
+                        ? 'text-success'
+                        : 'text-destructive-text',
+                    )}
+                  >
+                    {['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type)
+                      ? '-'
+                      : '+'}
+                    {Math.abs(t.amount).toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
                   </span>
                 </div>
               ))}
@@ -680,7 +903,9 @@ export default function CounterpartyCardPage() {
       {tab === 'work-orders' && (
         <div className="space-y-4">
           {woLoading ? (
-            <div className="flex justify-center py-8"><Spinner size="md" /></div>
+            <div className="flex justify-center py-8">
+              <Spinner size="md" />
+            </div>
           ) : workOrders.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">Немає нарядів</p>
           ) : (
@@ -694,12 +919,18 @@ export default function CounterpartyCardPage() {
                   <div>
                     <div className="flex items-center gap-2 mb-0.5">
                       <p className="text-sm font-medium text-foreground">№{wo.number}</p>
-                      <span className={cn('text-[11px] px-1.5 py-0.5 rounded', WO_STATUS_COLORS[wo.status] ?? 'bg-secondary text-muted-foreground')}>
+                      <span
+                        className={cn(
+                          'text-[11px] px-1.5 py-0.5 rounded',
+                          WO_STATUS_COLORS[wo.status] ?? 'bg-secondary text-muted-foreground',
+                        )}
+                      >
                         {WO_STATUS_LABELS[wo.status] ?? wo.status}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {wo.vehicleMake} {wo.vehicleModel} · {new Date(wo.createdAt).toLocaleDateString('uk-UA')}
+                      {wo.vehicleMake} {wo.vehicleModel} ·{' '}
+                      {new Date(wo.createdAt).toLocaleDateString('uk-UA')}
                     </p>
                   </div>
                   <div className="text-right">
@@ -719,7 +950,9 @@ export default function CounterpartyCardPage() {
       {tab === 'warranties' && (
         <div className="space-y-4">
           {warrantiesLoading ? (
-            <div className="flex justify-center py-8"><Spinner size="md" /></div>
+            <div className="flex justify-center py-8">
+              <Spinner size="md" />
+            </div>
           ) : (
             <div className="bg-surface rounded-xl border border-border overflow-hidden">
               <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
@@ -727,11 +960,16 @@ export default function CounterpartyCardPage() {
                 <span className="text-xs text-muted-foreground">{warranties.length} записів</span>
               </div>
               {warranties.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground text-[13px]">Гарантій немає</div>
+                <div className="p-4 text-center text-muted-foreground text-[13px]">
+                  Гарантій немає
+                </div>
               ) : (
                 <div className="divide-y divide-border">
                   {warranties.map(w => (
-                    <div key={w.id} className="px-5 py-3 flex items-center justify-between gap-3 text-sm">
+                    <div
+                      key={w.id}
+                      className="px-5 py-3 flex items-center justify-between gap-3 text-sm"
+                    >
                       <div className="flex-1">
                         <div className="font-medium text-foreground">
                           Наряд №{w.workOrderNumber ?? w.workOrderId.slice(0, 8)}
@@ -771,10 +1009,14 @@ export default function CounterpartyCardPage() {
       {tab === 'loyalty' && (
         <div className="space-y-4">
           {loyaltyError && (
-            <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{loyaltyError}</div>
+            <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
+              {loyaltyError}
+            </div>
           )}
           {loyaltyLoading ? (
-            <div className="flex justify-center py-8"><Spinner size="md" /></div>
+            <div className="flex justify-center py-8">
+              <Spinner size="md" />
+            </div>
           ) : (
             <div className="bg-surface rounded-xl border border-border p-4 space-y-4">
               {/* Balance + redeem */}
@@ -797,7 +1039,11 @@ export default function CounterpartyCardPage() {
                     size="sm"
                     variant="outline"
                     loading={redeemSaving}
-                    disabled={!redeemPoints || Number(redeemPoints) <= 0 || Number(redeemPoints) > loyaltyBalance}
+                    disabled={
+                      !redeemPoints ||
+                      Number(redeemPoints) <= 0 ||
+                      Number(redeemPoints) > loyaltyBalance
+                    }
                     onClick={async () => {
                       setRedeemSaving(true);
                       setLoyaltyError('');
@@ -833,11 +1079,14 @@ export default function CounterpartyCardPage() {
                       <span className="text-foreground flex-1 px-3 truncate">
                         {t.notes ?? (t.type === 'EARN' ? 'Нарахування балів' : 'Списання балів')}
                       </span>
-                      <span className={cn(
-                        'font-medium',
-                        t.type === 'EARN' ? 'text-success' : 'text-destructive',
-                      )}>
-                        {t.type === 'EARN' ? '+' : '-'}{t.points}
+                      <span
+                        className={cn(
+                          'font-medium',
+                          t.type === 'EARN' ? 'text-success' : 'text-destructive',
+                        )}
+                      >
+                        {t.type === 'EARN' ? '+' : '-'}
+                        {t.points}
                       </span>
                     </div>
                   ))}

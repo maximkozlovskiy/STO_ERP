@@ -87,7 +87,7 @@ export function useDashboardStream() {
         }
       };
 
-      es.onmessage = (event) => {
+      es.onmessage = event => {
         if (!mountedRef.current) return;
         try {
           const parsed = JSON.parse(event.data) as DashboardSummary;

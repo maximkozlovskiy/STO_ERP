@@ -54,10 +54,12 @@ const prismaMock = {
 };
 
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx: { switchToHttp: () => { getRequest: () => { user: unknown } } }) => {
-    ctx.switchToHttp().getRequest().user = { id: 'emp-1', orgId: ORG_ID, role: 'ADMIN' };
-    return true;
-  }),
+  canActivate: vi
+    .fn()
+    .mockImplementation((ctx: { switchToHttp: () => { getRequest: () => { user: unknown } } }) => {
+      ctx.switchToHttp().getRequest().user = { id: 'emp-1', orgId: ORG_ID, role: 'ADMIN' };
+      return true;
+    }),
 };
 const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
 
@@ -67,13 +69,12 @@ describe('Sync — HTTP Contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [SyncController],
-      providers: [
-        SyncService,
-        { provide: PrismaService, useValue: prismaMock },
-      ],
+      providers: [SyncService, { provide: PrismaService, useValue: prismaMock }],
     })
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -89,7 +90,9 @@ describe('Sync — HTTP Contract', () => {
   beforeEach(() => {
     // Reset call counts but keep the mock implementation.
     for (const key of Object.keys(prismaMock)) {
-      const model = (prismaMock as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>)[key];
+      const model = (
+        prismaMock as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>
+      )[key];
       for (const fn of Object.values(model)) {
         if (typeof (fn as { mockClear?: unknown }).mockClear === 'function') fn.mockClear();
       }
@@ -144,7 +147,12 @@ describe('Sync — HTTP Contract', () => {
 
       const res = await app.inject({ method: 'GET', url: '/sync/pull?since=0' });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as Array<{ table: string; id: string; syncVersion: number; payload: Record<string, unknown> }>;
+      const body = res.json() as Array<{
+        table: string;
+        id: string;
+        syncVersion: number;
+        payload: Record<string, unknown>;
+      }>;
       expect(Array.isArray(body)).toBe(true);
       const cpRecord = body.find(r => r.table === 'counterparties');
       expect(cpRecord).toBeDefined();
@@ -176,7 +184,11 @@ describe('Sync — HTTP Contract', () => {
       ]);
       const res = await app.inject({ method: 'GET', url: '/sync/pull?since=0' });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as Array<{ table: string; operation: string; payload: Record<string, unknown> }>;
+      const body = res.json() as Array<{
+        table: string;
+        operation: string;
+        payload: Record<string, unknown>;
+      }>;
       const vehRecord = body.find(r => r.table === 'vehicles');
       expect(vehRecord).toBeDefined();
       expect(vehRecord!.operation).toBe('DELETE');

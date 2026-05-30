@@ -29,7 +29,7 @@ const serviceMock = {
 
 let jwtAllow = true;
 const mockJwtGuard = {
-  canActivate: vi.fn().mockImplementation((ctx) => {
+  canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
     req.user = { id: 'emp-1', orgId: 'org-1', role: 'ADMIN' };
@@ -75,10 +75,19 @@ describe('Employees — HTTP Contract (assignment endpoints)', () => {
   });
 
   const okEmployee = {
-    id: EMP_ID, orgId: 'org-1', firstName: 'Іван', lastName: 'Коваль',
-    role: 'MECHANIC', status: 'ACTIVE', zoneIds: [], liftIds: [],
-    workCategoryIds: [], branchIds: [], allBranches: false,
-    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    id: EMP_ID,
+    orgId: 'org-1',
+    firstName: 'Іван',
+    lastName: 'Коваль',
+    role: 'MECHANIC',
+    status: 'ACTIVE',
+    zoneIds: [],
+    liftIds: [],
+    workCategoryIds: [],
+    branchIds: [],
+    allBranches: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 
   // Кожен з 4 endpoint-ів: { url-suffix, body-key, service-method }
@@ -99,7 +108,9 @@ describe('Employees — HTTP Contract (assignment endpoints)', () => {
       });
       expect([200, 201]).toContain(res.statusCode);
       expect(serviceMock[method]).toHaveBeenCalledWith(
-        'org-1', EMP_ID, expect.objectContaining({ [key]: [FK_A, FK_B] }),
+        'org-1',
+        EMP_ID,
+        expect.objectContaining({ [key]: [FK_A, FK_B] }),
       );
     });
 
@@ -158,7 +169,9 @@ describe('Employees — HTTP Contract (assignment endpoints)', () => {
       });
       expect([200, 201]).toContain(res.statusCode);
       expect(serviceMock.assignBranches).toHaveBeenCalledWith(
-        'org-1', EMP_ID, expect.objectContaining({ branchIds: [FK_A], allBranches: false }),
+        'org-1',
+        EMP_ID,
+        expect.objectContaining({ branchIds: [FK_A], allBranches: false }),
       );
     });
 

@@ -3,20 +3,39 @@ import { database } from './database';
 import { apiFetch } from './api';
 
 interface ApiWorkOrder {
-  id: string; orgId: string; number: string; status: string;
-  vehicleSummary?: string; counterpartyName?: string;
-  description?: string | null; inMileage?: number | null; outMileage?: number | null;
-  plannedAt?: string | null; completedAt?: string | null;
-  totalLabor: number; totalParts: number; totalAmount: number; paidAmount: number;
+  id: string;
+  orgId: string;
+  number: string;
+  status: string;
+  vehicleSummary?: string;
+  counterpartyName?: string;
+  description?: string | null;
+  inMileage?: number | null;
+  outMileage?: number | null;
+  plannedAt?: string | null;
+  completedAt?: string | null;
+  totalLabor: number;
+  totalParts: number;
+  totalAmount: number;
+  paidAmount: number;
   lines: ApiWorkOrderLine[];
   parts: ApiWorkOrderPart[];
 }
 interface ApiWorkOrderLine {
-  id: string; workName?: string; employeeName?: string;
-  normoHours: number; price: number; amount: number; notes?: string | null;
+  id: string;
+  workName?: string;
+  employeeName?: string;
+  normoHours: number;
+  price: number;
+  amount: number;
+  notes?: string | null;
 }
 interface ApiWorkOrderPart {
-  id: string; goodName?: string; quantity: number; price: number; amount: number;
+  id: string;
+  goodName?: string;
+  quantity: number;
+  price: number;
+  amount: number;
 }
 
 function applyWorkOrderFields(r: any, api: ApiWorkOrder, syncedAt: number) {
@@ -40,7 +59,9 @@ export async function syncWorkOrders(): Promise<void> {
   let items: ApiWorkOrder[] = [];
 
   try {
-    const res = await apiFetch<{ items: ApiWorkOrder[] }>('/work-orders?limit=100&include=lines,parts');
+    const res = await apiFetch<{ items: ApiWorkOrder[] }>(
+      '/work-orders?limit=100&include=lines,parts',
+    );
     items = res.items ?? [];
   } catch {
     return;
@@ -136,7 +157,7 @@ export async function syncWorkOrders(): Promise<void> {
 
 export async function pushDirtyOrders(): Promise<void> {
   const wos = database.get('work_orders');
-  const dirty = await wos.query(Q.where('is_dirty', true)).fetch() as any[];
+  const dirty = (await wos.query(Q.where('is_dirty', true)).fetch()) as any[];
 
   for (const record of dirty) {
     try {
@@ -145,7 +166,9 @@ export async function pushDirtyOrders(): Promise<void> {
         body: JSON.stringify({ status: record.status }),
       });
       await database.write(async () => {
-        await record.update((r: any) => { r.isDirty = false; });
+        await record.update((r: any) => {
+          r.isDirty = false;
+        });
       });
     } catch {
       // Keep dirty — will retry on next sync

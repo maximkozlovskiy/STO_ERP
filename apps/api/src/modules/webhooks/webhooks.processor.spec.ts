@@ -28,17 +28,18 @@ interface WebhookJobData {
   payload: unknown;
 }
 
-const makeJob = (data: Partial<WebhookJobData>, attemptsMade = 0): Job => ({
-  data: {
-    endpointId: 'ep-1',
-    url: 'https://hooks.example.com/webhook',
-    secret: '',
-    event: 'WO_STATUS_CHANGED',
-    payload: { id: 'wo-1', status: 'COMPLETED' },
-    ...data,
-  },
-  attemptsMade,
-} as unknown as Job);
+const makeJob = (data: Partial<WebhookJobData>, attemptsMade = 0): Job =>
+  ({
+    data: {
+      endpointId: 'ep-1',
+      url: 'https://hooks.example.com/webhook',
+      secret: '',
+      event: 'WO_STATUS_CHANGED',
+      payload: { id: 'wo-1', status: 'COMPLETED' },
+      ...data,
+    },
+    attemptsMade,
+  }) as unknown as Job;
 
 const makePrismaMock = () => ({
   webhookDelivery: { create: vi.fn().mockResolvedValue({}) },
@@ -52,10 +53,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
   beforeEach(async () => {
     prisma = makePrismaMock();
     const module = await Test.createTestingModule({
-      providers: [
-        OutboundWebhookProcessor,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [OutboundWebhookProcessor, { provide: PrismaService, useValue: prisma }],
     }).compile();
     processor = module.get(OutboundWebhookProcessor);
     fetchSpy = vi.spyOn(global, 'fetch');
@@ -106,9 +104,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
 
   describe('redirect handling (cycle-2 SSRF defense)', () => {
     it('викликає fetch з redirect: "manual"', async () => {
-      fetchSpy.mockResolvedValueOnce(
-        new Response('ok', { status: 200 }),
-      );
+      fetchSpy.mockResolvedValueOnce(new Response('ok', { status: 200 }));
       await processor.processDeliver(makeJob({}));
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -124,9 +120,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
         }),
       );
 
-      await expect(processor.processDeliver(makeJob({}))).rejects.toThrow(
-        /Redirect not allowed/,
-      );
+      await expect(processor.processDeliver(makeJob({}))).rejects.toThrow(/Redirect not allowed/);
 
       // 302 path writes its OWN delivery record (with the redirect target),
       // then re-throws BEFORE the success-path duplicate write. So we expect
@@ -157,9 +151,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
 
   describe('successful delivery', () => {
     it('200 → status="DELIVERED", не re-throw', async () => {
-      fetchSpy.mockResolvedValueOnce(
-        new Response('processed', { status: 200 }),
-      );
+      fetchSpy.mockResolvedValueOnce(new Response('processed', { status: 200 }));
       await expect(processor.processDeliver(makeJob({}))).resolves.toBeUndefined();
       expect(prisma.webhookDelivery.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -193,9 +185,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
 
   describe('failed delivery (5xx, network errors)', () => {
     it('500 → status="FAILED" + re-throw для BullMQ retry', async () => {
-      fetchSpy.mockResolvedValueOnce(
-        new Response('server error', { status: 500 }),
-      );
+      fetchSpy.mockResolvedValueOnce(new Response('server error', { status: 500 }));
       await expect(processor.processDeliver(makeJob({}))).rejects.toThrow(/HTTP 500/);
       expect(prisma.webhookDelivery.create).toHaveBeenCalledWith(
         expect.objectContaining({

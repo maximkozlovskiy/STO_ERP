@@ -33,7 +33,7 @@ describe('NotificationCenter', () => {
     seed([
       { id: 'n1', type: 'info', title: 'A', createdAt: Date.now(), read: false },
       { id: 'n2', type: 'info', title: 'B', createdAt: Date.now(), read: false },
-      { id: 'n3', type: 'info', title: 'C', createdAt: Date.now(), read: true  },
+      { id: 'n3', type: 'info', title: 'C', createdAt: Date.now(), read: true },
     ]);
     render(<NotificationCenter enabled />);
     expect(screen.getByText('2')).toBeInTheDocument();
@@ -41,7 +41,11 @@ describe('NotificationCenter', () => {
 
   it('badge показує "9+" коли unread > 9', () => {
     const items: AppNotification[] = Array.from({ length: 12 }, (_, i) => ({
-      id: `n${i}`, type: 'info', title: `T${i}`, createdAt: Date.now(), read: false,
+      id: `n${i}`,
+      type: 'info',
+      title: `T${i}`,
+      createdAt: Date.now(),
+      read: false,
     }));
     seed(items);
     render(<NotificationCenter enabled />);
@@ -88,7 +92,9 @@ describe('NotificationCenter', () => {
 });
 
 describe('useNotifications', () => {
-  beforeEach(() => { localStorage.clear(); });
+  beforeEach(() => {
+    localStorage.clear();
+  });
 
   it('початковий стан: items=[]', () => {
     const { result } = renderHook(() => useNotifications());
@@ -98,7 +104,9 @@ describe('useNotifications', () => {
 
   it('add додає сповіщення у початок списку', () => {
     const { result } = renderHook(() => useNotifications());
-    act(() => { result.current.add('info', 'Hello', 'World'); });
+    act(() => {
+      result.current.add('info', 'Hello', 'World');
+    });
     expect(result.current.items).toHaveLength(1);
     expect(result.current.items[0].title).toBe('Hello');
     expect(result.current.items[0].body).toBe('World');
@@ -108,7 +116,9 @@ describe('useNotifications', () => {
 
   it('add записує у localStorage', () => {
     const { result } = renderHook(() => useNotifications());
-    act(() => { result.current.add('warning', 'X'); });
+    act(() => {
+      result.current.add('warning', 'X');
+    });
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
     expect(stored).toHaveLength(1);
     expect(stored[0].title).toBe('X');
@@ -116,9 +126,13 @@ describe('useNotifications', () => {
 
   it('markRead встановлює read=true для одного запису', () => {
     const { result } = renderHook(() => useNotifications());
-    act(() => { result.current.add('info', 'A'); });
+    act(() => {
+      result.current.add('info', 'A');
+    });
     const id = result.current.items[0].id;
-    act(() => { result.current.markRead(id); });
+    act(() => {
+      result.current.markRead(id);
+    });
     expect(result.current.items[0].read).toBe(true);
     expect(result.current.unreadCount).toBe(0);
   });
@@ -130,15 +144,21 @@ describe('useNotifications', () => {
       result.current.add('info', 'B');
     });
     expect(result.current.unreadCount).toBe(2);
-    act(() => { result.current.markAllRead(); });
+    act(() => {
+      result.current.markAllRead();
+    });
     expect(result.current.unreadCount).toBe(0);
   });
 
   it('remove видаляє запис', () => {
     const { result } = renderHook(() => useNotifications());
-    act(() => { result.current.add('info', 'A'); });
+    act(() => {
+      result.current.add('info', 'A');
+    });
     const id = result.current.items[0].id;
-    act(() => { result.current.remove(id); });
+    act(() => {
+      result.current.remove(id);
+    });
     expect(result.current.items).toHaveLength(0);
   });
 

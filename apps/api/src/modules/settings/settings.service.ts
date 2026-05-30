@@ -173,9 +173,10 @@ export class SettingsService {
    * MUST NOT be filled in (would overwrite unrelated keys not in user's PATCH).
    */
   private pickUiFeatureKeys(raw: unknown): Partial<UiFeatures> {
-    const stored = (typeof raw === 'object' && raw !== null && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {});
+    const stored =
+      typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : {};
     const allowedKeys = Object.keys(UI_FEATURES_DEFAULTS) as (keyof UiFeatures)[];
     const sanitized: Partial<UiFeatures> = {};
     for (const k of allowedKeys) {
@@ -270,14 +271,32 @@ export class SettingsService {
       take: 100,
     });
     return configs.map(c => ({
-      id: c.id, documentType: c.documentType, prefix: c.prefix, includeDate: c.includeDate,
-      separator: c.separator, padding: c.padding, currentSeq: Number(c.currentSeq),
-      resetPeriod: c.resetPeriod, updatedAt: c.updatedAt,
+      id: c.id,
+      documentType: c.documentType,
+      prefix: c.prefix,
+      includeDate: c.includeDate,
+      separator: c.separator,
+      padding: c.padding,
+      currentSeq: Number(c.currentSeq),
+      resetPeriod: c.resetPeriod,
+      updatedAt: c.updatedAt,
     }));
   }
 
-  async updateDocumentNumber(orgId: string, documentType: string, dto: { prefix?: string | null; includeDate?: boolean; separator?: string; padding?: number; resetPeriod?: string }) {
-    const cfg = await this.prisma.documentNumberConfig.findFirst({ where: { orgId, documentType: documentType as DocumentType } });
+  async updateDocumentNumber(
+    orgId: string,
+    documentType: string,
+    dto: {
+      prefix?: string | null;
+      includeDate?: boolean;
+      separator?: string;
+      padding?: number;
+      resetPeriod?: string;
+    },
+  ) {
+    const cfg = await this.prisma.documentNumberConfig.findFirst({
+      where: { orgId, documentType: documentType as DocumentType },
+    });
     if (!cfg) throw new NotFoundException('Конфігурацію не знайдено');
     const updated = await this.prisma.documentNumberConfig.update({
       where: { id: cfg.id },
@@ -289,13 +308,28 @@ export class SettingsService {
         resetPeriod: dto.resetPeriod !== undefined ? (dto.resetPeriod as ResetPeriod) : undefined,
       },
     });
-    return { id: updated.id, documentType: updated.documentType, prefix: updated.prefix, includeDate: updated.includeDate, separator: updated.separator, padding: updated.padding, currentSeq: Number(updated.currentSeq), resetPeriod: updated.resetPeriod, updatedAt: updated.updatedAt };
+    return {
+      id: updated.id,
+      documentType: updated.documentType,
+      prefix: updated.prefix,
+      includeDate: updated.includeDate,
+      separator: updated.separator,
+      padding: updated.padding,
+      currentSeq: Number(updated.currentSeq),
+      resetPeriod: updated.resetPeriod,
+      updatedAt: updated.updatedAt,
+    };
   }
 
   async resetDocumentNumber(orgId: string, documentType: string) {
-    const cfg = await this.prisma.documentNumberConfig.findFirst({ where: { orgId, documentType: documentType as DocumentType } });
+    const cfg = await this.prisma.documentNumberConfig.findFirst({
+      where: { orgId, documentType: documentType as DocumentType },
+    });
     if (!cfg) throw new NotFoundException('Конфігурацію не знайдено');
-    await this.prisma.documentNumberConfig.update({ where: { id: cfg.id }, data: { currentSeq: 0 } });
+    await this.prisma.documentNumberConfig.update({
+      where: { id: cfg.id },
+      data: { currentSeq: 0 },
+    });
     return { message: 'Лічильник скинуто' };
   }
 
@@ -305,21 +339,60 @@ export class SettingsService {
       orderBy: { rate: 'asc' },
       take: 100,
     });
-    return rates.map(r => ({ id: r.id, name: r.name, rate: Number(r.rate), isDefault: r.isDefault, isActive: r.isActive }));
+    return rates.map(r => ({
+      id: r.id,
+      name: r.name,
+      rate: Number(r.rate),
+      isDefault: r.isDefault,
+      isActive: r.isActive,
+    }));
   }
 
-  async createTaxRate(orgId: string, dto: { name: string; rate: number; isDefault?: boolean; isActive?: boolean }) {
+  async createTaxRate(
+    orgId: string,
+    dto: { name: string; rate: number; isDefault?: boolean; isActive?: boolean },
+  ) {
     const rate = await this.prisma.taxRate.create({
-      data: { orgId, name: dto.name, rate: dto.rate, isDefault: dto.isDefault ?? false, isActive: dto.isActive ?? true },
+      data: {
+        orgId,
+        name: dto.name,
+        rate: dto.rate,
+        isDefault: dto.isDefault ?? false,
+        isActive: dto.isActive ?? true,
+      },
     });
-    return { id: rate.id, name: rate.name, rate: Number(rate.rate), isDefault: rate.isDefault, isActive: rate.isActive };
+    return {
+      id: rate.id,
+      name: rate.name,
+      rate: Number(rate.rate),
+      isDefault: rate.isDefault,
+      isActive: rate.isActive,
+    };
   }
 
-  async updateTaxRate(orgId: string, id: string, dto: { name?: string; rate?: number; isDefault?: boolean; isActive?: boolean }) {
+  async updateTaxRate(
+    orgId: string,
+    id: string,
+    dto: { name?: string; rate?: number; isDefault?: boolean; isActive?: boolean },
+  ) {
     const existing = await this.prisma.taxRate.findFirst({ where: { id, orgId } });
     if (!existing) throw new NotFoundException('Ставку ПДВ не знайдено');
-    const updated = await this.prisma.taxRate.update({ where: { id }, data: { name: dto.name ?? undefined, rate: dto.rate ?? undefined, isDefault: dto.isDefault ?? undefined, isActive: dto.isActive ?? undefined } });
-    return { id: updated.id, name: updated.name, rate: Number(updated.rate), isDefault: updated.isDefault, isActive: updated.isActive };
+    const updated = await this.prisma.taxRate.update({
+      where: { id },
+      data: {
+        name: dto.name ?? undefined,
+        rate: dto.rate ?? undefined,
+        isDefault: dto.isDefault ?? undefined,
+        isActive: dto.isActive ?? undefined,
+      },
+    });
+    return {
+      id: updated.id,
+      name: updated.name,
+      rate: Number(updated.rate),
+      isDefault: updated.isDefault,
+      isActive: updated.isActive,
+    };
   }
 
   async deleteTaxRate(orgId: string, id: string) {
@@ -327,14 +400,21 @@ export class SettingsService {
     // Hard delete would lose audit trail. We soft-deactivate via isActive=false.
     const existing = await this.prisma.taxRate.findFirst({ where: { id, orgId } });
     if (!existing) throw new NotFoundException('Ставку ПДВ не знайдено');
-    if (existing.isDefault) throw new BadRequestException('Не можна видалити ставку за замовчуванням');
+    if (existing.isDefault)
+      throw new BadRequestException('Не можна видалити ставку за замовчуванням');
     await this.prisma.taxRate.update({ where: { id }, data: { isActive: false } });
   }
 
   private readonly orgSelect = {
-    id: true, orgId: true, name: true, edrpou: true,
-    logoUrl: true, legalAddress: true, actualAddress: true,
-    bankAccountId: true, updatedAt: true,
+    id: true,
+    orgId: true,
+    name: true,
+    edrpou: true,
+    logoUrl: true,
+    legalAddress: true,
+    actualAddress: true,
+    bankAccountId: true,
+    updatedAt: true,
   } as const;
 
   async getOrganisation(orgId: string): Promise<OrganisationResponseDto> {
@@ -346,7 +426,10 @@ export class SettingsService {
     return this.mapOrganisation(org);
   }
 
-  async updateOrganisation(orgId: string, dto: UpdateOrganisationDto): Promise<OrganisationResponseDto> {
+  async updateOrganisation(
+    orgId: string,
+    dto: UpdateOrganisationDto,
+  ): Promise<OrganisationResponseDto> {
     const org = await this.prisma.organisation.findFirst({
       where: { orgId, deletedAt: null },
       select: { id: true },
@@ -370,14 +453,25 @@ export class SettingsService {
   }
 
   private mapOrganisation(org: {
-    id: string; orgId: string; name: string; edrpou: string | null;
-    logoUrl?: string | null; legalAddress?: string | null;
-    actualAddress?: string | null; bankAccountId?: string | null; updatedAt: Date;
+    id: string;
+    orgId: string;
+    name: string;
+    edrpou: string | null;
+    logoUrl?: string | null;
+    legalAddress?: string | null;
+    actualAddress?: string | null;
+    bankAccountId?: string | null;
+    updatedAt: Date;
   }): OrganisationResponseDto {
     return {
-      id: org.id, orgId: org.orgId, name: org.name, edrpou: org.edrpou,
-      logoUrl: org.logoUrl ?? null, legalAddress: org.legalAddress ?? null,
-      actualAddress: org.actualAddress ?? null, bankAccountId: org.bankAccountId ?? null,
+      id: org.id,
+      orgId: org.orgId,
+      name: org.name,
+      edrpou: org.edrpou,
+      logoUrl: org.logoUrl ?? null,
+      legalAddress: org.legalAddress ?? null,
+      actualAddress: org.actualAddress ?? null,
+      bankAccountId: org.bankAccountId ?? null,
       updatedAt: org.updatedAt,
     };
   }

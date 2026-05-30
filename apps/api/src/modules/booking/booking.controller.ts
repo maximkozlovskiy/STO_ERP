@@ -1,7 +1,18 @@
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body,
-  Query, UseGuards, HttpCode, HttpStatus, ParseUUIDPipe,
-  NotFoundException, BadRequestException,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  ParseUUIDPipe,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -86,10 +97,7 @@ export class BookingController {
   @ApiBearerAuth()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Підтвердити заявку' })
-  confirm(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: { orgId: string },
-  ) {
+  confirm(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: { orgId: string }) {
     return this.service.confirm(user.orgId, id);
   }
 
@@ -99,10 +107,7 @@ export class BookingController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Скасувати заявку' })
-  cancel(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: { orgId: string },
-  ) {
+  cancel(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: { orgId: string }) {
     return this.service.cancel(user.orgId, id);
   }
 }

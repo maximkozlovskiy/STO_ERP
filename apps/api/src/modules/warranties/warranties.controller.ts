@@ -1,6 +1,14 @@
 import {
-  Controller, Get, Post, Param, Body, Query,
-  UseGuards, HttpCode, HttpStatus, ParseUUIDPipe,
+  Controller,
+  Get,
+  Post,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -21,10 +29,7 @@ export class WarrantiesController {
   @HttpCode(HttpStatus.CREATED)
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Створити гарантію' })
-  create(
-    @Body() dto: CreateWarrantyDto,
-    @CurrentUser() user: { id: string; orgId: string },
-  ) {
+  create(@Body() dto: CreateWarrantyDto, @CurrentUser() user: { id: string; orgId: string }) {
     return this.service.create(user.orgId, dto);
   }
 

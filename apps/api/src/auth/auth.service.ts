@@ -125,12 +125,22 @@ export class AuthService {
       select: { id: true, orgId: true, firstName: true, lastName: true, role: true },
     });
     if (!emp) throw new NotFoundException('Користувача не знайдено');
-    const auth = await this.prisma.authAccount.findFirst({ where: { employeeId, orgId, deletedAt: null }, select: { email: true } });
+    const auth = await this.prisma.authAccount.findFirst({
+      where: { employeeId, orgId, deletedAt: null },
+      select: { email: true },
+    });
     return { ...emp, email: auth?.email ?? null };
   }
 
-  async changePassword(orgId: string, employeeId: string, currentPassword: string, newPassword: string): Promise<void> {
-    const auth = await this.prisma.authAccount.findFirst({ where: { employeeId, orgId, deletedAt: null } });
+  async changePassword(
+    orgId: string,
+    employeeId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const auth = await this.prisma.authAccount.findFirst({
+      where: { employeeId, orgId, deletedAt: null },
+    });
     if (!auth) throw new NotFoundException('Обліковий запис не знайдено');
     const valid = await bcrypt.compare(currentPassword, auth.passwordHash);
     if (!valid) throw new UnauthorizedException('Поточний пароль невірний');

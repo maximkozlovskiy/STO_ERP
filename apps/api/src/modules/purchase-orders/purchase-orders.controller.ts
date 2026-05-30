@@ -1,6 +1,16 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe, Query,
-  UseGuards, HttpCode, HttpStatus,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -10,8 +20,10 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import {
-  CreatePurchaseOrderDto, UpdatePurchaseOrderDto,
-  ReceivePurchaseOrderDto, TransitionPurchaseOrderDto,
+  CreatePurchaseOrderDto,
+  UpdatePurchaseOrderDto,
+  ReceivePurchaseOrderDto,
+  TransitionPurchaseOrderDto,
 } from './purchase-orders.dto';
 
 @ApiTags('Purchase Orders')
@@ -96,10 +108,7 @@ export class PurchaseOrdersController {
   @Post(':id/apply-pricing')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Розцінити товари замовлення за правилами ціноутворення' })
-  applyPricing(
-    @OrgContext() orgId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  applyPricing(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.applyPricing(orgId, id);
   }
 }

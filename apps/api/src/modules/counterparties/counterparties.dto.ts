@@ -1,5 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+  Max,
+  IsArray,
+  ArrayMaxSize,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { CounterpartyType, LegalForm } from '@prisma/client';
 
@@ -59,7 +71,11 @@ export class CounterpartyQueryDto {
   @Transform(({ value }) => {
     if (!value) return undefined;
     // Accept comma-separated string OR array
-    const arr = Array.isArray(value) ? value : String(value).split(',').map(s => s.trim());
+    const arr = Array.isArray(value)
+      ? value
+      : String(value)
+          .split(',')
+          .map(s => s.trim());
     return arr.filter(Boolean);
   })
   @IsArray()
@@ -73,8 +89,19 @@ export class CounterpartyQueryDto {
   @IsBoolean()
   showDeleted?: boolean;
 
-  @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) page: number = 1;
-  @ApiPropertyOptional({ default: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit: number = 20;
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page: number = 1;
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit: number = 20;
 }
 
 export class CounterpartyResponseDto {
@@ -99,7 +126,8 @@ export class CounterpartyResponseDto {
   @ApiPropertyOptional() balance?: number;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
-  @ApiPropertyOptional({ description: 'Set when soft-deleted (showDeleted=true)' }) deletedAt?: Date | null;
+  @ApiPropertyOptional({ description: 'Set when soft-deleted (showDeleted=true)' })
+  deletedAt?: Date | null;
 }
 
 export class PaginatedCounterpartiesDto {

@@ -21,10 +21,10 @@ interface ModalProps {
 
 // Pixel max-width per size — used for smooth CSS transition via inline style
 const sizeWidths: Record<ModalSize, string> = {
-  sm:   '384px',
-  md:   '512px',
-  lg:   '672px',
-  xl:   '896px',
+  sm: '384px',
+  md: '512px',
+  lg: '672px',
+  xl: '896px',
   full: '95vw',
 };
 
@@ -81,15 +81,28 @@ export function AnimatedBody({ children, className }: { children: ReactNode; cla
 }
 
 export function Modal({
-  open, onClose, title, description, children, footer, size = 'md', className, hideClose,
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  size = 'md',
+  className,
+  hideClose,
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
 
-  const handleKey = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') onClose();
-  }, [onClose]);
+  const handleKey = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    },
+    [onClose],
+  );
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -135,13 +148,14 @@ export function Modal({
           <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-border shrink-0">
             <div className="flex flex-col gap-1">
               {title && (
-                <h2 id="modal-title" className="text-[16px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
+                <h2
+                  id="modal-title"
+                  className="text-[16px] font-semibold text-foreground leading-tight tracking-[-0.01em]"
+                >
                   {title}
                 </h2>
               )}
-              {description && (
-                <p className="text-[13px] text-muted-foreground">{description}</p>
-              )}
+              {description && <p className="text-[13px] text-muted-foreground">{description}</p>}
             </div>
             {!hideClose && (
               <button
@@ -178,5 +192,7 @@ export function Modal({
 }
 
 export function ModalFooter({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('flex items-center justify-end gap-2 w-full', className)}>{children}</div>;
+  return (
+    <div className={cn('flex items-center justify-end gap-2 w-full', className)}>{children}</div>
+  );
 }

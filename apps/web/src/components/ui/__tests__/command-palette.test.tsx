@@ -6,7 +6,13 @@ import { CommandPalette } from '../command-palette';
 // next/navigation is referenced via useRouter — mock it for jsdom tests.
 const pushMock = vi.fn();
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock, replace: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({
+    push: pushMock,
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
   usePathname: () => '/',
 }));
 
@@ -136,7 +142,9 @@ describe('CommandPalette', () => {
 
     // The component debounces /search by 300ms and shows "Пошук у даних…"
     // while loading; use findByText to wait for the loaded empty state.
-    expect(await screen.findByText('Нічого не знайдено', undefined, { timeout: 2000 })).toBeInTheDocument();
+    expect(
+      await screen.findByText('Нічого не знайдено', undefined, { timeout: 2000 }),
+    ).toBeInTheDocument();
   });
 
   it('ArrowDown зупиняється на останньому елементі', async () => {

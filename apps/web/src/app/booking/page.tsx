@@ -6,8 +6,18 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 
-interface Branch { id: string; name: string; address?: string | null; }
-interface AvailabilitySlot { startAt: string; endAt: string; liftId: string; liftName: string; available: boolean; }
+interface Branch {
+  id: string;
+  name: string;
+  address?: string | null;
+}
+interface AvailabilitySlot {
+  startAt: string;
+  endAt: string;
+  liftId: string;
+  liftName: string;
+  available: boolean;
+}
 
 // Bug #111: public booking widget must NOT use `apiFetch` — that helper redirects
 // to /login on any 401, which would happen the moment we try to hit auth-guarded
@@ -21,8 +31,12 @@ async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     // Bug #137: NestJS class-validator повертає `message: string[]` при 400 — join з '; '.
-    const body = (await res.json().catch(() => ({ message: res.statusText }))) as { message?: string | string[] };
-    const msg = Array.isArray(body.message) ? body.message.join('; ') : (body.message ?? `HTTP ${res.status}`);
+    const body = (await res.json().catch(() => ({ message: res.statusText }))) as {
+      message?: string | string[];
+    };
+    const msg = Array.isArray(body.message)
+      ? body.message.join('; ')
+      : (body.message ?? `HTTP ${res.status}`);
     throw new Error(msg);
   }
   if (res.status === 204) return undefined as T;
@@ -60,8 +74,12 @@ export default function BookingPage() {
         if (cancelled) return;
         if (Array.isArray(d)) setBranches(d);
       })
-      .catch(() => { /* widget shows "Завантаження..." until branches arrive; failure is silent */ });
-    return () => { cancelled = true; };
+      .catch(() => {
+        /* widget shows "Завантаження..." until branches arrive; failure is silent */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -72,10 +90,18 @@ export default function BookingPage() {
     publicFetch<AvailabilitySlot[]>(
       `/booking/availability?branchId=${selectedBranch.id}&date=${date}`,
     )
-      .then(d => { if (!cancelled) setSlots(Array.isArray(d) ? d.filter(s => s.available) : []); })
-      .catch(() => { if (!cancelled) setSlots([]); })
-      .finally(() => { if (!cancelled) setSlotsLoading(false); });
-    return () => { cancelled = true; };
+      .then(d => {
+        if (!cancelled) setSlots(Array.isArray(d) ? d.filter(s => s.available) : []);
+      })
+      .catch(() => {
+        if (!cancelled) setSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [date, selectedBranch]);
 
   const handleSubmit = async () => {
@@ -135,7 +161,10 @@ export default function BookingPage() {
                   <button
                     key={b.id}
                     type="button"
-                    onClick={() => { setSelectedBranch(b); setSelectedSlot(null); }}
+                    onClick={() => {
+                      setSelectedBranch(b);
+                      setSelectedSlot(null);
+                    }}
                     className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-colors ${
                       selectedBranch?.id === b.id
                         ? 'border-primary bg-primary/10 text-foreground'
@@ -143,7 +172,9 @@ export default function BookingPage() {
                     }`}
                   >
                     <div className="font-medium">{b.name}</div>
-                    {b.address && <div className="text-[12px] text-muted-foreground">{b.address}</div>}
+                    {b.address && (
+                      <div className="text-[12px] text-muted-foreground">{b.address}</div>
+                    )}
                   </button>
                 ))}
               </div>
@@ -162,23 +193,28 @@ export default function BookingPage() {
             {/* Слоти */}
             {date && selectedBranch && (
               <div>
-                <label className="block text-[13px] font-medium text-foreground mb-2">Вільний час</label>
+                <label className="block text-[13px] font-medium text-foreground mb-2">
+                  Вільний час
+                </label>
                 {slotsLoading ? (
-                  <div className="flex justify-center py-4"><Spinner /></div>
+                  <div className="flex justify-center py-4">
+                    <Spinner />
+                  </div>
                 ) : slots.length === 0 ? (
                   <div className="text-center text-muted-foreground text-sm py-4">
                     На обрану дату немає вільних слотів
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
-                    {slots.map((s) => {
+                    {slots.map(s => {
                       // Stable per-slot key (liftId + startAt) — using array
                       // index causes React to retain focus/style on the wrong
                       // button when slots re-render after a filter change.
                       const slotKey = `${s.liftId}-${s.startAt}`;
-                      const isSelected = !!selectedSlot
-                        && selectedSlot.liftId === s.liftId
-                        && selectedSlot.startAt === s.startAt;
+                      const isSelected =
+                        !!selectedSlot &&
+                        selectedSlot.liftId === s.liftId &&
+                        selectedSlot.startAt === s.startAt;
                       return (
                         <button
                           key={slotKey}
@@ -190,7 +226,10 @@ export default function BookingPage() {
                               : 'border-border bg-input text-foreground hover:bg-secondary'
                           }`}
                         >
-                          {new Date(s.startAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(s.startAt).toLocaleTimeString('uk-UA', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
                         </button>
                       );
                     })}

@@ -49,7 +49,7 @@ const schedule = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const makeJob = (orgId = 'org-1') => ({ data: { orgId } } as Job<FollowUpJob>);
+const makeJob = (orgId = 'org-1') => ({ data: { orgId } }) as Job<FollowUpJob>;
 
 const makePrismaMock = () => ({
   organisationSettings: { findFirst: vi.fn() },
@@ -78,20 +78,29 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('повертається без виклику send, якщо followUpActive=false', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: false, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: false,
+      followUpDays: 90,
+    });
     await processor.handleSendReminders(makeJob());
     expect(notifications.send).not.toHaveBeenCalled();
   });
 
   it('повертається без виклику send, якщо org не має активного branch', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue(null);
     await processor.handleSendReminders(makeJob());
     expect(notifications.send).not.toHaveBeenCalled();
   });
 
   it('фільтрує soft-deleted vehicles/garages/counterparties у maintenance', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([
       // Active — ok
@@ -102,14 +111,22 @@ describe('FollowUpProcessor.handleSendReminders', () => {
       schedule({
         id: 'sch-deleted-g',
         vehicle: vehicle({
-          customerGarage: { id: 'cg-2', deletedAt: new Date(), counterparty: cp({ id: 'cp-2', phone: '+380999' }) },
+          customerGarage: {
+            id: 'cg-2',
+            deletedAt: new Date(),
+            counterparty: cp({ id: 'cp-2', phone: '+380999' }),
+          },
         }),
       }),
       // soft-deleted counterparty — filtered
       schedule({
         id: 'sch-deleted-cp',
         vehicle: vehicle({
-          customerGarage: { id: 'cg-3', deletedAt: null, counterparty: cp({ id: 'cp-3', phone: '+380888', deletedAt: new Date() }) },
+          customerGarage: {
+            id: 'cg-3',
+            deletedAt: null,
+            counterparty: cp({ id: 'cp-3', phone: '+380888', deletedAt: new Date() }),
+          },
         }),
       }),
     ]);
@@ -126,7 +143,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('дедуплікує phone — один клієнт з кількома авто отримує лише 1 SMS', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     // Той самий phone у двох розкладах maintenance
     prisma.maintenanceSchedule.findMany.mockResolvedValue([
@@ -140,7 +160,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('пропускає клієнтів без phone', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([
       schedule({
@@ -156,7 +179,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('inactive vehicle з останнім WO до cutoff надсилається SMS', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([]);
     const oldCompletedAt = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000); // 120 days ago
@@ -181,7 +207,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('inactive vehicle без жодного COMPLETED WO — пропуск (DB filter заодно + defensive check)', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([]);
     prisma.vehicle.findMany.mockResolvedValue([
@@ -200,7 +229,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('throw lastError, якщо ВСІ виклики send провалились (для BullMQ retry)', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([schedule()]);
     prisma.vehicle.findMany.mockResolvedValue([]);
@@ -210,11 +242,34 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('НЕ throw якщо частина send успішна (часткові помилки не блокують batch)', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([
-      schedule({ id: 's1', vehicle: vehicle({ id: 'v1', customerGarage: { id: 'cg-1', deletedAt: null, counterparty: cp({ id: 'c1', phone: '+380111' }) } }) }),
-      schedule({ id: 's2', vehicle: vehicle({ id: 'v2', customerGarage: { id: 'cg-2', deletedAt: null, counterparty: cp({ id: 'c2', phone: '+380222' }) } }) }),
+      schedule({
+        id: 's1',
+        vehicle: vehicle({
+          id: 'v1',
+          customerGarage: {
+            id: 'cg-1',
+            deletedAt: null,
+            counterparty: cp({ id: 'c1', phone: '+380111' }),
+          },
+        }),
+      }),
+      schedule({
+        id: 's2',
+        vehicle: vehicle({
+          id: 'v2',
+          customerGarage: {
+            id: 'cg-2',
+            deletedAt: null,
+            counterparty: cp({ id: 'c2', phone: '+380222' }),
+          },
+        }),
+      }),
     ]);
     prisma.vehicle.findMany.mockResolvedValue([]);
     notifications.send.mockRejectedValueOnce(new Error('Phone invalid')); // 1st fails
@@ -225,7 +280,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('formatName fallback "клієнте" для контрагента без імен → SMS не "Вітаємо, !"', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([
       schedule({
@@ -233,7 +291,12 @@ describe('FollowUpProcessor.handleSendReminders', () => {
           customerGarage: {
             id: 'cg-1',
             deletedAt: null,
-            counterparty: cp({ firstName: null, lastName: null, companyName: null, phone: '+380000' }),
+            counterparty: cp({
+              firstName: null,
+              lastName: null,
+              companyName: null,
+              phone: '+380000',
+            }),
           },
         }),
       }),
@@ -249,7 +312,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('запит maintenanceSchedule фільтрує nextMaintenanceDate { gte: today, lte: today+14d }', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([]);
     prisma.vehicle.findMany.mockResolvedValue([]);
@@ -269,7 +335,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('запит vehicle фільтрує some+none — авто з минулим WO але без recent activity', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([]);
     prisma.vehicle.findMany.mockResolvedValue([]);
@@ -283,7 +352,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
   });
 
   it('обирає НАЙСТАРІШИЙ branch (orderBy: createdAt asc) для стабільного SMS sender', async () => {
-    prisma.organisationSettings.findFirst.mockResolvedValue({ followUpActive: true, followUpDays: 90 });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([]);
     prisma.vehicle.findMany.mockResolvedValue([]);

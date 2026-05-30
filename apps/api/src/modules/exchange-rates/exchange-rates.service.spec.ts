@@ -18,9 +18,14 @@ describe('ExchangeRatesService', () => {
   };
 
   const fullRow = (overrides: Record<string, unknown> = {}) => ({
-    id: 'er-1', orgId: 'org-1', currencyId: CURRENCY_ID,
-    date: new Date('2026-05-28'), rate: 41.5, coefficient: 1,
-    createdAt: new Date(), updatedAt: new Date(),
+    id: 'er-1',
+    orgId: 'org-1',
+    currencyId: CURRENCY_ID,
+    date: new Date('2026-05-28'),
+    rate: 41.5,
+    coefficient: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
     currency: { code: 'USD', name: 'Долар' },
     ...overrides,
   });
@@ -54,7 +59,9 @@ describe('ExchangeRatesService', () => {
     // Сервіс робить ОДИН exchangeRate.findFirst (fetch any row), потім branch на deletedAt.
     it('воскрешає soft-deleted курс замість create (Bug #152)', async () => {
       prisma.currency.findFirst.mockResolvedValueOnce({ id: CURRENCY_ID });
-      prisma.exchangeRate.findFirst.mockResolvedValueOnce(fullRow({ id: 'er-deleted', deletedAt: new Date() })); // soft-deleted row occupies unique key
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce(
+        fullRow({ id: 'er-deleted', deletedAt: new Date() }),
+      ); // soft-deleted row occupies unique key
       await service.create('org-1', { currencyId: CURRENCY_ID, date: '2026-05-28', rate: 42 });
       expect(prisma.exchangeRate.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -79,14 +86,16 @@ describe('ExchangeRatesService', () => {
       prisma.exchangeRate.findFirst
         .mockResolvedValueOnce(fullRow({ date: new Date('2026-05-28') })) // existing record
         .mockResolvedValueOnce(fullRow({ id: 'er-2', date: new Date('2026-06-01') })); // duplicate on new date
-      await expect(
-        service.update('org-1', 'er-1', { date: '2026-06-01' }),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.update('org-1', 'er-1', { date: '2026-06-01' })).rejects.toThrow(
+        ConflictException,
+      );
       expect(prisma.exchangeRate.update).not.toHaveBeenCalled();
     });
 
     it('дозволяє оновлення без зміни дати (без перевірки дубля)', async () => {
-      prisma.exchangeRate.findFirst.mockResolvedValueOnce(fullRow({ date: new Date('2026-05-28') }));
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce(
+        fullRow({ date: new Date('2026-05-28') }),
+      );
       await service.update('org-1', 'er-1', { rate: 43 });
       // findFirst викликається лише раз (existing), без duplicate-check
       expect(prisma.exchangeRate.findFirst).toHaveBeenCalledTimes(1);
@@ -95,7 +104,9 @@ describe('ExchangeRatesService', () => {
 
     it('кидає NotFoundException якщо курс не знайдено', async () => {
       prisma.exchangeRate.findFirst.mockResolvedValueOnce(null);
-      await expect(service.update('org-1', 'missing', { rate: 1 })).rejects.toThrow(NotFoundException);
+      await expect(service.update('org-1', 'missing', { rate: 1 })).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

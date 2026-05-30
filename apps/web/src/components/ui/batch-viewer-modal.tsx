@@ -52,7 +52,7 @@ function fmtDate(s: string) {
 function margin(sale: number, cost: number) {
   // Bug #24: guard sale=0 to avoid NaN/Infinity in UI
   if (!sale || !cost) return null;
-  return ((sale - cost) / sale * 100).toFixed(1);
+  return (((sale - cost) / sale) * 100).toFixed(1);
 }
 
 export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchViewerModalProps) {
@@ -70,12 +70,18 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
     const params = new URLSearchParams({ goodId });
     if (warehouseId) params.set('warehouseId', warehouseId);
     apiFetch<BatchLookupResult>(`/batches/lookup?${params}`)
-      .then(result => { if (!cancelled) setData(result); })
+      .then(result => {
+        if (!cancelled) setData(result);
+      })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження');
       })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open, goodId, warehouseId]);
 
   if (!open) return null;
@@ -99,11 +105,15 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
         {/* Header */}
         <div className="flex items-start justify-between p-4 border-b border-border">
           <div>
-            <h2 id="batch-viewer-title" className="text-[15px] font-semibold text-foreground">Партії та ціни</h2>
+            <h2 id="batch-viewer-title" className="text-[15px] font-semibold text-foreground">
+              Партії та ціни
+            </h2>
             {data && (
               <p className="text-[13px] text-muted-foreground mt-0.5">
                 {data.good.name}
-                {data.good.sku && <span className="ml-1 text-muted-foreground/70">({data.good.sku})</span>}
+                {data.good.sku && (
+                  <span className="ml-1 text-muted-foreground/70">({data.good.sku})</span>
+                )}
               </p>
             )}
           </div>
@@ -152,9 +162,13 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
               )}
             >
               {t === 'batches' ? (
-                <span className="flex items-center gap-1.5"><Package className="h-3.5 w-3.5" /> Партії</span>
+                <span className="flex items-center gap-1.5">
+                  <Package className="h-3.5 w-3.5" /> Партії
+                </span>
               ) : (
-                <span className="flex items-center gap-1.5"><TrendingUp className="h-3.5 w-3.5" /> Історія цін</span>
+                <span className="flex items-center gap-1.5">
+                  <TrendingUp className="h-3.5 w-3.5" /> Історія цін
+                </span>
               )}
             </button>
           ))}
@@ -173,7 +187,9 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
             <div className="space-y-3">
               {/* Active batches */}
               {activeBatches.length === 0 && depletedBatches.length === 0 && (
-                <p className="text-[13px] text-muted-foreground text-center py-6">Партії відсутні</p>
+                <p className="text-[13px] text-muted-foreground text-center py-6">
+                  Партії відсутні
+                </p>
               )}
               {activeBatches.map(b => (
                 <BatchRow
@@ -186,7 +202,9 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
               {/* Depleted batches */}
               {depletedBatches.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Вичерпані партії</p>
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                    Вичерпані партії
+                  </p>
                   {depletedBatches.map(b => (
                     <BatchRow
                       key={b.id}
@@ -204,14 +222,21 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
           {!loading && !error && data && tab === 'history' && (
             <div className="space-y-1">
               {data.priceHistory.length === 0 && (
-                <p className="text-[13px] text-muted-foreground text-center py-6">Змін ціни не було</p>
+                <p className="text-[13px] text-muted-foreground text-center py-6">
+                  Змін ціни не було
+                </p>
               )}
               {data.priceHistory.map(h => (
-                <div key={h.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                <div
+                  key={h.id}
+                  className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                >
                   <div>
                     <div className="flex items-center gap-2 text-[13px]">
                       {h.oldPrice != null && (
-                        <span className="text-muted-foreground line-through">{fmt(h.oldPrice)} ₴</span>
+                        <span className="text-muted-foreground line-through">
+                          {fmt(h.oldPrice)} ₴
+                        </span>
                       )}
                       <span className="font-medium text-foreground">{fmt(h.newPrice)} ₴</span>
                       {h.costPrice != null && (
@@ -220,9 +245,13 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
                         </span>
                       )}
                     </div>
-                    {h.reason && <p className="text-[11px] text-muted-foreground mt-0.5">{h.reason}</p>}
+                    {h.reason && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{h.reason}</p>
+                    )}
                   </div>
-                  <span className="text-[11px] text-muted-foreground shrink-0 ml-4">{fmtDate(h.createdAt)}</span>
+                  <span className="text-[11px] text-muted-foreground shrink-0 ml-4">
+                    {fmtDate(h.createdAt)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -244,28 +273,30 @@ function BatchRow({
   onToggle: () => void;
   depleted?: boolean;
 }) {
-  const pct = batch.receivedQty > 0
-    ? Math.round((batch.remainingQty / batch.receivedQty) * 100)
-    : 0;
+  const pct =
+    batch.receivedQty > 0 ? Math.round((batch.remainingQty / batch.receivedQty) * 100) : 0;
 
   return (
-    <div className={cn(
-      'border border-border rounded-lg overflow-hidden',
-      depleted && 'opacity-50',
-    )}>
+    <div
+      className={cn('border border-border rounded-lg overflow-hidden', depleted && 'opacity-50')}
+    >
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/50 transition-colors text-left"
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className={cn(
-            'h-2 w-2 rounded-full shrink-0',
-            depleted ? 'bg-muted-foreground' : 'bg-success',
-          )} />
+          <div
+            className={cn(
+              'h-2 w-2 rounded-full shrink-0',
+              depleted ? 'bg-muted-foreground' : 'bg-success',
+            )}
+          />
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-foreground truncate">
               {batch.purchaseOrderNumber ? `Накладна ${batch.purchaseOrderNumber}` : 'Ручна партія'}
-              {batch.batchNumber && <span className="ml-1 text-muted-foreground">№{batch.batchNumber}</span>}
+              {batch.batchNumber && (
+                <span className="ml-1 text-muted-foreground">№{batch.batchNumber}</span>
+              )}
             </p>
             <p className="text-[11px] text-muted-foreground">{fmtDate(batch.createdAt)}</p>
           </div>
@@ -281,7 +312,11 @@ function BatchRow({
             <p className="text-[13px] font-medium text-foreground">{fmt(batch.salePrice)} ₴</p>
             <p className="text-[11px] text-muted-foreground">продаж</p>
           </div>
-          {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          {expanded ? (
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          )}
         </div>
       </button>
       {expanded && (
@@ -296,7 +331,9 @@ function BatchRow({
           </div>
           <div>
             <p className="text-muted-foreground">Маржа</p>
-            <p className="font-medium text-success">{margin(batch.salePrice, batch.costPrice) ?? '—'}%</p>
+            <p className="font-medium text-success">
+              {margin(batch.salePrice, batch.costPrice) ?? '—'}%
+            </p>
           </div>
           {batch.expiryDate && (
             <div>

@@ -1,4 +1,10 @@
-import { Injectable, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BatchService } from './batch.service';
@@ -27,7 +33,11 @@ export class InventoryService {
     @Inject(forwardRef(() => BatchService)) private readonly batchService: BatchService,
   ) {}
 
-  async createMovement(orgId: string, dto: CreateMovementDto, tx?: Prisma.TransactionClient): Promise<void> {
+  async createMovement(
+    orgId: string,
+    dto: CreateMovementDto,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
     if (dto.quantity === 0) throw new BadRequestException('Кількість не може бути нульовою');
     if (!Number.isFinite(dto.quantity)) {
       throw new BadRequestException('Невірне значення кількості');
@@ -36,7 +46,7 @@ export class InventoryService {
       throw new BadRequestException('Невірне значення ціни');
     }
     if (dto.type === 'RESERVATION_RELEASE' && dto.quantity > 0) {
-      throw new BadRequestException('Зняття резерву: кількість повинна бути від\'ємною');
+      throw new BadRequestException("Зняття резерву: кількість повинна бути від'ємною");
     }
     const db = tx ?? this.prisma;
 
@@ -60,14 +70,20 @@ export class InventoryService {
       const quantity = item?.quantity ?? 0;
       const reserved = item?.reserved ?? 0;
       const available = quantity - reserved;
-      if (dto.quantity < 0 && dto.type !== 'RESERVATION_RELEASE' && available < Math.abs(dto.quantity)) {
+      if (
+        dto.quantity < 0 &&
+        dto.type !== 'RESERVATION_RELEASE' &&
+        available < Math.abs(dto.quantity)
+      ) {
         throw new BadRequestException('Недостатньо товару на складі');
       }
       if (dto.type === 'RESERVATION' && dto.quantity > available) {
         throw new BadRequestException('Недостатньо доступного товару для резервування');
       }
       if (dto.type === 'RESERVATION_RELEASE' && Math.abs(dto.quantity) > reserved) {
-        throw new BadRequestException('Неможливо зняти резерв: зарезервована кількість менша за запитану');
+        throw new BadRequestException(
+          'Неможливо зняти резерв: зарезервована кількість менша за запитану',
+        );
       }
     }
 
@@ -88,16 +104,20 @@ export class InventoryService {
 
     // Create batch on RECEIPT. resolvedCostPrice = dto.price ?? good.purchasePrice ?? 0.
     if (dto.type === 'RECEIPT' && dto.quantity > 0) {
-      await this.batchService.createFromReceipt(orgId, {
-        goodId: dto.goodId,
-        warehouseId: dto.warehouseId,
-        purchaseOrderLineId: dto.purchaseOrderLineId,
-        stockMovementId: movement.id,
-        batchNumber: dto.batchNumber,
-        expiryDate: dto.expiryDate,
-        receivedQty: dto.quantity,
-        costPrice: resolvedCostPrice ?? 0,
-      }, db as Prisma.TransactionClient);
+      await this.batchService.createFromReceipt(
+        orgId,
+        {
+          goodId: dto.goodId,
+          warehouseId: dto.warehouseId,
+          purchaseOrderLineId: dto.purchaseOrderLineId,
+          stockMovementId: movement.id,
+          batchNumber: dto.batchNumber,
+          expiryDate: dto.expiryDate,
+          receivedQty: dto.quantity,
+          costPrice: resolvedCostPrice ?? 0,
+        },
+        db as Prisma.TransactionClient,
+      );
     }
 
     // RESERVATION/RESERVATION_RELEASE only affect reserved counter, not physical quantity
@@ -105,12 +125,16 @@ export class InventoryService {
     const quantityDelta =
       dto.type === 'RESERVATION' || dto.type === 'RESERVATION_RELEASE' ? 0 : dto.quantity;
     const reservedDelta =
-      dto.type === 'RESERVATION' ? dto.quantity :           // positive → increases reserved
-      dto.type === 'RESERVATION_RELEASE' ? dto.quantity :   // negative → decreases reserved
-      0;
+      dto.type === 'RESERVATION'
+        ? dto.quantity // positive → increases reserved
+        : dto.type === 'RESERVATION_RELEASE'
+          ? dto.quantity // negative → decreases reserved
+          : 0;
 
     await db.stockItem.upsert({
-      where: { orgId_goodId_warehouseId: { orgId, goodId: dto.goodId, warehouseId: dto.warehouseId } },
+      where: {
+        orgId_goodId_warehouseId: { orgId, goodId: dto.goodId, warehouseId: dto.warehouseId },
+      },
       update: {
         quantity: { increment: quantityDelta },
         reserved: { increment: reservedDelta },
@@ -127,7 +151,11 @@ export class InventoryService {
     });
   }
 
-  async getStockLevel(orgId: string, goodId: string, warehouseId: string): Promise<{ quantity: number; reserved: number; available: number }> {
+  async getStockLevel(
+    orgId: string,
+    goodId: string,
+    warehouseId: string,
+  ): Promise<{ quantity: number; reserved: number; available: number }> {
     const item = await this.prisma.stockItem.findFirst({
       where: { orgId, goodId, warehouseId, deletedAt: null },
     });
@@ -181,10 +209,17 @@ export class InventoryService {
   async findLowStockItems(orgId: string) {
     // Use raw query for cross-field comparison (quantity <= minStock) — Prisma doesn't support it in where.
     // Prisma schema uses camelCase without @map, so Postgres columns are camelCase and require double quotes.
-    const rows = await this.prisma.$queryRaw<Array<{
-      goodId: string; goodName: string; goodSku: string | null; unit: string;
-      warehouseName: string; quantity: number; minStock: number;
-    }>>`
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        goodId: string;
+        goodName: string;
+        goodSku: string | null;
+        unit: string;
+        warehouseName: string;
+        quantity: number;
+        minStock: number;
+      }>
+    >`
       SELECT
         si."goodId"     AS "goodId",
         g.name          AS "goodName",
@@ -218,10 +253,19 @@ export class InventoryService {
     }));
   }
 
-  async updateMinStock(orgId: string, stockItemId: string, minStock: number | null): Promise<{ id: string; minStock: number | null }> {
-    const item = await this.prisma.stockItem.findFirst({ where: { id: stockItemId, orgId, deletedAt: null } });
+  async updateMinStock(
+    orgId: string,
+    stockItemId: string,
+    minStock: number | null,
+  ): Promise<{ id: string; minStock: number | null }> {
+    const item = await this.prisma.stockItem.findFirst({
+      where: { id: stockItemId, orgId, deletedAt: null },
+    });
     if (!item) throw new NotFoundException('Залишок не знайдено');
-    const updated = await this.prisma.stockItem.update({ where: { id: stockItemId }, data: { minStock } });
+    const updated = await this.prisma.stockItem.update({
+      where: { id: stockItemId },
+      data: { minStock },
+    });
     return { id: updated.id, minStock: updated.minStock ?? null };
   }
 }

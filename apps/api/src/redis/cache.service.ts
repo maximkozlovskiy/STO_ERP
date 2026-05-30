@@ -26,13 +26,17 @@ export class CacheService {
   async del(...keys: string[]): Promise<void> {
     try {
       if (keys.length) await this.redis.del(...keys);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async delPattern(pattern: string): Promise<void> {
     try {
       const keys = await this.redis.keys(pattern);
       if (keys.length) await this.redis.del(...keys);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 }

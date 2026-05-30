@@ -60,8 +60,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
 
   it('кидає NotFoundException коли PO не знайдено', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce(null);
-    await expect(service.applyPricing(ORG, PO_ID))
-      .rejects.toThrow(NotFoundException);
+    await expect(service.applyPricing(ORG, PO_ID)).rejects.toThrow(NotFoundException);
     expect(prisma.good.updateMany).not.toHaveBeenCalled();
     expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
   });
@@ -69,10 +68,13 @@ describe('PurchaseOrdersService.applyPricing', () => {
   // Bug #200: status guard — DRAFT/ORDERED/CANCELLED не дозволені
   it('Bug #200 status guard: DRAFT → BadRequestException + не пише ні good ні priceHistory', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
-      id: PO_ID, orgId: ORG, number: 'PO-DRAFT', status: PurchaseOrderStatus.DRAFT, lines: [],
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-DRAFT',
+      status: PurchaseOrderStatus.DRAFT,
+      lines: [],
     });
-    await expect(service.applyPricing(ORG, PO_ID))
-      .rejects.toThrow(BadRequestException);
+    await expect(service.applyPricing(ORG, PO_ID)).rejects.toThrow(BadRequestException);
     expect(pricingService.getActiveRulesForOrg).not.toHaveBeenCalled();
     expect(prisma.good.updateMany).not.toHaveBeenCalled();
     expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
@@ -81,11 +83,21 @@ describe('PurchaseOrdersService.applyPricing', () => {
   // Bug #200: status guard — PARTIAL дозволений (друга гілка)
   it('Bug #200 status guard: PARTIAL → дозволено, applyPricing виконується', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
-      id: PO_ID, orgId: ORG, number: 'PO-PARTIAL', status: PurchaseOrderStatus.PARTIAL,
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-PARTIAL',
+      status: PurchaseOrderStatus.PARTIAL,
       lines: [
         {
-          goodId: 'good-1', price: 100,
-          good: { name: 'Filter', salePrice: 130, category: null, goodType: 'SPARE_PART', brandId: null },
+          goodId: 'good-1',
+          price: 100,
+          good: {
+            name: 'Filter',
+            salePrice: 130,
+            category: null,
+            goodType: 'SPARE_PART',
+            brandId: null,
+          },
         },
       ],
     });
@@ -98,7 +110,11 @@ describe('PurchaseOrdersService.applyPricing', () => {
 
   it('PO без lines → { updated: 0, details: [] } без жодного writeу', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
-      id: PO_ID, orgId: ORG, number: 'PO-001', status: PurchaseOrderStatus.RECEIVED, lines: [],
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-001',
+      status: PurchaseOrderStatus.RECEIVED,
+      lines: [],
     });
     const result = await service.applyPricing(ORG, PO_ID);
     expect(result).toEqual({ updated: 0, details: [] });
@@ -109,11 +125,21 @@ describe('PurchaseOrdersService.applyPricing', () => {
 
   it('ціна не змінилась (різниця < 0.001) → skip: не пише ні good.updateMany ні priceHistory', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
-      id: PO_ID, orgId: ORG, number: 'PO-002', status: PurchaseOrderStatus.RECEIVED,
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-002',
+      status: PurchaseOrderStatus.RECEIVED,
       lines: [
         {
-          goodId: 'good-1', price: 100,
-          good: { name: 'Filter', salePrice: 130, category: null, goodType: 'SPARE_PART', brandId: null },
+          goodId: 'good-1',
+          price: 100,
+          good: {
+            name: 'Filter',
+            salePrice: 130,
+            category: null,
+            goodType: 'SPARE_PART',
+            brandId: null,
+          },
         },
       ],
     });
@@ -130,11 +156,21 @@ describe('PurchaseOrdersService.applyPricing', () => {
 
   it('ціна змінилась → виклик $transaction([good.updateMany, priceHistory.createMany])', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
-      id: PO_ID, orgId: ORG, number: 'PO-003', status: PurchaseOrderStatus.RECEIVED,
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-003',
+      status: PurchaseOrderStatus.RECEIVED,
       lines: [
         {
-          goodId: 'good-2', price: 100,
-          good: { name: 'Brake pad', salePrice: 130, category: 'BRAKES', goodType: 'SPARE_PART', brandId: 'brand-1' },
+          goodId: 'good-2',
+          price: 100,
+          good: {
+            name: 'Brake pad',
+            salePrice: 130,
+            category: 'BRAKES',
+            goodType: 'SPARE_PART',
+            brandId: 'brand-1',
+          },
         },
       ],
     });
@@ -143,13 +179,15 @@ describe('PurchaseOrdersService.applyPricing', () => {
     const result = await service.applyPricing(ORG, PO_ID);
 
     expect(result.updated).toBe(1);
-    expect(result.details).toEqual([{
-      goodId: 'good-2',
-      goodName: 'Brake pad',
-      costPrice: 100,
-      oldSalePrice: 130,
-      newSalePrice: 150,
-    }]);
+    expect(result.details).toEqual([
+      {
+        goodId: 'good-2',
+        goodName: 'Brake pad',
+        costPrice: 100,
+        oldSalePrice: 130,
+        newSalePrice: 150,
+      },
+    ]);
     // Bug #191: updateMany з orgId — defense-in-depth
     expect(prisma.good.updateMany).toHaveBeenCalledWith({
       where: { id: 'good-2', orgId: ORG, deletedAt: null },
@@ -175,14 +213,19 @@ describe('PurchaseOrdersService.applyPricing', () => {
 
   it('mixed lines (одна змінилась, інша ні) → updated=1, тільки один write', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
-      id: PO_ID, orgId: ORG, number: 'PO-004', status: PurchaseOrderStatus.RECEIVED,
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-004',
+      status: PurchaseOrderStatus.RECEIVED,
       lines: [
         {
-          goodId: 'g-a', price: 100,
+          goodId: 'g-a',
+          price: 100,
           good: { name: 'A', salePrice: 150, category: null, goodType: null, brandId: null },
         },
         {
-          goodId: 'g-b', price: 50,
+          goodId: 'g-b',
+          price: 50,
           good: { name: 'B', salePrice: 70, category: null, goodType: null, brandId: null },
         },
       ],
@@ -193,9 +236,15 @@ describe('PurchaseOrdersService.applyPricing', () => {
 
     const result = await service.applyPricing(ORG, PO_ID);
     expect(result.updated).toBe(1);
-    expect(result.details).toEqual([{
-      goodId: 'g-b', goodName: 'B', costPrice: 50, oldSalePrice: 70, newSalePrice: 80,
-    }]);
+    expect(result.details).toEqual([
+      {
+        goodId: 'g-b',
+        goodName: 'B',
+        costPrice: 50,
+        oldSalePrice: 70,
+        newSalePrice: 80,
+      },
+    ]);
     expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
     expect(prisma.good.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ id: 'g-b' }) }),
@@ -204,10 +253,11 @@ describe('PurchaseOrdersService.applyPricing', () => {
 
   it('пропускає line.good=null (soft-deleted Good) без TypeError', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
-      id: PO_ID, orgId: ORG, number: 'PO-005', status: PurchaseOrderStatus.RECEIVED,
-      lines: [
-        { goodId: 'orphan', price: 100, good: null },
-      ],
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-005',
+      status: PurchaseOrderStatus.RECEIVED,
+      lines: [{ goodId: 'orphan', price: 100, good: null }],
     });
     const result = await service.applyPricing(ORG, PO_ID);
     expect(result.updated).toBe(0);

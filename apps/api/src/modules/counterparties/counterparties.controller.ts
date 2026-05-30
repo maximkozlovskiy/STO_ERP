@@ -1,12 +1,30 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import {
-  CounterpartyQueryDto, CounterpartyResponseDto, CreateCounterpartyDto,
-  CreateGarageDto, GarageResponseDto, PaginatedCounterpartiesDto, UpdateCounterpartyDto,
+  CounterpartyQueryDto,
+  CounterpartyResponseDto,
+  CreateCounterpartyDto,
+  CreateGarageDto,
+  GarageResponseDto,
+  PaginatedCounterpartiesDto,
+  UpdateCounterpartyDto,
 } from './counterparties.dto';
 import { CounterpartiesService } from './counterparties.service';
 
@@ -42,7 +60,11 @@ export class CounterpartiesController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
-  update(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCounterpartyDto) {
+  update(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCounterpartyDto,
+  ) {
     return this.service.update(orgId, id, dto);
   }
 
@@ -67,14 +89,22 @@ export class CounterpartiesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Додати гараж' })
   @ApiResponse({ status: 201, type: GarageResponseDto })
-  createGarage(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateGarageDto) {
+  createGarage(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateGarageDto,
+  ) {
     return this.service.createGarage(orgId, id, dto);
   }
 
   @Delete(':id/garages/:garageId')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  removeGarage(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Param('garageId', ParseUUIDPipe) garageId: string) {
+  removeGarage(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('garageId', ParseUUIDPipe) garageId: string,
+  ) {
     return this.service.removeGarage(orgId, id, garageId);
   }
 }

@@ -1,6 +1,13 @@
 'use client';
 
-import { createContext, useContext, useEffect, useReducer, useCallback, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useReducer,
+  useCallback,
+  type ReactNode,
+} from 'react';
 import type { AuthEmployee, AuthState } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -11,7 +18,7 @@ const TOKEN_KEY = 'sto_access_token';
 const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403', '/booking'];
 
 function isPublicPathname(pathname: string): boolean {
-  return PUBLIC_ROUTES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return PUBLIC_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 // ─── State ───────────────────────────────────────────────
@@ -63,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         credentials: 'include',
       });
       if (!res.ok) return false;
-      const data = await res.json() as { accessToken: string; employee?: AuthEmployee };
+      const data = (await res.json()) as { accessToken: string; employee?: AuthEmployee };
       if (!data.accessToken) return false;
 
       const employee = data.employee ?? state.employee;
@@ -90,12 +97,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Публічна сторінка + немає stored token — користувач не авторизований і це OK.
       // Просто завершуємо loading без HTTP запиту.
       dispatch({ type: 'LOGOUT' });
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }
 
     if (stored) {
       // Token in sessionStorage — still need to get employee info via refresh
-      refreshToken().then((ok) => {
+      refreshToken().then(ok => {
         if (cancelled) return;
         if (!ok) {
           sessionStorage.removeItem(TOKEN_KEY);
@@ -105,12 +114,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } else {
       // Try silent refresh (cookie might still be valid)
-      refreshToken().then((ok) => {
+      refreshToken().then(ok => {
         if (cancelled) return;
         if (!ok) dispatch({ type: 'LOGOUT' });
       });
     }
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -124,12 +135,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!res.ok) {
       // Bug #137: NestJS class-validator повертає `message: string[]` при 400 — join з '; '.
-      const err = await res.json().catch(() => ({ message: 'Помилка входу' })) as { message: string | string[] };
-      const msg = Array.isArray(err.message) ? err.message.join('; ') : (err.message ?? 'Помилка входу');
+      const err = (await res.json().catch(() => ({ message: 'Помилка входу' }))) as {
+        message: string | string[];
+      };
+      const msg = Array.isArray(err.message)
+        ? err.message.join('; ')
+        : (err.message ?? 'Помилка входу');
       throw new Error(msg);
     }
 
-    const data = await res.json() as { accessToken: string; employee: AuthEmployee };
+    const data = (await res.json()) as { accessToken: string; employee: AuthEmployee };
     sessionStorage.setItem(TOKEN_KEY, data.accessToken);
     dispatch({ type: 'LOGIN', employee: data.employee, accessToken: data.accessToken });
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('sto:login'));

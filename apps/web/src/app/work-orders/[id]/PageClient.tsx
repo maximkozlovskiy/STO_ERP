@@ -27,37 +27,73 @@ import { toast } from '@/lib/toast';
 
 interface WorkOrderMedia {
   // Bug #93: `fileKey` removed — backend no longer leaks the internal MinIO path.
-  id: string; workOrderId: string; filename: string;
-  mimeType: string; sizeBytes: number; uploadedBy: string;
-  signedUrl: string; createdAt: string;
+  id: string;
+  workOrderId: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedBy: string;
+  signedUrl: string;
+  createdAt: string;
 }
 
 interface AuditEventItem {
-  id: string; action: string; diff: Record<string, unknown>;
+  id: string;
+  action: string;
+  diff: Record<string, unknown>;
   createdAt: string;
   user: { firstName: string; lastName: string };
 }
 
 interface WorkOrderLine {
-  id: string; workId: string; workName?: string;
-  employeeId: string; employeeName?: string;
-  liftId?: string | null; normoHours: number; actualHours?: number | null; price: number; amount: number; notes?: string | null;
+  id: string;
+  workId: string;
+  workName?: string;
+  employeeId: string;
+  employeeName?: string;
+  liftId?: string | null;
+  normoHours: number;
+  actualHours?: number | null;
+  price: number;
+  amount: number;
+  notes?: string | null;
 }
 interface WorkOrderPart {
-  id: string; goodId: string; goodName?: string;
-  unitShortName?: string; coefficient?: number;
-  warehouseId: string; quantity: number; price: number; amount: number;
+  id: string;
+  goodId: string;
+  goodName?: string;
+  unitShortName?: string;
+  coefficient?: number;
+  warehouseId: string;
+  quantity: number;
+  price: number;
+  amount: number;
 }
 interface WorkOrderDetail {
-  id: string; number: string; status: string;
-  branchId: string; branchName?: string;
-  vehicleId: string; vehicleSummary?: string;
-  counterpartyId: string; counterpartyName?: string;
-  description?: string | null; inMileage?: number | null; outMileage?: number | null;
-  plannedAt?: string | null; completedAt?: string | null; dueDate?: string | null;
-  priority?: string | null; repairCategory?: string | null; clientApproval?: boolean | null;
-  totalLabor: number; totalParts: number; totalAmount: number; paidAmount: number;
-  lines: WorkOrderLine[]; parts: WorkOrderPart[];
+  id: string;
+  number: string;
+  status: string;
+  branchId: string;
+  branchName?: string;
+  vehicleId: string;
+  vehicleSummary?: string;
+  counterpartyId: string;
+  counterpartyName?: string;
+  description?: string | null;
+  inMileage?: number | null;
+  outMileage?: number | null;
+  plannedAt?: string | null;
+  completedAt?: string | null;
+  dueDate?: string | null;
+  priority?: string | null;
+  repairCategory?: string | null;
+  clientApproval?: boolean | null;
+  totalLabor: number;
+  totalParts: number;
+  totalAmount: number;
+  paidAmount: number;
+  lines: WorkOrderLine[];
+  parts: WorkOrderPart[];
 }
 
 interface Comment {
@@ -69,29 +105,64 @@ interface Comment {
 }
 
 interface CompletionActSummary {
-  id: string; number: string; status: 'DRAFT' | 'SIGNED' | 'CANCELLED';
-  signedAt?: string | null; signedBy?: string | null;
+  id: string;
+  number: string;
+  status: 'DRAFT' | 'SIGNED' | 'CANCELLED';
+  signedAt?: string | null;
+  signedBy?: string | null;
 }
-interface Work { id: string; name: string; normoHours: number; price: number; }
-interface Employee { id: string; firstName: string; lastName: string; }
-interface Good { id: string; name: string; sku?: string; salePrice: number; }
-interface Warehouse { id: string; name: string; isMain: boolean; }
+interface Work {
+  id: string;
+  name: string;
+  normoHours: number;
+  price: number;
+}
+interface Employee {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+interface Good {
+  id: string;
+  name: string;
+  sku?: string;
+  salePrice: number;
+}
+interface Warehouse {
+  id: string;
+  name: string;
+  isMain: boolean;
+}
 
 // ─── Inspection ───────────────────────────────────────────────────────────────
 interface InspectionPoint {
-  name: string; value: string; unit: string; status: 'OK' | 'WARN' | 'CRITICAL'; notes?: string;
+  name: string;
+  value: string;
+  unit: string;
+  status: 'OK' | 'WARN' | 'CRITICAL';
+  notes?: string;
 }
 interface InspectionReport {
-  id: string; mileage?: number | null; points: InspectionPoint[];
-  createdAt: string; autoCreatedLines?: number;
+  id: string;
+  mileage?: number | null;
+  points: InspectionPoint[];
+  createdAt: string;
+  autoCreatedLines?: number;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка', ESTIMATE: 'Кошторис', APPROVED: 'Затверджено',
-  IN_PROGRESS: 'В роботі', ON_HOLD: 'Призупинено', COMPLETED: 'Виконано',
-  INVOICED: 'Виставлено', PAID: 'Оплачено', ARCHIVED: 'Архів', CANCELLED: 'Скасовано',
+  DRAFT: 'Чернетка',
+  ESTIMATE: 'Кошторис',
+  APPROVED: 'Затверджено',
+  IN_PROGRESS: 'В роботі',
+  ON_HOLD: 'Призупинено',
+  COMPLETED: 'Виконано',
+  INVOICED: 'Виставлено',
+  PAID: 'Оплачено',
+  ARCHIVED: 'Архів',
+  CANCELLED: 'Скасовано',
 };
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-secondary text-muted-foreground',
@@ -116,9 +187,16 @@ const TRANSITIONS: Record<string, string[]> = {
   PAID: ['ARCHIVED'],
 };
 const TRANSITION_LABELS: Record<string, string> = {
-  ESTIMATE: 'Кошторис', APPROVED: 'Затвердити', IN_PROGRESS: 'В роботу',
-  ON_HOLD: 'Призупинити', COMPLETED: 'Виконано', INVOICED: 'Виставити рахунок',
-  PAID: 'Оплачено', ARCHIVED: 'В архів', CANCELLED: 'Скасувати', DRAFT: 'Повернути в чернетку',
+  ESTIMATE: 'Кошторис',
+  APPROVED: 'Затвердити',
+  IN_PROGRESS: 'В роботу',
+  ON_HOLD: 'Призупинити',
+  COMPLETED: 'Виконано',
+  INVOICED: 'Виставити рахунок',
+  PAID: 'Оплачено',
+  ARCHIVED: 'В архів',
+  CANCELLED: 'Скасувати',
+  DRAFT: 'Повернути в чернетку',
 };
 const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'> = {
   CANCELLED: 'destructive',
@@ -149,7 +227,9 @@ export default function WorkOrderCardPage() {
 
   const [lineModal, setLineModal] = useState(false);
   const [partModal, setPartModal] = useState(false);
-  const [batchViewer, setBatchViewer] = useState<{ goodId: string; warehouseId: string } | null>(null);
+  const [batchViewer, setBatchViewer] = useState<{ goodId: string; warehouseId: string } | null>(
+    null,
+  );
   const [transitioning, setTransitioning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingLineId, setDeletingLineId] = useState<string | null>(null);
@@ -157,8 +237,20 @@ export default function WorkOrderCardPage() {
   const [error, setError] = useState('');
   const [refsError, setRefsError] = useState('');
 
-  const [lineForm, setLineForm] = useState({ workId: '', employeeId: '', normoHours: '', actualHours: '', price: '', notes: '' });
-  const [partForm, setPartForm] = useState({ goodId: '', warehouseId: '', quantity: '1', price: '' });
+  const [lineForm, setLineForm] = useState({
+    workId: '',
+    employeeId: '',
+    normoHours: '',
+    actualHours: '',
+    price: '',
+    notes: '',
+  });
+  const [partForm, setPartForm] = useState({
+    goodId: '',
+    warehouseId: '',
+    quantity: '1',
+    price: '',
+  });
   const [goodDisplayName, setGoodDisplayName] = useState('');
   const [stockAvailable, setStockAvailable] = useState<number | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
@@ -189,7 +281,9 @@ export default function WorkOrderCardPage() {
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -199,14 +293,22 @@ export default function WorkOrderCardPage() {
     }
     let cancelled = false;
     setStockLoading(true);
-    apiFetch<{ items: { available: number }[] }>(`/stock-items?goodId=${partForm.goodId}&warehouseId=${partForm.warehouseId}&limit=1`)
+    apiFetch<{ items: { available: number }[] }>(
+      `/stock-items?goodId=${partForm.goodId}&warehouseId=${partForm.warehouseId}&limit=1`,
+    )
       .then(r => {
         if (cancelled) return;
         setStockAvailable(r.items[0]?.available ?? 0);
       })
-      .catch(() => { if (!cancelled) setStockAvailable(null); })
-      .finally(() => { if (!cancelled) setStockLoading(false); });
-    return () => { cancelled = true; };
+      .catch(() => {
+        if (!cancelled) setStockAvailable(null);
+      })
+      .finally(() => {
+        if (!cancelled) setStockLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [features.stockIndicatorEnabled, partForm.goodId, partForm.warehouseId]);
 
   const load = useCallback(() => {
@@ -220,7 +322,10 @@ export default function WorkOrderCardPage() {
         (e: unknown) => ({ kind: 'wo-error' as const, error: e }),
       ),
       apiFetch<{ items: CompletionActSummary[] }>(`/completion-acts?workOrderId=${id}`).catch(
-        (e: unknown) => { console.warn('[CompletionAct] load failed:', e); return { items: [] as CompletionActSummary[] }; },
+        (e: unknown) => {
+          console.warn('[CompletionAct] load failed:', e);
+          return { items: [] as CompletionActSummary[] };
+        },
       ),
       apiFetch<InspectionReport | null>(`/work-orders/${id}/inspection`).catch(() => null),
     ]).then(([woResult, acts, inspectionData]) => {
@@ -228,7 +333,9 @@ export default function WorkOrderCardPage() {
       if (woResult.kind === 'wo') {
         setWo(woResult.data);
       } else {
-        setError(woResult.error instanceof Error ? woResult.error.message : 'Помилка завантаження наряду');
+        setError(
+          woResult.error instanceof Error ? woResult.error.message : 'Помилка завантаження наряду',
+        );
       }
       if (acts.items.length > 0) setCompletionAct(acts.items[0]);
       setInspection(inspectionData);
@@ -238,9 +345,15 @@ export default function WorkOrderCardPage() {
   // Load secondary data (comments, media, audit) in parallel — single effect, single mount
   const loadSecondary = useCallback(() => {
     Promise.all([
-      apiFetch<{ items: Comment[] }>(`/comments?entityType=WorkOrder&entityId=${id}`).catch(() => ({ items: [] as Comment[] })),
-      apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`).catch(() => ({ items: [] as WorkOrderMedia[] })),
-      apiFetch<{ items: AuditEventItem[] }>(`/audit?entityType=WorkOrder&entityId=${id}`).catch(() => ({ items: [] as AuditEventItem[] })),
+      apiFetch<{ items: Comment[] }>(`/comments?entityType=WorkOrder&entityId=${id}`).catch(() => ({
+        items: [] as Comment[],
+      })),
+      apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`).catch(() => ({
+        items: [] as WorkOrderMedia[],
+      })),
+      apiFetch<{ items: AuditEventItem[] }>(`/audit?entityType=WorkOrder&entityId=${id}`).catch(
+        () => ({ items: [] as AuditEventItem[] }),
+      ),
     ]).then(([comments, media, audit]) => {
       if (!mountedRef.current) return;
       setComments(comments.items ?? []);
@@ -249,18 +362,26 @@ export default function WorkOrderCardPage() {
     });
   }, [id]);
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { loadSecondary(); }, [loadSecondary]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  useEffect(() => {
+    loadSecondary();
+  }, [loadSecondary]);
 
   const loadComments = useCallback(() => {
     apiFetch<{ items: Comment[] }>(`/comments?entityType=WorkOrder&entityId=${id}`)
-      .then(r => { if (mountedRef.current) setComments(r.items ?? []); })
+      .then(r => {
+        if (mountedRef.current) setComments(r.items ?? []);
+      })
       .catch(() => {});
   }, [id]);
 
   const loadMedia = useCallback(() => {
     apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`)
-      .then(d => { if (mountedRef.current) setMedia(d.items ?? []); })
+      .then(d => {
+        if (mountedRef.current) setMedia(d.items ?? []);
+      })
       .catch(() => {});
   }, [id]);
 
@@ -310,7 +431,11 @@ export default function WorkOrderCardPage() {
         method: 'POST',
         body: JSON.stringify({
           name: name.trim(),
-          lines: wo.lines.map(l => ({ workId: l.workId, quantity: l.normoHours, note: l.notes ?? undefined })),
+          lines: wo.lines.map(l => ({
+            workId: l.workId,
+            quantity: l.normoHours,
+            note: l.notes ?? undefined,
+          })),
           parts: wo.parts.map(p => ({ goodId: p.goodId, quantity: p.quantity })),
         }),
       });
@@ -353,7 +478,9 @@ export default function WorkOrderCardPage() {
     if (cachedEmployees) setEmployees(cachedEmployees);
     if (cachedWarehouses) {
       setWarehouses(cachedWarehouses);
-      const mainW = cachedWarehouses.find(x => x.isMain) ?? (cachedWarehouses.length === 1 ? cachedWarehouses[0] : null);
+      const mainW =
+        cachedWarehouses.find(x => x.isMain) ??
+        (cachedWarehouses.length === 1 ? cachedWarehouses[0] : null);
       if (mainW) setPartForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
     }
 
@@ -362,14 +489,20 @@ export default function WorkOrderCardPage() {
         setCache('cache:works', r.items);
         if (mountedRef.current) setWorks(r.items);
       })
-      .catch((e: unknown) => { if (mountedRef.current && !cachedWorks) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
+      .catch((e: unknown) => {
+        if (mountedRef.current && !cachedWorks)
+          setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
+      });
     apiFetch<{ items: Employee[] }>('/employees?limit=200')
       .then((r: { items?: Employee[] } | Employee[]) => {
-        const arr = Array.isArray(r) ? r : r.items ?? [];
+        const arr = Array.isArray(r) ? r : (r.items ?? []);
         setCache('cache:employees', arr);
         if (mountedRef.current) setEmployees(arr);
       })
-      .catch((e: unknown) => { if (mountedRef.current && !cachedEmployees) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
+      .catch((e: unknown) => {
+        if (mountedRef.current && !cachedEmployees)
+          setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
+      });
     apiFetch<Warehouse[]>('/warehouses')
       .then(data => {
         setCache('cache:warehouses', data);
@@ -380,21 +513,35 @@ export default function WorkOrderCardPage() {
         // pre-fill when the field is still empty.
         if (mainW) setPartForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
       })
-      .catch((e: unknown) => { if (mountedRef.current && !cachedWarehouses) setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників'); });
+      .catch((e: unknown) => {
+        if (mountedRef.current && !cachedWarehouses)
+          setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
+      });
     apiFetch<InspectionPoint[]>(`/work-orders/${id}/inspection/default-points`)
-      .then(d => { if (mountedRef.current) setInspectionPoints(d); })
+      .then(d => {
+        if (mountedRef.current) setInspectionPoints(d);
+      })
       .catch(() => {});
   }, [id]);
 
   const selectWork = (workId: string) => {
     const w = works.find(x => x.id === workId);
-    setLineForm(f => ({ ...f, workId, normoHours: w ? String(w.normoHours) : f.normoHours, price: w ? String(w.price) : f.price }));
+    setLineForm(f => ({
+      ...f,
+      workId,
+      normoHours: w ? String(w.normoHours) : f.normoHours,
+      price: w ? String(w.price) : f.price,
+    }));
     lineDirty.markDirty();
   };
 
   const selectGood = (item: Good) => {
     setGoodDisplayName(item.name);
-    setPartForm(f => ({ ...f, goodId: item.id, price: item.salePrice ? String(item.salePrice) : f.price }));
+    setPartForm(f => ({
+      ...f,
+      goodId: item.id,
+      price: item.salePrice ? String(item.salePrice) : f.price,
+    }));
     partDirty.markDirty();
   };
 
@@ -412,7 +559,8 @@ export default function WorkOrderCardPage() {
   };
 
   const addLine = async () => {
-    setSaving(true); setError('');
+    setSaving(true);
+    setError('');
     try {
       await apiFetch<WorkOrderLine>(`/work-orders/${id}/lines`, {
         method: 'POST',
@@ -426,7 +574,14 @@ export default function WorkOrderCardPage() {
         }),
       });
       setLineModal(false);
-      setLineForm({ workId: '', employeeId: '', normoHours: '', actualHours: '', price: '', notes: '' });
+      setLineForm({
+        workId: '',
+        employeeId: '',
+        normoHours: '',
+        actualHours: '',
+        price: '',
+        notes: '',
+      });
       lineDirty.resetDirty();
       if (features.toastEnabled) toast.success('Роботу додано');
       load();
@@ -434,28 +589,31 @@ export default function WorkOrderCardPage() {
       const msg = e instanceof Error ? e.message : 'Помилка';
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setSaving(false);
     }
-    finally { setSaving(false); }
   };
 
   const removeLine = async (lineId: string) => {
     if (!(await confirm({ title: 'Видалити роботу?', variant: 'destructive' }))) return;
-    setDeletingLineId(lineId); setError('');
+    setDeletingLineId(lineId);
+    setError('');
     try {
       await apiFetch<void>(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' });
       if (features.toastEnabled) toast.success('Роботу видалено');
       load();
-    }
-    catch (e: unknown) {
+    } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка видалення';
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setDeletingLineId(null);
     }
-    finally { setDeletingLineId(null); }
   };
 
   const addPart = async () => {
-    setSaving(true); setError('');
+    setSaving(true);
+    setError('');
     try {
       await apiFetch<WorkOrderPart>(`/work-orders/${id}/parts`, {
         method: 'POST',
@@ -480,24 +638,26 @@ export default function WorkOrderCardPage() {
       const msg = e instanceof Error ? e.message : 'Помилка';
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setSaving(false);
     }
-    finally { setSaving(false); }
   };
 
   const removePart = async (partId: string) => {
     if (!(await confirm({ title: 'Видалити запчастину?', variant: 'destructive' }))) return;
-    setDeletingPartId(partId); setError('');
+    setDeletingPartId(partId);
+    setError('');
     try {
       await apiFetch<void>(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' });
       if (features.toastEnabled) toast.success('Запчастину видалено');
       load();
-    }
-    catch (e: unknown) {
+    } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка видалення';
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setDeletingPartId(null);
     }
-    finally { setDeletingPartId(null); }
   };
 
   const transition = async (newStatus: string) => {
@@ -508,19 +668,20 @@ export default function WorkOrderCardPage() {
     const previousStatus = wo.status;
 
     // Optimistic update — одразу показуємо новий статус у UI
-    setWo(prev => prev ? { ...prev, status: newStatus } : prev);
-    setTransitioning(true); setError('');
+    setWo(prev => (prev ? { ...prev, status: newStatus } : prev));
+    setTransitioning(true);
+    setError('');
     try {
       const updated = await apiFetch<Omit<WorkOrderDetail, 'lines' | 'parts'>>(
         `/work-orders/${id}/transition`,
         { method: 'POST', body: JSON.stringify({ status: newStatus }) },
       );
       // transition returns WorkOrderResponseDto (no lines/parts) — merge with existing
-      setWo(prev => prev ? { ...prev, ...updated } : prev);
+      setWo(prev => (prev ? { ...prev, ...updated } : prev));
       if (features.toastEnabled) toast.success(`Статус змінено: ${label}`);
     } catch (e: unknown) {
       // Rollback
-      setWo(prev => prev ? { ...prev, status: previousStatus } : prev);
+      setWo(prev => (prev ? { ...prev, status: previousStatus } : prev));
       const msg = e instanceof Error ? e.message : 'Помилка переходу';
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
@@ -530,12 +691,18 @@ export default function WorkOrderCardPage() {
   };
 
   const generateAct = async () => {
-    setGeneratingAct(true); setError('');
+    setGeneratingAct(true);
+    setError('');
     try {
-      const act = await apiFetch<CompletionActSummary>(`/completion-acts/from-work-order/${id}`, { method: 'POST' });
+      const act = await apiFetch<CompletionActSummary>(`/completion-acts/from-work-order/${id}`, {
+        method: 'POST',
+      });
       setCompletionAct(act);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка формування акту'); }
-    finally { setGeneratingAct(false); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка формування акту');
+    } finally {
+      setGeneratingAct(false);
+    }
   };
 
   const [cloning, setCloning] = useState(false);
@@ -574,7 +741,8 @@ export default function WorkOrderCardPage() {
   };
 
   const downloadActPdf = async (actId: string) => {
-    setDownloadingActPdf(true); setError('');
+    setDownloadingActPdf(true);
+    setError('');
     try {
       // Bug #77: same silent-refresh hardening as downloadPdf above.
       const blob = await apiBlobFetch(`/completion-acts/${actId}/pdf`);
@@ -588,16 +756,24 @@ export default function WorkOrderCardPage() {
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка завантаження PDF акту');
-    } finally { setDownloadingActPdf(false); }
+    } finally {
+      setDownloadingActPdf(false);
+    }
   };
 
   const signAct = async (actId: string) => {
-    setSigningAct(true); setError('');
+    setSigningAct(true);
+    setError('');
     try {
-      const act = await apiFetch<CompletionActSummary>(`/completion-acts/${actId}/sign`, { method: 'PATCH' });
+      const act = await apiFetch<CompletionActSummary>(`/completion-acts/${actId}/sign`, {
+        method: 'PATCH',
+      });
       setCompletionAct(act);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка підписання акту'); }
-    finally { setSigningAct(false); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка підписання акту');
+    } finally {
+      setSigningAct(false);
+    }
   };
 
   const saveInspection = async () => {
@@ -626,33 +802,58 @@ export default function WorkOrderCardPage() {
     }
   };
 
-  if (!wo) return (
-    <div className="flex items-center justify-center min-h-screen flex-col gap-4">
-      {error
-        ? <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{error}</p>
-        : <Spinner size="lg" />}
-    </div>
-  );
+  if (!wo)
+    return (
+      <div className="flex items-center justify-center min-h-screen flex-col gap-4">
+        {error ? (
+          <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
+            {error}
+          </p>
+        ) : (
+          <Spinner size="lg" />
+        )}
+      </div>
+    );
 
   const canEdit = ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(wo.status);
   const allowedTransitions = TRANSITIONS[wo.status] ?? [];
 
   return (
     <div className="page-container max-w-4xl space-y-6">
-      {error && <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">{error}</p>}
-      {refsError && <p className="text-[13px] text-warning bg-warning-subtle border border-warning/20 rounded-lg px-4 py-2">Довідники: {refsError}</p>}
+      {error && (
+        <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
+          {error}
+        </p>
+      )}
+      {refsError && (
+        <p className="text-[13px] text-warning bg-warning-subtle border border-warning/20 rounded-lg px-4 py-2">
+          Довідники: {refsError}
+        </p>
+      )}
 
       {/* Header */}
       <div className="flex items-start gap-4">
-        <button onClick={() => router.back()} className="mt-1 text-muted-foreground hover:text-foreground text-sm">← Назад</button>
+        <button
+          onClick={() => router.back()}
+          className="mt-1 text-muted-foreground hover:text-foreground text-sm"
+        >
+          ← Назад
+        </button>
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold text-foreground">{wo.number}</h1>
-            <span className={cn('text-sm font-medium px-2.5 py-1 rounded-full', STATUS_COLORS[wo.status] ?? 'bg-secondary text-muted-foreground')}>
+            <span
+              className={cn(
+                'text-sm font-medium px-2.5 py-1 rounded-full',
+                STATUS_COLORS[wo.status] ?? 'bg-secondary text-muted-foreground',
+              )}
+            >
               {STATUS_LABELS[wo.status] ?? wo.status}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">{wo.counterpartyName} · {wo.vehicleSummary}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {wo.counterpartyName} · {wo.vehicleSummary}
+          </p>
         </div>
         <div className="text-right">
           <p className="text-lg font-bold text-foreground">{fmtMoney(wo.totalAmount)} ₴</p>
@@ -662,15 +863,60 @@ export default function WorkOrderCardPage() {
 
       {/* Info */}
       <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-2 gap-3 text-sm">
-        {wo.branchName && <div><p className="text-xs text-muted-foreground">Філія</p><p className="text-foreground">{wo.branchName}</p></div>}
-        {wo.priority && <div><p className="text-xs text-muted-foreground">Пріоритет</p><p className="text-foreground">{wo.priority}</p></div>}
-        {wo.repairCategory && <div><p className="text-xs text-muted-foreground">Категорія ремонту</p><p className="text-foreground">{wo.repairCategory}</p></div>}
-        {wo.dueDate && <div><p className="text-xs text-muted-foreground">Дедлайн</p><p className="text-foreground">{fmtDate(wo.dueDate)}</p></div>}
-        {wo.clientApproval != null && <div><p className="text-xs text-muted-foreground">Погодження клієнта</p><p className="text-foreground">{wo.clientApproval ? 'Так' : 'Ні'}</p></div>}
-        {wo.inMileage != null && <div><p className="text-xs text-muted-foreground">Пробіг (вхід)</p><p className="text-foreground">{fmtInt(wo.inMileage)} км</p></div>}
-        {wo.outMileage != null && <div><p className="text-xs text-muted-foreground">Пробіг (вихід)</p><p className="text-foreground">{fmtInt(wo.outMileage)} км</p></div>}
-        {wo.plannedAt && <div><p className="text-xs text-muted-foreground">Заплановано</p><p className="text-foreground">{fmtDateTime(wo.plannedAt)}</p></div>}
-        {wo.description && <div className="col-span-2"><p className="text-xs text-muted-foreground">Опис</p><p className="text-foreground">{wo.description}</p></div>}
+        {wo.branchName && (
+          <div>
+            <p className="text-xs text-muted-foreground">Філія</p>
+            <p className="text-foreground">{wo.branchName}</p>
+          </div>
+        )}
+        {wo.priority && (
+          <div>
+            <p className="text-xs text-muted-foreground">Пріоритет</p>
+            <p className="text-foreground">{wo.priority}</p>
+          </div>
+        )}
+        {wo.repairCategory && (
+          <div>
+            <p className="text-xs text-muted-foreground">Категорія ремонту</p>
+            <p className="text-foreground">{wo.repairCategory}</p>
+          </div>
+        )}
+        {wo.dueDate && (
+          <div>
+            <p className="text-xs text-muted-foreground">Дедлайн</p>
+            <p className="text-foreground">{fmtDate(wo.dueDate)}</p>
+          </div>
+        )}
+        {wo.clientApproval != null && (
+          <div>
+            <p className="text-xs text-muted-foreground">Погодження клієнта</p>
+            <p className="text-foreground">{wo.clientApproval ? 'Так' : 'Ні'}</p>
+          </div>
+        )}
+        {wo.inMileage != null && (
+          <div>
+            <p className="text-xs text-muted-foreground">Пробіг (вхід)</p>
+            <p className="text-foreground">{fmtInt(wo.inMileage)} км</p>
+          </div>
+        )}
+        {wo.outMileage != null && (
+          <div>
+            <p className="text-xs text-muted-foreground">Пробіг (вихід)</p>
+            <p className="text-foreground">{fmtInt(wo.outMileage)} км</p>
+          </div>
+        )}
+        {wo.plannedAt && (
+          <div>
+            <p className="text-xs text-muted-foreground">Заплановано</p>
+            <p className="text-foreground">{fmtDateTime(wo.plannedAt)}</p>
+          </div>
+        )}
+        {wo.description && (
+          <div className="col-span-2">
+            <p className="text-xs text-muted-foreground">Опис</p>
+            <p className="text-foreground">{wo.description}</p>
+          </div>
+        )}
       </div>
 
       {/* FSM Buttons */}
@@ -692,19 +938,47 @@ export default function WorkOrderCardPage() {
         <Button variant="outline" size="sm" onClick={() => window.print()}>
           Друк
         </Button>
-        <Button variant="outline" size="sm" onClick={handleClone} loading={cloning} disabled={cloning}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleClone}
+          loading={cloning}
+          disabled={cloning}
+        >
           Дублювати
         </Button>
-        <Button variant="outline" size="sm" onClick={() => void saveAsTemplate()} loading={savingTemplate} disabled={savingTemplate || !wo?.lines.length && !wo?.parts.length}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void saveAsTemplate()}
+          loading={savingTemplate}
+          disabled={savingTemplate || (!wo?.lines.length && !wo?.parts.length)}
+        >
           Шаблон ↓
         </Button>
       </div>
 
       {/* Totals */}
       <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-3 gap-4 text-sm">
-        <div><p className="text-xs text-muted-foreground">Роботи</p><p className="text-lg font-semibold text-foreground">{fmtMoney(wo.totalLabor)} ₴</p></div>
-        <div><p className="text-xs text-muted-foreground">Запчастини</p><p className="text-lg font-semibold text-foreground">{fmtMoney(wo.totalParts)} ₴</p></div>
-        <div><p className="text-xs text-muted-foreground">Оплачено</p><p className={cn('text-lg font-semibold', wo.paidAmount >= wo.totalAmount ? 'text-success' : 'text-foreground')}>{fmtMoney(wo.paidAmount)} ₴</p></div>
+        <div>
+          <p className="text-xs text-muted-foreground">Роботи</p>
+          <p className="text-lg font-semibold text-foreground">{fmtMoney(wo.totalLabor)} ₴</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Запчастини</p>
+          <p className="text-lg font-semibold text-foreground">{fmtMoney(wo.totalParts)} ₴</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Оплачено</p>
+          <p
+            className={cn(
+              'text-lg font-semibold',
+              wo.paidAmount >= wo.totalAmount ? 'text-success' : 'text-foreground',
+            )}
+          >
+            {fmtMoney(wo.paidAmount)} ₴
+          </p>
+        </div>
       </div>
 
       {/* Completion Act */}
@@ -721,23 +995,41 @@ export default function WorkOrderCardPage() {
           {completionAct ? (
             <div className="flex items-center gap-4 flex-wrap">
               <p className="text-sm font-medium text-foreground">Акт № {completionAct.number}</p>
-              <span className={cn(
-                'text-xs font-medium px-2 py-0.5 rounded-full',
-                completionAct.status === 'SIGNED'    && 'bg-success-subtle text-success',
-                completionAct.status === 'DRAFT'     && 'bg-secondary text-muted-foreground',
-                completionAct.status === 'CANCELLED' && 'bg-destructive-subtle text-destructive',
-              )}>
-                {completionAct.status === 'DRAFT' ? 'Чернетка' : completionAct.status === 'SIGNED' ? 'Підписано' : 'Скасовано'}
+              <span
+                className={cn(
+                  'text-xs font-medium px-2 py-0.5 rounded-full',
+                  completionAct.status === 'SIGNED' && 'bg-success-subtle text-success',
+                  completionAct.status === 'DRAFT' && 'bg-secondary text-muted-foreground',
+                  completionAct.status === 'CANCELLED' && 'bg-destructive-subtle text-destructive',
+                )}
+              >
+                {completionAct.status === 'DRAFT'
+                  ? 'Чернетка'
+                  : completionAct.status === 'SIGNED'
+                    ? 'Підписано'
+                    : 'Скасовано'}
               </span>
               {completionAct.signedAt && (
-                <p className="text-xs text-muted-foreground">{fmtDateTime(completionAct.signedAt)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {fmtDateTime(completionAct.signedAt)}
+                </p>
               )}
               {completionAct.status === 'DRAFT' && (
-                <Button variant="outline" size="sm" onClick={() => signAct(completionAct.id)} loading={signingAct}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => signAct(completionAct.id)}
+                  loading={signingAct}
+                >
                   Позначити як підписано
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={() => downloadActPdf(completionAct.id)} loading={downloadingActPdf}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadActPdf(completionAct.id)}
+                loading={downloadingActPdf}
+              >
                 PDF акту
               </Button>
             </div>
@@ -751,38 +1043,62 @@ export default function WorkOrderCardPage() {
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-foreground">Роботи</h2>
-          {canEdit && <button onClick={() => { setError(''); setLineModal(true); }} className="text-sm text-primary hover:underline">+ Робота</button>}
-        </div>
-        {wo.lines.length === 0
-          ? <p className="text-sm text-muted-foreground">Роботи не додані</p>
-          : (
-            <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
-              {wo.lines.map(l => (
-                <div key={l.id} className="flex items-center justify-between px-4 py-3">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-foreground">{l.workName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {l.employeeName} · <span>{l.normoHours} н/г норм.</span>
-                      {l.actualHours != null && (
-                        <span className={cn(
-                          'ml-1',
-                          l.actualHours > l.normoHours ? 'text-warning font-medium' : 'text-muted-foreground/70',
-                        )}>
-                          {l.actualHours} н/г факт.
-                        </span>
-                      )}
-                    </p>
-                    {l.notes && <p className="text-xs text-muted-foreground mt-0.5">{l.notes}</p>}
-                  </div>
-                  <div className="text-right mr-3">
-                    <p className="text-sm font-medium text-foreground">{fmtMoney(l.amount)} ₴</p>
-                    <p className="text-xs text-muted-foreground">{fmtMoney(l.price)} × {l.normoHours}</p>
-                  </div>
-                  {canEdit && <button onClick={() => removeLine(l.id)} disabled={deletingLineId === l.id} className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50">×</button>}
-                </div>
-              ))}
-            </div>
+          {canEdit && (
+            <button
+              onClick={() => {
+                setError('');
+                setLineModal(true);
+              }}
+              className="text-sm text-primary hover:underline"
+            >
+              + Робота
+            </button>
           )}
+        </div>
+        {wo.lines.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Роботи не додані</p>
+        ) : (
+          <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
+            {wo.lines.map(l => (
+              <div key={l.id} className="flex items-center justify-between px-4 py-3">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">{l.workName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {l.employeeName} · <span>{l.normoHours} н/г норм.</span>
+                    {l.actualHours != null && (
+                      <span
+                        className={cn(
+                          'ml-1',
+                          l.actualHours > l.normoHours
+                            ? 'text-warning font-medium'
+                            : 'text-muted-foreground/70',
+                        )}
+                      >
+                        {l.actualHours} н/г факт.
+                      </span>
+                    )}
+                  </p>
+                  {l.notes && <p className="text-xs text-muted-foreground mt-0.5">{l.notes}</p>}
+                </div>
+                <div className="text-right mr-3">
+                  <p className="text-sm font-medium text-foreground">{fmtMoney(l.amount)} ₴</p>
+                  <p className="text-xs text-muted-foreground">
+                    {fmtMoney(l.price)} × {l.normoHours}
+                  </p>
+                </div>
+                {canEdit && (
+                  <button
+                    onClick={() => removeLine(l.id)}
+                    disabled={deletingLineId === l.id}
+                    className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Parts */}
@@ -796,38 +1112,59 @@ export default function WorkOrderCardPage() {
                 importUrl={`/xlsx/import/work-order-parts/${id}`}
                 onImportComplete={load}
               />
-              <button onClick={() => { setError(''); setPartModal(true); }} className="text-sm text-primary hover:underline">+ Запчастина</button>
+              <button
+                onClick={() => {
+                  setError('');
+                  setPartModal(true);
+                }}
+                className="text-sm text-primary hover:underline"
+              >
+                + Запчастина
+              </button>
             </div>
           )}
         </div>
-        {wo.parts.length === 0
-          ? <p className="text-sm text-muted-foreground">Запчастини не додані</p>
-          : (
-            <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
-              {wo.parts.map(p => (
-                <div key={p.id} className="flex items-center justify-between px-4 py-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-foreground">{p.goodName}</p>
-                      <button
-                        onClick={e => { e.stopPropagation(); setBatchViewer({ goodId: p.goodId, warehouseId: p.warehouseId }); }}
-                        title="Переглянути партії"
-                        aria-label={`Переглянути партії товару ${p.goodName}`}
-                        className="p-0.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
-                      >
-                        <Layers className="h-3.5 w-3.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{p.quantity} {p.unitShortName ?? 'шт'} × {fmtMoney(p.price)} ₴</p>
+        {wo.parts.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Запчастини не додані</p>
+        ) : (
+          <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
+            {wo.parts.map(p => (
+              <div key={p.id} className="flex items-center justify-between px-4 py-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium text-foreground">{p.goodName}</p>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setBatchViewer({ goodId: p.goodId, warehouseId: p.warehouseId });
+                      }}
+                      title="Переглянути партії"
+                      aria-label={`Переглянути партії товару ${p.goodName}`}
+                      className="p-0.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
+                    >
+                      <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
                   </div>
-                  <div className="text-right mr-3">
-                    <p className="text-sm font-medium text-foreground">{fmtMoney(p.amount)} ₴</p>
-                  </div>
-                  {canEdit && <button onClick={() => removePart(p.id)} disabled={deletingPartId === p.id} className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50">×</button>}
+                  <p className="text-xs text-muted-foreground">
+                    {p.quantity} {p.unitShortName ?? 'шт'} × {fmtMoney(p.price)} ₴
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="text-right mr-3">
+                  <p className="text-sm font-medium text-foreground">{fmtMoney(p.amount)} ₴</p>
+                </div>
+                {canEdit && (
+                  <button
+                    onClick={() => removePart(p.id)}
+                    disabled={deletingPartId === p.id}
+                    className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Inspection section */}
@@ -849,14 +1186,25 @@ export default function WorkOrderCardPage() {
             </div>
             {inspection.points.map((p, i) => (
               <div key={i} className="flex items-center gap-3 text-sm">
-                <span className={cn(
-                  'w-2 h-2 rounded-full shrink-0',
-                  p.status === 'OK' ? 'bg-success' : p.status === 'WARN' ? 'bg-warning' : 'bg-destructive',
-                )} />
+                <span
+                  className={cn(
+                    'w-2 h-2 rounded-full shrink-0',
+                    p.status === 'OK'
+                      ? 'bg-success'
+                      : p.status === 'WARN'
+                        ? 'bg-warning'
+                        : 'bg-destructive',
+                  )}
+                />
                 <span className="flex-1 text-foreground">{p.name}</span>
-                <span className="text-muted-foreground">{p.value}{p.unit ? ' ' + p.unit : ''}</span>
+                <span className="text-muted-foreground">
+                  {p.value}
+                  {p.unit ? ' ' + p.unit : ''}
+                </span>
                 {p.status === 'CRITICAL' && (
-                  <span className="text-[11px] text-destructive-text bg-destructive-subtle px-1.5 py-0.5 rounded">Критично</span>
+                  <span className="text-[11px] text-destructive-text bg-destructive-subtle px-1.5 py-0.5 rounded">
+                    Критично
+                  </span>
                 )}
               </div>
             ))}
@@ -890,7 +1238,10 @@ export default function WorkOrderCardPage() {
                       value={point.status}
                       onChange={e => {
                         const pts = [...inspectionPoints];
-                        pts[i] = { ...pts[i], status: e.target.value as 'OK' | 'WARN' | 'CRITICAL' };
+                        pts[i] = {
+                          ...pts[i],
+                          status: e.target.value as 'OK' | 'WARN' | 'CRITICAL',
+                        };
                         setInspectionPoints(pts);
                       }}
                       className="w-full h-9 rounded-lg border border-border bg-input px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -903,12 +1254,18 @@ export default function WorkOrderCardPage() {
                 </div>
               ))}
             </div>
-            <Button onClick={() => void saveInspection()} loading={savingInspection} className="w-full">
+            <Button
+              onClick={() => void saveInspection()}
+              loading={savingInspection}
+              className="w-full"
+            >
               Зберегти огляд
             </Button>
           </AnimatedBody>
         ) : (
-          <div className="p-4 text-center text-muted-foreground text-[13px]">Огляд не проводився</div>
+          <div className="p-4 text-center text-muted-foreground text-[13px]">
+            Огляд не проводився
+          </div>
         )}
       </div>
 
@@ -926,12 +1283,16 @@ export default function WorkOrderCardPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[12px] font-medium text-foreground">{c.authorName ?? 'Невідомо'}</span>
+                    <span className="text-[12px] font-medium text-foreground">
+                      {c.authorName ?? 'Невідомо'}
+                    </span>
                     <span className="text-[11px] text-muted-foreground">
                       {fmtShortDateTime(c.createdAt)}
                     </span>
                   </div>
-                  <p className="text-[13px] text-foreground whitespace-pre-wrap wrap-break-word">{c.body}</p>
+                  <p className="text-[13px] text-foreground whitespace-pre-wrap wrap-break-word">
+                    {c.body}
+                  </p>
                 </div>
               </div>
             ))}
@@ -945,7 +1306,11 @@ export default function WorkOrderCardPage() {
             <textarea
               value={commentBody}
               onChange={e => setCommentBody(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { void submitComment(); } }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  void submitComment();
+                }
+              }}
               placeholder="Напишіть коментар... (Ctrl+Enter для відправки)"
               rows={2}
               className="flex-1 rounded-lg border border-border bg-transparent px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 resize-none"
@@ -968,16 +1333,32 @@ export default function WorkOrderCardPage() {
         <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
           <h3 className="font-medium text-foreground text-sm">Фото ({media.length})</h3>
           <label className="cursor-pointer">
-            <input type="file" accept="image/*,application/pdf" multiple className="hidden"
-              onChange={e => { if (e.target.files) void handleMediaUpload(e.target.files); }} />
-            <Button variant="outline" size="sm" loading={uploadingMedia} onClick={e => e.preventDefault()}>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              multiple
+              className="hidden"
+              onChange={e => {
+                if (e.target.files) void handleMediaUpload(e.target.files);
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              loading={uploadingMedia}
+              onClick={e => e.preventDefault()}
+            >
               Додати фото
             </Button>
           </label>
         </div>
-        <div className="p-4"
+        <div
+          className="p-4"
           onDragOver={e => e.preventDefault()}
-          onDrop={e => { e.preventDefault(); void handleMediaUpload(e.dataTransfer.files); }}
+          onDrop={e => {
+            e.preventDefault();
+            void handleMediaUpload(e.dataTransfer.files);
+          }}
         >
           {media.length === 0 ? (
             <div className="text-center text-muted-foreground text-sm py-6 border-2 border-dashed border-border rounded-lg">
@@ -986,18 +1367,34 @@ export default function WorkOrderCardPage() {
           ) : (
             <div className="grid grid-cols-4 gap-3">
               {media.map(m => (
-                <div key={m.id} className="relative group aspect-square rounded-lg overflow-hidden bg-secondary cursor-pointer"
-                  onClick={() => setLightboxUrl(m.signedUrl)}>
+                <div
+                  key={m.id}
+                  className="relative group aspect-square rounded-lg overflow-hidden bg-secondary cursor-pointer"
+                  onClick={() => setLightboxUrl(m.signedUrl)}
+                >
                   {m.mimeType.startsWith('image/') ? (
-                    <img src={m.signedUrl} alt={m.filename} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                    <img
+                      src={m.signedUrl}
+                      alt={m.filename}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
                   ) : (
-                    <div className="flex items-center justify-center h-full text-xs text-muted-foreground p-1 text-center break-all">{m.filename}</div>
+                    <div className="flex items-center justify-center h-full text-xs text-muted-foreground p-1 text-center break-all">
+                      {m.filename}
+                    </div>
                   )}
-                  <button onClick={async e => {
-                    e.stopPropagation();
-                    await apiFetch(`/work-orders/${id}/media/${m.id}`, { method: 'DELETE' });
-                    setMedia(prev => prev.filter(x => x.id !== m.id));
-                  }} className="absolute top-1 right-1 hidden group-hover:flex w-6 h-6 bg-destructive text-white rounded-full items-center justify-center text-xs">×</button>
+                  <button
+                    onClick={async e => {
+                      e.stopPropagation();
+                      await apiFetch(`/work-orders/${id}/media/${m.id}`, { method: 'DELETE' });
+                      setMedia(prev => prev.filter(x => x.id !== m.id));
+                    }}
+                    className="absolute top-1 right-1 hidden group-hover:flex w-6 h-6 bg-destructive text-white rounded-full items-center justify-center text-xs"
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
             </div>
@@ -1014,7 +1411,12 @@ export default function WorkOrderCardPage() {
           className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
           onClick={() => setLightboxUrl(null)}
         >
-          <img src={lightboxUrl} alt="Фото" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" decoding="async" />
+          <img
+            src={lightboxUrl}
+            alt="Фото"
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            decoding="async"
+          />
         </div>
       )}
 
@@ -1031,12 +1433,19 @@ export default function WorkOrderCardPage() {
               const diff = ev.diff as Record<string, { from: unknown; to: unknown }>;
               const changes = Object.entries(diff)
                 .filter(([, v]) => v && typeof v === 'object' && 'from' in v)
-                .map(([k, v]) => `${k}: ${(v as { from: unknown; to: unknown }).from} → ${(v as { from: unknown; to: unknown }).to}`)
+                .map(
+                  ([k, v]) =>
+                    `${k}: ${(v as { from: unknown; to: unknown }).from} → ${(v as { from: unknown; to: unknown }).to}`,
+                )
                 .join(', ');
               return (
                 <div key={ev.id} className="px-5 py-2.5 text-[12px] text-muted-foreground">
                   <span className="font-medium text-foreground">{who}</span>{' '}
-                  {ev.action === 'CREATE' ? 'створив' : ev.action === 'DELETE' ? 'видалив' : 'змінив'}{' '}
+                  {ev.action === 'CREATE'
+                    ? 'створив'
+                    : ev.action === 'DELETE'
+                      ? 'видалив'
+                      : 'змінив'}{' '}
                   {changes && <span className="text-foreground-muted">({changes})</span>}{' '}
                   <span className="ml-1">{when}</span>
                 </div>
@@ -1051,38 +1460,97 @@ export default function WorkOrderCardPage() {
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Робота <span className="text-destructive">*</span></label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">
+              Робота <span className="text-destructive">*</span>
+            </label>
             <Select value={lineForm.workId} onChange={e => selectWork(e.target.value)}>
               <option value="">— Оберіть —</option>
-              {works.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              {works.map(w => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
             </Select>
           </div>
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Виконавець <span className="text-destructive">*</span></label>
-            <Select value={lineForm.employeeId} onChange={e => { setLineForm(f => ({ ...f, employeeId: e.target.value })); lineDirty.markDirty(); }}>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">
+              Виконавець <span className="text-destructive">*</span>
+            </label>
+            <Select
+              value={lineForm.employeeId}
+              onChange={e => {
+                setLineForm(f => ({ ...f, employeeId: e.target.value }));
+                lineDirty.markDirty();
+              }}
+            >
               <option value="">— Оберіть —</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.lastName} {e.firstName}</option>)}
+              {employees.map(e => (
+                <option key={e.id} value={e.id}>
+                  {e.lastName} {e.firstName}
+                </option>
+              ))}
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Нормо-год (план)</label>
-              <Input type="number" value={lineForm.normoHours} onChange={e => { setLineForm(f => ({ ...f, normoHours: e.target.value })); lineDirty.markDirty(); }} min="0" step="0.1" />
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">
+                Нормо-год (план)
+              </label>
+              <Input
+                type="number"
+                value={lineForm.normoHours}
+                onChange={e => {
+                  setLineForm(f => ({ ...f, normoHours: e.target.value }));
+                  lineDirty.markDirty();
+                }}
+                min="0"
+                step="0.1"
+              />
             </div>
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Факт. год</label>
-              <Input type="number" value={lineForm.actualHours} onChange={e => { setLineForm(f => ({ ...f, actualHours: e.target.value })); lineDirty.markDirty(); }} min="0" step="0.1" placeholder="необов'язково" />
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">
+                Факт. год
+              </label>
+              <Input
+                type="number"
+                value={lineForm.actualHours}
+                onChange={e => {
+                  setLineForm(f => ({ ...f, actualHours: e.target.value }));
+                  lineDirty.markDirty();
+                }}
+                min="0"
+                step="0.1"
+                placeholder="необов'язково"
+              />
             </div>
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">Ціна, ₴</label>
-            <Input type="number" value={lineForm.price} onChange={e => { setLineForm(f => ({ ...f, price: e.target.value })); lineDirty.markDirty(); }} />
+            <Input
+              type="number"
+              value={lineForm.price}
+              onChange={e => {
+                setLineForm(f => ({ ...f, price: e.target.value }));
+                lineDirty.markDirty();
+              }}
+            />
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">Нотатки</label>
-            <Input value={lineForm.notes} onChange={e => { setLineForm(f => ({ ...f, notes: e.target.value })); lineDirty.markDirty(); }} />
+            <Input
+              value={lineForm.notes}
+              onChange={e => {
+                setLineForm(f => ({ ...f, notes: e.target.value }));
+                lineDirty.markDirty();
+              }}
+            />
           </div>
-          <Button onClick={addLine} loading={saving} disabled={!lineForm.workId || !lineForm.employeeId} className="w-full">
+          <Button
+            onClick={addLine}
+            loading={saving}
+            disabled={!lineForm.workId || !lineForm.employeeId}
+            className="w-full"
+          >
             Додати
           </Button>
         </div>
@@ -1109,35 +1577,99 @@ export default function WorkOrderCardPage() {
             value={partForm.goodId}
             displayValue={goodDisplayName}
             onSelect={selectGood}
-            onClear={() => { setPartForm(f => ({ ...f, goodId: '', price: '' })); setGoodDisplayName(''); partDirty.markDirty(); }}
-            fetchItems={q => apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(g => ({ ...g, primary: g.name, secondary: g.sku })))}
+            onClear={() => {
+              setPartForm(f => ({ ...f, goodId: '', price: '' }));
+              setGoodDisplayName('');
+              partDirty.markDirty();
+            }}
+            fetchItems={q =>
+              apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=10`).then(r =>
+                r.items.map(g => ({ ...g, primary: g.name, secondary: g.sku })),
+              )
+            }
           />
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Склад <span className="text-destructive">*</span></label>
-            <Select value={partForm.warehouseId} onChange={e => { setPartForm(f => ({ ...f, warehouseId: e.target.value })); partDirty.markDirty(); }}>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">
+              Склад <span className="text-destructive">*</span>
+            </label>
+            <Select
+              value={partForm.warehouseId}
+              onChange={e => {
+                setPartForm(f => ({ ...f, warehouseId: e.target.value }));
+                partDirty.markDirty();
+              }}
+            >
               <option value="">— Оберіть —</option>
-              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              {warehouses.map(w => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
             </Select>
             {features.stockIndicatorEnabled && partForm.goodId && partForm.warehouseId && (
-              <p className={cn('mt-1.5 text-[12px]', stockLoading ? 'text-muted-foreground' : stockAvailable === null ? 'text-muted-foreground' : stockAvailable > 0 ? 'text-success' : 'text-destructive')}>
-                {stockLoading ? 'Перевірка залишку...' : stockAvailable === null ? '' : stockAvailable > 0 ? `Доступно: ${stockAvailable} шт.` : 'Немає в наявності'}
+              <p
+                className={cn(
+                  'mt-1.5 text-[12px]',
+                  stockLoading
+                    ? 'text-muted-foreground'
+                    : stockAvailable === null
+                      ? 'text-muted-foreground'
+                      : stockAvailable > 0
+                        ? 'text-success'
+                        : 'text-destructive',
+                )}
+              >
+                {stockLoading
+                  ? 'Перевірка залишку...'
+                  : stockAvailable === null
+                    ? ''
+                    : stockAvailable > 0
+                      ? `Доступно: ${stockAvailable} шт.`
+                      : 'Немає в наявності'}
               </p>
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Кількість <span className="text-destructive">*</span></label>
-              <Input type="number" value={partForm.quantity} onChange={e => { setPartForm(f => ({ ...f, quantity: e.target.value })); partDirty.markDirty(); }} min="0.001" step="0.001" />
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">
+                Кількість <span className="text-destructive">*</span>
+              </label>
+              <Input
+                type="number"
+                value={partForm.quantity}
+                onChange={e => {
+                  setPartForm(f => ({ ...f, quantity: e.target.value }));
+                  partDirty.markDirty();
+                }}
+                min="0.001"
+                step="0.001"
+              />
             </div>
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Ціна, ₴</label>
-              <Input type="number" value={partForm.price} onChange={e => { setPartForm(f => ({ ...f, price: e.target.value })); partDirty.markDirty(); }} />
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">
+                Ціна, ₴
+              </label>
+              <Input
+                type="number"
+                value={partForm.price}
+                onChange={e => {
+                  setPartForm(f => ({ ...f, price: e.target.value }));
+                  partDirty.markDirty();
+                }}
+              />
             </div>
           </div>
           <Button
             onClick={addPart}
             loading={saving}
-            disabled={!partForm.goodId || !partForm.warehouseId || !partForm.quantity || (features.stockIndicatorEnabled && stockAvailable !== null && stockAvailable < Number(partForm.quantity))}
+            disabled={
+              !partForm.goodId ||
+              !partForm.warehouseId ||
+              !partForm.quantity ||
+              (features.stockIndicatorEnabled &&
+                stockAvailable !== null &&
+                stockAvailable < Number(partForm.quantity))
+            }
             className="w-full"
           >
             Додати

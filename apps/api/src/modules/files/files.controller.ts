@@ -1,6 +1,4 @@
-import {
-  Controller, Post, Req, UseGuards, BadRequestException,
-} from '@nestjs/common';
+import { Controller, Post, Req, UseGuards, BadRequestException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
@@ -22,10 +20,7 @@ export class FilesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({ summary: 'Upload file (photo) to MinIO' })
   @ApiConsumes('multipart/form-data')
-  async upload(
-    @OrgContext() orgId: string,
-    @Req() req: FastifyRequest,
-  ) {
+  async upload(@OrgContext() orgId: string, @Req() req: FastifyRequest) {
     if (!req.isMultipart()) {
       throw new BadRequestException('Очікується multipart/form-data');
     }
@@ -51,8 +46,10 @@ export class FilesController {
     }
 
     if (!fileBuffer) throw new BadRequestException('Файл не отримано');
-    if (!mimetype.startsWith('image/')) throw new BadRequestException('Дозволені тільки зображення');
-    if (fileBuffer.length > 10 * 1024 * 1024) throw new BadRequestException('Файл завеликий (максимум 10 МБ)');
+    if (!mimetype.startsWith('image/'))
+      throw new BadRequestException('Дозволені тільки зображення');
+    if (fileBuffer.length > 10 * 1024 * 1024)
+      throw new BadRequestException('Файл завеликий (максимум 10 МБ)');
 
     return this.service.upload(
       orgId,

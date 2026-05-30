@@ -31,7 +31,7 @@ export class SearchController {
 
     const limit = Math.min(Math.max(parseInt(limitParam ?? '10', 10) || 10, 1), 50);
     const types: SearchType[] = typesParam
-      ? (typesParam.split(',').filter((t) => ALL_TYPES.includes(t as SearchType)) as SearchType[])
+      ? (typesParam.split(',').filter(t => ALL_TYPES.includes(t as SearchType)) as SearchType[])
       : [...ALL_TYPES];
 
     if (types.length === 0) return { items: [], total: 0 };

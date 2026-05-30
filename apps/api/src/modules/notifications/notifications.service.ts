@@ -15,14 +15,20 @@ export class NotificationsService {
     @InjectQueue('sms') private readonly smsQueue: Queue,
   ) {}
 
-  async send(orgId: string, event: NotificationEvent, payload: Record<string, unknown>): Promise<void> {
+  async send(
+    orgId: string,
+    event: NotificationEvent,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
     // Load branch settings for SMS config — branchId is required; skip without it
     const branchId = typeof payload.branchId === 'string' ? payload.branchId : undefined;
     if (!branchId) {
       this.logger.debug(`branchId не вказано для org=${orgId}, event=${event} — SMS пропущено`);
       return;
     }
-    const branchSettings = await this.prisma.branchSettings.findFirst({ where: { branchId, orgId } });
+    const branchSettings = await this.prisma.branchSettings.findFirst({
+      where: { branchId, orgId },
+    });
 
     if (!branchSettings?.smsEnabled || !branchSettings?.smsApiKey) {
       this.logger.debug(`SMS не налаштовано для org=${orgId}, event=${event}`);
@@ -45,18 +51,22 @@ export class NotificationsService {
     const message = this.renderTemplate(template.body, payload);
 
     // Enqueue SMS (offline-first — retry if no internet)
-    await this.smsQueue.add('send-sms', {
-      orgId,
-      phone,
-      message,
-      provider: branchSettings.smsProvider ?? 'turbosms',
-      apiKey: branchSettings.smsApiKey,
-      senderName: branchSettings.smsSenderName ?? 'STO ERP',
-    }, {
-      attempts: 10,
-      backoff: { type: 'exponential', delay: 60_000 },
-      removeOnComplete: true,
-    });
+    await this.smsQueue.add(
+      'send-sms',
+      {
+        orgId,
+        phone,
+        message,
+        provider: branchSettings.smsProvider ?? 'turbosms',
+        apiKey: branchSettings.smsApiKey,
+        senderName: branchSettings.smsSenderName ?? 'STO ERP',
+      },
+      {
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: true,
+      },
+    );
   }
 
   async findTemplates(orgId: string) {
@@ -68,7 +78,11 @@ export class NotificationsService {
     return rows.map(r => ({ ...r, syncVersion: Number(r.syncVersion) }));
   }
 
-  async updateTemplate(orgId: string, id: string, dto: { body: string; subject?: string; isActive: boolean }) {
+  async updateTemplate(
+    orgId: string,
+    id: string,
+    dto: { body: string; subject?: string; isActive: boolean },
+  ) {
     const template = await this.prisma.notificationTemplate.findFirst({
       where: { id, orgId },
     });

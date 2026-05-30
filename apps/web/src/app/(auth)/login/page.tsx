@@ -43,7 +43,9 @@ export default function LoginPage() {
         <div className="space-y-6">
           <div className="space-y-2">
             <h1 className="text-[32px] font-bold leading-tight tracking-tight">
-              Система управління<br />автосервісом
+              Система управління
+              <br />
+              автосервісом
             </h1>
             <p className="text-[15px] text-sidebar-muted leading-relaxed">
               Наряди, склад, фінанси, CRM — все в одному місці. Працює повністю офлайн.
@@ -83,7 +85,9 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-7">
-            <h2 className="text-[22px] font-bold text-foreground tracking-tight">Вхід до системи</h2>
+            <h2 className="text-[22px] font-bold text-foreground tracking-tight">
+              Вхід до системи
+            </h2>
             <p className="text-[14px] text-muted-foreground mt-1">Введіть ваші облікові дані</p>
           </div>
 

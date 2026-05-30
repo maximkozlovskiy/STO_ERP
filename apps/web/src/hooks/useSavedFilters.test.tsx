@@ -2,7 +2,9 @@ import { act, renderHook } from '@testing-library/react';
 import { it, expect, describe, beforeEach } from 'vitest';
 import { useSavedFilters } from './useSavedFilters';
 
-interface F extends Record<string, unknown> { status: string }
+interface F extends Record<string, unknown> {
+  status: string;
+}
 
 const KEY = 'sto_filters_test';
 
@@ -26,7 +28,9 @@ describe('useSavedFilters', () => {
   it('save додає новий пресет і записує у localStorage', () => {
     const { result } = renderHook(() => useSavedFilters<F>('test'));
     let preset!: { id: string; name: string };
-    act(() => { preset = result.current.save('Активні', { status: 'IN_PROGRESS' }); });
+    act(() => {
+      preset = result.current.save('Активні', { status: 'IN_PROGRESS' });
+    });
     expect(result.current.saved).toHaveLength(1);
     expect(result.current.saved[0].name).toBe('Активні');
     expect(preset.id).toBeTruthy();
@@ -37,16 +41,24 @@ describe('useSavedFilters', () => {
   it('remove видаляє пресет за id', () => {
     const { result } = renderHook(() => useSavedFilters<F>('test'));
     let preset!: { id: string };
-    act(() => { preset = result.current.save('A', { status: 'X' }); });
-    act(() => { result.current.remove(preset.id); });
+    act(() => {
+      preset = result.current.save('A', { status: 'X' });
+    });
+    act(() => {
+      result.current.remove(preset.id);
+    });
     expect(result.current.saved).toHaveLength(0);
   });
 
   it('rename оновлює name за id', () => {
     const { result } = renderHook(() => useSavedFilters<F>('test'));
     let preset!: { id: string };
-    act(() => { preset = result.current.save('Old', { status: 'X' }); });
-    act(() => { result.current.rename(preset.id, 'New'); });
+    act(() => {
+      preset = result.current.save('Old', { status: 'X' });
+    });
+    act(() => {
+      result.current.rename(preset.id, 'New');
+    });
     expect(result.current.saved[0].name).toBe('New');
   });
 
@@ -71,7 +83,9 @@ describe('useSavedFilters', () => {
   it('різні pageKey мають незалежне сховище', () => {
     const { result: a } = renderHook(() => useSavedFilters<F>('page-a'));
     const { result: b } = renderHook(() => useSavedFilters<F>('page-b'));
-    act(() => { a.current.save('Filter A', { status: 'X' }); });
+    act(() => {
+      a.current.save('Filter A', { status: 'X' });
+    });
     expect(a.current.saved).toHaveLength(1);
     expect(b.current.saved).toHaveLength(0);
   });

@@ -32,8 +32,15 @@ function makeService(prisma: PrismaService): WorkOrdersService {
   // findAll only touches `this.prisma`; the other 9 deps are unused on this path.
   return new WorkOrdersService(
     prisma,
-    null as never, null as never, null as never, null as never,
-    null as never, null as never, null as never, null as never, null as never,
+    null as never,
+    null as never,
+    null as never,
+    null as never,
+    null as never,
+    null as never,
+    null as never,
+    null as never,
+    null as never,
   );
 }
 
@@ -62,9 +69,9 @@ describe('WorkOrdersService.findAll — query shape', () => {
     expect(arg.include).not.toHaveProperty('calendarSlot');
 
     const slots = arg.include.calendarSlots;
-    expect(slots.where).toEqual({ deletedAt: null });        // only live slots feed the badge
-    expect(slots.orderBy).toEqual({ startAt: 'asc' });        // earliest slot first
-    expect(slots.take).toBe(1);                               // single round-trip — never load the whole history
+    expect(slots.where).toEqual({ deletedAt: null }); // only live slots feed the badge
+    expect(slots.orderBy).toEqual({ startAt: 'asc' }); // earliest slot first
+    expect(slots.take).toBe(1); // single round-trip — never load the whole history
     expect(slots.select).toMatchObject({
       startAt: true,
       endAt: true,
@@ -87,9 +94,15 @@ describe('WorkOrdersService.findAll — query shape', () => {
     expect(Array.isArray(or)).toBe(true);
     expect(or).toContainEqual({ number: { contains: 'AB-1', mode: 'insensitive' } });
     // Nested counterparty relations must be addressed by the real relation key.
-    expect(or).toContainEqual({ counterparty: { companyName: { contains: 'AB-1', mode: 'insensitive' } } });
-    expect(or).toContainEqual({ counterparty: { lastName: { contains: 'AB-1', mode: 'insensitive' } } });
-    expect(or).toContainEqual({ counterparty: { firstName: { contains: 'AB-1', mode: 'insensitive' } } });
+    expect(or).toContainEqual({
+      counterparty: { companyName: { contains: 'AB-1', mode: 'insensitive' } },
+    });
+    expect(or).toContainEqual({
+      counterparty: { lastName: { contains: 'AB-1', mode: 'insensitive' } },
+    });
+    expect(or).toContainEqual({
+      counterparty: { firstName: { contains: 'AB-1', mode: 'insensitive' } },
+    });
   });
 
   it('employeeId filter uses a soft-delete-aware `some` correlated subquery on lines', async () => {

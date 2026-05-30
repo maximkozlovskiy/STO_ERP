@@ -48,7 +48,8 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
       {saved.length > 0 ? (
         <Bookmark className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
       ) : (
-        !saveOpen && !hideSaveButton && (
+        !saveOpen &&
+        !hideSaveButton && (
           <span className="text-[12px] text-muted-foreground">Немає збережених фільтрів</span>
         )
       )}
@@ -76,14 +77,17 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
         </div>
       ))}
 
-      {!hideSaveButton && (
-        saveOpen ? (
+      {!hideSaveButton &&
+        (saveOpen ? (
           <div className="flex items-center gap-1.5">
             <input
               ref={inputRef}
               value={saveName}
               onChange={e => setSaveName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setSaveOpen(false); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleSave();
+                if (e.key === 'Escape') setSaveOpen(false);
+              }}
               placeholder="Назва фільтру..."
               className="h-7 px-2 rounded-md border border-primary text-[12px] bg-surface text-foreground outline-none w-36"
             />
@@ -95,7 +99,10 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
               Зберегти
             </button>
             <button
-              onClick={() => { setSaveOpen(false); setSaveName(''); }}
+              onClick={() => {
+                setSaveOpen(false);
+                setSaveName('');
+              }}
               className="h-7 w-7 flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
             >
               <X className="h-3.5 w-3.5" />
@@ -109,8 +116,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
             <BookmarkPlus className="h-3.5 w-3.5" />
             Зберегти
           </button>
-        )
-      )}
+        ))}
     </div>
   );
 }
@@ -148,7 +154,13 @@ export function SaveFilterButton({ onSave, className }: SaveFilterButtonProps) {
           ref={inputRef}
           value={name}
           onChange={e => setName(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') { setOpen(false); setName(''); } }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') handleSave();
+            if (e.key === 'Escape') {
+              setOpen(false);
+              setName('');
+            }
+          }}
           placeholder="Назва фільтру..."
           className="h-8 px-2.5 rounded-lg border border-primary text-[12px] bg-surface text-foreground outline-none w-36 transition-all"
         />
@@ -162,7 +174,10 @@ export function SaveFilterButton({ onSave, className }: SaveFilterButtonProps) {
         </button>
         <button
           type="button"
-          onClick={() => { setOpen(false); setName(''); }}
+          onClick={() => {
+            setOpen(false);
+            setName('');
+          }}
           className="h-8 w-8 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
         >
           <X className="h-3.5 w-3.5" />

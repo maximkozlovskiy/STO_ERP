@@ -53,62 +53,82 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    items: [
-      { href: '/dashboard', label: 'Дашборд', icon: LayoutDashboard },
-    ],
+    items: [{ href: '/dashboard', label: 'Дашборд', icon: LayoutDashboard }],
   },
   {
     label: 'Документи',
     items: [
-      { href: '/work-orders',     label: 'Наряди',          icon: Wrench },
-      { href: '/invoices',        label: 'Рахунки',         icon: Receipt },
-      { href: '/purchase-orders', label: 'Замовлення',      icon: ShoppingCart },
+      { href: '/work-orders', label: 'Наряди', icon: Wrench },
+      { href: '/invoices', label: 'Рахунки', icon: Receipt },
+      { href: '/purchase-orders', label: 'Замовлення', icon: ShoppingCart },
       { href: '/stock-documents', label: 'Документи склад', icon: FileText },
     ],
   },
   {
     label: 'Звіти',
     items: [
-      { href: '/calendar',    label: 'Календар',    icon: CalendarDays },
-      { href: '/settlements', label: 'Розрахунки',  icon: Wallet },
-      { href: '/reports',     label: 'Звіти',       icon: BarChart2, roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'] },
+      { href: '/calendar', label: 'Календар', icon: CalendarDays },
+      { href: '/settlements', label: 'Розрахунки', icon: Wallet },
+      {
+        href: '/reports',
+        label: 'Звіти',
+        icon: BarChart2,
+        roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
+      },
     ],
   },
   {
     label: 'Довідники',
     items: [
-      { href: '/crm',            label: 'Контрагенти',  icon: Users },
-      { href: '/inventory',      label: 'Склад',        icon: Package },
-      { href: '/catalog',         label: 'Каталог',          icon: BookOpen,    roles: ['OWNER', 'ADMIN'] },
-      { href: '/pricing-rules',  label: 'Ціноутворення',    icon: Zap,         roles: ['OWNER', 'ADMIN', 'STOREKEEPER'] },
-      { href: '/employees',      label: 'Персонал',         icon: UserCog,     roles: ['OWNER', 'ADMIN'] },
-      { href: '/infrastructure', label: 'Підрозділи',   icon: Building2,   roles: ['OWNER', 'ADMIN'] },
-      { href: '/settings',       label: 'Налаштування', icon: Settings,    roles: ['OWNER', 'ADMIN'] },
-      { href: '/settings/sync',  label: 'Cloud Sync',   icon: CloudUpload, roles: ['OWNER', 'ADMIN'] },
+      { href: '/crm', label: 'Контрагенти', icon: Users },
+      { href: '/inventory', label: 'Склад', icon: Package },
+      { href: '/catalog', label: 'Каталог', icon: BookOpen, roles: ['OWNER', 'ADMIN'] },
+      {
+        href: '/pricing-rules',
+        label: 'Ціноутворення',
+        icon: Zap,
+        roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
+      },
+      { href: '/employees', label: 'Персонал', icon: UserCog, roles: ['OWNER', 'ADMIN'] },
+      { href: '/infrastructure', label: 'Підрозділи', icon: Building2, roles: ['OWNER', 'ADMIN'] },
+      { href: '/settings', label: 'Налаштування', icon: Settings, roles: ['OWNER', 'ADMIN'] },
+      { href: '/settings/sync', label: 'Cloud Sync', icon: CloudUpload, roles: ['OWNER', 'ADMIN'] },
     ],
   },
 ];
 
-const NAV_GROUPS_FUNCTIONS: NavGroup[] = [{
-  items: [
-    { href: '/dashboard',       label: 'Дашборд',         icon: LayoutDashboard },
-    { href: '/work-orders',     label: 'Наряди',           icon: Wrench },
-    { href: '/calendar',        label: 'Календар',         icon: CalendarDays },
-    { href: '/crm',             label: 'Контрагенти',      icon: Users },
-    { href: '/inventory',       label: 'Склад',            icon: Package },
-    { href: '/purchase-orders', label: 'Замовлення',       icon: ShoppingCart },
-    { href: '/stock-documents', label: 'Документи складу', icon: FileText },
-    { href: '/invoices',        label: 'Рахунки',          icon: Receipt },
-    { href: '/settlements',     label: 'Розрахунки',       icon: Wallet },
-    { href: '/reports',         label: 'Звіти',            icon: BarChart2, roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'] },
-    { href: '/catalog',         label: 'Каталог',          icon: BookOpen, roles: ['OWNER', 'ADMIN'] },
-    { href: '/pricing-rules',   label: 'Ціноутворення',    icon: Zap,      roles: ['OWNER', 'ADMIN', 'STOREKEEPER'] },
-    { href: '/employees',       label: 'Персонал',         icon: UserCog, roles: ['OWNER', 'ADMIN'] },
-    { href: '/infrastructure',  label: 'Підрозділи',       icon: Building2, roles: ['OWNER', 'ADMIN'] },
-    { href: '/settings',        label: 'Налаштування',     icon: Settings, roles: ['OWNER', 'ADMIN'] },
-    { href: '/settings/sync',   label: 'Cloud Sync',       icon: CloudUpload, roles: ['OWNER', 'ADMIN'] },
-  ],
-}];
+const NAV_GROUPS_FUNCTIONS: NavGroup[] = [
+  {
+    items: [
+      { href: '/dashboard', label: 'Дашборд', icon: LayoutDashboard },
+      { href: '/work-orders', label: 'Наряди', icon: Wrench },
+      { href: '/calendar', label: 'Календар', icon: CalendarDays },
+      { href: '/crm', label: 'Контрагенти', icon: Users },
+      { href: '/inventory', label: 'Склад', icon: Package },
+      { href: '/purchase-orders', label: 'Замовлення', icon: ShoppingCart },
+      { href: '/stock-documents', label: 'Документи складу', icon: FileText },
+      { href: '/invoices', label: 'Рахунки', icon: Receipt },
+      { href: '/settlements', label: 'Розрахунки', icon: Wallet },
+      {
+        href: '/reports',
+        label: 'Звіти',
+        icon: BarChart2,
+        roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
+      },
+      { href: '/catalog', label: 'Каталог', icon: BookOpen, roles: ['OWNER', 'ADMIN'] },
+      {
+        href: '/pricing-rules',
+        label: 'Ціноутворення',
+        icon: Zap,
+        roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
+      },
+      { href: '/employees', label: 'Персонал', icon: UserCog, roles: ['OWNER', 'ADMIN'] },
+      { href: '/infrastructure', label: 'Підрозділи', icon: Building2, roles: ['OWNER', 'ADMIN'] },
+      { href: '/settings', label: 'Налаштування', icon: Settings, roles: ['OWNER', 'ADMIN'] },
+      { href: '/settings/sync', label: 'Cloud Sync', icon: CloudUpload, roles: ['OWNER', 'ADMIN'] },
+    ],
+  },
+];
 
 const NAV_MODE_KEY = 'sto_nav_mode';
 type NavMode = 'sections' | 'functions';
@@ -118,18 +138,22 @@ const ALL_NAV_ITEMS: NavItem[] = (() => {
   const seen = new Set<string>();
   return [...NAV_GROUPS, ...NAV_GROUPS_FUNCTIONS]
     .flatMap(g => g.items)
-    .filter(item => { if (seen.has(item.href)) return false; seen.add(item.href); return true; });
+    .filter(item => {
+      if (seen.has(item.href)) return false;
+      seen.add(item.href);
+      return true;
+    });
 })();
 
 const ROLE_LABELS: Record<string, string> = {
-  OWNER:         'Власник',
-  ADMIN:         'Адміністратор',
-  RECEPTIONIST:  'Приймальник',
-  MECHANIC:      'Механік',
-  STOREKEEPER:   'Комірник',
-  ACCOUNTANT:    'Бухгалтер',
-  CLIENT:        'Клієнт',
-  XLSX_MANAGER:  'Менеджер імпорту',
+  OWNER: 'Власник',
+  ADMIN: 'Адміністратор',
+  RECEPTIONIST: 'Приймальник',
+  MECHANIC: 'Механік',
+  STOREKEEPER: 'Комірник',
+  ACCOUNTANT: 'Бухгалтер',
+  CLIENT: 'Клієнт',
+  XLSX_MANAGER: 'Менеджер імпорту',
 };
 
 const SIDEBAR_COLLAPSED_KEY = 'sto_sidebar_collapsed';
@@ -145,7 +169,7 @@ function isActive(pathname: string, href: string): boolean {
 const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403', '/booking'];
 
 function isPublicRoute(pathname: string): boolean {
-  return PUBLIC_ROUTES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return PUBLIC_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 export function TopShell({ children }: { children: ReactNode }) {
@@ -163,10 +187,17 @@ export function TopShell({ children }: { children: ReactNode }) {
 
   const uiFeatures = useUiFeatures();
 
-  useKeyboardShortcut('ctrl+k', useCallback((e) => {
-    e.preventDefault();
-    if (uiFeatures.commandPaletteEnabled && employee) setPaletteOpen(p => !p);
-  }, [uiFeatures.commandPaletteEnabled, employee]), { enabled: true, allowInInput: true });
+  useKeyboardShortcut(
+    'ctrl+k',
+    useCallback(
+      e => {
+        e.preventDefault();
+        if (uiFeatures.commandPaletteEnabled && employee) setPaletteOpen(p => !p);
+      },
+      [uiFeatures.commandPaletteEnabled, employee],
+    ),
+    { enabled: true, allowInInput: true },
+  );
 
   // Disable global shortcuts while palette is open so Alt+W/D/C/I/N don't navigate behind it
   useGlobalShortcuts(!!employee && uiFeatures.keyboardShortcutsEnabled && !paletteOpen);
@@ -175,40 +206,54 @@ export function TopShell({ children }: { children: ReactNode }) {
     try {
       const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
       if (saved !== null) setCollapsed(saved === 'true');
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(BOOKMARKS_KEY);
       if (saved) setBookmarks(JSON.parse(saved) as string[]);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(NAV_MODE_KEY) as NavMode | null;
       if (saved === 'sections' || saved === 'functions') setNavMode(saved);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     const handler = (e: Event) => {
       const mode = (e as CustomEvent<NavMode>).detail;
       setNavMode(mode);
-      try { localStorage.setItem(NAV_MODE_KEY, mode); } catch { /* ignore */ }
+      try {
+        localStorage.setItem(NAV_MODE_KEY, mode);
+      } catch {
+        /* ignore */
+      }
     };
     window.addEventListener('sto:nav-mode-change', handler);
     return () => window.removeEventListener('sto:nav-mode-change', handler);
   }, []);
 
-  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   const toggleBookmark = useCallback((href: string, e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setBookmarks(prev => {
-      const next = prev.includes(href)
-        ? prev.filter(b => b !== href)
-        : [...prev, href];
-      try { localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      const next = prev.includes(href) ? prev.filter(b => b !== href) : [...prev, href];
+      try {
+        localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
       return next;
     });
   }, []);
@@ -236,27 +281,29 @@ export function TopShell({ children }: { children: ReactNode }) {
   }
 
   const role = employee.role;
-  const initials = `${employee.firstName?.[0] ?? ''}${employee.lastName?.[0] ?? ''}`.toUpperCase() || '?';
+  const initials =
+    `${employee.firstName?.[0] ?? ''}${employee.lastName?.[0] ?? ''}`.toUpperCase() || '?';
 
   const toggleCollapsed = () => {
     setCollapsed(prev => {
       const next = !prev;
-      try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next)); } catch { /* ignore */ }
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
       return next;
     });
   };
 
   const handleLogout = async () => {
-    if (await confirm({ title: 'Вийти з системи?' })) { logout(); router.push('/login'); }
+    if (await confirm({ title: 'Вийти з системи?' })) {
+      logout();
+      router.push('/login');
+    }
   };
 
-  const NavLink = ({
-    item,
-    showStar = true,
-  }: {
-    item: NavItem;
-    showStar?: boolean;
-  }) => {
+  const NavLink = ({ item, showStar = true }: { item: NavItem; showStar?: boolean }) => {
     const active = isActive(pathname ?? '', item.href);
     const Icon = item.icon;
     const isBookmarked = bookmarks.includes(item.href);
@@ -279,7 +326,7 @@ export function TopShell({ children }: { children: ReactNode }) {
         {!collapsed && <span className="truncate leading-none flex-1">{item.label}</span>}
         {!collapsed && showStar && (
           <button
-            onClick={(e) => toggleBookmark(item.href, e)}
+            onClick={e => toggleBookmark(item.href, e)}
             className={cn(
               'h-5 w-5 flex items-center justify-center rounded transition-opacity shrink-0',
               isBookmarked
@@ -296,9 +343,8 @@ export function TopShell({ children }: { children: ReactNode }) {
   };
 
   const SidebarNav = () => {
-    const bookmarkedItems = ALL_NAV_ITEMS.filter(item =>
-      bookmarks.includes(item.href) &&
-      (!item.roles || item.roles.includes(role)),
+    const bookmarkedItems = ALL_NAV_ITEMS.filter(
+      item => bookmarks.includes(item.href) && (!item.roles || item.roles.includes(role)),
     );
     const activeGroups = navMode === 'sections' ? NAV_GROUPS : NAV_GROUPS_FUNCTIONS;
 
@@ -342,10 +388,12 @@ export function TopShell({ children }: { children: ReactNode }) {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className={cn(
-        'flex items-center h-14 border-b border-sidebar-border shrink-0',
-        collapsed ? 'justify-center px-0' : 'justify-between px-3',
-      )}>
+      <div
+        className={cn(
+          'flex items-center h-14 border-b border-sidebar-border shrink-0',
+          collapsed ? 'justify-center px-0' : 'justify-between px-3',
+        )}
+      >
         {collapsed ? (
           <button
             onClick={toggleCollapsed}
@@ -361,8 +409,12 @@ export function TopShell({ children }: { children: ReactNode }) {
                 <Wrench className="h-4 w-4 text-white" />
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="text-[14px] font-bold text-white leading-none tracking-tight">STO ERP</span>
-                <span className="text-[10px] text-sidebar-muted leading-none mt-0.5 truncate">Автосервіс</span>
+                <span className="text-[14px] font-bold text-white leading-none tracking-tight">
+                  STO ERP
+                </span>
+                <span className="text-[10px] text-sidebar-muted leading-none mt-0.5 truncate">
+                  Автосервіс
+                </span>
               </div>
             </Link>
             <button
@@ -385,7 +437,9 @@ export function TopShell({ children }: { children: ReactNode }) {
           >
             <Search className="h-3.5 w-3.5 shrink-0" />
             <span className="flex-1 text-left">Пошук...</span>
-            <kbd className="text-[10px] bg-sidebar-hover border border-sidebar-border rounded px-1">Ctrl K</kbd>
+            <kbd className="text-[10px] bg-sidebar-hover border border-sidebar-border rounded px-1">
+              Ctrl K
+            </kbd>
           </button>
         </div>
       )}
@@ -449,24 +503,25 @@ export function TopShell({ children }: { children: ReactNode }) {
       <ToastContainer />
       <ConfirmDialog {...dialogProps} />
       {employee && uiFeatures.commandPaletteEnabled && (
-        <CommandPalette
-          open={paletteOpen}
-          role={role}
-          onClose={() => setPaletteOpen(false)}
-        />
+        <CommandPalette open={paletteOpen} role={role} onClose={() => setPaletteOpen(false)} />
       )}
       {/* Desktop sidebar */}
-      <aside className={cn(
-        'hidden lg:flex flex-col shrink-0 bg-sidebar-bg transition-[width] duration-200 ease-in-out',
-        collapsed ? 'w-15' : 'w-54',
-      )}>
+      <aside
+        className={cn(
+          'hidden lg:flex flex-col shrink-0 bg-sidebar-bg transition-[width] duration-200 ease-in-out',
+          collapsed ? 'w-15' : 'w-54',
+        )}
+      >
         <SidebarContent />
       </aside>
 
       {/* Mobile overlay */}
       {mobileOpen && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
+          <div
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
           <aside className="fixed inset-y-0 left-0 w-54 flex flex-col bg-sidebar-bg z-50 lg:hidden shadow-xl">
             <SidebarContent />
           </aside>
@@ -502,9 +557,7 @@ export function TopShell({ children }: { children: ReactNode }) {
           )}
         </header>
 
-        <main className="flex-1 overflow-auto">
-          {children}
-        </main>
+        <main className="flex-1 overflow-auto">{children}</main>
       </div>
     </div>
   );

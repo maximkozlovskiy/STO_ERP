@@ -32,18 +32,19 @@ export function validatePublicUrl(raw: string): string | null {
   // with `f`. Strip brackets once up-front so all comparisons see the bare
   // address.
   const hostnameRaw = parsed.hostname.toLowerCase();
-  const host = hostnameRaw.startsWith('[') && hostnameRaw.endsWith(']')
-    ? hostnameRaw.slice(1, -1)
-    : hostnameRaw;
+  const host =
+    hostnameRaw.startsWith('[') && hostnameRaw.endsWith(']')
+      ? hostnameRaw.slice(1, -1)
+      : hostnameRaw;
 
   // Hostname-based blocklist (no DNS lookup — caller may also re-validate
   // after DNS resolution if defense-in-depth is required).
   if (
-    host === 'localhost'
-    || host.endsWith('.localhost')
-    || host === '0.0.0.0'
-    || host === '::'
-    || host === '::1'
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '0.0.0.0' ||
+    host === '::' ||
+    host === '::1'
   ) {
     return 'Недозволений хост (localhost)';
   }
@@ -110,7 +111,8 @@ export function validatePublicUrl(raw: string): string | null {
       // 10.0.0.0/8 — RFC1918
       if (a === 10) return 'Недозволена IPv6 з вбудованим IPv4 (10.0.0.0/8)';
       // 172.16.0.0/12 — RFC1918
-      if (a === 172 && b >= 16 && b <= 31) return 'Недозволена IPv6 з вбудованим IPv4 (172.16.0.0/12)';
+      if (a === 172 && b >= 16 && b <= 31)
+        return 'Недозволена IPv6 з вбудованим IPv4 (172.16.0.0/12)';
       // 192.168.0.0/16 — RFC1918
       if (a === 192 && b === 168) return 'Недозволена IPv6 з вбудованим IPv4 (192.168.0.0/16)';
       // 169.254.0.0/16 — link-local

@@ -1,5 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsBooleanString, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsBooleanString,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { EmployeeStatus, UserRole } from '@prisma/client';
 import { z } from 'zod';
@@ -23,11 +36,13 @@ export type RateScheme = z.infer<typeof rateSchemeSchema>;
 
 export class CreateEmployeeDto {
   @ApiProperty({ example: 'Іван' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   firstName!: string;
 
   @ApiProperty({ example: 'Коваль' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   lastName!: string;
 
   @ApiProperty({ enum: UserRole })
@@ -115,7 +130,7 @@ export class UpdateEmployeeDto {
 // Query DTO for `GET /employees` — without it the controller silently dropped q/role/showDeleted
 // (NestJS @Query without DTO has no whitelisting, so the params arrived but were never read).
 export class EmployeesQueryDto {
-  @ApiPropertyOptional({ description: 'Пошук за ім\'ям, прізвищем або телефоном' })
+  @ApiPropertyOptional({ description: "Пошук за ім'ям, прізвищем або телефоном" })
   @IsOptional()
   @IsString()
   @MaxLength(100)

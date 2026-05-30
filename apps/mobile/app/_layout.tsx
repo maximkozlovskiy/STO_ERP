@@ -7,7 +7,7 @@ export default function RootLayout() {
   const router = useRouter();
 
   useEffect(() => {
-    loadToken().then((token) => {
+    loadToken().then(token => {
       if (!token) router.replace('/login');
     });
   }, []);

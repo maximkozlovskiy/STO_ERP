@@ -12,9 +12,27 @@ interface EmptyStateProps {
 }
 
 const sizes = {
-  sm: { wrap: 'py-8', icon: 'h-10 w-10', iconInner: 'h-5 w-5', title: 'text-[13px]', desc: 'text-[12px]' },
-  md: { wrap: 'py-14', icon: 'h-14 w-14', iconInner: 'h-6 w-6', title: 'text-[14px]', desc: 'text-[13px]' },
-  lg: { wrap: 'py-20', icon: 'h-16 w-16', iconInner: 'h-7 w-7', title: 'text-[15px]', desc: 'text-[13px]' },
+  sm: {
+    wrap: 'py-8',
+    icon: 'h-10 w-10',
+    iconInner: 'h-5 w-5',
+    title: 'text-[13px]',
+    desc: 'text-[12px]',
+  },
+  md: {
+    wrap: 'py-14',
+    icon: 'h-14 w-14',
+    iconInner: 'h-6 w-6',
+    title: 'text-[14px]',
+    desc: 'text-[13px]',
+  },
+  lg: {
+    wrap: 'py-20',
+    icon: 'h-16 w-16',
+    iconInner: 'h-7 w-7',
+    title: 'text-[15px]',
+    desc: 'text-[13px]',
+  },
 };
 
 function EmptyState({
@@ -27,12 +45,20 @@ function EmptyState({
 }: EmptyStateProps) {
   const s = sizes[size];
   return (
-    <div className={cn('flex flex-col items-center justify-center gap-3 px-6 text-center', s.wrap, className)}>
-      <div className={cn(
-        'flex items-center justify-center rounded-full',
-        'bg-secondary border border-border',
-        s.icon,
-      )}>
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center gap-3 px-6 text-center',
+        s.wrap,
+        className,
+      )}
+    >
+      <div
+        className={cn(
+          'flex items-center justify-center rounded-full',
+          'bg-secondary border border-border',
+          s.icon,
+        )}
+      >
         <Icon className={cn(s.iconInner, 'text-muted-foreground')} />
       </div>
       <div className="flex flex-col gap-1 max-w-xs">

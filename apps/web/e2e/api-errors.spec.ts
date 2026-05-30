@@ -14,17 +14,11 @@ import { test, expect } from '@playwright/test';
 test.describe('API error resilience — захищені сторінки', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  const PROTECTED_PAGES = [
-    '/work-orders',
-    '/inventory',
-    '/crm',
-    '/calendar',
-    '/invoices',
-  ];
+  const PROTECTED_PAGES = ['/work-orders', '/inventory', '/crm', '/calendar', '/invoices'];
 
   for (const path of PROTECTED_PAGES) {
     test(`${path} — не крашиться при 500 від API`, async ({ page }) => {
-      await page.route('**/api/**', (route) =>
+      await page.route('**/api/**', route =>
         route.fulfill({
           status: 500,
           contentType: 'application/json',
@@ -51,7 +45,7 @@ test.describe('API error resilience — публічні сторінки', () =
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test('/login — рендериться навіть при 500 на /api/auth/refresh', async ({ page }) => {
-    await page.route('**/api/auth/**', (route) =>
+    await page.route('**/api/auth/**', route =>
       route.fulfill({
         status: 500,
         contentType: 'application/json',
@@ -62,12 +56,13 @@ test.describe('API error resilience — публічні сторінки', () =
     const response = await page.goto('/login');
     expect(response?.status() ?? 200).toBeLessThan(500);
     // Форма логіну має містити поле email — використовуємо .first() для strict mode
-    await expect(page.locator('input[type="email"], input[name="email"], input#email').first())
-      .toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.locator('input[type="email"], input[name="email"], input#email').first(),
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test('/setup — рендериться без жодних API запитів', async ({ page }) => {
-    await page.route('**/api/**', (route) => route.fulfill({ status: 500 }));
+    await page.route('**/api/**', route => route.fulfill({ status: 500 }));
     const response = await page.goto('/setup');
     expect(response?.status() ?? 200).toBeLessThan(500);
     await page.waitForLoadState('domcontentloaded');
@@ -76,7 +71,7 @@ test.describe('API error resilience — публічні сторінки', () =
   });
 
   test('/ (корінь) — не падає при 500 від API', async ({ page }) => {
-    await page.route('**/api/**', (route) => route.fulfill({ status: 500 }));
+    await page.route('**/api/**', route => route.fulfill({ status: 500 }));
     const response = await page.goto('/');
     expect(response?.status() ?? 200).toBeLessThan(500);
   });

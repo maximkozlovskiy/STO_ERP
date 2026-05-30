@@ -18,9 +18,19 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@/components/ui/table';
-import { DetailPanel, PanelField, PanelSection, type DetailPanelTab } from '@/components/ui/detail-panel';
+import {
+  DetailPanel,
+  PanelField,
+  PanelSection,
+  type DetailPanelTab,
+} from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
@@ -37,25 +47,52 @@ import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
-interface Counterparty { id: string; firstName?: string; lastName?: string; companyName?: string; }
+interface Counterparty {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  companyName?: string;
+}
 interface InvoiceLine {
-  id: string; invoiceId: string; goodId?: string | null; workId?: string | null;
-  description: string; quantity: number; unitPrice: number; vatRate: number;
-  priceWithoutVat: number; vatAmount: number; priceWithVat: number; sortOrder: number;
+  id: string;
+  invoiceId: string;
+  goodId?: string | null;
+  workId?: string | null;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  vatRate: number;
+  priceWithoutVat: number;
+  vatAmount: number;
+  priceWithVat: number;
+  sortOrder: number;
 }
 interface Invoice {
-  id: string; number: string; status: string;
-  counterpartyId: string; counterpartyName?: string;
-  workOrderId?: string | null; workOrderNumber?: string | null;
+  id: string;
+  number: string;
+  status: string;
+  counterpartyId: string;
+  counterpartyName?: string;
+  workOrderId?: string | null;
+  workOrderNumber?: string | null;
   amount: number;
-  totalWithoutVat?: number; totalVat?: number; totalWithVat?: number;
+  totalWithoutVat?: number;
+  totalVat?: number;
+  totalWithVat?: number;
   paidAmount?: number;
-  invoiceType?: string; notes?: string | null;
+  invoiceType?: string;
+  notes?: string | null;
   dueDate?: string | null;
   lines?: InvoiceLine[];
-  createdAt: string; updatedAt: string;
+  createdAt: string;
+  updatedAt: string;
 }
-interface Paginated { items: Invoice[]; total: number; page: number; limit: number; }
+interface Paginated {
+  items: Invoice[];
+  total: number;
+  page: number;
+  limit: number;
+}
 
 interface InvoiceFilters extends Record<string, unknown> {
   search: string;
@@ -63,20 +100,31 @@ interface InvoiceFilters extends Record<string, unknown> {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка', SENT: 'Надіслано', PAID: 'Оплачено',
-  OVERDUE: 'Прострочено', CANCELLED: 'Скасовано',
+  DRAFT: 'Чернетка',
+  SENT: 'Надіслано',
+  PAID: 'Оплачено',
+  OVERDUE: 'Прострочено',
+  CANCELLED: 'Скасовано',
 };
 const STATUS_BADGE: Record<string, BadgeVariant> = {
-  DRAFT: 'secondary', SENT: 'default', PAID: 'success',
-  OVERDUE: 'warning', CANCELLED: 'destructive',
+  DRAFT: 'secondary',
+  SENT: 'default',
+  PAID: 'success',
+  OVERDUE: 'warning',
+  CANCELLED: 'destructive',
 };
 const STATUS_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ['SENT', 'CANCELLED'], SENT: ['PAID', 'CANCELLED'],
-  OVERDUE: ['PAID', 'CANCELLED'], PAID: [], CANCELLED: [],
+  DRAFT: ['SENT', 'CANCELLED'],
+  SENT: ['PAID', 'CANCELLED'],
+  OVERDUE: ['PAID', 'CANCELLED'],
+  PAID: [],
+  CANCELLED: [],
 };
 
 const INVOICE_TYPE_LABELS: Record<string, string> = {
-  STANDARD: 'Стандартний', PREPAYMENT: 'Аванс', CREDIT_NOTE: 'Кредит-нота',
+  STANDARD: 'Стандартний',
+  PREPAYMENT: 'Аванс',
+  CREDIT_NOTE: 'Кредит-нота',
 };
 
 function fmt(n: number) {
@@ -89,16 +137,29 @@ export default function InvoicesPage() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
 
-  const INVOICE_COLUMNS = useMemo(() => [
-    { key: 'number', label: 'Номер', defaultVisible: true },
-    { key: 'counterparty', label: 'Контрагент', defaultVisible: true },
-    { key: 'workOrder', label: 'Наряд', defaultVisible: true },
-    { key: 'status', label: 'Статус', defaultVisible: true },
-    { key: 'amount', label: 'Сума', defaultVisible: true },
-    { key: 'dueDate', label: 'Термін оплати', defaultVisible: true },
-  ], []);
+  const INVOICE_COLUMNS = useMemo(
+    () => [
+      { key: 'number', label: 'Номер', defaultVisible: true },
+      { key: 'counterparty', label: 'Контрагент', defaultVisible: true },
+      { key: 'workOrder', label: 'Наряд', defaultVisible: true },
+      { key: 'status', label: 'Статус', defaultVisible: true },
+      { key: 'amount', label: 'Сума', defaultVisible: true },
+      { key: 'dueDate', label: 'Термін оплати', defaultVisible: true },
+    ],
+    [],
+  );
 
-  const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('invoices', INVOICE_COLUMNS);
+  const {
+    visibleKeys: colVisible,
+    visibleColumns,
+    orderedColumns,
+    order,
+    customLabels,
+    toggle: toggleCol,
+    reorder,
+    renameColumn,
+    resetConfig,
+  } = useTableColumns('invoices', INVOICE_COLUMNS);
   const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
   const detailPanel = useDetailPanel('invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -124,7 +185,11 @@ export default function InvoicesPage() {
 
   // Saved filters
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<InvoiceFilters>('invoices');
+  const {
+    saved: savedFilters,
+    save: saveFilter,
+    remove: removeFilter,
+  } = useSavedFilters<InvoiceFilters>('invoices');
 
   const applyFilter = useCallback((preset: { id: string; filters: InvoiceFilters }) => {
     setSearch(preset.filters.search ?? '');
@@ -133,11 +198,14 @@ export default function InvoicesPage() {
     setActiveSavedFilterId(preset.id);
   }, []);
 
-  const handleSaveFilter = useCallback((name: string) => {
-    const preset = saveFilter(name, { search, status });
-    setActiveSavedFilterId(preset.id);
-    if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
-  }, [saveFilter, search, status, features.toastEnabled]);
+  const handleSaveFilter = useCallback(
+    (name: string) => {
+      const preset = saveFilter(name, { search, status });
+      setActiveSavedFilterId(preset.id);
+      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+    },
+    [saveFilter, search, status, features.toastEnabled],
+  );
 
   // Bulk select
   const [data, setData] = useState<Paginated | null>(null);
@@ -148,34 +216,44 @@ export default function InvoicesPage() {
     if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
   }, [bulkSelect.someSelected]);
 
-  const bulkCancel = useCallback(async (ids: string[]) => {
-    const results = await Promise.allSettled(
-      ids.map(id => apiFetch(`/invoices/${id}/transition`, {
-        method: 'POST',
-        body: JSON.stringify({ status: 'CANCELLED' }),
-      })),
-    );
-    const succeeded = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.length - succeeded;
-    bulkSelect.clear();
-    load();
-    if (features.toastEnabled) {
-      if (succeeded > 0 && failed === 0) {
-        toast.success(`Скасовано ${succeeded} ${succeeded === 1 ? 'рахунок' : 'рахунків'}`);
-      } else if (succeeded > 0 && failed > 0) {
-        toast.warning(`Скасовано ${succeeded} з ${results.length}. ${failed} не змінено (статус не дозволяє)`);
-      } else {
-        toast.error('Жоден рахунок не скасовано (статус не дозволяє)');
+  const bulkCancel = useCallback(
+    async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map(id =>
+          apiFetch(`/invoices/${id}/transition`, {
+            method: 'POST',
+            body: JSON.stringify({ status: 'CANCELLED' }),
+          }),
+        ),
+      );
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+      bulkSelect.clear();
+      load();
+      if (features.toastEnabled) {
+        if (succeeded > 0 && failed === 0) {
+          toast.success(`Скасовано ${succeeded} ${succeeded === 1 ? 'рахунок' : 'рахунків'}`);
+        } else if (succeeded > 0 && failed > 0) {
+          toast.warning(
+            `Скасовано ${succeeded} з ${results.length}. ${failed} не змінено (статус не дозволяє)`,
+          );
+        } else {
+          toast.error('Жоден рахунок не скасовано (статус не дозволяє)');
+        }
+      } else if (failed > 0) {
+        setError(`${succeeded} з ${results.length} рахунків змінено, ${failed} не вдалось`);
       }
-    } else if (failed > 0) {
-      setError(`${succeeded} з ${results.length} рахунків змінено, ${failed} не вдалось`);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bulkSelect, features.toastEnabled]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [bulkSelect, features.toastEnabled],
+  );
 
-  const bulkActions = useMemo<BulkAction[]>(() => [
-    { id: 'cancel', label: 'Скасувати вибрані', variant: 'destructive', onClick: bulkCancel },
-  ], [bulkCancel]);
+  const bulkActions = useMemo<BulkAction[]>(
+    () => [
+      { id: 'cancel', label: 'Скасувати вибрані', variant: 'destructive', onClick: bulkCancel },
+    ],
+    [bulkCancel],
+  );
 
   // Unsaved guard for create modal
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -186,7 +264,9 @@ export default function InvoicesPage() {
   const selectTokenRef = useRef(0);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const load = useCallback(async () => {
@@ -209,8 +289,9 @@ export default function InvoicesPage() {
     }
   }, [page, status, debouncedSearch]);
 
-  useEffect(() => { load(); }, [load]);
-
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     if (!showPayment) return;
@@ -229,7 +310,9 @@ export default function InvoicesPage() {
           setError(e instanceof Error ? e.message : 'Помилка завантаження способів оплати');
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [showPayment]);
 
   // Bug #143: async-init Select race condition. payForm.method defaults to 'cash'
@@ -244,12 +327,17 @@ export default function InvoicesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!showPayment || payMethods.length === 0) return;
-    setPayForm(f => payMethods.some(m => m.code === f.method) ? f : { ...f, method: payMethods[0].code });
+    setPayForm(f =>
+      payMethods.some(m => m.code === f.method) ? f : { ...f, method: payMethods[0].code },
+    );
   }, [payMethods, showPayment]);
 
   const handleCreate = async () => {
     const amt = parseFloat(form.amount);
-    if (!Number.isFinite(amt) || amt <= 0) { setError('Введіть коректну суму'); return; }
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setError('Введіть коректну суму');
+      return;
+    }
     setSaving(true);
     try {
       await apiFetch<Invoice>('/invoices', {
@@ -274,19 +362,23 @@ export default function InvoicesPage() {
   };
 
   const handleTransition = async (inv: Invoice, newStatus: string) => {
-    if (!(await confirm({ title: `Перевести рахунок ${inv.number} → ${STATUS_LABELS[newStatus]}?` }))) return;
+    if (
+      !(await confirm({ title: `Перевести рахунок ${inv.number} → ${STATUS_LABELS[newStatus]}?` }))
+    )
+      return;
     setSavingId(inv.id);
     setError('');
     try {
       await apiFetch<void>(`/invoices/${inv.id}/transition`, {
-        method: 'POST', body: JSON.stringify({ status: newStatus }),
+        method: 'POST',
+        body: JSON.stringify({ status: newStatus }),
       });
       if (!mountedRef.current) return;
       // Sync selectedInv if it still matches the transitioned invoice.
       // Check via functional setter to avoid stale-closure: panel could be
       // switched to another row between click and response — without this guard
       // the new selectedInv would get the wrong status applied.
-      setSelectedInv(prev => prev && prev.id === inv.id ? { ...prev, status: newStatus } : prev);
+      setSelectedInv(prev => (prev && prev.id === inv.id ? { ...prev, status: newStatus } : prev));
       load();
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
@@ -298,7 +390,7 @@ export default function InvoicesPage() {
   const handlePay = async () => {
     if (!showPayment) return;
     const rawAmt = parseFloat(payForm.amount);
-    const amt = (!payForm.amount || !Number.isFinite(rawAmt)) ? showPayment.amount : rawAmt;
+    const amt = !payForm.amount || !Number.isFinite(rawAmt) ? showPayment.amount : rawAmt;
     setSaving(true);
     try {
       await apiFetch<{ id: string }>('/payments', {
@@ -318,7 +410,9 @@ export default function InvoicesPage() {
       // PaymentsService transitions invoice → PAID on payment creation.
       // Reflect that immediately in the open DetailPanel so the user does not
       // see a stale SENT status with an «Оплатити» button that would 400 on click.
-      setSelectedInv(prev => prev && prev.id === paidInvoiceId ? { ...prev, status: 'PAID' } : prev);
+      setSelectedInv(prev =>
+        prev && prev.id === paidInvoiceId ? { ...prev, status: 'PAID' } : prev,
+      );
       load();
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка оплати');
@@ -366,7 +460,9 @@ export default function InvoicesPage() {
     setCloning(true);
     setError('');
     try {
-      const cloned = await apiFetch<{ id: string }>(`/invoices/${inv.id}/clone`, { method: 'POST' });
+      const cloned = await apiFetch<{ id: string }>(`/invoices/${inv.id}/clone`, {
+        method: 'POST',
+      });
       // Reload data to show cloned invoice
       load();
       // Select and show the cloned invoice - fetch it first
@@ -387,13 +483,32 @@ export default function InvoicesPage() {
       label: 'Основне',
       content: (
         <div className="space-y-3">
-          <PanelField label="Статус" value={<Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>{STATUS_LABELS[inv.status]}</Badge>} />
+          <PanelField
+            label="Статус"
+            value={
+              <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
+                {STATUS_LABELS[inv.status]}
+              </Badge>
+            }
+          />
           <PanelField label="Контрагент" value={inv.counterpartyName} />
           <PanelField label="Наряд" value={inv.workOrderNumber} />
-          <PanelField label="Тип" value={inv.invoiceType ? INVOICE_TYPE_LABELS[inv.invoiceType] : undefined} />
-          <PanelField label="Сума" value={inv.amount != null ? `${fmtMoney(inv.amount)} ₴` : undefined} />
-          <PanelField label="Сплачено" value={inv.paidAmount != null ? `${fmtMoney(inv.paidAmount)} ₴` : undefined} />
-          <PanelField label="Термін оплати" value={inv.dueDate ? fmtDate(inv.dueDate) : undefined} />
+          <PanelField
+            label="Тип"
+            value={inv.invoiceType ? INVOICE_TYPE_LABELS[inv.invoiceType] : undefined}
+          />
+          <PanelField
+            label="Сума"
+            value={inv.amount != null ? `${fmtMoney(inv.amount)} ₴` : undefined}
+          />
+          <PanelField
+            label="Сплачено"
+            value={inv.paidAmount != null ? `${fmtMoney(inv.paidAmount)} ₴` : undefined}
+          />
+          <PanelField
+            label="Термін оплати"
+            value={inv.dueDate ? fmtDate(inv.dueDate) : undefined}
+          />
           {inv.notes && <PanelField label="Нотатки" value={inv.notes} />}
           <PanelSection title="Дії">
             <div className="flex flex-col gap-2">
@@ -403,7 +518,7 @@ export default function InvoicesPage() {
                   variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
                   size="sm"
                   className="w-full"
-                  onClick={() => s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s)}
+                  onClick={() => (s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s))}
                   loading={savingId === inv.id}
                 >
                   {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
@@ -417,12 +532,7 @@ export default function InvoicesPage() {
               >
                 Завантажити PDF
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => window.print()}
-              >
+              <Button variant="outline" size="sm" className="w-full" onClick={() => window.print()}>
                 Друк
               </Button>
               <Button
@@ -443,28 +553,36 @@ export default function InvoicesPage() {
     {
       key: 'lines',
       label: 'Позиції',
-      content: !inv.lines || inv.lines.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">Немає позицій</p>
-      ) : (
-        <div className="space-y-2">
-          {inv.lines.map((line, i) => (
-            <div key={line.id ?? i} className="rounded-lg border border-border px-3 py-2 text-[13px]">
-              <p className="font-medium text-foreground">{line.description}</p>
-              <p className="text-muted-foreground text-[12px] mt-0.5">
-                {line.quantity} × {fmtMoney(line.unitPrice)} ₴
-                {' = '}<span className="text-foreground font-medium">{fmtMoney(line.priceWithVat)} ₴</span>
-              </p>
-            </div>
-          ))}
-        </div>
-      ),
+      content:
+        !inv.lines || inv.lines.length === 0 ? (
+          <p className="text-[13px] text-muted-foreground">Немає позицій</p>
+        ) : (
+          <div className="space-y-2">
+            {inv.lines.map((line, i) => (
+              <div
+                key={line.id ?? i}
+                className="rounded-lg border border-border px-3 py-2 text-[13px]"
+              >
+                <p className="font-medium text-foreground">{line.description}</p>
+                <p className="text-muted-foreground text-[12px] mt-0.5">
+                  {line.quantity} × {fmtMoney(line.unitPrice)} ₴{' = '}
+                  <span className="text-foreground font-medium">
+                    {fmtMoney(line.priceWithVat)} ₴
+                  </span>
+                </p>
+              </div>
+            ))}
+          </div>
+        ),
     },
   ];
 
   return (
     <div className="page-container">
       {error && (
-        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
+          {error}
+        </div>
       )}
       <div className="page-header">
         <div>
@@ -494,7 +612,11 @@ export default function InvoicesPage() {
         {statuses.map(s => (
           <button
             key={s}
-            onClick={() => { setStatus(s); setPage(1); setActiveSavedFilterId(null); }}
+            onClick={() => {
+              setStatus(s);
+              setPage(1);
+              setActiveSavedFilterId(null);
+            }}
             className={cn(
               'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
               status === s
@@ -513,16 +635,18 @@ export default function InvoicesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
+            onChange={e => {
+              setSearch(e.target.value);
+              setPage(1);
+              setActiveSavedFilterId(null);
+            }}
             placeholder="Пошук за номером або контрагентом..."
             className="pl-9"
           />
         </div>
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          {features.savedFiltersEnabled && (
-            <SaveFilterButton onSave={handleSaveFilter} />
-          )}
+          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
             columns={orderedColumns}
             visibleKeys={colVisible}
@@ -530,7 +654,10 @@ export default function InvoicesPage() {
             onReorder={reorder}
             onRename={renameColumn}
             onReset={resetConfig}
-            hasCustomization={JSON.stringify(order) !== JSON.stringify(INVOICE_COLUMNS.map(c => c.key)) || Object.keys(customLabels).length > 0}
+            hasCustomization={
+              JSON.stringify(order) !== JSON.stringify(INVOICE_COLUMNS.map(c => c.key)) ||
+              Object.keys(customLabels).length > 0
+            }
           />
         </div>
       </div>
@@ -564,84 +691,134 @@ export default function InvoicesPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col => (
-                  col.key === 'amount'
-                    ? <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>{col.label}</TableHead>
-                    : <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>
-                ))}
+                {visibleColumns.map(col =>
+                  col.key === 'amount' ? (
+                    <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  ) : (
+                    <TableHead key={col.key} {...dragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  ),
+                )}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
-                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  <TableCell
+                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                    className="py-10 text-center"
+                  >
+                    <div className="flex justify-center">
+                      <Spinner size="md" />
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
               {!loading && invoices.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                  <TableCell
+                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                    className="p-0"
+                  >
                     <EmptyState icon={Receipt} title="Рахунків не знайдено" />
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && invoices.map(inv => (
-                <TableRow
-                  key={inv.id}
-                  onClick={() => { if (detailPanel.enabled) selectInvoice(inv); }}
-                  className={cn(
-                    detailPanel.enabled && 'cursor-pointer',
-                    'transition-colors',
-                    selectedInv?.id === inv.id && 'bg-primary/5',
-                    bulkSelect.isSelected(inv.id) && 'bg-primary/5',
-                  )}
-                >
-                  {features.bulkActionsEnabled && (
-                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={bulkSelect.isSelected(inv.id)}
-                        onChange={() => bulkSelect.toggle(inv.id)}
-                        className="h-3.5 w-3.5 rounded border-border"
-                        aria-label={`Вибрати рахунок ${inv.number}`}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleColumns.map(col => {
-                    if (col.key === 'number') return <TableCell key="number" className="font-medium text-[13px]">{inv.number}</TableCell>;
-                    if (col.key === 'counterparty') return <TableCell key="counterparty" className="text-[13px]">{inv.counterpartyName ?? '—'}</TableCell>;
-                    if (col.key === 'workOrder') return <TableCell key="workOrder" className="text-[13px] text-muted-foreground">{inv.workOrderNumber ?? '—'}</TableCell>;
-                    if (col.key === 'status') return (
-                      <TableCell key="status">
-                        <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>{STATUS_LABELS[inv.status]}</Badge>
+              {!loading &&
+                invoices.map(inv => (
+                  <TableRow
+                    key={inv.id}
+                    onClick={() => {
+                      if (detailPanel.enabled) selectInvoice(inv);
+                    }}
+                    className={cn(
+                      detailPanel.enabled && 'cursor-pointer',
+                      'transition-colors',
+                      selectedInv?.id === inv.id && 'bg-primary/5',
+                      bulkSelect.isSelected(inv.id) && 'bg-primary/5',
+                    )}
+                  >
+                    {features.bulkActionsEnabled && (
+                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={bulkSelect.isSelected(inv.id)}
+                          onChange={() => bulkSelect.toggle(inv.id)}
+                          className="h-3.5 w-3.5 rounded border-border"
+                          aria-label={`Вибрати рахунок ${inv.number}`}
+                        />
                       </TableCell>
-                    );
-                    if (col.key === 'amount') return <TableCell key="amount" className="text-right font-semibold text-[13px]">{fmt(inv.amount)}</TableCell>;
-                    if (col.key === 'dueDate') return <TableCell key="dueDate" className="text-[13px] text-muted-foreground">{inv.dueDate ? fmtDate(inv.dueDate) : '—'}</TableCell>;
-                    return null;
-                  })}
-                  <TableCell>
-                    <div
-                      className="flex gap-1.5 justify-end"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {STATUS_TRANSITIONS[inv.status]?.map(s => (
-                        <Button
-                          key={s}
-                          variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s)}
-                          loading={savingId === inv.id}
-                        >
-                          {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
-                        </Button>
-                      ))}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    )}
+                    {visibleColumns.map(col => {
+                      if (col.key === 'number')
+                        return (
+                          <TableCell key="number" className="font-medium text-[13px]">
+                            {inv.number}
+                          </TableCell>
+                        );
+                      if (col.key === 'counterparty')
+                        return (
+                          <TableCell key="counterparty" className="text-[13px]">
+                            {inv.counterpartyName ?? '—'}
+                          </TableCell>
+                        );
+                      if (col.key === 'workOrder')
+                        return (
+                          <TableCell key="workOrder" className="text-[13px] text-muted-foreground">
+                            {inv.workOrderNumber ?? '—'}
+                          </TableCell>
+                        );
+                      if (col.key === 'status')
+                        return (
+                          <TableCell key="status">
+                            <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
+                              {STATUS_LABELS[inv.status]}
+                            </Badge>
+                          </TableCell>
+                        );
+                      if (col.key === 'amount')
+                        return (
+                          <TableCell key="amount" className="text-right font-semibold text-[13px]">
+                            {fmt(inv.amount)}
+                          </TableCell>
+                        );
+                      if (col.key === 'dueDate')
+                        return (
+                          <TableCell key="dueDate" className="text-[13px] text-muted-foreground">
+                            {inv.dueDate ? fmtDate(inv.dueDate) : '—'}
+                          </TableCell>
+                        );
+                      return null;
+                    })}
+                    <TableCell>
+                      <div className="flex gap-1.5 justify-end" onClick={e => e.stopPropagation()}>
+                        {STATUS_TRANSITIONS[inv.status]?.map(s => (
+                          <Button
+                            key={s}
+                            variant={
+                              s === 'CANCELLED'
+                                ? 'destructive'
+                                : s === 'PAID'
+                                  ? 'default'
+                                  : 'outline'
+                            }
+                            size="sm"
+                            onClick={() =>
+                              s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s)
+                            }
+                            loading={savingId === inv.id}
+                          >
+                            {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
+                          </Button>
+                        ))}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </div>
@@ -658,9 +835,25 @@ export default function InvoicesPage() {
       {/* Pagination */}
       {total > limit && (
         <div className="flex justify-center gap-1.5 mt-4">
-          <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Назад</Button>
-          <span className="h-8 w-8 flex items-center justify-center text-sm text-muted-foreground">{page}</span>
-          <Button variant="outline" size="sm" disabled={page * limit >= total} onClick={() => setPage(p => p + 1)}>Вперед →</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 1}
+            onClick={() => setPage(p => p - 1)}
+          >
+            ← Назад
+          </Button>
+          <span className="h-8 w-8 flex items-center justify-center text-sm text-muted-foreground">
+            {page}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page * limit >= total}
+            onClick={() => setPage(p => p + 1)}
+          >
+            Вперед →
+          </Button>
         </div>
       )}
 
@@ -704,17 +897,26 @@ export default function InvoicesPage() {
               setForm(f => ({ ...f, counterpartyId: '' }));
               dirty.markDirty();
             }}
-            fetchItems={q => apiFetch<{ items: Counterparty[] }>(`/counterparties?q=${encodeURIComponent(q)}&limit=10`).then(r => r.items.map(c => ({
-              ...c,
-              primary: displayCounterpartyName(c),
-            })))}
+            fetchItems={q =>
+              apiFetch<{ items: Counterparty[] }>(
+                `/counterparties?q=${encodeURIComponent(q)}&limit=10`,
+              ).then(r =>
+                r.items.map(c => ({
+                  ...c,
+                  primary: displayCounterpartyName(c),
+                })),
+              )
+            }
           />
           <Input
             label="Сума, ₴"
             required
             type="number"
             value={form.amount}
-            onChange={e => { setForm(f => ({ ...f, amount: e.target.value })); dirty.markDirty(); }}
+            onChange={e => {
+              setForm(f => ({ ...f, amount: e.target.value }));
+              dirty.markDirty();
+            }}
             min="0.01"
             step="0.01"
             placeholder="0.00"
@@ -722,7 +924,10 @@ export default function InvoicesPage() {
           <DatePickerInput
             label="Термін оплати"
             value={form.dueDate}
-            onChange={v => { setForm(f => ({ ...f, dueDate: v })); dirty.markDirty(); }}
+            onChange={v => {
+              setForm(f => ({ ...f, dueDate: v }));
+              dirty.markDirty();
+            }}
           />
         </div>
       </Modal>
@@ -749,14 +954,19 @@ export default function InvoicesPage() {
               value={payForm.method}
               onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}
             >
-              {payMethods.length > 0
-                ? payMethods.map(m => <option key={m.code} value={m.code}>{m.name}</option>)
-                : <>
+              {payMethods.length > 0 ? (
+                payMethods.map(m => (
+                  <option key={m.code} value={m.code}>
+                    {m.name}
+                  </option>
+                ))
+              ) : (
+                <>
                   <option value="cash">Готівка</option>
                   <option value="card_terminal">Термінал</option>
                   <option value="bank_transfer">Банківський переказ</option>
                 </>
-              }
+              )}
             </Select>
             <Input
               label="Сума, ₴"

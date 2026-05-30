@@ -18,13 +18,19 @@ export function useDetailPanel(storageKey: string) {
     try {
       const stored = window.localStorage.getItem(lsKey);
       if (stored !== null) setEnabled(stored === 'true');
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [lsKey]);
 
   const toggle = useCallback(() => {
     setEnabled(prev => {
       const next = !prev;
-      try { window.localStorage.setItem(lsKey, String(next)); } catch { /* ignore */ }
+      try {
+        window.localStorage.setItem(lsKey, String(next));
+      } catch {
+        /* ignore */
+      }
       return next;
     });
   }, [lsKey]);

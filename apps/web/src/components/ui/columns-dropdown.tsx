@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import type { ColumnDef } from '@/hooks/useTableColumns';
 
 interface ColumnsDropdownProps {
-  columns: ColumnDef[];           // orderedColumns from useTableColumns (already sorted + labelled)
+  columns: ColumnDef[]; // orderedColumns from useTableColumns (already sorted + labelled)
   visibleKeys: Set<string>;
   onToggle: (key: string) => void;
   onReorder?: (newOrder: string[]) => void;
@@ -48,7 +48,9 @@ export function ColumnsDropdown({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const handleDragStart = (key: string) => { dragKeyRef.current = key; };
+  const handleDragStart = (key: string) => {
+    dragKeyRef.current = key;
+  };
 
   const handleDrop = (targetKey: string) => {
     const dragKey = dragKeyRef.current;
@@ -73,7 +75,11 @@ export function ColumnsDropdown({
   return (
     <div ref={ref} className={cn('relative', className)}>
       <button
-        onClick={() => { setOpen(v => !v); setConfigMode(false); setEditingKey(null); }}
+        onClick={() => {
+          setOpen(v => !v);
+          setConfigMode(false);
+          setEditingKey(null);
+        }}
         aria-label="Налаштувати колонки"
         className={cn(
           'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface text-[13px] text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors',
@@ -103,7 +109,10 @@ export function ColumnsDropdown({
               )}
               {configurable && (
                 <button
-                  onClick={() => { setConfigMode(v => !v); setEditingKey(null); }}
+                  onClick={() => {
+                    setConfigMode(v => !v);
+                    setEditingKey(null);
+                  }}
                   className={cn(
                     'text-[11px] px-2 py-0.5 rounded border transition-colors',
                     configMode

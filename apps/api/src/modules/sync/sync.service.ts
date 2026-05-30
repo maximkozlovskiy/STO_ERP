@@ -5,11 +5,23 @@ import { SyncRecord } from '@sto/shared';
 
 // Minimal interface for the dynamic Prisma model operations used in sync
 interface DynamicPrismaModel {
-  findMany(args: { where: Record<string, unknown>; take?: number }): Promise<Record<string, unknown>[]>;
-  findFirst(args: { where: Record<string, unknown>; select?: Record<string, boolean> }): Promise<Record<string, unknown> | null>;
+  findMany(args: {
+    where: Record<string, unknown>;
+    take?: number;
+  }): Promise<Record<string, unknown>[]>;
+  findFirst(args: {
+    where: Record<string, unknown>;
+    select?: Record<string, boolean>;
+  }): Promise<Record<string, unknown> | null>;
   create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
-  update(args: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<Record<string, unknown>>;
-  aggregate(args: { where: Record<string, unknown>; _max: Record<string, boolean> }): Promise<{ _max: Record<string, unknown> }>;
+  update(args: {
+    where: Record<string, unknown>;
+    data: Record<string, unknown>;
+  }): Promise<Record<string, unknown>>;
+  aggregate(args: {
+    where: Record<string, unknown>;
+    _max: Record<string, boolean>;
+  }): Promise<{ _max: Record<string, unknown> }>;
 }
 
 export { SyncRecord };
@@ -18,12 +30,19 @@ export { SyncRecord };
 // Note: stock_movements is append-only and has no syncVersion — excluded from delta-sync
 // Note: batch_consumptions and price_history are append-only (no syncVersion) — excluded
 const PULL_TABLES = [
-  'work_orders', 'work_order_lines', 'work_order_parts',
-  'counterparties', 'vehicles', 'customer_garages',
-  'stock_items', 'stock_batches',
-  'invoices', 'payments',
+  'work_orders',
+  'work_order_lines',
+  'work_order_parts',
+  'counterparties',
+  'vehicles',
+  'customer_garages',
+  'stock_items',
+  'stock_batches',
+  'invoices',
+  'payments',
   'calendar_slots',
-  'maintenance_schedules', 'completion_acts',
+  'maintenance_schedules',
+  'completion_acts',
   'pricing_rules',
   // B3: warranties — mobile mechanics need to see which work is under warranty
   'warranties',
@@ -31,7 +50,9 @@ const PULL_TABLES = [
 
 // Tables safe for push — excludes append-only logs and FSM-controlled models
 const PUSH_SAFE_TABLES = new Set([
-  'counterparties', 'vehicles', 'customer_garages',
+  'counterparties',
+  'vehicles',
+  'customer_garages',
   'calendar_slots',
 ]);
 
@@ -70,7 +91,19 @@ const PULL_FIELD_BLACKLIST: Record<string, Set<string>> = {
 // from pull payloads and must only be writable through the authenticated web API with full validation.
 const PUSH_FIELD_WHITELIST: Record<string, Set<string>> = {
   counterparties: new Set(['firstName', 'lastName', 'companyName', 'notes', 'type', 'vatPayer']),
-  vehicles: new Set(['licensePlate', 'make', 'model', 'year', 'vin', 'engineVolume', 'fuelType', 'currentMileage', 'color', 'notes', 'customerGarageId']),
+  vehicles: new Set([
+    'licensePlate',
+    'make',
+    'model',
+    'year',
+    'vin',
+    'engineVolume',
+    'fuelType',
+    'currentMileage',
+    'color',
+    'notes',
+    'customerGarageId',
+  ]),
   customer_garages: new Set(['name', 'address', 'notes']),
   calendar_slots: new Set(['liftId', 'employeeId', 'workOrderId', 'startAt', 'endAt', 'notes']),
 };
@@ -96,7 +129,7 @@ export class SyncService {
 
   async pull(orgId: string, since: bigint): Promise<SyncRecord[]> {
     const results = await Promise.all(
-      PULL_TABLES.map(async (table) => {
+      PULL_TABLES.map(async table => {
         try {
           const rows = await this.model(table).findMany({
             where: { orgId, syncVersion: { gt: since } },
@@ -119,7 +152,12 @@ export class SyncService {
                 if (blacklist?.has(k)) continue;
                 if (typeof v === 'bigint') {
                   payload[k] = Number(v);
-                } else if (v !== null && typeof v === 'object' && 'toNumber' in (v as object) && typeof (v as { toNumber?: unknown }).toNumber === 'function') {
+                } else if (
+                  v !== null &&
+                  typeof v === 'object' &&
+                  'toNumber' in (v as object) &&
+                  typeof (v as { toNumber?: unknown }).toNumber === 'function'
+                ) {
                   // Prisma.Decimal
                   payload[k] = (v as { toNumber: () => number }).toNumber();
                 } else {
@@ -147,7 +185,10 @@ export class SyncService {
     return records;
   }
 
-  async push(orgId: string, records: SyncRecord[]): Promise<{ accepted: number; conflicts: number }> {
+  async push(
+    orgId: string,
+    records: SyncRecord[],
+  ): Promise<{ accepted: number; conflicts: number }> {
     let accepted = 0;
     let conflicts = 0;
 
@@ -212,7 +253,7 @@ export class SyncService {
       if (rec.table === 'calendar_slots' && existing) {
         const slot = existing as Record<string, unknown>;
         if (slot.workOrderId) {
-          throw new Error('Видалення слоту з прив\'язаним нарядом через синхронізацію заборонено');
+          throw new Error("Видалення слоту з прив'язаним нарядом через синхронізацію заборонено");
         }
       }
       if (existing) {
@@ -229,7 +270,10 @@ export class SyncService {
     }
 
     // last-write-wins by syncVersion — also validate FKs on update to prevent cross-tenant FK injection
-    if (BigInt(rec.syncVersion) > BigInt((existing as { syncVersion: bigint | number | string }).syncVersion ?? 0)) {
+    if (
+      BigInt(rec.syncVersion) >
+      BigInt((existing as { syncVersion: bigint | number | string }).syncVersion ?? 0)
+    ) {
       await this.validateForeignKeys(orgId, rec.table, safePayload);
       await model.update({ where: { id: rec.id, orgId }, data: safePayload });
     }
@@ -242,12 +286,14 @@ export class SyncService {
       { field: 'employeeId', model: 'employee' },
       { field: 'workOrderId', model: 'workOrder' },
     ],
-    vehicles: [
-      { field: 'customerGarageId', model: 'customerGarage' },
-    ],
+    vehicles: [{ field: 'customerGarageId', model: 'customerGarage' }],
   };
 
-  private async validateForeignKeys(orgId: string, table: string, payload: Record<string, unknown>): Promise<void> {
+  private async validateForeignKeys(
+    orgId: string,
+    table: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
     const checks = SyncService.FK_CHECKS[table];
     if (!checks) return;
     await Promise.all(
@@ -255,7 +301,10 @@ export class SyncService {
         .filter(({ field }) => payload[field])
         .map(async ({ field, model }) => {
           const id = payload[field] as string;
-          const record = await this.model(model).findFirst({ where: { id, orgId, deletedAt: null }, select: { id: true } });
+          const record = await this.model(model).findFirst({
+            where: { id, orgId, deletedAt: null },
+            select: { id: true },
+          });
           if (!record) {
             throw new Error(`Поле ${field}=${id} не знайдено в межах організації`);
           }
@@ -274,10 +323,12 @@ export class SyncService {
       this.prisma.syncJob.count({ where: { orgId, status: 'FAILED' } }),
       // Query max syncVersion across all pull tables to give clients a correct since cursor
       ...PULL_TABLES.map(table =>
-        this.model(table).aggregate({
-          where: { orgId },
-          _max: { syncVersion: true },
-        }).catch(() => ({ _max: { syncVersion: null } }))
+        this.model(table)
+          .aggregate({
+            where: { orgId },
+            _max: { syncVersion: true },
+          })
+          .catch(() => ({ _max: { syncVersion: null } })),
       ),
     ]);
 

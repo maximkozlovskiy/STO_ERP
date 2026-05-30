@@ -1,10 +1,24 @@
 'use client';
 
 import {
-  useEffect, useState, useCallback, useMemo, useRef, memo,
-  type CSSProperties, type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  memo,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Trash2, CalendarDays, BarChart2, CalendarRange } from 'lucide-react';
+import {
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
+  CalendarDays,
+  BarChart2,
+  CalendarRange,
+} from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -15,24 +29,48 @@ import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import {
-  DndContext, useDraggable, useDroppable,
-  type DragEndEvent, PointerSensor, useSensor, useSensors,
+  DndContext,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 
 import type {
-  CalendarSlot, Lift, PendingSlot, GhostSlot,
-  ResizeState, PendingResizeState,
-  CalView, StatsPeriod, MonthSlots, SlotForm,
+  CalendarSlot,
+  Lift,
+  PendingSlot,
+  GhostSlot,
+  ResizeState,
+  PendingResizeState,
+  CalView,
+  StatsPeriod,
+  MonthSlots,
+  SlotForm,
 } from './calendar.types';
 import {
-  HOURS, TOTAL_HOURS, SIDEBAR_W, WINDOW_START, WINDOW_END, STATS_MAX_DAYS,
+  HOURS,
+  TOTAL_HOURS,
+  SIDEBAR_W,
+  WINDOW_START,
+  WINDOW_END,
+  STATS_MAX_DAYS,
   KYIV_HOUR_FMT,
-  pad, toDateString, kyivHours, fmtTime, decimalHoursToHHMM, decimalHoursToISO,
-  snapTo15, pxToHours, formatKyivDate,
+  pad,
+  toDateString,
+  kyivHours,
+  fmtTime,
+  decimalHoursToHHMM,
+  decimalHoursToISO,
+  snapTo15,
+  pxToHours,
+  formatKyivDate,
 } from './calendar.utils';
 import { CalendarMonthView } from './CalendarMonthView';
-import { CalendarStatsTab }  from './CalendarStatsTab';
+import { CalendarStatsTab } from './CalendarStatsTab';
 import { CalendarSlotModal } from './CalendarSlotModal';
 
 // ─── DraggableSlot ───────────────────────────────────────────────────────────
@@ -42,16 +80,29 @@ interface DraggableSlotProps {
   isEditing: boolean;
   onRemove: (id: string) => void;
   onEdit: (slot: CalendarSlot) => void;
-  onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
+  onResizeStart: (
+    e: ReactPointerEvent<HTMLDivElement>,
+    slotId: string,
+    edge: 'start' | 'end',
+  ) => void;
 }
 
-const DraggableSlot = memo(function DraggableSlot({ slot, isEditing, onRemove, onEdit, onResizeStart }: DraggableSlotProps) {
+const DraggableSlot = memo(function DraggableSlot({
+  slot,
+  isEditing,
+  onRemove,
+  onEdit,
+  onResizeStart,
+}: DraggableSlotProps) {
   const startH = kyivHours(slot.startAt);
-  const endH   = kyivHours(slot.endAt);
-  const left   = ((startH - HOURS[0]!) / TOTAL_HOURS) * 100;
-  const width  = ((endH - startH)      / TOTAL_HOURS) * 100;
+  const endH = kyivHours(slot.endAt);
+  const left = ((startH - HOURS[0]!) / TOTAL_HOURS) * 100;
+  const width = ((endH - startH) / TOTAL_HOURS) * 100;
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: slot.id, data: { slot } });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: slot.id,
+    data: { slot },
+  });
   const style: CSSProperties = {
     left: `${left}%`,
     width: `${width}%`,
@@ -64,7 +115,9 @@ const DraggableSlot = memo(function DraggableSlot({ slot, isEditing, onRemove, o
     `${fmtTime(slot.startAt)}–${fmtTime(slot.endAt)}`,
     slot.workOrderNumber ? `· ${slot.workOrderNumber}` : null,
     slot.counterpartyName ? `· ${slot.counterpartyName}` : null,
-  ].filter(Boolean).join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div
@@ -76,7 +129,10 @@ const DraggableSlot = memo(function DraggableSlot({ slot, isEditing, onRemove, o
     >
       <div
         className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-white/20 rounded-l flex items-center justify-center"
-        onPointerDown={e => { e.stopPropagation(); onResizeStart(e, slot.id, 'start'); }}
+        onPointerDown={e => {
+          e.stopPropagation();
+          onResizeStart(e, slot.id, 'start');
+        }}
         aria-label="Змінити початок"
       >
         <div className="w-0.5 h-4 bg-white/50 rounded" />
@@ -102,7 +158,10 @@ const DraggableSlot = memo(function DraggableSlot({ slot, isEditing, onRemove, o
 
       <div
         className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-white/20 rounded-r flex items-center justify-center"
-        onPointerDown={e => { e.stopPropagation(); onResizeStart(e, slot.id, 'end'); }}
+        onPointerDown={e => {
+          e.stopPropagation();
+          onResizeStart(e, slot.id, 'end');
+        }}
         aria-label="Змінити кінець"
       >
         <div className="w-0.5 h-4 bg-white/50 rounded" />
@@ -123,9 +182,12 @@ interface PendingSlotBlockProps {
 const PENDING_DRAG_ID = '__pending__';
 
 const PendingSlotBlock = memo(function PendingSlotBlock({
-  pending, onOpen, onCancel, onPendingResizeStart,
+  pending,
+  onOpen,
+  onCancel,
+  onPendingResizeStart,
 }: PendingSlotBlockProps) {
-  const left  = ((pending.startH - HOURS[0]!) / TOTAL_HOURS) * 100;
+  const left = ((pending.startH - HOURS[0]!) / TOTAL_HOURS) * 100;
   const width = ((pending.endH - pending.startH) / TOTAL_HOURS) * 100;
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -151,7 +213,10 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
     >
       <div
         className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-primary/20 rounded-l flex items-center justify-center"
-        onPointerDown={e => { e.stopPropagation(); onPendingResizeStart(e, 'start'); }}
+        onPointerDown={e => {
+          e.stopPropagation();
+          onPendingResizeStart(e, 'start');
+        }}
         aria-label="Змінити початок"
       >
         <div className="w-0.5 h-4 bg-primary/60 rounded" />
@@ -168,7 +233,10 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
 
       <button
         onPointerDown={e => e.stopPropagation()}
-        onClick={e => { e.stopPropagation(); onCancel(); }}
+        onClick={e => {
+          e.stopPropagation();
+          onCancel();
+        }}
         className="mr-1 opacity-0 group-hover:opacity-100 text-primary/70 hover:text-primary shrink-0"
         aria-label="Скасувати"
       >
@@ -177,7 +245,10 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
 
       <div
         className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-primary/20 rounded-r flex items-center justify-center"
-        onPointerDown={e => { e.stopPropagation(); onPendingResizeStart(e, 'end'); }}
+        onPointerDown={e => {
+          e.stopPropagation();
+          onPendingResizeStart(e, 'end');
+        }}
         aria-label="Змінити кінець"
       >
         <div className="w-0.5 h-4 bg-primary/60 rounded" />
@@ -197,21 +268,34 @@ interface DroppableLiftRowProps {
   blockedWidth: number;
   onRemove: (id: string) => void;
   onEdit: (slot: CalendarSlot) => void;
-  onResizeStart: (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => void;
+  onResizeStart: (
+    e: ReactPointerEvent<HTMLDivElement>,
+    slotId: string,
+    edge: 'start' | 'end',
+  ) => void;
   onPendingOpen: () => void;
   onPendingCancel: () => void;
   onPendingResizeStart: (e: ReactPointerEvent<HTMLDivElement>, edge: 'start' | 'end') => void;
 }
 
 const DroppableLiftRow = memo(function DroppableLiftRow({
-  liftId, liftSlots, ghost, pending, editingSlotId, blockedWidth,
-  onRemove, onEdit, onResizeStart,
-  onPendingOpen, onPendingCancel, onPendingResizeStart,
+  liftId,
+  liftSlots,
+  ghost,
+  pending,
+  editingSlotId,
+  blockedWidth,
+  onRemove,
+  onEdit,
+  onResizeStart,
+  onPendingOpen,
+  onPendingCancel,
+  onPendingResizeStart,
 }: DroppableLiftRowProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `lift-${liftId}`, data: { liftId } });
 
   const showGhost = ghost?.liftId === liftId && ghost.endH > ghost.startH;
-  const ghostLeft  = showGhost ? ((ghost!.startH - HOURS[0]!) / TOTAL_HOURS) * 100 : 0;
+  const ghostLeft = showGhost ? ((ghost!.startH - HOURS[0]!) / TOTAL_HOURS) * 100 : 0;
   const ghostWidth = showGhost ? ((ghost!.endH - ghost!.startH) / TOTAL_HOURS) * 100 : 0;
   const showPending = pending?.liftId === liftId;
 
@@ -233,7 +317,8 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
           className="absolute inset-y-0 left-0 pointer-events-none z-1"
           style={{
             width: `${blockedWidth}%`,
-            backgroundImage: 'repeating-linear-gradient(135deg, transparent 0px, transparent 6px, rgba(0,0,0,0.08) 6px, rgba(0,0,0,0.08) 8px)',
+            backgroundImage:
+              'repeating-linear-gradient(135deg, transparent 0px, transparent 6px, rgba(0,0,0,0.08) 6px, rgba(0,0,0,0.08) 8px)',
             backgroundColor: 'rgba(0,0,0,0.04)',
           }}
           aria-hidden
@@ -310,10 +395,16 @@ export default function CalendarPage() {
   const [statsError, setStatsError] = useState(false);
 
   const EMPTY_FORM: SlotForm = {
-    liftId: '', employeeId: '',
-    counterpartyId: '', counterpartyDisplay: '',
-    workOrderId: '', workOrderDisplay: '',
-    startAt: '', endAt: '', notes: '', normoHours: '',
+    liftId: '',
+    employeeId: '',
+    counterpartyId: '',
+    counterpartyDisplay: '',
+    workOrderId: '',
+    workOrderDisplay: '',
+    startAt: '',
+    endAt: '',
+    notes: '',
+    normoHours: '',
   };
   const [form, setForm] = useState<SlotForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -343,18 +434,24 @@ export default function CalendarPage() {
   pendingSlotRef.current = pendingSlot;
 
   const [resizing, setResizing] = useState<ResizeState | null>(null);
-  const [resizePreview, setResizePreview] = useState<{ id: string; startH: number; endH: number } | null>(null);
+  const [resizePreview, setResizePreview] = useState<{
+    id: string;
+    startH: number;
+    endH: number;
+  } | null>(null);
 
   const [pendingResizing, setPendingResizing] = useState<PendingResizeState | null>(null);
   const pendingResizingRef = useRef<PendingResizeState | null>(null);
   pendingResizingRef.current = pendingResizing;
 
   const timelineRef = useRef<HTMLDivElement>(null);
-  const mountedRef  = useRef(true);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -378,7 +475,8 @@ export default function CalendarPage() {
         formCloseRafRef.current = requestAnimationFrame(() => {
           formCloseRafRef.current = null;
           if (formCollapseRef.current) {
-            formCollapseRef.current.style.transition = 'height 320ms cubic-bezier(0.4,0,0.6,1), margin-bottom 320ms cubic-bezier(0.4,0,0.6,1)';
+            formCollapseRef.current.style.transition =
+              'height 320ms cubic-bezier(0.4,0,0.6,1), margin-bottom 320ms cubic-bezier(0.4,0,0.6,1)';
             formCollapseRef.current.style.height = '0px';
             formCollapseRef.current.style.marginBottom = '0px';
           }
@@ -389,10 +487,19 @@ export default function CalendarPage() {
     }
   }, [showAdd]);
 
-  useEffect(() => () => {
-    if (formHideTimerRef.current) { clearTimeout(formHideTimerRef.current); formHideTimerRef.current = null; }
-    if (formCloseRafRef.current !== null) { cancelAnimationFrame(formCloseRafRef.current); formCloseRafRef.current = null; }
-  }, []);
+  useEffect(
+    () => () => {
+      if (formHideTimerRef.current) {
+        clearTimeout(formHideTimerRef.current);
+        formHideTimerRef.current = null;
+      }
+      if (formCloseRafRef.current !== null) {
+        cancelAnimationFrame(formCloseRafRef.current);
+        formCloseRafRef.current = null;
+      }
+    },
+    [],
+  );
 
   // ResizeObserver: keep form collapse wrapper height in sync with actual content
   useEffect(() => {
@@ -409,14 +516,22 @@ export default function CalendarPage() {
     return () => ro.disconnect();
   }, [formMounted, formVisible]);
 
-  useEffect(() => { setDate(toDateString(new Date())); }, []);
+  useEffect(() => {
+    setDate(toDateString(new Date()));
+  }, []);
 
   useEffect(() => {
     const cached = getCached<Lift[]>('cache:lifts');
     if (cached && mountedRef.current) setLifts(cached);
     apiFetch<Lift[]>('/lifts')
-      .then(data => { setCache('cache:lifts', data); if (mountedRef.current) setLifts(data); })
-      .catch((e: unknown) => { if (mountedRef.current && !cached) setError(e instanceof Error ? e.message : 'Помилка завантаження'); });
+      .then(data => {
+        setCache('cache:lifts', data);
+        if (mountedRef.current) setLifts(data);
+      })
+      .catch((e: unknown) => {
+        if (mountedRef.current && !cached)
+          setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      });
   }, []);
 
   const monthAbortRef = useRef<AbortController | null>(null);
@@ -440,14 +555,19 @@ export default function CalendarPage() {
         days.map(d =>
           apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal })
             .then(s => ({ d, slots: s }))
-            .catch(() => { failures++; return { d, slots: [] as CalendarSlot[] }; })
-        )
+            .catch(() => {
+              failures++;
+              return { d, slots: [] as CalendarSlot[] };
+            }),
+        ),
       );
       if (ac.signal.aborted) return;
       const acc: MonthSlots = {};
       for (const { d, slots: daySlots } of results) {
         const byLift: Record<string, number> = {};
-        for (const s of daySlots) { if (s.liftId) byLift[s.liftId] = (byLift[s.liftId] ?? 0) + 1; }
+        for (const s of daySlots) {
+          if (s.liftId) byLift[s.liftId] = (byLift[s.liftId] ?? 0) + 1;
+        }
         acc[d] = { total: daySlots.length, byLift };
       }
       if (mountedRef.current) {
@@ -499,9 +619,11 @@ export default function CalendarPage() {
       let failures = 0;
       const results = await Promise.all(
         days.map(d =>
-          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal })
-            .catch(() => { failures++; return [] as CalendarSlot[]; })
-        )
+          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal }).catch(() => {
+            failures++;
+            return [] as CalendarSlot[];
+          }),
+        ),
       );
       if (ac.signal.aborted) return;
       if (mountedRef.current) {
@@ -518,7 +640,11 @@ export default function CalendarPage() {
     const cur = new Date(statsFrom + 'T12:00:00');
     const end = new Date(statsTo + 'T12:00:00');
     let n = 0;
-    while (cur <= end) { n++; cur.setDate(cur.getDate() + 1); if (n > STATS_MAX_DAYS) return true; }
+    while (cur <= end) {
+      n++;
+      cur.setDate(cur.getDate() + 1);
+      if (n > STATS_MAX_DAYS) return true;
+    }
     return false;
   }, [statsPeriod, statsFrom, statsTo]);
 
@@ -530,15 +656,31 @@ export default function CalendarPage() {
     if (!date) return;
     setLoading(true);
     apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`)
-      .then(data => { if (mountedRef.current) setSlots(data); })
-      .catch((e: unknown) => { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження'); })
-      .finally(() => { if (mountedRef.current) setLoading(false); });
+      .then(data => {
+        if (mountedRef.current) setSlots(data);
+      })
+      .catch((e: unknown) => {
+        if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      })
+      .finally(() => {
+        if (mountedRef.current) setLoading(false);
+      });
   }, [date]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const prevDay = () => { const d = new Date(date); d.setDate(d.getDate() - 1); setDate(toDateString(d)); };
-  const nextDay = () => { const d = new Date(date); d.setDate(d.getDate() + 1); setDate(toDateString(d)); };
+  const prevDay = () => {
+    const d = new Date(date);
+    d.setDate(d.getDate() - 1);
+    setDate(toDateString(d));
+  };
+  const nextDay = () => {
+    const d = new Date(date);
+    d.setDate(d.getDate() + 1);
+    setDate(toDateString(d));
+  };
 
   const pxToDecimalHours = useCallback((clientX: number): number => {
     const rect = timelineRef.current?.getBoundingClientRect();
@@ -564,10 +706,13 @@ export default function CalendarPage() {
     setCpDisplay('');
     setForm({
       liftId: p.liftId,
-      employeeId: '', counterpartyId: '', counterpartyDisplay: '',
-      workOrderId: '', workOrderDisplay: '',
+      employeeId: '',
+      counterpartyId: '',
+      counterpartyDisplay: '',
+      workOrderId: '',
+      workOrderDisplay: '',
       startAt: decimalHoursToHHMM(p.startH),
-      endAt:   decimalHoursToHHMM(p.endH),
+      endAt: decimalHoursToHHMM(p.endH),
       normoHours: String(+(p.endH - p.startH).toFixed(2)),
       notes: '',
     });
@@ -590,44 +735,60 @@ export default function CalendarPage() {
     const cpDisp = slot.counterpartyName ?? '';
     setCpDisplay(cpDisp);
     setForm({
-      liftId:              slot.liftId ?? '',
-      employeeId:          slot.employeeId ?? '',
-      counterpartyId:      slot.counterpartyId ?? '',
+      liftId: slot.liftId ?? '',
+      employeeId: slot.employeeId ?? '',
+      counterpartyId: slot.counterpartyId ?? '',
       counterpartyDisplay: cpDisp,
-      workOrderId:         slot.workOrderId ?? '',
-      workOrderDisplay:    woDisplay,
-      startAt:    decimalHoursToHHMM(kyivHours(slot.startAt)),
-      endAt:      decimalHoursToHHMM(kyivHours(slot.endAt)),
+      workOrderId: slot.workOrderId ?? '',
+      workOrderDisplay: woDisplay,
+      startAt: decimalHoursToHHMM(kyivHours(slot.startAt)),
+      endAt: decimalHoursToHHMM(kyivHours(slot.endAt)),
       normoHours: String(+(kyivHours(slot.endAt) - kyivHours(slot.startAt)).toFixed(2)),
-      notes:      slot.notes ?? '',
+      notes: slot.notes ?? '',
     });
     setShowAdd(true);
   }, []);
 
   // ── Resize existing saved slot ────────────────────────────────────────────
 
-  const handleResizeStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => {
-    e.stopPropagation();
-    const slot = slots.find(s => s.id === slotId);
-    if (!slot) return;
-    setResizing({
-      slotId, edge,
-      origStartH: kyivHours(slot.startAt),
-      origEndH:   kyivHours(slot.endAt),
-      pointerStartX: e.clientX,
-      liftId: slot.liftId ?? null,
-    });
-    setResizePreview({ id: slotId, startH: kyivHours(slot.startAt), endH: kyivHours(slot.endAt) });
-  }, [slots]);
+  const handleResizeStart = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => {
+      e.stopPropagation();
+      const slot = slots.find(s => s.id === slotId);
+      if (!slot) return;
+      setResizing({
+        slotId,
+        edge,
+        origStartH: kyivHours(slot.startAt),
+        origEndH: kyivHours(slot.endAt),
+        pointerStartX: e.clientX,
+        liftId: slot.liftId ?? null,
+      });
+      setResizePreview({
+        id: slotId,
+        startH: kyivHours(slot.startAt),
+        endH: kyivHours(slot.endAt),
+      });
+    },
+    [slots],
+  );
 
   // ── Resize pending slot ───────────────────────────────────────────────────
 
-  const handlePendingResizeStart = useCallback((e: ReactPointerEvent<HTMLDivElement>, edge: 'start' | 'end') => {
-    e.stopPropagation();
-    const p = pendingSlotRef.current;
-    if (!p) return;
-    setPendingResizing({ edge, origStartH: p.startH, origEndH: p.endH, pointerStartX: e.clientX });
-  }, []);
+  const handlePendingResizeStart = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>, edge: 'start' | 'end') => {
+      e.stopPropagation();
+      const p = pendingSlotRef.current;
+      if (!p) return;
+      setPendingResizing({
+        edge,
+        origStartH: p.startH,
+        origEndH: p.endH,
+        pointerStartX: e.clientX,
+      });
+    },
+    [],
+  );
 
   const resizingRef = useRef(resizing);
   resizingRef.current = resizing;
@@ -668,7 +829,7 @@ export default function CalendarPage() {
         const curH = pxToDecimalHours(e.clientX);
         const { startH } = drawingRef.current;
         const endH = snapTo15(Math.max(curH, startH + 0.25));
-        setGhost(g => g ? { ...g, endH } : null);
+        setGhost(g => (g ? { ...g, endH } : null));
         return;
       }
       const pr = pendingResizingRef.current;
@@ -679,11 +840,15 @@ export default function CalendarPage() {
         const todayKyiv2 = toDateString(new Date());
         const pastFloor = dateRef.current === todayKyiv2 ? minHourRef.current : WINDOW_START;
         if (pr.edge === 'start') {
-          const newStartH = snapTo15(Math.max(pastFloor, Math.min(pr.origStartH + deltaH, pr.origEndH - 0.25)));
-          setPendingSlot(p => p ? { ...p, startH: newStartH } : null);
+          const newStartH = snapTo15(
+            Math.max(pastFloor, Math.min(pr.origStartH + deltaH, pr.origEndH - 0.25)),
+          );
+          setPendingSlot(p => (p ? { ...p, startH: newStartH } : null));
         } else {
-          const newEndH = snapTo15(Math.min(WINDOW_END, Math.max(pr.origEndH + deltaH, pr.origStartH + 0.25)));
-          setPendingSlot(p => p ? { ...p, endH: newEndH } : null);
+          const newEndH = snapTo15(
+            Math.min(WINDOW_END, Math.max(pr.origEndH + deltaH, pr.origStartH + 0.25)),
+          );
+          setPendingSlot(p => (p ? { ...p, endH: newEndH } : null));
         }
         return;
       }
@@ -693,11 +858,15 @@ export default function CalendarPage() {
         if (!rect) return;
         const deltaH = pxToHours(e.clientX - res.pointerStartX, rect.width - SIDEBAR_W);
         if (res.edge === 'start') {
-          const newStartH = snapTo15(Math.max(WINDOW_START, Math.min(res.origStartH + deltaH, res.origEndH - 0.25)));
-          setResizePreview(p => p ? { ...p, startH: newStartH } : null);
+          const newStartH = snapTo15(
+            Math.max(WINDOW_START, Math.min(res.origStartH + deltaH, res.origEndH - 0.25)),
+          );
+          setResizePreview(p => (p ? { ...p, startH: newStartH } : null));
         } else {
-          const newEndH = snapTo15(Math.min(WINDOW_END, Math.max(res.origEndH + deltaH, res.origStartH + 0.25)));
-          setResizePreview(p => p ? { ...p, endH: newEndH } : null);
+          const newEndH = snapTo15(
+            Math.min(WINDOW_END, Math.max(res.origEndH + deltaH, res.origStartH + 0.25)),
+          );
+          setResizePreview(p => (p ? { ...p, endH: newEndH } : null));
         }
       }
     };
@@ -706,7 +875,7 @@ export default function CalendarPage() {
       if (drawingRef.current) {
         const { liftId, startH } = drawingRef.current;
         const rawEndH = pxToDecimalHours(e.clientX);
-        const endH = (rawEndH - startH) >= 0.25 ? snapTo15(rawEndH) : startH + 1;
+        const endH = rawEndH - startH >= 0.25 ? snapTo15(rawEndH) : startH + 1;
         const clampedEnd = Math.min(endH, WINDOW_END);
         drawingRef.current = null;
         setGhost(null);
@@ -716,10 +885,13 @@ export default function CalendarPage() {
         setCpDisplay('');
         setForm({
           liftId,
-          employeeId: '', counterpartyId: '', counterpartyDisplay: '',
-          workOrderId: '', workOrderDisplay: '',
+          employeeId: '',
+          counterpartyId: '',
+          counterpartyDisplay: '',
+          workOrderId: '',
+          workOrderDisplay: '',
           startAt: decimalHoursToHHMM(startH),
-          endAt:   decimalHoursToHHMM(clampedEnd),
+          endAt: decimalHoursToHHMM(clampedEnd),
           normoHours: String(+(clampedEnd - startH).toFixed(2)),
           notes: '',
         });
@@ -733,7 +905,7 @@ export default function CalendarPage() {
           setForm(f => ({
             ...f,
             startAt: decimalHoursToHHMM(p.startH),
-            endAt:   decimalHoursToHHMM(p.endH),
+            endAt: decimalHoursToHHMM(p.endH),
             normoHours: String(+(p.endH - p.startH).toFixed(2)),
           }));
         }
@@ -748,14 +920,21 @@ export default function CalendarPage() {
         setResizePreview(null);
         if (Math.abs(startH - origStartH) < 0.01 && Math.abs(endH - origEndH) < 0.01) return;
         const todayKyiv = toDateString(new Date());
-        if (dateRef.current < todayKyiv) { toast.warning('Не можна змінювати слоти у минулому дні'); return; }
+        if (dateRef.current < todayKyiv) {
+          toast.warning('Не можна змінювати слоти у минулому дні');
+          return;
+        }
         if (dateRef.current === todayKyiv && startH < minHourRef.current) {
-          toast.warning('Не можна перемістити початок у минулий час'); return;
+          toast.warning('Не можна перемістити початок у минулий час');
+          return;
         }
         try {
           await apiFetch(`/calendar/slots/${slotId}`, {
             method: 'PATCH',
-            body: JSON.stringify({ startAt: decimalHoursToISO(dateRef.current, startH), endAt: decimalHoursToISO(dateRef.current, endH) }),
+            body: JSON.stringify({
+              startAt: decimalHoursToISO(dateRef.current, startH),
+              endAt: decimalHoursToISO(dateRef.current, endH),
+            }),
           });
           load();
         } catch (err: unknown) {
@@ -766,9 +945,15 @@ export default function CalendarPage() {
     };
 
     const onCancel = () => {
-      if (drawingRef.current) { drawingRef.current = null; setGhost(null); }
+      if (drawingRef.current) {
+        drawingRef.current = null;
+        setGhost(null);
+      }
       if (pendingResizingRef.current) setPendingResizing(null);
-      if (resizingRef.current) { setResizing(null); setResizePreview(null); }
+      if (resizingRef.current) {
+        setResizing(null);
+        setResizePreview(null);
+      }
     };
 
     window.addEventListener('pointerdown', onDown);
@@ -785,74 +970,93 @@ export default function CalendarPage() {
 
   // ── Drag-and-drop ─────────────────────────────────────────────────────────
 
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, delta, over } = event;
-    if (!active || !delta) return;
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, delta, over } = event;
+      if (!active || !delta) return;
 
-    if (active.id === PENDING_DRAG_ID) {
-      const p = pendingSlotRef.current;
-      if (!p) return;
+      if (active.id === PENDING_DRAG_ID) {
+        const p = pendingSlotRef.current;
+        if (!p) return;
+        const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
+        if (!containerWidth) return;
+        const timelineWidth = containerWidth - SIDEBAR_W;
+        const shiftH = snapTo15((delta.x / timelineWidth) * TOTAL_HOURS);
+        const newLiftId = over?.data?.current?.liftId ?? p.liftId;
+        const newStartH = Math.max(
+          WINDOW_START,
+          Math.min(p.startH + shiftH, WINDOW_END - (p.endH - p.startH)),
+        );
+        const newEndH = newStartH + (p.endH - p.startH);
+        setPendingSlot({ liftId: newLiftId, startH: newStartH, endH: newEndH });
+        setForm(f => ({
+          ...f,
+          liftId: newLiftId,
+          startAt: decimalHoursToHHMM(newStartH),
+          endAt: decimalHoursToHHMM(newEndH),
+          normoHours: String(+(newEndH - newStartH).toFixed(2)),
+        }));
+        return;
+      }
+
+      const slot = slots.find(s => s.id === active.id);
+      if (!slot) return;
+      const newLiftId: string | null = over?.data?.current?.liftId ?? slot.liftId ?? null;
       const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
       if (!containerWidth) return;
       const timelineWidth = containerWidth - SIDEBAR_W;
-      const shiftH = snapTo15((delta.x / timelineWidth) * TOTAL_HOURS);
-      const newLiftId = over?.data?.current?.liftId ?? p.liftId;
-      const newStartH = Math.max(WINDOW_START, Math.min(p.startH + shiftH, WINDOW_END - (p.endH - p.startH)));
-      const newEndH   = newStartH + (p.endH - p.startH);
-      setPendingSlot({ liftId: newLiftId, startH: newStartH, endH: newEndH });
-      setForm(f => ({
-        ...f,
-        liftId: newLiftId,
-        startAt: decimalHoursToHHMM(newStartH),
-        endAt:   decimalHoursToHHMM(newEndH),
-        normoHours: String(+(newEndH - newStartH).toFixed(2)),
-      }));
-      return;
-    }
+      const shiftHours = (delta.x / timelineWidth) * TOTAL_HOURS;
+      if (Math.abs(shiftHours) < 0.08 && newLiftId === slot.liftId) return;
+      const origStart = new Date(slot.startAt);
+      const origEnd = new Date(slot.endAt);
+      const shiftMs = Math.round((shiftHours * 3600_000) / (15 * 60_000)) * (15 * 60_000);
+      const newStart = new Date(origStart.getTime() + shiftMs);
+      const newEnd = new Date(origEnd.getTime() + shiftMs);
 
-    const slot = slots.find(s => s.id === active.id);
-    if (!slot) return;
-    const newLiftId: string | null = over?.data?.current?.liftId ?? slot.liftId ?? null;
-    const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
-    if (!containerWidth) return;
-    const timelineWidth = containerWidth - SIDEBAR_W;
-    const shiftHours = (delta.x / timelineWidth) * TOTAL_HOURS;
-    if (Math.abs(shiftHours) < 0.08 && newLiftId === slot.liftId) return;
-    const origStart = new Date(slot.startAt);
-    const origEnd   = new Date(slot.endAt);
-    const shiftMs   = Math.round(shiftHours * 3600_000 / (15 * 60_000)) * (15 * 60_000);
-    const newStart  = new Date(origStart.getTime() + shiftMs);
-    const newEnd    = new Date(origEnd.getTime()   + shiftMs);
+      const todayKyiv = toDateString(new Date(nowMs || Date.now()));
+      const newStartDate = toDateString(newStart);
+      const newStartH = kyivHours(newStart.toISOString());
+      if (newStartDate < todayKyiv) {
+        toast.warning('Не можна перемістити запис у минулий день');
+        return;
+      }
+      if (newStartDate === todayKyiv && newStartH < minHour) {
+        toast.warning('Не можна перемістити запис у минулий час');
+        return;
+      }
 
-    const todayKyiv = toDateString(new Date(nowMs || Date.now()));
-    const newStartDate = toDateString(newStart);
-    const newStartH = kyivHours(newStart.toISOString());
-    if (newStartDate < todayKyiv) { toast.warning('Не можна перемістити запис у минулий день'); return; }
-    if (newStartDate === todayKyiv && newStartH < minHour) { toast.warning('Не можна перемістити запис у минулий час'); return; }
-
-    try {
-      await apiFetch(`/calendar/slots/${slot.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          startAt: newStart.toISOString(),
-          endAt:   newEnd.toISOString(),
-          ...(newLiftId !== slot.liftId && { liftId: newLiftId }),
-        }),
-      });
-      load();
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Помилка переміщення слоту'); }
-  }, [slots, load, nowMs, minHour]);
+      try {
+        await apiFetch(`/calendar/slots/${slot.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            startAt: newStart.toISOString(),
+            endAt: newEnd.toISOString(),
+            ...(newLiftId !== slot.liftId && { liftId: newLiftId }),
+          }),
+        });
+        load();
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : 'Помилка переміщення слоту');
+      }
+    },
+    [slots, load, nowMs, minHour],
+  );
 
   // ── Remove slot ───────────────────────────────────────────────────────────
 
-  const removeSlot = useCallback(async (id: string) => {
-    if (!(await confirm({ title: 'Видалити слот?', variant: 'destructive' }))) return;
-    try {
-      await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' });
-      toast.success('Слот видалено');
-      load();
-    } catch (e: unknown) { if (mountedRef.current) toast.error(e instanceof Error ? e.message : 'Помилка видалення'); }
-  }, [load, confirm]);
+  const removeSlot = useCallback(
+    async (id: string) => {
+      if (!(await confirm({ title: 'Видалити слот?', variant: 'destructive' }))) return;
+      try {
+        await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' });
+        toast.success('Слот видалено');
+        load();
+      } catch (e: unknown) {
+        if (mountedRef.current) toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      }
+    },
+    [load, confirm],
+  );
 
   // ── Memoized slot data ────────────────────────────────────────────────────
 
@@ -862,7 +1066,9 @@ export default function CalendarPage() {
       if (s.id !== resizePreview.id) return s;
       const toISO = (h: number) => {
         const totalMin = Math.round(h * 60);
-        return new Date(`${date}T${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}:00`).toISOString();
+        return new Date(
+          `${date}T${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}:00`,
+        ).toISOString();
       };
       return { ...s, startAt: toISO(resizePreview.startH), endAt: toISO(resizePreview.endH) };
     });
@@ -873,21 +1079,30 @@ export default function CalendarPage() {
     for (const s of slotsWithPreview) {
       if (!s.liftId) continue;
       const list = map.get(s.liftId);
-      if (list) list.push(s); else map.set(s.liftId, [s]);
+      if (list) list.push(s);
+      else map.set(s.liftId, [s]);
     }
     return map;
   }, [slotsWithPreview]);
 
   const EMPTY_SLOTS: CalendarSlot[] = useMemo(() => [], []);
-  const unassignedSlots = useMemo(() => slotsWithPreview.filter(s => !s.liftId), [slotsWithPreview]);
+  const unassignedSlots = useMemo(
+    () => slotsWithPreview.filter(s => !s.liftId),
+    [slotsWithPreview],
+  );
 
   const nextSlotByLift = useMemo(() => {
     const map = new Map<string, 'now' | string>();
     if (!nowMs) return map;
     const now = nowMs;
     for (const [liftId, liftSlots] of slotsByLift) {
-      const active = liftSlots.find(s => new Date(s.startAt).getTime() <= now && new Date(s.endAt).getTime() > now);
-      if (active) { map.set(liftId, 'now'); continue; }
+      const active = liftSlots.find(
+        s => new Date(s.startAt).getTime() <= now && new Date(s.endAt).getTime() > now,
+      );
+      if (active) {
+        map.set(liftId, 'now');
+        continue;
+      }
       let earliest: CalendarSlot | null = null;
       for (const s of liftSlots) {
         if (new Date(s.startAt).getTime() > now) {
@@ -935,7 +1150,7 @@ export default function CalendarPage() {
     setForm(EMPTY_FORM);
     setCpDisplay('');
     load();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -947,7 +1162,13 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           {/* View switcher */}
           <div className="flex rounded-lg border border-border overflow-hidden text-sm">
-            {([['day', 'День', CalendarDays], ['month', 'Місяць', CalendarRange], ['stats', 'Статистика', BarChart2]] as const).map(([v, label, Icon]) => (
+            {(
+              [
+                ['day', 'День', CalendarDays],
+                ['month', 'Місяць', CalendarRange],
+                ['stats', 'Статистика', BarChart2],
+              ] as const
+            ).map(([v, label, Icon]) => (
               <button
                 key={v}
                 onClick={() => setCalView(v)}
@@ -958,14 +1179,16 @@ export default function CalendarPage() {
               </button>
             ))}
           </div>
-          <Button onClick={() => {
-            setPendingSlot(null);
-            setEditingSlotId(null);
-            setError('');
-            setCpDisplay('');
-            setForm(EMPTY_FORM);
-            setShowAdd(v => !v);
-          }}>
+          <Button
+            onClick={() => {
+              setPendingSlot(null);
+              setEditingSlotId(null);
+              setError('');
+              setCpDisplay('');
+              setForm(EMPTY_FORM);
+              setShowAdd(v => !v);
+            }}
+          >
             <Plus className="h-4 w-4" />
             Слот
           </Button>
@@ -977,22 +1200,36 @@ export default function CalendarPage() {
         <div className="flex items-center gap-4 mb-6">
           {calView === 'month' ? (
             <>
-              <Button variant="outline" size="sm" onClick={() => {
-                const [y, m] = yearMonth.split('-').map(Number);
-                const d = new Date(y, m - 2, 1);
-                setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
-              }}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const [y, m] = yearMonth.split('-').map(Number);
+                  const d = new Date(y, m - 2, 1);
+                  setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+                }}
+              >
                 <ChevronLeft className="h-4 w-4" />
                 Попередній
               </Button>
               <span className="text-sm font-medium text-foreground capitalize">
-                {date ? new Date(date + 'T12:00:00').toLocaleDateString('uk-UA', { month: 'long', year: 'numeric', timeZone: 'Europe/Kyiv' }) : ''}
+                {date
+                  ? new Date(date + 'T12:00:00').toLocaleDateString('uk-UA', {
+                      month: 'long',
+                      year: 'numeric',
+                      timeZone: 'Europe/Kyiv',
+                    })
+                  : ''}
               </span>
-              <Button variant="outline" size="sm" onClick={() => {
-                const [y, m] = yearMonth.split('-').map(Number);
-                const d = new Date(y, m, 1);
-                setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
-              }}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const [y, m] = yearMonth.split('-').map(Number);
+                  const d = new Date(y, m, 1);
+                  setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+                }}
+              >
                 Наступний
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -1007,8 +1244,15 @@ export default function CalendarPage() {
                 Попередній
               </Button>
               <div className="flex items-center gap-2">
-                <DatePickerInput value={date} onChange={setDate} placeholder="Дата" className="w-48" />
-                <span className={`text-sm capitalize ${nowMs && date < toDateString(new Date(nowMs)) ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}>
+                <DatePickerInput
+                  value={date}
+                  onChange={setDate}
+                  placeholder="Дата"
+                  className="w-48"
+                />
+                <span
+                  className={`text-sm capitalize ${nowMs && date < toDateString(new Date(nowMs)) ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}
+                >
                   {formatKyivDate(date)}
                   {nowMs && date < toDateString(new Date(nowMs)) ? ' — минулий день' : ''}
                 </span>
@@ -1055,7 +1299,8 @@ export default function CalendarPage() {
       {/* ── Hint — day view only ─────────────────────────────────────────────── */}
       {calView === 'day' && !loading && lifts.length > 0 && !pendingSlot && !showAdd && (
         <p className="text-xs text-muted-foreground mb-2">
-          Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї для зміни тривалості. Натисніть на проміжок щоб зберегти.
+          Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї для зміни
+          тривалості. Натисніть на проміжок щоб зберегти.
         </p>
       )}
       {calView === 'day' && pendingSlot && !showAdd && (
@@ -1072,7 +1317,10 @@ export default function CalendarPage() {
           monthLoading={monthLoading}
           monthError={monthError}
           nowMs={nowMs}
-          onDayClick={dayStr => { setDate(dayStr); setCalView('day'); }}
+          onDayClick={dayStr => {
+            setDate(dayStr);
+            setCalView('day');
+          }}
         />
       )}
 
@@ -1097,34 +1345,68 @@ export default function CalendarPage() {
       )}
 
       {/* ── DAY VIEW ────────────────────────────────────────────────────────── */}
-      {calView === 'day' && loading && <div className="flex justify-center py-8"><Spinner size="md" /></div>}
+      {calView === 'day' && loading && (
+        <div className="flex justify-center py-8">
+          <Spinner size="md" />
+        </div>
+      )}
 
       {calView === 'day' && !loading && lifts.length === 0 && (
         <div className="bg-surface border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
-          Немає підйомників. Додайте їх у розділі <a href="/infrastructure" className="text-primary hover:underline">Інфраструктура</a>.
+          Немає підйомників. Додайте їх у розділі{' '}
+          <a href="/infrastructure" className="text-primary hover:underline">
+            Інфраструктура
+          </a>
+          .
         </div>
       )}
 
       {calView === 'day' && !loading && lifts.length > 0 && (
-        <DndContext sensors={sensors} onDragEnd={e => { void handleDragEnd(e); }}>
-          <div ref={timelineRef} className="bg-surface border border-border rounded-xl overflow-hidden">
-            <div className="grid border-b border-border" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
-              <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">Підйомник</div>
+        <DndContext
+          sensors={sensors}
+          onDragEnd={e => {
+            void handleDragEnd(e);
+          }}
+        >
+          <div
+            ref={timelineRef}
+            className="bg-surface border border-border rounded-xl overflow-hidden"
+          >
+            <div
+              className="grid border-b border-border"
+              style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
+            >
+              <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">
+                Підйомник
+              </div>
               {HOURS.map(h => (
-                <div key={h} className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0">
+                <div
+                  key={h}
+                  className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0"
+                >
                   {pad(h)}:00
                 </div>
               ))}
             </div>
 
             {lifts.map(lift => (
-              <div key={lift.id} className="grid border-b border-border last:border-b-0" style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}>
+              <div
+                key={lift.id}
+                className="grid border-b border-border last:border-b-0"
+                style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
+              >
                 <div className="px-3 py-3 min-h-20 bg-secondary border-r border-border flex flex-col justify-center gap-0.5">
-                  <span className="text-sm font-medium text-foreground leading-tight">{lift.name}</span>
+                  <span className="text-sm font-medium text-foreground leading-tight">
+                    {lift.name}
+                  </span>
                   {nextSlotByLift.get(lift.id) === 'now' ? (
-                    <span className="text-[10px] font-medium text-success-text leading-none">● зараз</span>
+                    <span className="text-[10px] font-medium text-success-text leading-none">
+                      ● зараз
+                    </span>
                   ) : nextSlotByLift.has(lift.id) ? (
-                    <span className="text-[10px] text-muted-foreground leading-none">↓ {fmtTime(nextSlotByLift.get(lift.id)!)}</span>
+                    <span className="text-[10px] text-muted-foreground leading-none">
+                      ↓ {fmtTime(nextSlotByLift.get(lift.id)!)}
+                    </span>
                   ) : null}
                 </div>
                 <DroppableLiftRow
@@ -1153,11 +1435,20 @@ export default function CalendarPage() {
           <h3 className="font-semibold text-foreground mb-3 text-sm">Без підйомника</h3>
           <div className="space-y-2">
             {unassignedSlots.map(s => (
-              <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-secondary rounded-lg">
+              <div
+                key={s.id}
+                className="flex items-center justify-between px-3 py-2 bg-secondary rounded-lg"
+              >
                 <div>
-                  <span className="text-sm text-foreground">{fmtTime(s.startAt)} – {fmtTime(s.endAt)}</span>
-                  {s.workOrderNumber && <span className="ml-2 text-xs text-primary">Наряд {s.workOrderNumber}</span>}
-                  {s.counterpartyName && <span className="ml-2 text-xs text-muted-foreground">{s.counterpartyName}</span>}
+                  <span className="text-sm text-foreground">
+                    {fmtTime(s.startAt)} – {fmtTime(s.endAt)}
+                  </span>
+                  {s.workOrderNumber && (
+                    <span className="ml-2 text-xs text-primary">Наряд {s.workOrderNumber}</span>
+                  )}
+                  {s.counterpartyName && (
+                    <span className="ml-2 text-xs text-muted-foreground">{s.counterpartyName}</span>
+                  )}
                   {s.notes && <span className="ml-2 text-xs text-muted-foreground">{s.notes}</span>}
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => removeSlot(s.id)}>

@@ -48,7 +48,7 @@ export function useOptimisticMutation<T>(
     } finally {
       setIsPending(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, setState, mutationFn, options]);
 
   return { mutate, isPending };

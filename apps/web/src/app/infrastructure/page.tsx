@@ -14,15 +14,30 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@/components/ui/table';
 import { cn, daysUntil } from '@/lib/utils';
 import { getCached, setCache } from '@/lib/ref-cache';
 
 // ─── Types ────────────────────────────────────────────────
 
-interface Branch { id: string; name: string; address: string; timezone: string; }
-interface Zone { id: string; branchId: string; name: string; type: string; }
+interface Branch {
+  id: string;
+  name: string;
+  address: string;
+  timezone: string;
+}
+interface Zone {
+  id: string;
+  branchId: string;
+  name: string;
+  type: string;
+}
 interface Lift {
   id: string;
   zoneId: string;
@@ -37,26 +52,51 @@ interface Lift {
   lastMaintenanceDate?: string | null;
   nextMaintenanceDate?: string | null;
 }
-interface Warehouse { id: string; branchId: string; name: string; type: string; isMain: boolean; }
+interface Warehouse {
+  id: string;
+  branchId: string;
+  name: string;
+  type: string;
+  isMain: boolean;
+}
 
 type Tab = 'branches' | 'zones' | 'lifts' | 'warehouses';
 
 const ZONE_TYPE_LABELS: Record<string, string> = {
-  MECHANICAL: 'Механічна', BODY: 'Кузовна', TIRE: 'Шиномонтажна',
-  WASH: 'Мийка', ELECTRICAL: 'Електрика', OTHER: 'Інша',
+  MECHANICAL: 'Механічна',
+  BODY: 'Кузовна',
+  TIRE: 'Шиномонтажна',
+  WASH: 'Мийка',
+  ELECTRICAL: 'Електрика',
+  OTHER: 'Інша',
 };
 const LIFT_TYPE_LABELS: Record<string, string> = {
-  TWO_POST: '2-стійковий', FOUR_POST: '4-стійковий', ALIGNMENT: 'Розвал-сход',
-  STENCIL: 'Стапель', STAND: 'Стенд', PIT: 'Яма', RAMP: 'Естакада', OTHER: 'Інший',
+  TWO_POST: '2-стійковий',
+  FOUR_POST: '4-стійковий',
+  ALIGNMENT: 'Розвал-сход',
+  STENCIL: 'Стапель',
+  STAND: 'Стенд',
+  PIT: 'Яма',
+  RAMP: 'Естакада',
+  OTHER: 'Інший',
 };
 const LIFT_STATUS_LABELS: Record<string, string> = {
-  ACTIVE: 'Активний', MAINTENANCE: 'ТО', BROKEN: 'Несправний', DECOMMISSIONED: 'Списаний',
+  ACTIVE: 'Активний',
+  MAINTENANCE: 'ТО',
+  BROKEN: 'Несправний',
+  DECOMMISSIONED: 'Списаний',
 };
 const LIFT_STATUS_BADGE: Record<string, BadgeVariant> = {
-  ACTIVE: 'success', MAINTENANCE: 'warning', BROKEN: 'destructive', DECOMMISSIONED: 'secondary',
+  ACTIVE: 'success',
+  MAINTENANCE: 'warning',
+  BROKEN: 'destructive',
+  DECOMMISSIONED: 'secondary',
 };
 const WAREHOUSE_TYPE_LABELS: Record<string, string> = {
-  MAIN: 'Основний', WORKSHOP: 'Цеховий', TIRE_HOTEL: 'Шиновий готель', MOBILE: 'Мобільний',
+  MAIN: 'Основний',
+  WORKSHOP: 'Цеховий',
+  TIRE_HOTEL: 'Шиновий готель',
+  MOBILE: 'Мобільний',
 };
 
 // ─── Main Page ──────────���────────────────────────────────
@@ -78,7 +118,9 @@ export default function InfrastructurePage() {
   const [form, setForm] = useState<Record<string, string>>({});
   // Bug (review): nowMs з useEffect замість new Date() у render — запобігає SSR hydration mismatch.
   const [nowMs, setNowMs] = useState(0);
-  useEffect(() => { setNowMs(Date.now()); }, []);
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, []);
 
   const loadAll = () => {
     setLoading(true);
@@ -96,14 +138,30 @@ export default function InfrastructurePage() {
     if (cLifts) setLifts(cLifts);
     if (cWarehouses) setWarehouses(cWarehouses);
     Promise.all([
-      apiFetch<Branch[]>('/branches').then(d => { setBranches(d); setCache('cache:branches', d); }),
-      apiFetch<Zone[]>('/zones').then(d => { setZones(d); setCache('cache:zones', d); }),
-      apiFetch<Lift[]>('/lifts').then(d => { setLifts(d); setCache('cache:lifts', d); }),
-      apiFetch<Warehouse[]>('/warehouses').then(d => { setWarehouses(d); setCache('cache:warehouses', d); }),
-    ]).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження')).finally(() => setLoading(false));
+      apiFetch<Branch[]>('/branches').then(d => {
+        setBranches(d);
+        setCache('cache:branches', d);
+      }),
+      apiFetch<Zone[]>('/zones').then(d => {
+        setZones(d);
+        setCache('cache:zones', d);
+      }),
+      apiFetch<Lift[]>('/lifts').then(d => {
+        setLifts(d);
+        setCache('cache:lifts', d);
+      }),
+      apiFetch<Warehouse[]>('/warehouses').then(d => {
+        setWarehouses(d);
+        setCache('cache:warehouses', d);
+      }),
+    ])
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    loadAll();
+  }, []);
 
   const openModal = (type: typeof modal, defaults: Record<string, string> = {}) => {
     setEditingId(null);
@@ -119,12 +177,19 @@ export default function InfrastructurePage() {
     setModal(type);
   };
 
-  const closeModal = () => { setModal(null); setEditingId(null); setError(''); };
+  const closeModal = () => {
+    setModal(null);
+    setEditingId(null);
+    setError('');
+  };
 
   const save = async () => {
     if (modal === 'lift' && form.maxWeightKg) {
       const w = Number(form.maxWeightKg);
-      if (!Number.isFinite(w) || w <= 0) { setError('Вантажність має бути додатнім числом'); return; }
+      if (!Number.isFinite(w) || w <= 0) {
+        setError('Вантажність має бути додатнім числом');
+        return;
+      }
     }
     setSaving(true);
     setError('');
@@ -132,7 +197,10 @@ export default function InfrastructurePage() {
     try {
       if (modal === 'branch') {
         const url = editingId ? `/branches/${editingId}` : '/branches';
-        await apiFetch<Branch>(url, { method, body: JSON.stringify({ name: form.name, address: form.address }) });
+        await apiFetch<Branch>(url, {
+          method,
+          body: JSON.stringify({ name: form.name, address: form.address }),
+        });
       } else if (modal === 'zone') {
         const url = editingId ? `/zones/${editingId}` : '/zones';
         // Bug #136: UpdateZoneDto не дозволяє branchId — relation FK immutable у PATCH.
@@ -142,7 +210,9 @@ export default function InfrastructurePage() {
         await apiFetch<Zone>(url, { method, body: JSON.stringify(body) });
       } else if (modal === 'lift') {
         const w = form.maxWeightKg ? Number(form.maxWeightKg) : undefined;
-        const interval = form.maintenanceIntervalDays ? Number(form.maintenanceIntervalDays) : undefined;
+        const interval = form.maintenanceIntervalDays
+          ? Number(form.maintenanceIntervalDays)
+          : undefined;
         const url = editingId ? `/lifts/${editingId}` : '/lifts';
         // Bug #136: UpdateLiftDto не дозволяє zoneId — relation FK immutable у PATCH.
         const commonFields = {
@@ -163,7 +233,12 @@ export default function InfrastructurePage() {
         // Bug #136: UpdateWarehouseDto не дозволяє branchId — relation FK immutable у PATCH.
         const body = editingId
           ? { name: form.name, type: form.type, isMain: form.isMain === 'true' }
-          : { branchId: form.branchId, name: form.name, type: form.type, isMain: form.isMain === 'true' };
+          : {
+              branchId: form.branchId,
+              name: form.name,
+              type: form.type,
+              isMain: form.isMain === 'true',
+            };
         await apiFetch<Warehouse>(url, { method, body: JSON.stringify(body) });
       }
       closeModal();
@@ -177,7 +252,8 @@ export default function InfrastructurePage() {
 
   const remove = async (endpoint: string, id: string) => {
     if (!(await confirm({ title: 'Видалити запис?', variant: 'destructive' }))) return;
-    setSaving(true); setError('');
+    setSaving(true);
+    setError('');
     try {
       await apiFetch<void>(`${endpoint}/${id}`, { method: 'DELETE' });
       loadAll();
@@ -220,10 +296,14 @@ export default function InfrastructurePage() {
       </div>
 
       {loading && (
-        <div className="flex justify-center py-8"><Spinner size="lg" /></div>
+        <div className="flex justify-center py-8">
+          <Spinner size="lg" />
+        </div>
       )}
       {!loading && error && !modal && (
-        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">{error}</div>
+        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">
+          {error}
+        </div>
       )}
 
       {/* BRANCHES */}
@@ -247,10 +327,22 @@ export default function InfrastructurePage() {
                     <TableCell className="text-muted-foreground">{b.timezone}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openEditModal('branch', b.id, { name: b.name, address: b.address })} className="text-muted-foreground hover:text-foreground">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            openEditModal('branch', b.id, { name: b.name, address: b.address })
+                          }
+                          className="text-muted-foreground hover:text-foreground"
+                        >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => remove('/branches', b.id)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => remove('/branches', b.id)}
+                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -265,7 +357,12 @@ export default function InfrastructurePage() {
 
       {/* ZONES */}
       {!loading && tab === 'zones' && (
-        <Section title="Зони" onAdd={() => openModal('zone', { branchId: branches[0]?.id ?? '', name: '', type: 'MECHANICAL' })}>
+        <Section
+          title="Зони"
+          onAdd={() =>
+            openModal('zone', { branchId: branches[0]?.id ?? '', name: '', type: 'MECHANICAL' })
+          }
+        >
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
@@ -280,14 +377,34 @@ export default function InfrastructurePage() {
                 {zones.map(z => (
                   <TableRow key={z.id}>
                     <TableCell className="font-medium text-foreground">{z.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{ZONE_TYPE_LABELS[z.type] ?? z.type}</TableCell>
-                    <TableCell className="text-muted-foreground">{branches.find(b => b.id === z.branchId)?.name ?? '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {ZONE_TYPE_LABELS[z.type] ?? z.type}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {branches.find(b => b.id === z.branchId)?.name ?? '—'}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openEditModal('zone', z.id, { branchId: z.branchId, name: z.name, type: z.type })} className="text-muted-foreground hover:text-foreground">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            openEditModal('zone', z.id, {
+                              branchId: z.branchId,
+                              name: z.name,
+                              type: z.type,
+                            })
+                          }
+                          className="text-muted-foreground hover:text-foreground"
+                        >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => remove('/zones', z.id)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => remove('/zones', z.id)}
+                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -302,7 +419,23 @@ export default function InfrastructurePage() {
 
       {/* LIFTS */}
       {!loading && tab === 'lifts' && (
-        <Section title="Пости" onAdd={() => openModal('lift', { zoneId: zones[0]?.id ?? '', name: '', type: 'TWO_POST', maxWeightKg: '', status: 'ACTIVE', serialNumber: '', purchaseDate: '', warrantyUntil: '', maintenanceIntervalDays: '', lastMaintenanceDate: '' })}>
+        <Section
+          title="Пости"
+          onAdd={() =>
+            openModal('lift', {
+              zoneId: zones[0]?.id ?? '',
+              name: '',
+              type: 'TWO_POST',
+              maxWeightKg: '',
+              status: 'ACTIVE',
+              serialNumber: '',
+              purchaseDate: '',
+              warrantyUntil: '',
+              maintenanceIntervalDays: '',
+              lastMaintenanceDate: '',
+            })
+          }
+        >
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
@@ -321,16 +454,25 @@ export default function InfrastructurePage() {
                     key={l.id}
                     lift={l}
                     zoneName={zones.find(z => z.id === l.zoneId)?.name ?? '—'}
-                    onEdit={() => openEditModal('lift', l.id, {
-                      zoneId: l.zoneId, name: l.name, type: l.type,
-                      maxWeightKg: l.maxWeightKg != null ? String(l.maxWeightKg) : '',
-                      status: l.status,
-                      serialNumber: l.serialNumber ?? '',
-                      purchaseDate: l.purchaseDate ? l.purchaseDate.slice(0, 10) : '',
-                      warrantyUntil: l.warrantyUntil ? l.warrantyUntil.slice(0, 10) : '',
-                      maintenanceIntervalDays: l.maintenanceIntervalDays != null ? String(l.maintenanceIntervalDays) : '',
-                      lastMaintenanceDate: l.lastMaintenanceDate ? l.lastMaintenanceDate.slice(0, 10) : '',
-                    })}
+                    onEdit={() =>
+                      openEditModal('lift', l.id, {
+                        zoneId: l.zoneId,
+                        name: l.name,
+                        type: l.type,
+                        maxWeightKg: l.maxWeightKg != null ? String(l.maxWeightKg) : '',
+                        status: l.status,
+                        serialNumber: l.serialNumber ?? '',
+                        purchaseDate: l.purchaseDate ? l.purchaseDate.slice(0, 10) : '',
+                        warrantyUntil: l.warrantyUntil ? l.warrantyUntil.slice(0, 10) : '',
+                        maintenanceIntervalDays:
+                          l.maintenanceIntervalDays != null
+                            ? String(l.maintenanceIntervalDays)
+                            : '',
+                        lastMaintenanceDate: l.lastMaintenanceDate
+                          ? l.lastMaintenanceDate.slice(0, 10)
+                          : '',
+                      })
+                    }
                     onRemove={() => remove('/lifts', l.id)}
                     nowMs={nowMs}
                   />
@@ -343,7 +485,12 @@ export default function InfrastructurePage() {
 
       {/* WAREHOUSES */}
       {!loading && tab === 'warehouses' && (
-        <Section title="Склади" onAdd={() => openModal('warehouse', { branchId: branches[0]?.id ?? '', name: '', type: 'MAIN' })}>
+        <Section
+          title="Склади"
+          onAdd={() =>
+            openModal('warehouse', { branchId: branches[0]?.id ?? '', name: '', type: 'MAIN' })
+          }
+        >
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
@@ -359,32 +506,65 @@ export default function InfrastructurePage() {
                 {warehouses.map(w => (
                   <TableRow key={w.id}>
                     <TableCell className="font-medium text-foreground">{w.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}</TableCell>
-                    <TableCell className="text-muted-foreground">{branches.find(b => b.id === w.branchId)?.name ?? '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {branches.find(b => b.id === w.branchId)?.name ?? '—'}
+                    </TableCell>
                     <TableCell>
                       <button
                         type="button"
                         title={w.isMain ? 'Основний склад' : 'Зробити основним'}
                         onClick={async () => {
                           if (w.isMain) return;
-                          setSaving(true); setError('');
+                          setSaving(true);
+                          setError('');
                           try {
-                            await apiFetch(`/warehouses/${w.id}`, { method: 'PATCH', body: JSON.stringify({ isMain: true }) });
+                            await apiFetch(`/warehouses/${w.id}`, {
+                              method: 'PATCH',
+                              body: JSON.stringify({ isMain: true }),
+                            });
                             loadAll();
-                          } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
-                          finally { setSaving(false); }
+                          } catch (e: unknown) {
+                            setError(e instanceof Error ? e.message : 'Помилка');
+                          } finally {
+                            setSaving(false);
+                          }
                         }}
-                        className={cn('w-4 h-4 rounded border-2 flex items-center justify-center', w.isMain ? 'bg-primary border-primary' : 'border-border hover:border-primary/60')}
+                        className={cn(
+                          'w-4 h-4 rounded border-2 flex items-center justify-center',
+                          w.isMain
+                            ? 'bg-primary border-primary'
+                            : 'border-border hover:border-primary/60',
+                        )}
                       >
                         {w.isMain && <span className="block w-2 h-2 rounded-sm bg-white" />}
                       </button>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openEditModal('warehouse', w.id, { branchId: w.branchId, name: w.name, type: w.type, isMain: w.isMain ? 'true' : '' })} className="text-muted-foreground hover:text-foreground">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            openEditModal('warehouse', w.id, {
+                              branchId: w.branchId,
+                              name: w.name,
+                              type: w.type,
+                              isMain: w.isMain ? 'true' : '',
+                            })
+                          }
+                          className="text-muted-foreground hover:text-foreground"
+                        >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => remove('/warehouses', w.id)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => remove('/warehouses', w.id)}
+                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -402,12 +582,37 @@ export default function InfrastructurePage() {
         open={modal === 'branch'}
         onClose={closeModal}
         title={editingId ? 'Редагувати філію' : 'Нова філія'}
-        footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.address} className="w-full">Зберегти</Button>}
+        footer={
+          <Button
+            onClick={save}
+            loading={saving}
+            disabled={!form.name || !form.address}
+            className="w-full"
+          >
+            Зберегти
+          </Button>
+        }
       >
-        {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
+        {error && (
+          <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">
+            {error}
+          </div>
+        )}
         <div className="space-y-4">
-          <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Головна філія" />
-          <Input label="Адреса" required value={form.address ?? ''} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="вул. Гагаріна 12, Київ" />
+          <Input
+            label="Назва"
+            required
+            value={form.name ?? ''}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="Головна філія"
+          />
+          <Input
+            label="Адреса"
+            required
+            value={form.address ?? ''}
+            onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+            placeholder="вул. Гагаріна 12, Київ"
+          />
         </div>
       </Modal>
 
@@ -416,16 +621,53 @@ export default function InfrastructurePage() {
         open={modal === 'zone'}
         onClose={closeModal}
         title={editingId ? 'Редагувати зону' : 'Нова зона'}
-        footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.branchId} className="w-full">Зберегти</Button>}
+        footer={
+          <Button
+            onClick={save}
+            loading={saving}
+            disabled={!form.name || !form.branchId}
+            className="w-full"
+          >
+            Зберегти
+          </Button>
+        }
       >
-        {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
+        {error && (
+          <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">
+            {error}
+          </div>
+        )}
         <div className="space-y-4">
-          <Select label="Філія" required value={form.branchId ?? ''} onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}>
-            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          <Select
+            label="Філія"
+            required
+            value={form.branchId ?? ''}
+            onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+          >
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
           </Select>
-          <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Механічна зона А" />
-          <Select label="Тип" required value={form.type ?? 'MECHANICAL'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-            {Object.entries(ZONE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          <Input
+            label="Назва"
+            required
+            value={form.name ?? ''}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="Механічна зона А"
+          />
+          <Select
+            label="Тип"
+            required
+            value={form.type ?? 'MECHANICAL'}
+            onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+          >
+            {Object.entries(ZONE_TYPE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
           </Select>
         </div>
       </Modal>
@@ -435,29 +677,104 @@ export default function InfrastructurePage() {
         open={modal === 'lift'}
         onClose={closeModal}
         title={editingId ? 'Редагувати пост' : 'Новий пост'}
-        footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.zoneId} className="w-full">Зберегти</Button>}
+        footer={
+          <Button
+            onClick={save}
+            loading={saving}
+            disabled={!form.name || !form.zoneId}
+            className="w-full"
+          >
+            Зберегти
+          </Button>
+        }
       >
-        {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
+        {error && (
+          <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">
+            {error}
+          </div>
+        )}
         <div className="space-y-4">
-          <Select label="Зона" required value={form.zoneId ?? ''} onChange={e => setForm(f => ({ ...f, zoneId: e.target.value }))}>
-            {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+          <Select
+            label="Зона"
+            required
+            value={form.zoneId ?? ''}
+            onChange={e => setForm(f => ({ ...f, zoneId: e.target.value }))}
+          >
+            {zones.map(z => (
+              <option key={z.id} value={z.id}>
+                {z.name}
+              </option>
+            ))}
           </Select>
-          <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Пост №1" />
-          <Select label="Тип" required value={form.type ?? 'TWO_POST'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-            {Object.entries(LIFT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          <Input
+            label="Назва"
+            required
+            value={form.name ?? ''}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="Пост №1"
+          />
+          <Select
+            label="Тип"
+            required
+            value={form.type ?? 'TWO_POST'}
+            onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+          >
+            {Object.entries(LIFT_TYPE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
           </Select>
-          <Select label="Статус" required value={form.status ?? 'ACTIVE'} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-            {Object.entries(LIFT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          <Select
+            label="Статус"
+            required
+            value={form.status ?? 'ACTIVE'}
+            onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+          >
+            {Object.entries(LIFT_STATUS_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
           </Select>
-          <Input label="Вантажність, кг" type="number" value={form.maxWeightKg ?? ''} onChange={e => setForm(f => ({ ...f, maxWeightKg: e.target.value }))} placeholder="3500" />
-          <Input label="Серійний номер" value={form.serialNumber ?? ''} onChange={e => setForm(f => ({ ...f, serialNumber: e.target.value }))} placeholder="SN-12345" />
+          <Input
+            label="Вантажність, кг"
+            type="number"
+            value={form.maxWeightKg ?? ''}
+            onChange={e => setForm(f => ({ ...f, maxWeightKg: e.target.value }))}
+            placeholder="3500"
+          />
+          <Input
+            label="Серійний номер"
+            value={form.serialNumber ?? ''}
+            onChange={e => setForm(f => ({ ...f, serialNumber: e.target.value }))}
+            placeholder="SN-12345"
+          />
           <div className="grid grid-cols-2 gap-3">
-            <DatePickerInput label="Дата купівлі" value={form.purchaseDate ?? ''} onChange={v => setForm(f => ({ ...f, purchaseDate: v }))} />
-            <DatePickerInput label="Гарантія до" value={form.warrantyUntil ?? ''} onChange={v => setForm(f => ({ ...f, warrantyUntil: v }))} />
+            <DatePickerInput
+              label="Дата купівлі"
+              value={form.purchaseDate ?? ''}
+              onChange={v => setForm(f => ({ ...f, purchaseDate: v }))}
+            />
+            <DatePickerInput
+              label="Гарантія до"
+              value={form.warrantyUntil ?? ''}
+              onChange={v => setForm(f => ({ ...f, warrantyUntil: v }))}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Інтервал ТО (днів)" type="number" value={form.maintenanceIntervalDays ?? ''} onChange={e => setForm(f => ({ ...f, maintenanceIntervalDays: e.target.value }))} placeholder="180" />
-            <DatePickerInput label="Дата останнього ТО" value={form.lastMaintenanceDate ?? ''} onChange={v => setForm(f => ({ ...f, lastMaintenanceDate: v }))} />
+            <Input
+              label="Інтервал ТО (днів)"
+              type="number"
+              value={form.maintenanceIntervalDays ?? ''}
+              onChange={e => setForm(f => ({ ...f, maintenanceIntervalDays: e.target.value }))}
+              placeholder="180"
+            />
+            <DatePickerInput
+              label="Дата останнього ТО"
+              value={form.lastMaintenanceDate ?? ''}
+              onChange={v => setForm(f => ({ ...f, lastMaintenanceDate: v }))}
+            />
           </div>
         </div>
       </Modal>
@@ -467,16 +784,53 @@ export default function InfrastructurePage() {
         open={modal === 'warehouse'}
         onClose={closeModal}
         title={editingId ? 'Редагувати склад' : 'Новий склад'}
-        footer={<Button onClick={save} loading={saving} disabled={!form.name || !form.branchId} className="w-full">Зберегти</Button>}
+        footer={
+          <Button
+            onClick={save}
+            loading={saving}
+            disabled={!form.name || !form.branchId}
+            className="w-full"
+          >
+            Зберегти
+          </Button>
+        }
       >
-        {error && <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">{error}</div>}
+        {error && (
+          <div className="mb-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">
+            {error}
+          </div>
+        )}
         <div className="space-y-4">
-          <Select label="Філія" required value={form.branchId ?? ''} onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}>
-            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          <Select
+            label="Філія"
+            required
+            value={form.branchId ?? ''}
+            onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+          >
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
           </Select>
-          <Input label="Назва" required value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Основний склад" />
-          <Select label="Тип" required value={form.type ?? 'MAIN'} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-            {Object.entries(WAREHOUSE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          <Input
+            label="Назва"
+            required
+            value={form.name ?? ''}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="Основний склад"
+          />
+          <Select
+            label="Тип"
+            required
+            value={form.type ?? 'MAIN'}
+            onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+          >
+            {Object.entries(WAREHOUSE_TYPE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
           </Select>
           <WarehouseMainCheckbox
             checked={form.isMain === 'true'}
@@ -494,7 +848,10 @@ export default function InfrastructurePage() {
 // ─── Small components ────────────────────────────────────
 
 function WarehouseMainCheckbox({
-  checked, onChange, warehouses, editingId,
+  checked,
+  onChange,
+  warehouses,
+  editingId,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -535,7 +892,19 @@ function isWithin14Days(value: string | null | undefined, nowMs: number): boolea
   return diff !== null && diff >= 0 && diff <= 14;
 }
 
-function LiftRow({ lift, zoneName, onEdit, onRemove, nowMs }: { lift: Lift; zoneName: string; onEdit: () => void; onRemove: () => void; nowMs: number }) {
+function LiftRow({
+  lift,
+  zoneName,
+  onEdit,
+  onRemove,
+  nowMs,
+}: {
+  lift: Lift;
+  zoneName: string;
+  onEdit: () => void;
+  onRemove: () => void;
+  nowMs: number;
+}) {
   const [expanded, setExpanded] = useState(false);
   const hasDetail = lift.nextMaintenanceDate ?? lift.lastMaintenanceDate;
   const nextSoon = isWithin14Days(lift.nextMaintenanceDate, nowMs);
@@ -547,7 +916,9 @@ function LiftRow({ lift, zoneName, onEdit, onRemove, nowMs }: { lift: Lift; zone
         onClick={hasDetail ? () => setExpanded(v => !v) : undefined}
       >
         <TableCell className="font-medium text-foreground">{lift.name}</TableCell>
-        <TableCell className="text-muted-foreground">{LIFT_TYPE_LABELS[lift.type] ?? lift.type}</TableCell>
+        <TableCell className="text-muted-foreground">
+          {LIFT_TYPE_LABELS[lift.type] ?? lift.type}
+        </TableCell>
         <TableCell>
           <Badge variant={LIFT_STATUS_BADGE[lift.status] ?? 'secondary'} dot>
             {LIFT_STATUS_LABELS[lift.status] ?? lift.status}
@@ -557,13 +928,24 @@ function LiftRow({ lift, zoneName, onEdit, onRemove, nowMs }: { lift: Lift; zone
         <TableCell className="text-muted-foreground">{zoneName}</TableCell>
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1">
-            <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); onEdit(); }} className="text-muted-foreground hover:text-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={e => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              className="text-muted-foreground hover:text-foreground"
+            >
               <Pencil className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              onClick={e => { e.stopPropagation(); onRemove(); }}
+              onClick={e => {
+                e.stopPropagation();
+                onRemove();
+              }}
               className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -578,13 +960,19 @@ function LiftRow({ lift, zoneName, onEdit, onRemove, nowMs }: { lift: Lift; zone
               {lift.lastMaintenanceDate && (
                 <span className="text-muted-foreground">
                   Останнє ТО:{' '}
-                  <span className="text-foreground font-medium">{formatDate(lift.lastMaintenanceDate)}</span>
+                  <span className="text-foreground font-medium">
+                    {formatDate(lift.lastMaintenanceDate)}
+                  </span>
                 </span>
               )}
               {lift.nextMaintenanceDate && (
-                <span className={cn('text-muted-foreground', nextSoon && 'text-warning font-medium')}>
+                <span
+                  className={cn('text-muted-foreground', nextSoon && 'text-warning font-medium')}
+                >
                   Наступне ТО:{' '}
-                  <span className={cn('font-medium', nextSoon ? 'text-warning' : 'text-foreground')}>
+                  <span
+                    className={cn('font-medium', nextSoon ? 'text-warning' : 'text-foreground')}
+                  >
                     {formatDate(lift.nextMaintenanceDate)}
                   </span>
                   {nextSoon && <span className="ml-1 text-xs">(незабаром)</span>}
@@ -598,7 +986,15 @@ function LiftRow({ lift, zoneName, onEdit, onRemove, nowMs }: { lift: Lift; zone
   );
 }
 
-function Section({ title, onAdd, children }: { title: string; onAdd: () => void; children: ReactNode }) {
+function Section({
+  title,
+  onAdd,
+  children,
+}: {
+  title: string;
+  onAdd: () => void;
+  children: ReactNode;
+}) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">

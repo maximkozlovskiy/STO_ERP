@@ -8,7 +8,8 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  IsUUID, Matches,
+  IsUUID,
+  Matches,
   Max,
   Min,
   ValidateIf,
@@ -241,22 +242,39 @@ export class BranchSettingsResponseDto {
 }
 
 export class UpdateOrganisationDto {
-  @ApiPropertyOptional() @IsOptional() @IsString() @IsNotEmpty()
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
   name?: string;
 
-  @ApiPropertyOptional() @IsOptional() @IsString()
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   edrpou?: string;
 
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.logoUrl !== null) @IsString()
+  @ApiPropertyOptional()
+  @IsOptional()
+  @ValidateIf(o => o.logoUrl !== null)
+  @IsString()
   logoUrl?: string | null;
 
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.legalAddress !== null) @IsString()
+  @ApiPropertyOptional()
+  @IsOptional()
+  @ValidateIf(o => o.legalAddress !== null)
+  @IsString()
   legalAddress?: string | null;
 
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.actualAddress !== null) @IsString()
+  @ApiPropertyOptional()
+  @IsOptional()
+  @ValidateIf(o => o.actualAddress !== null)
+  @IsString()
   actualAddress?: string | null;
 
-  @ApiPropertyOptional() @IsOptional() @ValidateIf(o => o.bankAccountId !== null) @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @ApiPropertyOptional()
+  @IsOptional()
+  @ValidateIf(o => o.bankAccountId !== null)
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   bankAccountId?: string | null;
 }
 

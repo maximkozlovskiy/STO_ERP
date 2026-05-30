@@ -3,69 +3,99 @@ import { IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator
 
 export class CreateUnitDto {
   @ApiProperty({ example: 'штука' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   name!: string;
 
   @ApiProperty({ example: 'шт' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   shortName!: string;
 
   @ApiPropertyOptional({ example: 1, description: 'Коефіцієнт перерахунку до базової одиниці' })
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   coefficient?: number;
 
   @ApiPropertyOptional({ description: 'Ширина (м)' })
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   width?: number;
 
   @ApiPropertyOptional({ description: 'Висота (м)' })
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   height?: number;
 
   @ApiPropertyOptional({ description: 'Глибина/довжина (м)' })
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   depth?: number;
 
   @ApiPropertyOptional({ description: "Об'єм (м³)" })
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   volume?: number;
 
   @ApiPropertyOptional({ description: 'Вага (кг)' })
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   weight?: number;
 }
 
 export class UpdateUnitDto {
   @ApiPropertyOptional({ example: 'штука' })
-  @IsOptional() @IsString() @IsNotEmpty()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
   name?: string;
 
   @ApiPropertyOptional({ example: 'шт' })
-  @IsOptional() @IsString() @IsNotEmpty()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
   shortName?: string;
 
   @ApiPropertyOptional({ example: 1 })
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   coefficient?: number;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   width?: number;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   height?: number;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   depth?: number;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   volume?: number;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsNumber() @Min(0)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   weight?: number;
 }
 

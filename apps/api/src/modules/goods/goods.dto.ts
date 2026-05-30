@@ -1,4 +1,14 @@
-import { IsString, IsNotEmpty, IsNumber, Min, Max, IsOptional, IsPositive, IsEnum, Matches } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  Min,
+  Max,
+  IsOptional,
+  IsPositive,
+  IsEnum,
+  Matches,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { GoodType } from '@prisma/client';
@@ -7,8 +17,14 @@ export class CreateGoodDto {
   @ApiPropertyOptional() @IsOptional() @IsString() sku?: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
   @ApiPropertyOptional({ default: 'шт' }) @IsOptional() @IsString() unit?: string;
-  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) unitId?: string;
-  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) brandId?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  unitId?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  brandId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -22,7 +38,10 @@ export class CreateGoodDto {
   @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
   @ApiPropertyOptional({ enum: GoodType }) @IsOptional() @IsEnum(GoodType) goodType?: GoodType;
-  @ApiPropertyOptional() @IsOptional() @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) preferredSupplierId?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  preferredSupplierId?: string;
 }
 
 export class UpdateGoodDto extends PartialType(CreateGoodDto) {}

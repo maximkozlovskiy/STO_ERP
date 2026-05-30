@@ -9,7 +9,7 @@ export default function RootPage() {
 
   useEffect(() => {
     apiFetch<{ initialized: boolean }>('/setup/status')
-      .then((d) => {
+      .then(d => {
         if (!d.initialized) {
           router.replace('/setup');
           return;

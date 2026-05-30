@@ -50,7 +50,10 @@ export function CalendarStatsTab({
         const d: string[] = [];
         const cur = new Date(statsRange.from + 'T12:00:00');
         const end = new Date(statsRange.to + 'T12:00:00');
-        while (cur <= end && d.length < STATS_MAX_DAYS) { d.push(toDateString(cur)); cur.setDate(cur.getDate() + 1); }
+        while (cur <= end && d.length < STATS_MAX_DAYS) {
+          d.push(toDateString(cur));
+          cur.setDate(cur.getDate() + 1);
+        }
         return d.length;
       })()
     : 1;
@@ -80,7 +83,13 @@ export function CalendarStatsTab({
         <div>
           <p className="text-xs text-muted-foreground mb-1.5">Період</p>
           <div className="flex rounded-lg border border-border overflow-hidden text-sm">
-            {([['day', 'День'], ['month', 'Місяць'], ['custom', 'Довільний']] as const).map(([v, label]) => (
+            {(
+              [
+                ['day', 'День'],
+                ['month', 'Місяць'],
+                ['custom', 'Довільний'],
+              ] as const
+            ).map(([v, label]) => (
               <button
                 key={v}
                 onClick={() => setStatsPeriod(v)}
@@ -106,19 +115,35 @@ export function CalendarStatsTab({
             <div>
               <p className="text-xs text-muted-foreground mb-1.5">Місяць</p>
               <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" onClick={() => {
-                  const [y, m] = date.split('-').map(Number);
-                  const d = new Date(y, m - 2, 1);
-                  setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
-                }}><ChevronLeft className="h-3.5 w-3.5" /></Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const [y, m] = date.split('-').map(Number);
+                    const d = new Date(y, m - 2, 1);
+                    setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+                  }}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
                 <span className="text-sm font-medium px-2 capitalize min-w-32 text-center">
-                  {new Date(date + 'T12:00:00').toLocaleDateString('uk-UA', { month: 'long', year: 'numeric', timeZone: KYIV_TZ })}
+                  {new Date(date + 'T12:00:00').toLocaleDateString('uk-UA', {
+                    month: 'long',
+                    year: 'numeric',
+                    timeZone: KYIV_TZ,
+                  })}
                 </span>
-                <Button variant="outline" size="sm" onClick={() => {
-                  const [y, m] = date.split('-').map(Number);
-                  const d = new Date(y, m, 1);
-                  setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
-                }}><ChevronRight className="h-3.5 w-3.5" /></Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const [y, m] = date.split('-').map(Number);
+                    const d = new Date(y, m, 1);
+                    setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+                  }}
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
               </div>
             </div>
           </div>
@@ -129,7 +154,14 @@ export function CalendarStatsTab({
           <>
             <div>
               <p className="text-xs text-muted-foreground mb-1.5">Від</p>
-              <DatePickerInput value={statsFrom} onChange={v => { setStatsFrom(v); if (!statsTo) setStatsTo(v); }} className="w-36" />
+              <DatePickerInput
+                value={statsFrom}
+                onChange={v => {
+                  setStatsFrom(v);
+                  if (!statsTo) setStatsTo(v);
+                }}
+                className="w-36"
+              />
             </div>
             <div>
               <p className="text-xs text-muted-foreground mb-1.5">До</p>
@@ -147,7 +179,8 @@ export function CalendarStatsTab({
       )}
       {statsRangeTooLong && (
         <p className="text-xs text-warning-text">
-          Діапазон задовгий — показано перші {STATS_MAX_DAYS} днів. Звузьте період для повної статистики.
+          Діапазон задовгий — показано перші {STATS_MAX_DAYS} днів. Звузьте період для повної
+          статистики.
         </p>
       )}
       {statsError && (
@@ -158,15 +191,25 @@ export function CalendarStatsTab({
 
       {/* Period label */}
       <p className="text-xs text-muted-foreground">
-        {statsRange ? `${days} ${days === 1 ? 'день' : days < 5 ? 'дні' : 'днів'} · ${periodLabel}` : 'Оберіть діапазон'}
+        {statsRange
+          ? `${days} ${days === 1 ? 'день' : days < 5 ? 'дні' : 'днів'} · ${periodLabel}`
+          : 'Оберіть діапазон'}
       </p>
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         {[
           { label: 'Всього записів', value: String(statsSlots.length) },
-          { label: 'Загальний час', value: `${Math.floor(totalMinAll / 60)}г ${Math.round(totalMinAll % 60)}хв` },
-          { label: 'Середнє завант.', value: liftStats.length ? `${Math.round(liftStats.reduce((a, x) => a + x.loadPct, 0) / liftStats.length)}%` : '—' },
+          {
+            label: 'Загальний час',
+            value: `${Math.floor(totalMinAll / 60)}г ${Math.round(totalMinAll % 60)}хв`,
+          },
+          {
+            label: 'Середнє завант.',
+            value: liftStats.length
+              ? `${Math.round(liftStats.reduce((a, x) => a + x.loadPct, 0) / liftStats.length)}%`
+              : '—',
+          },
         ].map(({ label, value }) => (
           <div key={label} className="bg-surface border border-border rounded-xl p-4">
             <div className="text-xs text-muted-foreground mb-1">{label}</div>
@@ -180,9 +223,15 @@ export function CalendarStatsTab({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-secondary">
-              <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Пост</th>
-              <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">Записів</th>
-              <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">Час</th>
+              <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                Пост
+              </th>
+              <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                Записів
+              </th>
+              <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                Час
+              </th>
               <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
                 Завантаженість {days > 1 ? `(за ${days} д.)` : '(11 год)'}
               </th>
@@ -190,7 +239,10 @@ export function CalendarStatsTab({
           </thead>
           <tbody>
             {liftStats.map(({ lift, count, totalMinutes, loadPct }) => (
-              <tr key={lift.id} className="border-b border-border last:border-b-0 hover:bg-secondary/50">
+              <tr
+                key={lift.id}
+                className="border-b border-border last:border-b-0 hover:bg-secondary/50"
+              >
                 <td className="px-4 py-3 font-medium text-foreground">{lift.name}</td>
                 <td className="px-4 py-3 text-center text-muted-foreground">{count}</td>
                 <td className="px-4 py-3 text-center text-muted-foreground">
@@ -199,10 +251,18 @@ export function CalendarStatsTab({
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{
-                        width: `${Math.min(100, loadPct)}%`,
-                        backgroundColor: loadPct >= 80 ? 'var(--color-destructive)' : loadPct >= 50 ? '#f59e0b' : 'var(--color-primary)',
-                      }} />
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${Math.min(100, loadPct)}%`,
+                          backgroundColor:
+                            loadPct >= 80
+                              ? 'var(--color-destructive)'
+                              : loadPct >= 50
+                                ? '#f59e0b'
+                                : 'var(--color-primary)',
+                        }}
+                      />
                     </div>
                     <span className="text-xs text-muted-foreground w-9 text-right">{loadPct}%</span>
                   </div>

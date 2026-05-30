@@ -8,10 +8,14 @@ function kyivStartOfDay(date: string): Date {
   // Use noon in UTC to safely determine the Kyiv offset for that calendar date
   const probe = new Date(`${date}T12:00:00Z`);
   const kyivHour = parseInt(
-    new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(probe),
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Kyiv',
+      hour: '2-digit',
+      hour12: false,
+    }).format(probe),
     10,
   );
-  const offsetMs = (kyivHour - probe.getUTCHours() + 24) % 24 * 3_600_000;
+  const offsetMs = ((kyivHour - probe.getUTCHours() + 24) % 24) * 3_600_000;
   return new Date(new Date(`${date}T00:00:00Z`).getTime() - offsetMs);
 }
 
@@ -19,10 +23,14 @@ function kyivStartOfDay(date: string): Date {
 function kyivEndOfDay(date: string): Date {
   const probe = new Date(`${date}T12:00:00Z`);
   const kyivHour = parseInt(
-    new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(probe),
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Kyiv',
+      hour: '2-digit',
+      hour12: false,
+    }).format(probe),
     10,
   );
-  const offsetMs = (kyivHour - probe.getUTCHours() + 24) % 24 * 3_600_000;
+  const offsetMs = ((kyivHour - probe.getUTCHours() + 24) % 24) * 3_600_000;
   return new Date(new Date(`${date}T23:59:59.999Z`).getTime() - offsetMs);
 }
 
@@ -52,7 +60,8 @@ export class SettlementsAccountService {
       this.prisma.settlementTransaction.findMany({
         where: { settlementAccountId: account.id, orgId },
         orderBy: { createdAt: 'desc' },
-        skip, take: limit,
+        skip,
+        take: limit,
       }),
       this.prisma.settlementTransaction.count({
         where: { settlementAccountId: account.id, orgId },
@@ -69,7 +78,9 @@ export class SettlementsAccountService {
         notes: t.notes,
         createdAt: t.createdAt,
       })),
-      total, page, limit,
+      total,
+      page,
+      limit,
     };
   }
 
@@ -148,7 +159,11 @@ export class SettlementsAccountService {
     };
   }
 
-  async generateReconciliationPdf(orgId: string, counterpartyId: string, actId: string): Promise<Buffer> {
+  async generateReconciliationPdf(
+    orgId: string,
+    counterpartyId: string,
+    actId: string,
+  ): Promise<Buffer> {
     const act = await this.prisma.reconciliationAct.findFirst({
       where: { id: actId, orgId, counterpartyId },
       include: { counterparty: { select: { firstName: true, lastName: true, companyName: true } } },
@@ -157,10 +172,16 @@ export class SettlementsAccountService {
 
     const org = await this.prisma.organisation.findFirst({ where: { id: orgId } });
     const cp = act.counterparty;
-    const cpName = (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Контрагент';
+    const cpName =
+      (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Контрагент';
 
     const transactions = Array.isArray(act.snapshotJson)
-      ? (act.snapshotJson as Array<{ date: string; type: string; amount: number; documentType?: string }>)
+      ? (act.snapshotJson as Array<{
+          date: string;
+          type: string;
+          amount: number;
+          documentType?: string;
+        }>)
       : [];
 
     return this.pdf.generateReconciliationActPdf({
@@ -170,7 +191,12 @@ export class SettlementsAccountService {
       periodTo: act.periodTo,
       openingBalance: Number(act.openingBalance),
       closingBalance: Number(act.closingBalance),
-      transactions: transactions.map(t => ({ date: new Date(t.date), type: t.type, amount: t.amount, documentType: t.documentType })),
+      transactions: transactions.map(t => ({
+        date: new Date(t.date),
+        type: t.type,
+        amount: t.amount,
+        documentType: t.documentType,
+      })),
     });
   }
 

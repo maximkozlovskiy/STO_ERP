@@ -40,31 +40,36 @@ describe('InventoryService.createMovement guards', () => {
   });
 
   it('кидає при quantity = 0', async () => {
-    await expect(service.createMovement('org-1', dto({ quantity: 0 })))
-      .rejects.toThrow(BadRequestException);
+    await expect(service.createMovement('org-1', dto({ quantity: 0 }))).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('кидає при RESERVATION_RELEASE з positive quantity', async () => {
-    await expect(service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: 5 })))
-      .rejects.toThrow(BadRequestException);
+    await expect(
+      service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: 5 })),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('кидає при WRITEOFF якщо available < |quantity|', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 5, reserved: 0 });
-    await expect(service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -10 })))
-      .rejects.toThrow(BadRequestException);
+    await expect(
+      service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -10 })),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('кидає при RESERVATION якщо available < quantity', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 8 });
-    await expect(service.createMovement('org-1', dto({ type: 'RESERVATION', quantity: 5 })))
-      .rejects.toThrow(BadRequestException);
+    await expect(
+      service.createMovement('org-1', dto({ type: 'RESERVATION', quantity: 5 })),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('кидає при RESERVATION_RELEASE якщо |quantity| > reserved', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 2 });
-    await expect(service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: -5 })))
-      .rejects.toThrow(BadRequestException);
+    await expect(
+      service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: -5 })),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('RECEIPT збільшує quantity і не торкається reserved', async () => {
@@ -72,12 +77,14 @@ describe('InventoryService.createMovement guards', () => {
     expect(prisma.stockMovement.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ type: 'RECEIPT', quantity: 10 }),
     });
-    expect(prisma.stockItem.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: expect.objectContaining({
-        quantity: { increment: 10 },
-        reserved: { increment: 0 },
+    expect(prisma.stockItem.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          quantity: { increment: 10 },
+          reserved: { increment: 0 },
+        }),
       }),
-    }));
+    );
   });
 
   it('Bug #26: RECEIPT без price fallback до good.purchasePrice', async () => {
@@ -111,34 +118,40 @@ describe('InventoryService.createMovement guards', () => {
   });
 
   it('Bug #26: createMovement кидає при NaN quantity', async () => {
-    await expect(service.createMovement('org-1', dto({ quantity: NaN, price: 50 })))
-      .rejects.toThrow(BadRequestException);
+    await expect(
+      service.createMovement('org-1', dto({ quantity: NaN, price: 50 })),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('Bug #26: createMovement кидає при NaN price', async () => {
-    await expect(service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 5, price: NaN })))
-      .rejects.toThrow(BadRequestException);
+    await expect(
+      service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 5, price: NaN })),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('RESERVATION тільки інкрементує reserved, не quantity', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
     await service.createMovement('org-1', dto({ type: 'RESERVATION', quantity: 5 }));
-    expect(prisma.stockItem.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: expect.objectContaining({
-        quantity: { increment: 0 },
-        reserved: { increment: 5 },
+    expect(prisma.stockItem.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          quantity: { increment: 0 },
+          reserved: { increment: 5 },
+        }),
       }),
-    }));
+    );
   });
 
   it('WRITEOFF з достатніми залишками декрементує quantity', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
     await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -10 }));
-    expect(prisma.stockItem.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: expect.objectContaining({
-        quantity: { increment: -10 },
-        reserved: { increment: 0 },
+    expect(prisma.stockItem.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          quantity: { increment: -10 },
+          reserved: { increment: 0 },
+        }),
       }),
-    }));
+    );
   });
 });

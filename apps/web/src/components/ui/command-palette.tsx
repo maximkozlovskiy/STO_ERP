@@ -9,15 +9,15 @@ import { apiFetch } from '@/lib/api-client';
 
 const GROUP_LABELS: Record<string, string> = {
   navigation: 'Навігація',
-  action:     'Дії',
-  settings:   'Налаштування',
-  data:       'Дані',
+  action: 'Дії',
+  settings: 'Налаштування',
+  data: 'Дані',
 };
 const GROUP_ICONS: Record<string, typeof Navigation> = {
   navigation: Navigation,
-  action:     Zap,
-  settings:   Zap,
-  data:       Database,
+  action: Zap,
+  settings: Zap,
+  data: Database,
 };
 
 interface SearchResultItem {
@@ -38,9 +38,9 @@ interface CommandPaletteProps {
 // list view. Without this distinction the palette swallowed the click context — selecting
 // «ТОВ Альфа» from the palette dropped the user on the /crm list and forced a second search.
 const DATA_ROUTE: Record<string, { list: string; detail?: (id: string) => string }> = {
-  wo:           { list: '/work-orders', detail: (id) => `/work-orders/${id}` },
-  counterparty: { list: '/crm',         detail: (id) => `/crm/${id}` },
-  good:         { list: '/catalog' /* no /catalog/[id] route yet */ },
+  wo: { list: '/work-orders', detail: id => `/work-orders/${id}` },
+  counterparty: { list: '/crm', detail: id => `/crm/${id}` },
+  good: { list: '/catalog' /* no /catalog/[id] route yet */ },
 };
 
 export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
@@ -53,9 +53,9 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
   const listRef = useRef<HTMLDivElement>(null);
   // Stable IDs from React 18+ — replaces non-deterministic Math.random()
   const reactId = useId();
-  const titleId    = `cmd-palette-title-${reactId}`;
-  const listboxId  = `cmd-palette-listbox-${reactId}`;
-  const optionId   = (idx: number) => `cmd-palette-option-${reactId}-${idx}`;
+  const titleId = `cmd-palette-title-${reactId}`;
+  const listboxId = `cmd-palette-listbox-${reactId}`;
+  const optionId = (idx: number) => `cmd-palette-option-${reactId}-${idx}`;
 
   // Remember the focused element BEFORE the palette opened so we can restore it on close (a11y).
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -65,22 +65,30 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
   const filtered = useMemo(() => searchCommands(allCommands, query), [allCommands, query]);
 
   // Group filtered results
-  const groups = useMemo(() => filtered.reduce<Record<string, Command[]>>((acc, cmd) => {
-    (acc[cmd.group] ??= []).push(cmd);
-    return acc;
-  }, {}), [filtered]);
+  const groups = useMemo(
+    () =>
+      filtered.reduce<Record<string, Command[]>>((acc, cmd) => {
+        (acc[cmd.group] ??= []).push(cmd);
+        return acc;
+      }, {}),
+    [filtered],
+  );
 
   // Convert data search results to Command-like objects
-  const dataCommands = useMemo<Command[]>(() => dataResults.map(item => ({
-    id: `data-${item.type}-${item.id}`,
-    label: item.label,
-    description: item.sub ?? (item.extra?.status as string | undefined),
-    group: 'data',
-    perform: ({ router: r }) => {
-      const route = DATA_ROUTE[item.type];
-      r.push(route?.detail ? route.detail(item.id) : route?.list ?? '/');
-    },
-  })), [dataResults]);
+  const dataCommands = useMemo<Command[]>(
+    () =>
+      dataResults.map(item => ({
+        id: `data-${item.type}-${item.id}`,
+        label: item.label,
+        description: item.sub ?? (item.extra?.status as string | undefined),
+        group: 'data',
+        perform: ({ router: r }) => {
+          const route = DATA_ROUTE[item.type];
+          r.push(route?.detail ? route.detail(item.id) : (route?.list ?? '/'));
+        },
+      })),
+    [dataResults],
+  );
 
   // Flat list for keyboard navigation
   const allGroups = useMemo(() => {
@@ -98,10 +106,13 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
     return map;
   }, [flatList]);
 
-  const runCommand = useCallback((cmd: Command) => {
-    cmd.perform({ router, role });
-    onClose();
-  }, [router, role, onClose]);
+  const runCommand = useCallback(
+    (cmd: Command) => {
+      cmd.perform({ router, role });
+      onClose();
+    },
+    [router, role, onClose],
+  );
 
   useEffect(() => {
     if (open) {
@@ -121,15 +132,22 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
     }
   }, [open]);
 
-  useEffect(() => { setActiveIndex(0); }, [query]);
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
 
   // Debounced data search via /search API
   useEffect(() => {
-    if (query.length < 2) { setDataResults([]); return; }
+    if (query.length < 2) {
+      setDataResults([]);
+      return;
+    }
     setDataLoading(true);
     const timer = window.setTimeout(async () => {
       try {
-        const res = await apiFetch<{ items: SearchResultItem[] }>(`/search?q=${encodeURIComponent(query)}&limit=6`);
+        const res = await apiFetch<{ items: SearchResultItem[] }>(
+          `/search?q=${encodeURIComponent(query)}&limit=6`,
+        );
         setDataResults(res.items ?? []);
       } catch {
         setDataResults([]);
@@ -149,8 +167,12 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
   // once per `open` toggle (not on every render that creates a new flatList).
   const flatListRef = useRef(flatList);
   const activeIndexRef = useRef(activeIndex);
-  useEffect(() => { flatListRef.current = flatList; }, [flatList]);
-  useEffect(() => { activeIndexRef.current = activeIndex; }, [activeIndex]);
+  useEffect(() => {
+    flatListRef.current = flatList;
+  }, [flatList]);
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
 
   useEffect(() => {
     if (!open) return;
@@ -200,7 +222,9 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
       aria-labelledby={titleId}
       className="fixed inset-0 z-[300] flex items-start justify-center pt-[10vh] px-4"
     >
-      <h2 id={titleId} className="sr-only">Командна палітра</h2>
+      <h2 id={titleId} className="sr-only">
+        Командна палітра
+      </h2>
 
       {/* Backdrop — clicking it closes the palette. Must be on the backdrop itself
           (not the outer flex container) because backdrop visually covers the whole
@@ -208,7 +232,7 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         aria-hidden="true"
-        onMouseDown={(e) => {
+        onMouseDown={e => {
           // Only the backdrop itself should close — not bubbled clicks from the panel.
           if (e.target === e.currentTarget) onClose();
         }}
@@ -233,7 +257,9 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
             aria-autocomplete="list"
             className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground outline-none"
           />
-          <kbd className="shrink-0 text-[11px] text-muted-foreground bg-secondary border border-border rounded px-1.5 py-0.5">Esc</kbd>
+          <kbd className="shrink-0 text-[11px] text-muted-foreground bg-secondary border border-border rounded px-1.5 py-0.5">
+            Esc
+          </kbd>
         </div>
 
         {/* Results */}
@@ -245,7 +271,9 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
           className="max-h-[360px] overflow-y-auto py-1"
         >
           {dataLoading && query.length >= 2 && (
-            <p className="px-4 py-2 text-[12px] text-muted-foreground animate-pulse">Пошук у даних…</p>
+            <p className="px-4 py-2 text-[12px] text-muted-foreground animate-pulse">
+              Пошук у даних…
+            </p>
           )}
           {flatList.length === 0 && !dataLoading ? (
             <p className="py-8 text-center text-[13px] text-muted-foreground">Нічого не знайдено</p>
@@ -257,7 +285,7 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
                   <p className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     {GROUP_LABELS[group] ?? group}
                   </p>
-                  {cmds.map((cmd) => {
+                  {cmds.map(cmd => {
                     // O(1) lookup via Map — was O(n) with flatList.indexOf
                     const idx = flatIndex.get(cmd) ?? -1;
                     const isActive = idx === activeIndex;
@@ -270,19 +298,40 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
                         data-index={idx}
                         // Use mousemove (not mouseenter) so the keyboard-driven activeIndex
                         // is NOT overridden when filtered list shifts under a stationary cursor.
-                        onMouseMove={() => { if (activeIndex !== idx) setActiveIndex(idx); }}
+                        onMouseMove={() => {
+                          if (activeIndex !== idx) setActiveIndex(idx);
+                        }}
                         onClick={() => runCommand(cmd)}
                         className={cn(
                           'w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors',
                           isActive ? 'bg-primary text-white' : 'text-foreground hover:bg-secondary',
                         )}
                       >
-                        <GroupIcon className={cn('h-4 w-4 shrink-0', isActive ? 'text-white' : 'text-muted-foreground')} aria-hidden="true" />
+                        <GroupIcon
+                          className={cn(
+                            'h-4 w-4 shrink-0',
+                            isActive ? 'text-white' : 'text-muted-foreground',
+                          )}
+                          aria-hidden="true"
+                        />
                         <span className="flex-1 text-[13px] font-medium">{cmd.label}</span>
                         {cmd.description && (
-                          <span className={cn('text-[12px]', isActive ? 'text-white/70' : 'text-muted-foreground')}>{cmd.description}</span>
+                          <span
+                            className={cn(
+                              'text-[12px]',
+                              isActive ? 'text-white/70' : 'text-muted-foreground',
+                            )}
+                          >
+                            {cmd.description}
+                          </span>
                         )}
-                        <ArrowRight className={cn('h-3.5 w-3.5 shrink-0', isActive ? 'text-white/70' : 'text-muted-foreground/40')} aria-hidden="true" />
+                        <ArrowRight
+                          className={cn(
+                            'h-3.5 w-3.5 shrink-0',
+                            isActive ? 'text-white/70' : 'text-muted-foreground/40',
+                          )}
+                          aria-hidden="true"
+                        />
                       </button>
                     );
                   })}
@@ -294,9 +343,17 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
 
         {/* Footer hint */}
         <div className="border-t border-border px-4 py-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-          <span><kbd className="bg-secondary border border-border rounded px-1 py-0.5">↑↓</kbd> навігація</span>
-          <span><kbd className="bg-secondary border border-border rounded px-1 py-0.5">Enter</kbd> відкрити</span>
-          <span><kbd className="bg-secondary border border-border rounded px-1 py-0.5">Esc</kbd> закрити</span>
+          <span>
+            <kbd className="bg-secondary border border-border rounded px-1 py-0.5">↑↓</kbd>{' '}
+            навігація
+          </span>
+          <span>
+            <kbd className="bg-secondary border border-border rounded px-1 py-0.5">Enter</kbd>{' '}
+            відкрити
+          </span>
+          <span>
+            <kbd className="bg-secondary border border-border rounded px-1 py-0.5">Esc</kbd> закрити
+          </span>
         </div>
       </div>
     </div>

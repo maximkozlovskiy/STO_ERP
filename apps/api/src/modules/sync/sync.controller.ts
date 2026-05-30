@@ -1,9 +1,13 @@
-import {
-  Controller, Get, Post, Body, Query, UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import {
-  IsArray, IsEnum, IsNumber, IsObject, IsOptional, IsString, IsUUID,
+  IsArray,
+  IsEnum,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -52,10 +56,7 @@ export class SyncController {
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Pull changes since syncVersion' })
   @ApiQuery({ name: 'since', required: false, type: Number })
-  pull(
-    @OrgContext() orgId: string,
-    @Query() query: SinceQueryDto,
-  ) {
+  pull(@OrgContext() orgId: string, @Query() query: SinceQueryDto) {
     const sinceVersion = query.since ? BigInt(query.since) : BigInt(0);
     return this.service.pull(orgId, sinceVersion);
   }
@@ -63,10 +64,7 @@ export class SyncController {
   @Post('push')
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Push local changes to server' })
-  push(
-    @OrgContext() orgId: string,
-    @Body() dto: PushDto,
-  ) {
+  push(@OrgContext() orgId: string, @Body() dto: PushDto) {
     return this.service.push(orgId, dto.records);
   }
 }

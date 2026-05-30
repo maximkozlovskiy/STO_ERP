@@ -30,10 +30,7 @@ export class WebhooksController {
   @HttpCode(HttpStatus.CREATED)
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Створити вебхук' })
-  create(
-    @Body() dto: CreateWebhookDto,
-    @CurrentUser() user: { orgId: string },
-  ) {
+  create(@Body() dto: CreateWebhookDto, @CurrentUser() user: { orgId: string }) {
     return this.service.create(user.orgId, dto);
   }
 
@@ -59,20 +56,14 @@ export class WebhooksController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Видалити вебхук' })
-  remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: { orgId: string },
-  ) {
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: { orgId: string }) {
     return this.service.remove(user.orgId, id);
   }
 
   @Get(':id/deliveries')
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Лог доставки вебхука' })
-  findDeliveries(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: { orgId: string },
-  ) {
+  findDeliveries(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: { orgId: string }) {
     return this.service.findDeliveries(user.orgId, id);
   }
 }

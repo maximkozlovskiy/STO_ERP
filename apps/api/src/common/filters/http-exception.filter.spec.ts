@@ -1,4 +1,10 @@
-import { ArgumentsHost, BadRequestException, HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HttpExceptionFilter } from './http-exception.filter';
@@ -26,11 +32,11 @@ describe('HttpExceptionFilter', () => {
   describe('HttpException — стандартна поведінка', () => {
     it('NotFoundException → 404 з оригінальним повідомленням', () => {
       const { host, reply } = makeHost();
-      filter.catch(new NotFoundException('Об\'єкт не знайдено'), host);
+      filter.catch(new NotFoundException("Об'єкт не знайдено"), host);
 
       expect(reply.status).toHaveBeenCalledWith(404);
       expect(reply.send).toHaveBeenCalledWith(
-        expect.objectContaining({ statusCode: 404, message: 'Об\'єкт не знайдено' }),
+        expect.objectContaining({ statusCode: 404, message: "Об'єкт не знайдено" }),
       );
     });
 
@@ -44,7 +50,7 @@ describe('HttpExceptionFilter', () => {
       );
     });
 
-    it('масив повідомлень з validation pipe з\'єднується через ; ', () => {
+    it("масив повідомлень з validation pipe з'єднується через ; ", () => {
       const { host, reply } = makeHost();
       const ex = new HttpException({ message: ['поле1 порожнє', 'поле2 неправильне'] }, 400);
       filter.catch(ex, host);
@@ -113,7 +119,10 @@ describe('HttpExceptionFilter', () => {
 
       expect(reply.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
       expect(reply.send).toHaveBeenCalledWith(
-        expect.objectContaining({ statusCode: 400, message: expect.stringContaining('зовнішнього ключа') }),
+        expect.objectContaining({
+          statusCode: 400,
+          message: expect.stringContaining('зовнішнього ключа'),
+        }),
       );
     });
 

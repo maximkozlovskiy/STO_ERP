@@ -4,7 +4,9 @@ import { vi, it, expect, describe } from 'vitest';
 import { SavedFiltersBar, SaveFilterButton } from '../saved-filters-bar';
 import { type SavedFilter } from '@/hooks/useSavedFilters';
 
-interface F extends Record<string, unknown> { status: string }
+interface F extends Record<string, unknown> {
+  status: string;
+}
 
 function makePreset(id: string, name: string, status = 'IN_PROGRESS'): SavedFilter<F> {
   return { id, name, filters: { status }, createdAt: 1700000000000 };
@@ -12,14 +14,7 @@ function makePreset(id: string, name: string, status = 'IN_PROGRESS'): SavedFilt
 
 describe('SavedFiltersBar', () => {
   it('показує підказку коли немає збережених фільтрів і не відкритий save dialog', () => {
-    render(
-      <SavedFiltersBar<F>
-        saved={[]}
-        onApply={vi.fn()}
-        onSave={vi.fn()}
-        onRemove={vi.fn()}
-      />,
-    );
+    render(<SavedFiltersBar<F> saved={[]} onApply={vi.fn()} onSave={vi.fn()} onRemove={vi.fn()} />);
     expect(screen.getByText('Немає збережених фільтрів')).toBeInTheDocument();
   });
 
@@ -40,12 +35,7 @@ describe('SavedFiltersBar', () => {
     const onApply = vi.fn();
     const preset = makePreset('p1', 'Активні');
     render(
-      <SavedFiltersBar<F>
-        saved={[preset]}
-        onApply={onApply}
-        onSave={vi.fn()}
-        onRemove={vi.fn()}
-      />,
+      <SavedFiltersBar<F> saved={[preset]} onApply={onApply} onSave={vi.fn()} onRemove={vi.fn()} />,
     );
     await userEvent.click(screen.getByRole('button', { name: 'Активні' }));
     expect(onApply).toHaveBeenCalledWith(preset);
@@ -81,28 +71,14 @@ describe('SavedFiltersBar', () => {
   });
 
   it('клік "Зберегти" відкриває input', async () => {
-    render(
-      <SavedFiltersBar<F>
-        saved={[]}
-        onApply={vi.fn()}
-        onSave={vi.fn()}
-        onRemove={vi.fn()}
-      />,
-    );
+    render(<SavedFiltersBar<F> saved={[]} onApply={vi.fn()} onSave={vi.fn()} onRemove={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /Зберегти/ }));
     expect(screen.getByPlaceholderText('Назва фільтру...')).toBeInTheDocument();
   });
 
   it('Enter у input викликає onSave з trimmed name', async () => {
     const onSave = vi.fn();
-    render(
-      <SavedFiltersBar<F>
-        saved={[]}
-        onApply={vi.fn()}
-        onSave={onSave}
-        onRemove={vi.fn()}
-      />,
-    );
+    render(<SavedFiltersBar<F> saved={[]} onApply={vi.fn()} onSave={onSave} onRemove={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /Зберегти/ }));
     const input = screen.getByPlaceholderText('Назва фільтру...');
     await userEvent.type(input, '  Мій фільтр  ');
@@ -110,16 +86,9 @@ describe('SavedFiltersBar', () => {
     expect(onSave).toHaveBeenCalledWith('Мій фільтр');
   });
 
-  it('порожнє ім\'я (тільки whitespace) не викликає onSave', async () => {
+  it("порожнє ім'я (тільки whitespace) не викликає onSave", async () => {
     const onSave = vi.fn();
-    render(
-      <SavedFiltersBar<F>
-        saved={[]}
-        onApply={vi.fn()}
-        onSave={onSave}
-        onRemove={vi.fn()}
-      />,
-    );
+    render(<SavedFiltersBar<F> saved={[]} onApply={vi.fn()} onSave={onSave} onRemove={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /Зберегти/ }));
     const input = screen.getByPlaceholderText('Назва фільтру...');
     await userEvent.type(input, '   ');
@@ -128,14 +97,7 @@ describe('SavedFiltersBar', () => {
   });
 
   it('Escape у input закриває save dialog', async () => {
-    render(
-      <SavedFiltersBar<F>
-        saved={[]}
-        onApply={vi.fn()}
-        onSave={vi.fn()}
-        onRemove={vi.fn()}
-      />,
-    );
+    render(<SavedFiltersBar<F> saved={[]} onApply={vi.fn()} onSave={vi.fn()} onRemove={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /Зберегти/ }));
     const input = screen.getByPlaceholderText('Назва фільтру...');
     expect(input).toBeInTheDocument();

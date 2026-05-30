@@ -76,9 +76,7 @@ describe('Button', () => {
   });
 
   it('leftIcon рендериться поряд з текстом', () => {
-    render(
-      <Button leftIcon={<span data-testid="left-icon">L</span>}>Текст</Button>,
-    );
+    render(<Button leftIcon={<span data-testid="left-icon">L</span>}>Текст</Button>);
     expect(screen.getByTestId('left-icon')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Текст/ })).toBeInTheDocument();
   });

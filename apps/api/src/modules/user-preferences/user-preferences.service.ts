@@ -6,7 +6,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class UserPreferencesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async get(orgId: string, employeeId: string, key: string): Promise<Record<string, unknown> | null> {
+  async get(
+    orgId: string,
+    employeeId: string,
+    key: string,
+  ): Promise<Record<string, unknown> | null> {
     const pref = await this.prisma.userPreference.findFirst({
       where: { orgId, employeeId, key },
       select: { value: true },
@@ -14,7 +18,12 @@ export class UserPreferencesService {
     return pref ? (pref.value as Record<string, unknown>) : null;
   }
 
-  async upsert(orgId: string, employeeId: string, key: string, value: Record<string, unknown>): Promise<void> {
+  async upsert(
+    orgId: string,
+    employeeId: string,
+    key: string,
+    value: Record<string, unknown>,
+  ): Promise<void> {
     const jsonValue = value as Prisma.InputJsonValue;
     await this.prisma.userPreference.upsert({
       where: { orgId_employeeId_key: { orgId, employeeId, key } },

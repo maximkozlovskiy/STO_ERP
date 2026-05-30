@@ -1,4 +1,17 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -22,7 +35,10 @@ export class WarehousesController {
   @ApiOperation({ summary: 'Список складів' })
   @ApiQuery({ name: 'branchId', required: false })
   @ApiResponse({ status: 200, type: [WarehouseResponseDto] })
-  findAll(@OrgContext() orgId: string, @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string) {
+  findAll(
+    @OrgContext() orgId: string,
+    @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
+  ) {
     return this.service.findAll(orgId, branchId);
   }
 
@@ -42,7 +58,11 @@ export class WarehousesController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
-  update(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateWarehouseDto) {
+  update(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateWarehouseDto,
+  ) {
     return this.service.update(orgId, id, dto);
   }
 

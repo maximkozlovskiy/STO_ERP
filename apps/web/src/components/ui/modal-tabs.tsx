@@ -65,12 +65,14 @@ export function ModalTabs({ tabs, defaultTab, className }: ModalTabsProps) {
             {tab.icon}
             {tab.label}
             {tab.count !== undefined && (
-              <span className={cn(
-                'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-semibold',
-                active === tab.key
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-muted-foreground',
-              )}>
+              <span
+                className={cn(
+                  'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-semibold',
+                  active === tab.key
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground',
+                )}
+              >
                 {tab.count}
               </span>
             )}
@@ -79,9 +81,7 @@ export function ModalTabs({ tabs, defaultTab, className }: ModalTabsProps) {
       </div>
 
       {/* Tab content */}
-      <div className="pt-4">
-        {activeTab.content}
-      </div>
+      <div className="pt-4">{activeTab.content}</div>
     </div>
   );
 }

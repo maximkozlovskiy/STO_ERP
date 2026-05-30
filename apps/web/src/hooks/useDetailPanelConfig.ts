@@ -21,7 +21,9 @@ export function useDetailPanelConfig(pageKey: string) {
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   // AbortController для PUT-черги: rapid toggle → cancel попередній in-flight PUT,
@@ -43,9 +45,14 @@ export function useDetailPanelConfig(pageKey: string) {
         setConfig(JSON.parse(cached) as PanelConfig);
         if (Date.now() - ts < CACHE_TTL_MS) skipFetch = true;
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
-    if (skipFetch) { setLoading(false); return; }
+    if (skipFetch) {
+      setLoading(false);
+      return;
+    }
 
     apiFetch<{ key: string; value: PanelConfig }>(`/user-preferences/${apiKey}`)
       .then(res => {
@@ -58,29 +65,46 @@ export function useDetailPanelConfig(pageKey: string) {
         try {
           localStorage.setItem(storageKey, JSON.stringify(cfg));
           localStorage.setItem(TS_KEY, String(Date.now()));
-        } catch { /* ignore quota */ }
+        } catch {
+          /* ignore quota */
+        }
       })
-      .catch(() => { /* offline: use localStorage */ })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .catch(() => {
+        /* offline: use localStorage */
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [apiKey, storageKey]);
 
   // Окремий стабільний savePref: cancel previous PUT + AbortController на новий.
   // Не setState на unmount; не використовуємо apiFetch без catch (silent fail OK для UX —
   // зміна вже у localStorage).
-  const savePref = useCallback((next: PanelConfig) => {
-    putAbortRef.current?.abort();
-    const ac = new AbortController();
-    putAbortRef.current = ac;
-    // Invalidate TTL so next mount re-fetches fresh value from server
-    try { localStorage.setItem(`${STORAGE_PREFIX}${pageKey}_ts`, String(Date.now())); } catch { /* ignore */ }
-    apiFetch(`/user-preferences/${apiKey}`, {
-      method: 'PUT',
-      body: JSON.stringify({ key: apiKey, value: next }),
-      signal: ac.signal,
-    }).catch(() => { /* AbortError or network: silent — localStorage already updated */ });
-  }, [apiKey, pageKey]);
+  const savePref = useCallback(
+    (next: PanelConfig) => {
+      putAbortRef.current?.abort();
+      const ac = new AbortController();
+      putAbortRef.current = ac;
+      // Invalidate TTL so next mount re-fetches fresh value from server
+      try {
+        localStorage.setItem(`${STORAGE_PREFIX}${pageKey}_ts`, String(Date.now()));
+      } catch {
+        /* ignore */
+      }
+      apiFetch(`/user-preferences/${apiKey}`, {
+        method: 'PUT',
+        body: JSON.stringify({ key: apiKey, value: next }),
+        signal: ac.signal,
+      }).catch(() => {
+        /* AbortError or network: silent — localStorage already updated */
+      });
+    },
+    [apiKey, pageKey],
+  );
 
   const isFieldHidden = useCallback(
     (fieldKey: string) => config.hiddenFields.includes(fieldKey),
@@ -93,7 +117,11 @@ export function useDetailPanelConfig(pageKey: string) {
         const next: PanelConfig = prev.hiddenFields.includes(fieldKey)
           ? { hiddenFields: prev.hiddenFields.filter(k => k !== fieldKey) }
           : { hiddenFields: [...prev.hiddenFields, fieldKey] };
-        try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore quota */ }
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          /* ignore quota */
+        }
         savePref(next);
         return next;
       });
@@ -104,15 +132,22 @@ export function useDetailPanelConfig(pageKey: string) {
   const reset = useCallback(() => {
     const empty: PanelConfig = { hiddenFields: [] };
     if (mountedRef.current) setConfig(empty);
-    try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {
+      /* ignore */
+    }
     savePref(empty);
   }, [storageKey, savePref]);
 
   // Cancel pending PUT on unmount
-  useEffect(() => () => {
-    putAbortRef.current?.abort();
-    putAbortRef.current = null;
-  }, []);
+  useEffect(
+    () => () => {
+      putAbortRef.current?.abort();
+      putAbortRef.current = null;
+    },
+    [],
+  );
 
   return { isFieldHidden, toggleField, reset, loading, config };
 }
