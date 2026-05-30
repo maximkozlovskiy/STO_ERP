@@ -12,6 +12,11 @@ export interface BaseEntity {
   syncVersion: bigint;
 }
 
+/**
+ * @deprecated Use `PaginatedSummary<T>` (with `items` field) — STO ERP canonical list shape
+ * per skill §4 ("List endpoints → { items, total }"). Kept only for legacy callers; remove
+ * once last consumer is migrated.
+ */
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
