@@ -263,7 +263,7 @@ export function TopShell({ children }: { children: ReactNode }) {
       <Link
         key={item.href}
         href={item.href}
-        prefetch={false}
+        prefetch={true}
         title={collapsed ? item.label : undefined}
         className={cn(
           'group relative flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',
