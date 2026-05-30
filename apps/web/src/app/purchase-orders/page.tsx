@@ -2,10 +2,20 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useQueryClient } from '@tanstack/react-query';
 import { Plus, ShoppingCart, Search, Eye, EyeOff } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
+import {
+  usePurchaseOrders,
+  useDeletePurchaseOrder,
+  useApplyPricing,
+  purchaseOrdersKeys,
+  PurchaseOrder,
+  POLine,
+  PaginatedPurchaseOrders,
+} from '@/hooks/api/usePurchaseOrders';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -59,39 +69,6 @@ interface Good {
   unit: string;
   purchasePrice: number | null;
 }
-interface POLine {
-  id?: string;
-  goodId: string;
-  goodName?: string;
-  goodSku?: string | null;
-  unit?: string;
-  quantity: number;
-  price: number;
-  amount?: number;
-  receivedQty?: number;
-}
-interface PurchaseOrder {
-  id: string;
-  number: string;
-  status: string;
-  supplierId: string;
-  supplierName?: string;
-  warehouseId: string;
-  warehouseName?: string;
-  totalAmount: number;
-  notes: string | null;
-  linesCount: number;
-  lines: POLine[]; // empty in list — loaded on demand via findOne
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string | null;
-}
-interface Paginated {
-  items: PurchaseOrder[];
-  total: number;
-  page: number;
-  limit: number;
-}
 
 interface PoFilters extends Record<string, unknown> {
   status: string;
@@ -134,6 +111,7 @@ function fmt(n: number) {
 export default function PurchaseOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
+  const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
 
@@ -164,15 +142,33 @@ export default function PurchaseOrdersPage() {
 
   const detailPanel = useDetailPanel('purchase-orders');
 
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [total, setTotal] = useState(0);
+  // Local filter & pagination state
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q);
   const [showDeleted, setShowDeleted] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // React Query hooks
+  const limit = 20;
+  const {
+    data: queryData,
+    isLoading: loading,
+    error: queryError,
+  } = usePurchaseOrders({
+    page,
+    limit,
+    status,
+    q: debouncedQ,
+    showDeleted,
+  });
+  const orders = queryData?.items ?? [];
+  const total = queryData?.total ?? 0;
+
+  // Mutations
+  const deleteMutation = useDeletePurchaseOrder();
+  const applyPricingMutation = useApplyPricing();
 
   // Saved filters
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -210,6 +206,7 @@ export default function PurchaseOrdersPage() {
   // Unsaved guard for create/receive modals
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
+  // Modal & form state
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -239,30 +236,6 @@ export default function PurchaseOrdersPage() {
   const [pricingResult, setPricingResult] = useState<Record<string, PricingResult>>({});
   const [applyingPricingId, setApplyingPricingId] = useState<string | null>(null);
 
-  const limit = 20;
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-      if (status) params.set('status', status);
-      if (debouncedQ) params.set('q', debouncedQ);
-      if (showDeleted) params.set('showDeleted', 'true');
-      const data = await apiFetch<Paginated>(`/purchase-orders?${params}`);
-      setOrders(data.items);
-      setTotal(data.total);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, status, debouncedQ, showDeleted]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
   const bulkDeleteSelected = useCallback(
     async (ids: string[]) => {
       if (
@@ -279,7 +252,7 @@ export default function PurchaseOrdersPage() {
       const succeeded = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.length - succeeded;
       bulkSelect.clear();
-      load();
+      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
       if (features.toastEnabled) {
         if (succeeded > 0 && failed === 0) toast.success(`Видалено ${succeeded} замовлень`);
         else if (succeeded > 0)
@@ -287,7 +260,7 @@ export default function PurchaseOrdersPage() {
         else toast.error('Не вдалося видалити замовлення');
       }
     },
-    [confirm, bulkSelect, features.toastEnabled, load],
+    [confirm, bulkSelect, features.toastEnabled, queryClient],
   );
 
   const bulkActions = useMemo<BulkAction[]>(
@@ -369,7 +342,7 @@ export default function PurchaseOrdersPage() {
       setSupplierDisplayName('');
       setLines([]);
       dirty.resetDirty();
-      load();
+      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка збереження');
     } finally {
@@ -392,7 +365,7 @@ export default function PurchaseOrdersPage() {
         body: JSON.stringify({ status: newStatus }),
       });
       setShowDetail(null);
-      load();
+      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
     } finally {
@@ -463,7 +436,7 @@ export default function PurchaseOrdersPage() {
       });
       setShowReceive(null);
       dirty.resetDirty();
-      load();
+      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка прийому товару');
     } finally {
