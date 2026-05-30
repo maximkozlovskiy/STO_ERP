@@ -9,6 +9,12 @@
 ## Останній commit
 
 ```
+(pending) docs(skills): add verify-before-fix pattern to sto-optimize (UI perf audit — 0 fixes)
+c922503 feat(ui): SaveFilterButton component — icon-only bookmark button
+51ff488 feat(ui): move save-filter to icon-only button before ColumnsDropdown on all pages
+2381173 feat(ui): increase page-container max-width 80rem → 96rem for wider tables
+1bee096 feat(ui): AnimatedBody on inline forms + wider modal sizes for list-heavy forms
+e7d61b0 revert: undo DataTable refactor — restore original Table components
 b1a083c fix(tester): Bugs #187-#192 — PO/XLSX pricing test coverage + multipart i18n + defense-in-depth updateMany
 91b54b9 docs(memory): record PO pricing + xlsx list import feature (e754ad4 + cef188a)
 cef188a fix(sync): align pricing-list template download with API contract
