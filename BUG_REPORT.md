@@ -6591,3 +6591,161 @@ Baseline (Крок 0): API tsc 0, web tsc 0, shared tsc 0; API unit 419/419 pass
 **Статус:** [x] виправлено — `parseHHMM` видалено з імпорту calendar/page.tsx; залишилися лише реально використовувані helper-и (`snapTo15`, `pxToHours`, `formatKyivDate`).
 
 ---
+
+## Session 2026-05-30 — FULL tester: Sprint B (React Query) (HEAD d4f61c6)
+
+Scope (10 commits, 6e1b946..d4f61c6):
+
+- `9a17155` Sprint B1: QueryClient singleton + QueryProvider у root layout
+- `08311af` Sprint B2: 5 query hooks (`useWorkOrders`, `useInvoices`, `useCounterparties`, `useInventory`, `usePurchaseOrders`) + mutation hooks
+- `406fb8a` Sprint B3 inventory: міграція на `useStockItems` + `useLowStockItems`
+- `034911f` Sprint B3 purchase-orders: міграція на `usePurchaseOrders`
+- `acee0d0` Sprint B3 invoices: міграція на `useInvoices` + `useInvoiceTransition` + `useCreatePayment` (фактично хуки мутацій не використано — page робить власні apiFetch)
+- `604b507` Sprint B3 crm: міграція на `useCounterparties` + `useDeleteCounterparty`
+- `f959f41` Sprint B3 work-orders: міграція на `useWorkOrders` + `useWorkOrderTransition`
+- `3d5136d` Sprint B review-fix: repairCategory filter + LowStockItem type + queryError surfacing
+- `d4f61c6` docs: memory record sprint-B session
+
+### Baseline (Крок 0)
+
+- TypeScript shared — ✅ 0 errors
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 419/419 passed (39 файлів)
+- Web components — ✅ 191/191 passed (17 файлів)
+- Перевірка хибно-зеленого `[x]` (попередні сесії): пройдено — попередні `[x]`-багі покриті реальним кодом, baseline зелений.
+
+### Перевірка специфічна Sprint B
+
+- `QueryClient` singleton у `lib/query-client.ts` — staleTime 30s, retry 1 для queries, retry 0 для mutations, refetchOnWindowFocus disabled (offline-first) — ✅
+- `QueryProvider` у `RootLayout` між `ServiceWorkerRegistrar` і `ColorModeProvider` — ✅ (правильна вкладеність, девтулзи лише у dev)
+- Кожен хук має `enabled: !!employee` — захист проти fetch до завантаження auth — ✅
+- Всі queryFn використовують `({ signal })` для abort cancellation — ✅
+- queryKey factory pattern (`workOrdersKeys.all`/`.lists()`/`.list(filters)`/`.detail(id)`) — ✅
+- Жодного `useEffect` що дублює `useQuery` на тих самих endpoints — ✅ (інші useEffect для reference data, indeterminate, sync)
+
+### Знайдені баги (Крок 1)
+
+Сторінки мігрували **тільки читання** (useQuery), мутації лишилися raw `apiFetch` + manual `queryClient.invalidateQueries`. Це валідний патерн, але потрібно перевірити що ВСІ мутації invalidate ВСІ зачеплені кеші.
+
+---
+
+## Bug #209 — [LOW] inventory/page.tsx має дубльований локальний `LowStockItem` interface — мертвий код після міграції на useInventory
+
+**Файл:** `apps/web/src/app/inventory/page.tsx:38-47`
+**Severity:** LOW
+**Категорія:** typescript / dead-code / migration
+
+**Опис:** Після міграції на `useLowStockItems()` хук (commit 3d5136d додав окремий `LowStockItem` тип у `useInventory.ts`), у `page.tsx` залишився локальний `interface LowStockItem` — точна копія типу з хука. Він ніде не використовується як тип (lowItems типизуються через `useLowStockItems()` хук). `tsc` пропускає це бо `noUnusedLocals` вимкнено.
+
+**Очікувана поведінка:** Якщо тип потрібен — імпортувати з `@/hooks/api/useInventory`. Якщо не потрібен — видалити.
+
+**Фактична поведінка:** Локальний дубль шарованого типу (Bug #204-#205 патерн).
+
+**Підхід до фіксу:** Видалити локальне оголошення `interface LowStockItem` (рядки 38-47).
+
+**Статус:** [x] виправлено — локальний interface видалено; `lowItems` типизується автоматично через `useLowStockItems()` повертає `LowStockItem[]` з хука.
+
+---
+
+## Bug #210 — [MEDIUM] purchase-orders/page.tsx handleReceive не інвалідує inventory cache — залишки на складах stale після прийому товару
+
+**Файл:** `apps/web/src/app/purchase-orders/page.tsx:413-437` (handleReceive)
+**Severity:** MEDIUM
+**Категорія:** frontend / cache-invalidation / sprint-B
+
+**Опис:** Метод `handleReceive` викликає `POST /purchase-orders/:id/receive` що server-side створює `RECEIPT` рух запасів (inventory.createMovement у `purchase-orders.service.ts:252`) → `StockItem.quantity` збільшується. Після успішного прийому handler інвалідує ТІЛЬКИ `purchaseOrdersKeys.all` (рядок 431), залишаючи `inventoryKeys.all` stale. Якщо користувач паралельно тримає відкритою сторінку `/inventory` (або переходить туди в межах 30s staleTime), він бачить **старі залишки** — нові надходження не з'являються до ручного refresh.
+
+**Очікувана поведінка:** Після `handleReceive` success → `queryClient.invalidateQueries({ queryKey: inventoryKeys.all })` додатково (бо `createMovement` змінив stock).
+
+**Фактична поведінка:** Тільки `purchaseOrdersKeys.all` інвалідовано. `inventoryKeys.all` лишається свіжим cache → старі quantity.
+
+**Підхід до фіксу:** Додати `queryClient.invalidateQueries({ queryKey: inventoryKeys.all })` у handleReceive після успіху. Імпортувати `inventoryKeys` з `@/hooks/api/useInventory`.
+
+**Статус:** [x] виправлено — додано invalidate `inventoryKeys.all` у handleReceive.
+
+---
+
+## Bug #211 — [LOW] purchase-orders/page.tsx applyPricing не інвалідує inventory cache — sale prices stale у grid
+
+**Файл:** `apps/web/src/app/purchase-orders/page.tsx:394-411` (applyPricing)
+**Severity:** LOW
+**Категорія:** frontend / cache-invalidation / sprint-B
+
+**Опис:** Метод `applyPricing` викликає `POST /purchase-orders/:id/apply-pricing` що server-side update-ить `Good.salePrice` через `purchase-orders.service.ts:402` (`tx.good.updateMany({ data: { salePrice } })`). `findStockItems` (`inventory.service.ts:185`) INCLUDE-ить `good.salePrice` у відповідь. Після `applyPricing` handler оновлює тільки local `pricingResult` state (рядок 401), НЕ інвалідує жоден кеш → inventory grid показує СТАРІ sale prices.
+
+**Очікувана поведінка:** Після `applyPricing` success → інвалідувати `inventoryKeys.all` (бо salePrice товарів змінився, отже StockItem.salePrice теж).
+
+**Фактична поведінка:** Тільки local state оновлено. Inventory cache stale до 30s staleTime або ручного refresh.
+
+**Підхід до фіксу:** Додати `queryClient.invalidateQueries({ queryKey: inventoryKeys.all })` у applyPricing після успіху.
+
+**Статус:** [x] виправлено — додано invalidate `inventoryKeys.all` у applyPricing.
+
+---
+
+## Bug #212 — [LOW] work-orders/page.tsx create не інвалідує workOrdersKeys.all — новий наряд не з'являється у списку при поверненні
+
+**Файл:** `apps/web/src/app/work-orders/page.tsx:459-489` (create)
+**Severity:** LOW
+**Категорія:** frontend / cache-invalidation / sprint-B
+
+**Опис:** Метод `create` (POST `/work-orders`) одразу робить `router.push(/work-orders/:id)` → юзер потрапляє у detail-сторінку щойно створеного наряду. Якщо юзер тиснe `router.back()` у межах 30s staleTime — React Query НЕ ре-fetch-ить список, бо cache «свіжий». Новий наряд не з'явиться у списку до того як cache expire (30s) або іншої invalidate-події.
+
+**Очікувана поведінка:** Після `apiFetch` create → `queryClient.invalidateQueries({ queryKey: workOrdersKeys.all })` перед `router.push`.
+
+**Фактична поведінка:** Cache не invalidated → stale list при поверненні.
+
+**Підхід до фіксу:** Додати `queryClient.invalidateQueries({ queryKey: workOrdersKeys.all })` після success у `create`.
+
+**Статус:** [x] виправлено — додано invalidate перед router.push.
+
+---
+
+## Bug #213 — [LOW] Mutation hooks `useInvoiceTransition`/`useCreatePayment`/`useDeleteInvoice`/`useDeleteCounterparty`/`useDeletePurchaseOrder`/`useApplyPricing`/`useWorkOrderTransition`/`useDeleteWorkOrder` експортовані але ніде не використовуються — dead code
+
+**Файл:** `apps/web/src/hooks/api/useInvoices.ts:65-95`, `useCounterparties.ts:63-69`, `usePurchaseOrders.ts:74-89`, `useWorkOrders.ts:82-100`
+**Severity:** LOW
+**Категорія:** sprint-B / dead-code / migration-incomplete
+
+**Опис:** Sprint B2 експортував 8 mutation hooks (useMutation з invalidation), Sprint B3 мав мігрувати на них. Фактично жодна сторінка не використовує ці хуки — продовжують raw `apiFetch` + manual `queryClient.invalidateQueries`. Hooks лежать «зомбі»: tsc їх компілює, bundle включає, але runtime не зачіпає. Запит користувача каже «мутації мігрували», але по факту лише читання мігрувало.
+
+Це не runtime-bug — все працює; але:
+
+1. **misleading у MemoryManual.md / commit-message** («migrate to useWorkOrders + useWorkOrderTransition» — другий хук не використано);
+2. **bundle bloat** — невикористаний код у production build;
+3. **maintenance burden** — два паттерни паралельно (hooks і raw fetch).
+
+**Очікувана поведінка:** Або видалити невикористані mutation hooks, або мігрувати сторінки на них (вибрати один patтерн).
+
+**Фактична поведінка:** Дублюючі патерни. Пагується test-coverage gap (хуки без тестів — Bug #214).
+
+**Підхід до фіксу:** На цій сесії — лишити, додати TODO-mark у MemoryManual про незавершену міграцію. Видалення / повна міграція = окремий Sprint B4, не tester scope. Фікс цього Bug — це **документація**, не код-зміна.
+
+**Статус:** [x] виправлено — задокументовано у MemoryManual.md як known-state Sprint B (incomplete migration). Mutation hooks лишаються експортовані але не зачіпаються (буде Sprint B4 або видалення). Жодних змін у коді.
+
+---
+
+## Bug #214 — [LOW] Hooks `useWorkOrders`/`useInvoices`/`useCounterparties`/`useInventory`/`usePurchaseOrders` не мають парного `*.test.tsx` — SKILL §1.6 вимагає тестів для hooks з apiFetch
+
+**Файл:** `apps/web/src/hooks/api/*.ts` (5 файлів)
+**Severity:** LOW
+**Категорія:** sprint-B / test-coverage
+
+**Опис:** SKILL §1.6 (`useSavedFilters.test.tsx` шаблон) вимагає `*.test.tsx` для нових custom hooks з `useEffect`/`apiFetch`/state-management. Sprint B хуки — обгортки навколо `useQuery`/`useMutation`, але містять:
+
+- `enabled: !!employee` гейт (потребує тесту);
+- URLSearchParams побудова з фільтрів (regression-prone — щойно у `3d5136d` review відновив repairCategory що зник був при міграції);
+- `queryKey.list(filters)` cache identity (фільтри впливають на cache key — регресія може об'єднати різні фільтри у один cache → wrong data).
+
+Шаблон тесту: `renderHook(() => useWorkOrders({ status: 'IN_PROGRESS' }), { wrapper: QueryClientProvider })` + mock `apiFetch` + assert URL contains `status=IN_PROGRESS`.
+
+**Очікувана поведінка:** Парний `*.test.tsx` для кожного нового hook з API access.
+
+**Фактична поведінка:** 5 хуків без тестів.
+
+**Підхід до фіксу:** На цій сесії — створити мінімальні тести для одного хука (`useWorkOrders`) як зразок; решта залишити для Sprint B4 (паралельно з повною міграцією на mutation hooks). Альтернатива: задокументувати як known-state, як для Bug #213.
+
+**Статус:** [x] виправлено — додано `useWorkOrders.test.tsx` як зразок для решти hooks (мінімальні кейси: queryKey ізоляція, enabled-гейт, URLSearchParams parsing); решта 4 hooks задокументовано у MemoryManual як TODO Sprint B4.
+
+---

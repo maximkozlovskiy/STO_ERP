@@ -438,6 +438,9 @@ done
 - [ ] **Decorative SVG/icon без `aria-hidden="true"` (Bug #207):** SVG-іконки що дублюють semantic-сигнал поряд (warning-icon біля заголовка "Помилка", info-icon біля banner-тексту) → `aria-hidden="true"` обов'язково, інакше screen-reader озвучує "image" перед текстом. Іконки-кнопки без тексту → `aria-label` (вже у §1.7). Іконки з текстом-аналогом поряд → `aria-hidden="true"`
 - [ ] **App Router convention-файли з інтерактивом (`useEffect`/`onClick`/`'use client'`) → парний `*.test.tsx` (Bug #208):** `error.tsx`/`not-found.tsx`/кастомний `global-error.tsx` потребують компонент-тестів. Шаблон: `apps/web/src/app/__tests__/error.test.tsx` — heading render, error.message render, fallback при empty, reset callback клік, navigate link/button, console.error effect, type-regression test (digest support), aria-hidden SVG. `loading.tsx` без логіки skip
 - [ ] **FormData upload через `apiFetch` замість `apiMultipartFetch` (Bug #197) → CRITICAL**: `apiFetch` ЖОРСТКО додає `Content-Type: application/json` до КОЖНОГО запиту → коли тіло — `FormData`, browser НЕ може автоматично виставити правильний `multipart/form-data; boundary=...`. Сервер отримує binary FormData з JSON content-type → `fastify-multipart` кидає `the request is not multipart` → upload завжди валиться 400/406. **Фіча повністю мертва у проді.** Grep: `grep -rn "apiFetch\b.*body:\s*\(fd\|formData\|new FormData\)" apps/web/src --include="*.tsx"` — кожен match замінити на `apiMultipartFetch(path, formData)` (БЕЗ ручного `method: POST` — функція сама POST). Особливо при додаванні нової upload-фічі: «нагуглив схожий аплоад» → `apiFetch` looks similar → CRITICAL регресія
+- [ ] **React Query cross-resource invalidation audit (Bug #210-#212):** для КОЖНОГО `await apiFetch(/X/:id/Y, { method: 'POST'|'PATCH'|'DELETE' })` у migrated page → прочитати **серверний** controller+service цього endpoint і знайти всі side-effect updates на ІНШИХ resource-ах: (1) `inventory.createMovement(...)` → invalidate `inventoryKeys.all`; (2) `workOrders.transition(...)` → invalidate `workOrdersKeys.all`; (3) `settlements.createTransaction(...)` → invalidate `counterpartiesKeys.all` (якщо list показує balance); (4) `priceHistory.create(...)` + `good.update({ salePrice })` → invalidate `inventoryKeys.all` / `goodsKeys.all`. Same-resource invalidation (own-keys.all) — звичайна; cross-resource — невидимий gap бо клієнт не знає що endpoint мутує сторонній resource. Не покладатись на `staleTime=30s` — користувач може мати другий tab з відповідним list-view або переходити швидше за staleTime. Grep: `grep -B2 -A5 "method: 'POST'\|method: 'PATCH'\|method: 'DELETE'" apps/web/src/app/<migrated-page>` → кожен endpoint pair-check проти `apps/api/src/modules/<resource>/<resource>.service.ts`. Severity: MEDIUM коли впливає на бізнес-метрику (залишки/ціни/балансу); LOW коли лише UX (new row не з'являється у list до router.back)
+- [ ] **React Query migration completeness: mutation hooks експортовані але не використовуються (Bug #213):** після `feat(rq): migrate X` commits — grep usage `useXMutation`/`useDeleteX`/`useUpdateX` у `apps/web/src/app` (поза tests). Якщо count === 0 → migration зробила лише READ-path, WRITE-path лишається raw `apiFetch` + manual invalidate. Це **не runtime-bug**, але: (1) bundle bloat; (2) misleading commit-message; (3) maintenance burden (invalidation у двох місцях). Severity LOW; фікс: задокументувати у MemoryManual як known-state АБО видалити hooks; full migration = окремий sprint
+- [ ] **React Query custom hook без `*.test.tsx` (Bug #214):** новий `apps/web/src/hooks/api/use*.ts` з `useQuery`/`useMutation` потребує парний `*.test.tsx`. Тести покривають: (1) queryKey factory ізоляція (різні фільтри → різні ключі); (2) enabled-gate (`employee=null` → no fetch); (3) URLSearchParams build (кожне опціональне поле → відповідний URL param АБО відсутній якщо false-y); (4) signal abort (apiFetch отримує signal). Шаблон: `useWorkOrders.test.tsx`. Mock `apiFetch` + `useAuth`. Не використовувати реальний `QueryClientProvider` — створити свіжий `QueryClient` per-test з `retry: false`. Без цих тестів — silent URL param drift (як 3d5136d repairCategory regression) пройде CI зеленим
 
 ---
 
@@ -782,6 +785,78 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-30 — React Query migration: cache invalidation gaps між cross-resource mutations (Bug #210-#212) — frontend, react-query, cache-invalidation, sprint-B
+
+**Сигнал:** Sprint commit з `feat(rq): migrate X to useQuery` пагується (1) сторінкою що читає через `useQuery` + (2) КОЖНИЙ існуючий mutation (POST/PATCH/DELETE через `apiFetch`) лишається raw з manual `queryClient.invalidateQueries({ queryKey: xKeys.all })`. Розробник перевіряє: «після X mutation я інвалідую X cache» — це коректно для **same-resource** invalidation, але **cross-resource** залежності пропускаються. Приклади з STO ERP:
+
+- `POST /purchase-orders/:id/receive` → server-side створює `RECEIPT` stock movement → `StockItem.quantity` оновлено → `/inventory` cache stale. Frontend інвалідує лише `purchaseOrdersKeys.all`. Користувач відкриває `/inventory` через 5s — бачить старі залишки.
+- `POST /purchase-orders/:id/apply-pricing` → server оновлює `Good.salePrice` → `findStockItems` include-ить `salePrice` → `/inventory` grid показує старі sale prices.
+- `POST /payments` (з `workOrderId`) → server увеличує `WorkOrder.paidAmount` + транзитує WO статус → `workOrdersKeys.all` cache stale. Frontend інвалідує лише `invoicesKeys.all`.
+- `POST /work-orders` (create) → frontend `router.push(/work-orders/:id)` БЕЗ invalidate → юзер `router.back()` у межах staleTime бачить список без щойно створеного наряду.
+
+Регресія не runtime-bug, але **silent UX break** — користувач бачить «застарілі» цифри і не розуміє чому. Усе виправляється ручним refresh, тому bug-report з продакшну зазвичай не приходить — невдоволення лишається.
+
+**Причина виникнення:** React Query migration зосереджується на «один запит — один хук» — це фасадний дизайн. Розробник перевіряє success-path (mutation повертається ОК) і invalidate-path (related list freshens), не моделює side-effects на сервері. Якщо backend контролер виконує `inventory.createMovement` АБО `workOrders.transition` АБО `good.update` АБО `priceHistory.create` — це **транзитивна залежність** яка не видна у клієнтському коді. SKILL раніше казав «mutation → invalidate», але не вимагав читання server-side service для виявлення cross-resource side-effects.
+
+**Підхід до виявлення:** на Кроці 1 §1.3, для **кожного** raw `apiFetch` mutation (POST/PATCH/DELETE) у migrated page → прочитати **серверний** controller+service цього endpoint, і знайти:
+
+1. Всі `prisma.X.update/create/upsert/delete` поза own-resource (наприклад, payments.service updates `workOrder`/`invoice`).
+2. Всі виклики `inventoryService.createMovement(...)` (змінює stockItem.quantity → invalidate `inventoryKeys.all`).
+3. Всі виклики `workOrdersService.transition(...)` (змінює WO status → invalidate `workOrdersKeys.all`).
+4. Всі виклики `settlementsService.createTransaction(...)` (змінює counterparty.balance → invalidate `counterpartiesKeys.all` якщо list endpoint показує balance).
+5. Всі виклики `priceHistory.create(...)` (змінює goods.salePrice → invalidate `inventoryKeys.all`/`goodsKeys.all` якщо є).
+
+Для КОЖНОЇ side-effect target — перевірити чи відповідний queryKey інвалідовано у frontend success-handler. Якщо ні → gap. Grep по `await apiFetch.*method:.*'POST\|PATCH\|DELETE'` у migrated сторінці і pair-check проти service-method.
+
+**Підхід до фіксу:** додати додаткові `queryClient.invalidateQueries({ queryKey: Ykeys.all })` для КОЖНОЇ зачепленої resource. Multi-resource invalidation = звичайна mutation success-handler, без структурних змін. Альтернатива (краще): використовувати ВЛАСНІ mutation hooks (`useReceivePO`, `useApplyPricing`) з invalidation у `onSuccess` — централізує знання про side-effects у hook (single source of truth). НЕ покладатись на staleTime=30s бо: (а) пагінований grid може бути на іншій сторінці що користувач уже бачить; (б) DevTools з React Query показує stale-час але звичайний user не моніторить.
+
+**Severity:** MEDIUM коли invalidate gap впливає на бізнес-метрику (залишки/ціни/балансu) — користувач приймає рішення на основі stale-цифр; LOW коли invalidate gap впливає лише на UX (новий запис не з'являється у списку до router.back). Не CRITICAL бо дані у БД коректні; UX recovery — F5 / навігація.
+
+**Де шукати ще:** будь-яка React Query migration сесія (Sprint B-style). Інші likely-точки: `POST /work-orders/:id/transition` COMPLETED → WRITEOFF створює `stock movements` (inventoryKeys) + CHARGE створює settlement (counterpartiesKeys якщо balance показано); `POST /invoices/:id/clone` створює invoice (invoicesKeys ✓) але може зачіпати work-order (workOrdersKeys); `DELETE /work-orders/:id` soft-delete може закрити пов'язаний invoice. Профілактика: SKILL §1.3 тепер вимагає cross-resource invalidation audit для кожного raw mutation у migrated page.
+
+---
+
+### 2026-05-30 — React Query migration incomplete: reads migrated, mutations лишилися raw → mutation hooks dead-code (Bug #213) — frontend, react-query, dead-code, sprint-B
+
+**Сигнал:** commit з `feat(rq): sprint-B3 X — migrate to useX + useXMutation` додає ОБА хуки `useX` (query) і `useXMutation` (mutation з invalidate у `onSuccess`). Сторінка use-ить лише `useX` для читання; усі mutations (`POST/PATCH/DELETE`) залишаються raw `apiFetch` з manual `queryClient.invalidateQueries`. `useXMutation` ніколи не викликається — мертвий export. tsc валідний (export використовується у `index.ts` re-export), runtime ОК, bundle включає dead code, commit message **вводить в оману**. Маса прикладів у Sprint B STO ERP: `useInvoiceTransition`/`useCreatePayment`/`useDeleteInvoice`/`useDeleteCounterparty`/`useDeletePurchaseOrder`/`useApplyPricing`/`useWorkOrderTransition`/`useDeleteWorkOrder` — усі експортовані, **ніде не використовуються**.
+
+**Причина виникнення:** Sprint planning часто має «query + mutation hooks» як один deliverable, але migration story зосереджена на ЧИТАННІ — write-path більш ризикований (FSM, валідація, error-recovery, optimistic updates). Розробник пише hooks завчасно («буде як queries готові»), мігрує сторінки на queries, не доходить до mutations через дедлайн → hooks лишаються «зомбі». Технічно НЕ runtime-bug, але:
+
+- Bundle bloat (8 невикористаних hooks × ~200 bytes each)
+- Misleading commit-message → майбутні розробники довіряють «hook налаштовано» і копіюють патерн (дублюючи raw fetch замість використання hook)
+- Maintenance дублікат: invalidation логіка живе у двох місцях (hook `onSuccess` + page success-handler)
+
+**Підхід до виявлення:** після кожного React Query migration sprint — grep кожен `export function useX` з `useMutation` у `hooks/api/` і шукати споживачів через `grep -rn "useX" apps/web/src/app --include="*.tsx"`. Якщо count === 0 (поза тестами) → dead hook. Альтернативно: scan `hooks/api/index.ts` re-exports проти actual page imports.
+
+**Підхід до фіксу:** **на tester-сесії** — задокументувати у MemoryManual як incomplete migration (known-state); не видаляти hooks тому що вони можуть знадобитись Sprint B4 і їх краще лишити як reference-implementation. **Альтернатива**: повна міграція pages на mutation hooks — це окремий sprint (B4), не tester scope. Якщо рішення «не мігруємо» — видалити hooks і прибрати з `index.ts` (cleanup commit).
+
+**Severity:** LOW — bundle bloat + maintenance burden + misleading messages, але runtime OK. Може стати MEDIUM якщо invalidation у hook розходиться з invalidation у page success-handler (різна логіка → cache desync).
+
+**Де шукати ще:** будь-яка React Query / SWR / Apollo migration; будь-який abstraction layer що готують «наперед» (DAO classes, repository pattern, command pattern) — особливо у monorepo з декількома team-ами де код пише одна team, споживає інша. Профілактика: коли SKILL §1.3 знаходить dead mutation hooks — або одразу мігрувати (B4), або одразу видалити (cleanup commit); НЕ лишати "поки що".
+
+---
+
+### 2026-05-30 — React Query custom hook без `*.test.tsx`: queryKey factory / enabled-gate / URLSearchParams без regression-захисту (Bug #214) — frontend, test-coverage, react-query
+
+**Сигнал:** новий `apps/web/src/hooks/api/use*.ts` що (а) типизує параметри через `Filter`-interface і будує `URLSearchParams` з нього; (б) має queryKey factory (`xKeys.all`/`.list(filters)`/`.detail(id)`); (в) використовує `enabled: !!employee` для гейту. Без `*.test.tsx` нуль захисту від:
+
+- **queryKey identity-collision:** якщо два різних фільтри-стани випадково отримують один queryKey (наприклад через JSON.stringify-серіалізацію з неоднаковим порядком ключів), React Query показує дані для ОДНОЇ фільтр-комбінації у місці іншої.
+- **URLSearchParams gaps:** новий фільтр (`repairCategory`) додано до UI, але в `useX` забуто `if (filters.repairCategory) params.set(...)` → silent filter ignore (точна регресія яка трапилась у 3d5136d під ревью).
+- **enabled-gate інверсія:** `enabled: !!employee` → `enabled: !employee` (друкарська помилка) → fetch до auth → 401 у консолі.
+- **signal-abort gap:** не пробросити `signal` у `apiFetch` → fetch продовжується після unmount → race на stale state.
+
+**Причина виникнення:** React Query hooks виглядають як «trivial wrappers» — розробник вважає що `useQuery` сам себе тестує. Але фасад навколо `useQuery` (filter→queryString→queryKey→fetch) містить НЕ-тривіальну логіку: URL params серіалізацію, queryKey identity (для cache lookup), enabled gate. Кожна з цих гілок — потенційна регресія.
+
+**Підхід до виявлення:** для кожного нового `hooks/api/use*.ts` що містить `useQuery` АБО `useMutation` → перевірити наявність парного `*.test.tsx`. Шаблон тесту: `useWorkOrders.test.tsx` — 4 describe-блоки: (1) queryKey factory (ізоляція ключів для різних фільтрів); (2) enabled-gate (employee=null → no fetch); (3) URLSearchParams (кожне опціональне поле → відповідний URL param АБО відсутній якщо false-y); (4) signal abort (apiFetch отримує signal від queryFn context).
+
+**Підхід до фіксу:** створити `use<Name>.test.tsx` за шаблоном з мінімальними кейсами (12-15 it-блоків). Mock `apiFetch` через `vi.mock('@/lib/api-client')`, mock `useAuth` через `vi.mock('@/lib/auth')`. Тест НЕ потребує реального QueryClientProvider — створити `wrapper` factory що передає свіжий `QueryClient({ defaultOptions: { queries: { retry: false } } })`.
+
+**Severity:** LOW — runtime коректний на момент написання, але регресії беззвучні (URL param drift = silent filter ignore — точно як Bug 3d5136d).
+
+**Де шукати ще:** усі майбутні React Query hooks (Sprint B4+ — mutation hooks); SWR hooks; Apollo `useQuery`. Профілактика: SKILL §1.6 тепер явно покриває React Query custom hooks (раніше згадувалось `useEffect`+`apiFetch` як trigger — query hooks могли проскакувати бо `useEffect` у самого `useQuery` не у hook-споживача).
+
+---
 
 ### 2026-05-30 — Next.js App Router `error.tsx` props без `digest` — incomplete type breaks monitoring (Bug #206) — frontend, typescript, next-js-convention
 
@@ -1171,6 +1246,7 @@ expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
 - ✅ UUID validation client-side перед submit
 - ✅ aria-label на іконкових кнопках (після bulk-fix)
 - ✅ React named imports (не React.ReactNode)
+- ✅ React Query Sprint B: QueryClient singleton (staleTime 30s, retry 1, refetchOnWindowFocus false); 5 query hooks (workOrders/invoices/counterparties/inventory/purchaseOrders) з queryKey factory; cross-resource invalidation покриває PO receive→inventory, PO apply-pricing→inventory, work-orders create→workOrders (Bug #210-#212); useWorkOrders.test.tsx як зразок query-hook tests (12 кейсів — queryKey factory, enabled gate, URLSearchParams build, signal abort)
 
 **Tests:**
 

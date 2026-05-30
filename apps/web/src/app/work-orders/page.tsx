@@ -479,6 +479,9 @@ export default function WorkOrdersPage() {
           dueDate: form.dueDate || undefined,
         }),
       });
+      // Bug #212: invalidate workOrders cache до router.push щоб коли юзер натисне back
+      // у межах 30s staleTime — список ре-fetch-нувся і показав щойно створений наряд.
+      queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
       setModal(false);
       router.push(`/work-orders/${wo.id}`);
     } catch (e: unknown) {

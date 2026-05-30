@@ -35,16 +35,6 @@ interface Warehouse {
   id: string;
   name: string;
 }
-interface LowStockItem {
-  goodId: string;
-  goodName: string;
-  goodSku: string | null;
-  unit: string;
-  warehouseName: string;
-  quantity: number;
-  minStock: number;
-  deficit: number;
-}
 
 function fmt(n: number) {
   return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';

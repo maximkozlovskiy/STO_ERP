@@ -12,6 +12,7 @@ import {
   purchaseOrdersKeys,
   PurchaseOrder,
 } from '@/hooks/api/usePurchaseOrders';
+import { inventoryKeys } from '@/hooks/api/useInventory';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -399,6 +400,11 @@ export default function PurchaseOrdersPage() {
         method: 'POST',
       });
       setPricingResult(prev => ({ ...prev, [po.id]: result }));
+      // Bug #211: apply-pricing змінює Good.salePrice → StockItem.salePrice у findStockItems →
+      // inventory cache треба інвалідувати, інакше grid показує старі ціни до 30s staleTime
+      if (result.updated > 0) {
+        queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+      }
       if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
     } catch (e: unknown) {
       // Bug #199: помилка має бути видимою навіть з toastEnabled=false. Toast — додаток, не заміна setError.
@@ -429,6 +435,9 @@ export default function PurchaseOrdersPage() {
       setShowReceive(null);
       dirty.resetDirty();
       queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+      // Bug #210: RECEIPT створює stock movement → stockItem.quantity змінюється,
+      // тому inventory cache теж треба інвалідувати, інакше /inventory показує старі залишки
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка прийому товару');
     } finally {
