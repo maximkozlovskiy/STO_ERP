@@ -135,7 +135,7 @@ export default function EmployeesPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('employees', COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);

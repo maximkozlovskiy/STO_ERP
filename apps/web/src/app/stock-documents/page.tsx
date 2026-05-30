@@ -88,7 +88,7 @@ export default function StockDocumentsPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('stock-documents', COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
 
   const detailPanel = useDetailPanel('stock-documents');
 

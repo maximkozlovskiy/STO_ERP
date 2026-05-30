@@ -98,7 +98,7 @@ export default function InvoicesPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('invoices', INVOICE_COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
   const detailPanel = useDetailPanel('invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);

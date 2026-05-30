@@ -140,7 +140,7 @@ function WorksTab() {
   ], []);
 
   const { visibleKeys: worksColVisible, visibleColumns: worksVisibleColumns, orderedColumns: worksOrderedColumns, order: worksOrder, customLabels: worksCustomLabels, toggle: toggleWorksCol, reorder: reorderWorks, renameColumn: renameWorksCol, resetConfig: resetWorksConfig } = useTableColumns('catalog-works', WORKS_COLUMNS);
-  const { dragProps: worksDragProps } = useColumnDrag(worksVisibleColumns, reorderWorks);
+  const { dragProps: worksDragProps } = useColumnDrag(worksVisibleColumns, reorderWorks, worksOrderedColumns);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -654,7 +654,7 @@ function GoodsTab() {
   ], []);
 
   const { visibleKeys: goodsColVisible, visibleColumns: goodsVisibleColumns, orderedColumns: goodsOrderedColumns, order: goodsOrder, customLabels: goodsCustomLabels, toggle: toggleGoodsCol, reorder: reorderGoods, renameColumn: renameGoodsCol, resetConfig: resetGoodsConfig } = useTableColumns('catalog-goods', GOODS_COLUMNS);
-  const { dragProps: goodsDragProps } = useColumnDrag(goodsVisibleColumns, reorderGoods);
+  const { dragProps: goodsDragProps } = useColumnDrag(goodsVisibleColumns, reorderGoods, goodsOrderedColumns);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -1662,7 +1662,7 @@ function ServicesTab() {
   ], []);
 
   const { visibleKeys: servicesColVisible, visibleColumns: servicesVisibleColumns, orderedColumns: servicesOrderedColumns, order: servicesOrder, customLabels: servicesCustomLabels, toggle: toggleServicesCol, reorder: reorderServices, renameColumn: renameServicesCol, resetConfig: resetServicesConfig } = useTableColumns('catalog-services', SERVICES_COLUMNS);
-  const { dragProps: servicesDragProps } = useColumnDrag(servicesVisibleColumns, reorderServices);
+  const { dragProps: servicesDragProps } = useColumnDrag(servicesVisibleColumns, reorderServices, servicesOrderedColumns);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);

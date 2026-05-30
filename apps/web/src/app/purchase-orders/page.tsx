@@ -97,7 +97,7 @@ export default function PurchaseOrdersPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('purchase-orders', COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
 
   const detailPanel = useDetailPanel('purchase-orders');
 

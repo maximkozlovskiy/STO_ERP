@@ -169,7 +169,7 @@ export default function WorkOrdersPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('work-orders', WO_COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
 
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
   const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<WOFilters>('work-orders');
