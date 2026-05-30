@@ -608,7 +608,7 @@ export default function PricingRulesClient() {
           <div className="flex items-center gap-3">
             <input
               type="file"
-              accept=".xlsx,.csv"
+              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
               onChange={e => { setPricingFile(e.target.files?.[0] ?? null); setPricingImportResult(null); }}
               className="text-[13px] text-foreground"
             />

@@ -102,7 +102,7 @@ export function XlsxImportButton({
         <input
           ref={fileRef}
           type="file"
-          accept=".xlsx"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           onChange={handleFileChange}
           className="hidden"
         />
