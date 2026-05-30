@@ -1,6 +1,7 @@
 import {
   Controller, Post, Req, UseGuards, BadRequestException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -17,6 +18,7 @@ export class FilesController {
   constructor(private readonly service: FilesService) {}
 
   @Post('upload')
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({ summary: 'Upload file (photo) to MinIO' })
   @ApiConsumes('multipart/form-data')

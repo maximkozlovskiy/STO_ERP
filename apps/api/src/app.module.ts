@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -65,6 +67,8 @@ import { UserPreferencesModule } from './modules/user-preferences/user-preferenc
         redis: config.get<string>('REDIS_URL') ?? 'redis://localhost:6379',
       }),
     }),
+    // Global rate limiting: 200 req/min per IP; stricter limits on specific routes
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
     PrismaModule,
     RedisModule,
     HealthModule,
@@ -116,6 +120,10 @@ import { UserPreferencesModule } from './modules/user-preferences/user-preferenc
     BankAccountsModule,
     CashRegistersModule,
     UserPreferencesModule,
+  ],
+  providers: [
+    // Apply ThrottlerGuard globally — routes can override with @Throttle() or @SkipThrottle()
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}
