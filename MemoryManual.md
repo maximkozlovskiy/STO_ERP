@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+448ae08 docs(skills): add CORS-preflight-cache + consumer-page-ref-cache-seed patterns to sto-optimize
+9fe62df perf(cors,settings): cache CORS preflight 24h + seed settings branches from ref-cache
 c24ffa7 fix(tester): Bugs #197-#199 — PricingRulesClient apiMultipartFetch + xlsx purchasePrice=null guard + applyPricing error surface
 91bafc8 fix(review): pricing-rules update tenant guard + dead orConditions cleanup
 a24b4dc feat(ui): useColumnDrag hook + drag CSS — column reorder via table header drag
@@ -123,6 +125,25 @@ f040cde perf(db): 5 composite indexes
 ```
 
 Дата: 2026-05-30
+
+---
+
+## Perf: CORS preflight + ref-cache seed (9fe62df)
+
+### Gotcha (perf) — HAR "duplicate" це OPTIONS + GET, не дубль fetch у коді
+DevTools/HAR показує кожен API endpoint двічі: спочатку `-X 'OPTIONS'` з `Access-Control-Request-Method: GET`, потім той самий URL без -X (реальний GET). Це нормальна CORS preflight + actual request пара для cross-origin запиту з `Authorization` header — це НЕ дубль fetch у React коді.
+**Як перевірити:** дивися на `-X 'METHOD'` у curl-export. OPTIONS+GET = preflight; GET+GET = реальний дубль.
+**Як виправити preflight:** `app.enableCors({ ..., maxAge: 86400 })` — браузер кешує OPTIONS-відповідь (Chrome cap 7200s). До фіксу: кожен fetch = 2 RTT. Після: перший fetch = 2 RTT, всі наступні в межах cache window = 1 RTT.
+**НЕ виправляй:** useEffect / StrictMode / dedup — там немає реального дубля.
+
+### Pattern: consumer-page без ref-cache seed
+Сторінка-споживач (settings/dashboard/reports) що використовує довідник у side-UI (workdays tab, picker, фільтр) має робити seed з sessionStorage перед apiFetch:
+```ts
+const cached = getCached<Branch[]>('cache:branches');
+if (cached?.length) setBranches(cached);
+apiFetch<Branch[]>('/branches').then(d => { setBranches(d); setCache('cache:branches', d); });
+```
+Без seed dropdown показує `[]` під час cold-fetch. Безпечно якщо сторінка НЕ редагує цей довідник (settings не CRUD-ить branches — це окрема сторінка infrastructure).
 
 ---
 
@@ -259,7 +280,8 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 **Gotcha — CurrentUser decorator:** повертає `AuthenticatedUser` з полем `id` (не `sub`). `sub` є у `JwtPayload` але контролери отримують `AuthenticatedUser` після `validate()`.
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api + shared) — після PricingRulesClient apiMultipartFetch + xlsx purchasePrice=null guard + applyPricing error surface (verified 2026-05-30, HEAD pending)
+TypeScript: ✅ 0 errors (web + api + shared) — після CORS preflight maxAge + settings branches ref-cache seed (verified 2026-05-30, HEAD 9fe62df → 448ae08)
+Latest optimize: 2026-05-30 (HAR analysis з користувача) — користувач переслав `Аналіз.txt` (curl-export з DevTools Network panel) з ствердженням що settings/dashboard/employees/calendar/crm роблять подвійні API виклики на mount. **Висновок:** реальних дублів у коді **немає** — всі сторінки використовують Promise.all/cancelled-flag/ref-cache коректно (verified settings/page.tsx 2 useEffect з [] deps, dashboard.tsx Promise.allSettled, employees.tsx loadReference + filter-only load split). Що бачив користувач у HAR — це CORS preflight (`-X 'OPTIONS'` з `Access-Control-Request-Method: GET`) + actual GET, тобто 2 запити на endpoint, але другий — це сам preflight браузера, не дубль fetch у коді. **2 фікси:** (1) HIGH IMPACT — `apps/api/src/main.ts:51` `enableCors({ origin, credentials: true })` без `maxAge` → браузер не кешує preflight → кожен autenticated GET = 2 RTT (OPTIONS + GET). Фікс: +`maxAge: 86400` (Chrome cap 7200s, інші ≤86400s). У dev (3001→3000) на дашборді 5 fetches: 10 RTT → 5 RTT після першого. (2) LOW — `settings/page.tsx:244` `apiFetch('/branches')` без `getCached` seed → workdays tab показує порожній select до cold-fetch. Фікс: seed `cache:branches` на старті useEffect + `setCache` після fresh fetch. SKILL оновлено: +1.7 чек CORS maxAge, +2 нових "Накопичених підходи" (HAR OPTIONS-vs-duplicate і consumer-page ref-cache seed).
 Latest tester: 2026-05-30 (FULL, HEAD 91bafc8 → pending) — повний прогін по фічі e754ad4 (PO apply-pricing + xlsx apply-pricing-from-list + pricing-list template + frontend кнопка/секція). Baseline зелений (401/401 API + 179/179 web), `[x]`-маркери попередньої сесії b1a083c — реально застосовані у коді (не docs-only). **3 нових баги виправлено:** #197 CRITICAL — `PricingRulesClient.tsx:626` `apiFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', { method:'POST', body: fd })` де `fd = new FormData()`. `apiFetch` ЖОРСТКО додає `Content-Type: application/json` → browser НЕ виставляє `multipart/form-data; boundary=...` → `fastify-multipart` кидає «not multipart» → upload завжди валиться 400/406. **Уся клієнтська фіча e754ad4 не працює у проді.** Фікс: заміна на `apiMultipartFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', fd)` + додано імпорт. Інші upload-точки проєкту (xlsx-import-button, settings, work-orders media) уже використовують `apiMultipartFetch` — це була єдина регресія. #198 HIGH — `xlsx.service.ts applyPricingFromList`: `costPrice = Number(good.purchasePrice ?? 0)` для товарів без `purchasePrice` (схема `Decimal?`) → `calculateSalePrice` для PERCENT/COMPETITOR_PLUS/COST_TIER повертає `0 * (1 + p/100) = 0` → **`Good.salePrice` затирається у 0** без помилки. Silent data corruption: користувач завантажує список з 100 SKU → 30 товарів без cost отримують ціну 0 грн → запис у PriceHistory `oldPrice=130, newPrice=0`. Фікс: prep-guard `if (good.purchasePrice == null || Number(good.purchasePrice) <= 0)` → пушає `${sku} (без собівартості)` у `notFound[]` + `continue` без виклику `calculateSalePrice`. Додано 2 нові тести у `xlsx.service.spec.ts` (12/12 passed). #199 MEDIUM — `purchase-orders/page.tsx applyPricing`: `catch (e) { if (features.toastEnabled) toast.error(...) }` → користувачі з `toastEnabled=false` нічого не бачать. Фікс: `setError(msg)` завжди + toast як додаток. Унmount race — залишено LOW (warning у dev console, не критично). Після фіксів: tsc api+web+shared 0 errors, **403/403 API + 179/179 web**. SKILL оновлено: §1.1 +чек nullable cost-input → data corruption, §1.3 +чек apiFetch+FormData → CRITICAL, +2 нових "Накопичених підходи".
 Latest review: 2026-05-30 (AUTO, HEAD a24b4dc → pending) — повний review повного scope сесії (Pricing brand+COST_TIER + UserPreference + AnimatedBody + DataTable revert + SaveFilterButton + useColumnDrag + Modal sizes + page-container 96rem + PO apply-pricing + xlsx apply-pricing-from-list). **3 проблеми виправлено:** (1) IMPORTANT — `useColumnDrag.ts` використовував `React.DragEvent` і `React.CSSProperties` namespace types → §1 TypeScript violation (skill вимагає named imports з 'react'). Фікс: `import { type DragEvent, type CSSProperties } from 'react'`. Паралельно user/linter додав 3-й параметр `allColumns: { key }[]` щоб preserve hidden-column slot positions при drag — оновлено 9 call-sites (catalog x3, crm/employees/work-orders/invoices/stock-documents/purchase-orders x1 кожен) щоб передавати `orderedColumns`. (2) IMPORTANT — `pricing-rules.controller.ts` PATCH і DELETE використовували `prisma.pricingRule.update({ where: { id } })` без orgId у where → defense-in-depth tenant guard відсутній (хоч `existing` findFirst раніше перевіряв orgId, race-window між findFirst і update теоретично можливий якщо інша сесія soft-delete-ує правило). Фікс: заміна на `updateMany({ where: { id, orgId, deletedAt: null } })` + окремий `findFirstOrThrow` для повернення з include для PATCH; DELETE використовує `updateMany.count === 0` для 404 (Bug #191 pattern). Тест-мок оновлено: `pricingRule.updateMany` + `pricingRule.findFirstOrThrow`. (3) SUGGESTION — `pricing.service.ts` `orConditions.push({ goodId: null, brandId, good: undefined })` — `good: undefined` dead code (не фільтрує нічого). Фікс: прибрано. **Підтвердження:** API tsc ✅ 0 errors, Web tsc ✅ 0 errors, pricing-rules+pricing.service tests 35/35 passed, цілий блок (user-preferences + xlsx + purchase-orders + inventory) 103/103 passed, web tests (modal+saved-filters+useDetailPanelConfig) 50/50.
 TypeScript: ✅ 0 errors (web + api + shared) — після SaveFilterButton/hideSaveButton/AnimatedBody/Modal size test coverage (verified 2026-05-30, HEAD b04e879)
