@@ -462,9 +462,12 @@ done
 | `inventory.service` | RECEIPT +qty; RESERVATION -available; WRITEOFF insufficient→throws; qty=0→throws |
 | `settlements.service` | CHARGE +balance; PAYMENT -balance; no account→NotFoundException |
 | `auth.service` | login OK; wrong password→401; deleted employee→401; invalid refresh→401 |
+| `pricing.service` COST_TIER | tiers=[]; cost=0; cost===tier.costMax (boundary half-open); cost<минімального costMin |
 
 - [ ] Нові `*.service.ts` → парний `*.spec.ts` з мінімальними кейсами вище
 - [ ] Нові `@Controller` → парний `*.contract.spec.ts`
+- [ ] **Boundary-кейси для діапазонних правил (COST_TIER, sliding-scale, age-brackets, tax-brackets):** будь-яке правило з `min <= x < max` (або `<=`/`>=`) має тести точно НА межі (`x === min`, `x === max`), на нулі (`x === 0`), і за межами (`x < минімум`, `x > максимум`). Реалізація працює, але регресія `<=`/`<` беззвучно змінить semantics — рідко-проходимий код. Boundary-тест документує contract і ловить інверсію оператора (Bug #184)
+- [ ] **Cross-tenant FK contract test для optional FK у payload:** якщо контролер валідує optional FK через `findFirst({id, orgId})` перед write (Bug #161 патерн) → contract spec має асертити: (а) POST з FK з ЦІЄЇ org → 201 + `findFirst` викликаний з правильним `{id, orgId, deletedAt:null}`; (б) POST з FK з ЧУЖОЇ org → 404 + `create` НЕ викликаний; (в) PATCH з FK з ЧУЖОЇ org → 404 + `update` НЕ викликаний. Без цих тестів регресія (видалення org-scoped перевірки під рефактор) пройде CI зеленою → cross-tenant linkage у проді без error (Bug #186)
 
 ---
 
@@ -483,6 +486,7 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 
 - [ ] `Button`, `Select`, `Modal`, `Input`, `EmptyState`, `ModalTabs` — component тести існують
 - [ ] Кожен **новий shared UI-компонент** (`components/ui/`) → парний `*.test.tsx` (render, інтерактив-стани, edge: порожні дані/`null`-render, badge з `0`)
+- [ ] Кожен **новий custom hook** (`apps/web/src/hooks/use*.ts`) що містить `useEffect`/`useState` АБО викликає `apiFetch`/`localStorage`/`fetch` → парний `*.test.tsx` (renderHook + act). Шаблон: `useSavedFilters.test.tsx`. Обов'язкові кейси: початковий стан → loading; resolve API → setState; reject API → error/fallback; cleanup на unmount; race-protection (AbortController/cancelled-flag); різні pageKey/instance ізольовані. Бо hook керує persistence/network — регресія без тесту мовчки втрачає дані. tsc не ловить runtime-race, code review не ловить (locally виглядає валідно), баг виявиться лише через user-bug-report (Bug #185)
 - [ ] `smoke.spec.ts` — обов'язковий: `/`, `/login`, `/setup` без auth, auth redirect
 - [ ] **Component-vs-test drift:** якщо component-тест падає у baseline на `getByText(...)`/`getByRole(...)` — звірити чи компонент реально рендерить цей елемент. Тест може документувати UX-намір, від якого компонент розійшовся (видалили hint/label). Якщо намір легітимний → виправити КОМПОНЕНТ (повернути елемент); якщо застарів → виправити тест. НЕ ігнорувати «червоне і так було»
 - [ ] **jsdom browser-API стаби в `apps/web/src/__tests__/setup.ts`:** якщо diff чіпає `components/ui/` АБО `app/**/page.tsx` і додає `new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver)\(`, `window.matchMedia(`, `navigator.(clipboard|share|wakeLock|geolocation|mediaDevices)`, `crypto.subtle`, `Notification(` — перевірити що setup.ts стабає це API. tsc мовчить (типи у `lib.dom.d.ts`), prod працює (браузер має API), але jsdom падає → каскадне падіння всіх тестів які монтують компонент (включно з тестами далеких компонентів якщо shared-компонент усередині них). Фікс: noop-стаб під guard `typeof globalThis.X === 'undefined'`. Не стабати в самому компоненті, не вимикати тест
@@ -699,6 +703,41 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-30 — Boundary-кейси відсутні для діапазонних правил (COST_TIER half-open) → регресія `<=`/`<` беззвучна — backend, test-coverage
+
+**Сигнал:** новий backend-feature з range-based logic (`min <= x < max`, `<=`/`<` boundary) — pricing tiers (COST_TIER), age brackets, tax brackets, sliding-scale discount. Spec покриває «typical» кейси (`x` посередині діапазону), пропускає **граничні** значення (`x === min`, `x === max`, `x === 0`, `x < найменшого min`). Реалізація працює бо boundary рідко проходимий код; регресія типу `>=` → `>` АБО `<` → `<=` змінює semantics беззвучно — жоден існуючий тест не падає.
+**Причина виникнення:** розробник пише spec за «прикладами з вимог» — клієнт каже «50 у тірі [0,100]», «200 у тірі [100,500]» — це є у specі. Boundary («що буде з cost=100 — у нижньому чи верхньому тірі?») формально не описано, тому й тест не пишеться. Це навіть НЕ defensive omission — це просто «не подумали». В оригінальних вимогах часто пишуть «від X до Y» без уточнення inclusive/exclusive, що залишає простір для регресії.
+**Підхід до виявлення:** для кожного нового сервісу/функції що містить range comparison (`>= min && < max` або варіанти) — переконатись що spec має ВСІ 4 boundary тести: (1) `x === min` тіру (найнижча точка діапазону, нижня межа включена); (2) `x === max` тіру (точна верхня межа, має перейти у наступний тір якщо half-open); (3) `x === 0` (для non-negative величин — баг типу `cost > 0` замість `cost >= 0` мовчки виключить нуль); (4) `x` поза будь-яким діапазоном (`< найменшого min` АБО `> найбільшого max` коли немає null-tail) → fallback на raw value. Без цих 4 тестів — спека не покриває core semantics, лише happy path.
+**Підхід до фіксу:** додати 4 окремих `it()` у відповідний `describe` блок. КОЖЕН boundary — окремий тест (не один з 4 expects), щоб при майбутньому падінні було видно ЯКА саме межа зламана. Назви тестів літерально містять `cost=0`, `cost точно на верхній межі`, `cost===costMin`, `tiers=[]` — це документація.
+**Severity:** MEDIUM — production-код працює, але регресія потенційно псує дані в БД (неправильна ціна, неправильний податок) без жодного error/warning.
+**Де шукати ще:** будь-який сервіс ціноутворення/скидок/податків з tier-based або bracket-based логікою; age-based pricing у insurance/booking; volume-based shipping; quantity-based discounts; будь-яке `if (x >= A && x < B)` у бізнес-логіці. Профілактика: SKILL §1.5 unit-test матриця тепер вимагає boundary-кейсів для діапазонних правил.
+
+### 2026-05-30 — Cross-tenant FK у contract-spec не покритий для optional payload FK (новий FK у DTO без regression-захисту на HTTP-рівні) — backend, test-coverage, security
+
+**Сигнал:** новий optional FK у `*.dto.ts` (`brandId?: string`, `vehicleId?: string`...) + новий патерн у контролері `if (dto.XId) { const x = await prisma.X.findFirst({id: dto.XId, orgId, deletedAt:null}); if (!x) throw new NotFoundException(...) }` (Bug #161 захисний патерн). Контролер коректний, але contract spec для цього controller-endpoint НЕ асертить (а) що `findFirst` справді викликаний з `orgId`, (б) що 404 для cross-tenant FK, (в) що `prisma.X.create/update` НЕ викликаний при failed FK-перевірці. Регресія (видалення `if (dto.XId)`-блоку під «спрощення», прибрання `orgId` з findFirst-where, заміна `NotFoundException` на early return) пройде усіх існуючих тестів зеленою → cross-tenant linkage у production без error/warning.
+**Причина виникнення:** розробник пише FK-валідацію у контролері і думає «це service-логіка, contract spec тестує HTTP-shape». Contract spec мокає Prisma (`prismaMock`) — додавання тесту вимагає налаштувати `prismaMock.brand.findFirst.mockResolvedValueOnce(null)` для cross-tenant сценарію + `expect(prismaMock.X.create).not.toHaveBeenCalled()` — це додаткова робота. Service-spec теж не покриває бо валідація живе у КОНТРОЛЕРІ (через `prisma` injected у controller), не у service. Між service-spec і contract-spec випадає вікно — controller validate logic без покриття.
+**Підхід до виявлення:** на Кроці 1 §1.5 — для кожного `*.controller.ts` що містить `if (dto.XId) { const x = await this.prisma.X.findFirst(...); throw new NotFoundException(...) }` патерн → перевірити чи `*.contract.spec.ts` має 3 тести для КОЖНОГО таким захищеного FK: own-org→success, other-org→404, PATCH-other-org→404. Grep: `grep -n "if (dto\.[a-zA-Z]*Id)" apps/api/src/modules/**/*.controller.ts`; для кожного match шукати у відповідному `*.contract.spec.ts` тест зі `mockResolvedValueOnce(null)` на цьому моделі і `expect(prismaMock.X.create).not.toHaveBeenCalled()`. Якщо немає — gap.
+**Підхід до фіксу:** додати 3 контракт-тести з мок-схемою:
+```typescript
+prismaMock.brand.findFirst.mockResolvedValueOnce(null); // інша org
+const res = await app.inject({ method: 'POST', url: '/...', payload: { brandId: 'cross-tenant-uuid' } });
+expect(res.statusCode).toBe(404);
+expect(res.json().message).toMatch(/Бренд не знайдено/);
+expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
+```
+Кожен FK = +3 тести (POST own, POST other, PATCH other). Документує contract і ловить регресію.
+**Severity:** MEDIUM — production коректний на момент написання, але нуль захисту від регресії. Якщо регресія станеться у tenant-isolation — це HIGH (cross-tenant data linkage). MEDIUM = profileactic.
+**Де шукати ще:** будь-який модуль з optional FK у DTO + `findFirst(orgId)` у controller (не service): pricing-rules brandId/goodId (POST+PATCH), invoices counterpartyId/vehicleId, work-orders branchId, purchase-orders supplierId, будь-який майбутній модуль що додає preferredSupplierId/warehouseId. Профілактика: SKILL §1.5 тепер вимагає cross-tenant FK тестів у contract-spec.
+
+### 2026-05-30 — Custom hook з useEffect/apiFetch/localStorage без unit-тесту → беззвучна регресія persistence/race-protection — frontend, test-coverage
+
+**Сигнал:** новий `apps/web/src/hooks/use*.ts` що: (а) має `useEffect` що викликає `apiFetch`/`fetch`/`localStorage`; (б) повертає imperative API (`toggle`, `reset`, `save`); (в) використовує `AbortController`/`cancelled`-flag/`mountedRef` для race-protection. Без `*.test.tsx` — нуль захисту від регресії: AbortController можна видалити «під спрощення», cancelled-flag можна забути після рефактору effect, mountedRef можна викинути коли «здається не потрібним». Усі ці регресії — runtime races що НЕ ловить tsc, code review (locally виглядає валідно), і ловить лише user-bug-report.
+**Причина виникнення:** розробник пише hook як «звичайну логіку» і думає що component-тест pages що використовують hook покриє його. Але component-тест для page що використовує hook — мокає сам hook (інакше потрібно мокати весь fetch ланцюг). Тому hook сам залишається непокритий. Хук «надто маленький» для окремого тесту згідно з інтуїцією, але `useEffect` + `apiFetch` + `localStorage` + `AbortController` = 4 окремих race-гілки які треба перевірити.
+**Підхід до виявлення:** при будь-якому новому `apps/web/src/hooks/use*.ts` — переконатись що існує парний `use*.test.tsx`. Шаблон: `useSavedFilters.test.tsx` (`renderHook` + `act`, `localStorage.clear()` у `beforeEach`, mock `apiFetch` через `vi.mock('@/lib/api-client', ...)`). Мінімум тестів: (1) початковий стан; (2) optimistic read з localStorage до резолву API; (3) resolve API → state оновлюється; (4) reject API → fallback зостається; (5) imperative API (toggle/save/reset) працює; (6) race-protection (rapid call → попередній abort-нутий АБО signal.aborted=true); (7) різні pageKey/instance ізольовані.
+**Підхід до фіксу:** створити `use<Name>.test.tsx` за шаблоном. Mock `apiFetch` через `vi.mock('@/lib/api-client', () => ({ apiFetch: vi.fn() }))`. Для AbortController-тесту: захопити signals через `apiFetchMock.mockImplementation((url, init) => { signals.push(init.signal); return new Promise(() => {}); })` — це показує що `signal.aborted` справді змінюється при rapid sequential calls.
+**Severity:** MEDIUM — production-код може бути коректним, але hook керує persistence/network — регресія беззвучна і виявиться лише через втрачені дані або memory-leak warning у консолі.
+**Де шукати ще:** будь-який майбутній hook з мережею (useGoodsAutocomplete, useNotifications, usePolling) АБО з persistence (useColumnConfig, useTablePagination, useFilters). Профілактика: SKILL §1.6 тепер вимагає `*.test.tsx` для нових hooks з `useEffect`/`apiFetch`/`localStorage`.
 
 ### 2026-05-30 — JSON/Record DTO поле без @IsObject() → знімається whitelist:true → undefined в сервісі — backend
 

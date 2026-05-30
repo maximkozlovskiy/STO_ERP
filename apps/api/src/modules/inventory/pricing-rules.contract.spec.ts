@@ -185,6 +185,53 @@ describe('PricingRules — HTTP Contract', () => {
         isActive: expect.any(Boolean),
       });
     });
+
+    // ── Bug #186: brandId cross-tenant FK validation ───────────────────────
+    it('Bug #186: POST з brandId з ЦІЄЇ org → 201 (brand знайдено)', async () => {
+      prismaMock.brand.findFirst.mockResolvedValueOnce({ id: 'brand-uuid' });
+      prismaMock.pricingRule.create.mockResolvedValueOnce({
+        id: 'rule-uuid', orgId: 'org-1', name: 'Bosch +25%', type: 'PERCENT',
+        priority: 5, goodId: null, goodCategory: null, goodType: null,
+        brandId: 'brand-uuid', percentValue: 25, fixedAmount: null, fixedPrice: null,
+        roundTo: null, isActive: true, createdAt: new Date(),
+        good: null, brand: { id: 'brand-uuid', name: 'Bosch' }, tiers: [],
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: {
+          name: 'Bosch +25%',
+          type: 'PERCENT',
+          brandId: '00000000-0000-0000-0000-000000000099',
+          percentValue: 25,
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      // Перевіряємо що org-scoped перевірка справді викликалась
+      expect(prismaMock.brand.findFirst).toHaveBeenCalledWith({
+        where: { id: '00000000-0000-0000-0000-000000000099', orgId: 'org-1', deletedAt: null },
+        select: { id: true },
+      });
+    });
+
+    it('Bug #186: POST з brandId з ЧУЖОЇ org → 404 «Бренд не знайдено»', async () => {
+      prismaMock.brand.findFirst.mockResolvedValueOnce(null); // інша org
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: {
+          name: 'Cross-tenant attempt',
+          type: 'PERCENT',
+          brandId: '00000000-0000-0000-0000-000000000099',
+          percentValue: 25,
+        },
+      });
+      expect(res.statusCode).toBe(404);
+      const body = res.json<{ message: string }>();
+      expect(body.message).toMatch(/Бренд не знайдено/);
+      // pricingRule.create НЕ викликаний — write блокується ДО запису
+      expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST /pricing-rules/:id/apply-all', () => {
@@ -240,6 +287,27 @@ describe('PricingRules — HTTP Contract', () => {
         payload: { percentValue: 99999 },
       });
       expect(res.statusCode).toBe(400);
+    });
+
+    // ── Bug #186: PATCH brandId cross-tenant ───────────────────────────────
+    it('Bug #186: PATCH з brandId з ЧУЖОЇ org → 404 «Бренд не знайдено»', async () => {
+      // existing rule знайдено
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce({
+        id: 'rule-uuid', orgId: 'org-1', brandId: null, goodId: null,
+        goodCategory: null, goodType: null, percentValue: 30, name: 'r',
+      });
+      // brand для ЧУЖОЇ org → null
+      prismaMock.brand.findFirst.mockResolvedValueOnce(null);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
+        payload: { brandId: '00000000-0000-0000-0000-000000000099' },
+      });
+      expect(res.statusCode).toBe(404);
+      const body = res.json<{ message: string }>();
+      expect(body.message).toMatch(/Бренд не знайдено/);
+      // pricingRule.update НЕ викликаний
+      expect(prismaMock.pricingRule.update).not.toHaveBeenCalled();
     });
   });
 

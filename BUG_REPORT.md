@@ -5681,3 +5681,103 @@ Commit `b5add44` представив `AnimatedBody` усередині `Modal` 
 
 **Статус:** [x] виправлено — `apps/web/src/__tests__/setup.ts` тепер експортує стаби `ResizeObserver` (observe/unobserve/disconnect — no-op) і `IntersectionObserver` (observe/unobserve/disconnect/takeRecords — no-op), захищені guard-ом `typeof globalThis.X === 'undefined'`. Web suite 148/148 passed. Modal-тести зелені, що підтверджує: жодне реальне UX не зламано, проблема була виключно у jsdom-полі.
 
+---
+
+## Session 2026-05-30 (FULL) — Етапи A-D повне тестування (HEAD 5b4eafc)
+
+Scope: pricing brandId + COST_TIER + PricingRuleTier, UserPreference (DB+API+hook), AnimatedBody (6 inline sections), DetailPanel (Settings/showConfig/PanelField.hidden).
+
+**Baseline на Кроці 0:**
+- API tsc: 0 errors
+- Web tsc: 0 errors
+- Shared tsc: 0 errors
+- API unit+contract: **369/369 passed** (35 файлів)
+- Web component suite: **148/148 passed** (14 файлів)
+
+**Перевірка [x]-маркерів попередніх сесій:** усі recent `fix(tester)` коміти (#178-#183) реально торкали код (`*.service.ts`, `*.dto.ts`, `*.contract.spec.ts`, `*.tsx`), не лише docs. Жодного хибно-зеленого `[x]`. baseline зелений → попередні сесії застосовані як описано.
+
+**Розширений аудит scope:**
+
+§1.1 — `applyRuleToGoods` `where`-умова містить ВСІ scope-поля включно з новим `brandId` (Bug #178 закрив). `calculateSalePrice` `OR`+`find` хіерархія коректна (goodId > brandId > goodCategory > goodType). FK-валідація `brandId` присутня у POST/PATCH контролера.
+
+§1.2 — UserPreferences `UpsertUserPreferenceDto.value` має `@IsObject` (Bug #182 закрив). `key` має `@IsString` + `@IsNotEmpty` + `@MaxLength(200)`. Контролер використовує `@Param('key')` (не з body). `@HttpCode(204)` правильний для PUT idempotent.
+
+§1.3 — `AnimatedBody` (modal.tsx:37) — `ResizeObserver` stub у setup.ts (Bug #177 закрив), `rafRef` cleanup. `useDetailPanelConfig` має `let cancelled=false`, `mountedRef`, `AbortController` для PUT-rapid-toggle. Жоден з 6 inline-AnimatedBody секцій не падає у baseline.
+
+§1.5/§1.6 — **знайдені gaps:**
+
+---
+
+## Bug #184 — [MEDIUM] pricing.service COST_TIER spec не покриває критичні edge cases: empty tiers, cost=0, cost рівно на межі (cost===tier.costMax)
+
+**Файл:** `apps/api/src/modules/inventory/pricing.service.spec.ts` — describe('PricingService.calculateSalePrice')
+**Severity:** MEDIUM — boundary-логіка COST_TIER (`cost >= min && (max === null || cost < max)`) реалізована, але не задокументована тестами. Регресія типу `cost < min` (замість `cost >= min`) або `cost <= max` (замість `cost < max`) пройде усі 12 поточних тестів зеленими і помилково випустить product у БД.
+**Категорія:** test-coverage / backend
+
+**Опис:**
+Користувач явно вимагав покриття edge cases. Існуючі COST_TIER тести покривають:
+- (а) cost у `першому` тірі (50 у [0,100));
+- (б) cost у `середньому` тірі (200 у [100,500));
+- (в) cost у `останньому` тірі з `costMax=null` (1000 у [500,∞));
+- (г) cost `не потрапляє у жоден тір` (50 при тірах [200,500)).
+
+**НЕ покриті:**
+1. **Порожній масив `tiers: []`** — `rule.tiers.find(...)` повертає `undefined` → `result = costPrice`. Інваріант: правило `type=COST_TIER` без тірів не змінює ціну.
+2. **`cost = 0`** — boundary value. Тір [0,100) має `costMin=0`, `0 >= 0 && 0 < 100` → застосувати markup. Інваріант: `cost=0` → `result=0` (бо `0 * (1 + p/100) = 0`).
+3. **`cost === tier.costMax`** — `cost = 100` для тірів [0,100) і [100,500). За кодом `cost < max` (exclusive) — `100 < 100` false → пропускає тір [0,100), переходить до [100,500) де `100 >= 100 && 100 < 500` true → застосовує тір [100,500). Інваріант: cost-точка-на-межі = верхня межа НЕ включена; нижня межа включена (boundary semantics half-open).
+4. **`cost < найменшого tier.costMin`** — `cost = -50` (Math.max захист) або `cost = 5` коли тіри починаються з [10,100). Інваріант: повертає `costPrice` без markup.
+
+**Очікувана поведінка:** spec явно асертить кожний boundary case щоб майбутній рефактор `>=`/`<` не змінив semantics безшумно.
+
+**Фактична поведінка:** code path рідко-проходимий тестами; ризик регресії на boundary.
+
+**Підхід до фіксу:** додати 4 нові `it()` у блок `describe('PricingService.calculateSalePrice')` для COST_TIER.
+
+**Статус:** [x] виправлено — `pricing.service.spec.ts` тепер має 19 тестів (було 15): додано (1) `tiers=[] → costPrice`, (2) `cost=0 → застосовується tier [0,100), результат=0`, (3) `cost=100 точно на верхній межі → переходить у наступний tier [100,500) → 120 (half-open semantics)`, (4) `cost=costMin → тір застосовується (нижня межа включена)`. 19/19 passed.
+
+---
+
+## Bug #185 — [MEDIUM] useDetailPanelConfig — немає unit тесту для localStorage fallback, optimistic-read, AbortController на PUT-rapid-toggle, mountedRef guard
+
+**Файл:** `apps/web/src/hooks/useDetailPanelConfig.ts` — користувач явно вимагав unit-тест
+**Severity:** MEDIUM — hook керує persistence панелі (localStorage + API), має критичну поведінку: (а) optimistic read з localStorage до API; (б) cancel previous PUT через AbortController щоб rapid toggle не зберіг стале значення; (в) `mountedRef` щоб не setState після unmount; (г) `cancelled` flag у mount-effect. Жодну з цих гарантій немає тестового покриття — наступний рефактор може зламати беззвучно.
+**Категорія:** test-coverage / frontend
+
+**Опис:**
+Hook був доданий у комміті `5d003e4` (Етап D) як основа конфігуроваємості DetailPanel. Користувач експліцитно запитав про цей тест у завданні. Існуючі hook-тести (`useBulkSelect`, `useInlineEdit`, `useSavedFilters`) — це шаблон для нового. Без тесту:
+- регресія optimistic-read (наприклад, `localStorage.getItem` всередині `try/catch` мовчки no-op) пройде.
+- регресія cancel-previous PUT (`putAbortRef.current?.abort()`) → race last-arrived-wins → серверу зберігається стале значення.
+- регресія `mountedRef` → setState на unmount → React warning + потенційний memory leak.
+
+**Очікувана поведінка:** `apps/web/src/hooks/useDetailPanelConfig.test.tsx` з 6-8 unit-тестів покриває (initial loading, localStorage cache hit, API success, API error → localStorage fallback, toggleField + PUT, reset + PUT, rapid toggle → попередній PUT aborted, unmount → cancel pending PUT).
+
+**Фактична поведінка:** жодного тесту → 0 захисту від регресій критичної persistence-логіки.
+
+**Підхід до фіксу:** створити `apps/web/src/hooks/useDetailPanelConfig.test.tsx` за шаблоном `useSavedFilters.test.tsx`: `renderHook` + `act`, замокати `localStorage` + `apiFetch`.
+
+**Статус:** [x] виправлено — `apps/web/src/hooks/useDetailPanelConfig.test.tsx` (11 тестів): початковий loading=true; optimistic read з localStorage до резолву API; resolve API → setConfig + localStorage update; invalid value shape → fallback `{hiddenFields:[]}`; API падає → localStorage fallback зостається; toggleField додає поле + PUT; повторний toggleField видаляє поле; reset → empty + remove localStorage + PUT; rapid toggle → 3 PUT, перші 2 signal.aborted=true, останній pending; різні pageKey незалежні; isFieldHidden true/false. 11/11 passed.
+
+---
+
+## Bug #186 — [MEDIUM] pricing-rules контракт-spec не покриває `brandId` cross-tenant — новий FK без regression-захисту
+
+**Файл:** `apps/api/src/modules/inventory/pricing-rules.contract.spec.ts` — describe('POST /pricing-rules') і describe('PATCH /pricing-rules/:id')
+**Severity:** MEDIUM — `pricing-rules.controller.ts` має org-scoped перевірку `brandId` у POST (line 79-85) і PATCH (line 138-144) — кидає `NotFoundException('Бренд не знайдено')` для cross-tenant brandId. Але contract spec не асертить це — регресія (наприклад, видалення перевірки `dto.brandId` під рефактор) пройде всі тести зеленими. Це той самий патерн, що Bug #161 (cross-tenant linkage через optional FK).
+**Категорія:** test-coverage / security
+
+**Опис:**
+Bug #178 додав `brandId` як scope-поле у `PricingRule`. Bug #180 правильно додав FK-валідацію у контролер. Але contract spec покриває лише: paginated shape (Bug #18), goodId-not-uuid 400, type-not-enum 400, PERCENT happy path, `Bug #27 PATCH validation` (3 тести). Brand FK перевірок — 0 тестів.
+
+**Очікувана поведінка:** контракт-spec має асертити що:
+- `POST /pricing-rules` з валідним brandId з ЦІЄЇ org → 201
+- `POST /pricing-rules` з brandId з ЧУЖОЇ org → 404 «Бренд не знайдено»
+- `PATCH /pricing-rules/:id` з brandId з ЧУЖОЇ org → 404
+
+**Фактична поведінка:** регресія cross-tenant brandId пройде CI зеленою.
+
+**Підхід до фіксу:** додати 3 нові `it()` у `pricing-rules.contract.spec.ts` що мокають `prismaMock.brand.findFirst` (повертає `null` для чужої org, `{id}` для своєї).
+
+**Статус:** [x] виправлено — `pricing-rules.contract.spec.ts` тепер має 16 тестів (було 13): (1) `POST brandId з ЦІЄЇ org → 201` + assert що `brand.findFirst` викликаний з `{id, orgId:'org-1', deletedAt:null}`; (2) `POST brandId з ЧУЖОЇ org → 404 «Бренд не знайдено»` + assert `pricingRule.create` НЕ викликаний; (3) `PATCH brandId з ЧУЖОЇ org → 404` + assert `pricingRule.update` НЕ викликаний. 16/16 passed.
+
+---
+

@@ -159,6 +159,42 @@ describe('PricingService.calculateSalePrice', () => {
     const price = await service.calculateSalePrice('org', 'g', null, 'SPARE_PART', 'b1', 100);
     expect(price).toBeCloseTo(125); // brand rule wins over type rule
   });
+
+  // ── Bug #184: COST_TIER edge cases ────────────────────────────────────────
+  it('COST_TIER edge: tiers=[] → повертає costPrice без markup', async () => {
+    prisma.pricingRule.findMany.mockResolvedValue([rule({ type: 'COST_TIER', tiers: [] })]);
+    const price = await service.calculateSalePrice('org', 'g', null, null, null, 250);
+    expect(price).toBe(250);
+  });
+
+  it('COST_TIER edge: cost=0 → tier [0,100) застосовує markup → 0', async () => {
+    const tiers: RuleTier[] = [
+      { costMin: 0, costMax: 100, percentValue: 30, sortOrder: 0 },
+    ];
+    prisma.pricingRule.findMany.mockResolvedValue([rule({ type: 'COST_TIER', tiers })]);
+    const price = await service.calculateSalePrice('org', 'g', null, null, null, 0);
+    expect(price).toBe(0); // 0 * (1 + 30/100) = 0
+  });
+
+  it('COST_TIER edge: cost точно на верхній межі першого тіру → переходить у наступний', async () => {
+    // boundary semantics: half-open [min, max). cost=100 НЕ у [0,100), а у [100,500).
+    const tiers: RuleTier[] = [
+      { costMin: 0, costMax: 100, percentValue: 30, sortOrder: 0 },
+      { costMin: 100, costMax: 500, percentValue: 20, sortOrder: 1 },
+    ];
+    prisma.pricingRule.findMany.mockResolvedValue([rule({ type: 'COST_TIER', tiers })]);
+    const price = await service.calculateSalePrice('org', 'g', null, null, null, 100);
+    expect(price).toBeCloseTo(120); // 100 * 1.20 (тір [100,500), не [0,100))
+  });
+
+  it('COST_TIER edge: cost точно дорівнює costMin → тір застосовується (нижня межа включена)', async () => {
+    const tiers: RuleTier[] = [
+      { costMin: 200, costMax: 500, percentValue: 20, sortOrder: 0 },
+    ];
+    prisma.pricingRule.findMany.mockResolvedValue([rule({ type: 'COST_TIER', tiers })]);
+    const price = await service.calculateSalePrice('org', 'g', null, null, null, 200);
+    expect(price).toBeCloseTo(240); // 200 у [200,500) — тір застосовується
+  });
 });
 
 describe('PricingService.applyRuleToGoods', () => {
