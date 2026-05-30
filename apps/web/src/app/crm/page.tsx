@@ -2,10 +2,18 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import {
+  useCounterparties,
+  useDeleteCounterparty,
+  counterpartiesKeys,
+  Counterparty,
+  PaginatedCounterparties,
+} from '@/hooks/api/useCounterparties';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
@@ -45,27 +53,6 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
-
-interface Counterparty {
-  id: string;
-  type: string;
-  firstName: string | null;
-  lastName: string | null;
-  companyName: string | null;
-  phone: string | null;
-  email: string | null;
-  edrpou: string | null;
-  vatPayer: boolean;
-  balance: number;
-  createdAt: string;
-  deletedAt: string | null;
-}
-interface Paginated {
-  items: Counterparty[];
-  total: number;
-  page: number;
-  limit: number;
-}
 
 interface CrmFilters extends Record<string, unknown> {
   search: string;
@@ -125,19 +112,41 @@ const TYPE_FILTER_OPTIONS = [
 
 export default function CrmPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT']);
+  const queryClient = useQueryClient();
   const router = useRouter();
-  const [data, setData] = useState<Paginated | null>(null);
-  const [loading, setLoading] = useState(true);
+
+  // Local filter & pagination state
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [showDeleted, setShowDeleted] = useState(false);
+  const [error, setError] = useState('');
+
+  // React Query hooks
+  const limit = 20;
+  const {
+    data: queryData,
+    isLoading: loading,
+    error: queryError,
+  } = useCounterparties({
+    page,
+    limit,
+    types: typeFilter,
+    q: debouncedSearch,
+    showDeleted,
+  });
+  const counterparties = queryData?.items ?? [];
+  const total = queryData?.total ?? 0;
+
+  // Mutations
+  const deleteMutation = useDeleteCounterparty();
+
+  // Modal & form state
   const [modal, setModal] = useState(false);
   const [editingCp, setEditingCp] = useState<Counterparty | null>(null);
   const [editTab, setEditTab] = useState<'main' | 'vehicles' | 'work-orders'>('main');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
   const [form, setForm] = useState({
     type: 'CLIENT',
@@ -248,7 +257,7 @@ export default function CrmPage() {
   );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
-  const bulkSelect = useBulkSelect(data?.items ?? []);
+  const bulkSelect = useBulkSelect(counterparties);
 
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -268,7 +277,7 @@ export default function CrmPage() {
           const succeeded = results.filter(r => r.status === 'fulfilled').length;
           const failed = results.length - succeeded;
           bulkSelect.clear();
-          load();
+          queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
           if (succeeded > 0 && failed === 0) {
             toast.success(`Видалено ${succeeded} контрагент${succeeded === 1 ? 'а' : 'ів'}`);
           } else if (succeeded > 0) {
@@ -279,27 +288,11 @@ export default function CrmPage() {
         },
       },
     ],
-    [bulkSelect],
+    [bulkSelect, queryClient],
   ); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Unsaved guard (modal form) ───────────────────────────────────────────────
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
-
-  const load = useCallback(() => {
-    setLoading(true);
-    const params = new URLSearchParams({ page: String(page), limit: '20' });
-    if (debouncedSearch) params.set('q', debouncedSearch);
-    if (typeFilter) params.set('type', typeFilter);
-    if (showDeleted) params.set('showDeleted', 'true');
-    apiFetch<Paginated>(`/counterparties?${params}`)
-      .then(setData)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
-      .finally(() => setLoading(false));
-  }, [page, debouncedSearch, typeFilter, showDeleted]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   useEffect(() => {
     if (!selectedCp || !detailPanel.enabled) {
@@ -371,7 +364,7 @@ export default function CrmPage() {
       });
       dirty.resetDirty();
       setModal(false);
-      load();
+      queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
     } finally {
@@ -526,7 +519,7 @@ export default function CrmPage() {
       setEditingCp(null);
       if (selectedCp?.id === editingCp.id) setSelectedCp(null);
       toast.success('Контрагента збережено');
-      load();
+      queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
     } finally {
@@ -541,7 +534,7 @@ export default function CrmPage() {
       await apiFetch(`/counterparties/${id}`, { method: 'DELETE' });
       toast.success('Контрагента позначено на видалення');
       if (selectedCp?.id === id) setSelectedCp(null);
-      load();
+      queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка видалення');
     }
@@ -550,7 +543,7 @@ export default function CrmPage() {
   const displayName = (cp: Counterparty) =>
     cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ') ?? '—';
 
-  const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
+  const totalPages = Math.ceil(total / limit);
 
   const CRM_CONFIG_FIELD_DEFS = [
     { key: 'phone', label: 'Телефон' },
@@ -654,7 +647,7 @@ export default function CrmPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Контрагенти</h1>
-          <p className="page-subtitle">{data ? `${data.total} записів` : 'Завантаження...'}</p>
+          <p className="page-subtitle">{`${total} записів`}</p>
         </div>
         <Button
           leftIcon={<Plus />}
@@ -809,7 +802,7 @@ export default function CrmPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && data?.items.length === 0 && (
+              {!loading && counterparties.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
@@ -825,7 +818,7 @@ export default function CrmPage() {
                 </TableRow>
               )}
               {!loading &&
-                data?.items.map(cp => {
+                counterparties.map((cp: Counterparty) => {
                   const isDeleted = !!cp.deletedAt;
                   return (
                     <TableRow
