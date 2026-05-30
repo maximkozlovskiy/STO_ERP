@@ -2,10 +2,17 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Package, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
+import {
+  useStockItems,
+  useLowStockItems,
+  StockItem,
+  inventoryKeys,
+} from '@/hooks/api/useInventory';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -28,21 +35,6 @@ interface Warehouse {
   id: string;
   name: string;
 }
-interface StockItem {
-  id: string;
-  goodId: string;
-  goodName: string;
-  goodSku: string | null;
-  unit: string;
-  salePrice: number;
-  warehouseId: string;
-  warehouseName: string;
-  quantity: number;
-  reserved: number;
-  available: number;
-  minStock: number | null;
-  isLow: boolean;
-}
 interface LowStockItem {
   goodId: string;
   goodName: string;
@@ -61,24 +53,38 @@ function fmt(n: number) {
 export default function InventoryPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST']);
 
-  const [items, setItems] = useState<StockItem[]>([]);
+  const queryClient = useQueryClient();
+
+  // Local filter & UI state
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState('');
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q);
   const [showLow, setShowLow] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [lowItems, setLowItems] = useState<LowStockItem[]>([]);
-  const [showLowModal, setShowLowModal] = useState(false);
   const [error, setError] = useState('');
 
+  // Detail panel state
   const [selectedItem, setSelectedItem] = useState<StockItem | null>(null);
   const [editingMinStock, setEditingMinStock] = useState(false);
   const [minStockVal, setMinStockVal] = useState('');
   const [savingMinStock, setSavingMinStock] = useState(false);
 
+  // Low stock modal state
+  const [showLowModal, setShowLowModal] = useState(false);
+
+  // React Query hooks
+  const {
+    data: items = [],
+    isLoading: loading,
+    error: queryError,
+  } = useStockItems({
+    warehouseId,
+    q: debouncedQ,
+  });
+  const { data: lowItems = [], refetch: refetchLowItems } = useLowStockItems();
+
+  // Reference data — paint instantly from sessionStorage, refresh in background
   const loadWarehouses = useCallback(async () => {
-    // Reference data — paint instantly from sessionStorage, refresh in background.
     const cached = getCached<Warehouse[]>('cache:warehouses');
     if (cached) setWarehouses(cached);
     try {
@@ -88,32 +94,6 @@ export default function InventoryPage() {
       setCache('cache:warehouses', list);
     } catch (e: unknown) {
       if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження складів');
-    }
-  }, []);
-
-  const loadItems = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (warehouseId) params.set('warehouseId', warehouseId);
-      if (debouncedQ) params.set('q', debouncedQ);
-      const data = await apiFetch<StockItem[]>(`/stock-items?${params}`);
-      setItems(data);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження');
-    } finally {
-      setLoading(false);
-    }
-  }, [warehouseId, debouncedQ]);
-
-  const loadLow = useCallback(async (): Promise<boolean> => {
-    try {
-      const data = await apiFetch<LowStockItem[]>('/stock-items/low');
-      setLowItems(data);
-      return true;
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження');
-      return false;
     }
   }, []);
 
@@ -133,13 +113,8 @@ export default function InventoryPage() {
       setSelectedItem(prev =>
         prev ? { ...prev, minStock: val, isLow: val !== null && prev.quantity <= val } : prev,
       );
-      setItems(prev =>
-        prev.map(i =>
-          i.id === selectedItem.id
-            ? { ...i, minStock: val, isLow: val !== null && i.quantity <= val }
-            : i,
-        ),
-      );
+      // Invalidate the query to refresh
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.items() });
       setEditingMinStock(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка збереження');
@@ -151,9 +126,6 @@ export default function InventoryPage() {
   useEffect(() => {
     loadWarehouses();
   }, [loadWarehouses]);
-  useEffect(() => {
-    loadItems();
-  }, [loadItems]);
 
   const displayed = showLow ? items.filter(i => i.isLow) : items;
 
@@ -172,7 +144,8 @@ export default function InventoryPage() {
         <Button
           variant="outline"
           onClick={async () => {
-            if (await loadLow()) setShowLowModal(true);
+            await refetchLowItems();
+            setShowLowModal(true);
           }}
           className="text-warning-text border-warning-border bg-warning-subtle hover:bg-warning-subtle/80"
         >
