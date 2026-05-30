@@ -172,7 +172,7 @@ export class XlsxService {
 
   async parseGoods(buffer: Buffer | Uint8Array): Promise<GoodRow[]> {
     const workbook = new ExcelJS.Workbook();
-    await (workbook.xlsx as any).load(buffer);
+    await workbook.xlsx.load(buffer.buffer as ArrayBuffer);
     const sheet = workbook.getWorksheet('Товари') || workbook.worksheets[0];
 
     if (!sheet) throw new BadRequestException('Аркуш "Товари" не знайдено');
@@ -206,7 +206,7 @@ export class XlsxService {
 
   async parseWorks(buffer: Buffer | Uint8Array): Promise<WorkRow[]> {
     const workbook = new ExcelJS.Workbook();
-    await (workbook.xlsx as any).load(buffer);
+    await workbook.xlsx.load(buffer.buffer as ArrayBuffer);
     const sheet = workbook.getWorksheet('Роботи') || workbook.worksheets[0];
 
     if (!sheet) throw new BadRequestException('Аркуш "Роботи" не знайдено');
@@ -239,7 +239,7 @@ export class XlsxService {
 
   async parseBrands(buffer: Buffer | Uint8Array): Promise<BrandRow[]> {
     const workbook = new ExcelJS.Workbook();
-    await (workbook.xlsx as any).load(buffer);
+    await workbook.xlsx.load(buffer.buffer as ArrayBuffer);
     const sheet = workbook.getWorksheet('Бренди') || workbook.worksheets[0];
 
     if (!sheet) throw new BadRequestException('Аркуш "Бренди" не знайдено');
@@ -265,7 +265,7 @@ export class XlsxService {
 
   async parseUnits(buffer: Buffer | Uint8Array): Promise<UnitRow[]> {
     const workbook = new ExcelJS.Workbook();
-    await (workbook.xlsx as any).load(buffer);
+    await workbook.xlsx.load(buffer.buffer as ArrayBuffer);
     const sheet = workbook.getWorksheet('Одиниці') || workbook.worksheets[0];
 
     if (!sheet) throw new BadRequestException('Аркуш "Одиниці" не знайдено');
@@ -530,7 +530,7 @@ export class XlsxService {
 
   async parsePOLines(buffer: Buffer | Uint8Array): Promise<POLineRow[]> {
     const workbook = new ExcelJS.Workbook();
-    await (workbook.xlsx as any).load(buffer);
+    await workbook.xlsx.load(buffer.buffer as ArrayBuffer);
     const sheet = workbook.worksheets[0];
 
     if (!sheet) throw new BadRequestException('Таблиця не знайдена');
@@ -582,7 +582,7 @@ export class XlsxService {
       })).filter(r => r.sku || r.barcode);
     } else {
       const workbook = new ExcelJS.Workbook();
-      await (workbook.xlsx as any).load(buffer);
+      await workbook.xlsx.load(buffer.buffer as ArrayBuffer);
       const sheet = workbook.worksheets[0];
       if (!sheet) throw new BadRequestException('Таблиця не знайдена');
       items = [];
