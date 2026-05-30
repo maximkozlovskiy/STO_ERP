@@ -19,7 +19,7 @@ import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
-import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -298,6 +298,7 @@ function WorksTab() {
           onSave={handleSaveFilter}
           onRemove={removeFilter}
           className="mb-3"
+          hideSaveButton
         />
       )}
 
@@ -316,6 +317,9 @@ function WorksTab() {
           onImportComplete={load}
         />
         <div className="flex items-center gap-2 ml-auto">
+          {features.savedFiltersEnabled && (
+            <SaveFilterButton onSave={handleSaveFilter} />
+          )}
           <ColumnsDropdown
             columns={worksOrderedColumns}
             visibleKeys={worksColVisible}
@@ -896,6 +900,7 @@ function GoodsTab() {
           onSave={handleSaveFilter}
           onRemove={removeFilter}
           className="mb-3"
+          hideSaveButton
         />
       )}
 
@@ -910,6 +915,9 @@ function GoodsTab() {
           onImportComplete={load}
         />
         <div className="flex items-center gap-2 ml-auto">
+          {features.savedFiltersEnabled && (
+            <SaveFilterButton onSave={handleSaveFilter} />
+          )}
           <ColumnsDropdown
             columns={goodsOrderedColumns}
             visibleKeys={goodsColVisible}
@@ -1779,6 +1787,7 @@ function ServicesTab() {
           onSave={handleSaveFilter}
           onRemove={removeFilter}
           className="mb-3"
+          hideSaveButton
         />
       )}
 
@@ -1788,6 +1797,9 @@ function ServicesTab() {
           <Input value={q} onChange={e => { setQ(e.target.value); setPage(1); setActiveSavedFilterId(null); }} placeholder="Пошук послуг..." className="pl-9" />
         </div>
         <div className="flex items-center gap-2 ml-auto">
+          {features.savedFiltersEnabled && (
+            <SaveFilterButton onSave={handleSaveFilter} />
+          )}
           <ColumnsDropdown
             columns={servicesOrderedColumns}
             visibleKeys={servicesColVisible}

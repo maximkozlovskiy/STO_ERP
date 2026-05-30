@@ -20,7 +20,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
-import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { InlineEditCell, InlineViewCell } from '@/components/ui/inline-edit-cell';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
@@ -448,6 +448,7 @@ export default function WorkOrdersPage() {
           onSave={handleSaveFilter}
           onRemove={removeFilter}
           className="mb-3"
+          hideSaveButton
         />
       )}
 
@@ -484,16 +485,20 @@ export default function WorkOrdersPage() {
           {showDeleted ? 'Приховати видалені' : 'Показати видалені'}
         </Button>
 
-        <ColumnsDropdown
-          columns={orderedColumns}
-          visibleKeys={colVisible}
-          onToggle={toggleCol}
-          onReorder={reorder}
-          onRename={renameColumn}
-          onReset={resetConfig}
-          hasCustomization={JSON.stringify(order) !== JSON.stringify(WO_COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
-          className="ml-auto"
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          {features.savedFiltersEnabled && (
+            <SaveFilterButton onSave={handleSaveFilter} />
+          )}
+          <ColumnsDropdown
+            columns={orderedColumns}
+            visibleKeys={colVisible}
+            onToggle={toggleCol}
+            onReorder={reorder}
+            onRename={renameColumn}
+            onReset={resetConfig}
+            hasCustomization={JSON.stringify(order) !== JSON.stringify(WO_COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
+          />
+        </div>
       </div>
 
       {/* Bulk actions */}

@@ -22,7 +22,7 @@ import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
-import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
@@ -362,6 +362,7 @@ export default function StockDocumentsPage() {
           onSave={handleSaveFilter}
           onRemove={removeFilter}
           className="mb-3"
+          hideSaveButton
         />
       )}
 
@@ -421,6 +422,9 @@ export default function StockDocumentsPage() {
 
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          {features.savedFiltersEnabled && (
+            <SaveFilterButton onSave={handleSaveFilter} />
+          )}
           <ColumnsDropdown
                   columns={orderedColumns}
                   visibleKeys={colVisible}

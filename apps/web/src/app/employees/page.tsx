@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/table';
 import { DetailPanel, PanelField, PanelSection, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
-import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
@@ -523,6 +523,7 @@ export default function EmployeesPage() {
           onSave={handleSaveFilter}
           onRemove={removeFilter}
           className="mb-3"
+          hideSaveButton
         />
       )}
 
@@ -553,6 +554,9 @@ export default function EmployeesPage() {
         </Button>
         <div className="flex items-center gap-2 ml-auto">
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          {features.savedFiltersEnabled && (
+            <SaveFilterButton onSave={handleSaveFilter} />
+          )}
           <ColumnsDropdown
             columns={orderedColumns}
             visibleKeys={colVisible}
