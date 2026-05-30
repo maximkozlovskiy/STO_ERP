@@ -498,6 +498,17 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-30 — Detail-page ref-cache miss — картка сутності тягне ті ж довідники що й список
+
+**Сигнал:** detail-сторінка (`/X/[id]/PageClient.tsx`) робить `apiFetch('/works'/'employees'/'warehouses'/...)` без `getCached`/`setCache`, але parent list-сторінка (`/X/page.tsx`) той самий довідник у cache має. Користувач натискає рядок таблиці → детальна сторінка тягне 600+ рядків довідників із нуля, хоча 200ms тому ці ж дані вже були в кеші
+**Причина виникнення:** ref-cache додавався в першу чергу для list-сторінок (де dropdown = частина UI). Detail-сторінки пропускаються бо «це окрема сторінка, і вона завантажується раз». Насправді користувач у нормальному workflow відкриває 3-5-10 карток поспіль (наряди, рахунки, замовлення) — кожна з них cold-fetch одних і тих самих довідників
+**Підхід до виявлення:** після того як list-сторінка модуля закешована — обов'язково перевірити detail-сторінку (`apps/web/src/app/<module>/[id]/PageClient.tsx`). Грепнути `apiFetch.*/works\|/employees\|/warehouses\|/brands\|/units` без `getCached` поряд. Якщо знайдено — кандидат
+**Підхід до фіксу:** на початку useEffect: `const cached = getCached<T>(...); if (cached) setState(cached);` для кожного довідника. Після successful fetch — `setCache(...)`. Кеш ділиться з list-сторінкою через спільний sessionStorage ключ → перший fetch у сесії єдиний, всі наступні відкриття детальних сторінок миттєві
+**Реальний impact:** друге+ відкриття картки наряду у сесії: 3 fetch для works/employees/warehouses → 0 (cache hit). Перше відкриття не міняється (cold-start однаковий), але повторні навігації прискорюються драматично — типовий день: 30+ карток × 3 fetches = 90 RTT економії
+**Де шукати ще:** будь-яка detail-сторінка модуля (`work-orders/[id]`, `invoices/[id]` якщо створиться, `purchase-orders/[id]` якщо створиться, `crm/[id]`, `vehicles/[id]`) — перевір що довідники (не контент сутності, а саме reference data: списки виборів) seed-аться з кешу
+
+---
+
 ### 2026-05-28 — Читання `new Date()` / годинника всередині render — компоненти з time-залежним UI
 
 **Сигнал:** `new Date()`, `Date.now()`, `.getMinutes()`/`.getHours()` викликані прямо у JSX або у `.map()` що генерує опції/комірки — особливо для disabled-логіки «минулий час». Це і impure render (різний результат при однакових props), і повторний виклик на кожен елемент
@@ -525,7 +536,10 @@ TypeScript: ✅ 0 errors
 **Frontend:**
 - ✅ useDebounce(300ms) на 8 сторінках (work-orders, crm, invoices, purchase-orders, inventory, employees, catalog ×3)
 - ✅ next/dynamic recharts: dashboard (235→124kB), reports (269→149kB)
-- ✅ sessionStorage ref-cache: branches, warehouses, zones, lifts, work-categories, brands, units, suppliers, wo-templates, currencies, bank-accounts
+- ✅ sessionStorage ref-cache: branches, warehouses, zones, lifts, work-categories, brands, units, suppliers, wo-templates, currencies, bank-accounts, works
+- ✅ WO detail card (`/work-orders/[id]`): works/employees/warehouses seeded from ref-cache — повторні відкриття карток 0 RTT для довідників
+- ✅ Calendar branches: ref-cache seed (читач) — узгоджено з consumer-pattern
+- ✅ Catalog Units/Brands tabs (source pages): seed + warm ref-cache → instant first-paint при перемиканні вкладок
 - ✅ infrastructure (source page): warm ref-cache (branches/zones/lifts/warehouses) → пропагація правок споживачам
 - ✅ settings/page.tsx: parallel Promise.all for currencies+rates+bank-accounts+cash-registers+org-info
 - ✅ settings/page.tsx: branches seeded from `cache:branches` ref-cache (workdays tab instant render)

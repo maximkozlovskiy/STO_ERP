@@ -9,6 +9,12 @@
 ## Останній commit
 
 ```
+f2a3d71 perf(catalog): seed Units/Brands tabs from ref-cache for instant first-paint
+8baef48 perf(web): ref-cache works/employees/warehouses on WO detail + branches on calendar
+31b00a8 perf(crm): skip user-preferences API fetch when localStorage cache < 5min old
+0dae6f9 fix(ui): invoices payForm infinite loop + crm detail-panel vehicle fetch race condition
+24bca1b perf(nav): enable prefetch on sidebar links — compile on hover not on click
+0b5c89c docs(memory): record CORS preflight + ref-cache seed perf session (9fe62df + 448ae08)
 448ae08 docs(skills): add CORS-preflight-cache + consumer-page-ref-cache-seed patterns to sto-optimize
 9fe62df perf(cors,settings): cache CORS preflight 24h + seed settings branches from ref-cache
 c24ffa7 fix(tester): Bugs #197-#199 — PricingRulesClient apiMultipartFetch + xlsx purchasePrice=null guard + applyPricing error surface
