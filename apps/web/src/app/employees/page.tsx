@@ -31,6 +31,7 @@ import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTableColumns } from '@/hooks/useTableColumns';
+import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { ModalTabs } from '@/components/ui/modal-tabs';
 import { toast } from '@/lib/toast';
@@ -134,6 +135,7 @@ export default function EmployeesPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('employees', COLUMNS);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -598,7 +600,7 @@ export default function EmployeesPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+                {visibleColumns.map(col => <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>)}
                 <TableHead />
               </TableRow>
             </TableHeader>

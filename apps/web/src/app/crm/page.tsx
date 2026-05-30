@@ -27,6 +27,7 @@ import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
+import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { toast } from '@/lib/toast';
@@ -127,6 +128,7 @@ export default function CrmPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('crm', CRM_COLUMNS);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -555,7 +557,7 @@ export default function CrmPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+                {visibleColumns.map(col => <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>)}
                 <TableHead />
               </TableRow>
             </TableHeader>

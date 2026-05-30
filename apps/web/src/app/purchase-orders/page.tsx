@@ -30,6 +30,7 @@ import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useTableColumns } from '@/hooks/useTableColumns';
+import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
@@ -96,6 +97,7 @@ export default function PurchaseOrdersPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('purchase-orders', COLUMNS);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder);
 
   const detailPanel = useDetailPanel('purchase-orders');
 
@@ -493,8 +495,8 @@ export default function PurchaseOrdersPage() {
                 )}
                 {visibleColumns.map(col => (
                   col.key === 'amount'
-                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
-                    : <TableHead key={col.key}>{col.label}</TableHead>
+                    ? <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>{col.label}</TableHead>
+                    : <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>
                 ))}
                 <TableHead />
               </TableRow>

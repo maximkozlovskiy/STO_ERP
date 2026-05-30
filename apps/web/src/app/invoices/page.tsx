@@ -31,6 +31,7 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
+import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
@@ -97,6 +98,7 @@ export default function InvoicesPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('invoices', INVOICE_COLUMNS);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder);
   const detailPanel = useDetailPanel('invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);
@@ -562,8 +564,8 @@ export default function InvoicesPage() {
                 )}
                 {visibleColumns.map(col => (
                   col.key === 'amount'
-                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
-                    : <TableHead key={col.key}>{col.label}</TableHead>
+                    ? <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>{col.label}</TableHead>
+                    : <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>
                 ))}
                 <TableHead />
               </TableRow>

@@ -29,6 +29,7 @@ import { useInlineEdit } from '@/hooks/useInlineEdit';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
+import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
 
@@ -168,6 +169,7 @@ export default function WorkOrdersPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('work-orders', WO_COLUMNS);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder);
 
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
   const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<WOFilters>('work-orders');
@@ -532,8 +534,8 @@ export default function WorkOrdersPage() {
                 )}
                 {visibleColumns.map(col => (
                   col.key === 'amount'
-                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
-                    : <TableHead key={col.key}>{col.label}</TableHead>
+                    ? <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>{col.label}</TableHead>
+                    : <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>
                 ))}
                 <TableHead />
               </TableRow>

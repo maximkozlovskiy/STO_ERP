@@ -30,6 +30,7 @@ import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
+import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
@@ -87,6 +88,7 @@ export default function StockDocumentsPage() {
   ], []);
 
   const { visibleKeys: colVisible, visibleColumns, orderedColumns, order, customLabels, toggle: toggleCol, reorder, renameColumn, resetConfig } = useTableColumns('stock-documents', COLUMNS);
+  const { dragProps } = useColumnDrag(visibleColumns, reorder);
 
   const detailPanel = useDetailPanel('stock-documents');
 
@@ -468,8 +470,8 @@ export default function StockDocumentsPage() {
                 )}
                 {visibleColumns.map(col => (
                   col.key === 'lines'
-                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
-                    : <TableHead key={col.key}>{col.label}</TableHead>
+                    ? <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>{col.label}</TableHead>
+                    : <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>
                 ))}
                 <TableHead />
               </TableRow>

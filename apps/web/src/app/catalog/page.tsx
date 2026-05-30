@@ -31,6 +31,7 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
+import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { ModalTabs } from '@/components/ui/modal-tabs';
@@ -139,6 +140,7 @@ function WorksTab() {
   ], []);
 
   const { visibleKeys: worksColVisible, visibleColumns: worksVisibleColumns, orderedColumns: worksOrderedColumns, order: worksOrder, customLabels: worksCustomLabels, toggle: toggleWorksCol, reorder: reorderWorks, renameColumn: renameWorksCol, resetConfig: resetWorksConfig } = useTableColumns('catalog-works', WORKS_COLUMNS);
+  const { dragProps: worksDragProps } = useColumnDrag(worksVisibleColumns, reorderWorks);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -363,7 +365,7 @@ function WorksTab() {
                     />
                   </TableHead>
                 )}
-                {worksVisibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+                {worksVisibleColumns.map(col => <TableHead key={col.key} {...worksDragProps(col.key)}>{col.label}</TableHead>)}
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -652,6 +654,7 @@ function GoodsTab() {
   ], []);
 
   const { visibleKeys: goodsColVisible, visibleColumns: goodsVisibleColumns, orderedColumns: goodsOrderedColumns, order: goodsOrder, customLabels: goodsCustomLabels, toggle: toggleGoodsCol, reorder: reorderGoods, renameColumn: renameGoodsCol, resetConfig: resetGoodsConfig } = useTableColumns('catalog-goods', GOODS_COLUMNS);
+  const { dragProps: goodsDragProps } = useColumnDrag(goodsVisibleColumns, reorderGoods);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -961,7 +964,7 @@ function GoodsTab() {
                     />
                   </TableHead>
                 )}
-                {goodsVisibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+                {goodsVisibleColumns.map(col => <TableHead key={col.key} {...goodsDragProps(col.key)}>{col.label}</TableHead>)}
                 <TableHead>Тип</TableHead>
                 <TableHead />
               </TableRow>
@@ -1659,6 +1662,7 @@ function ServicesTab() {
   ], []);
 
   const { visibleKeys: servicesColVisible, visibleColumns: servicesVisibleColumns, orderedColumns: servicesOrderedColumns, order: servicesOrder, customLabels: servicesCustomLabels, toggle: toggleServicesCol, reorder: reorderServices, renameColumn: renameServicesCol, resetConfig: resetServicesConfig } = useTableColumns('catalog-services', SERVICES_COLUMNS);
+  const { dragProps: servicesDragProps } = useColumnDrag(servicesVisibleColumns, reorderServices);
 
   // ── Saved filters ────────────────────────────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -1843,7 +1847,7 @@ function ServicesTab() {
                     />
                   </TableHead>
                 )}
-                {servicesVisibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+                {servicesVisibleColumns.map(col => <TableHead key={col.key} {...servicesDragProps(col.key)}>{col.label}</TableHead>)}
                 <TableHead>Роботи</TableHead>
                 <TableHead>Товари</TableHead>
                 <TableHead />
