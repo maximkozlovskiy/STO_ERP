@@ -509,6 +509,72 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-30 — Sequential FK validation у NestJS create/update — будь-який сервіс що приймає DTO з кількома FK полями
+
+**Сигнал:** у методі `create(orgId, dto)` або `addLine(orgId, dto)` сервісу йдуть два-три-чотири `await this.prisma.X.findFirst({ where: { id: dto.xId, orgId, deletedAt: null } })` поспіль — кожен для іншої сутності (work, employee, good, warehouse, counterparty). Кожен виклик блокує наступний на час одного RTT до Postgres
+**Причина виникнення:** найприродніший спосіб писати валідацію: одна перевірка → if (!entity) throw → наступна перевірка. Виглядає лінійно і читабельно, але кожна перевірка незалежна (FK поля з різних таблиць), отже їх можна виконати конкурентно. Це не N+1 (немає циклу), а звичайний waterfall — менш помітний, але масовий: майже в кожному `addLine`/`create` сервісу
+**Підхід до виявлення:** grep `await this\.prisma\.\w+\.findFirst` у `*.service.ts`, шукати послідовні рядки з різними моделями. Якщо їх в одному методі ≥2 і всі читають за `dto.xId` (а не по результату попереднього) — кандидат
+**Підхід до фіксу:** `const [a, b, c] = await Promise.all([findFirst(...), findFirst(...), findFirst(...)])`; перевірки `if (!a) throw` залишити ПІСЛЯ Promise.all — порядок повідомлень про помилку не страждає, бо всі обидва запити вже виконані. Для опціональних FK — тернарка `dto.xId ? findFirst(...) : Promise.resolve(null)` зберігає типи
+**Реальний impact:** N RTT → 1 RTT. На warranties.create з 4 послідовними findFirst (wo+cp+line+part) — 4× прискорення латенсі цього кроку. На work-orders.addLine — 2× (work+employee). Помітно при роботі через WAN/VPN де RTT 30-50ms
+**Де шукати ще:** будь-який метод create/update/addX/addY/remove що валідує >1 FK поле з DTO. Особливо часто: warranty, work-order-line, work-order-part, service, invoice-line, settlement act, completion-act PDF generation. Перевіряти кожен новий backend module
+
+---
+
+### 2026-05-30 — Sequential queue.add у фан-аут хендлерах — webhook delivery, sms/notification dispatch
+
+**Сигнал:** `for (const x of list) { await this.queue.add('job', {...}, opts); }` — сервіс кладе по черзі N independent jobs у BullMQ/Redis-чергу. Кожен `add` робить окремий Redis-PIPELINE round-trip
+**Причина виникнення:** черга семантично надійна (job persists навіть якщо process crash), тому здається що додавання — внутрішня деталь і `await` у циклі прийнятний. Насправді Bull в Promise.all внутрішньо pipelines через ioredis multi/exec, тож паралельне додавання дешевше за послідовне
+**Підхід до виявлення:** grep `for (const \w+ of \w+)` у backend сервісах, для кожного циклу перевірити чи тіло — це лише `queue.add` (або `apiQueue.something(payload, opts)` для іншої черги). Якщо так — це fan-out без межі і не потребує послідовності
+**Підхід до фіксу:** `await Promise.all(list.map(x => this.queue.add('job', {...}, opts)))`. Семантика збереглася: всі jobs все одно отримають свій attempts/backoff із black-box-черги; failure одного не ломає інші
+**Реальний impact:** N Redis RTT → 1 batch RTT. Для webhooks.publish з 5-50 endpoints — суттєве зниження p95 latency публікації події. Особливо актуально коли черга на віддаленому Redis (через мережу)
+**Де шукати ще:** будь-який fan-out у backend: webhooks.publish, notifications.send (якщо batch), email/sms/queue.add цикли, periodic-job dispatch
+
+---
+
+### 2026-05-30 — Duplicate findFirst для тієї ж сутності з різним select — services що окремо тягнуть проекції
+
+**Сигнал:** в одному методі є дві `findFirst({ where: { id: dto.xId, orgId } })` для однієї сутності, але з різним `select`/`include`. Наприклад: одна тягне `branchId`, інша тягне `status`. Виглядає як рефакторинг-релікт коли запит спочатку був без select, потім додався другий select для нової потреби
+**Причина виникнення:** інкрементальний рефакторинг — нову потребу (status check) додають поряд із наявною (branchId for queue), не помічаючи що це той самий запис. ESLint/TS не попереджають
+**Підхід до виявлення:** grep всі `findFirst({ where: { id: dto.\w+ ` у файлі і перевірити чи дві з них мають однаковий `id: dto.SAME_FIELD`. Якщо так — кандидат на merge
+**Підхід до фіксу:** залишити одну `findFirst` що selectить ОБИДВА поля (branchId + status) — Postgres віддасть їх одним read; видалити дублікат, переписати наступні if-перевірки на властивості об'єкта
+**Реальний impact:** 1 RTT економії + 1 query log менше. Якщо метод викликається часто (payments.create — на кожну оплату) — це примітивний, але стабільний win
+**Де шукати ще:** будь-який сервіс де додавали нові business-rule перевірки поверх існуючої FK validation. payments.create, invoices.update, work-order transitions — типові місця
+
+---
+
+### 2026-05-30 — Sequential file/media upload у формі — будь-який handleUpload з for-await на FormData
+
+**Сигнал:** у frontend хендлері завантаження кількох файлів: `for (const file of Array.from(files)) { await apiMultipartFetch(url, fd); }`. Кожен upload блокує наступний на час повного HTTP round-trip. Користувач завантажує 5 фото → чекає sum(file) часу замість max(file)
+**Причина виникнення:** обробка помилок per-file найпростіша через for+try/catch. Здається що паралельне завантаження ускладнить tracking failure count
+**Підхід до виявлення:** grep `for (const \w+ of (Array\.from\()?files\)?)` у `*.tsx`, або `Array.from(files)\.\w*\.forEach.*await`. Перевірити чи тіло циклу — fetch/upload
+**Підхід до фіксу:** `Promise.allSettled(Array.from(files).map(file => ...))`. Failure count = `results.filter(r => r.status === 'rejected').length`. Логіка обробки results однаково проста, а wall-clock падає до max(file)
+**Реальний impact:** 5 файлів × 2s upload → 10s послідовно vs ~2.5s паралельно. На повільних 4G/Wi-Fi — драматично. Сервер тримає окремий обробник на кожен файл, тож паралелізм не "бомбардує" — Nginx/Caddy queue ще одного в worker pool
+**Де шукати ще:** будь-який handler що приймає `FileList`: work-order media, invoice attachments, vehicle photos, employee documents, signing scans
+
+---
+
+### 2026-05-30 — Sequential UPDATE у post-WO hook без транзакції — maintenance, schedules, notifications batch
+
+**Сигнал:** службовий метод що викликається після завершення наряду (`updateAfterWorkOrder`, `notifyAll`, `propagateChange`) робить `for (const x of list) { await prisma.X.update(...) }` поза транзакцією. На відміну від циклу всередині `$transaction` (де sequential семантично потрібен для consistency) — тут списки можна обробляти конкурентно
+**Причина виникнення:** код виглядає як список простих updates: природно писати for-await. Якщо ніхто явно не подумав «це поза tx — паралель ОК», лишається послідовним
+**Підхід до виявлення:** grep `for (const \w+ of \w+)` → перевірити, чи цей цикл всередині `$transaction(async (tx) => {...})`. Якщо НІ, і тіло — це лише `await this.prisma.X.update({ where: { id: x.id }, ... })` без залежностей між ітераціями → кандидат
+**Підхід до фіксу:** `await Promise.all(list.map(x => this.prisma.X.update({ where: { id: x.id }, ... })))`. Failure одного: Promise.all reject — це той самий контракт що й перший await-помилка у for-await
+**Реальний impact:** N RTT → 1 RTT batch. Для maintenance-schedules.updateAfterWorkOrder з 3-5 schedules на авто — 3-5× прискорення WO COMPLETED transition. Особливо помітно на flotах де графіків багато
+**Де шукати ще:** post-WO completion hooks, post-payment fan-out, bulk soft-delete loops, periodic job per-tenant updates
+
+---
+
+### 2026-05-30 — Covering index для WHERE+ORDER BY combo — list endpoints що показують найновіше
+
+**Сигнал:** на сторінці-вкладці "Аудит"/"Транзакції"/"Історія" Postgres сканує тисячі рядків, потім сортує їх у пам'яті. Existing index покриває WHERE (orgId+entityType+entityId), але не сортувальний стовпець (createdAt). EXPLAIN показує `Sort` node поверх `Index Scan`
+**Причина виникнення:** індекси проєктують на запит спочатку через WHERE — додають orgId, потім filter columns. ORDER BY часто додається пізніше у фічу або як UX-полірування. Створювати окремий індекс лише для sort коштовно, тому забувають розширити існуючий
+**Підхід до виявлення:** для кожного списку у UI що сортується за `createdAt DESC` і має filter — знайти відповідний `findMany({ where, orderBy: { createdAt: 'desc' }, take: N })`. Дивитись на існуючі `@@index` моделі: якщо там `(orgId, ...filterCols)` без `createdAt` в кінці — кандидат. Особливо коли `take` маленький (≤100) — sort на великому result-set за кадром
+**Підхід до фіксу:** замінити існуючий індекс на `(orgId, ...filterCols, createdAt)` — covering. Postgres віддасть результат в індекс-order, sort node зникає. Окремий індекс лише на createdAt лишити (для full-org scans)
+**Реальний impact:** для timeline-вкладок (audit, settlement transactions) на даних ≥10k записів — Sort node з 50-200ms падає в 0. Перші запити (cold cache) можуть прискоритися 5-10×. На малих таблицях ефект непомітний, але індекс не шкодить
+**Де шукати ще:** будь-який list endpoint з `WHERE filter + ORDER BY createdAt DESC + take`: audit events, settlement transactions, payments, invoices, work orders timeline, stock movements log, webhook deliveries
+
+---
+
 ### 2026-05-28 — Читання `new Date()` / годинника всередині render — компоненти з time-залежним UI
 
 **Сигнал:** `new Date()`, `Date.now()`, `.getMinutes()`/`.getHours()` викликані прямо у JSX або у `.map()` що генерує опції/комірки — особливо для disabled-логіки «минулий час». Це і impure render (різний результат при однакових props), і повторний виклик на кожен елемент
@@ -532,6 +598,18 @@ TypeScript: ✅ 0 errors
 - ✅ Invoices create: parallel Promise.all
 - ✅ CompletionActs create: parallel Promise.all
 - ✅ Calendar createSlot/updateSlot: parallel FK validation (Promise.all)
+- ✅ Work-orders addLine: parallel work+employee findFirst (2 RTT → 1)
+- ✅ Work-orders addPart: parallel good+warehouse findFirst (2 RTT → 1)
+- ✅ Warranties create: parallel wo+cp+line+part FK validation (4 RTT → 1)
+- ✅ Services create/update: parallel works+goods FK validation in tx
+- ✅ Settlements-account createReconciliationAct: parallel counterparty+account
+- ✅ Invoices addLine: parallel good+work FK validation
+- ✅ Completion-acts generatePdf: parallel org+wo fetch
+- ✅ Payments create: merge duplicate workOrder findFirst (branchId+status in one select)
+- ✅ Maintenance-schedules updateAfterWorkOrder: parallel per-schedule update (Promise.all map)
+- ✅ Webhooks publish: parallel queue.add for all endpoints (Bull pipelines)
+- ✅ Booking getAvailability: parallel lifts + busy slots + work durations (3 RTT → 1)
+- ✅ Reports stock: parallel stockItems + stockMovements findMany
 
 **Frontend:**
 - ✅ useDebounce(300ms) на 8 сторінках (work-orders, crm, invoices, purchase-orders, inventory, employees, catalog ×3)
@@ -552,6 +630,8 @@ TypeScript: ✅ 0 errors
 - ✅ CRM loadGarages: waterfall → staged parallel
 - ✅ WO detail: loadComments+Media+Audit → loadSecondary Promise.all
 - ✅ img lazy loading + decoding="async"
+- ✅ work-orders/[id] load(): WO + completion-acts + inspection → Promise.all (3 fire-and-forget → 1 batch, з explicit error fan-out)
+- ✅ work-orders/[id] handleMediaUpload: sequential for-await → Promise.allSettled (5 files: ~10s → ~2.5s)
 
 **DB:**
 - ✅ work_orders: `(orgId, status, branchId, deletedAt)`, `(orgId, completedAt, deletedAt)`
@@ -559,3 +639,5 @@ TypeScript: ✅ 0 errors
 - ✅ stock_movements: `(orgId, warehouseId, createdAt)`
 - ✅ stock_batches: `(orgId, warehouseId, isActive, createdAt)`
 - ✅ GIN trgm: work_orders.number, counterparties.(firstName/lastName/companyName), goods.(name/sku)
+- ✅ audit_events: `(orgId, entityType, entityId, createdAt)` covering — findByEntity timeline без sort node
+- ✅ settlement_transactions: `(orgId, settlementAccountId, createdAt)` covering — paginated list + reconciliation period scans

@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+331e4ca perf(db): covering indexes for audit-by-entity + settlement transactions
+95a08ef perf(backend,web): parallelize remaining independent fetches
+70bbaa6 perf(backend): parallelize independent FK validations + queue fan-out
 66eb6e3 fix(tester): Bugs #200-#202 — repair stale PO service spec + cover new pricing public methods + status guard contract
 e189793 docs(skills): add bulk-apply per-iteration-tx pattern to sto-review (Bug #194)
 c1dc5dd fix(review): PO apply-pricing N+1 + status guard + catalog cache-stale on mutation
