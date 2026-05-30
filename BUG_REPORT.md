@@ -6042,3 +6042,124 @@ Baseline: tsc 0 errors (api/web/shared), 376/376 API unit pass, 159/159 web vite
 **Статус:** [x] виправлено (частина (а)) — у `applyPricing` (purchase-orders/page.tsx) catch тепер обов'язково викликає `setError(msg)` поряд з опціональним `toast.error(msg)`. Помилка завжди видима у inline-banner вгорі сторінки. Також `setError('')` перед запитом — щоб новий запит чистив попередню помилку. Частина (б) (unmount race) — залишена як LOW: після unmount setState не має ефекту, лише React console warning у dev режимі; повний `mountedRef`-фікс не вартий комплексності для цього єдиного handler.
 
 ---
+
+
+## Session 2026-05-30 (C) — /sto-tester FULL після review-сесії e189793 (PO N+1, status guard, catalog cache-stale)
+
+Baseline на HEAD e189793: tsc 0 errors (api/web/shared) ✅. Web vitest: 179/179 passed ✅. **API vitest: 398/403 — 5 failures у `purchase-orders.service.spec.ts`** ❌ release-blocker (хибно-червоний baseline, stale spec після рефактору c1dc5dd applyPricing статус-guard). Фокус: верифікувати фікси c1dc5dd (PO applyPricing prefetch + status guard, catalog cache fromCache), покрити нові публічні методи `computePriceFromRules` + `getActiveRulesForOrg`, додати contract-тест на status guard.
+
+---
+
+## Bug #200 — [HIGH] purchase-orders.service.spec.ts: stale fixtures без `status: RECEIVED|PARTIAL` → 5/6 тестів падають на BadRequestException — release-blocker baseline
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts:59-170`
+**Severity:** HIGH
+**Категорія:** test-coverage / process
+
+**Опис:** Commit c1dc5dd (review-фікс) додав defense-in-depth статус-guard у `applyPricing`:
+```ts
+if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderStatus.PARTIAL) {
+  throw new BadRequestException('Розцінити можна лише отримані товари ...');
+}
+```
+Існуючі fixtures у `purchase-orders.service.spec.ts` (Bug #187 регресія) НЕ містять поле `status` у моках `prisma.purchaseOrder.findFirst.mockResolvedValueOnce({...})` — поле є `undefined` → guard кидає BadRequestException ДО будь-якої бізнес-логіки → 5 з 6 тестів падають:
+- «PO без lines → { updated: 0, details: [] }»
+- «ціна не змінилась (різниця < 0.001) → skip»
+- «ціна змінилась → виклик $transaction»
+- «mixed lines (одна змінилась, інша ні)»
+- «пропускає line.good=null»
+
+Падає АРЕ тест «кидає NotFoundException коли PO не знайдено» (бо findFirst повертає null, до guard не доходимо). Це класичний хибно-червоний baseline (симетрично до хибно-зеленого з 2026-05-29): попередній агент-review правильно додав guard у код, але НЕ оновив парний spec — таким чином повний `pnpm test --run` падає, а наступні AUTO-сесії на цьому baseline не зможуть розрізнити реальні регресії від шумової порожнечі.
+
+Додатково: рефактор замінив `pricingService.calculateSalePrice(...)` на `getActiveRulesForOrg + computePriceFromRules`, але spec ще мокає старий метод (`pricingService.calculateSalePrice.mockResolvedValueOnce(150)`). Навіть якщо додати `status`, тести працювали б випадково — насправді `calculateSalePrice` більше не викликається з applyPricing.
+
+**Очікувана поведінка:** Усі fixtures `findFirst` містять `status: PurchaseOrderStatus.RECEIVED` (або `PARTIAL`). Pricing-mock замінено на `pricingService.getActiveRulesForOrg` + `pricingService.computePriceFromRules` (нові публічні методи). Baseline `vitest run` зелений.
+
+**Фактична поведінка:** 5/6 фейлів у `purchase-orders.service.spec.ts`, повний `vitest run` валиться на 1 файлі (`Test Files: 1 failed | 38 passed`).
+
+**Підхід до фіксу:**
+1. Додати імпорт `PurchaseOrderStatus` з `@prisma/client`.
+2. Кожен mock `findFirst.mockResolvedValueOnce({...})` → додати `status: PurchaseOrderStatus.RECEIVED`.
+3. Замінити mock `pricingService.calculateSalePrice` на `getActiveRulesForOrg` (повертає `[]` або список правил) + `computePriceFromRules` (повертає число).
+4. Оновити assertions: `expect(pricingService.calculateSalePrice).not.toHaveBeenCalled()` → `expect(pricingService.computePriceFromRules).not.toHaveBeenCalled()` тощо.
+5. Додати новий тест: «статус DRAFT → BadRequestException + не пише» (boundary для нового guard).
+6. Додати новий тест: «статус PARTIAL → дозволено (так само як RECEIVED)» (друга гілка guard).
+
+**Статус:** [x] виправлено — оновлено fixtures з `status: PurchaseOrderStatus.RECEIVED|PARTIAL`, замінено `calculateSalePrice` мок на `getActiveRulesForOrg`+`computePriceFromRules`, додано 2 нові тести на status-guard (DRAFT → throws, PARTIAL → success). Файл passes, повний API suite зелений.
+
+---
+
+## Bug #201 — [MEDIUM] pricing.service: нові публічні методи `computePriceFromRules` + `getActiveRulesForOrg` (commit c1dc5dd) без unit-тестів — регресія беззвучна
+
+**Файл:** `apps/api/src/modules/inventory/pricing.service.spec.ts` (відсутні describe-блоки для нових методів)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Commit c1dc5dd додав ДВА нові публічні методи у `PricingService`:
+- `getActiveRulesForOrg(orgId)` — повертає `pricingRule.findMany` з фіксованою where (`isActive: true, deletedAt: null`) + include tiers + orderBy priority asc + take 200
+- `computePriceFromRules(rules, goodId, goodCategory?, goodType?, brandId?, costPrice)` — pure in-memory rule resolution, дублює switch-кейси `calculateSalePrice` але БЕЗ DB-калу
+
+Жодного тесту для них немає у `pricing.service.spec.ts`. Існуючі 19 тестів покривають лише старий `calculateSalePrice` (який тепер працює у legacy-сценаріях applyRuleToGoods, але новий applyPricing у PO використовує саме нові методи). Регресія типу:
+- Інверсія priority hierarchy у `computePriceFromRules.find(...)` — мінорна перестановка fallback-ів → PO застосовує НЕ-ту правило (наприклад, default замість brand-specific) → неправильна salePrice
+- Зміна where у `getActiveRulesForOrg` (наприклад, рефактор додає `isPublished: true` фільтр) → активні правила не повертаються → PO applyPricing не змінює нічого → silent corruption (повертає `updated: 0` замість реального оновлення)
+
+Без spec — обидві регресії проходять зеленою.
+
+**Очікувана поведінка:** Парні тести для нових публічних методів:
+
+`computePriceFromRules`:
+- порожній rules array → повертає costPrice (no-op)
+- PERCENT → cost * (1 + p/100)
+- FIXED_AMOUNT → cost + delta
+- FIXED_PRICE → fixedPrice (ігнор cost)
+- COST_TIER з matching tier
+- COST_TIER без matching → fallback на cost
+- округлення roundTo
+- захист `Math.max(0, result)`
+- priority hierarchy: goodId > brandId > goodCategory > goodType > default
+- brandId rule перекриває goodType rule
+
+`getActiveRulesForOrg`:
+- викликає findMany з `orgId, isActive: true, deletedAt: null` → асерт shape `where`
+- orderBy `priority: 'asc'`
+- include `tiers` з orderBy sortOrder asc
+- take: 200
+
+**Фактична поведінка:** 0 тестів для обох методів. Регресія беззвучна.
+
+**Підхід до фіксу:** Додати 2 нові `describe` блоки в кінці `pricing.service.spec.ts`:
+- `describe('PricingService.computePriceFromRules', () => { ... })` — pure-function тести (просто `new PricingService({} as PrismaService)`)
+- `describe('PricingService.getActiveRulesForOrg', () => { ... })` — через `Test.createTestingModule` з mock prisma
+
+**Статус:** [x] виправлено — додано 12 нових unit-тестів у `pricing.service.spec.ts`: 10 для `computePriceFromRules` (PERCENT/FIXED_AMOUNT/FIXED_PRICE/COMPETITOR_PLUS/COST_TIER усі гілки + priority + Math.max(0) + roundTo + empty rules) + 2 для `getActiveRulesForOrg` (асертять where shape + orderBy + take + include).
+
+---
+
+## Bug #202 — [MEDIUM] purchase-orders.contract.spec.ts: status guard (RECEIVED → 200, DRAFT → 400) не покритий — HTTP-contract регресія без захисту
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.contract.spec.ts:64-127`
+**Severity:** MEDIUM
+**Категорія:** test-coverage / api-contract
+
+**Опис:** Existing contract spec для `POST /purchase-orders/:id/apply-pricing` (Bug #189) покриває:
+- 201 + dto shape для валідного UUID
+- 400 для не-UUID id
+- 403 без JWT
+- 404 коли PO не знайдено
+- 201 + empty details для PO без змін
+
+Але НЕ покриває новий defense-in-depth status guard (c1dc5dd):
+- DRAFT/ORDERED/CANCELLED PO → service кидає BadRequestException(400) — НЕ покрито
+- RECEIVED/PARTIAL → нормальний 200 path — частково покрито (тільки 200 з RECEIVED непрямо)
+
+Регресія типу «видалити status guard у service під спрощення» пройде contract spec зеленою. Регресія типу «змінити `RECEIVED && PARTIAL` на `RECEIVED || PARTIAL`» (boolean інверсія) — теж проходить.
+
+**Очікувана поведінка:** Додати contract-тест: «DRAFT → 400 з повідомленням про необхідність RECEIVED/PARTIAL»: serviceMock.applyPricing кидає BadRequestException → res.statusCode = 400 + укр. message.
+
+**Фактична поведінка:** 0 contract-тестів для status guard.
+
+**Підхід до фіксу:** Додати один тест: «status guard: DRAFT → 400» що мокає `serviceMock.applyPricing.mockRejectedValueOnce(new BadRequestException('Розцінити можна лише отримані товари ...'))` → асертить statusCode=400 + укр. message.
+
+**Статус:** [x] виправлено — додано contract-тест «status guard: 400 коли PO у DRAFT/ORDERED (service кидає BadRequestException)» у `purchase-orders.contract.spec.ts`. Усі contract тести passed.
+
+---

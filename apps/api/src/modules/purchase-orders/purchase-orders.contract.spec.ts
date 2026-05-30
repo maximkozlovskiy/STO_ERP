@@ -1,4 +1,4 @@
-import { INestApplication, ValidationPipe, NotFoundException } from '@nestjs/common';
+import { INestApplication, ValidationPipe, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -123,6 +123,20 @@ describe('PurchaseOrders — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(201);
       expect(res.json()).toEqual({ updated: 0, details: [] });
+    });
+
+    // Bug #202: defense-in-depth status guard (commit c1dc5dd) — лише RECEIVED/PARTIAL
+    it('Bug #202 status guard: 400 коли PO у DRAFT/ORDERED (service кидає BadRequestException)', async () => {
+      serviceMock.applyPricing.mockRejectedValueOnce(
+        new BadRequestException('Розцінити можна лише отримані товари (статус RECEIVED або PARTIAL)'),
+      );
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/apply-pricing`,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().message).toMatch(/RECEIVED.*PARTIAL/);
+      expect(serviceMock.applyPricing).toHaveBeenCalledWith('org-1', VALID_UUID);
     });
   });
 });
