@@ -11,6 +11,7 @@ import {
   Post,
   Query,
   UseGuards,
+  Header,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -34,6 +35,7 @@ import { ZonesService } from './zones.service';
 export class ZonesController {
   constructor(private readonly service: ZonesService) {}
 
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Список зон' })

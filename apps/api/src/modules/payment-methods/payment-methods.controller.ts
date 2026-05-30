@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  Header,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -30,6 +31,7 @@ import { PaymentMethodsService } from './payment-methods.service';
 export class PaymentMethodsController {
   constructor(private readonly service: PaymentMethodsService) {}
 
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список методів оплати' })

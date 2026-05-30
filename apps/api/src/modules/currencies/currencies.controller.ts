@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  Header,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -26,6 +27,7 @@ import { CreateCurrencyDto, UpdateCurrencyDto } from './currencies.dto';
 export class CurrenciesController {
   constructor(private readonly service: CurrenciesService) {}
 
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Список валют' })

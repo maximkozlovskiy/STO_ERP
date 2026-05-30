@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  Header,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -26,6 +27,7 @@ import { BrandsService } from './brands.service';
 export class BrandsController {
   constructor(private readonly service: BrandsService) {}
 
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список брендів' })

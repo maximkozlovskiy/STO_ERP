@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -141,6 +142,7 @@ export class SettingsController {
   }
 
   @Get('tax-rates')
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список ставок ПДВ' })
   getTaxRates(@OrgContext() orgId: string) {

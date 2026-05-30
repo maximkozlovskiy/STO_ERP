@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  Header,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -26,6 +27,7 @@ import { BranchesService } from './branches.service';
 export class BranchesController {
   constructor(private readonly service: BranchesService) {}
 
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список філій' })

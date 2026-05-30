@@ -11,6 +11,7 @@ import {
   Post,
   Query,
   UseGuards,
+  Header,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -27,6 +28,7 @@ import { WarehousesService } from './warehouses.service';
 export class WarehousesController {
   constructor(private readonly service: WarehousesService) {}
 
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
   @Get()
   // MECHANIC needs read-only access — work order /parts modal renders a
   // warehouse <Select> and MECHANIC is permitted to add parts via
