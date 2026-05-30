@@ -165,6 +165,45 @@ describe('XlsxService', () => {
         .rejects.toThrow(BadRequestException);
     });
 
+    it('Bug #198: purchasePrice=null → потрапляє у notFound, не пише good.updateMany (захист від затирання salePrice=0)', async () => {
+      const csv = 'sku,barcode,name\nNO-COST-SKU,,Без собівартості\n';
+      const buffer = Buffer.from(csv, 'utf-8');
+
+      prisma.good.findFirst.mockResolvedValueOnce({
+        id: 'good-no-cost', name: 'Без собівартості', sku: 'NO-COST-SKU',
+        purchasePrice: null, salePrice: 200,
+        category: null, goodType: null, brandId: null,
+      });
+
+      const result = await service.applyPricingFromList(ORG, buffer, 'csv');
+      expect(result.found).toBe(0); // не пушаємо у details
+      expect(result.updated).toBe(0);
+      expect(result.notFound).toEqual([expect.stringContaining('NO-COST-SKU')]);
+      expect(result.notFound[0]).toContain('без собівартості');
+      // calculateSalePrice НЕ викликаний — щоб не марнувати query
+      expect(pricingService.calculateSalePrice).not.toHaveBeenCalled();
+      expect(prisma.good.updateMany).not.toHaveBeenCalled();
+      expect(prisma.priceHistory.create).not.toHaveBeenCalled();
+    });
+
+    it('Bug #198: purchasePrice=0 → потрапляє у notFound (захист від PERCENT/COST_TIER 0%-результату)', async () => {
+      const csv = 'sku,barcode,name\nZERO-COST,,Нуль собівартість\n';
+      const buffer = Buffer.from(csv, 'utf-8');
+
+      prisma.good.findFirst.mockResolvedValueOnce({
+        id: 'good-zero', name: 'Нуль', sku: 'ZERO-COST',
+        purchasePrice: 0, salePrice: 200,
+        category: null, goodType: null, brandId: null,
+      });
+
+      const result = await service.applyPricingFromList(ORG, buffer, 'csv');
+      expect(result.found).toBe(0);
+      expect(result.updated).toBe(0);
+      expect(result.notFound).toEqual([expect.stringContaining('ZERO-COST')]);
+      expect(pricingService.calculateSalePrice).not.toHaveBeenCalled();
+      expect(prisma.good.updateMany).not.toHaveBeenCalled();
+    });
+
     it('updated лічильник правильний при mixed змінах (1 змінилась, 1 ні)', async () => {
       const csv = 'sku,barcode,name\nA-SKU,,A\nB-SKU,,B\n';
       const buffer = Buffer.from(csv, 'utf-8');

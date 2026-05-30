@@ -299,12 +299,16 @@ export default function PurchaseOrdersPage() {
 
   const applyPricing = async (po: PurchaseOrder) => {
     setApplyingPricingId(po.id);
+    setError('');
     try {
       const result = await apiFetch<PricingResult>(`/purchase-orders/${po.id}/apply-pricing`, { method: 'POST' });
       setPricingResult(prev => ({ ...prev, [po.id]: result }));
       if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
     } catch (e: unknown) {
-      if (features.toastEnabled) toast.error(e instanceof Error ? e.message : 'Помилка розцінки');
+      // Bug #199: помилка має бути видимою навіть з toastEnabled=false. Toast — додаток, не заміна setError.
+      const msg = e instanceof Error ? e.message : 'Помилка розцінки';
+      setError(msg);
+      if (features.toastEnabled) toast.error(msg);
     } finally {
       setApplyingPricingId(null);
     }

@@ -5954,3 +5954,91 @@ Baseline: tsc 0 errors (api/web/shared), 376/376 API unit pass, 159/159 web vite
 
 ---
 
+
+## Session 2026-05-30 (B) — FULL /sto-tester по PO/XLSX pricing (HEAD 91bafc8)
+
+Повний прогін після попередньої AUTO-сесії b1a083c. Baseline: tsc 0 errors (api/web/shared), 401/401 API unit pass, 179/179 web vitest pass. Перевірка `[x]`-маркерів попередньої сесії (#187-#192): b1a083c торкає РЕАЛЬНИЙ код (179 рядків змін у service.ts, controller.ts, нові spec.ts) — фікси застосовані, не docs-only.
+
+---
+
+## Bug #197 — [CRITICAL] PricingRulesClient: `apiFetch` зі `body: FormData` примусово виставляє `Content-Type: application/json` → upload завжди валиться 400/406 — фронт-функція «Розцінити список» повністю мертва у проді
+
+**Файл:** `apps/web/src/app/pricing-rules/PricingRulesClient.tsx:626`
+**Severity:** CRITICAL
+**Категорія:** frontend / api-contract
+
+**Опис:** Кнопка «Розцінити» у секції «Розцінити список» викликає `apiFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', { method: 'POST', body: fd })` де `fd = new FormData()`. Внутрішня реалізація `apiFetch` (api-client.ts:69-73) ЖОРСТКО додає `'Content-Type': 'application/json'` до всіх запитів. При FormData брауз��р НЕ може автоматично виставити правильний `multipart/form-data; boundary=...`. Сервер отримує binary FormData з `Content-Type: application/json` → `fastify-multipart` кидає `FastifyError: the request is not multipart` → (після фіксу Bug #192) повертає HTTP 400 з повідомленням `Файл не завантажено: очікується multipart/form-data`. Користувач бачить помилку при кожній спробі завантажити список. **Уся клієнтська фіча e754ad4 не працює.**
+
+Інші файлові аплоади у проєкті (`xlsx-import-button.tsx:73`, `settings/page.tsx:777`, `work-orders/[id]/PageClient.tsx:276`) правильно використовують `apiMultipartFetch` для FormData — це власне те, що було додано у Bug #85 саме для цього кейсу. PricingRulesClient — єдина регресія.
+
+**Очікувана поведінка:** `apiMultipartFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', fd)` — без `Content-Type` у заголовках, browser сам додасть `multipart/form-data; boundary=...`, сервер парсить FormData, фіча працює.
+
+**Фактична поведінка:** Кожен апло��д → 400 «Файл не завантажено: очікується multipart/form-data». До фіксу #192 — взагалі 406 з англомовним повідомленням. У production: користувач натискає «Розцінити» → бачить помилку, нічого не оновлюється у БД, ніяких логів.
+
+**Підхід до фіксу:**
+1. Імпортувати `apiMultipartFetch` з `@/lib/api-client` поряд із `apiFetch`.
+2. Замінити `apiFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', { method: 'POST', body: fd })` на `apiMultipartFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', fd)`.
+
+**Статус:** [x] виправлено — додано `apiMultipartFetch` в імпорт PricingRulesClient.tsx + замінено виклик. tsc clean. Фіча знову працює: FormData → multipart upload → fastify-multipart парсить → applyPricingFromList виконується.
+
+---
+
+## Bug #198 — [HIGH] xlsx.service.applyPricingFromList: `purchasePrice=null` → `costPrice=0` → `calculateSalePrice` для PERCENT/COMPETITOR_PLUS/COST_TIER повертає 0 → **`salePrice` товару затирається у 0** без помилки / попередження
+
+**Файл:** `apps/api/src/modules/xlsx/xlsx.service.ts:579-602`
+**Severity:** HIGH
+**Категорія:** business-logic / data-corruption
+
+**Опис:** `applyPricingFromList` обчислює costPrice як `Number(good.purchasePrice ?? 0)`. У схемі `Good.purchasePrice Decimal? @db.Decimal(12, 2)` — поле опціональне (`?`). Якщо користувач завантажив список SKU де частина товарів НЕ має `purchasePrice` (новий товар, забули заповнити, помилка міграції) — costPrice=0. `PricingService.calculateSalePrice(...)`:
+- `PERCENT` / `COMPETITOR_PLUS`: `0 * (1 + p/100) = 0` → newSalePrice=0
+- `COST_TIER` з тіром що покриває `[0, X)`: `0 * (1 + p/100) = 0` → newSalePrice=0
+- `FIXED_AMOUNT`: `0 + fixedAmount = fixedAmount` → newSalePrice=fixedAmount (не зв'язана з реальною собівартістю)
+- `FIXED_PRICE`: `Number(rule.fixedPrice)` → newSalePrice=fixedPrice (норм)
+
+Для PERCENT/COMPETITOR_PLUS/COST_TIER правил — `salePrice` товару буде перезаписана на 0. Це **знищення фінансових даних** товару без жодного попередження користувачу. Симптом: «я завантажив список з 100 товарів — у мене 30 товарів стали з ціною 0 грн». PriceHistory зафіксує `oldPrice=130, newPrice=0` — діагностика можлива post-mortem, але дані треба відновлювати вручну.
+
+Поточний тест `applyPricingFromList — CSV` (xlsx.service.spec.ts:65-92) НЕ покриває цей кейс — мокає `purchasePrice: 100`. Регресія неможлива оскільки баг присутній з самого початку фічі (e754ad4).
+
+Аналогічна вразливість у `purchase-orders.service.ts:240` — там `costPrice = Number(line.price)`, але `PurchaseOrderLine.price` non-nullable у схемі, тому проблеми не виникає. Лише xlsx-флоу вразливий.
+
+**Очікувана поведінка:** Якщо `good.purchasePrice == null` АБО `costPrice <= 0` — товар має йти у `notFound` (з префіксом «без собівартості») АБО у новий масив `skipped` з причиною. **Не пис��ти у БД.** Користувач бачить у звіті: «5 товарів пропущено: не вказана ціна закупки».
+
+**Фактична поведінка:** `salePrice` затирається у 0 для PERCENT/COMPETITOR_PLUS/COST_TIER правил без попередження.
+
+**Підхід до фіксу:**
+1. Перед викликом `calculateSalePrice` перевірити: `if (good.purchasePrice == null || Number(good.purchasePrice) <= 0)`.
+2. Якщо так — push у `notFound` зі sku АБО додати до окремого `skipped` масиву.
+3. `continue` цикл — не оновлювати salePrice.
+4. Оновити тип повернення (`notFound` достатньо: користувач побачить SKU зі скаргою «не знайдено» — кросс-категорія між «не існує товару» і «немає собівартості». Альтернатива: окремий `skipped[]`).
+5. Додати тест `purchasePrice=null → потрапляє у notFound, не пише good.updateMany`.
+6. Додати тест `purchasePrice=0 → потрапляє у notFound (захист від ділення на нуль / даремного перерахунку)`.
+
+**Статус:** [x] виправлено — у `applyPricingFromList` додано guard `if (good.purchasePrice == null || Number(good.purchasePrice) <= 0)` що пушає `${sku} (без собівартості)` у `notFound[]` і пропускає виклик `calculateSalePrice`. Додано 2 нові тести у `xlsx.service.spec.ts`: (а) `purchasePrice=null → notFound + не пише`; (б) `purchasePrice=0 → notFound + не пише`. 12/12 passed.
+
+---
+
+## Bug #199 — [MEDIUM] purchase-orders/page.tsx applyPricing: помилка проковтується якщо `features.toastEnabled=false` — без feedback користувачу + race на unmount
+
+**Файл:** `apps/web/src/app/purchase-orders/page.tsx:300-311`
+**Severity:** MEDIUM
+**Категорія:** frontend / UX
+
+**Опис:** Дві окремі проблеми у одній функції:
+
+(а) **Swallowed-error при `toastEnabled=false`:** `catch (e) { if (features.toastEnabled) toast.error(...) }` — якщо користувач вимкнув toast у UI features (`OrganisationSettings.uiFeatures.toastEnabled=false`), помилка нічого не показує. Користувач натискає «Розцінити» → нічого не відбувається → нема feedback. У default-конфігу `toastEnabled=true`, тому проявляється лише у tenant-конфігах де toast відключено. SKILL §1.3 «swallowed-fetch що годує обов'язковий контрол → MEDIUM» — тут не годує контрол, але блокує єдиний канал feedback.
+
+(б) **Race на unmount:** `setApplyingPricingId(null)` у `finally` спрацьовує навіть якщо компонент вже unmount-нутий (користувач перейшов на іншу сторінку під час pending-розцінки). React warning «Can't perform state update on unmounted component». Не критично — SWR/effect cleanup патерн зазвичай ховає це у TS-warning.
+
+**Очікувана поведінка:** 
+- Помилка завжди показується (через `setError(...)` як в інших handlerах сторінки) — toast є додатком, не заміною.
+- `let cancelled = false; ...; if (!cancelled) setApplyingPricingId(null);` АБО використати `useRef<boolean>` для tracking mounted (як `mountedRef` у PricingRulesClient).
+
+**Фактична поведінка:** Помилки невидимі для tenant з toast вимкнено. Race з unmount → React console warning.
+
+**Підхід до фіксу:**
+1. `setError(e instanceof Error ? e.message : 'Помилка розцінки')` додатково до toast (toast все одно лишити для тенентів з toastEnabled=true).
+2. `mountedRef` patterns АБО ігнор race для цього специфічного state (не критично оскільки після unmount setState на компоненті уже не має ефекту, тільки warning).
+
+**Статус:** [x] виправлено (частина (а)) — у `applyPricing` (purchase-orders/page.tsx) catch тепер обов'язково викликає `setError(msg)` поряд з опціональним `toast.error(msg)`. Помилка завжди видима у inline-banner вгорі сторінки. Також `setError('')` перед запитом — щоб новий запит чистив попередню помилку. Частина (б) (unmount race) — залишена як LOW: після unmount setState не має ефекту, лише React console warning у dev режимі; повний `mountedRef`-фікс не вартий комплексності для цього єдиного handler.
+
+---

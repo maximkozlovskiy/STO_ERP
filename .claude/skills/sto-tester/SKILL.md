@@ -212,6 +212,7 @@ grep -n "brandId\|goodCategory\|goodType\|goodId" apps/api/src/modules/inventory
 - [ ] `recalcTotals`: `Number(l.amount)` cast (Decimal без cast → рядкова конкатенація)
 - [ ] Batch loop: `Math.min(remaining, batch.remainingQty)`; якщо `remaining > 0` після циклу → `BadRequestException`
 - [ ] **Bulk-apply scope-consistency (Bug #178):** `applyRuleToGoods` `where`-умова містить ВСІ scope-поля правила (`goodId`, `goodCategory`, `goodType`, `brandId`). Будь-яке нове scope-поле у `PricingRule` → одразу оновити `where` у bulk-apply. Відсутнє scope-поле = правило застосовується до зайвих товарів → неправильна salePrice у БД без помилки.
+- [ ] **Nullable cost-input у calculateSalePrice → data corruption salePrice=0 (Bug #198):** будь-який сервіс що передає `costPrice` у `pricingService.calculateSalePrice` має ПЕРЕД викликом перевірити: `if (good.purchasePrice == null || Number(good.purchasePrice) <= 0)` → пропустити цей good (push у `notFound`/`skipped`, НЕ оновлювати salePrice). Інакше для `PERCENT`/`COMPETITOR_PLUS`/`COST_TIER` правил отримаєш `0 * (1 + p/100) = 0` → `Good.salePrice` **затирається у 0** без помилки. `Good.purchasePrice` у схемі nullable — будь-який новий код що читає його як `Number(good.purchasePrice ?? 0)` робить **silent data corruption** для товарів без собівартості. Виключення: `FIXED_PRICE` правило безпечне (повертає фіксовану ціну незалежно від cost). Grep: `grep -rn "calculateSalePrice\|purchasePrice ?? 0\|purchasePrice ?? null" apps/api/src/modules/ --include="*.ts"` — кожен виклик у сервісі що пише `salePrice` має мати prep-guard.
 
 #### $transaction timeout
 ```bash
@@ -353,6 +354,13 @@ grep -rn "apiFetch<[A-Za-z]*\[\]>" apps/web/src/app --include="*.tsx" | grep -v 
 # Known bare-array endpoints: /branches (fbe66ad — спеціальний випадок, довідник)
 # Known {items,total} endpoints: /brands, /goods, /pricing-rules, /work-orders, /invoices, /counterparties, ...
 
+# FormData надсилається через apiFetch (а не apiMultipartFetch) → CRITICAL (Bug #197) — фіча мертва
+# apiFetch ЖОРСТКО ставить Content-Type: application/json → browser НЕ може автоматично виставити multipart boundary
+# → fastify-multipart кидає "the request is not multipart" → upload завжди валиться
+grep -rn "apiFetch\b.*body:\s*\(fd\|formData\|new FormData\)" apps/web/src --include="*.tsx" | head -10
+grep -rn "body: \(fd\|formData\)" apps/web/src --include="*.tsx" -B3 | grep -E "apiFetch\b" | head -10
+# → кожен match — обов'язково замінити на apiMultipartFetch
+
 # Нова browser-API залежність без jsdom-стабу (Bug #177) → каскадне падіння всіх тестів які монтують shared-компонент
 # tsc мовчить (типи в lib.dom.d.ts), prod працює (браузер має API), jsdom — НІ.
 grep -rnE "new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver)\(|window\.matchMedia\(|navigator\.(clipboard|share|wakeLock|geolocation|mediaDevices)|crypto\.subtle|new Notification\(" apps/web/src/components/ui apps/web/src/app --include="*.tsx" -l | while read f; do
@@ -374,6 +382,7 @@ done
 - [ ] Timeline/gantt drag/resize: кожен px→decimal-hours converter clamp-ить результат у `[WINDOW_START, WINDOW_END]` ПЕРЕД побудовою `new Date(...).toISOString()` (інакше `endH>maxHour`/`startH<0` → `"24:30"`/`"-1:00"` → Invalid Date → RangeError у `toISOString()` → handler мовчки падає). Resize-гілка ОКРЕМО від draw-гілки — draw зазвичай clamp-ить через `pxToDecimalHours`, resize рахує delta і clamp-ить тільки проти протилежного краю
 - [ ] Swallowed-fetch що годує **обов'язковий** контрол → MEDIUM (не LOW): якщо `.catch(() => {})`/`.catch(noop)` ховає помилку завантаження списку, який рендериться у `<Select required>` або гейтить `disabled={!state}` submit-кнопку — порожній список = назавжди заблокований workflow без feedback. Фікс: `errorState` + inline `<p>` під контролом
 - [ ] Мертвий стан після inline→shared-component рефактору: коли inline-патерн (dropdown/picker/search) замінюють на shared-компонент (`SearchPickerModal` тощо), старі `useState`/`useCallback`/`useRef` лишаються «сиротами». Ознака: setter викликається ТІЛЬКИ в reset-ефекті (`if (!open) setX('')`), а value НІКОЛИ не читається у JSX; handler (`searchX`) визначено але не викликано. `tsc` без `noUnusedLocals` мовчить. Видалити повністю (включно з cleanup-ефектом orphaned `timeoutRef`)
+- [ ] **FormData upload через `apiFetch` замість `apiMultipartFetch` (Bug #197) → CRITICAL**: `apiFetch` ЖОРСТКО додає `Content-Type: application/json` до КОЖНОГО запиту → коли тіло — `FormData`, browser НЕ може автоматично виставити правильний `multipart/form-data; boundary=...`. Сервер отримує binary FormData з JSON content-type → `fastify-multipart` кидає `the request is not multipart` → upload завжди валиться 400/406. **Фіча повністю мертва у проді.** Grep: `grep -rn "apiFetch\b.*body:\s*\(fd\|formData\|new FormData\)" apps/web/src --include="*.tsx"` — кожен match замінити на `apiMultipartFetch(path, formData)` (БЕЗ ручного `method: POST` — функція сама POST). Особливо при додаванні нової upload-фічі: «нагуглив схожий аплоад» → `apiFetch` looks similar → CRITICAL регресія
 
 ---
 
@@ -706,6 +715,24 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-30 — FormData upload через `apiFetch` (а не `apiMultipartFetch`) → upload завжди валиться 400/406 — frontend, api-contract
+
+**Сигнал:** новий код у `apps/web/src/app/**/*.tsx` що формує `FormData` (`new FormData()`/`fd.append('file', f)`) і відправляє через `apiFetch(path, { method: 'POST', body: fd })` замість `apiMultipartFetch(path, fd)`. `tsc` НЕ ловить (типи `RequestInit.body` приймають `FormData`). Browser DevTools показує що запит йде з `Content-Type: application/json` замість очікуваного `multipart/form-data; boundary=...`. Сервер відповідає 400 «Файл не завантажено: очікується multipart/form-data» (після фіксу Bug #192) АБО 406 «the request is not multipart» (без цього фіксу). Користувач натискає upload → бачить помилку → нічого не зберігається. **Уся клієнтська upload-фіча мертва у проді.**
+**Причина виникнення:** `apiFetch` (api-client.ts) ЖОРСТКО додає `'Content-Type': 'application/json'` до КОЖНОГО запиту через `headers: { 'Content-Type': 'application/json', ... }`. Розробник додає upload-фічу і copy-paste з найближчого fetch-handler-а (POST/PATCH/DELETE), не помічаючи що для FormData потрібен інший helper. Окремий `apiMultipartFetch` створено саме для цього (Bug #85), але його легко пропустити: дві функції в одному файлі з однаковими підписами `(path, ...)` — потрібен код-ревью. Інші upload-точки (`xlsx-import-button.tsx`, `settings/page.tsx`, `work-orders/[id]/PageClient.tsx`) використовують `apiMultipartFetch`. Регресія з'являється коли нова фіча додає upload не через переюзаний компонент.
+**Підхід до виявлення:** після кожного diff що додає `new FormData()` АБО `formData.append('file'`, шукати чи відправка йде через `apiMultipartFetch`. Grep: `grep -rn "apiFetch\b.*body:\s*\(fd\|formData\|new FormData\)" apps/web/src --include="*.tsx"`. Альтернатива (через інспекцію diff): кожен `formData.append('file', ...)` має наступним викликом `apiMultipartFetch(...)`, НЕ `apiFetch(...)`.
+**Підхід до фіксу:** заміна `apiFetch<T>(path, { method: 'POST', body: fd })` → `apiMultipartFetch<T>(path, fd)`. Додати `apiMultipartFetch` в імпорт. `apiMultipartFetch` сам встановлює `method: POST`, не передавати у init.
+**Severity:** CRITICAL — фіча повністю мертва у проді (upload завжди 400/406); виявляється лише через user-bug-report АБО E2E. tsc мовчить.
+**Де шукати ще:** будь-який майбутній файловий аплоад (avatars, attachments, photos на mobile screens, batch imports, CSV/XLSX upload). Профілактика: SKILL §1.3 тепер вимагає grep на «apiFetch + body: FormData» патерн; новий загальний шаблон upload — завжди `apiMultipartFetch`.
+
+### 2026-05-30 — Nullable cost-input у calculateSalePrice → salePrice=0 затирання — backend, business-logic, data-corruption
+
+**Сигнал:** новий сервіс/метод що (а) читає `purchasePrice` товару з БД (де поле `Decimal?` nullable), (б) передає це значення у `pricingService.calculateSalePrice(orgId, goodId, ..., costPrice)`, (в) пише результат у `Good.salePrice`. Розробник пише `const costPrice = Number(good.purchasePrice ?? 0)` — здається безпечним fallback. Реально: `calculateSalePrice` для PERCENT/COMPETITOR_PLUS/COST_TIER повертає `0 * (1 + p/100) = 0`. Сервіс пише 0 у `salePrice` (non-nullable у схемі) → товар отримує нульову ціну продажу без помилки/попередження. PriceHistory зафіксує `oldPrice=130, newPrice=0` — post-mortem можлива, але дані відновлюються вручну.
+**Причина виникнення:** `??  0` як defensive fallback інтуїтивний (Number(null) = NaN, тому fallback). Розробник не думає про **семантичні наслідки** costPrice=0 для multiplicative rules. Кейс "немає purchasePrice" виглядає edge (зазвичай товари створюються з purchasePrice), але реально присутній: новий товар з фронту (тільки name + salePrice), імпорт з прайсу без cost, історичні товари з пустим полем. PERCENT/COMPETITOR_PLUS правила (найпоширеніші у STO ERP) повертають 0 → масове знищення цін при першому ж списковому імпорті.
+**Підхід до виявлення:** для будь-якого нового виклику `pricingService.calculateSalePrice(...)` — переконатись що ПЕРЕД викликом є guard `if (X.purchasePrice == null || Number(X.purchasePrice) <= 0) { /* skip */ }`. Grep: `grep -rn "calculateSalePrice\|purchasePrice ?? 0" apps/api/src/modules/ --include="*.ts"`. Особлива увага: list-import endpoints де input — лише ідентифікатор товару (sku/barcode), а cost береться з БД (а не з ряду файлу).
+**Підхід до фіксу:** `if (good.purchasePrice == null || Number(good.purchasePrice) <= 0) { notFound.push(\`${sku} (без собівартості)\`); continue; }` ПЕРЕД `calculateSalePrice`. Тест-кейси: (а) `purchasePrice=null → notFound + calculateSalePrice не викликаний + good.updateMany не викликаний`; (б) `purchasePrice=0 → notFound + калькуляція пропущена` (захист від ділення на нуль у майбутніх правилах).
+**Severity:** HIGH — silent data corruption на фінансовому полі (`salePrice`); виявляється лише через скаргу користувача «у мене ціни стали 0»; повернення цін вручну з PriceHistory.
+**Де шукати ще:** будь-який майбутній сервіс що пише `Good.salePrice` на основі обчислення з nullable input — bulk-recalc CRON (якщо буде), price-sync endpoints для зовнішніх прайсів (Magento/1С), markup-recalc після зміни currency exchange rate. Профілактика: SKILL §1.1 тепер вимагає prep-guard для будь-якого виклику `calculateSalePrice` коли costPrice читається з nullable джерела (Good.purchasePrice, Batch.cost, StockMovement.price).
 
 ### 2026-05-30 — Новий boolean prop на існуючому компоненті без inverse-condition тесту → інверсія guard беззвучна — frontend, test-coverage
 

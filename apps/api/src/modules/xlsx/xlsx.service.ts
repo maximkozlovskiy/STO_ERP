@@ -576,7 +576,15 @@ export class XlsxService {
         continue;
       }
 
-      const costPrice = Number(good.purchasePrice ?? 0);
+      // Bug #198: захист від data-corruption. Якщо у товара немає `purchasePrice` —
+      // PERCENT/COMPETITOR_PLUS/COST_TIER правила повернуть newSalePrice=0 → затирання salePrice.
+      // Пропускаємо такі товари і повідомляємо користувачу через notFound.
+      if (good.purchasePrice == null || Number(good.purchasePrice) <= 0) {
+        notFound.push(`${good.sku ?? item.sku ?? item.barcode ?? good.name} (без собівартості)`);
+        continue;
+      }
+
+      const costPrice = Number(good.purchasePrice);
       const oldSalePrice = Number(good.salePrice);
       const newSalePrice = await this.pricingService.calculateSalePrice(
         orgId,

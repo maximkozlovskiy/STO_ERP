@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, Pencil, Trash2, Zap, Upload } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -623,7 +623,9 @@ export default function PricingRulesClient() {
                 try {
                   const fd = new FormData();
                   fd.append('file', pricingFile);
-                  const result = await apiFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', { method: 'POST', body: fd });
+                  // Bug #197: FormData потребує multipart/form-data Content-Type з boundary,
+                  // що `apiFetch` перетирає на application/json → 400 "не multipart". Використовуємо apiMultipartFetch.
+                  const result = await apiMultipartFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', fd);
                   setPricingImportResult(result);
                   if (result.updated > 0) setError('');
                 } catch (e: unknown) {
