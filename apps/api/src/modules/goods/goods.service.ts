@@ -44,11 +44,14 @@ export class GoodsService {
   }
 
   async create(orgId: string, dto: CreateGoodDto): Promise<GoodResponseDto> {
-    if (dto.sku) {
-      const existing = await this.prisma.good.findFirst({ where: { orgId, sku: dto.sku, deletedAt: null } });
-      if (existing) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
-    }
-    await this.validateFkReferences(orgId, dto);
+    // Parallel: sku-uniqueness check + FK validation — обидва незалежні precheck-и.
+    const [existing] = await Promise.all([
+      dto.sku
+        ? this.prisma.good.findFirst({ where: { orgId, sku: dto.sku, deletedAt: null }, select: { id: true } })
+        : Promise.resolve(null),
+      this.validateFkReferences(orgId, dto),
+    ]);
+    if (dto.sku && existing) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     const item = await this.prisma.good.create({
       data: { ...dto, orgId, unit: dto.unit ?? 'шт' },
       include: { preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } } },
@@ -57,14 +60,18 @@ export class GoodsService {
   }
 
   async update(orgId: string, id: string, dto: UpdateGoodDto): Promise<GoodResponseDto> {
-    await this.findOne(orgId, id);
-    if (dto.sku) {
-      const existing = await this.prisma.good.findFirst({
-        where: { orgId, sku: dto.sku, deletedAt: null, NOT: { id } },
-      });
-      if (existing) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
-    }
-    await this.validateFkReferences(orgId, dto);
+    // Parallel: tenant guard (findOne) + sku-uniqueness + FK validation — три незалежні precheck-и.
+    const [, skuConflict] = await Promise.all([
+      this.findOne(orgId, id), // throws NotFoundException якщо відсутній
+      dto.sku
+        ? this.prisma.good.findFirst({
+            where: { orgId, sku: dto.sku, deletedAt: null, NOT: { id } },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      this.validateFkReferences(orgId, dto),
+    ]);
+    if (dto.sku && skuConflict) throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     const item = await this.prisma.good.update({
       where: { id, orgId }, data: dto,
       include: { preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } } },

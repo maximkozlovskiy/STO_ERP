@@ -67,22 +67,17 @@ export class PricingRulesController {
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Створити правило ціноутворення' })
   async create(@OrgContext() orgId: string, @Body() dto: CreatePricingRuleDto) {
-    // If goodId is provided, verify it belongs to the same org (prevent cross-tenant rule attachment)
-    if (dto.goodId) {
-      const good = await this.prisma.good.findFirst({
-        where: { id: dto.goodId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!good) throw new NotFoundException('Товар не знайдено');
-    }
-    // Validate brandId belongs to same org
-    if (dto.brandId) {
-      const brand = await this.prisma.brand.findFirst({
-        where: { id: dto.brandId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!brand) throw new NotFoundException('Бренд не знайдено');
-    }
+    // Parallel FK validation: goodId + brandId — обидва незалежні, можуть бути перевірені одночасно.
+    const [good, brand] = await Promise.all([
+      dto.goodId
+        ? this.prisma.good.findFirst({ where: { id: dto.goodId, orgId, deletedAt: null }, select: { id: true } })
+        : Promise.resolve(null),
+      dto.brandId
+        ? this.prisma.brand.findFirst({ where: { id: dto.brandId, orgId, deletedAt: null }, select: { id: true } })
+        : Promise.resolve(null),
+    ]);
+    if (dto.goodId && !good) throw new NotFoundException('Товар не знайдено');
+    if (dto.brandId && !brand) throw new NotFoundException('Бренд не знайдено');
     // Bug #22: scope-поля взаємовиключні, ієрархія goodId > goodCategory > goodType.
     // Очищаємо менш специфічні рівні, щоб менеджер не зберігав суперечливі правила.
     const normalized = this.normalizeScope(dto);
@@ -120,28 +115,20 @@ export class PricingRulesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePricingRuleDto,
   ) {
-    const existing = await this.prisma.pricingRule.findFirst({
-      where: { id, orgId, deletedAt: null },
-    });
+    // Parallel: tenant guard (existing) + FK validation (goodId + brandId).
+    // existing.orgId перевірений у where, goodId/brandId — окремі таблиці, всі три незалежні.
+    const [existing, good, brand] = await Promise.all([
+      this.prisma.pricingRule.findFirst({ where: { id, orgId, deletedAt: null } }),
+      dto.goodId
+        ? this.prisma.good.findFirst({ where: { id: dto.goodId, orgId, deletedAt: null }, select: { id: true } })
+        : Promise.resolve(null),
+      dto.brandId
+        ? this.prisma.brand.findFirst({ where: { id: dto.brandId, orgId, deletedAt: null }, select: { id: true } })
+        : Promise.resolve(null),
+    ]);
     if (!existing) throw new NotFoundException('Правило не знайдено');
-
-    // If goodId is being changed, verify the new value belongs to the same org
-    // (prevent cross-tenant rule attachment via update)
-    if (dto.goodId) {
-      const good = await this.prisma.good.findFirst({
-        where: { id: dto.goodId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!good) throw new NotFoundException('Товар не знайдено');
-    }
-    // Validate brandId belongs to same org
-    if (dto.brandId) {
-      const brand = await this.prisma.brand.findFirst({
-        where: { id: dto.brandId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!brand) throw new NotFoundException('Бренд не знайдено');
-    }
+    if (dto.goodId && !good) throw new NotFoundException('Товар не знайдено');
+    if (dto.brandId && !brand) throw new NotFoundException('Бренд не знайдено');
 
     // Bug #35: PATCH повинен застосовувати ієрархію scope з урахуванням існуючого
     // стану. Якщо клієнт надсилає лише `goodCategory` (без явного `goodId: null`),
