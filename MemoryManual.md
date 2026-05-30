@@ -9,6 +9,11 @@
 ## Останній commit
 
 ```
+e64f935 fix(review): sprint-A — wire ESLint config into apps/web + deprecate PaginatedResponse
+6e1b946 feat(dx): sprint-A4 — shared summary types in @sto/shared (WorkOrder/Invoice/Counterparty/Good/Branch + status enums)
+1d254ed feat(dx): sprint-A3 — global error.tsx + loading.tsx + not-found.tsx + route-level loading
+f2a2954 feat(dx): sprint-A2 — ESLint react-hooks/rules-of-hooks + exhaustive-deps
+e0457c2 feat(dx): sprint-A1 — Prettier config + Husky pre-commit + lint-staged + initial format
 2970919 fix(tester): Bugs #203-#205 — health skip-throttle + calendar dead imports
 3726def docs(skills,memory): record arch-optimization review session — 3 new sto-review patterns
 bc5dbfa fix(review): SSE skip throttle + xlsx Buffer→ArrayBuffer slice + register @nestjs/throttler
@@ -160,18 +165,25 @@ f040cde perf(db): 5 composite indexes
 ## Perf: CORS preflight + ref-cache seed (9fe62df)
 
 ### Gotcha (perf) — HAR "duplicate" це OPTIONS + GET, не дубль fetch у коді
+
 DevTools/HAR показує кожен API endpoint двічі: спочатку `-X 'OPTIONS'` з `Access-Control-Request-Method: GET`, потім той самий URL без -X (реальний GET). Це нормальна CORS preflight + actual request пара для cross-origin запиту з `Authorization` header — це НЕ дубль fetch у React коді.
 **Як перевірити:** дивися на `-X 'METHOD'` у curl-export. OPTIONS+GET = preflight; GET+GET = реальний дубль.
 **Як виправити preflight:** `app.enableCors({ ..., maxAge: 86400 })` — браузер кешує OPTIONS-відповідь (Chrome cap 7200s). До фіксу: кожен fetch = 2 RTT. Після: перший fetch = 2 RTT, всі наступні в межах cache window = 1 RTT.
 **НЕ виправляй:** useEffect / StrictMode / dedup — там немає реального дубля.
 
 ### Pattern: consumer-page без ref-cache seed
+
 Сторінка-споживач (settings/dashboard/reports) що використовує довідник у side-UI (workdays tab, picker, фільтр) має робити seed з sessionStorage перед apiFetch:
+
 ```ts
 const cached = getCached<Branch[]>('cache:branches');
 if (cached?.length) setBranches(cached);
-apiFetch<Branch[]>('/branches').then(d => { setBranches(d); setCache('cache:branches', d); });
+apiFetch<Branch[]>('/branches').then(d => {
+  setBranches(d);
+  setCache('cache:branches', d);
+});
 ```
+
 Без seed dropdown показує `[]` під час cold-fetch. Безпечно якщо сторінка НЕ редагує цей довідник (settings не CRUD-ить branches — це окрема сторінка infrastructure).
 
 ---
@@ -179,11 +191,13 @@ apiFetch<Branch[]>('/branches').then(d => { setBranches(d); setCache('cache:bran
 ## Pricing: розцінка по PO і по списку XLSX/CSV (e754ad4 + c24ffa7)
 
 ### Gotcha #197 — CRITICAL: `apiFetch` + FormData = завжди 406
+
 `apiFetch` додає `Content-Type: application/json` → browser не може виставити `multipart/form-data; boundary=...` → fastify-multipart кидає "the request is not multipart".
 **ПРАВИЛО:** для upload файлів завжди `apiMultipartFetch(path, formData)` — НЕ `apiFetch` з `body: FormData`.
 Постраждало: `PricingRulesClient.tsx:626` (upload pricing list). Всі інші upload-точки вже правильні.
 
 ### Gotcha #198 — HIGH: `calculateSalePrice` при `purchasePrice = null` → затирає ціну у 0
+
 `PERCENT/COMPETITOR_PLUS/COST_TIER` → `0 * (1 + p/100) = 0` → silent data corruption `Good.salePrice`.
 **ПРАВИЛО:** перед `calculateSalePrice()` перевірити `costPrice > 0`. Якщо 0 або null — пропустити з поміщенням у `notFound[]`, не обчислювати.
 
@@ -203,6 +217,7 @@ apiFetch<Branch[]>('/branches').then(d => { setBranches(d); setCache('cache:bran
 - `apps/web/src/app/pricing-rules/PricingRulesClient.tsx` — кнопка «Розцінити список» у toolbar, розкривна секція з file input (XLSX/CSV), result-таблиця. Завантаження шаблону через `apiFetch('/xlsx/templates/pricing-list')` + blob download (не raw anchor).
 
 ### Gotcha (sync fix cef188a)
+
 `@Get('templates/:type')` wild-card перехоплює будь-який шлях `templates/X`. Окремий `@Get('templates/pricing-list')` зареєстрований ПІСЛЯ wild-card → ніколи не спрацьовував. Фікс: додати `pricing-list` як case у існуючий switch замість окремого endpoint.
 
 ---
@@ -214,6 +229,7 @@ apiFetch<Branch[]>('/branches').then(d => { setBranches(d); setCache('cache:bran
 **Паттерн:** outer div з `overflow:hidden` + `transition:height 260ms` анімується через `ResizeObserver` на inner div. Висота встановлюється миттєво при mount (`transition:none` → rAF → re-enable), щоб не конфліктувати з `zoom-in-95` відкриття.
 
 **Де застосований:**
+
 - Modal body — автоматично (всі `<Modal>` у проекті)
 - `calendar/page.tsx` — форма нового слоту (замінено `maxHeight:'900px'` magic)
 - `vehicles/[id]/PageClient.tsx` — showAddNode, showAddSchedule (Етап C)
@@ -229,6 +245,7 @@ apiFetch<Branch[]>('/branches').then(d => { setBranches(d); setCache('cache:bran
 ## UI: CRM edit modal — вкладка «Наряди» (613aef7)
 
 `apps/web/src/app/crm/page.tsx` — ModalTabs тепер має 2 вкладки:
+
 - **Авто {N}** — існуюча (+ vehiclesError error banner)
 - **Наряди {N}** — нова: `GET /work-orders?counterpartyId=&limit=50`, read-only таблиця зі статус-badge та кліком на рядок → навігація у наряд
 
@@ -237,6 +254,7 @@ State: `modalWorkOrders[]`, `modalWorkOrdersLoading`, `woError`, `vehiclesError`
 ## UI: Catalog GoodsTab edit modal — вкладки «Штрихкоди» + «Партії» (613aef7)
 
 `apps/web/src/app/catalog/page.tsx` GoodsTab — ModalTabs з 2 вкладками:
+
 - **Штрихкоди {N}** — `GET /goods/:id/barcodes`, inline add (barcode+type select) + delete
 - **Партії {active}** — `GET /goods/:id/batches` (розпаковується `.items`, sync fix 561e08b), read-only grid: партія/накладна, отримано, залишок, собів., ціна продажу, дата
 
@@ -249,6 +267,7 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 ## sto-dev §14 — Modal+ModalTabs паттерн для 1-N (613aef7)
 
 Новий розділ у `.claude/skills/sto-dev/SKILL.md`:
+
 - **§14.1** Структура Modal з ModalTabs (layout, state-блоки на колекцію, PATCH+оновлення списку)
 - **§14.2** Loading/Error/Empty/List у tab.content (не на рівні ModalTabs), count з поточного state
 - **§14.3** Race guard + скидання стану при відкритті (++reqRef.current, гейт у .then/.catch/.finally)
@@ -256,11 +275,13 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 ## Pricing: brand markup + COST_TIER grade pricing (fdcf7ea)
 
 **Нові можливості:**
+
 - `PricingRuleType.COST_TIER` — ціноутворення на основі градацій собівартості (тіри)
 - `brandId` поле у `PricingRule` — прив'язка правила до бренду (пріоритет 2 у ієрархії)
 - `PricingRuleTier` модель — тіри з `costMin/costMax/percentValue/sortOrder` (cascade delete, без soft-delete)
 
 **Ієрархія пріоритетів `calculateSalePrice`:**
+
 1. `goodId` — конкретний товар
 2. `brandId` — бренд товару
 3. `goodCategory` — категорія
@@ -270,6 +291,7 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 **COST_TIER логіка:** знайти тір де `costMin <= costPrice < costMax` (або `costMax IS NULL` = останній); `percentValue` тіру = markup %.
 
 **API зміни:**
+
 - `GET /pricing-rules` — тепер включає `brand`, `tiers` у response
 - `POST /pricing-rules` — приймає `brandId`, `tiers[]`
 - `PATCH /pricing-rules/:id` — replace-semantics для тірів (deleteMany + createMany в $transaction)
@@ -284,23 +306,27 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 **Нова модель БД:** `UserPreference` у `packages/database/prisma/schema.prisma` — зберігає JSON-конфіг per (orgId, employeeId, key). Без soft-delete (config data). Міграція `20260530200000_add_user_preferences`.
 
 **Новий API-модуль:** `apps/api/src/modules/user-preferences/`
+
 - `GET /user-preferences/:key` — повертає `{ key, value }` для поточного employee
 - `PUT /user-preferences/:key` — зберігає `{ key, value }` (204 No Content)
 - Auth-scoped: employeeId береться з `@CurrentUser() user.id` (AuthenticatedUser, не JwtPayload)
 - Всі ролі мають доступ (OWNER|ADMIN|RECEPTIONIST|MECHANIC|ACCOUNTANT|STOREKEEPER)
 
 **Новий хук:** `apps/web/src/hooks/useDetailPanelConfig.ts`
+
 - `useDetailPanelConfig(pageKey)` → `{ isFieldHidden, toggleField, reset, loading, config }`
 - Offline-first: optimistic localStorage + fire-and-forget API save
 - API key = `detail_panel_${pageKey}`, storage key = `sto_panel_cfg_${pageKey}`
 
 **Розширений DetailPanel:** `apps/web/src/components/ui/detail-panel.tsx`
+
 - Нові props: `configFields?: PanelConfigField[]`, `onToggleField?`, `onReset?`
 - Кнопка ⚙ у хедері (Settings icon, тільки якщо є configFields)
 - `showConfig` state — при click замінює контент панелі на checkbox-список полів
 - `PanelField` отримав `fieldKey?: string` і `hidden?: boolean` — якщо `hidden=true`, не рендерить
 
 **Сторінки з конфігуратором:**
+
 - `crm/page.tsx` — 6 полів: phone, email, edrpou, balance, contactPerson, type
 - `employees/page.tsx` — 6 полів: status, role, phone, email, rateScheme, dateOfHire
 
@@ -309,7 +335,10 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 **Gotcha — CurrentUser decorator:** повертає `AuthenticatedUser` з полем `id` (не `sub`). `sub` є у `JwtPayload` але контролери отримують `AuthenticatedUser` після `validate()`.
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api + shared) — після health-skip-throttle + calendar dead-import cleanup (verified 2026-05-30, HEAD 2970919)
+
+TypeScript: ✅ 0 errors (web + api + shared) — після sprint-A review fix (verified 2026-05-30, HEAD e64f935)
+
+Latest review: 2026-05-30 (sto-review-agent AUTO, HEAD 6e1b946 → e64f935) — Sprint A1-A4 повний code review. **2 проблеми виправлено:** (1) CRITICAL — Sprint A2 (`feat(dx): ESLint react-hooks/rules-of-hooks + exhaustive-deps`) додав plugin у `packages/config/eslint/nextjs.js`, АЛЕ жоден app не мав `.eslintrc.*` що його extends → правила НЕ застосовувались, `next lint` падав на "Strict (recommended)?" інтерактивній підказці. Фікс: створено `apps/web/.eslintrc.js` що напряму завантажує `eslint-plugin-react-hooks` + `@typescript-eslint/parser` (не extends `next/core-web-vitals` бо `eslint-config-next` не встановлено; не extends `plugin:react-hooks/recommended` бо v7.x preset додає експериментальні `set-state-in-effect`/`immutability` що flood-нули б legacy code → husky pre-commit). `packages/config/eslint/nextjs.js` синхронізовано (dropped recommended). Після фіксу `pnpm exec next lint` показує 5 pre-existing `exhaustive-deps` warnings (intentional `load`-callback omissions у crm/employees/invoices/stock-documents/vehicles) — `warn` рівень не блокує husky. (2) SUGGESTION — Sprint A4 додав `PaginatedSummary<T>` (`{ items, total }`) як канонічний shape згідно skill §4, але `PaginatedResponse<T>` (`{ data, total }`) залишився в `types.ts` без вказівки на deprecation → двозначність для майбутніх консьюмерів. Фікс: JSDoc `@deprecated` коментар, що вказує на `PaginatedSummary<T>` як canonical. **Sprint A1 (Prettier + Husky) перевірено OK:** lint-staged спрацював на цьому ж commit (`prettier --write` пройшов по 2 JS + 1 TS файлах автоматично). **Sprint A3 (error/loading/not-found) перевірено OK:** `error.tsx` має `'use client'` ✓, `console.error` дозволено базовим конфігом, `skeleton`/`page-container`/`page-header` класи існують у globals.css. **Sprint A4 типи перевірено OK:** enum const objects з `as const` + typeof мають правильну форму, `@sto/shared` компілюється 0 errors, нові типи не використовуються (foundation для майбутніх sprint-ів).
 
 Latest tester: 2026-05-30 (FULL, HEAD 3726def → 2970919) — повний прогін після arch refactor (throttler global guard + xlsx slice replacement + calendar/catalog page splits). Baseline зелений (API tsc/web tsc/shared tsc 0, API 419/419 ✅, web 179/179 ✅). **3 баги виправлено.** #203 HIGH deploy — `/health` endpoint підпадав під global ThrottlerGuard (200 req/min). Docker healthcheck + nginx upstream + моніторинг (Prometheus blackbox, Sentry) опитують `/health` часто; при багатоінстансовій конфігурації / shared NAT 200/min ліміт легко перетинається → 429 → docker `condition: service_healthy` валиться → cascade restart по compose-стеку. Фікс: `@SkipThrottle()` на рівні класу HealthController (симетрично до `dashboard/stream` SSE). #204 LOW typescript — `CalendarMonthView.tsx` мертвий імпорт `KYIV_TZ` після split (`tsc` пропустив через `noUnusedLocals: false`). Фікс: видалено. #205 LOW typescript — `calendar/page.tsx` мертвий імпорт `parseHHMM` (перенесений у CalendarSlotModal під час split). Фікс: видалено. Після фіксів: API tsc 0, web tsc 0, API 419/419 ✅, web 179/179 ✅.
 Latest review: 2026-05-30 (sto-review-agent Auto, HEAD bc5dbfa) — knaown gaps: SSE під global throttler (fixed з @SkipThrottle), `buffer.buffer as ArrayBuffer` ризикує даними з пула Buffer (fixed з slice helper), @nestjs/throttler dep був не зафіксовано у попередньому коміті (fixed)
@@ -353,11 +382,13 @@ Previous review: 2026-05-29 (auto, HEAD e69bf1e) — modal-tabs.tsx + crm/employ
 `useDirtyForm` переписаний — `confirmClose()` тепер `Promise<boolean>`, не `boolean`.
 
 **Що змінилось:**
+
 - `confirmClose(): Promise<boolean>` — показує власний `ConfirmDialog`, не `window.confirm()`
 - `dialogProps: { open, onConfirm, onCancel }` — spread на `<DirtyConfirmDialog>`
 - Новий компонент `apps/web/src/components/ui/dirty-confirm-dialog.tsx`
 
 **Паттерн використання:**
+
 ```ts
 const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
@@ -383,12 +414,14 @@ onClose={async () => { if (!(await dirty.confirmClose())) return; setModal(false
 ## UI: Бокова інформаційна панель — detail panel system (f529d0f)
 
 **Нові хуки/компоненти:**
+
 - `apps/web/src/hooks/useDetailPanel.ts` — `useDetailPanel(key)` → `{ enabled, toggle }`, зберігає в localStorage
 - `apps/web/src/components/ui/detail-panel-toggle.tsx` — `<DetailPanelToggle>` кнопка поруч з `ColumnsDropdown`
 - `DetailPanel` оновлений — `tabs?: DetailPanelTab[]`, `subtitle?`, відступ `ml-3 rounded-xl border`
 - `PanelField` / `PanelSection` — хелпери для вмісту панелі
 
 **Паттерн:**
+
 ```tsx
 const detailPanel = useDetailPanel('page-key');
 // В рядку фільтрів:
@@ -421,38 +454,49 @@ onClick={() => { if (detailPanel.enabled) setSelected(item); }}
 **Архітектурне рішення:** `useTableColumns` є єдиним власником порядку і назв колонок. `ColumnsDropdown` — чистий UI без localStorage.
 
 **useTableColumns повертає:**
+
 ```ts
 {
-  visibleKeys,    // Set — для допоміжних перевірок
-  visibleColumns, // ← ПО ЦЬОМУ рендерь TableHead і TableCell (порядок і label вже правильні)
-  orderedColumns, // ← ЦЕ передавай в ColumnsDropdown
-  order, customLabels,
-  toggle, reorder, renameColumn, resetConfig
+  (visibleKeys, // Set — для допоміжних перевірок
+    visibleColumns, // ← ПО ЦЬОМУ рендерь TableHead і TableCell (порядок і label вже правильні)
+    orderedColumns, // ← ЦЕ передавай в ColumnsDropdown
+    order,
+    customLabels,
+    toggle,
+    reorder,
+    renameColumn,
+    resetConfig);
 }
 ```
 
 **localStorage keys:** `sto_columns_<key>` (visible), `sto_col_order_<key>`, `sto_col_labels_<key>`
 
 **ColumnsDropdown props:**
+
 ```tsx
 <ColumnsDropdown
-  columns={orderedColumns}        // НЕ COLUMNS — вже з user order і label
+  columns={orderedColumns} // НЕ COLUMNS — вже з user order і label
   visibleKeys={colVisible}
   onToggle={toggleCol}
   onReorder={reorder}
   onRename={renameColumn}
   onReset={resetConfig}
-  hasCustomization={JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
+  hasCustomization={
+    JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c => c.key)) ||
+    Object.keys(customLabels).length > 0
+  }
 />
 ```
 
 **❌ Старий паттерн (не використовувати):**
+
 ```tsx
 {colVisible.has('name') && <TableHead>Назва</TableHead>}
 colSpan={colVisible.size + ...}
 ```
 
 **✅ Новий паттерн:**
+
 ```tsx
 {visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
 {visibleColumns.map(col => { if (col.key==='name') return <TableCell key="name">...</TableCell>; return null; })}
@@ -473,18 +517,19 @@ colSpan={visibleColumns.length + ...}
 
 `useTableColumns` + `ColumnsDropdown` тепер є на **всіх** сторінках-списках (раніше тільки work-orders):
 
-| Сторінка | Ключ localStorage | Прихованих за замовч. |
-|---|---|---|
-| `employees` | `sto_columns_employees` | rate, zones, lifts |
-| `crm` | `sto_columns_crm` | edrpou |
-| `invoices` | `sto_columns_invoices` | — |
-| `purchase-orders` | `sto_columns_purchase-orders` | — |
-| `stock-documents` | `sto_columns_stock-documents` | — |
-| `catalog-works` | `sto_columns_catalog-works` | — |
-| `catalog-goods` | `sto_columns_catalog-goods` | unit |
-| `catalog-services` | `sto_columns_catalog-services` | — |
+| Сторінка           | Ключ localStorage              | Прихованих за замовч. |
+| ------------------ | ------------------------------ | --------------------- |
+| `employees`        | `sto_columns_employees`        | rate, zones, lifts    |
+| `crm`              | `sto_columns_crm`              | edrpou                |
+| `invoices`         | `sto_columns_invoices`         | —                     |
+| `purchase-orders`  | `sto_columns_purchase-orders`  | —                     |
+| `stock-documents`  | `sto_columns_stock-documents`  | —                     |
+| `catalog-works`    | `sto_columns_catalog-works`    | —                     |
+| `catalog-goods`    | `sto_columns_catalog-goods`    | unit                  |
+| `catalog-services` | `sto_columns_catalog-services` | —                     |
 
 **Паттерн** (COLUMNS — не включають чекбокс bulk і кнопки дій):
+
 ```ts
 const COLUMNS = useMemo(() => [{ key: 'name', label: 'Назва', defaultVisible: true }], []);
 const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('page-key', COLUMNS);
@@ -495,17 +540,18 @@ const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('page-key
 
 Три UI-фічі керовані через `useUiFeatures()` (`savedFiltersEnabled`, `bulkActionsEnabled`, `unsavedGuardEnabled`) тепер є на **всіх** сторінках-списках:
 
-| Сторінка | Збережені фільтри | Групові дії | Захист змін |
-|---|---|---|---|
-| `work-orders` | ✅ (еталон) | ✅ (еталон) | ✅ (еталон) |
-| `employees` | search+role+showDeleted | Видалити/Звільнити | create+edit |
-| `crm` | search+type+showDeleted | Видалити | create |
-| `invoices` | search+status | Скасувати | create |
-| `purchase-orders` | status+search+showDeleted | Видалити | create+receive |
-| `stock-documents` | type+status+showDeleted | Видалити | create |
-| `catalog` | search/tab (works/goods/services) | Видалити (кожна вкладка) | 5 форм |
+| Сторінка          | Збережені фільтри                 | Групові дії              | Захист змін    |
+| ----------------- | --------------------------------- | ------------------------ | -------------- |
+| `work-orders`     | ✅ (еталон)                       | ✅ (еталон)              | ✅ (еталон)    |
+| `employees`       | search+role+showDeleted           | Видалити/Звільнити       | create+edit    |
+| `crm`             | search+type+showDeleted           | Видалити                 | create         |
+| `invoices`        | search+status                     | Скасувати                | create         |
+| `purchase-orders` | status+search+showDeleted         | Видалити                 | create+receive |
+| `stock-documents` | type+status+showDeleted           | Видалити                 | create         |
+| `catalog`         | search/tab (works/goods/services) | Видалити (кожна вкладка) | 5 форм         |
 
 **Готові хуки/компоненти** (не треба писати з нуля):
+
 - `apps/web/src/hooks/useSavedFilters.ts` — localStorage пресети фільтрів
 - `apps/web/src/hooks/useBulkSelect.ts` — Set-based вибір рядків
 - `apps/web/src/hooks/useDirtyForm.ts` — захист форми від втрати змін (sync `confirmClose()`)
@@ -513,6 +559,7 @@ const { visibleKeys: colVisible, toggle: toggleCol } = useTableColumns('page-key
 - `apps/web/src/components/ui/bulk-actions-bar.tsx` — UI панель групових дій
 
 **Паттерн підключення** (дивись `work-orders/page.tsx` рядки 155-200, 424-570 як еталон):
+
 ```ts
 const features = useUiFeatures();
 const { saved, save, remove } = useSavedFilters<Filters>('page-key');
@@ -525,6 +572,7 @@ const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 ## UI: Toast-сповіщення в calendar/page.tsx (8346b16)
 
 `apps/web/src/app/calendar/page.tsx` тепер використовує `toast` з `@/lib/toast` замість inline `setError`:
+
 - `toast.success` — створення/оновлення/видалення слоту, створення наряду
 - `toast.warning` — drag/resize у минулий час або день
 - `toast.error` — всі API помилки
@@ -535,6 +583,7 @@ const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 ## UI: Анімація форми в calendar/page.tsx (e1bf870)
 
 Двошарова анімація відкриття/закриття панелі слоту:
+
 - Зовнішній wrapper: `max-height 0→900px`, spring `cubic-bezier(0.22,1,0.36,1)` 480ms
 - Внутрішня панель: `opacity + translateY`, з затримкою 60ms (stagger)
 - Закриття: 280-320ms ease-in, unmount через 420ms
@@ -546,6 +595,7 @@ const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 **Проблема:** `CalendarSlot` має пряме поле `counterpartyId` в БД (міграція `20260529120000`), але до фіксу воно не зберігалось і не поверталось.
 
 **Що виправлено:**
+
 - `calendar.service.ts`: `toDto()` тепер повертає `counterpartyId` (зі слоту або fallback з `workOrder.counterpartyId`); всі три методи (`findSlots`/`createSlot`/`updateSlot`) include `counterparty` напряму
 - `calendar.dto.ts`: `CalendarSlotResponseDto` має поле `counterpartyId`
 - `calendar/page.tsx`: `handleEditSlot` відновлює `counterpartyId` зі слоту; валідація дозволяє `workOrderId` як альтернативу; `disabled` кнопки враховує обидва поля
@@ -562,34 +612,37 @@ const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 - **Gotcha:** AnimatedBody анімує висоту ВГОРУ (0→контент). Для анімації закриття (контент→0) потрібен додатковий rAF: спочатку пін поточної висоти, потім transition до 0. Дивись §14.4 SKILL.md та `calendar/page.tsx::showAdd useEffect`.
 
 ## UI: ConfirmDialog + useConfirm (ff87285)
+
 Нативні `window.confirm()` у компонентах замінено на промісний `useConfirm()` хук + `<ConfirmDialog>` (на базі Modal/Button).
+
 - Компонент: `apps/web/src/components/ui/confirm-dialog.tsx` (`title`/`onConfirm`/`onCancel` опціональні — щоб `dialogProps` union `{open:false}` був структурно сумісним).
 - Хук: `apps/web/src/hooks/useConfirm.ts` — `const { confirm, dialogProps } = useConfirm();` → `if (!(await confirm({ title, message?, variant? }))) return;` + `<ConfirmDialog {...dialogProps} />` перед закриваючим тегом return. `handleConfirm`/`handleCancel` через functional setState updater → стабільні (не залежать від state, безпечні в `useCallback` deps).
 - Замінено 28 викликів у 12 файлах: calendar(3), catalog(5 — кожен Tab має власний useConfirm+ConfirmDialog), employees(1), infrastructure(1), invoices(1), pricing-rules(2), purchase-orders(1), settings(8 — у задачі вказано 6, grep знайшов 8), work-orders/[id](3), vehicles/[id](2), TopShell(1 logout). Видалення → `variant:'destructive'`; status-переходи/reset лічильника → default.
 - Gotcha: у `calendar/page.tsx` два confirm всередині `SearchPickerModal.onSelect` — onSelect зроблено `async`; `onSelect: (item)=>void` приймає `async`-функцію (Promise<void> assignable to void). `removeSlot` у `useCallback([load])` → додано `confirm` у deps (стабільний).
 - НЕ чіпали: `useDirtyForm.ts` `window.confirm` (рядок 34) — синхронний navigation-guard контракт (`confirmClose():boolean` викликається інлайн перед onClose + поряд з beforeunload); промісний useConfirm зламав би sync API всіх callers. Свідомо лишено.
-Unit+Contract: ✅ 357/357 passed (34 файли) — +4 counterparties showDeleted + 19 employees assignment contract (Bug #173+#175)
-Web components: ✅ 148/148 passed (14 файлів) — +9 ModalTabs (Bug #174); виправлено пре-існуючий saved-filters-bar empty-state (Bug #176)
-Latest tester: 2026-05-29 (AUTO, HEAD 8c3751e→d5a4f18) — scope: 3 комміти (e69bf1e CRM stale-fetch race-guard + cc44f73 counterparties showDeleted/deletedAt contract + 6b886ae ModalTabs + employees assignments). Baseline: API tsc 0 / Web tsc 0 / Shared tsc 0; API 334/334; Web baseline mid-suite ❌ — saved-filters-bar empty-state test падав (component drift). Перевірки коду усі OK (не баги): counterparties.service findAll where = {orgId, ...(showDeleted?{}:{deletedAt:null}),...} — showDeleted прибирає лише soft-delete-фільтр, orgId завжди; count() використовує той самий where; CRM openEdit race-guard через modalVehiclesReqRef (reqId=++ref.current, кожен then/finally гейтить ref.current===reqId — стара повільна вкладка не перезапише поточний CP); employees saveEditEmp PATCH→Promise.all([branches,zones,lifts,work-categories]) всі 4 паралельно, кожен endpoint org-scoped FK-валідовано у сервісі (findMany id:in+orgId+deletedAt+count-check). Виправлено 4 баги (всі MEDIUM, test-coverage): #173 counterparties.service.spec +4 тести showDeleted (drops deletedAt, keeps orgId, count same where, +?q=); #174 modal-tabs.test.tsx (9 тестів — render/click-switch/badge включно з count=0/defaultTab/невідомий defaultTab fallback/порожній масив toBeEmptyDOMElement); #175 employees.contract.spec.ts (19 тестів — describe.each для zones/lifts/work-categories + окремий branches: 200/201 валідне body + service-call assert, порожній масив, невалідний UUID→400, невалідний :id→400 ParseUUIDPipe, 403 без auth; UUID v4-layout); #176 saved-filters-bar.tsx — додано empty-state hint «Немає збережених фільтрів» коли saved=[]&&!saveOpen (виправлено компонент: тест документував легітимний UX-намір, не stale-assertion). Після фіксів: API 357/357, Web 148/148. ⚠️ Урок самовдосконалення: Крок 0 baseline у старій SKILL запускав лише @sto/api test → web-component drift був невидимий до Кроку 4 (#176 виявився під час верифікації). SKILL оновлено: (1) Крок 0 тепер обов'язково ганяє ОБИДВА suite (api + web vitest); (2) §1.6 — новий пункт component-vs-test drift (тест асертить UX-намір якого компонент не має → виправляти компонент якщо намір легітимний, інакше тест); (3) додано accumulated approach для drift-паттерну. d5a4f18.
-Latest tester: 2026-05-29 (FULL, HEAD efcfd97) — scope: calendar page.tsx (month/stats fan-out + AbortController + color-mix heatmap) + work-orders calendarSlots take:1/toDto + phase18 infra re-audit. Baseline ✅ (tsc api+web 0, unit 330/330). Завдання-перевірки усі OK (не баги): apiFetch(path, init?:RequestInit) спредить signal у fetch → abort працює (+ GET зі signal свідомо обходить in-flight dedup); STATS_MAX_DAYS=92 clamp у while-умові ДО Promise.all; statsRangeTooLong UI-warning; color-mix N% = round(bgAlpha*100) ∈ 8-50%; mountedRef гард на всіх setState. 3 баги виправлено: #170 CRITICAL deploy — minio healthcheck `curl -f /minio/health/live` у docker-compose.yml ТА .dev.yml, але minio/minio образ НЕ має curl/wget (емпірично: лише /usr/bin/mc) → minio назавжди unhealthy → api depends_on service_healthy НІКОЛИ не стартує → web+caddy каскад мертвий (blast-radius як #164/#165 але для minio, пропущено бо minio не alpine). Фікс: `["CMD","mc","ready","local"]` (офіційний MinIO HC, mc бандлиться, local-alias вбудований — перевірено exit 0) + пін образу RELEASE.2024-01-16 для offline; #171 MEDIUM test-coverage — calendarSlots include (b22a5f0/efcfd97) без service-spec, лише contract spec що мокає сервіс → query-shape gap (Bug #163 патерн). Фікс: work-orders.service.spec.ts (4 тести) — прямий new Service(prisma,...null) + $transaction(ops=>Promise.all) мок, асертить include.calendarSlots present AND calendarSlot absent, deletedAt:null, orderBy startAt asc, take:1, orgId tenant scope, ?q= nested counterparty, employeeId some; #172 LOW frontend — loadMonth/loadStats .catch(()=>[]) ховають повний провал fan-out → порожній view не відрізнити від «немає даних». Фікс: monthError/statsError стани (true лише коли failures===days.length) + inline-hint у month-панелі та під stats period-селектором. Після фіксів: tsc api+web 0, unit 334/334, docker compose config валідний обидва файли.
-Latest review: 2026-05-29 (AUTO, HEAD b22a5f0 → efcfd97) — calendar month grid + stats scope (apps/web/src/app/calendar/page.tsx; work-orders dto/service slot fields і Docker/nginx інфра перевірені OK без правок). tsc api+web 0 errors; 330/330 tests. Виправлено у efcfd97: (1) IMPORTANT — month-view heatmap `style={{ backgroundColor: rgba(var(--color-primary-rgb, 59,130,246), alpha) }}` — CSS var `--color-primary-rgb` НЕ існує у globals.css (є лише `--color-primary: hsl(221 83% 53%)` — hsl-форма, НЕ rgb-триплет → не годиться всередині rgba()), тому rgba() мовчки падав на hardcoded синій fallback, ігноруючи тему/dark mode. Фікс: `color-mix(in srgb, var(--color-primary) ${round(alpha*100)}%, transparent)` (Tailwind 4 baseline підтримує color-mix). (2) IMPORTANT — loadMonth (до 31 паралельних per-day запитів) і loadStats (необмежено для custom range, напр. рік=365) не мали скасування: швидке перемикання місяця/діапазону влаштовувало race — застаріла партія перезаписувала свіжу (виграє остання що зарезолвилась, не остання запитана). Фікс: AbortController-ref на кожен loader (`ref.abort()` перед стартом, signal у apiFetch, `if(signal.aborted) return` guard перед setState). (3) IMPORTANT — custom range без guard на max днів → сотні паралельних запитів. Фікс: `STATS_MAX_DAYS=92` cap на fan-out + clamp days-знаменника load% до того ж cap + UI-підказки: `text-warning-text` «діапазон задовгий, показано перші N» та `text-destructive-text` «Від > До». Перевірено OK: T12:00:00-парсинг дат DST-safe (noon-buffer проти roll-over); load% multi-day = totalMin/60/(11h×days) коректно; work-orders calendarSlots include = nested select+take:1+deletedAt:null (не N+1), toDto повертає Date|null (не BigInt). var(--color-destructive)/var(--color-primary) у load-bar inline style — OK (токени існують, inline style ≠ Tailwind arbitrary).
-Previous review: 2026-05-29 (AUTO, HEAD 5c7748f → 507a7e8) — phase18 infra scope (apps/api/Dockerfile, apps/web/Dockerfile, apps/web/nginx.conf, Caddyfile, scripts/build-prod.ps1, docs/PHASES.md). tsc api+web 0 errors; 330/330 tests. 1 CRITICAL виправлено (507a7e8): apps/api/Dockerfile runner stage копіював `/app/node_modules/.prisma` з builder — шлях НЕ існує у pnpm-layout (генерований client живе у .pnpm virtual store + packages/database/node_modules/.prisma per @sto/database "exports", не у root). Runtime: "@prisma/client did not initialize yet". Фікс: install з dev deps → `prisma generate` проти власних runner node_modules (engine bundled, offline OK) → `pnpm prune --prod` (прибирає лише prisma CLI devDep, @prisma/client+генерований .prisma лишаються бо prod-dep). Перевірено OK без правок: web Dockerfile (next output:'export'→out/ default, nginx serves /usr/share/nginx/html); nginx.conf SPA fallback `try_files $uri $uri/ $uri.html /index.html` коректний для trailingSlash:true (директорний layout /login/index.html → $uri/ матчить); Caddyfile `handle /api/*`→`reverse_proxy api:3000` НЕ страйпить prefix → API має setGlobalPrefix('api') → шлях збігається, strip-prefix НЕ потрібен; Update.ps1 health-check http://localhost:3000/api/health збігається з @Controller('health')+globalPrefix. ⚠️ Suggestion (не фіксив, поза scope): build-prod.ps1 копіює out/→apps/api/public/ (monolith model) але main.ts НЕ реєструє @fastify/static → цей шлях не обслуговує статику; Docker/Caddy split — канонічна модель.
-Latest tester: 2026-05-29 (FULL, HEAD 507a7e8) — phase18 infra RE-AUDIT. ⚠️ ВИЯВЛЕНО: попередня tester-сесія (BUG_REPORT Session phase18) записала Bugs #164-#168 з коректним аналізом і позначила всі `[x] виправлено`, АЛЕ її commit fc87206 був docs-only (лише MemoryManual.md) — жоден код-фікс не застосовано. Перевірка реальних файлів: усі 5 дефектів ЖИВІ (2× CRITICAL release-blocker). Цією сесією РЕАЛЬНО виправлено: #164+#165 CRITICAL — docker-compose.yml healthcheck `curl -f localhost:3000/health` (curl немає у node:20-alpine + шлях невірний бо setGlobalPrefix('api')) → list-form Node-one-liner http.get('localhost:3000/api/health') exit 0/1, +timeout/retries; #166 HIGH — створено root .dockerignore (node_modules/.git/dist/out/.next/.env*/.claude/тести/*.md; prisma schema лишається); #167 HIGH — build-prod.ps1 прибрано dead Copy-Item out→apps/api/public (main.ts без @fastify/static), export лишається у apps/web/out (пакує web Dockerfile); #168 LOW — nginx.conf gzip_types +svg/text-javascript/xml +gzip_vary +окрема location /_next/static/ immutable; build-prod.ps1 $PSScriptRoot fallback на $MyInvocation для pwsh -File/dot-source. +Bug #169 HIGH (process) — `[x]` без diff = хибно-зелений приховав release-blocker. Після фіксів: tsc api+web 0, unit 330/330, `docker compose config` валідний. ⚠️ Урок Крок-0: ЗАВЖДИ перевіряти реальний стан файлів проти `[x]`-маркерів попередніх сесій — commit міг бути docs-only; статус БЕЗ парного diff не довіряти.
-Latest tester (попередній): 2026-05-29 (FULL, HEAD a0bc034) — scope: calendar read-only/past (isEditingPast) + WO picker зі slotStartAt/EndAt/LiftName + client↔WO sync; work-orders.findAll calendarSlots include take:1 + toDto slot mapping; counterparties ?q= relation fix (32e9a49); goods validateFkReferences. Baseline ✅ (tsc api+web+shared 0, unit 325/325). 1 баг: #163 MEDIUM test-coverage — counterparties ?q= fix (singular→plural relation customerGarages→vehicles, що усував PrismaClientValidationError) НЕ мав regression-тесту; HTTP-contract spec мокає сервіс → не виконує реальний where. Фікс: counterparties.service.spec.ts (5 тестів) — findAll(?q=) асертить where.OR з plural relation-іменами + nested deletedAt:null + tenant isolation, без singular. Перевірено без дефектів: isEditingPast minHour-boundary (09:00 при 09:22 → 9.0<9=false → НЕ past, OK); ВСІ timeline px→time converter-и (draw/pending-resize/saved-resize/drag) clamp у [WINDOW_START,WINDOW_END] перед toISOString → Invalid Date неможливий; calendarSlots include nullable lift + toDto ?.[0]?.x??null safe у findOne. Після фіксу: tsc 0, unit 330/330. ⚠️ Урок: query-shape фікс (relation-ім'я, nested where) НЕ ловиться mock-based contract spec — потрібен service-spec що асертить реальний where через Prisma-мок-шпигун.
-Latest optimize: 2026-05-28 (AUTO, HEAD 63640fb) — calendar scope. Backend: createSlot 3 sequential FK findFirst → Promise.all; updateSlot 4 sequential reads (existing+3 FK) → Promise.all (error priority збережено). Frontend: kyivHours/fmtTime/toDateString new Intl.DateTimeFormat на кожен виклик → 4 module-level singletons; TimeSelect new Date().getMinutes() per-option у render → nowMs-derived minMinute prop. DB: CalendarSlot вже добре проіндексований ((orgId,deletedAt),(orgId,liftId,startAt,endAt),(orgId,employeeId,startAt)) — змін не потрібно. 14/14 calendar тестів passed.
-Latest sync: 2026-05-29 (AUTO, HEAD b22a5f0) — 0 mismatches. Full 3-direction audit post calendar stats/month + work-orders calendarSlots + counterparties search fix. Dir1: all backend modules covered (auth/sync/health/files/notifications = known exceptions). Dir2: /calendar/slots?date= matches @Controller('calendar/slots')+@Get()+@Query('date'); statsSlots/loadStats loop same endpoint — correct; all 26 apiFetch calls verified. Dir3: CalendarSlot interface matches CalendarSlotResponseDto; WorkOrderOption.slotStartAt/slotEndAt/slotLiftName match work-orders.dto.ts lines 126-128 + service toDto() lines 740-742; fmtTime(iso:string) on JSON-serialized Date (ISO string) — correct; toDateString(cur:Date) on new Date(from+'T12:00:00') — correct; statsSlots filter by liftId safe; monthSlots byLift keyed by liftId, month view shows only total count (no liftName needed) — correct. tsc web+api: 0 errors. No fixes needed, no commit.
-Latest sync (попередній): 2026-05-28 (AUTO, HEAD fbe66ad) — 1 bug fixed: branches bare-array vs {items} mismatch
-Latest review: 2026-05-28 (auto, HEAD 5045007 → 634536c) — goods scope (goods.dto.ts + goods.service.ts). 1 Suggestion виправлено (unused IsUUID import). TS 0 errors (web --incremental false, api, shared); 316/316 тестів. Перевірено: unitId/brandId @Matches UUID regex (консистентно з preferredSupplierId, конвенція 4a3cdc0) + @IsOptional; UpdateGoodDto = PartialType(CreateGoodDto) успадковує всі поля; ValidationPipe whitelist:true + forbidNonWhitelisted:true → create() `{...dto, orgId}` spread безпечний (тільки DTO-поля у Prisma); brandId/unitId optional FK без explicit валідації — Prisma P2003 при невалідному ref прийнятний (як preferredSupplierId); toDto() type signature повна + повертає unitId/brandId; frontend Good interface + create/edit форми синхронні (unitId/brandId надсилаються form.X||undefined); findMany мають take; всі find* з orgId+deletedAt:null; немає BOM/any/secrets. Контролер: JwtAuthGuard+RolesGuard+@Roles на кожному методі. Попередній review HEAD b4068a6 — calendar scope, 0 проблем.
-Latest tester: 2026-05-28 (AUTO, HEAD d66067b) — goods scope (goods.dto.ts + goods.service.ts після 5045007/634536c). Baseline ✅ (tsc api+web+shared 0 errors, unit 316/316). 2 баги: #161 HIGH business-logic/tenant-isolation — goods create/update spread brandId/unitId/preferredSupplierId у Prisma БЕЗ org-scoped валідації; після того як 5045007 зробив brandId/unitId досяжними через {...dto} (раніше whitelist їх зрізав), FK з ІНШОЇ org проходить сирий DB constraint → cross-tenant linkage (порушення правила #6); неіснуючий ID → generic P2003 замість конкретного. Фікс: validateFkReferences() — Promise.all з findFirst({id,orgId,deletedAt:null}) per Bug #90 pattern → BadRequestException укр., викликається перед create+update; #162 MEDIUM test-coverage — goods.service.spec.ts взагалі не існував → додано 9 тестів (create happy/SKU-conflict/cross-tenant brandId+unitId+supplier throws/valid FK passthrough, update happy + bad FK throws). Після фіксу: tsc 0 errors, unit 325/325. ⚠️ Урок: review HEAD 634536c свідомо вирішив "P2003 при невалідному ref прийнятний" — АЛЕ P2003 ловить лише НЕіснуючий ID, не cross-tenant (ID існує у чужій org); optional FK у multi-tenant ЗАВЖДИ потребує org-scoped findFirst, не покладатись на DB FK. Property/Components/E2E не перезапускались (AUTO scope: 1 backend service+dto).
+  Unit+Contract: ✅ 357/357 passed (34 файли) — +4 counterparties showDeleted + 19 employees assignment contract (Bug #173+#175)
+  Web components: ✅ 148/148 passed (14 файлів) — +9 ModalTabs (Bug #174); виправлено пре-існуючий saved-filters-bar empty-state (Bug #176)
+  Latest tester: 2026-05-29 (AUTO, HEAD 8c3751e→d5a4f18) — scope: 3 комміти (e69bf1e CRM stale-fetch race-guard + cc44f73 counterparties showDeleted/deletedAt contract + 6b886ae ModalTabs + employees assignments). Baseline: API tsc 0 / Web tsc 0 / Shared tsc 0; API 334/334; Web baseline mid-suite ❌ — saved-filters-bar empty-state test падав (component drift). Перевірки коду усі OK (не баги): counterparties.service findAll where = {orgId, ...(showDeleted?{}:{deletedAt:null}),...} — showDeleted прибирає лише soft-delete-фільтр, orgId завжди; count() використовує той самий where; CRM openEdit race-guard через modalVehiclesReqRef (reqId=++ref.current, кожен then/finally гейтить ref.current===reqId — стара повільна вкладка не перезапише поточний CP); employees saveEditEmp PATCH→Promise.all([branches,zones,lifts,work-categories]) всі 4 паралельно, кожен endpoint org-scoped FK-валідовано у сервісі (findMany id:in+orgId+deletedAt+count-check). Виправлено 4 баги (всі MEDIUM, test-coverage): #173 counterparties.service.spec +4 тести showDeleted (drops deletedAt, keeps orgId, count same where, +?q=); #174 modal-tabs.test.tsx (9 тестів — render/click-switch/badge включно з count=0/defaultTab/невідомий defaultTab fallback/порожній масив toBeEmptyDOMElement); #175 employees.contract.spec.ts (19 тестів — describe.each для zones/lifts/work-categories + окремий branches: 200/201 валідне body + service-call assert, порожній масив, невалідний UUID→400, невалідний :id→400 ParseUUIDPipe, 403 без auth; UUID v4-layout); #176 saved-filters-bar.tsx — додано empty-state hint «Немає збережених фільтрів» коли saved=[]&&!saveOpen (виправлено компонент: тест документував легітимний UX-намір, не stale-assertion). Після фіксів: API 357/357, Web 148/148. ⚠️ Урок самовдосконалення: Крок 0 baseline у старій SKILL запускав лише @sto/api test → web-component drift був невидимий до Кроку 4 (#176 виявився під час верифікації). SKILL оновлено: (1) Крок 0 тепер обов'язково ганяє ОБИДВА suite (api + web vitest); (2) §1.6 — новий пункт component-vs-test drift (тест асертить UX-намір якого компонент не має → виправляти компонент якщо намір легітимний, інакше тест); (3) додано accumulated approach для drift-паттерну. d5a4f18.
+  Latest tester: 2026-05-29 (FULL, HEAD efcfd97) — scope: calendar page.tsx (month/stats fan-out + AbortController + color-mix heatmap) + work-orders calendarSlots take:1/toDto + phase18 infra re-audit. Baseline ✅ (tsc api+web 0, unit 330/330). Завдання-перевірки усі OK (не баги): apiFetch(path, init?:RequestInit) спредить signal у fetch → abort працює (+ GET зі signal свідомо обходить in-flight dedup); STATS_MAX_DAYS=92 clamp у while-умові ДО Promise.all; statsRangeTooLong UI-warning; color-mix N% = round(bgAlpha*100) ∈ 8-50%; mountedRef гард на всіх setState. 3 баги виправлено: #170 CRITICAL deploy — minio healthcheck `curl -f /minio/health/live` у docker-compose.yml ТА .dev.yml, але minio/minio образ НЕ має curl/wget (емпірично: лише /usr/bin/mc) → minio назавжди unhealthy → api depends_on service_healthy НІКОЛИ не стартує → web+caddy каскад мертвий (blast-radius як #164/#165 але для minio, пропущено бо minio не alpine). Фікс: `["CMD","mc","ready","local"]` (офіційний MinIO HC, mc бандлиться, local-alias вбудований — перевірено exit 0) + пін образу RELEASE.2024-01-16 для offline; #171 MEDIUM test-coverage — calendarSlots include (b22a5f0/efcfd97) без service-spec, лише contract spec що мокає сервіс → query-shape gap (Bug #163 патерн). Фікс: work-orders.service.spec.ts (4 тести) — прямий new Service(prisma,...null) + $transaction(ops=>Promise.all) мок, асертить include.calendarSlots present AND calendarSlot absent, deletedAt:null, orderBy startAt asc, take:1, orgId tenant scope, ?q= nested counterparty, employeeId some; #172 LOW frontend — loadMonth/loadStats .catch(()=>[]) ховають повний провал fan-out → порожній view не відрізнити від «немає даних». Фікс: monthError/statsError стани (true лише коли failures===days.length) + inline-hint у month-панелі та під stats period-селектором. Після фіксів: tsc api+web 0, unit 334/334, docker compose config валідний обидва файли.
+  Latest review: 2026-05-29 (AUTO, HEAD b22a5f0 → efcfd97) — calendar month grid + stats scope (apps/web/src/app/calendar/page.tsx; work-orders dto/service slot fields і Docker/nginx інфра перевірені OK без правок). tsc api+web 0 errors; 330/330 tests. Виправлено у efcfd97: (1) IMPORTANT — month-view heatmap `style={{ backgroundColor: rgba(var(--color-primary-rgb, 59,130,246), alpha) }}` — CSS var `--color-primary-rgb` НЕ існує у globals.css (є лише `--color-primary: hsl(221 83% 53%)` — hsl-форма, НЕ rgb-триплет → не годиться всередині rgba()), тому rgba() мовчки падав на hardcoded синій fallback, ігноруючи тему/dark mode. Фікс: `color-mix(in srgb, var(--color-primary) ${round(alpha*100)}%, transparent)` (Tailwind 4 baseline підтримує color-mix). (2) IMPORTANT — loadMonth (до 31 паралельних per-day запитів) і loadStats (необмежено для custom range, напр. рік=365) не мали скасування: швидке перемикання місяця/діапазону влаштовувало race — застаріла партія перезаписувала свіжу (виграє остання що зарезолвилась, не остання запитана). Фікс: AbortController-ref на кожен loader (`ref.abort()`перед стартом, signal у apiFetch,`if(signal.aborted) return`guard перед setState). (3) IMPORTANT — custom range без guard на max днів → сотні паралельних запитів. Фікс:`STATS_MAX_DAYS=92`cap на fan-out + clamp days-знаменника load% до того ж cap + UI-підказки:`text-warning-text`«діапазон задовгий, показано перші N» та`text-destructive-text`«Від > До». Перевірено OK: T12:00:00-парсинг дат DST-safe (noon-buffer проти roll-over); load% multi-day = totalMin/60/(11h×days) коректно; work-orders calendarSlots include = nested select+take:1+deletedAt:null (не N+1), toDto повертає Date|null (не BigInt). var(--color-destructive)/var(--color-primary) у load-bar inline style — OK (токени існують, inline style ≠ Tailwind arbitrary).
+Previous review: 2026-05-29 (AUTO, HEAD 5c7748f → 507a7e8) — phase18 infra scope (apps/api/Dockerfile, apps/web/Dockerfile, apps/web/nginx.conf, Caddyfile, scripts/build-prod.ps1, docs/PHASES.md). tsc api+web 0 errors; 330/330 tests. 1 CRITICAL виправлено (507a7e8): apps/api/Dockerfile runner stage копіював`/app/node_modules/.prisma`з builder — шлях НЕ існує у pnpm-layout (генерований client живе у .pnpm virtual store + packages/database/node_modules/.prisma per @sto/database "exports", не у root). Runtime: "@prisma/client did not initialize yet". Фікс: install з dev deps →`prisma generate`проти власних runner node_modules (engine bundled, offline OK) →`pnpm prune --prod`(прибирає лише prisma CLI devDep, @prisma/client+генерований .prisma лишаються бо prod-dep). Перевірено OK без правок: web Dockerfile (next output:'export'→out/ default, nginx serves /usr/share/nginx/html); nginx.conf SPA fallback`try_files $uri $uri/ $uri.html /index.html`коректний для trailingSlash:true (директорний layout /login/index.html → $uri/ матчить); Caddyfile`handle /api/_`→`reverse_proxy api:3000`НЕ страйпить prefix → API має setGlobalPrefix('api') → шлях збігається, strip-prefix НЕ потрібен; Update.ps1 health-check http://localhost:3000/api/health збігається з @Controller('health')+globalPrefix. ⚠️ Suggestion (не фіксив, поза scope): build-prod.ps1 копіює out/→apps/api/public/ (monolith model) але main.ts НЕ реєструє @fastify/static → цей шлях не обслуговує статику; Docker/Caddy split — канонічна модель.
+Latest tester: 2026-05-29 (FULL, HEAD 507a7e8) — phase18 infra RE-AUDIT. ⚠️ ВИЯВЛЕНО: попередня tester-сесія (BUG_REPORT Session phase18) записала Bugs #164-#168 з коректним аналізом і позначила всі`[x] виправлено`, АЛЕ її commit fc87206 був docs-only (лише MemoryManual.md) — жоден код-фікс не застосовано. Перевірка реальних файлів: усі 5 дефектів ЖИВІ (2× CRITICAL release-blocker). Цією сесією РЕАЛЬНО виправлено: #164+#165 CRITICAL — docker-compose.yml healthcheck `curl -f localhost:3000/health` (curl немає у node:20-alpine + шлях невірний бо setGlobalPrefix('api')) → list-form Node-one-liner http.get('localhost:3000/api/health') exit 0/1, +timeout/retries; #166 HIGH — створено root .dockerignore (node_modules/.git/dist/out/.next/.env_/.claude/тести/_.md; prisma schema лишається); #167 HIGH — build-prod.ps1 прибрано dead Copy-Item out→apps/api/public (main.ts без @fastify/static), export лишається у apps/web/out (пакує web Dockerfile); #168 LOW — nginx.conf gzip_types +svg/text-javascript/xml +gzip_vary +окрема location /\_next/static/ immutable; build-prod.ps1 $PSScriptRoot fallback на $MyInvocation для pwsh -File/dot-source. +Bug #169 HIGH (process) — `[x]` без diff = хибно-зелений приховав release-blocker. Після фіксів: tsc api+web 0, unit 330/330, `docker compose config` валідний. ⚠️ Урок Крок-0: ЗАВЖДИ перевіряти реальний стан файлів проти `[x]`-маркерів попередніх сесій — commit міг бути docs-only; статус БЕЗ парного diff не довіряти.
+  Latest tester (попередній): 2026-05-29 (FULL, HEAD a0bc034) — scope: calendar read-only/past (isEditingPast) + WO picker зі slotStartAt/EndAt/LiftName + client↔WO sync; work-orders.findAll calendarSlots include take:1 + toDto slot mapping; counterparties ?q= relation fix (32e9a49); goods validateFkReferences. Baseline ✅ (tsc api+web+shared 0, unit 325/325). 1 баг: #163 MEDIUM test-coverage — counterparties ?q= fix (singular→plural relation customerGarages→vehicles, що усував PrismaClientValidationError) НЕ мав regression-тесту; HTTP-contract spec мокає сервіс → не виконує реальний where. Фікс: counterparties.service.spec.ts (5 тестів) — findAll(?q=) асертить where.OR з plural relation-іменами + nested deletedAt:null + tenant isolation, без singular. Перевірено без дефектів: isEditingPast minHour-boundary (09:00 при 09:22 → 9.0<9=false → НЕ past, OK); ВСІ timeline px→time converter-и (draw/pending-resize/saved-resize/drag) clamp у [WINDOW_START,WINDOW_END] перед toISOString → Invalid Date неможливий; calendarSlots include nullable lift + toDto ?.[0]?.x??null safe у findOne. Після фіксу: tsc 0, unit 330/330. ⚠️ Урок: query-shape фікс (relation-ім'я, nested where) НЕ ловиться mock-based contract spec — потрібен service-spec що асертить реальний where через Prisma-мок-шпигун.
+  Latest optimize: 2026-05-28 (AUTO, HEAD 63640fb) — calendar scope. Backend: createSlot 3 sequential FK findFirst → Promise.all; updateSlot 4 sequential reads (existing+3 FK) → Promise.all (error priority збережено). Frontend: kyivHours/fmtTime/toDateString new Intl.DateTimeFormat на кожен виклик → 4 module-level singletons; TimeSelect new Date().getMinutes() per-option у render → nowMs-derived minMinute prop. DB: CalendarSlot вже добре проіндексований ((orgId,deletedAt),(orgId,liftId,startAt,endAt),(orgId,employeeId,startAt)) — змін не потрібно. 14/14 calendar тестів passed.
+  Latest sync: 2026-05-29 (AUTO, HEAD b22a5f0) — 0 mismatches. Full 3-direction audit post calendar stats/month + work-orders calendarSlots + counterparties search fix. Dir1: all backend modules covered (auth/sync/health/files/notifications = known exceptions). Dir2: /calendar/slots?date= matches @Controller('calendar/slots')+@Get()+@Query('date'); statsSlots/loadStats loop same endpoint — correct; all 26 apiFetch calls verified. Dir3: CalendarSlot interface matches CalendarSlotResponseDto; WorkOrderOption.slotStartAt/slotEndAt/slotLiftName match work-orders.dto.ts lines 126-128 + service toDto() lines 740-742; fmtTime(iso:string) on JSON-serialized Date (ISO string) — correct; toDateString(cur:Date) on new Date(from+'T12:00:00') — correct; statsSlots filter by liftId safe; monthSlots byLift keyed by liftId, month view shows only total count (no liftName needed) — correct. tsc web+api: 0 errors. No fixes needed, no commit.
+  Latest sync (попередній): 2026-05-28 (AUTO, HEAD fbe66ad) — 1 bug fixed: branches bare-array vs {items} mismatch
+  Latest review: 2026-05-28 (auto, HEAD 5045007 → 634536c) — goods scope (goods.dto.ts + goods.service.ts). 1 Suggestion виправлено (unused IsUUID import). TS 0 errors (web --incremental false, api, shared); 316/316 тестів. Перевірено: unitId/brandId @Matches UUID regex (консистентно з preferredSupplierId, конвенція 4a3cdc0) + @IsOptional; UpdateGoodDto = PartialType(CreateGoodDto) успадковує всі поля; ValidationPipe whitelist:true + forbidNonWhitelisted:true → create() `{...dto, orgId}` spread безпечний (тільки DTO-поля у Prisma); brandId/unitId optional FK без explicit валідації — Prisma P2003 при невалідному ref прийнятний (як preferredSupplierId); toDto() type signature повна + повертає unitId/brandId; frontend Good interface + create/edit форми синхронні (unitId/brandId надсилаються form.X||undefined); findMany мають take; всі find_ з orgId+deletedAt:null; немає BOM/any/secrets. Контролер: JwtAuthGuard+RolesGuard+@Roles на кожному методі. Попередній review HEAD b4068a6 — calendar scope, 0 проблем.
+  Latest tester: 2026-05-28 (AUTO, HEAD d66067b) — goods scope (goods.dto.ts + goods.service.ts після 5045007/634536c). Baseline ✅ (tsc api+web+shared 0 errors, unit 316/316). 2 баги: #161 HIGH business-logic/tenant-isolation — goods create/update spread brandId/unitId/preferredSupplierId у Prisma БЕЗ org-scoped валідації; після того як 5045007 зробив brandId/unitId досяжними через {...dto} (раніше whitelist їх зрізав), FK з ІНШОЇ org проходить сирий DB constraint → cross-tenant linkage (порушення правила #6); неіснуючий ID → generic P2003 замість конкретного. Фікс: validateFkReferences() — Promise.all з findFirst({id,orgId,deletedAt:null}) per Bug #90 pattern → BadRequestException укр., викликається перед create+update; #162 MEDIUM test-coverage — goods.service.spec.ts взагалі не існував → додано 9 тестів (create happy/SKU-conflict/cross-tenant brandId+unitId+supplier throws/valid FK passthrough, update happy + bad FK throws). Після фіксу: tsc 0 errors, unit 325/325. ⚠️ Урок: review HEAD 634536c свідомо вирішив "P2003 при невалідному ref прийнятний" — АЛЕ P2003 ловить лише НЕіснуючий ID, не cross-tenant (ID існує у чужій org); optional FK у multi-tenant ЗАВЖДИ потребує org-scoped findFirst, не покладатись на DB FK. Property/Components/E2E не перезапускались (AUTO scope: 1 backend service+dto).
 
 > /sto-review (auto) на HEAD e0af6a8 (2026-05-28, infra rename + warehouse warn + validation @Matches + SearchPickerModal):
 > 0 TS errors (web/api/shared). Виправлено 4 проблеми (commit 9d454d3):
+>
 > 1. CRITICAL — schema.prisma додав LiftType PIT/RAMP enum значення БЕЗ міграції → insert
 >    lift з type='PIT'/'RAMP' = runtime error (значення немає в БД). Фікс: створено
 >    migration 20260528150000_add_lift_type_pit_ramp з `ALTER TYPE "LiftType" ADD VALUE IF NOT EXISTS`.
 >    Урок: будь-яка зміна enum/моделі у schema.prisma ОБОВ'ЯЗКОВО потребує супутньої міграції.
 > 2. IMPORTANT — fix(validation) commit 4a3cdc0 (PowerShell/редактор) додав UTF-8 BOM (ef bb bf)
->    у 22 *.dto.ts. Решта 17 dto без BOM → неконсистентність; BOM ламає деякі парсери/JSON-імпорти,
+>    у 22 \*.dto.ts. Решта 17 dto без BOM → неконсистентність; BOM ламає деякі парсери/JSON-імпорти,
 >    git diff показує ﻿. Фікс: вирізано BOM з усіх 22 (tail -c +4). Валідація НЕ ослаблена:
 >    @Matches(/^[0-9a-f]{8}-...{12}$/i) зберігає структурну форму UUID 8-4-4-4-12, лише не
 >    енфорсить version/variant nibble (навмисно — приймає seed UUID з version 0). Malformed string
@@ -599,17 +652,20 @@ Latest tester: 2026-05-28 (AUTO, HEAD d66067b) — goods scope (goods.dto.ts + g
 >    реальної помилки. Фікс: додано error state + UI-банер; reset на open/close. §8.2.
 > 4. SUGGESTION — infrastructure/page.tsx warehouse-модал мав inline IIFE {(() => {...})()} у JSX
 >    (warehouses.find кожен render). Фікс: винесено в named WarehouseMainCheckbox component. §8.6.
-> Verified OK (без правок):
->   • calendar/page.tsx pointer-логіка (window listeners): onCancel скидає ВСІ 3 режими
->     (drawingRef+ghost, pendingResizing, resizing+resizePreview); closest('[data-calendar-slot]')
->     використовує власний маркер (не phantom dnd-data); listeners cleanup парний.
->   • fetchCpItems/fetchWoItems: apiFetch + encodeURIComponent (no injection), typed.
->   • infrastructure rename Підйомник→Пост + LIFT_TYPE_LABELS PIT='Яма'/RAMP='Естакада' консистентні.
+>    Verified OK (без правок):
+>    • calendar/page.tsx pointer-логіка (window listeners): onCancel скидає ВСІ 3 режими
+>    (drawingRef+ghost, pendingResizing, resizing+resizePreview); closest('[data-calendar-slot]')
+>    використовує власний маркер (не phantom dnd-data); listeners cleanup парний.
+>    • fetchCpItems/fetchWoItems: apiFetch + encodeURIComponent (no injection), typed.
+>    • infrastructure rename Підйомник→Пост + LIFT_TYPE_LABELS PIT='Яма'/RAMP='Естакада' консистентні.
+>
 > ---
+>
 > /sto-review (auto) на HEAD 5702506 (2026-05-28, calendar interactive feature): 0 TS errors.
 > Виправлено 3 проблеми у calendar (commit 5702506):
+>
 > 1. IMPORTANT — calendar/page.tsx handleDrawStart: guard перевіряв `[data-dnd-draggable]`,
->    якого dnd-kit НЕ ставить (useDraggable.attributes = role/aria-*, не data-dnd-draggable).
+>    якого dnd-kit НЕ ставить (useDraggable.attributes = role/aria-\*, не data-dnd-draggable).
 >    → pointer-down на існуючому слоті стартував ghost-draw паралельно з dnd-kit drag.
 >    Фікс: додано `data-calendar-slot` на корінь DraggableSlot + перевірка `.closest('[data-calendar-slot]')`.
 > 2. IMPORTANT — handleTimelinePointerLeave скидав тільки drawing (drawingRef/ghost),
@@ -618,27 +674,30 @@ Latest tester: 2026-05-28 (AUTO, HEAD d66067b) — goods scope (goods.dto.ts + g
 > 3. SUGGESTION — дубльований `toISO(h)` (decimal hours → ISO) у handleTimelinePointerUp та
 >    slotsWithPreview → винесено в module-level `decimalHoursToISO(date, h)`. calendar.service toDto
 >    тепер використовує спільний `formatPersonName` замість inline `[lastName, firstName].join`.
-> Verified OK (без правок):
->   • calendar.controller — @UseGuards(JwtAuthGuard, RolesGuard) + @Roles на кожному методі;
->     POST/PATCH/DELETE = OWNER/ADMIN/RECEPTIONIST; GET додатково MECHANIC. ParseUUIDPipe на :id
->     та optional query branchId/employeeId.
->   • calendar.service — усі find/update фільтрують orgId; FK (lift/employee/workOrder) у create+update
->     валідуються `{ id, orgId, deletedAt: null }` (anti cross-tenant FK injection). 2 $transaction = 2 timeouts (5s).
->     removeSlot = soft delete (update deletedAt), не hard delete. UpdateCalendarSlotDto liftId nullable +
->     @IsOptional → `liftId: null` (move to unassigned) проходить валідацію коректно.
->   • DTO startAt/endAt: Date — збігається з project convention (createdAt!: Date у 15+ модулях);
->     фронт string коректний (JSON-серіалізація). toISO local-tz parse = той самий патерн що addSlot (Kyiv-pinned).
+>    Verified OK (без правок):
+>    • calendar.controller — @UseGuards(JwtAuthGuard, RolesGuard) + @Roles на кожному методі;
+>    POST/PATCH/DELETE = OWNER/ADMIN/RECEPTIONIST; GET додатково MECHANIC. ParseUUIDPipe на :id
+>    та optional query branchId/employeeId.
+>    • calendar.service — усі find/update фільтрують orgId; FK (lift/employee/workOrder) у create+update
+>    валідуються `{ id, orgId, deletedAt: null }` (anti cross-tenant FK injection). 2 $transaction = 2 timeouts (5s).
+>    removeSlot = soft delete (update deletedAt), не hard delete. UpdateCalendarSlotDto liftId nullable +
+>    @IsOptional → `liftId: null` (move to unassigned) проходить валідацію коректно.
+>    • DTO startAt/endAt: Date — збігається з project convention (createdAt!: Date у 15+ модулях);
+>    фронт string коректний (JSON-серіалізація). toISO local-tz parse = той самий патерн що addSlot (Kyiv-pinned).
+>
 > ---
+>
 > /sto-review verify pass на HEAD 5704435 (2026-05-28, perf commits f040cde..5704435):
 > CRITICAL/Important checks усі пройшли. Виправлено 2 ефективність-проблеми (commit ba14043):
+>
 > 1. calendar/page.tsx — memo() на DroppableLiftRow був неефективний: `slotsForLift(id)`
 >    створював новий .filter() масив кожен render → memo завжди re-render. Фікс: useMemo Map<liftId,slots[]>
->    + stable EMPTY_SLOTS → liftSlots reference стабільна.
+>    - stable EMPTY_SLOTS → liftSlots reference стабільна.
 > 2. api-client.ts — GET dedup keyed на path: безпечно для plain GET (shared promise rejection
 >    коректно прокидається всім callers), АЛЕ небезпечно якщо GET має AbortSignal (abort одного
 >    caller валив би проміс іншого). Фікс: `method === 'GET' && !init?.signal` — abortable GET не дедупиться.
-> Verified OK (без правок):
->   • reports.service.ts $queryRaw — усі колонки camelCase у лапках ("employeeId", "normoHours",
+>    Verified OK (без правок):
+>    • reports.service.ts $queryRaw — усі колонки camelCase у лапках ("employeeId", "normoHours",
 >     "amount", "deletedAt", "orgId", "workOrderId", "totalAmount", "totalLabor", "completedAt",
 >     "batchCostPrice", "purchasePrice", "firstName", "lastName") звірені зі schema.prisma (без @map).
 >     Table names = @@map plural (work_order_lines, work_orders, employees, work_order_parts, goods).
@@ -647,8 +706,10 @@ Latest tester: 2026-05-28 (AUTO, HEAD d66067b) — goods scope (goods.dto.ts + g
 >     + unknownCount FILTER збережені; SUM ігнорує NULL → unknown parts contribute 0 (як раніше).
 >   • dashboard.service.ts — CacheService DI ОК (RedisModule @Global + AppModule import). Cache key
 >     містить orgId (`dashboard:summary:${orgId}`) → 25s TTL не плутає org-и. CacheService get/set
->     мають try/catch fallback → Redis down не ламає request (offline-first).
+>    мають try/catch fallback → Redis down не ламає request (offline-first).
+>
 > ---
+>
 > Попередній /sto-review verify pass на HEAD 2e8b4ce (2026-05-28): 0 issues to fix, no review commit needed.
 > Перевірено: brands/units/payment-methods.service (resurrection pattern), exchange-rates.service
 > (parseDateOnly + merged findFirst), currencies.service (merged findFirst), picker-modal.tsx
@@ -659,6 +720,7 @@ Latest tester: 2026-05-28 (AUTO, HEAD d66067b) — goods scope (goods.dto.ts + g
 > Контролери: повні guards (Jwt+Roles), @Roles на кожному методі, ParseUUIDPipe на :id. API tsc: 0 errors.
 
 ## Поточний стан проєкту
+
 ```
 TypeScript:      ✅ 0 errors           (apps/web + apps/api + shared — після a6b154e)
 Unit+Contract:   ✅ 316/316 passed     (30 файлів — backend; +calendar.contract 14 tests)
@@ -714,6 +776,7 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - **Picker-trigger IIFE у `settings/page.tsx` (рахунок банку).** `{(() => { const selected = bankAccounts.find(...); return (<...>) })()}` → `selectedBankAccount` обчислено один раз у component body перед `return`, JSX без IIFE. (Сам `<PickerModal<BankAccount>>` уже використовувався коректно — це був лише trigger-button computation.)
 
 **Чисто (порушень немає):**
+
 - `<PickerModal<T>>` уже коректно застосований у `settings/page.tsx` (єдина page що його потребує). Інші "selectGood" — це або `<SearchCombobox>` (work-orders part picker — server-side search, правильний примітив для великого датасету), або master-detail список (catalog) — НЕ picker-modal кейси.
 - page-level `search`/`setSearch` у crm/employees/invoices/work-orders — це фільтр списку сторінки (з пагінацією), НЕ власний modal-picker. Не плутати.
 
@@ -783,9 +846,9 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 
 - **`React.ReactNode` / `React.CSSProperties` / `import('react').ReactNode` без іменованих імпортів** — Next.js TS-plugin суворіший за plain tsc; форма `React.X` (з global namespace) проходить tsc через `next-env.d.ts`, але це антипатерн skill §1. Канон: `import type { ReactNode, CSSProperties } from 'react'`. Виправлено у `apps/web/src/app/calendar/page.tsx`, `apps/web/src/app/layout.tsx`, `apps/web/src/components/SentryProvider.tsx`. Інші файли (наприклад `inline-edit-cell.tsx`) залишені бо не в скоупі поточних змін — фікс відбудеться коли файл наступного разу торкнеться.
 - **AuthProvider on-mount `refreshToken().then(...)` без `cancelled` flag** — типовий патерн "useEffect з апі-викликом і []-deps". React не варнить про setState на unmounted у виробництві, але:
-  1) Якщо користувач залишить root layout (повний reload) до завершення мережевого запиту — `dispatch` все одно виконається після unmount.
-  2) Skill §3.1: `useEffect з apiFetch і [] deps на сторінках з навігацією — теж потребує let cancelled=false`.
-  Канон: `let cancelled = false; ...then((ok) => { if (cancelled) return; ...dispatch(...) }); return () => { cancelled = true }`. Виправлено в `apps/web/src/lib/auth/context.tsx`.
+  1. Якщо користувач залишить root layout (повний reload) до завершення мережевого запиту — `dispatch` все одно виконається після unmount.
+  2. Skill §3.1: `useEffect з apiFetch і [] deps на сторінках з навігацією — теж потребує let cancelled=false`.
+     Канон: `let cancelled = false; ...then((ok) => { if (cancelled) return; ...dispatch(...) }); return () => { cancelled = true }`. Виправлено в `apps/web/src/lib/auth/context.tsx`.
 
 ### Gotcha — /sto-tester cycle-5 (2026-05-27, commit pending, bugs #127, #128)
 
@@ -806,6 +869,7 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 ### Gotcha — /sto-tester cycle-2 post-review (2026-05-27, commit c30c38c, bugs #120-#126)
 
 - **`total: items.length` після `take: N` — повторюваний шаблон, що проростає у нові endpoints** (Bug #120, #121, goods.controller.getBatches/getPriceHistory). Це 4-й інстанс цього патерну (попередні: #88 audit, #28 batches list, #83 dashboard low-stock). Канон: будь-який `findMany` з `take`-обмеженням MUST бути парою з `count()` без обмежень через `$transaction([findMany, count])` (або `Promise.all` для cross-table). `total: items.length` ВСЕРЕДИНІ controller з explicit `take` — це **завжди** баг навіть якщо frontend не використовує `total`. Документувати у MockResponseDto через `@ApiProperty({ description: 'Capped total (≤ limit)' })` тільки коли count умисно дорогий (search-like).
+
   ```bash
   # Регулярний grep для регресу (3+ інстансів за 2 тижні):
   grep -rn "total: items.length\|total: .*\\.length" apps/api/src --include="*.ts" | grep -v spec | grep -v "Capped"
@@ -892,6 +956,7 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - **Baseline TS-помилка маскується пропущеним `mapXxx()` shape оновленням** (Bug #0a, settings.service.ts): попередня сесія додала `followUpActive`/`followUpDays` у DTO/Response, але приватний `mapOrgSettings` мав inline тип параметра — оновлення цього inline shape тихо пропустили. `tsc --noEmit` ламається на КОЖНОМУ запуску. Канон: коли додаєш поле у Response DTO + DB schema, обов'язково оновити: (a) DTO `OrganisationSettingsResponseDto`, (b) Request DTO `UpdateOrganisationSettingsDto` з валідацією, (c) **усі `mapXxx()` shape**-визначення, (d) seed/mock у contract тестах. Краще пара generic helper-ів типу `Pick<Prisma.OrganisationSettings, keyof OrganisationSettingsResponseDto>` ніж дублювати inline shape. Тестуй регресію — додав contract test `Bug #84 regression: followUp fields end-to-end` (4 кейси).
 
 - **`@CurrentUser() user: { sub: string }` повторюється у нових контролерах попри попередню Gotcha** (Bug #92, invoices.controller.ts create + createFromWorkOrder): попередня сесія зафіксувала цей анти-паттерн для work-orders, але invoices, які `@CurrentUser` теж використовують, пропустили. Канон: загальний grep `@CurrentUser.*sub` як precommit check.
+
   ```bash
   grep -rn "@CurrentUser.*sub" apps/api/src --include="*.ts" && exit 1 || exit 0
   ```
@@ -913,6 +978,7 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
   ВСІ роблять `tryRefresh()` при 401, `window.location.replace('/login')` при refresh fail. **Ніколи** не використовуй native `fetch(...)` напряму у компонентах — це обхід refresh+redirect logic.
 
 - **AuditEvent `findByEntity` total мав bug-pattern `total: items.length` після `take: N`** (Bug #88): класична помилка пагінації — `total` cap-ується разом з items. Frontend думає що бачить ВСЕ. Канон: `$transaction([findMany, count])` де `count` без `take`/`skip`/`orderBy`. Той же патерн застосуй у будь-якому новому `findX` що має `take: N`. Grep:
+
   ```bash
   grep -rn "total: items.length\|total: .*\\.length" apps/api/src --include="*.service.ts"
   ```
@@ -921,20 +987,19 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 
 - **`min`/`max` props у DatePickerInput треба ВЖИВАТИ, а не лише декларувати** (Bug #87): TS-інтерфейс мав `min?: string; max?: string`, але `DayPicker` не отримував `disabled={[...]}` matcher. Це класична TS-довірливість: тип проходить compile, runtime ігнорує. Канон: будь-який prop у TS interface — у JSX має бути спожитий. Lint-правило `react/no-unused-prop-types` від `eslint-plugin-react` ловить це. Без нього — code review.
 
-- **`useEffect` для Escape handler лише при `lightboxUrl` truthy** (Bug #89, work-orders/[id]/PageClient.tsx): `useEffect(() => { ... }, [lightboxUrl])` з early-return `if (!lightboxUrl) return` робить subscribe тільки коли модалка відкрита, і автоматично unsubscribe при закритті. Канон для будь-якої наступної lightbox/popover/dropdown реалізації: pair з `role="dialog" aria-modal="true" aria-label="..."` І keydown listener у `useEffect([open])`. 
+- **`useEffect` для Escape handler лише при `lightboxUrl` truthy** (Bug #89, work-orders/[id]/PageClient.tsx): `useEffect(() => { ... }, [lightboxUrl])` з early-return `if (!lightboxUrl) return` робить subscribe тільки коли модалка відкрита, і автоматично unsubscribe при закритті. Канон для будь-якої наступної lightbox/popover/dropdown реалізації: pair з `role="dialog" aria-modal="true" aria-label="..."` І keydown listener у `useEffect([open])`.
 
 ### Gotcha — /sto-review on e7e0c83..cdeb9f6 (2026-05-26, commit 7ee1db4)
 
 - **EventSource не передає Bearer header — SSE авторизація через query token обов'язково має manual verify** (dashboard.controller.ts B9): нативний `EventSource` не підтримує custom headers, тому SSE endpoint не можна захистити стандартним `@UseGuards(JwtAuthGuard)` — guard очікує `Authorization: Bearer`. Канон: для SSE окремий endpoint який приймає `?token=<jwt>`, вручну викликає `jwtService.verify(token, { secret: config.getOrThrow('JWT_ACCESS_SECRET') })`, валідує `payload.sub && payload.orgId`, кидає `UnauthorizedException` інакше. **АЛЕ паралельний non-SSE endpoint (`/dashboard/summary`) ВСЕ ОДНО треба захистити** контролер-рівневим `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(...)` — інакше це open hole. Грeп `@Controller` без `@UseGuards` на рівні класу І без `@UseGuards` на кожному методі — це CRITICAL.
 - **Hardcoded `'sto_token'` рядок як ключ sessionStorage = німий auth fail** (useDashboardStream.ts + work-orders/[id]/PageClient.tsx): канонічний ключ — `TOKEN_KEY = 'sto_access_token'` (експортується з `@/lib/auth`). Hardcoded `'sto_token'` ніколи не повертає валідний токен, але `sessionStorage.getItem` повертає `null` мовчки — fetch стартує без header, API відповідає 401, EventSource onerror зриває reconnect loop. Канон: ЗАВЖДИ `import { TOKEN_KEY } from '@/lib/auth'`. Grep на `sessionStorage.getItem.*sto_` без TOKEN_KEY — CRITICAL.
 - **Env var drift `NEXT_PUBLIC_API_BASE` vs `NEXT_PUBLIC_API_URL`** (useDashboardStream.ts): в проекті прийнято `NEXT_PUBLIC_API_URL` (api-client.ts, auth/context.tsx, xlsx-import-button.tsx). Hook `useDashboardStream` шукав `NEXT_PUBLIC_API_BASE` що ніколи не існував → `localhost:3000` у проді, SSE не конектиться. Канон: одна канонічна env-змінна на API base URL, винесена у `lib/api-client.ts` як `export const API_URL`. Уникнути копі-паст hardcoded `process.env.NEXT_PUBLIC_API_*` у нових файлах — імпортуй з api-client.
-- **Multipart file upload через нативний `fetch` потребує `/api` префіксу І `credentials: 'include'`** (work-orders/[id]/PageClient.tsx handleMediaUpload): `apiFetch` сам додає `/api`, але `apiFetch` не підтримує `FormData` (фіксує Content-Type у JSON). При використанні raw `fetch(${API_URL}/work-orders/...)` забули `/api` префікс І `credentials: 'include'` для refresh-cookie. Канон: коли upload вимагає `multipart/form-data` — `fetch(\`\${apiBase}/api/<path>\`, { credentials: 'include', headers: { Authorization: \`Bearer \${token}\` } })` БЕЗ Content-Type (браузер сам додасть boundary). Альтернатива: розширити `apiFetch` щоб detect-ив `FormData` body і пропускав Content-Type — TODO у follow-up.
+- **Multipart file upload через нативний `fetch` потребує `/api` префіксу І `credentials: 'include'`** (work-orders/[id]/PageClient.tsx handleMediaUpload): `apiFetch` сам додає `/api`, але `apiFetch` не підтримує `FormData` (фіксує Content-Type у JSON). При використанні raw `fetch(${API_URL}/work-orders/...)` забули `/api` префікс І `credentials: 'include'` для refresh-cookie. Канон: коли upload вимагає `multipart/form-data` — `fetch(\`\${apiBase}/api/<path>\`, { credentials: 'include', headers: { Authorization: \`Bearer \${token}\` } })`БЕЗ Content-Type (браузер сам додасть boundary). Альтернатива: розширити`apiFetch`щоб detect-ив`FormData` body і пропускав Content-Type — TODO у follow-up.
 - **`@CurrentUser() user: { sub: string }` тип-брехня** (work-orders.controller.ts transition/clone): `AuthenticatedUser` (jwt.strategy.ts) реально повертає `{ id, orgId, role }` — НЕ `{ sub }`. `sub` присутній лише у raw JWT payload. Анотація `{ sub: string }` ламає TS у боку розробника: TS приймає `user.sub` (поле є в типі), runtime повертає `undefined`. Будь-який downstream код що передає `userId` далі (audit, settlement.createTransaction) тихо отримує `undefined` → audit log skip, settlements creator missing. Канон: ЗАВЖДИ `@CurrentUser() user: { id: string }` для controllers що потребують auth user. Глобально grep `@CurrentUser.*sub` — це регулярний bug-pattern (8+ контролерів у проекті досі мають цю помилку).
 - **Path traversal у multipart filename → object-storage** (work-order-media.service.ts upload): `file.filename.split('.').pop()` для extension без sanitization не дає traversal (`crypto.randomUUID()` робить шлях унікальним), АЛЕ `filename` зберігається в DB і повертається у DTO; HTML `<img alt={m.filename}>` міг би показати XSS-нерелевантне `../../etc/passwd.jpg`. Канон: `path.basename(filename.replace(/\\/g, '/'))` + control-char strip + 255-char cap + ext whitelist. Те ж стосується будь-яких file upload endpoints: `xlsx-import`, `attachment-upload`, custom logo upload.
 - **`take: N` на `prisma.X.count()` — мовчки ігнорується** (dashboard.service.ts stockItem): `count()` повертає число, не масив — `take` параметр не входить у `Prisma.XCountArgs`. TS не ловить бо `count` приймає `{ where, ... }` без обмеження keys. Канон: НЕ передавати `take` у `count()` — нема ефекту, плутає reviewer. Якщо реально треба capped count — `take` у `findMany({ select: { id: true } }).then(r => r.length)`.
 - **`(decimal as any).toNumber()` ховає тип Prisma.Decimal** (dashboard.service.ts revenue sum): Prisma `_sum.amount` повертає `Prisma.Decimal | null`. Cast `as any` → виклик `.toNumber()` працює, але type lost і null-check не gerada (NaN при null). Канон: `Number(decimalValue)` (працює і для Decimal і для null → NaN → треба guard) АБО `decimalValue != null ? Number(decimalValue) : 0`. Ніколи `as any` навколо Prisma результатів — використовуй `Number(x)` cast який TS розуміє через Decimal.toNumber вбудоване coercion.
 - **`audit-log` endpoint без ParseUUIDPipe → P2023 → HTTP 500** (audit.controller.ts findByEntity): `@Query('entityId')` без `ParseUUIDPipe` приймає будь-який string, Prisma `where: { entityId: 'not-a-uuid' }` падає `PrismaClientKnownRequestError P2023`, NestJS повертає 500 замість 400. Канон: `@Query('xxxId', new ParseUUIDPipe())` для будь-якого param/query очікуваного UUID. Те ж для polymorphic `entityType` — whitelist у `@IsIn(...)` або in-controller `if (!ENTITY_TYPES.includes(entityType)) throw new BadRequestException(...)`.
-
 
 ### Gotcha — /sto-review on commit 7b899e4 (2026-05-26, d53b626)
 
@@ -957,6 +1022,7 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - **DELETE/cancel endpoint що повертає void → завжди `@HttpCode(HttpStatus.NO_CONTENT)`** (Bug #80, completion-acts cancel): NestJS за замовч. видає 200 + порожнє тіло, але REST-стандарт + UI-очікування — 204. Канон: коли метод повертає `Promise<void>` — додати `@HttpCode(HttpStatus.NO_CONTENT)`. Узгодженість з логаут/`removeSlot`/`removeLine` важлива для frontend (`apiFetch` перевіряє `status === 204` щоб не парсити JSON).
 
 ### Gotcha — /sto-review costMethod selector (2026-05-26, commit 18598d7)
+
 - **Frontend enum literal drift from Prisma enum** (settings/page.tsx costMethod selector): Prisma enum `BatchCostMethod = { FIFO, FEFO, LIFO, AVG_COST }`. New UI shipped `[['FIFO', ...], ['LIFO', ...], ['AVERAGE', ...]]` — `AVERAGE` is not in the enum and `FEFO` is missing entirely. Backend `@IsEnum(BatchCostMethod)` returns 400 on any "Середній" pick → user can never change the default. Канон: when an enum is shared across the boundary, declare a literal-union type on the frontend (`type CostMethod = 'FIFO' | 'FEFO' | 'LIFO' | 'AVG_COST'`) and derive the option list from that single source of truth. NEVER let the field be typed `string` in the frontend `interface` — that defeats TS as a safety net for enum drift. Also: every Prisma enum that surfaces in UI needs a contract test that PATCHes each valid value AND asserts an invalid string 400s (regression guard).
 - **List/option arrays in JSX should be `const OPTIONS = [...]` at module top, not inline `[as [string,string,string][]]`** — the inline tuple-literal cast hides typos behind verbose syntax. Canonical pattern: `const X_OPTIONS: { value: X; label: string; hint: string }[] = [...]; X_OPTIONS.map(...)`. Also makes the labels accessible to future i18n extraction.
 - **Radio-group semantics on segmented buttons**: a vertically/horizontally stacked group of mutually exclusive `<button>`s is functionally a radio group. Wrap in `role="radiogroup"` with `aria-label`, give each option `role="radio"` and `aria-checked={selected}` — otherwise screen readers announce "10 buttons" without conveying mutual exclusivity.
@@ -969,13 +1035,12 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - **Race-patron consistency: `f.x ? f : {...}` має бути ВСЮДИ де auto-select** (Bug #72, work-orders/page.tsx loadVehicles): review-фікс 83921d2 додав цей patron у branchId і warehouseId auto-selects, але пропустив `loadVehicles` (там guard є тільки на reqId staleness — а не на user's manual pick). Канон: при додаванні auto-select feature робити **сplit-screen sweep** — знайти grep-ом всі `setForm(f => ({ ...f, X: result }))` і застосувати один і той же patron `f.X ? f : {...}` синхронно. Pre-existing auto-selects, які приймають patron в окремому commit, ризик регресії.
 - **Pre-existing failing tests маскуються у CI-output** (Bug #73, command-palette.test.tsx): тест `показує "Нічого не знайдено"` ламається тиху і безшумно після `feat(phases21-22)` що додав `apiFetch('/search')` debounce у компонент — у jsdom нема fetch, `dataLoading` лишається true, "empty state" не рендериться. 12/13 passed виглядає здорово для людини що дивиться лише на summary, але реально це регресія яка пройшла кілька commit-ів. Канон: будь-який тест що використовує `screen.getByText(...)` після `userEvent.type` має або (a) `vi.mock('@/lib/api-client', ...)` у файлі-тесті щоб контрольовано resolved-ить API виклики, або (b) `findByText` (async) — синхронні assertion-и проти post-debounce UI = flaky timer-залежність. `/sto-tester` тепер ЗАВЖДИ запускає `pnpm --filter @sto/web exec vitest run` у FULL mode і блокує на 0 failures, навіть якщо помилка не у файлах diff.
 
-
 ### Gotcha — /sto-review warehouse auto-select cycle (2026-05-26, commit fix(review): warehouse auto-select)
-- **`prisma migrate dev` drops raw-SQL "drift" indexes silently** (migrations/20260526113130_warehouse_is_main): the trgm GIN indexes from `20260526061209_b6_trgm_gin_indexes` are created by hand-written `CREATE INDEX IF NOT EXISTS ...` *outside* schema.prisma. When the next `migrate dev` was generated for the unrelated `Warehouse.isMain` column, Prisma saw 6 indexes present in DB but not in schema → emitted `DROP INDEX` statements at the top of the auto-generated migration. This silently killed B6 fuzzy search (HTTP 200 still, just sequential scans on every search). Канон: every raw-SQL migration MUST be paired with **either** a corresponding schema.prisma directive (`@@index([...], type: Gin, ops: ...)` for trgm if supported) **or** the next auto-generated migration MUST be reviewed line-by-line for unexpected DROPs. The fix re-creates indexes idempotently inside the same migration, and updates the recorded checksum in `_prisma_migrations` so future `migrate dev` does not warn about drift.
+
+- **`prisma migrate dev` drops raw-SQL "drift" indexes silently** (migrations/20260526113130_warehouse_is_main): the trgm GIN indexes from `20260526061209_b6_trgm_gin_indexes` are created by hand-written `CREATE INDEX IF NOT EXISTS ...` _outside_ schema.prisma. When the next `migrate dev` was generated for the unrelated `Warehouse.isMain` column, Prisma saw 6 indexes present in DB but not in schema → emitted `DROP INDEX` statements at the top of the auto-generated migration. This silently killed B6 fuzzy search (HTTP 200 still, just sequential scans on every search). Канон: every raw-SQL migration MUST be paired with **either** a corresponding schema.prisma directive (`@@index([...], type: Gin, ops: ...)` for trgm if supported) **or** the next auto-generated migration MUST be reviewed line-by-line for unexpected DROPs. The fix re-creates indexes idempotently inside the same migration, and updates the recorded checksum in `_prisma_migrations` so future `migrate dev` does not warn about drift.
 - **Stale async response overrides user input** (work-orders/page.tsx loadVehicles): a counterparty change triggers a multi-step fetch (garages → vehicles per garage). If the user switches counterparty before the older fetch resolves, the older `length === 1` branch hijacks `form.vehicleId`. Канон: increment-on-call counter ref + guard at resolution (`if (reqId !== ref.current) return;`). The same pattern applies anywhere `setForm(f => ({ ...f, X: result }))` runs after an `await` whose source can re-fire faster than the network — counterparty/garage/vehicle cascades, dependent selects, search-driven combobox auto-select.
 - **Auto-select effects must preserve manual user pick** (stock-documents, purchase-orders, work-orders, WO card part form): pattern `if (single) setForm(f => ({ ...f, x: single.id }))` looks innocent but clobbers a value the user has just typed/picked when the effect re-fires (modal re-opens, deps change, slow fetch resolves after re-mount). Канон: `setForm(f => (f.x ? f : { ...f, x: single.id }))` — only fill empty fields. Apply to every "default selection" code path; do not assume the field is always empty at effect time.
 - **`findMany` ordering should reflect "canonical first" semantics** (warehouses.service.ts): adding an `isMain` boolean without bumping the `orderBy` means dropdowns still alphabetize, hiding the main warehouse below others. Канон: when a model gains a "primary/main/default" boolean flag, the default `findMany` order becomes `[{ isMain: 'desc' }, ...originalOrder]` so consumers naturally land on the canonical record.
-
 
 ### Gotcha — /sto-tester FULL pass 2026-05-26 after commit 8ed0a42 (Bug #68)
 
@@ -992,24 +1057,26 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - **Tenant defense-in-depth even after findOne()**: `WorkOrderTemplatesService.update/remove` used `where: { id }` only. The preceding `findOne(orgId, id)` mitigated cross-tenant access, but any future refactor that drops findOne would silently leak. Pattern: always `where: { id, orgId }` for update/delete, regardless of preceding guards.
 - **Template select that overwrites description**: setting `form.description = tpl.name` was confusing (looked like a noop, the user thought template feature was broken). Prefix with «Створено за шаблоном «...»» until full lines/parts auto-apply is implemented in a follow-up sprint.
 
-
 ### Gotcha — /sto-review Phases 21-22 cycle (2026-05-26, commit fix(review): ...)
+
 - **TDZ у `useEffect` що читає `useRef`/`useState` оголошені нижче** (work-orders/page.tsx): рефакторинг "auto-init my-orders chip" зсунув `myOrdersInitRef = useRef(false)` нижче `useEffect` що його читає → `ReferenceError: Cannot access 'myOrdersInitRef' before initialization` при першому render для всіх ролей. Канон: ВСІ `useRef`/`useState` декларації йдуть ПЕРЕД будь-яким `useEffect`/`useCallback`/`useMemo` що їх читає. Не покладатися на JS hoisting — `let`/`const` не hoisted, виконання падає на стрічці `useEffect(...)`. Той самий ризик при додаванні нових ефектів зверху файлу під час інкрементальних feature builds.
-- **F6 "Мої наряди" chip не фільтрує — `employeeId` відсутній у `WorkOrderQueryDto`** (work-orders.dto.ts): фронт надсилає `?employeeId=X` але `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })` повертає HTTP 400 "property employeeId should not exist". Філ не валідується тихо — endpoint крашиться. Канон: будь-який новий query-param фільтр на фронті → парний `@IsOptional() @IsUUID() field?` у DTO + handler у `findAll`. Перевірка: на кожен `apiFetch(\`?${param}\`)` має бути присутнє поле у відповідному `QueryDto`.
+- **F6 "Мої наряди" chip не фільтрує — `employeeId` відсутній у `WorkOrderQueryDto`** (work-orders.dto.ts): фронт надсилає `?employeeId=X` але `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })` повертає HTTP 400 "property employeeId should not exist". Філ не валідується тихо — endpoint крашиться. Канон: будь-який новий query-param фільтр на фронті → парний `@IsOptional() @IsUUID() field?` у DTO + handler у `findAll`. Перевірка: на кожен `apiFetch(\`?${param}\`)`має бути присутнє поле у відповідному`QueryDto`.
 - **Polymorphic `entityType` casing mismatch** (comments F8): DTO whitelist `['WorkOrder', 'Counterparty', 'Vehicle', 'Invoice']` (PascalCase), фронт надсилав `'work_order'` (snake_case) → POST `400`, GET повертає `[]` (мовчки 0 матчів). Канон: експортувати `COMMENT_ENTITY_TYPES` константу з DTO і використовувати її у фронті через імпорт. Або принаймні задокументувати канонічну форму поряд із `@IsIn(...)`. Той самий ризик для будь-яких polymorphic discriminator strings — sync, audit, notifications.
 - **pdfmake v0.3.x server-side API повністю відрізняється від UMD/browser** (pdf.service.ts): `require('pdfmake/build/pdfmake')` повертає browser bundle БЕЗ `PdfPrinter` класу → endpoint крашиться при першому виклику `new PdfPrinter(fonts)`. Канон для server (Node): `require('pdfmake')` (singleton) → `pdfMake.setFonts({...})` → `pdfMake.createPdf(docDef).getBuffer()` повертає `Promise<Buffer>`. Никогда `pdfmake/build/*` на бекенді.
-- **`<a href>` download з JWT-guarded endpoint = HTTP 401** (PageClient.tsx downloadPdf): нативний браузерний download не може прикрутити `Authorization: Bearer` header. Канон: `fetch(url, { headers: { Authorization: \`Bearer \${token}\` } })` → `res.blob()` → `URL.createObjectURL(blob)` → `<a>` click → `setTimeout(revokeObjectURL, 100)`. Та сама проблема для будь-якого download endpoint захищеного `JwtAuthGuard`: PDF, Excel, ZIP, image-with-watermark.
+- **`<a href>` download з JWT-guarded endpoint = HTTP 401** (PageClient.tsx downloadPdf): нативний браузерний download не може прикрутити `Authorization: Bearer` header. Канон: `fetch(url, { headers: { Authorization: \`Bearer \${token}\` } })`→`res.blob()`→`URL.createObjectURL(blob)`→`<a>`click →`setTimeout(revokeObjectURL, 100)`. Та сама проблема для будь-якого download endpoint захищеного `JwtAuthGuard`: PDF, Excel, ZIP, image-with-watermark.
 - **`useState(() => localStorage.getItem(...))` lazy initializer крашить SSR + дає hydration mismatch** (useTableColumns.ts): Next.js static-export prerender виконує initializer на сервері де `localStorage` undefined → throw / hydration mismatch (server `defaults` ≠ client `stored`). Канон: ініціалізувати дефолтами, читати localStorage в `useEffect([])` після mount, defensive `typeof window !== 'undefined'` guard на write. Те саме для будь-якого hook що hydrate-ить state з storage: `useSavedFilters`, `useColumnOrder`, `useUserPreferences`.
 - **Comment DELETE без author/role check = кожен може стерти будь-який коментар** (comments.service.ts): тільки `findFirst({ id, orgId })` потім `delete()` — будь-який авторизований у `orgId` може видалити comment колеги. Канон: `if (comment.authorId !== user.id && user.role !== 'OWNER' && user.role !== 'ADMIN') throw new ForbiddenException(...)`. Той самий патерн для будь-яких user-generated content: notes, attachments, files, reminders.
 - **`Promise.all` + `slice(N)` для багатотипного пошуку дає non-deterministic ordering** (search.service.ts): `results.push(...items)` у `Promise.all` callbacks порядок залежить від latency окремих query → switch goods/wo раз від разу. Канон: `Promise.all(types.map(t => searchByType(t)))` → результат — массив **в порядку types** → `.flat().slice(0, limit)` детермінований.
 - **B6 search by company name не покривається** (search.service.ts): початкова версія `similarity(firstName || ' ' || lastName, q)` — B2B клієнти невидимі. Канон: окрема similarity для `companyName` + label у respose має fallback на companyName.
 
 ### Gotcha — /sto-tester invoices/page sweep (2026-05-26, баги #58-#60, commit e867ba4)
+
 - **Closure-check + functional-setter race у `handleTransition`** (Bug #58): `if (selectedInv?.id === inv.id) setSelectedInv(prev => ({...prev, status: newStatus}))` змішує JS-closure value (для перевірки `if`) і live React state (`prev` у setter). Якщо панель перемикається на іншу invoice між кліком і відповіддю API — newStatus застосовується до НОВОЇ invoice. Канон: ВСЯ перевірка має бути всередині функціонального setter — `setSelectedInv(prev => prev && prev.id === inv.id ? {...prev, status: newStatus} : prev)`. Той самий патерн потрібен скрізь де `if (selectedX) setSelectedX(prev => ...)` після `await` — детальні панелі, відкриті модалки, токенізовані selection.
 - **Server-side side-effects не віддзеркалюються в selectedDetail** (Bug #59): `POST /payments` тригерить `invoice.status = 'PAID'` (PaymentsService:101), але клієнтський `handlePay` оновлює лише список через `load()` — DetailPanel показує застарілий SENT з активною кнопкою «Оплатити», що 400. Канон: після кожної мутації, що змінює статус через side-effect — оновити локально через functional setter ДО `load()`: `setSelectedInv(prev => prev && prev.id === id ? {...prev, status: 'PAID'} : prev)`. Шаблон: detail-panel-state-after-mutation = (mutate) → (sync local visible) → (refetch list).
 - **VAT/totals defaults у Prisma = 0 рендеряться як «реальні» нулі** (Bug #60): `totalWithVat?: number` з API завжди present (default 0) для рахунків створених вручну без InvoiceLines. Перевірка `totalWithVat != null` truthy для 0 → секція «Підсумок» показує «Без ПДВ: 0,00 ₴ / ПДВ: 0,00 ₴ / З ПДВ: 0,00 ₴» поряд із `amount=1000 ₴`. Канон: для полів-сум з Prisma default 0 використовувати `(field ?? 0) > 0` як guard на рендер, не `!= null`. Те саме для будь-яких aggregated Decimal колонок: `totalAmount`, `totalLabor`, `totalParts`, `totalCost` — `> 0` фільтрує і undefined, і нулі.
 
 ### Gotcha — /sto-tester Phase 20 UX Groups 4-6 sweep (2026-05-26, баги #53-#57, commit 18f1d48)
+
 - **`useBulkSelect` без pruning при зміні items → stale Set across pages** (Bug #53): Set обраних ID зберігається при пагінації/фільтрації/refetch, що дає невидимі вибори у count + хибний allSelected/someSelected + bulk actions проти невидимих ID. Канон: `useEffect(() => { setSelected(prev => prev ∩ visibleIds) }, [items])` з early-return `prev.size === 0`, щоб не тригерити re-render для порожньої виборки. Цей патерн обов'язковий для будь-якого хука що тримає `Set<string>` IDs прив'язаних до зовнішнього масиву.
 - **`Promise.all` для bulk-операцій → fail-fast псує UX** (Bug #54): один FSM-invalid перехід (ARCHIVE з не-PAID, CANCEL з ARCHIVED/CANCELLED) реджектить ВЕСЬ батч; success-toast і `bulkSelect.clear()` не викликаються, але частина WO вже трансформувалась — UI неконсистентний. Канон: `Promise.allSettled` + рахунок fulfilled/rejected + ЗАВЖДИ викликати `clear()` і `load()` у `finally`-логіці + агрегований toast вигляду "Скасовано 3 з 5. 2 не змінено". Те саме для `bulkArchive`, `bulkRemove`, `bulkRestore`, `bulkExport` — будь-яка масова мутація.
 - **Bulk-actions UI що не враховує FSM → завжди фейлить для частини selection** (Bug #55): `ARCHIVE` дозволено тільки з `PAID` (per `WORK_ORDER_TRANSITIONS`); інші 9 статусів повертатимуть 400. Аналогічно `CANCEL` з `IN_PROGRESS/COMPLETED/INVOICED/PAID/ARCHIVED/CANCELLED` неможливий. Мінімальний фікс — `Promise.allSettled` гасить регресію (#54). Якісне виправлення — disable / count-down кнопки на основі реальної кількості сумісних із FSM. TODO у follow-up: показувати "Архівувати (2 з 5)" або фільтрувати selection до compatible IDs перед mutation.
@@ -1017,6 +1084,7 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - **Component coverage для Phase X нових компонентів — частина того ж sweep** (Bug #57): нові UI компоненти не отримують тестів автоматично в первинному PR — sto-review зосереджується на коді, не на test gaps. Канон: `/sto-tester` після кожного фічевого commit має grep-ом за `git diff --name-only HEAD~5..HEAD | grep components/ui` знайти нові файли і перевірити наявність `__tests__/<name>.test.tsx`; якщо відсутні — додати як LOW bug. Мін. coverage: рендер всіх variant пропс, всі callbacks (toggle/clear/onClick), edge cases (count=0, items=[], unread=12).
 
 ### Gotcha — /sto-review Group 4-6 cycle 1 (2026-05-26, commit f947021)
+
 - **`opacity-0 hover:opacity-100` на тому ж елементі = unreachable** (notification-center per-row delete X): кнопка `opacity-0` має ефективну площу 0px, тож курсор не може приземлитись щоб `hover:` спрацював. Канон: показувати on-hover дочірнього елементу — додавати `group` на батьківську карточку, на дочірньому `opacity-0 group-hover:opacity-100`. Завжди дублювати `focus:opacity-100` щоб клавіатурні користувачі через Tab могли побачити кнопку.
 - **`React.ReactNode` без `import React`** — tsc може мовчки пройти через next-env.d.ts глобали, але VSCode Next.js TS plugin суворіший і блимає червоним; також згідно sto-dev §1 — заборонено. Канон: `import type { ReactNode } from 'react'` + використовувати голий `ReactNode`. Той самий патерн для всіх React.X типів (`HTMLAttributes`, `ChangeEvent`, `SVGAttributes`).
 - **HTMLInputElement.indeterminate через ref callback** — працює (інлайн arrow має нову identity на кожен render → React викликає cleanup + re-attach), але це implicit поведінка React 19 і легко зламати при додаванні React Compiler / memo. Канон: `const ref = useRef<HTMLInputElement>(null); useEffect(() => { if (ref.current) ref.current.indeterminate = X; }, [X]);` — explicit і future-proof.
@@ -1024,14 +1092,16 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - **Dead useEffect listener** — `addEventListener('event', () => {})` з no-op handler. Виглядає невинно, але алокує DOM-listener на кожен mount + плутає reviewer (намір незрозумілий). Канон: видаляти повністю якщо handler нічого не робить; якщо event used elsewhere — додати TODO коментар з реальним handler-кодом.
 
 ### Gotcha — Group 3 tester sweep (2026-05-26, баги #47-#52)
+
 - **class-validator messages — повинні бути локалізовані глобальним `exceptionFactory`** (Bug #47): без нього кожне `@IsUUID`/`@IsISO8601`/`@IsEnum` повертає англійський текст у toast користувача, що порушує "UI українською" правило CLAUDE.md §16. Канон: створити `apps/api/src/common/pipes/validation-error.factory.ts` з мапою constraint-keys → укр. шаблонів і підключити у `main.ts:ValidationPipe({ exceptionFactory })`. Особливо помітно у inline-edit flows, де помилки валідації виходять прямо в toast.
 - **`async commitEdit` що re-throws — call-сайти повинні мовчки ловити reject** (Bug #48): pattern де hook re-throws для збереження edit state на retry, але показ toast вже у `onSave`. Якщо `<select onChange={e => hook.commitEdit(e.target.value)}>` без `.catch` → unhandled Promise rejection у консолі + Next.js dev error overlay. Канон: `onChange={e => { void hook.commitEdit(e.target.value).catch(() => {}); }}`. Те саме для `onCommit`/`onSubmit`/`onBlur`-обгорток async re-throw API.
 - **`<input type="text">` для дат — приховує помилку до server round-trip** (Bug #49): user типує "25/05/2026", "tomorrow", "abc" — все проходить frontend, бекенд кидає 400. Канон: для дат використовувати `<input type="date">` (native picker, YYYY-MM-DD enforced). Для inline-edit компонентів — приймати union `'text' | 'number' | 'date' | 'datetime-local'`. Додатково: `inputRef.current?.select()` кидає `InvalidStateError` для date/datetime-local → обгортати у try/catch.
-- **`role="button"` БЕЗ `aria-label` коли children — Badge/icon** (Bug #50): `title` атрибут НЕ озвучується надійно у NVDA/JAWS. Якщо інтерактивний span має тільки візуальний контент (іконка, бейдж без текстового імені), screen reader прочитає "клацабельний елемент" без контексту. Канон: завжди передавати `aria-label={\`Редагувати: \${value}\`}` (або еквівалент дії). Не покладатися на `title` для accessibility.
+- **`role="button"` БЕЗ `aria-label` коли children — Badge/icon** (Bug #50): `title` атрибут НЕ озвучується надійно у NVDA/JAWS. Якщо інтерактивний span має тільки візуальний контент (іконка, бейдж без текстового імені), screen reader прочитає "клацабельний елемент" без контексту. Канон: завжди передавати `aria-label={\`Редагувати: \${value}\`}`(або еквівалент дії). Не покладатися на`title` для accessibility.
 - **localStorage corruption defense — Array.isArray на parsed payload** (Bug #51): `JSON.parse` повертає що завгодно (null, число, об'єкт). Якщо інший таб / devtools / стара версія додатку вставили `localStorage.setItem('sto_filters_x', '{}')` → наступний `.map()` у компоненті крашить error boundary. Канон: `Array.isArray(parsed) ? parsed : []`. Той самий захист для `boolean`/`number`/`string` cache — type guard перед використанням.
 - **Component coverage для нових UI примітивів — обов'язково в межах PR**: будь-який новий компонент у `apps/web/src/components/ui/` ПОВИНЕН мати `__tests__/xxx.test.tsx` у тому ж commit (Bug #52). Hook у `apps/web/src/hooks/` — поряд `xxx.test.tsx`. Min coverage: рендер з усіма пропс-комбінаціями, кожен callback (onClick/onChange/onCommit/onCancel), keyboard навігація (Enter/Escape/Space), aria-attributes, edge cases (порожній стан, disabled, error). vitest config вже сканує `src/**/*.test.{ts,tsx}` — додавати тести в той самий PR що додає компонент.
 
 ### Gotcha — Command Palette tester sweep (2026-05-25, баги #42-#46)
+
 - **Backdrop-click через `e.target === e.currentTarget`** — анти-патерн коли backdrop є дочірнім `absolute inset-0` сібінгом панелі: backdrop ВІЗУАЛЬНО покриває outer flex container, тож клік завжди приземляється на backdrop, а не на outer div → onClose ніколи не викликається. Канон: вішати `onMouseDown` НА САМ backdrop (`<div className="absolute inset-0 ..." onMouseDown={onClose} aria-hidden="true" />`), а не на outer dialog wrapper (Bug #42).
 - **`onMouseEnter` vs `onMouseMove` у списках з клавіатурною навігацією**: `onMouseEnter` спрацьовує коли список зсувається ПІД нерухомий курсор (після фільтру/перебудови) → активний індекс стрибає, перебиваючи стрілки. Канон: `onMouseMove` (потребує реального руху курсора) + дешева guard `if (activeIndex !== idx) setActiveIndex(idx)` (Bug #43).
 - **O(N²) flatList.indexOf у рендері** — для будь-якого list-у з груповим рендером, де треба знайти індекс у плоскому списку. Канон: `useMemo` побудувати `Map<Item, number>` один раз, в map-і груп брати `map.get(item)` за O(1) (Bug #44).
@@ -1040,6 +1110,7 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - **jsdom не має `Element.prototype.scrollIntoView`** — компоненти що скролять активний елемент у видимість (palette, select, list virtualizer) крашать тести з `TypeError`. Канон: глобальний стуб у `apps/web/src/__tests__/setup.ts`: `Element.prototype.scrollIntoView = function () {}`.
 
 ### Gotcha — /sto-review Command Palette (2026-05-25, commit aed69c3)
+
 - **Shift+/ vs '?'**: на US-розкладці `e.key` для Shift+/ → `'?'`, НЕ `'/'`. Hook що порівнює `e.key.toLowerCase() === mainKey` де `mainKey='/'` тихо не спрацьовує — ярлик `'?'` "є", але ніколи не фаєриться. Канон у `useKeyboardShortcut`: таблиця `SHIFT_ALIAS` (`'?':'/'`, `'!':'1'`, ...) + layout-independent fallback на `e.code` (`'Slash'`, `'KeyA'`, `'Digit1'`). Перевірити власноруч: Shift+/ показує help toast.
 - **Modal + global shortcuts**: коли відкритий модальник з власним `window.addEventListener('keydown')`, БЕЗ `{ capture: true }` глобальні Alt+W/D/C/I/N все одно фаєряться у фоні (router.push під модалкою — UI лишається відкритим зі stale state). Канон: модальник реєструє listener з `{ capture: true }` + `e.stopPropagation()` на Escape; додатково — disable глобальних шорткатів через `enabled: !modalOpen` у parent.
 - **useEffect deps з ре-обчислюваними масивами**: якщо у dep array є `flatList`/`filtered`/`groups`, що створюються через `.reduce`/`.map` у тілі компонента — listener видаляється/додається на КОЖНОМУ рендері. Канон: `useMemo` для всіх похідних колекцій + `useRef` для значень, які listener читає під час події (не пере-підписувати listener на кожному кадрі). Особливо болить для `addEventListener('keydown')` бо setState→render→re-subscribe створює гонку.
@@ -1047,6 +1118,7 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - **Modal a11y baseline**: `role="dialog"` + `aria-modal="true"` + `aria-labelledby={titleId}` (sr-only `<h2>`) + `aria-hidden="true"` на декоративні іконки + Tab focus trap (preventDefault + .focus() назад на єдиний focusable). Без цього screen reader читає модалку як body content.
 
 ### Gotcha — Phase 19.2 tester sweep (2026-05-25, бaги #37-#41)
+
 - **Module-level cache vs auth lifecycle** (Bug #37): React-хуки з модульно-глобальним `cache` (типу `useUiFeatures`) повинні очищатись при logout. Інакше на shared kiosk наступний користувач бачить кешовані flag-и попереднього орг. Канон: dispatch `sto:logout` Event у `AuthProvider.logout()` + кожен per-tenant cache hook слухає його і робить `invalidate() + setFeatures(DEFAULTS)`. Те саме треба робити для будь-яких client-side кешів (savedFilters, notifications counter, etc.).
 - **JSON column whitelist** (Bug #38): Prisma JSON колонки + `@IsObject()` DTO = безмежний DoS-вектор. Канон: завжди ДВІ окремі функції — `parseFromDb()` (повертає повний об'єкт з defaults, чистить legacy junk) і `pickAllowedKeys(dto)` (повертає Partial лише з whitelisted keys + правильним type guard на value). Merge у service: `{ ...currentFromDb, ...pickedFromDto }`. **НЕ дзеркали defaults у pick — затре поля які користувач не змінював.**
 - **Feature flag без consumer = dead code** (Bug #39): Якщо вводиш у `OrganisationSettings.uiFeatures` новий toggle (`unsavedGuardEnabled`), MUST у тому ж commit / phase підключити hook-консьюмер хоча б до одного реального компонента (мінімум до WorkOrder modal). Інакше toggle обіцяє функціонал, який не реалізовано. Канон: grep на `uiFeatures.<keyName>Enabled` повинен повертати ≥1 use site не у тестах/settings UI.
@@ -1054,45 +1126,50 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - **Settings module specs** (Bug #41): Кожен новий controller + DTO у `apps/api/src/modules/*` повинен супроводжуватись хоча б `*.contract.spec.ts`. Без нього: (a) контрактні зміни не помічаються, (b) authz регресії тихі, (c) `forbidNonWhitelisted: true` поведінка не верифікована. Settings контракт-тести використовують fresh Postgres row state per-beforeEach + redisMock без real Redis.
 
 ### Gotcha — /sto-review cycle 81534e0 (2026-05-25, Phase 19.2)
+
 - **Role-gated GET endpoint, що споживає всі ролі** — критичний анти-патерн. `useUiFeatures` хук викликається на `/work-orders/[id]` (доступна RECEPTIONIST/MECHANIC/ACCOUNTANT), але `/settings/organisation` має `@Roles('OWNER', 'ADMIN')`. Кожна навігація = 403 в network logs. Канон: для UI-feature-flags / branding / theme — окремий endpoint `/settings/ui-features` з `@Roles` для ВСІХ авторизованих ролей. Те саме стосується будь-яких "загально-читальних" даних, що mount-у завантажуються глобальними хуками.
 - **Module-level fetch cache MUST cache failures too** — інакше після першого 403/network-fail кожен mount компонента повторно стрілятиме у backend. Канон: на `.catch` зберігати DEFAULTS у `cache` з коротким TTL (наприклад, 60 сек), щоб recovery після зміни ролі/відновлення мережі залишився можливим.
 
 ### Gotcha — /sto-web review + tester cycle 7 (2026-05-25)
+
 - **setup/page.tsx** — публічна сторінка не повинна імпортувати axios-клієнт із auth-interceptors; вона використовує `apiFetch` напряму (без Bearer). Для public endpoints `/setup/*` `apiFetch` правильний вибір (Bug #37-part).
 - **mountedRef охоплення**: review cycle 3 підтвердив — після введення `mountedRef` в один файл треба відразу сканувати ВСІХ сусідів що завантажують дані при mount. Решта без guards: `work-orders/page.tsx`, `vehicles/[id]`, `employees/page.tsx`, `catalog/page.tsx` — заплановані на наступний цикл.
 - **LowStockItem ≠ StockItem**: `/stock-items/low` повертає агрегований SQL-результат без `id/reserved/available/salePrice`. Завжди мати окремий тип для кожного endpoint (Bug #37-frontend).
 - **vitest.config.ts для web**: без нього `pnpm --filter @sto/web test` не підхоплює `src/**/*.test.tsx` — 42 component тести мовчки пропускалися. Виправлено створенням конфігу.
 
 ### Gotcha — Phase 19 tester cycle 6 findings (2026-05-25)
+
 - **DTO enum-валідація для FK полів-енумів**: Якщо BD стовпець — `enum` (Postgres ENUM), а DTO приймає `@IsString()`, runtime каст `value as Enum` у Prisma where ламається з `invalid input value for enum`. Канон: завжди `@IsEnum(EnumType)` + типізація `field?: EnumType` у DTO (Bug #33: `PricingRule.goodType`).
 - **Relation soft-delete фільтри**: `findStockItems` фільтрував лише `StockItem.deletedAt`, але не `good.deletedAt`/`warehouse.deletedAt`. Узгоджуй з `findLowStockItems` raw SQL (там `g.deletedAt IS NULL`/`w.deletedAt IS NULL`). Канон: будь-який list endpoint з `include` повинен мати `deletedAt: null` фільтр у relation-where (Bug #34).
 - **PATCH normalize з merge існуючого стану**: `normalizeScope(dto)` без merge існуючого — НЕ зачіпає поля, які клієнт не передав. PATCH `{ goodCategory: 'X' }` при існуючому `goodId` залишає suite goodId+goodCategory. Канон: `const merged = { ...dto, ...mergedScope }`, потім `normalizeScope(merged)` + explicit `null` для пониззених scope-полів у `UncheckedUpdateInput` (Bug #35).
 - **TS interface для API response — не "вільне поле"**: `apiFetch<WrongType[]>` проходить TS, але приховує невідповідність контракту. Завжди писати окремий `interface FooDto { ... }` для кожної API-відповіді, навіть якщо runtime використовує лише `.length` (Bug #36).
 
 ### Gotcha — Phase 19 review cycle 4 findings (2026-05-25)
+
 - mountedRef guard pattern: коли вводиш `mountedRef.current` для одного async handler (`load`), застосовуй ТОЙ САМИЙ guard до УСІХ інших async setState handlers у тому ж компоненті (`deleteRule`, `applyAll`, `updateRule`). Інакше навігація під час in-flight операції викличе setState на unmounted (Bug #30 був неповним).
 - StockBatch — append-only без `deletedAt` (як StockMovement, SettlementTransaction). Додано до §5 виключень у SKILL.md.
 
 ### Gotcha — Phase 19 tester cycle 5 findings (2026-05-25)
+
 - DTO `@Max(N)` ліміти на pagination-параметрах — звіряти на ВСІХ сторінках frontend. Сторінка може використовувати `limit=N+M`, ValidationPipe відкине запит з 400, а soft error-handling (`console.warn` замість throw) сховає проблему від QA. Канон: усі сторінки використовують один і той самий `limit=200` (Bug #32 = пост-фікс Bug #29 розкрив дефект, який жив з самого Phase 19).
 - Soft error-handling після fetch — палиця з двома кінцями: захищає UX від rare API-failure, але приховує детермінований bug у параметрах запиту. При додаванні `console.warn`-fallback одразу перевіряти, чи запит сам по собі валідний (curl + ValidationPipe rules).
 
 ### Gotcha — Phase 19 tester cycle 4 findings (2026-05-25)
+
 - Hard `BadRequestException` на відсутньому `RECEIPT.price` блокує StockDocument TRANSFER/RECEIPT, бо `StockDocumentLine.price` — `Decimal?`. Канон: fallback на `good.purchasePrice ?? 0`, guard лише на `NaN`. Не повторювати "захист" що ламає сусідній модуль (Bug #26 = регресія від Bug #15).
 - При додаванні валідаторів у CreateDTO — **завжди дзеркалити** в UpdateDTO. PATCH без `@Min(0)`/`@Max(N)` зводить нанівець бізнес-інваріант (Bug #27: PATCH `percentValue: -50` → ціна вдвічі менша за собівартість).
 - Sub-resource list endpoints (`/goods/:id/batches`, `/goods/:id/price-history`) повинні: (a) перевіряти існування parent у org → 404, (b) повертати `{ items, total }` shape. Bare array + порожній 200 ховає неіснуючий goodId.
 - `.catch(() => {})` на fetch у `useEffect` — анти-патерн. Мінімум `console.warn`, щоб QA міг засікти API-failure. Не блокуй UI, але не мовчи.
 - `useEffect` для initial-fetch ТА `useCallback load` для refetch після CRUD — дублікація. Один `load` з `mountedRef.current` guard; `useEffect(() => { setLoading(true); load(); }, [load])` для initial.
 
-
-
 ### Gotcha — Phase 19 cycle 3 review findings (2026-05-25)
+
 - `new Date()` всередині IIFE `(() => { const now = new Date(); return list.map(...)})()` у render — все одно виконується на SSR pass (для 'use client' компонентів, які Next.js 15 pre-renders). Канонічний фікс: `const [nowMs, setNowMs] = useState(0); useEffect(() => setNowMs(Date.now()), []);` + guard `nowMs > 0` у render. Той самий патерн що у `work-orders/page.tsx`.
 - `React.ChangeEvent<HTMLInputElement>` без `import type { ChangeEvent } from 'react'` — VSCode TS plugin падає з `Cannot find namespace 'React'`. Завжди іменовані імпорти типів подій з 'react', НЕ `React.*`.
 - `@Query('xxxId') id: string` для UUID параметрів — обгорнути `ParseUUIDPipe()`. Без нього невалідний UUID → Prisma P2023 → HTTP 500. Не вказуй `version: '4'` явно (тести часто кидають UUIDs з версією 0 → 400).
 
-
 ### Gotcha — Phase 19 tester findings (2026-05-25)
+
 - `BatchService.createFromReceipt`: при безкоштовному прийомі (`costPrice=0`) — НЕ перезаписувати `Good.salePrice` нулем; партія створюється з `salePrice = Good.salePrice` поточним. Пайтерн: `salePrice = (costPrice > 0 && computed > 0) ? computed : currentSalePrice`.
 - `InventoryService.createMovement(RECEIPT, qty>0)` обов'язково має `price` (можна 0). Без price — кидати `BadRequestException`. Інакше quantity++ без батча, далі consumeBatch ламається в FIFO/LIFO/FEFO режимах.
 - `getAvgCost(orgId, goodId, warehouseId?)` — третій параметр опціональний. Передавати `undefined` (не `''`) коли потрібна агрегація по всіх складах. Контролер: `getAvgCost(orgId, goodId, warehouseId)` — НЕ `warehouseId ?? ''`.
@@ -1105,128 +1182,155 @@ Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — пов�
 - `margin(sale, cost)` у фронті — захист від `sale=0`: `if (!sale || !cost) return null`. Інакше `NaN%` в UI.
 
 ### Gotcha — Phase 19 cycle 2 review findings (2026-05-25)
+
 - `PATCH /pricing-rules/:id` має валідувати `dto.goodId` (cross-tenant attack): POST вже валідує, але UPDATE може змінити goodId на чужий orgId. Якщо updateDTO дозволяє змінити FK поле — перевіряти приналежність до orgId.
 - Нова Prisma модель з `syncVersion` → додавати `@@index([orgId, syncVersion])` — без нього sync pull робить full-table scan на `where: { orgId, syncVersion: { gt: since } }`. Перевір кожну нову sync-ready таблицю.
 - Icon-only `<Button>` з `title="..."` — потребує також `aria-label` (title HTML attr не завжди читається screen readers як accessible name). Icon-svg всередині → `aria-hidden="true"`.
 
 ### Gotcha — Phase 19 batch/pricing review findings (2026-05-25)
+
 - `BatchesController.lookup` потребує `@Roles(...)` явно — без декоратора RolesGuard пропускає будь-кого авторизованого. Завжди додавати roles навіть на read-only endpoints де є cost/price дані.
 - `applyRuleToGoods`-стиль операції: prefetch усіх rules один раз, обчислення в пам'яті, batch-update через `$transaction` чанками по 100. Не викликати `calculateSalePrice` в loop (внутрішнє findMany → N+1).
 - Нові sync-ready моделі (з `syncVersion`) додавати в `PULL_TABLES` в sync.service.ts. Append-only логи (без syncVersion) — пропускати.
 - Custom inline modals (поза `<Modal>` компонентом) — додавати `role="dialog"`, `aria-modal="true"`, `aria-labelledby` + клік на backdrop із `e.stopPropagation()` на body.
 
 ### Gotcha — Inline HSL не адаптується в dark mode (Bugs #1-#5)
+
 `text-[hsl(0_84%_42%)]` працює в light mode але **не змінюється** коли `.dark { --color-destructive-text: hsl(0 84% 72%) }` спрацьовує. Завжди використовуй token-класи (`text-destructive-text`, `border-destructive-border`, `text-success-text`, `text-warning-text`, `text-info-text`) — вони підставляють CSS-змінну і автоматично перемикаються в dark mode.
 
 **grep для виявлення регресій:**
+
 ```bash
 grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app apps/web/src/components --include="*.tsx"
 ```
+
 Допустимі винятки: purple badge variant (немає purple токена), inventory reserved orange `25_95%_53%`, button destructive hover `0_84%_52%`, input/select destructive focus ring `0_86%_93%`.
 
 ### Gotcha — Tailwind 4 arbitrary value must be fully closed (попередній цикл)
+
 `focus:ring-[hsl(0_86%_93%)` (без `]`) **компілюється тихо**, але клас не з'являється в CSS бо JIT не парсить незакриту dynamic-value. Подвійно перевіряй парні `[...]` в усіх `*-[...]` класах при ручному кодуванні. /sto-review має grep на незакриті дужки.
 
 ### Gotcha — Blob URL revoke must defer past click()
+
 `URL.revokeObjectURL(url)` викликаний **синхронно** після `a.click()` зриває завантаження в Chromium (іноді). Завжди `setTimeout(() => URL.revokeObjectURL(url), 100)`. Патерн уже застосований у reports/page.tsx — використовуй як еталон.
 
 ### Gotcha — useState(() => localStorage.getItem(...)) теж hydration mismatch (review 2026-05-25)
+
 Lazy initializer з `localStorage` має ТУ Ж проблему що `useState(new Date())`: SSR повертає `[]`, клієнт відразу читає збережене → перший рендер клієнта НЕ збігається з server HTML → hydration mismatch warning + DOM patch. Канон: `useState(initialEmpty)` + `useEffect(() => setX(read()), [])`. Виявлено у `useSavedFilters.ts` після початкового feat-комміту.
 
 ### Gotcha — Inline edit Check/X button onMouseDown без onClick = no keyboard (review 2026-05-25)
+
 `onMouseDown={e => { e.preventDefault(); commit(); }}` тримає фокус на інпуті (mouse path), але keyboard користувач, який tab'ом дійшов до Check кнопки, активує її через `Enter`/`Space` що генерує `click`, а не `mousedown`. Без `onClick` кнопка мертва для клавіатури. Канон: `onMouseDown` (mouse) + `onClick` (keyboard) — обидва. `useInlineEdit.savingRef` запобігає double-commit.
 
 ### Gotcha — Controlled select `value={editing.value}` зриває візуальний вибір при inline-edit (review 2026-05-25)
+
 Якщо select має `value={editing.value}` де `editing.value` НЕ оновлюється при `onChange` (бо ми коммітимо одразу), React насильно повертає select до старого значення під час in-flight save → користувач бачить як його вибір "відскакує". Канон: для inline-edit select використовуй `defaultValue` (uncontrolled) + `onChange` -> `commitEdit(e.target.value)` + `disabled={saving}`.
 
 ### Gotcha — Prisma update з `dueDate ? new Date(dto.dueDate) : undefined` не дозволяє очистити поле (review 2026-05-25)
+
 Прийнятий шаблон у багатьох сервісах: `field: dto.field ? transform(dto.field) : undefined`. Це робить поле **не очищуваним**: і коли DTO не передає поле (undefined), і коли передає `null` — Prisma отримує `undefined` і ПРОПУСКАЄ оновлення. Inline-edit з кнопкою "очистити" не працює. Канон у Update методах для nullable полів: `field: dto.field === undefined ? undefined : dto.field === null ? null : transform(dto.field)`. DTO має бути типу `string | null`, з `@IsOptional() @IsISO8601()` (валідація скіпається на null).
 
 ### Gotcha — onSave handler без try/catch ховає помилки від користувача (review 2026-05-25)
+
 Хук `useInlineEdit` ловить помилку з `onSave` тільки щоб скинути `savingRef`, але НЕ показує її. Якщо викликаюча сторона теж не loger'ує — користувач бачить що нічого не сталося (без toast про помилку, без `error` state). Канон: `onSave: async (...) => { try { await apiFetch(...); toast.success(...); load(); } catch (e) { toast.error(msg); throw e; } }` — throw зберігає editing state для повторного спробування.
 
 ---
 
 ## Поточний стан проєкту
 
-| Параметр | Значення |
-|---|---|
-| Фаза | **Фаза 17 — Enums, enriched models, MaintenanceSchedule + CompletionAct** (завершено + QA) |
-| Прогрес | 17.1-17.3✅ backend + frontend + QA review |
-| TypeScript | ✅ 0 errors (web + api + shared) — verified 2026-05-25 cycle 5 |
-| Unit тести | ✅ 111/111 passed (включно з contract і property у 12 файлах) |
-| Contract тести | ✅ 32/32 passed (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4) |
-| Property-based | ✅ 26/26 passed (fsm: 11, inventory: 7, settlements: 8) |
-| Component тести | ✅ 42/42 passed (button: 12, select: 9, modal: 11, empty-state: 10) |
-| E2E тести | ✅ 16/16 Playwright passed (smoke: 4, inventory: 5, api-errors: 8 — minus 1 dedup) |
-| Build | ✅ API build OK (webpack 9.3s) |
-| Dev сервер | Next.js на `http://localhost:3001`, API на `http://localhost:3000` |
-| CSS | Tailwind 4 через `@tailwindcss/postcss` (postcss.config.mjs) |
+| Параметр        | Значення                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------ |
+| Фаза            | **Фаза 17 — Enums, enriched models, MaintenanceSchedule + CompletionAct** (завершено + QA) |
+| Прогрес         | 17.1-17.3✅ backend + frontend + QA review                                                 |
+| TypeScript      | ✅ 0 errors (web + api + shared) — verified 2026-05-25 cycle 5                             |
+| Unit тести      | ✅ 111/111 passed (включно з contract і property у 12 файлах)                              |
+| Contract тести  | ✅ 32/32 passed (auth: 9, work-orders: 6, pricing-rules: 13, batches: 4)                   |
+| Property-based  | ✅ 26/26 passed (fsm: 11, inventory: 7, settlements: 8)                                    |
+| Component тести | ✅ 42/42 passed (button: 12, select: 9, modal: 11, empty-state: 10)                        |
+| E2E тести       | ✅ 16/16 Playwright passed (smoke: 4, inventory: 5, api-errors: 8 — minus 1 dedup)         |
+| Build           | ✅ API build OK (webpack 9.3s)                                                             |
+| Dev сервер      | Next.js на `http://localhost:3001`, API на `http://localhost:3000`                         |
+| CSS             | Tailwind 4 через `@tailwindcss/postcss` (postcss.config.mjs)                               |
 
 ### Test coverage closed this cycle (Bugs #10-#13)
+
 - **Bug #10** — добавлено supertest + 15 contract тестів (auth + work-orders) використовуючи Fastify `app.inject()`
 - **Bug #11** — встановлено fast-check@4 + 26 property-based тестів (FSM, inventory, settlements). Грошові суми зберігаються в integer cents щоб уникнути 32-bit float обмежень fast-check.
 - **Bug #12** — встановлено @testing-library/react + @vitejs/plugin-react@4 (v6 несумісний з vitest 2.1 через Vite 6). Vitest config в `vitest.config.mts` (ESM). 42 component тести.
 - **Bug #13** — додано `api-errors.spec.ts` + `inventory.spec.ts` (13 E2E тестів, error resilience + auth guard).
 
 ### Gotcha — @vitejs/plugin-react version pinning
+
 - vitest@2.1 (uses Vite 5) **несумісний** з @vitejs/plugin-react@6 (requires Vite 6) — кидає `ERR_PACKAGE_PATH_NOT_EXPORTED` для `vite/internal`
 - Рішення: pin @vitejs/plugin-react@^4.3.0
 - Config file має бути `.mts` (не `.ts`) щоб подружитися з ESM-only плагіном
 
 ### Gotcha — fast-check float constraints
+
 - `fc.float({ min: 0.01, max: 100_000 })` кидає "constraints.min must be a 32-bit float"
 - Для грошових сум використовуй `fc.integer({ min: 1, max: 10_000_000 })` (центи)
 - Це додатково усуває помилки округлення IEEE 754 у тестах
 
 ### Critical bugs fixed this session
+
 - **Bug #7** — `DocumentNumberService.next()` використовував snake_case у raw SQL → ламав створення WO/Invoice/PO/StockDocument. Виправлено: camelCase з лапками + `LIMIT 1`.
 - **Bug #8** — `InventoryService.findLowStockItems()` використовував snake_case → `GET /stock-items/low` 500. Виправлено: camelCase з лапками.
 
 ### Gotcha — Canonical Tailwind tokens for semantic colors (Phase 17)
+
 `globals.css` defines `-text` and `-border` variants for all semantic colors for use on subtle backgrounds:
+
 - `text-destructive-text` / `border-destructive-border` — dark red on `bg-destructive-subtle`
 - `text-success-text` / `border-success-border` — dark green on `bg-success-subtle`
 - `text-warning-text` / `border-warning-border` — dark amber on `bg-warning-subtle`
 - `text-info-text` / `border-info-border` — dark teal on `bg-info-subtle`
-Never use raw `text-[hsl(0_84%_42%)]` etc. — use the token. `badge.tsx` already updated.
+  Never use raw `text-[hsl(0_84%_42%)]` etc. — use the token. `badge.tsx` already updated.
 
 ### Gotcha — Recharts inline styles must use CSS var() not hsl()
+
 Recharts `stroke`, `fill`, `tick.fill`, `contentStyle.border` are JS style strings.
 Use `var(--color-border)` not `hsl(214 32% 91%)`, `var(--color-primary)` not `hsl(221 83% 53%)`,
 `var(--color-muted-foreground)` not `hsl(215 16% 55%)`, `var(--color-primary-subtle)` not `hsl(214 95% 97%)`.
 
 ### Gotcha — MaintenanceSchedule API supports single vehicleId only
+
 `GET /maintenance-schedules?vehicleId=X` accepts one vehicleId at a time.
 To fetch schedules for multiple vehicles (e.g. CRM garage tab), fire parallel calls per vehicle
 and merge results client-side. Do NOT fetch all org schedules and filter client-side.
 
 ### Gotcha — Контракт endpoints: завжди `{ items, total }`, ніколи bare array
+
 - Усі list endpoints у проєкті повертають paginated shape `{ items, total, page?, limit? }` — `work-orders`, `invoices`, `purchase-orders`, `maintenance-schedules` (масив бо ≤200), `completion-acts` (тепер `{ items, total }` після Bug #1).
 - Frontend всюди робить `apiFetch<{ items: X[] }>(...)` — якщо сервіс повертає bare array, `.items` → `undefined.length` → TypeError. У комбінації з `.catch(() => {})` баг ховається.
 - При додаванні нового list endpoint — **завжди** обертай у paginated DTO навіть якщо `take` фіксовано.
 
 ### Gotcha — FSM bypass всередині cross-service transactions
+
 - При підписанні CompletionAct авто-переводимо WO у `INVOICED`. Спокусливо зробити `tx.workOrder.update({ status: 'INVOICED' })` — це **обходить** FSM map. Окрім втрати валідації, такий код:
   1. Робить race vікно (читання act поза tx, write всередині)
   2. Дозволяє duplicate transitions якщо хтось паралельно перевів WO іншим шляхом
 - Правильно: re-read entity **всередині** tx + явна перевірка status (`if (workOrder.status === 'COMPLETED')`) + єдиний `update`.
 
 ### Gotcha — Auto-side-effect помилки: log non-business, suppress only expected
+
 - Фон. дія типу `this.invoices.createFromWorkOrder().catch(() => {})` ковтає ВСЕ. Згодом баг "чому рахунки не створюються?" дуже важко відловити.
 - Шаблон: `.catch(e => { const msg = e.message; if (!msg.includes('очікувана_бізнес-помилка')) logger.warn(...) })`.
 
 ### Gotcha — Soft delete у relation filters
+
 - `findMany({ where: { vehicle: { deletedAt: null }, ... } })` — Prisma підтримує relation-фільтри. Без цього widget "Наближається ТО" показує авто, які користувач уже видалив.
 - Правило: будь-яка `findMany` що рендериться у UI через FK має додавати `relation: { deletedAt: null }`.
 
 ### Gotcha — Selective recalc у PATCH — recompute тільки коли input змінено
+
 - ❌ BAD: `const next = dto.next ?? calc(...)` — будь-який PATCH перераховує і затирає існуюче значення (`calc` може дати null якщо інтервалу немає в БД).
 - ✅ GOOD: `const shouldRecalc = INPUT_FIELDS.some(f => dto[f] !== undefined); const next = shouldRecalc ? calc(...) : existing.next`
 - Стосується: MaintenanceSchedule.update (виправлено), будь-який інший derived field.
 
 ### Gotcha — Raw SQL camelCase identifiers
+
 Prisma schema **без `@map`** → Postgres колонки double-quoted camelCase (`"orgId"`, `"goodId"`, `"deletedAt"`, `"minStock"`, тощо). Будь-який `$queryRaw` / `$executeRaw` повинен:
+
 - Використовувати **camelCase з лапками**: `WHERE "orgId" = ${orgId}::uuid`
 - Не покладатись на Postgres lowering (`org_id` → не знайде `"orgId"`)
 - Перевірити проти `information_schema.columns` перед написанням
@@ -1301,66 +1405,73 @@ packages/
 
 ## Всі API модулі (28)
 
-| Модуль | Файл | Ключові методи |
-|---|---|---|
-| `branches` | `branches.service.ts` | findAll, findOne, create, update, delete (soft) |
-| `calendar` | `calendar.service.ts` | findSlots, createSlot, updateSlot, deleteSlot — conflict check |
-| `counterparties` | `counterparties.service.ts` | CRUD + garages sub-resource |
-| `document-number` | `document-number.service.ts` | `next(orgId, type)` → генерує номер по `DocumentNumberConfig` |
-| `employees` | `employees.service.ts` | CRUD + zones/lifts/categories M:M |
-| `files` | `files.service.ts` | upload/download через MinIO |
-| `goods` | `goods.service.ts` | CRUD + пошук по sku/barcode |
-| `inventory` | `inventory.service.ts` | **`createMovement()`** ← ЄДИНА точка мутації stock |
-| `invoices` | `invoices.service.ts` | CRUD + `markPaid()` |
-| `notifications` | `notifications.service.ts` | BullMQ → SMS/Viber/Email через шаблони |
-| `payment-methods` | `payment-methods.service.ts` | CRUD довідника способів оплати |
-| `payments` | `payments.service.ts` | create → `SettlementsService.createTransaction(PAYMENT)` |
-| `purchase-orders` | `purchase-orders.service.ts` | CRUD + confirm → stock RECEIPT |
-| `reports` | `reports.service.ts` | revenue, stock-value, employee-performance |
-| `services` | `services.service.ts` | CRUD пакетів послуг (Work+Good bundle) |
-| `settings` | `settings.service.ts` + `document-numbering.service.ts` | get/set org settings, numbering config |
-| `settlements` | `settlements.service.ts` + `settlements-account.service.ts` | **`createTransaction()`** ← ЄДИНА точка мутації balance |
-| `setup` | `setup.service.ts` | `POST /setup` — перший запуск, seed org+admin |
-| `stock-documents` | `stock-documents.service.ts` | WRITEOFF / TRANSFER / OPENING_BALANCE |
-| `sync` | `sync.service.ts` | pull(since) + push(records) + getStatus() |
-| `vehicles` | `vehicles.service.ts` | CRUD + vehicleNodes sub-resource |
-| `warehouses` | `warehouses.service.ts` | CRUD |
-| `work-categories` | `work-categories.service.ts` | CRUD ієрархії категорій |
-| `work-orders` | `work-orders.service.ts` | CRUD + FSM `transition()` + lines + parts |
-| `works` | `works.service.ts` | CRUD норм-годин |
-| `zones` | `zones.service.ts` | CRUD + lifts sub-resource |
+| Модуль            | Файл                                                        | Ключові методи                                                 |
+| ----------------- | ----------------------------------------------------------- | -------------------------------------------------------------- |
+| `branches`        | `branches.service.ts`                                       | findAll, findOne, create, update, delete (soft)                |
+| `calendar`        | `calendar.service.ts`                                       | findSlots, createSlot, updateSlot, deleteSlot — conflict check |
+| `counterparties`  | `counterparties.service.ts`                                 | CRUD + garages sub-resource                                    |
+| `document-number` | `document-number.service.ts`                                | `next(orgId, type)` → генерує номер по `DocumentNumberConfig`  |
+| `employees`       | `employees.service.ts`                                      | CRUD + zones/lifts/categories M:M                              |
+| `files`           | `files.service.ts`                                          | upload/download через MinIO                                    |
+| `goods`           | `goods.service.ts`                                          | CRUD + пошук по sku/barcode                                    |
+| `inventory`       | `inventory.service.ts`                                      | **`createMovement()`** ← ЄДИНА точка мутації stock             |
+| `invoices`        | `invoices.service.ts`                                       | CRUD + `markPaid()`                                            |
+| `notifications`   | `notifications.service.ts`                                  | BullMQ → SMS/Viber/Email через шаблони                         |
+| `payment-methods` | `payment-methods.service.ts`                                | CRUD довідника способів оплати                                 |
+| `payments`        | `payments.service.ts`                                       | create → `SettlementsService.createTransaction(PAYMENT)`       |
+| `purchase-orders` | `purchase-orders.service.ts`                                | CRUD + confirm → stock RECEIPT                                 |
+| `reports`         | `reports.service.ts`                                        | revenue, stock-value, employee-performance                     |
+| `services`        | `services.service.ts`                                       | CRUD пакетів послуг (Work+Good bundle)                         |
+| `settings`        | `settings.service.ts` + `document-numbering.service.ts`     | get/set org settings, numbering config                         |
+| `settlements`     | `settlements.service.ts` + `settlements-account.service.ts` | **`createTransaction()`** ← ЄДИНА точка мутації balance        |
+| `setup`           | `setup.service.ts`                                          | `POST /setup` — перший запуск, seed org+admin                  |
+| `stock-documents` | `stock-documents.service.ts`                                | WRITEOFF / TRANSFER / OPENING_BALANCE                          |
+| `sync`            | `sync.service.ts`                                           | pull(since) + push(records) + getStatus()                      |
+| `vehicles`        | `vehicles.service.ts`                                       | CRUD + vehicleNodes sub-resource                               |
+| `warehouses`      | `warehouses.service.ts`                                     | CRUD                                                           |
+| `work-categories` | `work-categories.service.ts`                                | CRUD ієрархії категорій                                        |
+| `work-orders`     | `work-orders.service.ts`                                    | CRUD + FSM `transition()` + lines + parts                      |
+| `works`           | `works.service.ts`                                          | CRUD норм-годин                                                |
+| `zones`           | `zones.service.ts`                                          | CRUD + lifts sub-resource                                      |
 
 ---
 
 ## Критичні бізнес-правила (завжди пам'ятати)
 
 ### FSM нарядів (`work-orders.fsm.ts`)
+
 ```
 DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → PAID → ARCHIVED
          ↕            ↕          ↕
        DRAFT      CANCELLED  ON_HOLD ↔ IN_PROGRESS
                              CANCELLED
 ```
+
 - `IN_PROGRESS`: `InventoryService.createMovement(RESERVATION)` для кожної запчастини
 - `COMPLETED`: `createMovement(RESERVATION_RELEASE)` + `createMovement(WRITEOFF)` + `SettlementsService.createTransaction(CHARGE)` — у `$transaction`
 - `CANCELLED` з `IN_PROGRESS`/`ON_HOLD`: `createMovement(RESERVATION_RELEASE)`
 - Файл FSM: `apps/api/src/modules/work-orders/work-orders.fsm.ts`
 
 ### Інвентар — захисти в `inventory.service.ts`
+
 - `qty = 0` → `BadRequestException`
 - `RESERVATION_RELEASE` з `qty > 0` → `BadRequestException`
 - `RESERVATION` якщо `available < qty` → `BadRequestException`
 - `WRITEOFF` якщо `quantity < |qty|` → `BadRequestException`
 
 ### Розрахунки — дельти балансу (`settlements.service.ts`)
+
 - `CHARGE` → `+amount` (клієнт нам винен)
 - `PAYMENT`, `PREPAYMENT`, `REFUND`, `CREDIT_NOTE` → `-amount`
 
 ### Soft delete — винятки (БЕЗ `deletedAt`)
+
 Ці моделі не мають поля `deletedAt` — не фільтрувати:
+
 - `SettlementAccount`, `SettlementTransaction`, `StockMovement`, `Payment`, `WorkOrderLineEmployee`
 
 ### Tenant isolation
+
 - Кожен `findFirst`/`findMany` — завжди `where: { orgId, ... }`
 - `create` — `{ ...dto, orgId }` де `orgId` ОСТАННІЙ (щоб перезаписати forged field)
 
@@ -1369,6 +1480,7 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
 ## Фаза 16 прогрес (поточна сесія, 2026-05-25)
 
 ### Завершено (backend)
+
 - **16.1** — Brand model (CRUD /brands) + Good.brandId FK + UI Select у формі товару
   - Files: `packages/database/prisma/schema.prisma`, `apps/api/src/modules/brands/`
   - Migration: `20260524221751_add_brand_model`
@@ -1391,6 +1503,7 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
   - Migration: `20260524222539_add_customer_garage_is_default`
 
 ### Завершено (frontend, 2026-05-25 session 2)
+
 - **16.2** ✅ — Barcodes DetailTab (info/barcodes tabs, add/delete, Star isPrimary icon)
 - **16.3** ✅ — Units select у GoodsTab form + UnitsTab CRUD у /catalog
 - **16.4** ✅ — XLSX_MANAGER у ROLE_LABELS (TopShell + employees page)
@@ -1401,35 +1514,41 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
 - **16.10** ✅ — color-mode.ts + ColorModeProvider + anti-flash script + dark CSS vars + settings UI
 
 ### TODO (залишилось)
+
 - **16.6** — XLSX import для PO/SD/WO лінійок (бекенд + фронтенд)
 - **16.10** — Skeleton dark variant у globals.css
 
 ## Архітектура змін Фаза 16
 
 ### 16.1 Довідник брендів + розширення Good
+
 - Нова модель `Brand` (orgId, name unique per org)
 - `Good.brandId` (optional FK → Brand)
 - `BrandModule` CRUD `/brands`
 - У формі товару: Select бренду + inline "+ Новий бренд"
 
 ### 16.2 Штрихкоди — окрема вкладка в картці товару
+
 - Нова модель `GoodBarcode` (goodId, barcode, type, isPrimary). Append-only (без deletedAt).
 - `@@index([orgId, barcode])` для швидкого пошуку по скануванню
 - В `/catalog` Goods tab: розгортається модалка/слайд з 2 вкладками "Основна" + "Штрихкоди"
 - Endpoints: `GET/POST/DELETE /goods/:id/barcodes`
 
 ### 16.3 Одиниці виміру
+
 - Нова модель `UnitOfMeasure` (orgId, name, shortName unique per org, isSystem). Seed: шт, кг, л, м, компл, пара, набір, уп, рул, м²
 - `Good.unitId` (optional FK) + зворотна сумісність з `Good.unit String`
 - `UnitsModule` CRUD `/units-of-measure`
 - Select у формі товару
 
 ### 16.4 Нова роль XLSX_MANAGER
+
 - Додати до `UserRole` enum значення `XLSX_MANAGER`
 - Захист всіх XLSX-endpoints через `@Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')`
 - UI: роль відображається в `ROLE_LABELS`, доступна при створенні співробітника
 
 ### 16.5 XLSX-імпорт довідників
+
 - `XlsxModule` (`/xlsx`), використовує **exceljs** (npm)
 - `GET /xlsx/templates/:type` — завантажити шаблон (goods | works | brands | units)
 - `POST /xlsx/import/:type` — multipart .xlsx → upsert + відповідь `{ created, updated, errors }`
@@ -1437,6 +1556,7 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
 - Інтегрувати у `/catalog` (Товари, Роботи, Бренди вкладки)
 
 ### 16.6 XLSX-імпорт табличних частин
+
 - `POST /xlsx/import/purchase-order-lines/:poId` — SKU+qty+price → POLines (тільки DRAFT)
 - `POST /xlsx/import/stock-document-lines/:docId` — аналогічно StockDocument (DRAFT)
 - `POST /xlsx/import/work-order-parts/:woId` — аналогічно WorkOrder (DRAFT/ESTIMATE)
@@ -1444,11 +1564,13 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
 - `XlsxImportButton` в картці PO, StockDoc, WorkOrder
 
 ### 16.7 CRM — гараж "Основний" за замовчуванням
+
 - `CustomerGarage.isDefault Boolean @default(false)` — нове поле, міграція
 - `POST /counterparties` автоматично створює гараж з назвою "Основний" і `isDefault: true`
 - Основний гараж відображається першим із позначкою в UI
 
 ### 16.8 CRM — картка клієнта (вкладки)
+
 - `/crm/[id]` реорганізована в 4 вкладки:
   1. **Загальна інформація** — поля + редагування inline
   2. **Гаражі та авто** — accordion гаражів, у кожному список авто + "Додати авто", форма "Додати гараж"
@@ -1456,6 +1578,7 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
   4. **Наряди** — наряди цього контрагента
 
 ### 16.9 Налаштування навігації
+
 - `localStorage` ключ `sto_nav_mode`: `'sections'` | `'functions'`
 - Режим **"По розділах"** (default): Документи / Звіти / Довідники (поточний)
 - Режим **"По функціях"**: плоска структура без секцій, порядок: Дашборд, Наряди, Календар, CRM, Склад, Замовлення, Документи складу, Рахунки, Розрахунки, Звіти, Каталог, Персонал, Підрозділи, Налаштування, Cloud Sync
@@ -1467,16 +1590,19 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
 ## UI Patterns (2026-05-25)
 
 ### Navigation структура TopShell
+
 ```
 Секція "Документи":  /work-orders, /invoices, /purchase-orders, /stock-documents
 Секція "Звіти":      /calendar, /settlements, /reports (OWNER/ADMIN/ACCOUNTANT)
 Секція "Довідники":  /crm, /inventory, /catalog, /employees, /infrastructure, /settings, /settings/sync
 ```
+
 - `ALL_NAV_ITEMS` — flat array для bookmark lookup
 - `BOOKMARKS_KEY = 'sto_bookmarks'` — localStorage, SSR-safe (useState([]) → useEffect hydrate)
 - Star button: `opacity-0 group-hover:opacity-100`, `fill-current` коли активна
 
 ### DetailPanel — патерн використання
+
 ```tsx
 import { DetailPanel } from '@/components/ui/detail-panel';
 
@@ -1489,10 +1615,19 @@ const [selectedItem, setSelectedItem] = useState<Item | null>(null);
     <Table>
       <TableBody>
         {items.map(item => (
-          <TableRow key={item.id} onClick={() => setSelectedItem(s => s?.id === item.id ? null : item)}>
+          <TableRow
+            key={item.id}
+            onClick={() => setSelectedItem(s => (s?.id === item.id ? null : item))}
+          >
             ...
             <TableCell>
-              <Button onClick={e => { e.stopPropagation(); /* action */ }}>...</Button>
+              <Button
+                onClick={e => {
+                  e.stopPropagation(); /* action */
+                }}
+              >
+                ...
+              </Button>
             </TableCell>
           </TableRow>
         ))}
@@ -1506,10 +1641,11 @@ const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   >
     {/* detail content */}
   </DetailPanel>
-</div>
+</div>;
 ```
 
 ### Soft Delete UI — патерн
+
 - **Немає кнопки "Видалити"** — лише "Помітити на видалення"
 - Кнопка: `variant="ghost"` + `Trash2` icon + `text-muted-foreground hover:text-destructive hover:bg-destructive/10`
 - Confirm: `'Помітити X на видалення?'` (не "Видалити X?")
@@ -1522,6 +1658,7 @@ const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 ## Design System (Tailwind 4)
 
 ### Ключові токени (`globals.css` → `@theme`)
+
 ```
 --color-brand-{50..900}    ← синя шкала (primary)
 --color-primary            = brand-600 (#2563eb)
@@ -1533,15 +1670,18 @@ const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 ```
 
 ### Canonical Tailwind 4 синтаксис (IDE перевіряє!)
+
 ```
 ✅ border-border           ❌ border-(--color-border)
 ✅ ring-brand-100          ❌ ring-(--color-brand-100)
 ✅ hover:border-border-hover ❌ hover:border-(--color-border-hover)
 ✅ bg-secondary            ❌ bg-(--color-secondary)
 ```
+
 Виключення: якщо токен НЕ в `@theme` (кастомний hsl) — тоді `bg-[hsl(...)]`.
 
 ### Утилітні CSS-класи
+
 ```css
 .page-container    ← max-w + padding для всіх сторінок
 .page-header       ← flex row між заголовком та діями
@@ -1551,6 +1691,7 @@ const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 ```
 
 ### Button variants
+
 `primary` | `secondary` | `outline` | `ghost` | `destructive` | `link` | `default` (= outline)
 
 ---
@@ -1578,6 +1719,7 @@ const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 **Sync:** SyncJob
 
 ### Обов'язкові поля КОЖНОЇ моделі
+
 ```prisma
 id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 orgId       String   @db.Uuid
@@ -1632,22 +1774,23 @@ syncVersion BigInt   @default(0)
 
 ## Скіли Claude Code
 
-| Скіл | Коли використовувати |
-|---|---|
-| `/sto-context` | **ЗАВЖДИ ПЕРШИМ** — читає `docs/PHASES.md`, показує статус |
-| `/sto-analyst` | Вимоги, user stories, бізнес-процеси |
-| `/sto-feature` | Планування нової фічі (до коду) |
-| `/sto-architect` | ADR, архітектурні рішення |
-| `/sto-database` | Зміни `schema.prisma`, міграції |
-| `/sto-backend` | NestJS модуль (DTO + Service + Controller + spec) |
-| `/sto-web` | Next.js сторінки і компоненти |
-| `/sto-mobile` | Expo / React Native |
-| `/sto-review` | Code review + TypeScript errors (`tsc --noEmit`) |
-| `/sto-tester` | Автотестування: знаходить баги → `BUG_REPORT.md` → фіксить |
-| `/sto-installer` | Inno Setup + PowerShell installer |
-| `/sto-git` | Commits, branches, changelog |
+| Скіл             | Коли використовувати                                       |
+| ---------------- | ---------------------------------------------------------- |
+| `/sto-context`   | **ЗАВЖДИ ПЕРШИМ** — читає `docs/PHASES.md`, показує статус |
+| `/sto-analyst`   | Вимоги, user stories, бізнес-процеси                       |
+| `/sto-feature`   | Планування нової фічі (до коду)                            |
+| `/sto-architect` | ADR, архітектурні рішення                                  |
+| `/sto-database`  | Зміни `schema.prisma`, міграції                            |
+| `/sto-backend`   | NestJS модуль (DTO + Service + Controller + spec)          |
+| `/sto-web`       | Next.js сторінки і компоненти                              |
+| `/sto-mobile`    | Expo / React Native                                        |
+| `/sto-review`    | Code review + TypeScript errors (`tsc --noEmit`)           |
+| `/sto-tester`    | Автотестування: знаходить баги → `BUG_REPORT.md` → фіксить |
+| `/sto-installer` | Inno Setup + PowerShell installer                          |
+| `/sto-git`       | Commits, branches, changelog                               |
 
 **Workflow нової фічі:**
+
 ```
 /sto-context → /sto-analyst → /sto-feature → /sto-database → /sto-backend → /sto-web → /sto-review → /sto-tester
 ```
@@ -1656,28 +1799,28 @@ syncVersion BigInt   @default(0)
 
 ## Відомі пастки (gotchas)
 
-| # | Пастка | Правильно |
-|---|---|---|
-| 1 | `Button asChild` — не підтримується | Використовуй `<Link>` з inline Tailwind |
-| 2 | `deletedAt: null` у `SettlementAccount` — поля немає | Не додавати фільтр на цих моделях |
-| 3 | Tailwind 4: `border-(--color-border)` не canonical | `border-border` якщо токен є в `@theme` |
-| 4 | `orgId` у `create` йде ОСТАННІМ | `{ ...dto, orgId }` — щоб перекрити forged field |
-| 5 | Timezone Київ — не хардкодити `+03:00` | `kyivOffsetMs()` через `Intl.DateTimeFormat` (DST) |
-| 6 | `setup/` маршрут — без `AuthProvider` shell | Окремий `layout.tsx` без `TopShell` |
-| 7 | Пряме `prisma.stockItem.update` — заборонено | Тільки `InventoryService.createMovement()` |
-| 8 | Пряме `prisma.settlementAccount.update` — заборонено | Тільки `SettlementsService.createTransaction()` |
-| 9 | `postcss.config.mjs` — критичний файл | Без нього Tailwind 4 не генерує CSS у Next.js |
-| 10 | `Select placeholder` — НЕ нативний HTML атрибут | Рендериться як `<option value="" disabled>` |
-| 11 | Hydration mismatch: `border-primary` у spinner на root page | SSR резолвить у `border-blue-600`, клієнт лишає `border-primary` → різні рядки. Фікс: `border-(--color-primary)` — CSS var-синтаксис identity-stable на обох сторонах |
-| 12 | `new Date().toLocaleDateString(...)` у render path | SSR рендерить у UTC, клієнт у Europe/Kyiv → mismatch. Фікс: `useEffect(() => setState(...), [])` |
-| 13 | `createPortal(…, document.body)` без SSR-гарду | `document` відсутній під час prerender. Фікс: `const [mounted, setMounted] = useState(false); useEffect(() => setMounted(true), [])` |
-| 14 | Глобальний `saving` стан у списку | Всі рядки таблиці потрапляють у loading. Фікс: `savingId: string | null` — по одному рядку |
-| 15 | `transition()` без `$transaction` | Між findFirst і update може змінитись статус (race condition). Фікс: загорнути обидва у `prisma.$transaction` |
-| 16 | `RESERVATION_RELEASE` без перевірки `reserved >= qty` | Від'ємний резерв у StockItem. Фікс: перевірити `Math.abs(dto.quantity) > reserved` |
-| 17 | `React.ReactNode` без імпорту → 56 VSCode помилок | Next.js TS plugin суворіший ніж plain `tsc`. Фікс: `import type { ReactNode } from 'react'` і `ReactNode` напряму. Grep: `grep -rn "React\." apps/web/src/ --include="*.tsx"` |
-| 18 | `tsc --noEmit` приховує помилки через `incremental` кеш | `Check time: 0.00s` — кеш пропускає перевірку. Фікс: `tsc --noEmit --incremental false` |
-| 19 | `useMemo(() => new Date(), [])` для "now" у render | Так само небезпечно як `useState(() => new Date())` — мемо виконується під час static-export prerender → build-time timestamp запікається в shell → hydration mismatch + застаріле "сьогодні". Фікс: `useState<Date\|null>(null)` + `useEffect(() => setToday(new Date()), [])`; передавати `today?.getTime() ?? 0` у `ExpiryBadge` (nowMs=0 → `daysUntil` → null → бейдж прихований на сервері) |
-| 20 | Async-рефакторинг fire-and-forget loader без `cancelled`/`mountedRef` | Перехід `.then()`-ланцюга на `async/await` втрачає захист від race: два паралельні запуски (перемикання вкладок, refresh після мутації) інтерлівлять `setState` стейлом + setState-after-unmount. Фікс: `let cancelled=false` навколо кожного `setX`, `return () => { cancelled = true }`, і `return loadX()` у `useEffect`. Має бути консистентним з сусідніми loader'ами того ж компонента |
+| #   | Пастка                                                                | Правильно                                                                                                                                                                                                                                                                                                                                                                                        |
+| --- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- |
+| 1   | `Button asChild` — не підтримується                                   | Використовуй `<Link>` з inline Tailwind                                                                                                                                                                                                                                                                                                                                                          |
+| 2   | `deletedAt: null` у `SettlementAccount` — поля немає                  | Не додавати фільтр на цих моделях                                                                                                                                                                                                                                                                                                                                                                |
+| 3   | Tailwind 4: `border-(--color-border)` не canonical                    | `border-border` якщо токен є в `@theme`                                                                                                                                                                                                                                                                                                                                                          |
+| 4   | `orgId` у `create` йде ОСТАННІМ                                       | `{ ...dto, orgId }` — щоб перекрити forged field                                                                                                                                                                                                                                                                                                                                                 |
+| 5   | Timezone Київ — не хардкодити `+03:00`                                | `kyivOffsetMs()` через `Intl.DateTimeFormat` (DST)                                                                                                                                                                                                                                                                                                                                               |
+| 6   | `setup/` маршрут — без `AuthProvider` shell                           | Окремий `layout.tsx` без `TopShell`                                                                                                                                                                                                                                                                                                                                                              |
+| 7   | Пряме `prisma.stockItem.update` — заборонено                          | Тільки `InventoryService.createMovement()`                                                                                                                                                                                                                                                                                                                                                       |
+| 8   | Пряме `prisma.settlementAccount.update` — заборонено                  | Тільки `SettlementsService.createTransaction()`                                                                                                                                                                                                                                                                                                                                                  |
+| 9   | `postcss.config.mjs` — критичний файл                                 | Без нього Tailwind 4 не генерує CSS у Next.js                                                                                                                                                                                                                                                                                                                                                    |
+| 10  | `Select placeholder` — НЕ нативний HTML атрибут                       | Рендериться як `<option value="" disabled>`                                                                                                                                                                                                                                                                                                                                                      |
+| 11  | Hydration mismatch: `border-primary` у spinner на root page           | SSR резолвить у `border-blue-600`, клієнт лишає `border-primary` → різні рядки. Фікс: `border-(--color-primary)` — CSS var-синтаксис identity-stable на обох сторонах                                                                                                                                                                                                                            |
+| 12  | `new Date().toLocaleDateString(...)` у render path                    | SSR рендерить у UTC, клієнт у Europe/Kyiv → mismatch. Фікс: `useEffect(() => setState(...), [])`                                                                                                                                                                                                                                                                                                 |
+| 13  | `createPortal(…, document.body)` без SSR-гарду                        | `document` відсутній під час prerender. Фікс: `const [mounted, setMounted] = useState(false); useEffect(() => setMounted(true), [])`                                                                                                                                                                                                                                                             |
+| 14  | Глобальний `saving` стан у списку                                     | Всі рядки таблиці потрапляють у loading. Фікс: `savingId: string                                                                                                                                                                                                                                                                                                                                 | null` — по одному рядку |
+| 15  | `transition()` без `$transaction`                                     | Між findFirst і update може змінитись статус (race condition). Фікс: загорнути обидва у `prisma.$transaction`                                                                                                                                                                                                                                                                                    |
+| 16  | `RESERVATION_RELEASE` без перевірки `reserved >= qty`                 | Від'ємний резерв у StockItem. Фікс: перевірити `Math.abs(dto.quantity) > reserved`                                                                                                                                                                                                                                                                                                               |
+| 17  | `React.ReactNode` без імпорту → 56 VSCode помилок                     | Next.js TS plugin суворіший ніж plain `tsc`. Фікс: `import type { ReactNode } from 'react'` і `ReactNode` напряму. Grep: `grep -rn "React\." apps/web/src/ --include="*.tsx"`                                                                                                                                                                                                                    |
+| 18  | `tsc --noEmit` приховує помилки через `incremental` кеш               | `Check time: 0.00s` — кеш пропускає перевірку. Фікс: `tsc --noEmit --incremental false`                                                                                                                                                                                                                                                                                                          |
+| 19  | `useMemo(() => new Date(), [])` для "now" у render                    | Так само небезпечно як `useState(() => new Date())` — мемо виконується під час static-export prerender → build-time timestamp запікається в shell → hydration mismatch + застаріле "сьогодні". Фікс: `useState<Date\|null>(null)` + `useEffect(() => setToday(new Date()), [])`; передавати `today?.getTime() ?? 0` у `ExpiryBadge` (nowMs=0 → `daysUntil` → null → бейдж прихований на сервері) |
+| 20  | Async-рефакторинг fire-and-forget loader без `cancelled`/`mountedRef` | Перехід `.then()`-ланцюга на `async/await` втрачає захист від race: два паралельні запуски (перемикання вкладок, refresh після мутації) інтерлівлять `setState` стейлом + setState-after-unmount. Фікс: `let cancelled=false` навколо кожного `setX`, `return () => { cancelled = true }`, і `return loadX()` у `useEffect`. Має бути консистентним з сусідніми loader'ами того ж компонента     |
 
 ---
 
@@ -1708,48 +1851,48 @@ pnpm --filter @sto/web build
 
 ## Changelog (останні коміти)
 
-| Hash | Опис |
-|---|---|
-| `f13b9ad` | fix(review): SSR-safe today (useMemo→useState+useEffect), cancel guard on CRM loadGarages + wired into tab effect, removed dead loadAudit useCallback in WO detail |
-| `6a72c23` | perf(round2): parallel Promise.all queries (invoices, completion-acts, CRM staged loads, WO loadSecondary) + img lazy/decoding |
-| `f70c7c7` | docs(tester): record Bugs #61-#67 from /sto-tester FULL pass + update MemoryManual |
+| Hash      | Опис                                                                                                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `f13b9ad` | fix(review): SSR-safe today (useMemo→useState+useEffect), cancel guard on CRM loadGarages + wired into tab effect, removed dead loadAudit useCallback in WO detail                               |
+| `6a72c23` | perf(round2): parallel Promise.all queries (invoices, completion-acts, CRM staged loads, WO loadSecondary) + img lazy/decoding                                                                   |
+| `f70c7c7` | docs(tester): record Bugs #61-#67 from /sto-tester FULL pass + update MemoryManual                                                                                                               |
 | `aef124b` | fix(tester): Bugs #61-#67 — search reservedQty column, /branches shape mismatch, invoice PDF Bearer fetch, employees filter DTO, palette deep-link, WO template orgId scope + description prefix |
-| `4cc4e6f` | fix(review): Phases 21-22 — TDZ, broken pdfmake, employeeId filter, polymorphic entityType, comment DELETE auth, SSR-unsafe localStorage, search ordering |
-| `ef146d3` | feat(phases21-22): B6 search, B7 PDF, B10 branch ACL, F1-F2-F6-F8-F10-F12 UX features |
-| `c938dc0` | fix(review): invoices page — mountedRef guards on all setState-after-await, selectTokenRef to drop stale detail responses on fast row-switching |
-| `a60d3d3` | fix(review): Group 3 — SSR safety (useSavedFilters), a11y (Check/X onClick), nullable dueDate, uncontrolled priority select |
-| `aed69c3` | fix(review): Command Palette + keyboard shortcuts — 7 issues (shift+/, useMemo deps, focus trap, a11y) |
-| `bef35b7` | fix(tester): 6 bugs (settlement validate, low-stock LIMIT, CSV revoke, take, +tests) |
-| `9295d6e` | fix(review): N+1 work-categories descendants + dead findOneDetail |
-| `4910014` | docs(skills): hydration trap useState(new Date()) + missing tsconfig check |
-| `183f20d` | fix(review): hydration mismatches + process.env in service + missing tsconfigs |
-| `a11580d` | fix(api): take:1000 safety guard on FK-bounded findMany |
-| `00cb288` | chore(claude): simplify settings.local.json — wildcard bash permissions |
-| `be1be58` | docs(memory): update MemoryManual after review pass |
-| `8cbbcb3` | fix(review): take limits on list/report queries + canonical shadow-xs |
-| `6bbcb58` | feat(workflow): continuous skill self-improvement after every review/test |
-| `2d34e4d` | feat(skills): overhaul sto-review — 11 sections: memory leaks, security, perf |
-| `f317ae5` | fix(web): remove React namespace (56 VSCode errors) + skill auto-mode + models |
-| `f2c8a9c` | fix(review): apply sto-review auto-fix pass — 11 bugs resolved |
-| `ec6acac` | fix(web): fix hydration mismatch on root page spinner |
-| `394156d` | feat(workflow): hourly loop + auto QA after every task |
-| `d9ebecd` | docs(memory): add MemoryManual.md + wire into session flow |
-| `11b468b` | feat(skills): add /sto-tester skill |
-| `900c24b` | fix(web): Button 'default' variant + Select placeholder prop |
-| `a6cafd5` | fix(web): postcss.config.mjs — Tailwind 4 CSS processing |
-| `29cb3da` | feat(web): redesign crm, work-orders, calendar, dashboard, vehicles |
-| `c57e85b` | fix(review): remove as any from auth.spec.ts |
-| `f511ea8` | fix(review): Tailwind tokens in 403, setup, root, auth pages |
-| `aa79a5b` | fix(review): Tailwind tokens in settings, calendar, detail pages |
-| `df612e7` | feat(web): redesign catalog, employees, infrastructure, reports, settlements |
-| `d415d8a` | fix(review): Tailwind tokens in settlements and reports |
-| `27fbb06` | fix(review): any types + Tailwind tokens across web pages |
-| `5802de7` | feat(web): full UI redesign — design system, components, pages |
-| `b203ab0` | fix(services): validate workId/goodId FK ownership |
-| `ebb31f3` | fix(web): NaN/invalid numeric input guards |
-| `4bce74e` | fix(web): form validation + modal error guard |
-| `bd8558f` | fix(review): DTO spread orgId override + zero-amount charge guard |
+| `4cc4e6f` | fix(review): Phases 21-22 — TDZ, broken pdfmake, employeeId filter, polymorphic entityType, comment DELETE auth, SSR-unsafe localStorage, search ordering                                        |
+| `ef146d3` | feat(phases21-22): B6 search, B7 PDF, B10 branch ACL, F1-F2-F6-F8-F10-F12 UX features                                                                                                            |
+| `c938dc0` | fix(review): invoices page — mountedRef guards on all setState-after-await, selectTokenRef to drop stale detail responses on fast row-switching                                                  |
+| `a60d3d3` | fix(review): Group 3 — SSR safety (useSavedFilters), a11y (Check/X onClick), nullable dueDate, uncontrolled priority select                                                                      |
+| `aed69c3` | fix(review): Command Palette + keyboard shortcuts — 7 issues (shift+/, useMemo deps, focus trap, a11y)                                                                                           |
+| `bef35b7` | fix(tester): 6 bugs (settlement validate, low-stock LIMIT, CSV revoke, take, +tests)                                                                                                             |
+| `9295d6e` | fix(review): N+1 work-categories descendants + dead findOneDetail                                                                                                                                |
+| `4910014` | docs(skills): hydration trap useState(new Date()) + missing tsconfig check                                                                                                                       |
+| `183f20d` | fix(review): hydration mismatches + process.env in service + missing tsconfigs                                                                                                                   |
+| `a11580d` | fix(api): take:1000 safety guard on FK-bounded findMany                                                                                                                                          |
+| `00cb288` | chore(claude): simplify settings.local.json — wildcard bash permissions                                                                                                                          |
+| `be1be58` | docs(memory): update MemoryManual after review pass                                                                                                                                              |
+| `8cbbcb3` | fix(review): take limits on list/report queries + canonical shadow-xs                                                                                                                            |
+| `6bbcb58` | feat(workflow): continuous skill self-improvement after every review/test                                                                                                                        |
+| `2d34e4d` | feat(skills): overhaul sto-review — 11 sections: memory leaks, security, perf                                                                                                                    |
+| `f317ae5` | fix(web): remove React namespace (56 VSCode errors) + skill auto-mode + models                                                                                                                   |
+| `f2c8a9c` | fix(review): apply sto-review auto-fix pass — 11 bugs resolved                                                                                                                                   |
+| `ec6acac` | fix(web): fix hydration mismatch on root page spinner                                                                                                                                            |
+| `394156d` | feat(workflow): hourly loop + auto QA after every task                                                                                                                                           |
+| `d9ebecd` | docs(memory): add MemoryManual.md + wire into session flow                                                                                                                                       |
+| `11b468b` | feat(skills): add /sto-tester skill                                                                                                                                                              |
+| `900c24b` | fix(web): Button 'default' variant + Select placeholder prop                                                                                                                                     |
+| `a6cafd5` | fix(web): postcss.config.mjs — Tailwind 4 CSS processing                                                                                                                                         |
+| `29cb3da` | feat(web): redesign crm, work-orders, calendar, dashboard, vehicles                                                                                                                              |
+| `c57e85b` | fix(review): remove as any from auth.spec.ts                                                                                                                                                     |
+| `f511ea8` | fix(review): Tailwind tokens in 403, setup, root, auth pages                                                                                                                                     |
+| `aa79a5b` | fix(review): Tailwind tokens in settings, calendar, detail pages                                                                                                                                 |
+| `df612e7` | feat(web): redesign catalog, employees, infrastructure, reports, settlements                                                                                                                     |
+| `d415d8a` | fix(review): Tailwind tokens in settlements and reports                                                                                                                                          |
+| `27fbb06` | fix(review): any types + Tailwind tokens across web pages                                                                                                                                        |
+| `5802de7` | feat(web): full UI redesign — design system, components, pages                                                                                                                                   |
+| `b203ab0` | fix(services): validate workId/goodId FK ownership                                                                                                                                               |
+| `ebb31f3` | fix(web): NaN/invalid numeric input guards                                                                                                                                                       |
+| `4bce74e` | fix(web): form validation + modal error guard                                                                                                                                                    |
+| `bd8558f` | fix(review): DTO spread orgId override + zero-amount charge guard                                                                                                                                |
 
 ---
 
-*Файл генерується автоматично. Не редагувати вручну.*
+_Файл генерується автоматично. Не редагувати вручну._
