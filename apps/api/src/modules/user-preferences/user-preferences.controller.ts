@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -18,6 +19,22 @@ import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { UpsertUserPreferenceDto, UserPreferenceResponseDto } from './user-preferences.dto';
 import { UserPreferencesService } from './user-preferences.service';
 
+const KEY_MAX_LENGTH = 200;
+
+/**
+ * Захист від занадто довгого / порожнього path-параметра :key.
+ * DTO `key` валідується через @MaxLength(200), але @Param('key') не проходить ValidationPipe →
+ * без власного guard користувач міг би слати багатокілобайтовий рядок у URL.
+ */
+function ensureValidKey(key: string): void {
+  if (!key || key.length === 0) {
+    throw new BadRequestException('Ключ не може бути порожнім');
+  }
+  if (key.length > KEY_MAX_LENGTH) {
+    throw new BadRequestException(`Ключ занадто довгий (максимум ${KEY_MAX_LENGTH} символів)`);
+  }
+}
+
 @ApiTags('Налаштування користувача')
 @Controller('user-preferences')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -33,6 +50,7 @@ export class UserPreferencesController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('key') key: string,
   ): Promise<UserPreferenceResponseDto> {
+    ensureValidKey(key);
     const value = await this.service.get(orgId, user.id, key);
     return { key, value: value ?? {} };
   }
@@ -47,6 +65,12 @@ export class UserPreferencesController {
     @Param('key') key: string,
     @Body() dto: UpsertUserPreferenceDto,
   ): Promise<void> {
+    ensureValidKey(key);
+    // Path-параметр :key — джерело істини; body.key зберігається лише для контракту GET-відповіді.
+    // Якщо клієнт надсилає неузгоджені значення — відмовляємо, щоб не плутати їх з різними записами.
+    if (dto.key && dto.key !== key) {
+      throw new BadRequestException('Ключ у URL та тілі запиту мають збігатися');
+    }
     await this.service.upsert(orgId, user.id, key, dto.value as Record<string, unknown>);
   }
 }

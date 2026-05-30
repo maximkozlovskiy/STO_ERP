@@ -161,23 +161,35 @@ export class PricingRulesController {
     // Explicitly null out scope fields що були "пониззані" нормалізацією,
     // інакше Prisma update лишить старі значення в БД.
     // Використовуємо UncheckedUpdateInput, бо `goodId` — це foreign key поле без relation-обгортки.
+    //
+    // CRITICAL: брати brandId з normalized (після normalizeScope), а не з existing.
+    // Без цього при PATCH { goodId: 'g1' } на правилі з brandId='b1' нормалізація
+    // очищає brandId до undefined, але БД зберігає старий 'b1' → goodId+brandId одночасно,
+    // що порушує взаємну виключність scope-полів.
     const { tiers, ...restValues } = cleanValues;
     const updateData: Prisma.PricingRuleUncheckedUpdateInput = {
       ...restValues,
       goodId: normalized.goodId ?? null,
+      brandId: normalized.brandId ?? null,
       goodCategory: normalized.goodCategory ?? null,
       goodType: normalized.goodType ?? null,
-      // Use normalized.brandId: normalizeScope clears it if goodId is set (priority 1 > 2).
-      // If not touched by caller and not cleared by normalizeScope → keep existing value.
-      brandId: normalized.brandId !== undefined ? (normalized.brandId ?? null) : existing.brandId,
     };
 
-    // Replace-semantics for tiers: deleteMany + createMany in $transaction
+    // Replace-semantics for tiers: deleteMany + createMany in $transaction.
+    // Якщо тип змінено НЕ на COST_TIER — старі тіри стають mertvim вантажем (не використовуються,
+    // але засмічують БД і "відроджуються" якщо користувач переключиться назад на COST_TIER).
+    // → видаляємо їх явно при будь-якій зміні типу з COST_TIER.
+    const switchedAwayFromCostTier =
+      normalized.type !== undefined && normalized.type !== 'COST_TIER' && existing.type === 'COST_TIER';
+    const needsTierTx = tiers !== undefined || switchedAwayFromCostTier;
+
     let rule;
-    if (tiers !== undefined) {
+    if (needsTierTx) {
       rule = await this.prisma.$transaction(async (tx) => {
-        await tx.pricingRuleTier.deleteMany({ where: { pricingRuleId: id } });
-        if (tiers.length > 0) {
+        if (tiers !== undefined || switchedAwayFromCostTier) {
+          await tx.pricingRuleTier.deleteMany({ where: { pricingRuleId: id } });
+        }
+        if (tiers !== undefined && tiers.length > 0) {
           await tx.pricingRuleTier.createMany({
             data: tiers.map((t, i) => ({
               pricingRuleId: id,

@@ -37,6 +37,7 @@ const TRANSITION = 'cubic-bezier(0.4,0,0.2,1)';
 export function AnimatedBody({ children, className }: { children: ReactNode; className?: string }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const outer = outerRef.current;
@@ -46,8 +47,10 @@ export function AnimatedBody({ children, className }: { children: ReactNode; cla
     // Set initial height instantly (no transition yet — avoids open animation fighting)
     outer.style.transition = 'none';
     outer.style.height = `${inner.scrollHeight}px`;
-    // Re-enable transition on next frame
-    requestAnimationFrame(() => {
+    // Re-enable transition on next frame — capture rAF id для cancel при rapid mount/unmount.
+    // Без id-capture rapid toggle лишає pending rAF що може мутувати DOM після disconnect/unmount.
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
       if (outerRef.current) outerRef.current.style.transition = `height 260ms ${TRANSITION}`;
     });
 
@@ -57,7 +60,13 @@ export function AnimatedBody({ children, className }: { children: ReactNode; cla
       }
     });
     ro.observe(inner);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
   }, []);
 
   return (
