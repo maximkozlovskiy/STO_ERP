@@ -11,11 +11,8 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
-import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from '@/components/ui/table';
+import { DataTable } from '@/components/ui/table';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -699,120 +696,89 @@ export default function PricingRulesClient() {
         </div>
       )}
 
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Назва</TableHead>
-              <TableHead>Тип</TableHead>
-              <TableHead>Область</TableHead>
-              <TableHead>Значення</TableHead>
-              <TableHead>Пріоритет</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
-              <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center">
-                  <div className="flex justify-center"><Spinner size="md" /></div>
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && rules.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="p-0">
-                  <EmptyState
-                    icon={Zap}
-                    title="Правил немає"
-                    description="Створіть перше правило ціноутворення щоб автоматизувати встановлення цін при оприбуткуванні"
-                  />
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && rules.map(rule => (
-              <TableRow key={rule.id} className={!rule.isActive ? 'opacity-50' : ''}>
-                <TableCell>
-                  <p className="text-[13px] font-medium text-foreground">{rule.name}</p>
-                  {rule.roundTo != null && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Округлення до {rule.roundTo} ₴
-                    </p>
-                  )}
-                </TableCell>
-                <TableCell className="text-[13px] text-muted-foreground">
-                  {TYPE_LABELS[rule.type] ?? rule.type}
-                </TableCell>
-                <TableCell className="text-[13px] text-muted-foreground">
-                  <div className="space-y-0.5">
-                    <div>{scopeLabel(rule)}</div>
-                    {rule.brandName && (
-                      <Badge variant="secondary">{rule.brandName}</Badge>
-                    )}
+      {loading && <div className="flex justify-center py-12"><Spinner size="md" /></div>}
+      {!loading && (
+        <DataTable
+          columns={[
+            { key: 'name', label: 'Назва' },
+            { key: 'type', label: 'Тип' },
+            { key: 'scope', label: 'Область' },
+            { key: 'value', label: 'Значення' },
+            { key: 'priority', label: 'Пріоритет', align: 'center' },
+            { key: 'status', label: 'Статус' },
+            { key: 'actions', label: '' },
+          ]}
+          rows={rules.map(rule => ({
+            id: rule.id,
+            name: (
+              <span className={!rule.isActive ? 'opacity-50' : undefined}>
+                <p className="text-[13px] font-medium text-foreground">{rule.name}</p>
+                {rule.roundTo != null && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Округлення до {rule.roundTo} ₴
+                  </p>
+                )}
+              </span>
+            ),
+            type: <span className="text-[13px] text-muted-foreground">{TYPE_LABELS[rule.type] ?? rule.type}</span>,
+            scope: (
+              <div className="text-[13px] text-muted-foreground space-y-0.5">
+                <div>{scopeLabel(rule)}</div>
+                {rule.brandName && <Badge variant="secondary">{rule.brandName}</Badge>}
+              </div>
+            ),
+            value: (
+              <span className="text-[13px] font-medium text-foreground">
+                {rule.type === 'COST_TIER' && rule.tiers && rule.tiers.length > 0 ? (
+                  <div className="text-[12px] text-muted-foreground space-y-0.5">
+                    {rule.tiers.map((t, i) => (
+                      <div key={i}>{t.costMin}–{t.costMax ?? '∞'} ₴ → {t.percentValue}%</div>
+                    ))}
                   </div>
-                </TableCell>
-                <TableCell className="text-[13px] font-medium text-foreground">
-                  {rule.type === 'COST_TIER' && rule.tiers && rule.tiers.length > 0 ? (
-                    <div className="text-[12px] text-muted-foreground space-y-0.5">
-                      {rule.tiers.map((t, i) => (
-                        <div key={i}>
-                          {t.costMin}–{t.costMax ?? '∞'} ₴ → {t.percentValue}%
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    valueLabel(rule)
-                  )}
-                </TableCell>
-                <TableCell className="text-[13px] text-muted-foreground text-center">
-                  {rule.priority}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={rule.isActive ? 'success' : 'secondary'}>
-                    {rule.isActive ? 'Активне' : 'Вимкнено'}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => applyAll(rule)}
-                      disabled={applyingId === rule.id || !rule.isActive}
-                      loading={applyingId === rule.id}
-                      title="Застосувати до всіх товарів"
-                      aria-label="Застосувати правило до всіх товарів"
-                    >
-                      <Zap className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditRule(rule)}
-                      title="Редагувати"
-                      aria-label="Редагувати правило"
-                    >
-                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteRule(rule.id)}
-                      disabled={deletingId === rule.id}
-                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                      title="Видалити"
-                      aria-label="Видалити правило"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+                ) : valueLabel(rule)}
+              </span>
+            ),
+            priority: <span className="text-[13px] text-muted-foreground">{rule.priority}</span>,
+            status: <Badge variant={rule.isActive ? 'success' : 'secondary'}>{rule.isActive ? 'Активне' : 'Вимкнено'}</Badge>,
+            actions: (
+              <div className="flex items-center justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => applyAll(rule)}
+                  disabled={applyingId === rule.id || !rule.isActive}
+                  loading={applyingId === rule.id}
+                  title="Застосувати до всіх товарів"
+                  aria-label="Застосувати правило до всіх товарів"
+                >
+                  <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditRule(rule)}
+                  title="Редагувати"
+                  aria-label="Редагувати правило"
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => deleteRule(rule.id)}
+                  disabled={deletingId === rule.id}
+                  className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                  title="Видалити"
+                  aria-label="Видалити правило"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </Button>
+              </div>
+            ),
+          }))}
+          emptyText="Правил ціноутворення не знайдено"
+        />
+      )}
 
       {/* Create rule modal */}
       <RuleFormModal

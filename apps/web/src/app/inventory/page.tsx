@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { AlertTriangle, Package, Search } from 'lucide-react';
+import { AlertTriangle, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -12,10 +12,7 @@ import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState } from '@/components/ui/empty-state';
-import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from '@/components/ui/table';
+import { DataTable } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
 import { cn } from '@/lib/utils';
 
@@ -158,68 +155,49 @@ export default function InventoryPage() {
       </div>
 
       {/* Table + DetailPanel */}
-      <div className="flex gap-0 rounded-xl border border-border overflow-hidden">
-        <div className="flex-1 min-w-0 overflow-auto border-r border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Товар</TableHead>
-                <TableHead>Артикул</TableHead>
-                <TableHead>Склад</TableHead>
-                <TableHead className="text-right">Кількість</TableHead>
-                <TableHead className="text-right">Резерв</TableHead>
-                <TableHead className="text-right">Доступно</TableHead>
-                <TableHead className="text-right">Ціна продажу</TableHead>
-                <TableHead>Мін. залишок</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center">
-                    <div className="flex justify-center"><Spinner size="md" /></div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && displayed.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8} className="p-0">
-                    <EmptyState icon={Package} title="Позицій не знайдено" />
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && displayed.map(item => (
-                <TableRow
-                  key={item.id}
-                  onClick={() => setSelectedItem(item)}
-                  className={cn(
-                    item.isLow && 'bg-warning-subtle/40',
-                    selectedItem?.id === item.id && 'bg-primary/5',
-                  )}
-                >
-                  <TableCell className="font-medium text-foreground">
+      <div className="flex gap-0">
+        <div className="flex-1 min-w-0">
+          {loading && <div className="flex justify-center py-12"><Spinner size="md" /></div>}
+          {!loading && (
+            <DataTable
+              columns={[
+                { key: 'good', label: 'Товар' },
+                { key: 'sku', label: 'Артикул' },
+                { key: 'warehouse', label: 'Склад' },
+                { key: 'quantity', label: 'Кількість', align: 'right' },
+                { key: 'reserved', label: 'Резерв', align: 'right' },
+                { key: 'available', label: 'Доступно', align: 'right' },
+                { key: 'salePrice', label: 'Ціна продажу', align: 'right' },
+                { key: 'minStock', label: 'Мін. залишок' },
+              ]}
+              rows={displayed.map(item => ({
+                id: item.id,
+                good: (
+                  <span className="font-medium text-foreground">
                     {item.isLow && <AlertTriangle className="inline h-3.5 w-3.5 text-warning mr-1" />}
                     {item.goodName}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-xs">{item.goodSku ?? '—'}</TableCell>
-                  <TableCell className="text-foreground-muted">{item.warehouseName}</TableCell>
-                  <TableCell className="text-right font-medium">{item.quantity} {item.unit}</TableCell>
-                  <TableCell className="text-right text-warning-text">{item.reserved > 0 ? item.reserved : '—'}</TableCell>
-                  <TableCell className={cn('text-right font-semibold', item.available <= 0 ? 'text-destructive' : 'text-success')}>
+                  </span>
+                ),
+                sku: <span className="text-muted-foreground font-mono text-xs">{item.goodSku ?? '—'}</span>,
+                warehouse: <span className="text-foreground-muted">{item.warehouseName}</span>,
+                quantity: <span className="font-medium">{item.quantity} {item.unit}</span>,
+                reserved: <span className="text-warning-text">{item.reserved > 0 ? item.reserved : '—'}</span>,
+                available: (
+                  <span className={cn('font-semibold', item.available <= 0 ? 'text-destructive' : 'text-success')}>
                     {item.available} {item.unit}
-                  </TableCell>
-                  <TableCell className="text-right text-foreground-muted">{fmt(item.salePrice)}</TableCell>
-                  <TableCell>
-                    {item.minStock != null ? (
-                      <Badge variant={item.isLow ? 'warning' : 'secondary'}>
-                        ≥ {item.minStock} {item.unit}
-                      </Badge>
-                    ) : '—'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </span>
+                ),
+                salePrice: <span className="text-foreground-muted">{fmt(item.salePrice)}</span>,
+                minStock: item.minStock != null ? (
+                  <Badge variant={item.isLow ? 'warning' : 'secondary'}>
+                    ≥ {item.minStock} {item.unit}
+                  </Badge>
+                ) : '—',
+              }))}
+              onRowClick={row => setSelectedItem(displayed.find(i => i.id === row.id) ?? null)}
+              emptyText="Позицій не знайдено"
+            />
+          )}
         </div>
 
         <DetailPanel

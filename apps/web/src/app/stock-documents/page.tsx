@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { Plus, FileText, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Plus, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -15,13 +15,10 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
-import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from '@/components/ui/table';
+import { DataTable, type DataTableColumn } from '@/components/ui/table';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
@@ -131,11 +128,6 @@ export default function StockDocumentsPage() {
 
   // — Bulk select ————————————————————————————————————————————————————————
   const bulkSelect = useBulkSelect(docs);
-
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-  }, [bulkSelect.someSelected]);
 
   const handleBulkDelete = useCallback(async (ids: string[]) => {
     if (!(await confirm({ title: `Видалити ${ids.length} документ(ів)?`, confirmLabel: 'Видалити', variant: 'destructive' }))) return;
@@ -446,97 +438,51 @@ export default function StockDocumentsPage() {
 
       {/* Table + DetailPanel */}
       <div className="flex gap-0">
-        <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {features.bulkActionsEnabled && (
-                  <TableHead className="w-9 pr-0">
-                    <input
-                      type="checkbox"
-                      checked={bulkSelect.allSelected}
-                      ref={selectAllRef}
-                      onChange={bulkSelect.toggleAll}
-                      className="h-3.5 w-3.5 rounded border-border"
-                      aria-label="Вибрати всі"
-                    />
-                  </TableHead>
-                )}
-                {visibleColumns.map(col => (
-                  col.key === 'lines'
-                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
-                    : <TableHead key={col.key}>{col.label}</TableHead>
-                ))}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
-                    <div className="flex justify-center"><Spinner size="md" /></div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && docs.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
-                    <EmptyState icon={FileText} title="Документів не знайдено" />
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && docs.map(doc => (
-                <TableRow
-                  key={doc.id}
-                  className={cn(
-                    detailPanel.enabled && 'cursor-pointer',
-                    'transition-colors',
-                    selectedDoc?.id === doc.id && 'bg-secondary',
-                    bulkSelect.isSelected(doc.id) && 'bg-primary/5',
-                    doc.deletedAt && 'opacity-60',
-                  )}
-                  onClick={() => { if (detailPanel.enabled) setSelectedDoc(prev => prev?.id === doc.id ? null : doc); }}
-                >
-                  {features.bulkActionsEnabled && (
-                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={bulkSelect.isSelected(doc.id)}
-                        onChange={() => bulkSelect.toggle(doc.id)}
-                        className="h-3.5 w-3.5 rounded border-border"
-                        aria-label={`Вибрати документ ${doc.number}`}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleColumns.map(col => {
-                    if (col.key === 'number') return (
-                      <TableCell key="number" className="font-medium text-[13px]">
-                        {doc.number}
-                        {doc.deletedAt && (
-                          <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
-                        )}
-                      </TableCell>
-                    );
-                    if (col.key === 'type') return <TableCell key="type"><Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>{TYPE_LABELS[doc.type]}</Badge></TableCell>;
-                    if (col.key === 'warehouse') return <TableCell key="warehouse" className="text-[13px] text-muted-foreground">{doc.warehouseName ?? '—'}</TableCell>;
-                    if (col.key === 'status') return <TableCell key="status"><Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>{STATUS_LABELS[doc.status]}</Badge></TableCell>;
-                    if (col.key === 'lines') return <TableCell key="lines" className="text-right text-[13px] text-muted-foreground">{doc.lines.length}</TableCell>;
-                    if (col.key === 'date') return <TableCell key="date" className="text-[13px] text-muted-foreground">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</TableCell>;
-                    return null;
-                  })}
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={e => { e.stopPropagation(); setShowDetail(doc); }}
-                    >
-                      Деталі
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="flex-1 min-w-0">
+          {loading && <div className="flex justify-center py-12"><Spinner size="md" /></div>}
+          {!loading && (
+            <DataTable
+              columns={[
+                ...visibleColumns.map((col): DataTableColumn => ({
+                  key: col.key,
+                  label: col.label,
+                  align: col.key === 'lines' ? 'right' : 'left',
+                })),
+                { key: 'actions', label: '' },
+              ]}
+              rows={docs.map(doc => ({
+                id: doc.id,
+                number: (
+                  <span className={cn('font-medium text-[13px]', doc.deletedAt && 'opacity-60')}>
+                    {doc.number}
+                    {doc.deletedAt && (
+                      <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
+                    )}
+                  </span>
+                ),
+                type: <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>{TYPE_LABELS[doc.type]}</Badge>,
+                warehouse: <span className="text-[13px] text-muted-foreground">{doc.warehouseName ?? '—'}</span>,
+                status: <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>{STATUS_LABELS[doc.status]}</Badge>,
+                lines: <span className="text-[13px] text-muted-foreground">{doc.lines.length}</span>,
+                date: <span className="text-[13px] text-muted-foreground">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</span>,
+                actions: (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={e => { e.stopPropagation(); setShowDetail(doc); }}
+                  >
+                    Деталі
+                  </Button>
+                ),
+              }))}
+              selectable={features.bulkActionsEnabled}
+              selectedIds={bulkSelect.selected}
+              onSelectRow={bulkSelect.toggle}
+              onSelectAll={bulkSelect.toggleAll}
+              onRowClick={row => { if (detailPanel.enabled) setSelectedDoc(prev => prev?.id === row.id ? null : docs.find(d => d.id === row.id) ?? null); }}
+              emptyText="Документів не знайдено"
+            />
+          )}
         </div>
 
         {/* Detail panel */}
