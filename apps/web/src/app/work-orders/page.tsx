@@ -32,6 +32,7 @@ import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
+import { fmtMoney, fmtShortDateTime, fmtDateTime } from '@/lib/format';
 
 interface WorkOrder {
   id: string; number: string; status: string;
@@ -646,16 +647,12 @@ export default function WorkOrdersPage() {
                     );
                     if (col.key === 'amount') return (
                       <TableCell key="amount" className="font-medium text-foreground tabular-nums text-right">
-                        {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
+                        {fmtMoney(wo.totalAmount)}
                       </TableCell>
                     );
                     if (col.key === 'plannedAt') return (
                       <TableCell key="plannedAt" className="text-muted-foreground text-[12px]">
-                        {wo.plannedAt
-                          ? new Date(wo.plannedAt).toLocaleString('uk-UA', {
-                              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                            })
-                          : '—'}
+                        {wo.plannedAt ? fmtShortDateTime(wo.plannedAt) : '—'}
                       </TableCell>
                     );
                     if (col.key === 'dueDate') return (
@@ -740,7 +737,7 @@ export default function WorkOrdersPage() {
                 <div>
                   <span className="text-muted-foreground">Сума</span>
                   <p className="font-semibold text-foreground mt-0.5 tabular-nums">
-                    {selectedWO.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                    {fmtMoney(selectedWO.totalAmount)} ₴
                   </p>
                 </div>
                 {selectedWO.dueDate && (
@@ -760,21 +757,13 @@ export default function WorkOrdersPage() {
                 <div>
                   <span className="text-muted-foreground">Заплановано</span>
                   <p className="font-medium text-foreground mt-0.5">
-                    {selectedWO.plannedAt
-                      ? new Date(selectedWO.plannedAt).toLocaleString('uk-UA', {
-                          day: '2-digit', month: '2-digit', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit',
-                        })
-                      : '—'}
+                    {selectedWO.plannedAt ? fmtDateTime(selectedWO.plannedAt) : '—'}
                   </p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Створено</span>
                   <p className="font-medium text-foreground mt-0.5">
-                    {new Date(selectedWO.createdAt).toLocaleString('uk-UA', {
-                      day: '2-digit', month: '2-digit', year: 'numeric',
-                      hour: '2-digit', minute: '2-digit',
-                    })}
+                    {fmtDateTime(selectedWO.createdAt)}
                   </p>
                 </div>
               </div>

@@ -36,6 +36,7 @@ import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { ModalTabs } from '@/components/ui/modal-tabs';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import { fmtDate } from '@/lib/format';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -471,9 +472,9 @@ export default function EmployeesPage() {
           <PanelField label="Телефон" fieldKey="phone" hidden={panelConfig.isFieldHidden('phone')} value={emp.phone} />
           <PanelField label="Email" fieldKey="email" hidden={panelConfig.isFieldHidden('email')} value={emp.email} />
           <PanelField label="Схема нарахування" fieldKey="rateScheme" hidden={panelConfig.isFieldHidden('rateScheme')} value={emp.rateScheme ? RATE_LABELS[emp.rateScheme.type] : undefined} />
-          <PanelField label="Дата прийняття" fieldKey="dateOfHire" hidden={panelConfig.isFieldHidden('dateOfHire')} value={emp.dateOfHire ? new Date(emp.dateOfHire).toLocaleDateString('uk-UA') : undefined} />
+          <PanelField label="Дата прийняття" fieldKey="dateOfHire" hidden={panelConfig.isFieldHidden('dateOfHire')} value={emp.dateOfHire ? fmtDate(emp.dateOfHire) : undefined} />
           {emp.status === 'FIRED' && emp.dateOfFire && (
-            <PanelField label="Дата звільнення" value={new Date(emp.dateOfFire).toLocaleDateString('uk-UA')} />
+            <PanelField label="Дата звільнення" value={fmtDate(emp.dateOfFire)} />
           )}
         </div>
       ),

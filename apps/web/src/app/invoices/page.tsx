@@ -35,6 +35,7 @@ import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
+import { fmtMoney, fmtDate } from '@/lib/format';
 
 interface Counterparty { id: string; firstName?: string; lastName?: string; companyName?: string; }
 interface InvoiceLine {
@@ -79,7 +80,7 @@ const INVOICE_TYPE_LABELS: Record<string, string> = {
 };
 
 function fmt(n: number) {
-  return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';
+  return fmtMoney(n) + ' ₴';
 }
 
 export default function InvoicesPage() {
@@ -390,9 +391,9 @@ export default function InvoicesPage() {
           <PanelField label="Контрагент" value={inv.counterpartyName} />
           <PanelField label="Наряд" value={inv.workOrderNumber} />
           <PanelField label="Тип" value={inv.invoiceType ? INVOICE_TYPE_LABELS[inv.invoiceType] : undefined} />
-          <PanelField label="Сума" value={inv.amount != null ? `${inv.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : undefined} />
-          <PanelField label="Сплачено" value={inv.paidAmount != null ? `${inv.paidAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : undefined} />
-          <PanelField label="Термін оплати" value={inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : undefined} />
+          <PanelField label="Сума" value={inv.amount != null ? `${fmtMoney(inv.amount)} ₴` : undefined} />
+          <PanelField label="Сплачено" value={inv.paidAmount != null ? `${fmtMoney(inv.paidAmount)} ₴` : undefined} />
+          <PanelField label="Термін оплати" value={inv.dueDate ? fmtDate(inv.dueDate) : undefined} />
           {inv.notes && <PanelField label="Нотатки" value={inv.notes} />}
           <PanelSection title="Дії">
             <div className="flex flex-col gap-2">
@@ -450,8 +451,8 @@ export default function InvoicesPage() {
             <div key={line.id ?? i} className="rounded-lg border border-border px-3 py-2 text-[13px]">
               <p className="font-medium text-foreground">{line.description}</p>
               <p className="text-muted-foreground text-[12px] mt-0.5">
-                {line.quantity} × {line.unitPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                {' = '}<span className="text-foreground font-medium">{line.priceWithVat.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</span>
+                {line.quantity} × {fmtMoney(line.unitPrice)} ₴
+                {' = '}<span className="text-foreground font-medium">{fmtMoney(line.priceWithVat)} ₴</span>
               </p>
             </div>
           ))}
@@ -618,7 +619,7 @@ export default function InvoicesPage() {
                       </TableCell>
                     );
                     if (col.key === 'amount') return <TableCell key="amount" className="text-right font-semibold text-[13px]">{fmt(inv.amount)}</TableCell>;
-                    if (col.key === 'dueDate') return <TableCell key="dueDate" className="text-[13px] text-muted-foreground">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : '—'}</TableCell>;
+                    if (col.key === 'dueDate') return <TableCell key="dueDate" className="text-[13px] text-muted-foreground">{inv.dueDate ? fmtDate(inv.dueDate) : '—'}</TableCell>;
                     return null;
                   })}
                   <TableCell>

@@ -18,6 +18,7 @@ import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
 import { Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fmtMoney, fmtInt, fmtDate, fmtDateTime, fmtShortDateTime } from '@/lib/format';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
@@ -654,7 +655,7 @@ export default function WorkOrderCardPage() {
           <p className="text-sm text-muted-foreground mt-1">{wo.counterpartyName} · {wo.vehicleSummary}</p>
         </div>
         <div className="text-right">
-          <p className="text-lg font-bold text-foreground">{wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+          <p className="text-lg font-bold text-foreground">{fmtMoney(wo.totalAmount)} ₴</p>
           <p className="text-xs text-muted-foreground">загальна сума</p>
         </div>
       </div>
@@ -664,11 +665,11 @@ export default function WorkOrderCardPage() {
         {wo.branchName && <div><p className="text-xs text-muted-foreground">Філія</p><p className="text-foreground">{wo.branchName}</p></div>}
         {wo.priority && <div><p className="text-xs text-muted-foreground">Пріоритет</p><p className="text-foreground">{wo.priority}</p></div>}
         {wo.repairCategory && <div><p className="text-xs text-muted-foreground">Категорія ремонту</p><p className="text-foreground">{wo.repairCategory}</p></div>}
-        {wo.dueDate && <div><p className="text-xs text-muted-foreground">Дедлайн</p><p className="text-foreground">{new Date(wo.dueDate).toLocaleDateString('uk-UA')}</p></div>}
+        {wo.dueDate && <div><p className="text-xs text-muted-foreground">Дедлайн</p><p className="text-foreground">{fmtDate(wo.dueDate)}</p></div>}
         {wo.clientApproval != null && <div><p className="text-xs text-muted-foreground">Погодження клієнта</p><p className="text-foreground">{wo.clientApproval ? 'Так' : 'Ні'}</p></div>}
-        {wo.inMileage != null && <div><p className="text-xs text-muted-foreground">Пробіг (вхід)</p><p className="text-foreground">{wo.inMileage.toLocaleString('uk-UA')} км</p></div>}
-        {wo.outMileage != null && <div><p className="text-xs text-muted-foreground">Пробіг (вихід)</p><p className="text-foreground">{wo.outMileage.toLocaleString('uk-UA')} км</p></div>}
-        {wo.plannedAt && <div><p className="text-xs text-muted-foreground">Заплановано</p><p className="text-foreground">{new Date(wo.plannedAt).toLocaleString('uk-UA')}</p></div>}
+        {wo.inMileage != null && <div><p className="text-xs text-muted-foreground">Пробіг (вхід)</p><p className="text-foreground">{fmtInt(wo.inMileage)} км</p></div>}
+        {wo.outMileage != null && <div><p className="text-xs text-muted-foreground">Пробіг (вихід)</p><p className="text-foreground">{fmtInt(wo.outMileage)} км</p></div>}
+        {wo.plannedAt && <div><p className="text-xs text-muted-foreground">Заплановано</p><p className="text-foreground">{fmtDateTime(wo.plannedAt)}</p></div>}
         {wo.description && <div className="col-span-2"><p className="text-xs text-muted-foreground">Опис</p><p className="text-foreground">{wo.description}</p></div>}
       </div>
 
@@ -701,9 +702,9 @@ export default function WorkOrderCardPage() {
 
       {/* Totals */}
       <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-3 gap-4 text-sm">
-        <div><p className="text-xs text-muted-foreground">Роботи</p><p className="text-lg font-semibold text-foreground">{wo.totalLabor.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p></div>
-        <div><p className="text-xs text-muted-foreground">Запчастини</p><p className="text-lg font-semibold text-foreground">{wo.totalParts.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p></div>
-        <div><p className="text-xs text-muted-foreground">Оплачено</p><p className={cn('text-lg font-semibold', wo.paidAmount >= wo.totalAmount ? 'text-success' : 'text-foreground')}>{wo.paidAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p></div>
+        <div><p className="text-xs text-muted-foreground">Роботи</p><p className="text-lg font-semibold text-foreground">{fmtMoney(wo.totalLabor)} ₴</p></div>
+        <div><p className="text-xs text-muted-foreground">Запчастини</p><p className="text-lg font-semibold text-foreground">{fmtMoney(wo.totalParts)} ₴</p></div>
+        <div><p className="text-xs text-muted-foreground">Оплачено</p><p className={cn('text-lg font-semibold', wo.paidAmount >= wo.totalAmount ? 'text-success' : 'text-foreground')}>{fmtMoney(wo.paidAmount)} ₴</p></div>
       </div>
 
       {/* Completion Act */}
@@ -729,7 +730,7 @@ export default function WorkOrderCardPage() {
                 {completionAct.status === 'DRAFT' ? 'Чернетка' : completionAct.status === 'SIGNED' ? 'Підписано' : 'Скасовано'}
               </span>
               {completionAct.signedAt && (
-                <p className="text-xs text-muted-foreground">{new Date(completionAct.signedAt).toLocaleString('uk-UA')}</p>
+                <p className="text-xs text-muted-foreground">{fmtDateTime(completionAct.signedAt)}</p>
               )}
               {completionAct.status === 'DRAFT' && (
                 <Button variant="outline" size="sm" onClick={() => signAct(completionAct.id)} loading={signingAct}>
@@ -774,8 +775,8 @@ export default function WorkOrderCardPage() {
                     {l.notes && <p className="text-xs text-muted-foreground mt-0.5">{l.notes}</p>}
                   </div>
                   <div className="text-right mr-3">
-                    <p className="text-sm font-medium text-foreground">{l.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
-                    <p className="text-xs text-muted-foreground">{l.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} × {l.normoHours}</p>
+                    <p className="text-sm font-medium text-foreground">{fmtMoney(l.amount)} ₴</p>
+                    <p className="text-xs text-muted-foreground">{fmtMoney(l.price)} × {l.normoHours}</p>
                   </div>
                   {canEdit && <button onClick={() => removeLine(l.id)} disabled={deletingLineId === l.id} className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50">×</button>}
                 </div>
@@ -817,10 +818,10 @@ export default function WorkOrderCardPage() {
                         <Layers className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     </div>
-                    <p className="text-xs text-muted-foreground">{p.quantity} {p.unitShortName ?? 'шт'} × {p.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+                    <p className="text-xs text-muted-foreground">{p.quantity} {p.unitShortName ?? 'шт'} × {fmtMoney(p.price)} ₴</p>
                   </div>
                   <div className="text-right mr-3">
-                    <p className="text-sm font-medium text-foreground">{p.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+                    <p className="text-sm font-medium text-foreground">{fmtMoney(p.amount)} ₴</p>
                   </div>
                   {canEdit && <button onClick={() => removePart(p.id)} disabled={deletingPartId === p.id} className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50">×</button>}
                 </div>
@@ -843,8 +844,8 @@ export default function WorkOrderCardPage() {
         {inspection ? (
           <div className="p-4 space-y-2">
             <div className="text-[12px] text-muted-foreground mb-3">
-              {new Date(inspection.createdAt).toLocaleString('uk-UA')}
-              {inspection.mileage != null && ` · ${inspection.mileage.toLocaleString('uk-UA')} км`}
+              {fmtDateTime(inspection.createdAt)}
+              {inspection.mileage != null && ` · ${fmtInt(inspection.mileage)} км`}
             </div>
             {inspection.points.map((p, i) => (
               <div key={i} className="flex items-center gap-3 text-sm">
@@ -927,7 +928,7 @@ export default function WorkOrderCardPage() {
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-[12px] font-medium text-foreground">{c.authorName ?? 'Невідомо'}</span>
                     <span className="text-[11px] text-muted-foreground">
-                      {new Date(c.createdAt).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      {fmtShortDateTime(c.createdAt)}
                     </span>
                   </div>
                   <p className="text-[13px] text-foreground whitespace-pre-wrap wrap-break-word">{c.body}</p>
@@ -1026,7 +1027,7 @@ export default function WorkOrderCardPage() {
           <div className="divide-y divide-border max-h-64 overflow-y-auto">
             {auditEvents.map(ev => {
               const who = `${ev.user.lastName} ${ev.user.firstName}`;
-              const when = new Date(ev.createdAt).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+              const when = fmtDateTime(ev.createdAt);
               const diff = ev.diff as Record<string, { from: unknown; to: unknown }>;
               const changes = Object.entries(diff)
                 .filter(([, v]) => v && typeof v === 'object' && 'from' in v)

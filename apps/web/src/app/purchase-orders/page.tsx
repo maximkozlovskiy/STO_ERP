@@ -34,6 +34,7 @@ import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
+import { fmtMoney, fmtDate } from '@/lib/format';
 
 interface Supplier { id: string; firstName?: string; lastName?: string; companyName?: string; }
 interface Warehouse { id: string; name: string; isMain: boolean; }
@@ -78,7 +79,7 @@ const STATUS_ACTION_LABELS: Record<string, string> = {
 };
 
 function fmt(n: number) {
-  return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';
+  return fmtMoney(n) + ' ₴';
 }
 
 export default function PurchaseOrdersPage() {
@@ -350,10 +351,10 @@ export default function PurchaseOrdersPage() {
           <PanelField label="Статус" value={<Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>{STATUS_LABELS[po.status]}</Badge>} />
           <PanelField label="Постачальник" value={po.supplierName} />
           <PanelField label="Склад" value={po.warehouseName} />
-          <PanelField label="Сума" value={po.totalAmount != null ? `${po.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : undefined} />
+          <PanelField label="Сума" value={po.totalAmount != null ? `${fmtMoney(po.totalAmount)} ₴` : undefined} />
           <PanelField label="Позицій" value={po.linesCount != null ? String(po.linesCount) : undefined} />
           {po.notes && <PanelField label="Нотатки" value={po.notes} />}
-          <PanelField label="Дата" value={new Date(po.createdAt).toLocaleDateString('uk-UA')} />
+          <PanelField label="Дата" value={fmtDate(po.createdAt)} />
           {(po.status === 'RECEIVED' || po.status === 'PARTIAL') && (
             <div className="pt-1 space-y-2">
               <Button
@@ -377,9 +378,9 @@ export default function PurchaseOrdersPage() {
                         <div key={d.goodId} className="text-[12px]">
                           <p className="font-medium text-foreground truncate">{d.goodName}</p>
                           <p className="text-muted-foreground">
-                            {d.costPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴ →{' '}
-                            <span className="line-through">{d.oldSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</span>{' '}
-                            <span className="text-success-text font-medium">{d.newSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</span>
+                            {fmtMoney(d.costPrice)} ₴ →{' '}
+                            <span className="line-through">{fmtMoney(d.oldSalePrice)}</span>{' '}
+                            <span className="text-success-text font-medium">{fmtMoney(d.newSalePrice)} ₴</span>
                           </p>
                         </div>
                       ))}
@@ -404,7 +405,7 @@ export default function PurchaseOrdersPage() {
               <p className="font-medium text-foreground">{line.goodName ?? line.goodId}</p>
               {line.goodSku && <p className="text-muted-foreground text-[12px]">{line.goodSku}</p>}
               <p className="text-muted-foreground text-[12px] mt-0.5">
-                {line.quantity} {line.unit ?? ''} × {line.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                {line.quantity} {line.unit ?? ''} × {fmtMoney(line.price)} ₴
               </p>
             </div>
           ))}
@@ -590,8 +591,8 @@ export default function PurchaseOrdersPage() {
                     if (col.key === 'supplier') return <TableCell key="supplier" className="text-[13px]">{po.supplierName ?? '—'}</TableCell>;
                     if (col.key === 'warehouse') return <TableCell key="warehouse" className="text-[13px] text-muted-foreground">{po.warehouseName ?? '—'}</TableCell>;
                     if (col.key === 'status') return <TableCell key="status"><Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>{STATUS_LABELS[po.status]}</Badge></TableCell>;
-                    if (col.key === 'amount') return <TableCell key="amount" className="text-right font-semibold text-[13px]">{po.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</TableCell>;
-                    if (col.key === 'date') return <TableCell key="date" className="text-[13px] text-muted-foreground">{new Date(po.createdAt).toLocaleDateString('uk-UA')}</TableCell>;
+                    if (col.key === 'amount') return <TableCell key="amount" className="text-right font-semibold text-[13px]">{fmtMoney(po.totalAmount)} ₴</TableCell>;
+                    if (col.key === 'date') return <TableCell key="date" className="text-[13px] text-muted-foreground">{fmtDate(po.createdAt)}</TableCell>;
                     return null;
                   })}
                   <TableCell>
@@ -636,9 +637,9 @@ export default function PurchaseOrdersPage() {
                               {pricingResult[po.id].details.map(d => (
                                 <tr key={d.goodId}>
                                   <td className="py-0.5 text-foreground">{d.goodName}</td>
-                                  <td className="py-0.5 text-right text-muted-foreground">{d.costPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</td>
-                                  <td className="py-0.5 text-right text-muted-foreground line-through">{d.oldSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</td>
-                                  <td className="py-0.5 text-right font-medium text-foreground">{d.newSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</td>
+                                  <td className="py-0.5 text-right text-muted-foreground">{fmtMoney(d.costPrice)}</td>
+                                  <td className="py-0.5 text-right text-muted-foreground line-through">{fmtMoney(d.oldSalePrice)}</td>
+                                  <td className="py-0.5 text-right font-medium text-foreground">{fmtMoney(d.newSalePrice)} ₴</td>
                                 </tr>
                               ))}
                             </tbody>

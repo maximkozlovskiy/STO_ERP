@@ -35,6 +35,7 @@ import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { ModalTabs } from '@/components/ui/modal-tabs';
+import { fmtMoney, fmtDate } from '@/lib/format';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -411,7 +412,7 @@ function WorksTab() {
                     );
                     if (col.key === 'category') return <TableCell key="category" className="text-[13px] text-muted-foreground">{w.categoryName}</TableCell>;
                     if (col.key === 'normo') return <TableCell key="normo" className="text-[13px]">{w.normoHours}</TableCell>;
-                    if (col.key === 'price') return <TableCell key="price" className="font-medium text-[13px]">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>;
+                    if (col.key === 'price') return <TableCell key="price" className="font-medium text-[13px]">{fmtMoney(w.price)}</TableCell>;
                     return null;
                   })}
                   <TableCell className="text-right">
@@ -445,7 +446,7 @@ function WorksTab() {
                 <div className="space-y-3">
                   <PanelField label="Категорія" value={w.categoryName} />
                   <PanelField label="Нормо-год" value={String(w.normoHours)} />
-                  <PanelField label="Ціна" value={`${w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴`} />
+                  <PanelField label="Ціна" value={`${fmtMoney(w.price)} ₴`} />
                   {w.isWarranty && <PanelField label="Гарантійна" value="Так" />}
                   {w.description && <PanelField label="Опис" value={w.description} />}
                 </div>
@@ -1010,8 +1011,8 @@ function GoodsTab() {
                     );
                     if (col.key === 'category') return <TableCell key="category" className="text-[13px] text-muted-foreground">{g.category ?? '—'}</TableCell>;
                     if (col.key === 'unit') return <TableCell key="unit" className="text-[13px] text-muted-foreground">{g.unit}</TableCell>;
-                    if (col.key === 'purchase') return <TableCell key="purchase" className="text-[13px]">{g.purchasePrice != null ? `${g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : '—'}</TableCell>;
-                    if (col.key === 'sale') return <TableCell key="sale" className="font-medium text-[13px]">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</TableCell>;
+                    if (col.key === 'purchase') return <TableCell key="purchase" className="text-[13px]">{g.purchasePrice != null ? `${fmtMoney(g.purchasePrice)} ₴` : '—'}</TableCell>;
+                    if (col.key === 'sale') return <TableCell key="sale" className="font-medium text-[13px]">{fmtMoney(g.salePrice)} ₴</TableCell>;
                     return null;
                   })}
                   <TableCell>
@@ -1091,14 +1092,14 @@ function GoodsTab() {
                     <div>
                       <span className="text-muted-foreground">Ціна закупки:</span>{' '}
                       <span className="text-foreground">
-                        {selectedGood.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                        {fmtMoney(selectedGood.purchasePrice)} ₴
                       </span>
                     </div>
                   )}
                   <div>
                     <span className="text-muted-foreground">Ціна продажу:</span>{' '}
                     <span className="text-foreground font-semibold">
-                      {selectedGood.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                      {fmtMoney(selectedGood.salePrice)} ₴
                     </span>
                   </div>
                   {selectedGood.category && (
@@ -1484,13 +1485,13 @@ function GoodsTab() {
                                 }
                               </td>
                               <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">
-                                {b.costPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
+                                {fmtMoney(b.costPrice)}
                               </td>
                               <td className="px-3 py-2 text-right text-foreground tabular-nums">
-                                {b.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
+                                {fmtMoney(b.salePrice)}
                               </td>
                               <td className="px-3 py-2 text-muted-foreground">
-                                {new Date(b.createdAt).toLocaleDateString('uk-UA')}
+                                {fmtDate(b.createdAt)}
                               </td>
                             </tr>
                           ))}
@@ -1894,7 +1895,7 @@ function ServicesTab() {
                     );
                     if (col.key === 'price') return (
                       <TableCell key="price" className="font-medium text-foreground">
-                        {s.price != null ? `${s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : 'авто'}
+                        {s.price != null ? `${fmtMoney(s.price)} ₴` : 'авто'}
                       </TableCell>
                     );
                     return null;
@@ -1936,7 +1937,7 @@ function ServicesTab() {
               key: 'info', label: 'Основне',
               content: (
                 <div className="space-y-3">
-                  {s.price != null && <PanelField label="Ціна" value={`${s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴`} />}
+                  {s.price != null && <PanelField label="Ціна" value={`${fmtMoney(s.price)} ₴`} />}
                   {s.description && <PanelField label="Опис" value={s.description} />}
                 </div>
               ),
@@ -1948,7 +1949,7 @@ function ServicesTab() {
                   {s.works.map((w, i) => (
                     <div key={i} className="rounded-lg border border-border px-3 py-2 text-[13px]">
                       <p className="font-medium text-foreground">{w.workName}</p>
-                      <p className="text-muted-foreground text-[12px] mt-0.5">{w.quantity} × {w.normoHours} нормо-год · {w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+                      <p className="text-muted-foreground text-[12px] mt-0.5">{w.quantity} × {w.normoHours} нормо-год · {fmtMoney(w.price)} ₴</p>
                     </div>
                   ))}
                 </div>
@@ -1961,7 +1962,7 @@ function ServicesTab() {
                   {s.goods.map((g, i) => (
                     <div key={i} className="rounded-lg border border-border px-3 py-2 text-[13px]">
                       <p className="font-medium text-foreground">{g.goodName}</p>
-                      <p className="text-muted-foreground text-[12px] mt-0.5">{g.quantity} {g.unit} · {g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</p>
+                      <p className="text-muted-foreground text-[12px] mt-0.5">{g.quantity} {g.unit} · {fmtMoney(g.salePrice)} ₴</p>
                     </div>
                   ))}
                 </div>

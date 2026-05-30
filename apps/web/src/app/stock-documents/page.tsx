@@ -33,6 +33,7 @@ import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import { fmtMoney, fmtDate, fmtDateTime } from '@/lib/format';
 
 interface Branch { id: string; name: string; }
 interface Warehouse { id: string; name: string; isMain: boolean; }
@@ -313,7 +314,7 @@ export default function StockDocumentsPage() {
           <PanelField label="Склад-джерело" value={doc.warehouseName} />
           {doc.targetWarehouseName && <PanelField label="Склад-призначення" value={doc.targetWarehouseName} />}
           <PanelField label="Філія" value={doc.branchName} />
-          <PanelField label="Підтверджено" value={doc.confirmedAt ? new Date(doc.confirmedAt).toLocaleDateString('uk-UA') : undefined} />
+          <PanelField label="Підтверджено" value={doc.confirmedAt ? fmtDate(doc.confirmedAt) : undefined} />
           {doc.notes && <PanelField label="Нотатки" value={doc.notes} />}
         </div>
       ),
@@ -331,7 +332,7 @@ export default function StockDocumentsPage() {
               {line.goodSku && <p className="text-muted-foreground text-[12px]">{line.goodSku}</p>}
               <p className="text-muted-foreground text-[12px] mt-0.5">
                 К-сть: <span className="text-foreground">{line.quantity}</span>
-                {line.price != null && <> · {line.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</>}
+                {line.price != null && <> · {fmtMoney(line.price)} ₴</>}
               </p>
             </div>
           ))}
@@ -527,7 +528,7 @@ export default function StockDocumentsPage() {
                     if (col.key === 'warehouse') return <TableCell key="warehouse" className="text-[13px] text-muted-foreground">{doc.warehouseName ?? '—'}</TableCell>;
                     if (col.key === 'status') return <TableCell key="status"><Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>{STATUS_LABELS[doc.status]}</Badge></TableCell>;
                     if (col.key === 'lines') return <TableCell key="lines" className="text-right text-[13px] text-muted-foreground">{doc.lines.length}</TableCell>;
-                    if (col.key === 'date') return <TableCell key="date" className="text-[13px] text-muted-foreground">{new Date(doc.createdAt).toLocaleDateString('uk-UA')}</TableCell>;
+                    if (col.key === 'date') return <TableCell key="date" className="text-[13px] text-muted-foreground">{fmtDate(doc.createdAt)}</TableCell>;
                     return null;
                   })}
                   <TableCell>
@@ -740,7 +741,7 @@ export default function StockDocumentsPage() {
 
             {showDetail.confirmedAt && (
               <p className="text-xs text-foreground-faint">
-                Підтверджено: {new Date(showDetail.confirmedAt).toLocaleString('uk-UA')}
+                Підтверджено: {fmtDateTime(showDetail.confirmedAt)}
               </p>
             )}
           </div>

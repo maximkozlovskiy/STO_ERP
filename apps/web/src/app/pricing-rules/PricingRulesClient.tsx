@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import { fmtMoney } from '@/lib/format';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -104,9 +105,9 @@ function valueLabel(rule: PricingRule): string {
     case 'COMPETITOR_PLUS':
       return rule.percentValue != null ? `+${rule.percentValue}%` : '—';
     case 'FIXED_AMOUNT':
-      return rule.fixedAmount != null ? `+${rule.fixedAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : '—';
+      return rule.fixedAmount != null ? `+${fmtMoney(rule.fixedAmount)} ₴` : '—';
     case 'FIXED_PRICE':
-      return rule.fixedPrice != null ? `${rule.fixedPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : '—';
+      return rule.fixedPrice != null ? `${fmtMoney(rule.fixedPrice)} ₴` : '—';
     case 'COST_TIER':
       return rule.tiers && rule.tiers.length > 0 ? `${rule.tiers.length} грейд(ів)` : '—';
     default:
@@ -667,10 +668,10 @@ export default function PricingRulesClient() {
                         <tr key={d.goodId} className={Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001 ? 'bg-surface' : 'bg-surface opacity-60'}>
                           <td className="px-3 py-1.5 text-foreground">{d.goodName}</td>
                           <td className="px-3 py-1.5 text-muted-foreground">{d.sku ?? '—'}</td>
-                          <td className="px-3 py-1.5 text-right text-muted-foreground">{d.costPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</td>
-                          <td className="px-3 py-1.5 text-right text-muted-foreground">{d.oldSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-3 py-1.5 text-right text-muted-foreground">{fmtMoney(d.costPrice)}</td>
+                          <td className="px-3 py-1.5 text-right text-muted-foreground">{fmtMoney(d.oldSalePrice)}</td>
                           <td className={`px-3 py-1.5 text-right font-medium ${Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001 ? 'text-foreground' : 'text-muted-foreground'}`}>
-                            {d.newSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                            {fmtMoney(d.newSalePrice)} ₴
                           </td>
                         </tr>
                       ))}

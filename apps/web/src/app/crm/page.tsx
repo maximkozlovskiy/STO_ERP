@@ -34,6 +34,7 @@ import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
+import { fmtMoney, fmtDate } from '@/lib/format';
 
 interface Counterparty {
   id: string; type: string;
@@ -418,7 +419,7 @@ export default function CrmPage() {
             hidden={panelConfig.isFieldHidden('balance')}
             value={
               <span className={cn('font-semibold', cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground')}>
-                {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                {fmtMoney(cp.balance)} ₴
               </span>
             }
           />
@@ -622,7 +623,7 @@ export default function CrmPage() {
                       if (col.key === 'edrpou') return <TableCell key="edrpou" className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>;
                       if (col.key === 'balance') return (
                         <TableCell key="balance" className={cn('font-semibold tabular-nums text-[13px]', cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground')}>
-                          {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                          {fmtMoney(cp.balance)} ₴
                         </TableCell>
                       );
                       return null;
@@ -922,10 +923,10 @@ export default function CrmPage() {
                           </Badge>
                         </td>
                         <td className="px-3 py-2 text-right text-foreground tabular-nums">
-                          {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                          {fmtMoney(wo.totalAmount)} ₴
                         </td>
                         <td className="px-3 py-2 text-muted-foreground">
-                          {new Date(wo.createdAt).toLocaleDateString('uk-UA')}
+                          {fmtDate(wo.createdAt)}
                         </td>
                       </tr>
                     ))}
