@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Pencil, Trash2, Zap } from 'lucide-react';
+import { Plus, Pencil, Trash2, Zap, Upload } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -412,6 +412,17 @@ export default function PricingRulesClient() {
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [applyResult, setApplyResult] = useState<{ ruleId: string; message: string } | null>(null);
 
+  const [showPricingImport, setShowPricingImport] = useState(false);
+  const [pricingFile, setPricingFile] = useState<File | null>(null);
+  const [pricingImporting, setPricingImporting] = useState(false);
+  interface PricingImportResult {
+    found: number;
+    updated: number;
+    notFound: string[];
+    details: { goodId: string; goodName: string; sku: string | null; costPrice: number; oldSalePrice: number; newSalePrice: number }[];
+  }
+  const [pricingImportResult, setPricingImportResult] = useState<PricingImportResult | null>(null);
+
   // Bug #30: tracking mounted state — refetch після create/update/delete не повинен setState
   // на unmounted компонент (race коли користувач перейшов на іншу сторінку).
   const mountedRef = useRef(true);
@@ -549,10 +560,107 @@ export default function PricingRulesClient() {
           <h1 className="page-title">Правила ціноутворення</h1>
           <p className="page-subtitle">Автоматичне розрахування ціни продажу при оприбуткуванні товарів</p>
         </div>
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setError(''); setModal(true); }}>
-          Додати правило
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            leftIcon={<Upload className="h-4 w-4" />}
+            onClick={() => { setShowPricingImport(s => !s); setPricingImportResult(null); }}
+          >
+            Розцінити список
+          </Button>
+          <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => { setError(''); setModal(true); }}>
+            Додати правило
+          </Button>
+        </div>
       </div>
+
+      {showPricingImport && (
+        <div className="mb-6 rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[13px] font-medium text-foreground">Розцінити товари за списком</span>
+            <a href="/api/xlsx/templates/pricing-list" className="text-[12px] text-primary hover:underline">
+              Завантажити шаблон CSV
+            </a>
+          </div>
+          <p className="text-[12px] text-muted-foreground">
+            Завантажте XLSX або CSV файл з колонками: <code>sku</code>, <code>barcode</code>, <code>name</code>
+          </p>
+          <div className="flex items-center gap-3">
+            <input
+              type="file"
+              accept=".xlsx,.csv"
+              onChange={e => { setPricingFile(e.target.files?.[0] ?? null); setPricingImportResult(null); }}
+              className="text-[13px] text-foreground"
+            />
+            <Button
+              type="button"
+              size="sm"
+              loading={pricingImporting}
+              disabled={!pricingFile}
+              onClick={async () => {
+                if (!pricingFile) return;
+                setPricingImporting(true);
+                try {
+                  const fd = new FormData();
+                  fd.append('file', pricingFile);
+                  const result = await apiFetch<PricingImportResult>('/xlsx/apply-pricing-from-list', { method: 'POST', body: fd });
+                  setPricingImportResult(result);
+                  if (result.updated > 0) setError('');
+                } catch (e: unknown) {
+                  setError(e instanceof Error ? e.message : 'Помилка розцінки');
+                } finally {
+                  setPricingImporting(false);
+                }
+              }}
+            >
+              Розцінити
+            </Button>
+          </div>
+          {pricingImportResult && (
+            <div className="space-y-2">
+              <div className="flex gap-4 text-[12px]">
+                <span className="text-muted-foreground">Знайдено: <strong className="text-foreground">{pricingImportResult.found}</strong></span>
+                <span className="text-muted-foreground">Оновлено: <strong className="text-success">{pricingImportResult.updated}</strong></span>
+                {pricingImportResult.notFound.length > 0 && (
+                  <span className="text-muted-foreground">Не знайдено: <strong className="text-destructive">{pricingImportResult.notFound.length}</strong></span>
+                )}
+              </div>
+              {pricingImportResult.notFound.length > 0 && (
+                <p className="text-[11px] text-destructive">Не знайдено: {pricingImportResult.notFound.join(', ')}</p>
+              )}
+              {pricingImportResult.details.length > 0 && (
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <table className="w-full text-[12px]">
+                    <thead className="bg-secondary border-b border-border">
+                      <tr>
+                        <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">Товар</th>
+                        <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">SKU</th>
+                        <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">Собів.</th>
+                        <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">Стара</th>
+                        <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">Нова</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {pricingImportResult.details.map(d => (
+                        <tr key={d.goodId} className={Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001 ? 'bg-surface' : 'bg-surface opacity-60'}>
+                          <td className="px-3 py-1.5 text-foreground">{d.goodName}</td>
+                          <td className="px-3 py-1.5 text-muted-foreground">{d.sku ?? '—'}</td>
+                          <td className="px-3 py-1.5 text-right text-muted-foreground">{d.costPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-3 py-1.5 text-right text-muted-foreground">{d.oldSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</td>
+                          <td className={`px-3 py-1.5 text-right font-medium ${Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001 ? 'text-foreground' : 'text-muted-foreground'}`}>
+                            {d.newSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">

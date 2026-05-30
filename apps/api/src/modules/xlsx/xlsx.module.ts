@@ -5,9 +5,10 @@ import { GoodsModule } from '../goods/goods.module';
 import { BrandsModule } from '../brands/brands.module';
 import { UnitsModule } from '../units/units.module';
 import { WorksModule } from '../works/works.module';
+import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
-  imports: [GoodsModule, BrandsModule, UnitsModule, WorksModule],
+  imports: [GoodsModule, BrandsModule, UnitsModule, WorksModule, InventoryModule],
   controllers: [XlsxController],
   providers: [XlsxService],
 })

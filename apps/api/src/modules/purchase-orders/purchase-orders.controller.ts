@@ -92,4 +92,14 @@ export class PurchaseOrdersController {
     // jwt.strategy.ts повертає { id, orgId, role }. Поле `sub` живе тільки у JWT payload, не в request.user.
     return this.service.receive(orgId, id, dto, user?.id);
   }
+
+  @Post(':id/apply-pricing')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Розцінити товари замовлення за правилами ціноутворення' })
+  applyPricing(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.service.applyPricing(orgId, id);
+  }
 }

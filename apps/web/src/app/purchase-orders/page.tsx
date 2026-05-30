@@ -152,6 +152,13 @@ export default function PurchaseOrdersPage() {
 
   const [receiveLines, setReceiveLines] = useState<{ lineId: string; receivedQty: string }[]>([]);
 
+  interface PricingResult {
+    updated: number;
+    details: { goodId: string; goodName: string; costPrice: number; oldSalePrice: number; newSalePrice: number }[];
+  }
+  const [pricingResult, setPricingResult] = useState<Record<string, PricingResult>>({});
+  const [applyingPricingId, setApplyingPricingId] = useState<string | null>(null);
+
   const limit = 20;
 
   const load = useCallback(async () => {
@@ -287,6 +294,19 @@ export default function PurchaseOrdersPage() {
   };
 
   const openReceive = (po: PurchaseOrder) => { void loadDetail(po, 'receive'); };
+
+  const applyPricing = async (po: PurchaseOrder) => {
+    setApplyingPricingId(po.id);
+    try {
+      const result = await apiFetch<PricingResult>(`/purchase-orders/${po.id}/apply-pricing`, { method: 'POST' });
+      setPricingResult(prev => ({ ...prev, [po.id]: result }));
+      if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
+    } catch (e: unknown) {
+      if (features.toastEnabled) toast.error(e instanceof Error ? e.message : 'Помилка розцінки');
+    } finally {
+      setApplyingPricingId(null);
+    }
+  };
 
   const handleReceive = async () => {
     if (!showReceive) return;
@@ -530,13 +550,57 @@ export default function PurchaseOrdersPage() {
                     return null;
                   })}
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={e => { e.stopPropagation(); void loadDetail(po, 'detail'); }}
-                    >
-                      Деталі
-                    </Button>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={e => { e.stopPropagation(); void loadDetail(po, 'detail'); }}
+                      >
+                        Деталі
+                      </Button>
+                      {(po.status === 'RECEIVED' || po.status === 'PARTIAL') && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          loading={applyingPricingId === po.id}
+                          onClick={e => { e.stopPropagation(); void applyPricing(po); }}
+                          title="Розцінити товари за правилами"
+                        >
+                          Розцінити
+                        </Button>
+                      )}
+                    </div>
+                    {pricingResult[po.id] && (
+                      <div className="mt-2 rounded-lg border border-border bg-secondary/30 p-3">
+                        <div className="text-[12px] text-muted-foreground mb-2">
+                          Оновлено: {pricingResult[po.id].updated} товарів
+                        </div>
+                        {pricingResult[po.id].details.length > 0 && (
+                          <table className="w-full text-[12px]">
+                            <thead>
+                              <tr className="text-muted-foreground">
+                                <th className="text-left py-1">Товар</th>
+                                <th className="text-right py-1">Собів.</th>
+                                <th className="text-right py-1">Стара ціна</th>
+                                <th className="text-right py-1">Нова ціна</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {pricingResult[po.id].details.map(d => (
+                                <tr key={d.goodId}>
+                                  <td className="py-0.5 text-foreground">{d.goodName}</td>
+                                  <td className="py-0.5 text-right text-muted-foreground">{d.costPrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</td>
+                                  <td className="py-0.5 text-right text-muted-foreground line-through">{d.oldSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</td>
+                                  <td className="py-0.5 text-right font-medium text-foreground">{d.newSalePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

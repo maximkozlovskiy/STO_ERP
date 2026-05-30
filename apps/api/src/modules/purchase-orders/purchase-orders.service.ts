@@ -5,6 +5,7 @@ import { formatPersonName } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { PricingService } from '../inventory/pricing.service';
 import {
   CreatePurchaseOrderDto, UpdatePurchaseOrderDto,
   ReceivePurchaseOrderDto, PurchaseOrderResponseDto, PaginatedPurchaseOrdersDto,
@@ -27,6 +28,7 @@ export class PurchaseOrdersService {
     private readonly inventory: InventoryService,
     private readonly settlements: SettlementsService,
     private readonly docNumbers: DocumentNumberService,
+    private readonly pricingService: PricingService,
   ) {}
 
   async findAll(orgId: string, page = 1, limit = 20, status?: string): Promise<PaginatedPurchaseOrdersDto> {
@@ -212,6 +214,68 @@ export class PurchaseOrdersService {
     if (!po) throw new NotFoundException('Замовлення не знайдено');
     if (po.status !== PurchaseOrderStatus.DRAFT) throw new BadRequestException('Видалити можна лише чернетку');
     await this.prisma.purchaseOrder.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+  }
+
+  async applyPricing(orgId: string, poId: string): Promise<{
+    updated: number;
+    details: { goodId: string; goodName: string; costPrice: number; oldSalePrice: number; newSalePrice: number }[];
+  }> {
+    const po = await this.prisma.purchaseOrder.findFirst({
+      where: { id: poId, orgId, deletedAt: null },
+      include: {
+        lines: {
+          where: { deletedAt: null },
+          include: {
+            good: { include: { brand: true } },
+          },
+        },
+      },
+    });
+    if (!po) throw new NotFoundException('Замовлення не знайдено');
+
+    const details: { goodId: string; goodName: string; costPrice: number; oldSalePrice: number; newSalePrice: number }[] = [];
+
+    for (const line of po.lines) {
+      if (!line.good) continue;
+      const costPrice = Number(line.price);
+      const oldSalePrice = Number(line.good.salePrice);
+      const newSalePrice = await this.pricingService.calculateSalePrice(
+        orgId,
+        line.goodId,
+        line.good.category,
+        line.good.goodType,
+        line.good.brandId,
+        costPrice,
+      );
+      if (Math.abs(newSalePrice - oldSalePrice) < 0.001) continue;
+
+      await this.prisma.$transaction([
+        this.prisma.good.update({
+          where: { id: line.goodId },
+          data: { salePrice: newSalePrice },
+        }),
+        this.prisma.priceHistory.create({
+          data: {
+            orgId,
+            goodId: line.goodId,
+            oldPrice: oldSalePrice,
+            newPrice: newSalePrice,
+            costPrice,
+            reason: `PO pricing: ${po.number}`,
+          },
+        }),
+      ]);
+
+      details.push({
+        goodId: line.goodId,
+        goodName: line.good.name,
+        costPrice,
+        oldSalePrice,
+        newSalePrice,
+      });
+    }
+
+    return { updated: details.length, details };
   }
 
   private toDto(po: {

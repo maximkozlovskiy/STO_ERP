@@ -1,6 +1,8 @@
 import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import ExcelJS from 'exceljs';
+import { parse as parseCSV } from 'csv-parse/sync';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PricingService } from '../inventory/pricing.service';
 
 export interface GoodRow {
   sku?: string;
@@ -44,7 +46,10 @@ export interface ImportResult {
 
 @Injectable()
 export class XlsxService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pricingService: PricingService,
+  ) {}
   async generateGoodsTemplate(): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Товари');
@@ -509,6 +514,101 @@ export class XlsxService {
 
     if (rows.length === 0) throw new BadRequestException('Таблиця не містить жодного рядка даних');
     return rows;
+  }
+
+  async applyPricingFromList(
+    orgId: string,
+    buffer: Buffer,
+    fileType: 'xlsx' | 'csv',
+  ): Promise<{
+    found: number;
+    updated: number;
+    notFound: string[];
+    details: { goodId: string; goodName: string; sku: string | null; costPrice: number; oldSalePrice: number; newSalePrice: number }[];
+  }> {
+    let items: Array<{ sku?: string; barcode?: string }>;
+
+    if (fileType === 'csv') {
+      const text = buffer.toString('utf-8').replace(/^﻿/, ''); // strip BOM
+      const records = parseCSV(text, { columns: true, skip_empty_lines: true, trim: true }) as Record<string, string>[];
+      items = records.map(r => ({
+        sku: r['sku'] || r['SKU'] || r['Артикул'] || undefined,
+        barcode: r['barcode'] || r['Штрихкод'] || undefined,
+      })).filter(r => r.sku || r.barcode);
+    } else {
+      const workbook = new ExcelJS.Workbook();
+      await (workbook.xlsx as any).load(buffer);
+      const sheet = workbook.worksheets[0];
+      if (!sheet) throw new BadRequestException('Таблиця не знайдена');
+      items = [];
+      sheet.eachRow((row, idx) => {
+        if (idx === 1) return; // skip header
+        const values = row.values as unknown[];
+        const sku = String(values[1] ?? '').trim() || undefined;
+        const barcode = String(values[2] ?? '').trim() || undefined;
+        if (sku || barcode) items.push({ sku, barcode });
+      });
+    }
+
+    if (items.length === 0) throw new BadRequestException('Файл не містить жодного рядка даних');
+
+    const notFound: string[] = [];
+    const details: { goodId: string; goodName: string; sku: string | null; costPrice: number; oldSalePrice: number; newSalePrice: number }[] = [];
+
+    for (const item of items) {
+      const orConditions: Array<Record<string, unknown>> = [];
+      if (item.sku) orConditions.push({ sku: item.sku });
+      if (item.barcode) orConditions.push({ barcodes: { some: { barcode: item.barcode } } });
+
+      const good = await this.prisma.good.findFirst({
+        where: { orgId, deletedAt: null, OR: orConditions },
+        include: { brand: true },
+      });
+
+      if (!good) {
+        notFound.push(item.sku ?? item.barcode ?? '?');
+        continue;
+      }
+
+      const costPrice = Number(good.purchasePrice ?? 0);
+      const oldSalePrice = Number(good.salePrice);
+      const newSalePrice = await this.pricingService.calculateSalePrice(
+        orgId,
+        good.id,
+        good.category,
+        good.goodType,
+        good.brandId,
+        costPrice,
+      );
+
+      if (Math.abs(newSalePrice - oldSalePrice) < 0.001) {
+        details.push({ goodId: good.id, goodName: good.name, sku: good.sku, costPrice, oldSalePrice, newSalePrice });
+        continue;
+      }
+
+      await this.prisma.$transaction([
+        this.prisma.good.update({ where: { id: good.id }, data: { salePrice: newSalePrice } }),
+        this.prisma.priceHistory.create({
+          data: {
+            orgId,
+            goodId: good.id,
+            oldPrice: oldSalePrice,
+            newPrice: newSalePrice,
+            costPrice,
+            reason: 'List pricing import',
+          },
+        }),
+      ]);
+
+      details.push({ goodId: good.id, goodName: good.name, sku: good.sku, costPrice, oldSalePrice, newSalePrice });
+    }
+
+    return {
+      found: details.length,
+      updated: details.filter(d => Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001).length,
+      notFound,
+      details,
+    };
   }
 
   private parseNumber(value: unknown): number | undefined {

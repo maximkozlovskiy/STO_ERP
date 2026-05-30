@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Param, ParseUUIDPipe, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Param, ParseUUIDPipe, UseGuards, BadRequestException, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiConsumes } from '@nestjs/swagger';
-import { FastifyRequest } from 'fastify';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { MultipartFile } from '@fastify/multipart';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -257,6 +257,32 @@ export class XlsxController {
     const file = await this.getUploadedFile(req);
     const buffer = await file.toBuffer();
     return this.xlsxService.importWOParts(orgId, woId, buffer);
+  }
+
+  // ─── Pricing from list ────────────────────────────────────────────────────────
+
+  @Post('apply-pricing-from-list')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Розцінити товари за списком XLSX/CSV' })
+  @ApiConsumes('multipart/form-data')
+  async applyPricingFromList(
+    @OrgContext() orgId: string,
+    @Request() req: FastifyRequest,
+  ) {
+    const file = await this.getUploadedFile(req);
+    const buffer = await file.toBuffer();
+    const fileType: 'xlsx' | 'csv' = (file.filename ?? '').toLowerCase().endsWith('.csv') ? 'csv' : 'xlsx';
+    return this.xlsxService.applyPricingFromList(orgId, buffer, fileType);
+  }
+
+  @Get('templates/pricing-list')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Шаблон CSV для розцінки за списком' })
+  async getPricingListTemplate(@Res() res: FastifyReply) {
+    const csv = 'sku,barcode,name\nOIL-5W40,,Масло моторне 5W-40\n,4820123456789,Фільтр оливи\n';
+    void res.header('Content-Type', 'text/csv; charset=utf-8');
+    void res.header('Content-Disposition', 'attachment; filename="pricing-list-template.csv"');
+    void res.send(Buffer.from('﻿' + csv, 'utf-8'));
   }
 
   // ─── Helper ───────────────────────────────────────────────────────────────────
