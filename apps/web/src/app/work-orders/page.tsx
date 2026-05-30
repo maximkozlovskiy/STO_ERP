@@ -2,11 +2,20 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { Plus, ClipboardList, Eye, EyeOff, Search, User } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
+import {
+  useWorkOrders,
+  useWorkOrderTransition,
+  useDeleteWorkOrder,
+  workOrdersKeys,
+  WorkOrder,
+  PaginatedWorkOrders,
+} from '@/hooks/api/useWorkOrders';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -39,35 +48,6 @@ import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
 import { fmtMoney, fmtShortDateTime, fmtDateTime } from '@/lib/format';
 
-interface WorkOrder {
-  id: string;
-  number: string;
-  status: string;
-  vehicleSummary?: string;
-  counterpartyName?: string;
-  branchName?: string;
-  totalAmount: number;
-  plannedAt?: string | null;
-  createdAt: string;
-  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
-  repairCategory?:
-    | 'MAINTENANCE'
-    | 'CURRENT_REPAIR'
-    | 'MAJOR_REPAIR'
-    | 'BODY_REPAIR'
-    | 'DIAGNOSTICS'
-    | 'WARRANTY'
-    | 'SEASONAL'
-    | null;
-  dueDate?: string | null;
-  hasActiveWarranty?: boolean;
-}
-interface Paginated {
-  items: WorkOrder[];
-  total: number;
-  page: number;
-  limit: number;
-}
 interface Branch {
   id: string;
   name: string;
@@ -179,6 +159,7 @@ function isOverdue(dueDateIso: string, nowMs: number): boolean {
 
 export default function WorkOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
+  const queryClient = useQueryClient();
   const { employee } = useAuth();
   const router = useRouter();
 
@@ -187,13 +168,10 @@ export default function WorkOrdersPage() {
     setNowMs(Date.now());
   }, []);
 
-  const [data, setData] = useState<Paginated | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Local filter & pagination state
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [modal, setModal] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [formError, setFormError] = useState('');
 
@@ -214,6 +192,31 @@ export default function WorkOrdersPage() {
       if (employee.role === 'MECHANIC') setMyOrders(true);
     }
   }, [employee]);
+
+  // React Query hooks
+  const limit = 20;
+  const {
+    data: queryData,
+    isLoading: loading,
+    error: queryError,
+  } = useWorkOrders({
+    page,
+    limit,
+    status: statusFilter,
+    q: debouncedSearch,
+    showDeleted,
+    employeeId: myOrders ? employee?.id : undefined,
+  });
+  const orders = queryData?.items ?? [];
+  const total = queryData?.total ?? 0;
+
+  // Mutations
+  const transitionMutation = useWorkOrderTransition();
+  const deleteMutation = useDeleteWorkOrder();
+
+  // Modal & form state
+  const [modal, setModal] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -289,7 +292,7 @@ export default function WorkOrdersPage() {
     ],
   );
 
-  const bulkSelect = useBulkSelect(data?.items ?? []);
+  const bulkSelect = useBulkSelect(orders);
 
   // Sync indeterminate state on the "select-all" checkbox.
   // DOM property `indeterminate` is not exposed via the React `checked` prop,
@@ -308,7 +311,7 @@ export default function WorkOrdersPage() {
           body: JSON.stringify({ [field]: value === '' ? null : value }),
         });
         if (features.toastEnabled) toast.success('Збережено');
-        load();
+        queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'Помилка збереження';
         if (features.toastEnabled) toast.error(msg);
@@ -363,30 +366,6 @@ export default function WorkOrdersPage() {
     };
   }, []);
 
-  // Keep employeeId in a ref so load() doesn't re-create when employee object changes identity
-  const employeeIdRef = useRef(employee?.id);
-  useEffect(() => {
-    employeeIdRef.current = employee?.id;
-  }, [employee?.id]);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    const p = new URLSearchParams({ page: String(page), limit: '20' });
-    if (statusFilter) p.set('status', statusFilter);
-    if (categoryFilter) p.set('repairCategory', categoryFilter);
-    if (debouncedSearch) p.set('q', debouncedSearch);
-    if (showDeleted) p.set('showDeleted', 'true');
-    if (myOrders && employeeIdRef.current) p.set('employeeId', employeeIdRef.current);
-    apiFetch<Paginated>(`/work-orders?${p}`)
-      .then(setData)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
-      .finally(() => setLoading(false));
-  }, [page, statusFilter, categoryFilter, debouncedSearch, showDeleted, myOrders]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
   // Bulk transition helper:
   //   - Uses Promise.allSettled so a single FSM-invalid transition doesn't
   //     abort the whole batch (e.g. ARCHIVE works only from PAID — the rest
@@ -407,7 +386,7 @@ export default function WorkOrdersPage() {
       const failed = results.length - succeeded;
 
       bulkSelect.clear();
-      load();
+      queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
 
       if (features.toastEnabled) {
         if (succeeded > 0 && failed === 0) {
@@ -431,7 +410,7 @@ export default function WorkOrdersPage() {
         setError(`${succeeded} з ${results.length} нарядів змінено, ${failed} не вдалось`);
       }
     },
-    [bulkSelect, features.toastEnabled, load],
+    [bulkSelect, features.toastEnabled, queryClient],
   );
 
   const bulkCancel = useCallback(
@@ -519,14 +498,14 @@ export default function WorkOrdersPage() {
     }
   };
 
-  const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
+  const totalPages = Math.ceil(total / limit);
 
   return (
     <div className="page-container">
       <div className="page-header">
         <div>
           <h1 className="page-title">Наряди</h1>
-          <p className="page-subtitle">{data ? `${data.total} записів` : 'Завантаження...'}</p>
+          <p className="page-subtitle">{`${total} записів`}</p>
         </div>
         <Button
           onClick={() => {
@@ -723,7 +702,7 @@ export default function WorkOrdersPage() {
                 </TableRow>
               )}
 
-              {!loading && data?.items.length === 0 && (
+              {!loading && orders.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
@@ -744,7 +723,7 @@ export default function WorkOrdersPage() {
               )}
 
               {!loading &&
-                data?.items.map(wo => (
+                orders.map((wo: WorkOrder) => (
                   <TableRow
                     key={wo.id}
                     onClick={() => setSelectedWO(wo)}
@@ -773,11 +752,6 @@ export default function WorkOrdersPage() {
                                 <span className="text-[13px] font-semibold text-primary">
                                   {wo.number}
                                 </span>
-                                {wo.hasActiveWarranty && (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20">
-                                    Гарантія
-                                  </span>
-                                )}
                               </div>
                               {wo.repairCategory && (
                                 <p className="text-[11px] text-muted-foreground">
@@ -811,7 +785,7 @@ export default function WorkOrdersPage() {
                           <TableCell key="priority" onClick={e => e.stopPropagation()}>
                             {inlineEdit.isEditing(wo.id, 'priority') ? (
                               <select
-                                defaultValue={inlineEdit.editing?.value ?? wo.priority}
+                                defaultValue={inlineEdit.editing?.value ?? wo.priority ?? ''}
                                 onChange={e => {
                                   void inlineEdit.commitEdit(e.target.value).catch(() => {});
                                 }}
@@ -831,13 +805,18 @@ export default function WorkOrdersPage() {
                               </select>
                             ) : (
                               <InlineViewCell
-                                value={wo.priority}
+                                value={wo.priority ?? ''}
                                 enabled={features.inlineEditEnabled}
-                                onClick={() => inlineEdit.startEdit(wo.id, 'priority', wo.priority)}
+                                onClick={() =>
+                                  wo.priority &&
+                                  inlineEdit.startEdit(wo.id, 'priority', wo.priority)
+                                }
                               >
-                                <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
-                                  {PRIORITY_LABELS[wo.priority] ?? wo.priority}
-                                </Badge>
+                                {wo.priority && (
+                                  <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
+                                    {PRIORITY_LABELS[wo.priority] ?? wo.priority}
+                                  </Badge>
+                                )}
                               </InlineViewCell>
                             )}
                           </TableCell>
@@ -936,9 +915,11 @@ export default function WorkOrdersPage() {
                 <Badge variant={STATUS_BADGE[selectedWO.status] ?? 'secondary'} dot>
                   {STATUS_LABELS[selectedWO.status] ?? selectedWO.status}
                 </Badge>
-                <Badge variant={PRIORITY_BADGE[selectedWO.priority] ?? 'secondary'}>
-                  {PRIORITY_LABELS[selectedWO.priority] ?? selectedWO.priority}
-                </Badge>
+                {selectedWO.priority && (
+                  <Badge variant={PRIORITY_BADGE[selectedWO.priority] ?? 'secondary'}>
+                    {PRIORITY_LABELS[selectedWO.priority] ?? selectedWO.priority}
+                  </Badge>
+                )}
               </div>
 
               <div className="space-y-2 text-[13px]">
