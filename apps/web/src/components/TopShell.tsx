@@ -137,6 +137,8 @@ const BOOKMARKS_KEY = 'sto_bookmarks';
 
 function isActive(pathname: string, href: string): boolean {
   if (href === '/dashboard') return pathname === '/dashboard';
+  // Exact match for routes that are prefixes of other routes
+  if (href === '/settings') return pathname === '/settings' || pathname === '/settings/';
   return pathname.startsWith(href);
 }
 
