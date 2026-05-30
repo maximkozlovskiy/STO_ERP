@@ -1,6 +1,5 @@
 import {
   IsUUID,
-  Matches,
   IsString,
   IsOptional,
   IsNumber,
@@ -21,7 +20,7 @@ export class TransitionPurchaseOrderDto {
 
 export class PurchaseOrderLineDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   goodId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiProperty() @IsNumber() @Min(0) price!: number;
@@ -29,10 +28,10 @@ export class PurchaseOrderLineDto {
 
 export class CreatePurchaseOrderDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   supplierId!: string;
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   warehouseId!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 
@@ -57,7 +56,7 @@ export class UpdatePurchaseOrderDto {
 
 export class ReceiveLineDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   lineId!: string;
   @ApiProperty() @IsNumber() @Min(0) receivedQty!: number;
 }

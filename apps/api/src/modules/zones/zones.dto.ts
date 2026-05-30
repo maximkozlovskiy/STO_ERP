@@ -8,7 +8,6 @@ import {
   IsOptional,
   IsString,
   IsUUID,
-  Matches,
 } from 'class-validator';
 import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
 
@@ -16,7 +15,7 @@ import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
 
 export class CreateZoneDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   branchId!: string;
 
   @ApiProperty({ example: 'Механічна зона А' })
@@ -55,7 +54,7 @@ export class ZoneResponseDto {
 
 export class CreateLiftDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   zoneId!: string;
 
   @ApiProperty({ example: 'Підйомник №1' })

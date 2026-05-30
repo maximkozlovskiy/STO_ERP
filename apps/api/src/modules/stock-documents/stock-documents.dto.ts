@@ -1,6 +1,5 @@
 import {
   IsUUID,
-  Matches,
   IsString,
   IsOptional,
   IsNumber,
@@ -14,7 +13,7 @@ import { Type } from 'class-transformer';
 
 export class StockDocumentLineDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   goodId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
@@ -26,15 +25,15 @@ export class CreateStockDocumentDto {
   type!: string;
 
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   branchId!: string;
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   warehouseId!: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   targetWarehouseId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;

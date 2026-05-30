@@ -12,7 +12,7 @@ import {
 export class BookingAvailabilityQueryDto {
   @ApiProperty() @IsDateString() date!: string;
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   branchId!: string;
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
@@ -23,7 +23,7 @@ export class BookingAvailabilityQueryDto {
 
 export class CreateBookingRequestDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   branchId!: string;
   @ApiProperty() @IsString() @MaxLength(200) clientName!: string;
   @ApiProperty()
@@ -41,7 +41,7 @@ export class CreateBookingRequestDto {
 
 export class ConfirmBookingDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   slotId!: string;
 }
 

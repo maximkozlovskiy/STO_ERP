@@ -5,7 +5,6 @@ import {
   Min,
   IsOptional,
   IsUUID,
-  Matches,
   IsArray,
   ValidateNested,
 } from 'class-validator';
@@ -14,7 +13,7 @@ import { Type } from 'class-transformer';
 
 export class ServiceWorkItemDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   workId!: string;
 
   @ApiPropertyOptional({ default: 1 })
@@ -26,7 +25,7 @@ export class ServiceWorkItemDto {
 
 export class ServiceGoodItemDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   goodId!: string;
 
   @ApiPropertyOptional({ default: 1 })

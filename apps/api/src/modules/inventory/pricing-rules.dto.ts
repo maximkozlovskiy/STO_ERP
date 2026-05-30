@@ -7,7 +7,6 @@ import {
   IsInt,
   IsArray,
   IsUUID,
-  Matches,
   Min,
   Max,
   ValidateNested,
@@ -70,7 +69,7 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   goodId?: string;
 
   @ApiPropertyOptional()
@@ -88,7 +87,7 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   brandId?: string;
 
   @ApiPropertyOptional()
@@ -148,7 +147,7 @@ export class UpdatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   goodId?: string;
 
   @ApiPropertyOptional()
@@ -164,7 +163,7 @@ export class UpdatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   brandId?: string;
 
   @ApiPropertyOptional()

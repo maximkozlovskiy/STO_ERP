@@ -7,7 +7,7 @@ import {
   IsOptional,
   IsPositive,
   IsEnum,
-  Matches,
+  IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -19,11 +19,11 @@ export class CreateGoodDto {
   @ApiPropertyOptional({ default: 'шт' }) @IsOptional() @IsString() unit?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   unitId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   brandId?: string;
 
   @ApiPropertyOptional()
@@ -40,7 +40,7 @@ export class CreateGoodDto {
   @ApiPropertyOptional({ enum: GoodType }) @IsOptional() @IsEnum(GoodType) goodType?: GoodType;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   preferredSupplierId?: string;
 }
 

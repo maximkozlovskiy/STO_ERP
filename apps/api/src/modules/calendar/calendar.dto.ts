@@ -1,12 +1,4 @@
-import {
-  IsUUID,
-  Matches,
-  IsOptional,
-  IsString,
-  IsISO8601,
-  IsEnum,
-  ValidateIf,
-} from 'class-validator';
+import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
 
@@ -14,22 +6,22 @@ export class CreateCalendarSlotDto {
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.liftId != null)
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   liftId?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.employeeId != null)
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   employeeId?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.workOrderId != null)
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   workOrderId?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.counterpartyId != null)
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   counterpartyId?: string;
   @ApiProperty() @IsISO8601() startAt!: string;
   @ApiProperty() @IsISO8601() endAt!: string;
@@ -50,22 +42,22 @@ export class UpdateCalendarSlotDto {
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.liftId !== null)
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   liftId?: string | null;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.employeeId !== null)
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   employeeId?: string | null;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.workOrderId !== null)
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   workOrderId?: string | null;
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.counterpartyId !== null)
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   counterpartyId?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() startAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() endAt?: string;

@@ -1,6 +1,5 @@
 import {
   IsUUID,
-  Matches,
   IsOptional,
   IsNumber,
   Min,
@@ -14,11 +13,11 @@ import { InvoiceStatus } from '@prisma/client';
 
 export class CreateInvoiceDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   counterpartyId!: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   workOrderId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
   @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
@@ -47,11 +46,11 @@ export class CreateInvoiceLineDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) vatRate?: number;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   goodId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   workId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) sortOrder?: number;
 }

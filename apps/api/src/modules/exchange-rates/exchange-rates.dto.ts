@@ -6,14 +6,13 @@ import {
   IsOptional,
   IsPositive,
   IsUUID,
-  Matches,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateExchangeRateDto {
   @ApiProperty({ example: 'uuid' })
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   @IsNotEmpty()
   currencyId!: string;
 

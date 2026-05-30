@@ -17,7 +17,7 @@ export class CreateBankAccountDto {
   ibanUA!: string;
 
   @ApiProperty({ example: 'uuid' })
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   @IsNotEmpty()
   currencyId!: string;
 
@@ -28,7 +28,7 @@ export class CreateBankAccountDto {
 
   @ApiPropertyOptional({ example: 'uuid' })
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   branchId?: string;
 
   @ApiPropertyOptional({ example: '305299' })
@@ -63,7 +63,7 @@ export class UpdateBankAccountDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   currencyId?: string;
 
   @ApiPropertyOptional()
@@ -73,7 +73,7 @@ export class UpdateBankAccountDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   branchId?: string | null;
 
   @ApiPropertyOptional()

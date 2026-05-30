@@ -6,7 +6,6 @@ import {
   IsOptional,
   IsString,
   IsUUID,
-  Matches,
   Min,
 } from 'class-validator';
 
@@ -14,7 +13,7 @@ import {
 
 export class CreateVehicleDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   customerGarageId!: string;
   @ApiProperty({ example: 'Toyota' }) @IsString() @IsNotEmpty() make!: string;
   @ApiProperty({ example: 'Camry' }) @IsString() @IsNotEmpty() model!: string;

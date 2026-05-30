@@ -1,17 +1,17 @@
-import { IsUUID, Matches, IsOptional, IsNumber, Min, IsString, IsNotEmpty } from 'class-validator';
+import { IsUUID, IsOptional, IsNumber, Min, IsString, IsNotEmpty } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreatePaymentDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   counterpartyId!: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   workOrderId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   invoiceId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
   @ApiProperty() @IsString() @IsNotEmpty() method!: string;

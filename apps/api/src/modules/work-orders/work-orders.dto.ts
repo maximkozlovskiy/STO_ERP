@@ -1,7 +1,6 @@
 import {
   IsString,
   IsUUID,
-  Matches,
   IsOptional,
   IsEnum,
   IsInt,
@@ -20,13 +19,13 @@ import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/clie
 
 export class CreateWorkOrderDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   branchId!: string;
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   vehicleId!: string;
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   counterpartyId!: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
@@ -81,22 +80,22 @@ export class WorkOrderQueryDto {
   priority?: WorkOrderPriority;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   branchId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   counterpartyId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   vehicleId?: string;
 
   // F6: "Мої наряди" chip — filter by assigned mechanic. The filter joins through workOrderLines.employeeId,
   // so an employee sees an order if ANY of its line items reference them as the executor.
   @ApiPropertyOptional({ description: 'Фільтр за виконавцем (через рядки робіт)' })
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   employeeId?: string;
 
   @ApiPropertyOptional({ description: 'Пошук за номером або назвою контрагента' })
@@ -193,14 +192,14 @@ export class PaginatedWorkOrdersDto {
 
 export class CreateWorkOrderLineDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   workId!: string;
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   employeeId!: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   liftId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) normoHours?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) actualHours?: number;
@@ -236,10 +235,10 @@ export class WorkOrderLineResponseDto {
 
 export class CreateWorkOrderPartDto {
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   goodId!: string;
   @ApiProperty()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   warehouseId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;

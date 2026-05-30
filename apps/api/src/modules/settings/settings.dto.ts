@@ -9,7 +9,6 @@ import {
   IsOptional,
   IsString,
   IsUUID,
-  Matches,
   Max,
   Min,
   ValidateIf,
@@ -50,7 +49,7 @@ export class UpdateOrganisationSettingsDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   defaultVatRateId?: string;
 
   @ApiPropertyOptional({ minimum: 1, maximum: 365 })
@@ -274,7 +273,7 @@ export class UpdateOrganisationDto {
   @ApiPropertyOptional()
   @IsOptional()
   @ValidateIf(o => o.bankAccountId !== null)
-  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  @IsUUID('4')
   bankAccountId?: string | null;
 }
 
