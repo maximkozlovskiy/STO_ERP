@@ -21,6 +21,10 @@ function normalizeDateRange(from: string, to: string) {
 
 const WORK_HOURS_PER_DAY = 9;
 
+// Module-level Intl singletons — locale-data init coштує найбільше у форматерах.
+// Hot path: revenue() цикл до 10 000 рядків; уникаємо створення форматера на кожен виклик.
+const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+
 /**
  * Labor cost ratio (mechanic salary as fraction of labor revenue).
  * 0.4 = 40% — typical for Ukraine SMB auto-services where salary fund is ~40% of labor income.
@@ -55,13 +59,10 @@ export class ReportsService {
       take: 10000,
     });
 
-    const kyivDate = (d: Date) =>
-      new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
-
-    // Group by date
+    // Group by date — використовуємо KYIV_DATE_FMT (module-level singleton).
     const byDate: Record<string, { date: string; revenue: number; labor: number; parts: number; count: number }> = {};
     for (const wo of orders) {
-      const date = kyivDate(wo.completedAt!);
+      const date = KYIV_DATE_FMT.format(wo.completedAt!);
       if (!byDate[date]) byDate[date] = { date, revenue: 0, labor: 0, parts: 0, count: 0 };
       byDate[date].revenue += Number(wo.totalAmount);
       byDate[date].labor += Number(wo.totalLabor);

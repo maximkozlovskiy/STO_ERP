@@ -18,6 +18,12 @@ const pdfMake = require('pdfmake') as {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const robotoFontDescriptor = require('pdfmake/fonts/Roboto') as { Roboto: { normal: string; bold: string; italics: string; bolditalics: string } };
 
+// Module-level Intl singletons — locale-data init coштує найбільше у форматерах.
+// Hot path: fmtMoney/fmtDate викликаються у .map() для кожного рядка таблиці PDF
+// (накладна на 20-50 рядків → 40-100 конструкцій форматера на документ).
+const UAH_FMT = new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
 export interface OrgInfo {
   name: string;
   edrpou?: string | null;
@@ -313,11 +319,11 @@ export class PdfService {
   }
 
   private fmtMoney(n: number): string {
-    return new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₴';
+    return UAH_FMT.format(n) + ' ₴';
   }
 
   private fmtDate(d: Date): string {
-    return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return UA_DATE_FMT.format(d);
   }
 
   private buildBuffer(docDef: Record<string, unknown>): Promise<Buffer> {

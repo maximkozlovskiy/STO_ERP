@@ -305,6 +305,43 @@ export class XlsxService {
 
   // ─── Document line imports ────────────────────────────────────────────────────
 
+  /**
+   * Bulk lookup goods by SKU OR name in a single query — уникає N+1 у line importers.
+   * Повертає Map<key, good> де key = `sku:lower` або `name:lower`. Резолвер resolveGood
+   * має той самий пріоритет що й оригінальний findFirst (SKU > name).
+   */
+  private async lookupGoodsBulk(orgId: string, rows: Array<{ sku?: string; name: string }>):
+    Promise<Map<string, { id: string }>> {
+    const skus = Array.from(new Set(rows.map(r => r.sku).filter((s): s is string => !!s)));
+    const names = Array.from(new Set(rows.map(r => r.name).filter(Boolean)));
+    if (skus.length === 0 && names.length === 0) return new Map();
+
+    const orConditions: Array<Record<string, unknown>> = [];
+    if (skus.length) orConditions.push({ sku: { in: skus } });
+    if (names.length) orConditions.push({ name: { in: names } });
+
+    const goods = await this.prisma.good.findMany({
+      where: { orgId, deletedAt: null, OR: orConditions },
+      select: { id: true, sku: true, name: true },
+      take: 10000,
+    });
+
+    const byKey = new Map<string, { id: string }>();
+    for (const g of goods) {
+      if (g.sku) byKey.set(`sku:${g.sku.toLowerCase()}`, { id: g.id });
+      byKey.set(`name:${g.name.toLowerCase()}`, { id: g.id });
+    }
+    return byKey;
+  }
+
+  private resolveGood(byKey: Map<string, { id: string }>, row: { sku?: string; name: string }) {
+    if (row.sku) {
+      const bySku = byKey.get(`sku:${row.sku.toLowerCase()}`);
+      if (bySku) return bySku;
+    }
+    return byKey.get(`name:${row.name.toLowerCase()}`) ?? null;
+  }
+
   async importPOLines(orgId: string, poId: string, buffer: Buffer | Uint8Array): Promise<ImportResult> {
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id: poId, orgId, deletedAt: null },
@@ -315,30 +352,32 @@ export class XlsxService {
     const rows = await this.parsePOLines(buffer);
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
 
+    // Bulk prefetch goods + existing lines — раніше N rows × 2 queries (3000 RTT на 1000 рядків).
+    // Тепер 2 батч-запити + N локальних lookup у Map.
+    const goodsByKey = await this.lookupGoodsBulk(orgId, rows);
+    const goodIds = Array.from(new Set(
+      rows.map(r => this.resolveGood(goodsByKey, r)?.id).filter((id): id is string => !!id),
+    ));
+    const existingLines = goodIds.length
+      ? await this.prisma.purchaseOrderLine.findMany({
+          where: { purchaseOrderId: poId, goodId: { in: goodIds }, orgId, deletedAt: null },
+          select: { id: true, goodId: true },
+        })
+      : [];
+    const existingByGoodId = new Map(existingLines.map(l => [l.goodId, l.id]));
+
     for (const row of rows) {
       try {
-        const good = await this.prisma.good.findFirst({
-          where: {
-            orgId,
-            deletedAt: null,
-            OR: [
-              ...(row.sku ? [{ sku: row.sku }] : []),
-              { name: row.name },
-            ],
-          },
-        });
+        const good = this.resolveGood(goodsByKey, row);
         if (!good) {
           result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
           continue;
         }
 
-        const existing = await this.prisma.purchaseOrderLine.findFirst({
-          where: { purchaseOrderId: poId, goodId: good.id, orgId, deletedAt: null },
-        });
-
-        if (existing) {
+        const existingId = existingByGoodId.get(good.id);
+        if (existingId) {
           await this.prisma.purchaseOrderLine.update({
-            where: { id: existing.id },
+            where: { id: existingId },
             data: { quantity: row.quantity, price: row.price },
           });
           result.updated++;
@@ -372,30 +411,31 @@ export class XlsxService {
     const rows = await this.parsePOLines(buffer);
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
 
+    // Bulk prefetch — уникає N+1 (раніше 2 RTT × N rows).
+    const goodsByKey = await this.lookupGoodsBulk(orgId, rows);
+    const goodIds = Array.from(new Set(
+      rows.map(r => this.resolveGood(goodsByKey, r)?.id).filter((id): id is string => !!id),
+    ));
+    const existingLines = goodIds.length
+      ? await this.prisma.stockDocumentLine.findMany({
+          where: { stockDocumentId: docId, goodId: { in: goodIds }, orgId, deletedAt: null },
+          select: { id: true, goodId: true },
+        })
+      : [];
+    const existingByGoodId = new Map(existingLines.map(l => [l.goodId, l.id]));
+
     for (const row of rows) {
       try {
-        const good = await this.prisma.good.findFirst({
-          where: {
-            orgId,
-            deletedAt: null,
-            OR: [
-              ...(row.sku ? [{ sku: row.sku }] : []),
-              { name: row.name },
-            ],
-          },
-        });
+        const good = this.resolveGood(goodsByKey, row);
         if (!good) {
           result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
           continue;
         }
 
-        const existing = await this.prisma.stockDocumentLine.findFirst({
-          where: { stockDocumentId: docId, goodId: good.id, orgId, deletedAt: null },
-        });
-
-        if (existing) {
+        const existingId = existingByGoodId.get(good.id);
+        if (existingId) {
           await this.prisma.stockDocumentLine.update({
-            where: { id: existing.id },
+            where: { id: existingId },
             data: { quantity: row.quantity, price: row.price },
           });
           result.updated++;
@@ -429,42 +469,40 @@ export class XlsxService {
     const rows = await this.parsePOLines(buffer);
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
 
+    // Bulk prefetch — уникає N+1 (раніше 2 RTT × N rows + 1 warehouse find per insert).
+    // Default warehouse теж prefetch-имо один раз (для нових WorkOrderPart).
+    const [goodsByKey, existingParts, defaultWarehouse] = await Promise.all([
+      this.lookupGoodsBulk(orgId, rows),
+      this.prisma.workOrderPart.findMany({
+        where: { workOrderId: woId, orgId, deletedAt: null },
+        select: { id: true, goodId: true },
+      }),
+      this.prisma.warehouse.findFirst({
+        where: { orgId, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+    const existingByGoodId = new Map(existingParts.map(p => [p.goodId, p.id]));
+
     for (const row of rows) {
       try {
-        const good = await this.prisma.good.findFirst({
-          where: {
-            orgId,
-            deletedAt: null,
-            OR: [
-              ...(row.sku ? [{ sku: row.sku }] : []),
-              { name: row.name },
-            ],
-          },
-        });
+        const good = this.resolveGood(goodsByKey, row);
         if (!good) {
           result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
           continue;
         }
 
-        const existing = await this.prisma.workOrderPart.findFirst({
-          where: { workOrderId: woId, goodId: good.id, orgId, deletedAt: null },
-        });
-
+        const existingId = existingByGoodId.get(good.id);
         const amount = row.quantity * row.price;
 
-        if (existing) {
+        if (existingId) {
           await this.prisma.workOrderPart.update({
-            where: { id: existing.id },
+            where: { id: existingId },
             data: { quantity: row.quantity, price: row.price, amount },
           });
           result.updated++;
         } else {
-          // WorkOrderPart requires warehouseId — use the first warehouse for the org
-          const warehouse = await this.prisma.warehouse.findFirst({
-            where: { orgId, deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-          });
-          if (!warehouse) {
+          if (!defaultWarehouse) {
             result.errors.push(`${row.sku ?? row.name}: склад не знайдено для організації`);
             continue;
           }
@@ -473,7 +511,7 @@ export class XlsxService {
               orgId,
               workOrderId: woId,
               goodId: good.id,
-              warehouseId: warehouse.id,
+              warehouseId: defaultWarehouse.id,
               quantity: row.quantity,
               price: row.price,
               amount,
@@ -561,15 +599,40 @@ export class XlsxService {
     const notFound: string[] = [];
     const details: { goodId: string; goodName: string; sku: string | null; costPrice: number; oldSalePrice: number; newSalePrice: number }[] = [];
 
-    for (const item of items) {
-      const orConditions: Array<Record<string, unknown>> = [];
-      if (item.sku) orConditions.push({ sku: item.sku });
-      if (item.barcode) orConditions.push({ barcodes: { some: { barcode: item.barcode } } });
+    // Bulk prefetch: усі goods за всіма SKU + barcodes ОДНИМ запитом + усі правила org один раз.
+    // Раніше: per-item good.findFirst + per-item calculateSalePrice (який сам фетчить правила) → 2N+ RTT.
+    // Тепер: 2 RTT (goods + rules) + N локальних lookup + 1 транзакція per actual price change.
+    const skus = Array.from(new Set(items.map(i => i.sku).filter((s): s is string => !!s)));
+    const barcodes = Array.from(new Set(items.map(i => i.barcode).filter((b): b is string => !!b)));
+    const orConditions: Array<Record<string, unknown>> = [];
+    if (skus.length) orConditions.push({ sku: { in: skus } });
+    if (barcodes.length) orConditions.push({ barcodes: { some: { barcode: { in: barcodes } } } });
 
-      const good = await this.prisma.good.findFirst({
-        where: { orgId, deletedAt: null, OR: orConditions },
-        include: { brand: true },
-      });
+    const [goods, rules] = await Promise.all([
+      orConditions.length
+        ? this.prisma.good.findMany({
+            where: { orgId, deletedAt: null, OR: orConditions },
+            include: { brand: true, barcodes: { select: { barcode: true } } },
+            take: 10000,
+          })
+        : Promise.resolve([]),
+      this.pricingService.getActiveRulesForOrg(orgId),
+    ]);
+
+    // Build lookup maps: SKU → good (case-insensitive) + barcode → good
+    const goodBySku = new Map<string, typeof goods[number]>();
+    const goodByBarcode = new Map<string, typeof goods[number]>();
+    for (const g of goods) {
+      if (g.sku) goodBySku.set(g.sku.toLowerCase(), g);
+      for (const bc of g.barcodes ?? []) {
+        goodByBarcode.set(bc.barcode, g);
+      }
+    }
+
+    for (const item of items) {
+      let good: typeof goods[number] | undefined;
+      if (item.sku) good = goodBySku.get(item.sku.toLowerCase());
+      if (!good && item.barcode) good = goodByBarcode.get(item.barcode);
 
       if (!good) {
         notFound.push(item.sku ?? item.barcode ?? '?');
@@ -586,12 +649,12 @@ export class XlsxService {
 
       const costPrice = Number(good.purchasePrice);
       const oldSalePrice = Number(good.salePrice);
-      const newSalePrice = await this.pricingService.calculateSalePrice(
-        orgId,
+      const newSalePrice = this.pricingService.computePriceFromRules(
+        rules,
         good.id,
-        good.category,
-        good.goodType,
-        good.brandId,
+        good.category ?? undefined,
+        good.goodType ?? undefined,
+        good.brandId ?? undefined,
         costPrice,
       );
 
@@ -601,8 +664,6 @@ export class XlsxService {
       }
 
       // Bug #191: updateMany з orgId — defense-in-depth tenant guard.
-      // good.id уже org-trusted через `where: { orgId }` у findFirst вище,
-      // але дублюємо щоб патерн був безпечним для копіювання.
       await this.prisma.$transaction([
         this.prisma.good.updateMany({
           where: { id: good.id, orgId, deletedAt: null },

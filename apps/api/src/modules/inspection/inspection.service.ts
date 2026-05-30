@@ -152,17 +152,17 @@ export class InspectionService {
     orgId: string,
     workOrderId: string,
   ): Promise<InspectionResponseDto | null> {
-    // Verify WO belongs to org BEFORE returning the (potentially shared @@unique) report —
-    // otherwise probing with a foreign UUID would reveal data from other tenants.
-    const wo = await this.prisma.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-      select: { id: true },
-    });
+    // Verify WO belongs to org AND fetch report concurrently — обидва читають за orgId,
+    // тенант ізоляція дублюється в report query (orgId фільтр). Якщо WO не належить org —
+    // повертаємо null незалежно від існування report. -1 RTT per call.
+    const [wo, r] = await Promise.all([
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.inspectionReport.findFirst({ where: { workOrderId, orgId } }),
+    ]);
     if (!wo) return null;
-
-    const r = await this.prisma.inspectionReport.findFirst({
-      where: { workOrderId, orgId },
-    });
     return r ? this.toDto(r) : null;
   }
 

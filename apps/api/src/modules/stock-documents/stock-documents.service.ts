@@ -67,9 +67,14 @@ export class StockDocumentsService {
   }
 
   async create(orgId: string, dto: CreateStockDocumentDto): Promise<StockDocumentResponseDto> {
-    const [branch, warehouse] = await Promise.all([
+    // Усі 3 FK перевірки можуть йти конкурентно — кожна незалежна.
+    // Conditional target warehouse: tернарка зберігає типи й уникає зайвого RTT для TRANSFER.
+    const [branch, warehouse, target] = await Promise.all([
       this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }),
       this.prisma.warehouse.findFirst({ where: { id: dto.warehouseId, orgId, deletedAt: null } }),
+      dto.targetWarehouseId
+        ? this.prisma.warehouse.findFirst({ where: { id: dto.targetWarehouseId, orgId, deletedAt: null } })
+        : Promise.resolve(null),
     ]);
     if (!branch) throw new NotFoundException('Філію не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
@@ -78,7 +83,6 @@ export class StockDocumentsService {
       throw new BadRequestException('Для переміщення потрібен склад призначення');
     }
     if (dto.targetWarehouseId) {
-      const target = await this.prisma.warehouse.findFirst({ where: { id: dto.targetWarehouseId, orgId, deletedAt: null } });
       if (!target) throw new NotFoundException('Склад призначення не знайдено');
       if (dto.targetWarehouseId === dto.warehouseId) {
         throw new BadRequestException('Склад джерела і призначення не можуть збігатись');

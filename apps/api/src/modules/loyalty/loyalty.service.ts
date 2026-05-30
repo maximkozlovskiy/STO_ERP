@@ -29,16 +29,24 @@ export class LoyaltyService {
   }
 
   async getBalance(orgId: string, counterpartyId: string): Promise<{ balance: number; counterpartyId: string }> {
-    await this.assertCounterparty(orgId, counterpartyId);
-    const acc = await this.prisma.loyaltyAccount.findFirst({
-      where: { counterpartyId, orgId },
-    });
+    // Parallel: tenant guard + balance fetch — обидва читають за {counterpartyId, orgId},
+    // тенант ізоляція дублюється в `acc` query (orgId фільтр), тому assert лишається лише
+    // як контракт NotFound для відсутнього CP. -1 RTT per call.
+    const [cp, acc] = await Promise.all([
+      this.prisma.counterparty.findFirst({ where: { id: counterpartyId, orgId, deletedAt: null }, select: { id: true } }),
+      this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } }),
+    ]);
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
     return { balance: acc ? Number(acc.balance) : 0, counterpartyId };
   }
 
   async getTransactions(orgId: string, counterpartyId: string) {
-    await this.assertCounterparty(orgId, counterpartyId);
-    const acc = await this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } });
+    // Parallel: tenant guard + account fetch (same rationale as getBalance).
+    const [cp, acc] = await Promise.all([
+      this.prisma.counterparty.findFirst({ where: { id: counterpartyId, orgId, deletedAt: null }, select: { id: true } }),
+      this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } }),
+    ]);
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
     if (!acc) return { items: [], total: 0 };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.loyaltyTransaction.findMany({

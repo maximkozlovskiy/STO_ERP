@@ -10,18 +10,24 @@ import { PricingService } from '../inventory/pricing.service';
 describe('XlsxService', () => {
   let service: XlsxService;
   let prisma: {
-    good: { findFirst: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
+    good: { findMany: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
     priceHistory: { create: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
-  let pricingService: { calculateSalePrice: ReturnType<typeof vi.fn> };
+  // Bulk-перехід: applyPricingFromList тепер prefetch-ить goods batch-ом і правила один раз
+  // (computePriceFromRules — pure синхронний). У тестах мокаємо обидві операції.
+  let pricingService: {
+    getActiveRulesForOrg: ReturnType<typeof vi.fn>;
+    computePriceFromRules: ReturnType<typeof vi.fn>;
+    calculateSalePrice: ReturnType<typeof vi.fn>;
+  };
 
   const ORG = 'org-1';
 
   beforeEach(async () => {
     prisma = {
       good: {
-        findFirst: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([]),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       priceHistory: { create: vi.fn().mockResolvedValue({}) },
@@ -31,7 +37,11 @@ describe('XlsxService', () => {
         return Promise.resolve(arg);
       }),
     };
-    pricingService = { calculateSalePrice: vi.fn() };
+    pricingService = {
+      getActiveRulesForOrg: vi.fn().mockResolvedValue([]),
+      computePriceFromRules: vi.fn(),
+      calculateSalePrice: vi.fn(),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -66,12 +76,13 @@ describe('XlsxService', () => {
       const csv = '﻿sku,barcode,name\nOIL-5W40,,Масло\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findFirst.mockResolvedValueOnce({
+      prisma.good.findMany.mockResolvedValueOnce([{
         id: 'good-1', name: 'Масло', sku: 'OIL-5W40',
         purchasePrice: 100, salePrice: 130,
         category: null, goodType: 'CONSUMABLE', brandId: null,
-      });
-      pricingService.calculateSalePrice.mockResolvedValueOnce(150);
+        barcodes: [],
+      }]);
+      pricingService.computePriceFromRules.mockReturnValueOnce(150);
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
 
@@ -95,26 +106,28 @@ describe('XlsxService', () => {
       const csv = 'Артикул,Штрихкод,name\nOIL-5W40,4820123456789,Масло\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findFirst.mockResolvedValueOnce({
+      prisma.good.findMany.mockResolvedValueOnce([{
         id: 'good-1', name: 'Масло', sku: 'OIL-5W40',
         purchasePrice: 100, salePrice: 130,
         category: null, goodType: null, brandId: null,
-      });
-      pricingService.calculateSalePrice.mockResolvedValueOnce(150);
+        barcodes: [{ barcode: '4820123456789' }],
+      }]);
+      pricingService.computePriceFromRules.mockReturnValueOnce(150);
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
       expect(result.found).toBe(1);
-      // Перевіряємо що where має ОБИДВА варіанти (sku АБО barcode relation)
-      expect(prisma.good.findFirst).toHaveBeenCalledWith({
+      // Bulk lookup: ОБИДВА варіанти (sku IN АБО barcodes IN) у одному findMany
+      expect(prisma.good.findMany).toHaveBeenCalledWith({
         where: {
           orgId: ORG,
           deletedAt: null,
           OR: [
-            { sku: 'OIL-5W40' },
-            { barcodes: { some: { barcode: '4820123456789' } } },
+            { sku: { in: ['OIL-5W40'] } },
+            { barcodes: { some: { barcode: { in: ['4820123456789'] } } } },
           ],
         },
-        include: { brand: true },
+        include: { brand: true, barcodes: { select: { barcode: true } } },
+        take: 10000,
       });
     });
 
@@ -122,7 +135,7 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nUNKNOWN-SKU,,Невідомо\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findFirst.mockResolvedValueOnce(null);
+      prisma.good.findMany.mockResolvedValueOnce([]);
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
       expect(result.found).toBe(0);
@@ -136,12 +149,13 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nOIL,,Масло\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findFirst.mockResolvedValueOnce({
+      prisma.good.findMany.mockResolvedValueOnce([{
         id: 'good-1', name: 'Масло', sku: 'OIL',
         purchasePrice: 100, salePrice: 130,
         category: null, goodType: null, brandId: null,
-      });
-      pricingService.calculateSalePrice.mockResolvedValueOnce(130); // no change
+        barcodes: [],
+      }]);
+      pricingService.computePriceFromRules.mockReturnValueOnce(130); // no change
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
       expect(result.found).toBe(1);
@@ -169,19 +183,20 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nNO-COST-SKU,,Без собівартості\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findFirst.mockResolvedValueOnce({
+      prisma.good.findMany.mockResolvedValueOnce([{
         id: 'good-no-cost', name: 'Без собівартості', sku: 'NO-COST-SKU',
         purchasePrice: null, salePrice: 200,
         category: null, goodType: null, brandId: null,
-      });
+        barcodes: [],
+      }]);
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
       expect(result.found).toBe(0); // не пушаємо у details
       expect(result.updated).toBe(0);
       expect(result.notFound).toEqual([expect.stringContaining('NO-COST-SKU')]);
       expect(result.notFound[0]).toContain('без собівартості');
-      // calculateSalePrice НЕ викликаний — щоб не марнувати query
-      expect(pricingService.calculateSalePrice).not.toHaveBeenCalled();
+      // computePriceFromRules НЕ викликаний — щоб не марнувати compute
+      expect(pricingService.computePriceFromRules).not.toHaveBeenCalled();
       expect(prisma.good.updateMany).not.toHaveBeenCalled();
       expect(prisma.priceHistory.create).not.toHaveBeenCalled();
     });
@@ -190,17 +205,18 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nZERO-COST,,Нуль собівартість\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findFirst.mockResolvedValueOnce({
+      prisma.good.findMany.mockResolvedValueOnce([{
         id: 'good-zero', name: 'Нуль', sku: 'ZERO-COST',
         purchasePrice: 0, salePrice: 200,
         category: null, goodType: null, brandId: null,
-      });
+        barcodes: [],
+      }]);
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
       expect(result.found).toBe(0);
       expect(result.updated).toBe(0);
       expect(result.notFound).toEqual([expect.stringContaining('ZERO-COST')]);
-      expect(pricingService.calculateSalePrice).not.toHaveBeenCalled();
+      expect(pricingService.computePriceFromRules).not.toHaveBeenCalled();
       expect(prisma.good.updateMany).not.toHaveBeenCalled();
     });
 
@@ -208,12 +224,13 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nA-SKU,,A\nB-SKU,,B\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findFirst
-        .mockResolvedValueOnce({ id: 'g-a', name: 'A', sku: 'A-SKU', purchasePrice: 100, salePrice: 150, category: null, goodType: null, brandId: null })
-        .mockResolvedValueOnce({ id: 'g-b', name: 'B', sku: 'B-SKU', purchasePrice: 50,  salePrice: 70,  category: null, goodType: null, brandId: null });
-      pricingService.calculateSalePrice
-        .mockResolvedValueOnce(150) // no change for A
-        .mockResolvedValueOnce(85); // change for B
+      prisma.good.findMany.mockResolvedValueOnce([
+        { id: 'g-a', name: 'A', sku: 'A-SKU', purchasePrice: 100, salePrice: 150, category: null, goodType: null, brandId: null, barcodes: [] },
+        { id: 'g-b', name: 'B', sku: 'B-SKU', purchasePrice: 50,  salePrice: 70,  category: null, goodType: null, brandId: null, barcodes: [] },
+      ]);
+      pricingService.computePriceFromRules
+        .mockReturnValueOnce(150) // no change for A
+        .mockReturnValueOnce(85); // change for B
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
       expect(result.found).toBe(2);
@@ -234,12 +251,13 @@ describe('XlsxService', () => {
       sheet.addRow(['OIL-5W40', '', 'Масло']);
       const buf = await wb.xlsx.writeBuffer();
 
-      prisma.good.findFirst.mockResolvedValueOnce({
+      prisma.good.findMany.mockResolvedValueOnce([{
         id: 'good-1', name: 'Масло', sku: 'OIL-5W40',
         purchasePrice: 100, salePrice: 130,
         category: null, goodType: null, brandId: null,
-      });
-      pricingService.calculateSalePrice.mockResolvedValueOnce(150);
+        barcodes: [],
+      }]);
+      pricingService.computePriceFromRules.mockReturnValueOnce(150);
 
       const result = await service.applyPricingFromList(ORG, buf as Buffer, 'xlsx');
       expect(result.found).toBe(1);
