@@ -639,7 +639,7 @@ export default function PurchaseOrdersPage() {
           dirty.resetDirty();
         }}
         title="Нове замовлення постачальнику"
-        size="lg"
+        size="xl"
         footer={
           <Button
             onClick={handleCreate}

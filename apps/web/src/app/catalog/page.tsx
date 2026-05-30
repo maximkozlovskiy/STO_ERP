@@ -460,6 +460,7 @@ function WorksTab() {
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
       <Modal open={modal} onClose={async () => { if (!(await worksFormDirty.confirmClose())) return; setModal(false); }} title="Нова робота"
+        size="lg"
         footer={
           <Button onClick={create} loading={saving} disabled={!form.name || !form.categoryId || !form.normoHours || !form.price} className="w-full">
             Зберегти
@@ -1494,6 +1495,7 @@ function GoodsTab() {
       </Modal>
 
       <Modal open={modal} onClose={async () => { if (!(await goodsFormDirty.confirmClose())) return; setModal(false); }} title="Новий товар / запчастина"
+        size="xl"
         footer={
           <Button onClick={create} loading={saving} disabled={!form.name || !form.salePrice} className="w-full">
             Зберегти
@@ -1964,6 +1966,7 @@ function ServicesTab() {
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
       <Modal open={modal} onClose={async () => { if (!(await servicesFormDirty.confirmClose())) return; setModal(false); }} title={editingService ? 'Редагування послуги' : 'Нова комплексна послуга'}
+        size="lg"
         footer={
           <Button onClick={save} loading={saving} disabled={!form.name} className="w-full">
             {editingService ? 'Оновити' : 'Зберегти'}

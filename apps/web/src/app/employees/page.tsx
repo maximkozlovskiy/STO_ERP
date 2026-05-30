@@ -729,6 +729,7 @@ export default function EmployeesPage() {
 
       {/* Create modal */}
       <Modal open={modal === 'create'} onClose={closeModal} title="Новий співробітник"
+        size="lg"
         footer={
           <Button onClick={create} loading={saving} disabled={!form.firstName || !form.lastName} className="w-full">
             Зберегти
@@ -832,6 +833,7 @@ export default function EmployeesPage() {
         open={modal === 'card' && !!selected}
         onClose={closeModal}
         title={selected ? `${selected.lastName} ${selected.firstName}` : ''}
+        size="lg"
         footer={
           <Button onClick={saveAssignments} loading={saving} className="w-full">
             Зберегти прив'язки

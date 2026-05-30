@@ -821,6 +821,7 @@ export default function WorkOrdersPage() {
         }}
         title="Новий наряд"
         description="Заповніть дані для створення наряду"
+        size="xl"
         footer={
           <Button
             onClick={create}

@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, Zap, Upload } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
-import { Modal } from '@/components/ui/modal';
+import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
@@ -199,6 +199,7 @@ function RuleFormModal({
       open={open}
       onClose={onClose}
       title={initial.name ? 'Редагування правила' : 'Нове правило ціноутворення'}
+      size="xl"
       footer={
         <>
           <Button onClick={submit} loading={saving} disabled={!form.name}>Зберегти</Button>
@@ -576,7 +577,7 @@ export default function PricingRulesClient() {
       </div>
 
       {showPricingImport && (
-        <div className="mb-6 rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
+        <AnimatedBody className="mb-6 rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-medium text-foreground">Розцінити товари за списком</span>
             <button
@@ -677,7 +678,7 @@ export default function PricingRulesClient() {
               )}
             </div>
           )}
-        </div>
+        </AnimatedBody>
       )}
 
       {error && (
