@@ -246,6 +246,16 @@ grep -n "useStaticAssets\|@fastify/static\|express.static" apps/api/src/main.ts
 
 # PowerShell $PSScriptRoot (порожній при dot-source) без fallback
 grep -rn "PSScriptRoot" scripts/ installer/ 2>/dev/null | grep -v "MyInvocation\|if (\$PSScriptRoot)"
+
+# Глобальний APP_GUARD (ThrottlerGuard/IpFilterGuard/тощо) — який endpoint має бути виключений (skip-list)
+# Bug #203: global ThrottlerGuard блокує /health → docker healthcheck → cascade restart
+grep -n "APP_GUARD\|useClass: ThrottlerGuard\|useClass: IpFilterGuard" apps/api/src/app.module.ts
+# для кожного global guard → перевірити skip-list (health, metrics, webhooks, SSE):
+grep -rn "@Controller.*health\|@Controller.*metrics\|@Sse\|@Controller.*webhook" apps/api/src --include="*.controller.ts" -l | while read f; do
+  if ! grep -q "@SkipThrottle\|SkipThrottle()" "$f"; then
+    echo "POSSIBLE SKIP-LIST GAP: $f served by global guard but no skip decorator (verify if intentional)"
+  fi
+done
 ```
 - [ ] Кожен compose healthcheck: бінарник є у базовому образі (alpine → НЕ curl; node → `node -e http.get`; **minio/minio → НЕ curl/НЕ wget, лише `mc` → `["CMD","mc","ready","local"]`**); шлях узгоджений з `setGlobalPrefix`/proxy-prefix (`/api/health` не `/health`). Не довіряти «alpine/curl» евристиці для НЕ-alpine образів (minio, distroless, mongo тощо) — перевіряти емпірично `docker run --rm --entrypoint sh <image> -c "command -v curl wget mc"`
 - [ ] Перевірити blast-radius: сервіси з `depends_on: X: { condition: service_healthy }` не стартують якщо healthcheck X завжди FAIL → CRITICAL
@@ -253,12 +263,29 @@ grep -rn "PSScriptRoot" scripts/ installer/ 2>/dev/null | grep -v "MyInvocation\
 - [ ] Build-скрипт не копіює у мертвий шлях (`apps/api/public` коли API не реєструє `@fastify/static`/`useStaticAssets`)
 - [ ] `$PSScriptRoot` має fallback `if ($PSScriptRoot) {...} else { Split-Path -Parent $MyInvocation.MyCommand.Path }` (порожній при dot-source)
 - [ ] nginx Next.js static export: `location /_next/static/` з `expires 1y; immutable`; `gzip_types` включає `text/javascript image/svg+xml application/xml`
+- [ ] **Global APP_GUARD skip-list audit (Bug #203):** будь-яке введення global guard через `{ provide: APP_GUARD, useClass: XGuard }` потребує аудиту endpoint-ів які мають бути виключені: (а) `/health` — docker healthcheck/nginx upstream/моніторинг опитують часто, ліміт швидко перетинається → cascade restart; (б) `/metrics` — Prometheus scrape кожні 15s; (в) SSE-streams (`@Sse`) — довгоживучі з'єднання повторно retry-ються EventSource при втраті; (г) webhooks з зовнішніх систем (PRRO, payment provider) — клієнт не контролює rate; (д) batch/cron-endpoints. Кожен такий контролер потребує парний skip-декоратор (`@SkipThrottle()`, `@Public()`, `@SkipGuard()`). tsc не ловить, тести не ловять (HEALTH spec звичайно не запускає AppModule з APP_GUARD). Виявляється лише у проді коли docker healthcheck отримує `429` → restart loop.
 
 ---
 
 ### §1.2 — TypeScript / API якість
 
 ```bash
+# Dead imports after page/module split (Bug #204-#205)
+# tsconfig зазвичай має noUnusedLocals: false → tsc мовчить про неіснуючий runtime impact,
+# але мертві імпорти псують tree-shaking + плутають code review + ламаються коли helper переноситься
+# у privately-renamed export. Шукати кожен imported symbol чи реально вживається у файлі-споживачі.
+for f in $(git diff HEAD --name-only | grep -E "\.(ts|tsx)$"); do
+  [ -f "$f" ] || continue
+  # extract imported names from { ... } imports
+  for sym in $(grep -oE "^import \{[^}]+\}" "$f" | grep -oE "[A-Za-z_][A-Za-z0-9_]+" | grep -v "^import$\|^from$" | sort -u); do
+    # count occurrences excluding import line itself
+    count=$(grep -c "\b$sym\b" "$f")
+    importLines=$(grep -c "^import.*\b$sym\b" "$f")
+    used=$((count - importLines))
+    if [ "$used" -le 0 ]; then echo "DEAD IMPORT in $f: $sym"; fi
+  done
+done
+
 # any без виправданого cast
 grep -rn ": any\b\|as any\b" apps/api/src/modules/ --include="*.ts" | grep -v "as unknown as\|spec" | head -10
 
@@ -717,6 +744,28 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-30 — Global APP_GUARD без skip-list для healthcheck/SSE/webhooks → docker cascade restart (Bug #203) — backend, deploy
+
+**Сигнал:** новий `{ provide: APP_GUARD, useClass: XGuard }` додаваний у `app.module.ts` (rate-limiter, IP-allowlist, custom global guard). У тому ж комміті review-агент додає `@SkipThrottle()`/`@Public()` на очевидні endpoint-и (SSE streams, login throttle override), АЛЕ пропускає неочевидні: `/health`, `/metrics`, webhook-endpoint-и, batch endpoints. Production-симптоми (від найшвидших до найповільніших): (а) `429 Too Many Requests` на `/health` від docker healthcheck → контейнер позначається `unhealthy` → `depends_on: condition: service_healthy` валиться → cascade restart по compose-стеку; (б) Prometheus scrape втрачає метрики (silent — графіки виглядають порожніми); (в) webhook від PRRO/payment провайдера не доходить → ПРРО не отримує підтвердження → користувацька проблема. tsc мовчить (декоратори опціональні). Існуючі unit/contract тести зазвичай НЕ запускають AppModule з APP_GUARD, тому моки guard-у пропускають проблему. E2E `smoke.spec` без healthcheck-spam теж пропускає.
+**Причина виникнення:** APP_GUARD виглядає як невинне додавання у `providers: []` — без зміни жодного контролера. Розробник зосереджується на «нових бізнес-сценаріях» (login rate, upload rate), не аудитує існуючі «незмінні» endpoint-и які тепер теж під guard. Бар'єр входу високий: треба знати які endpoint-и часто опитуються зовнішніми системами (docker, nginx, monitoring) і які мають бути виключені. `@nestjs/throttler` документація показує лише `@Throttle()` (більш обмежувальний) і `@SkipThrottle()` (виключний), але не дає шаблон skip-листа.
+**Підхід до виявлення:** при будь-якому новому global APP_GUARD у `app.module.ts` — одразу пройти **skip-list checklist**: (1) `/health` — `@SkipThrottle()` на класі; (2) `/metrics` — те саме; (3) `@Sse()` endpoint-и — `@SkipThrottle()` на методі (бо EventSource retry-ється при дисконекті); (4) webhook controllers (`@Controller('webhooks/X')`) — guard-залежно (`@SkipThrottle()` для зовнішнього source); (5) batch/cron-trigger endpoints. Grep: `grep -n "APP_GUARD" apps/api/src/app.module.ts` → для кожного знайденого guard перевірити `@SkipX()` декоратори у вищезгаданих контролерах. Виявляється лише через runtime healthcheck failures у проді або у CI smoke-test що робить >200 запитів за хвилину.
+**Підхід до фіксу:** додати `@SkipThrottle()` (або відповідний `@Skip*Guard()`) на рівні класу контролерів зі skip-листа. Симетрично з `dashboard/stream` (SSE) у STO ERP. Якщо guard не має built-in skip-декоратора — створити кастомний (`@Public()`-патерн з `Reflector` + `SetMetadata`).
+**Severity:** HIGH — production deploy blocker. У dev/CI працює (без cascade docker depends_on); виявляється лише у проді або e2e smoke-тесті що швидко spam-ить health.
+**Де шукати ще:** будь-який майбутній global guard (IP allowlist, RBAC-by-tenant, кастомний rate-limiter, audit guard). Профілактика: SKILL §1.1 Deploy/infra тепер вимагає `APP_GUARD skip-list audit` при кожному новому global guard. Аналогічна логіка для `APP_INTERCEPTOR`/`APP_FILTER` що змінюють response shape (наприклад, інтерсептор що додає `cache-control: no-cache` ламає Cloudflare edge caching для `/static/*` endpoint-у).
+
+---
+
+### 2026-05-30 — Dead imports після page-split рефакторингу — tsc мовчить через noUnusedLocals: false (Bug #204-#205) — frontend, typescript, dead-code
+
+**Сигнал:** великий `page.tsx`/`*Tab.tsx`/`*Modal.tsx` сплітнули на 3-5 sibling файлів. Утиліти (наприклад `parseHHMM`, `KYIV_TZ`) переїхали разом з логікою у новий файл, але ОРИГІНАЛЬНИЙ `page.tsx` лишається з `import { ..., parseHHMM, ... }` де `parseHHMM` вже не викликається. `tsc` мовчить через `noUnusedLocals: false` у `apps/web/tsconfig.json`. Vite/Next.js dev і prod збираються без warning. Code review пропускає бо diff показує ВЕЛИКИЙ split — глобально файл скорочений з 1500 до 200 рядків, мертвий імпорт у 5 рядках імпорт-списку невидимий за зменшенням обсягу. Регресія виявляється коли утиліту згодом реіменують у sibling-файлі: пере-export-ять як `parseTime`, а у `page.tsx` лишається `parseHHMM` → run-time error `parseHHMM is not a function` після того як хтось викличе цей мертвий код (наприклад, через autocomplete у IDE).
+**Причина виникнення:** при split-рефакторингу спочатку **копіюють** імпорти у новий файл, потім видаляють використання з оригіналу — але імпорти оригіналу не чистять (нудно, риск чогось зламати). Сучасний інструмент рефакторингу (VSCode "Move to file") видаляє імпорти автоматично, але **ручний** split (особливо коли частину коду треба адаптувати під нові props) обходить інструмент → імпорти лишаються мертвими.
+**Підхід до виявлення:** для кожного файлу з `git diff HEAD` що **зменшився** на >30% або був split (один файл → два сиблінги) — пройти імпорт-список і для кожного `import { X, Y, Z }` грепати `\bX\b` у решті файлу: якщо count <= 1 (тільки сам імпорт) → мертвий імпорт. Автоматизація: bash-цикл який витягує impоrted names через `grep -oE "^import \{[^}]+\}"` + `grep -oE "[A-Za-z_][A-Za-z0-9_]+"` і рахує occurrences. Альтернатива: увімкнути `noUnusedLocals: true` у tsconfig — але це масивна зміна що ламає інші файли.
+**Підхід до фіксу:** видалити неживі імпорти. Один рядок diff на файл — мінімальний ризик. Зазвичай batch-cleanup після split-серії — окремий комміт «cleanup dead imports after split».
+**Severity:** LOW — runtime не зламаний (просто мертвий код), tree-shaking тимчасово страждає (bundle на кілька байт більше — не критично з urgent точки зору). Може стати HIGH якщо утиліту реіменують у sibling без перевірки споживачів.
+**Де шукати ще:** кожен великий split-рефакторинг у STO ERP (`page.tsx` → `Tab*.tsx`, `service.ts` → split modules). Профілактика: SKILL §1.2 тепер містить bash-loop для dead-import detection; після кожного split-комміту проганяти.
+
+---
 
 ### 2026-05-30 — Defense-in-depth status guard у service-ревью без оновлення fixtures → release-blocker baseline (Bug #200) — backend, test-coverage, process
 
