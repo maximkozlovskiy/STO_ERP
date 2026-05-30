@@ -133,16 +133,6 @@ export class ReportsService {
     const stockWhere: { orgId: string; warehouseId?: string; deletedAt: null } = { orgId, deletedAt: null };
     if (warehouseId) stockWhere.warehouseId = warehouseId;
 
-    const stockItems = await this.prisma.stockItem.findMany({
-      where: stockWhere,
-      include: {
-        good: { select: { name: true, sku: true, unit: true, salePrice: true } },
-        warehouse: { select: { name: true } },
-      },
-      orderBy: [{ warehouse: { name: 'asc' } }, { good: { name: 'asc' } }],
-      take: 5000,
-    });
-
     const movWhere: { orgId: string; warehouseId?: string; createdAt?: { gte?: Date; lte?: Date } } = { orgId };
     if (warehouseId) movWhere.warehouseId = warehouseId;
     if (from) {
@@ -154,12 +144,24 @@ export class ReportsService {
       movWhere.createdAt = { ...movWhere.createdAt, lte: new Date(d.getTime() - kyivOffsetMs(d)) };
     }
 
-    const movements = await this.prisma.stockMovement.findMany({
-      where: movWhere,
-      include: { good: { select: { name: true, sku: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-    });
+    // Parallel: stockItems and stockMovements are independent queries on different tables.
+    const [stockItems, movements] = await Promise.all([
+      this.prisma.stockItem.findMany({
+        where: stockWhere,
+        include: {
+          good: { select: { name: true, sku: true, unit: true, salePrice: true } },
+          warehouse: { select: { name: true } },
+        },
+        orderBy: [{ warehouse: { name: 'asc' } }, { good: { name: 'asc' } }],
+        take: 5000,
+      }),
+      this.prisma.stockMovement.findMany({
+        where: movWhere,
+        include: { good: { select: { name: true, sku: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      }),
+    ]);
 
     return {
       stockItems: stockItems.map(i => ({

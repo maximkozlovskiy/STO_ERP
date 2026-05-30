@@ -209,18 +209,29 @@ export default function WorkOrderCardPage() {
   }, [features.stockIndicatorEnabled, partForm.goodId, partForm.warehouseId]);
 
   const load = useCallback(() => {
-    apiFetch<WorkOrderDetail>(`/work-orders/${id}`)
-      .then(data => { if (mountedRef.current) setWo(data); })
-      .catch((e: unknown) => { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження наряду'); });
-    apiFetch<{ items: CompletionActSummary[] }>(`/completion-acts?workOrderId=${id}`)
-      .then(data => {
-        if (!mountedRef.current) return;
-        if (data.items.length > 0) setCompletionAct(data.items[0]);
-      })
-      .catch((e: unknown) => console.warn('[CompletionAct] load failed:', e));
-    apiFetch<InspectionReport | null>(`/work-orders/${id}/inspection`)
-      .then(d => { if (mountedRef.current) setInspection(d); })
-      .catch(() => {});
+    // Parallel fetch — work-order detail, completion-acts list and inspection report
+    // are independent endpoints; previous fire-and-forget pattern coalesced their
+    // browser-level scheduling but failed to surface the inspection-load error
+    // separately from the WO load error. Promise.all preserves both behaviours.
+    Promise.all([
+      apiFetch<WorkOrderDetail>(`/work-orders/${id}`).then(
+        data => ({ kind: 'wo' as const, data }),
+        (e: unknown) => ({ kind: 'wo-error' as const, error: e }),
+      ),
+      apiFetch<{ items: CompletionActSummary[] }>(`/completion-acts?workOrderId=${id}`).catch(
+        (e: unknown) => { console.warn('[CompletionAct] load failed:', e); return { items: [] as CompletionActSummary[] }; },
+      ),
+      apiFetch<InspectionReport | null>(`/work-orders/${id}/inspection`).catch(() => null),
+    ]).then(([woResult, acts, inspectionData]) => {
+      if (!mountedRef.current) return;
+      if (woResult.kind === 'wo') {
+        setWo(woResult.data);
+      } else {
+        setError(woResult.error instanceof Error ? woResult.error.message : 'Помилка завантаження наряду');
+      }
+      if (acts.items.length > 0) setCompletionAct(acts.items[0]);
+      setInspection(inspectionData);
+    });
   }, [id]);
 
   // Load secondary data (comments, media, audit) in parallel — single effect, single mount
@@ -269,16 +280,18 @@ export default function WorkOrderCardPage() {
     // Bug #85: використовуємо apiMultipartFetch для silent refresh при 401.
     // Раніше native fetch з прямим Bearer ламався після того як access token закінчувався (~15 хв)
     // і користувач отримував абстрактне "Не вдалося завантажити N файл(ів)" без auto-recovery.
-    let failures = 0;
-    for (const file of Array.from(files)) {
-      const fd = new FormData();
-      fd.append('file', file);
-      try {
-        await apiMultipartFetch(`/work-orders/${id}/media`, fd);
-      } catch {
-        failures += 1;
-      }
-    }
+    //
+    // Parallel upload — each file is an independent multipart POST. With 5+ files
+    // sequential waits stack into seconds; Promise.allSettled keeps individual
+    // failure tracking intact while collapsing wall-clock time to max(file).
+    const results = await Promise.allSettled(
+      Array.from(files).map(file => {
+        const fd = new FormData();
+        fd.append('file', file);
+        return apiMultipartFetch(`/work-orders/${id}/media`, fd);
+      }),
+    );
+    const failures = results.filter(r => r.status === 'rejected').length;
     if (failures > 0) {
       setError(`Не вдалося завантажити ${failures} файл(ів)`);
     }

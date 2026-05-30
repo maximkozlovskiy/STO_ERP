@@ -54,35 +54,36 @@ export class BookingService {
   }
 
   async getAvailability(orgId: string, branchId: string, date: string, serviceIds?: string[]): Promise<AvailabilitySlotDto[]> {
-    // Find all lifts in the branch (lifts belong to zones, zones belong to branches)
-    const lifts = await this.prisma.lift.findMany({
-      where: {
-        orgId,
-        deletedAt: null,
-        zone: { branchId },
-      },
-      take: 50,
-    });
-
     // Bug #113: day boundaries must be Kyiv-local, not UTC, otherwise a slot
     // requested for "2026-05-27 in Kyiv" would search a misaligned UTC window.
     const offset = this.kyivOffsetForDate(date);
     const dayStart = new Date(`${date}T00:00:00.000${offset}`);
     const dayEnd = new Date(`${date}T23:59:59.999${offset}`);
-    const busySlots = await this.prisma.calendarSlot.findMany({
-      where: { orgId, startAt: { gte: dayStart, lte: dayEnd }, deletedAt: null },
-      select: { liftId: true, startAt: true, endAt: true },
-      take: 500,
-    });
+
+    // Parallel: all three reads (lifts in branch, busy slots, optional work durations)
+    // are independent — collapses 2-3 sequential RTT into one.
+    const [lifts, busySlots, works] = await Promise.all([
+      this.prisma.lift.findMany({
+        where: { orgId, deletedAt: null, zone: { branchId } },
+        take: 50,
+      }),
+      this.prisma.calendarSlot.findMany({
+        where: { orgId, startAt: { gte: dayStart, lte: dayEnd }, deletedAt: null },
+        select: { liftId: true, startAt: true, endAt: true },
+        take: 500,
+      }),
+      serviceIds?.length
+        ? this.prisma.work.findMany({
+            where: { id: { in: serviceIds }, orgId, deletedAt: null },
+            select: { normoHours: true },
+            take: 20,
+          })
+        : Promise.resolve([] as Array<{ normoHours: number | null }>),
+    ]);
 
     // Calculate duration from requested services
     let totalMinutes = 60; // default 1 hour
-    if (serviceIds?.length) {
-      const works = await this.prisma.work.findMany({
-        where: { id: { in: serviceIds }, orgId, deletedAt: null },
-        select: { normoHours: true },
-        take: 20,
-      });
+    if (works.length) {
       const totalHours = works.reduce((sum, w) => sum + Number(w.normoHours ?? 1), 0);
       totalMinutes = Math.ceil(totalHours * 60);
     }
