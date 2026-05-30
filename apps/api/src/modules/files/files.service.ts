@@ -15,7 +15,7 @@ interface UploadFile {
 @Injectable()
 export class FilesService implements OnModuleInit {
   private readonly publicUrl: string;
-  private readonly bucket = 'sto-erp';
+  private readonly bucket: string;
   private client: {
     bucketExists(name: string): Promise<boolean>;
     makeBucket(name: string, region: string): Promise<void>;
@@ -33,6 +33,7 @@ export class FilesService implements OnModuleInit {
     const useSSL = config.get<string>('MINIO_USE_SSL') === 'true';
     const protocol = useSSL ? 'https' : 'http';
     this.publicUrl = config.get<string>('MINIO_PUBLIC_URL') ?? `${protocol}://${endpoint}:${port}`;
+    this.bucket = config.get<string>('MINIO_BUCKET') ?? 'sto-files';
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
