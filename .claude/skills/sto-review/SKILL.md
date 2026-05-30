@@ -404,10 +404,19 @@ grep -rn "const .* = await.*findFirst" apps/api/src/modules/ --include="*.servic
 
 # Blocking sync у async context
 grep -rn "readFileSync\|writeFileSync\|existsSync" apps/api/src/ --include="*.ts"
+
+# Bulk-apply patterns: per-iteration $transaction([...]) + per-iteration calculate*()
+# Сигнал що bulk-метод робить N окремих TX замість 1 batched (N+1 + missing timeout)
+for f in $(grep -rl "for.*of.*\(lines\|items\|rows\|goods\)" apps/api/src/modules/ --include="*.service.ts" | grep -v spec); do
+  has_calc=$(grep -c "await.*calculate\|await.*\.compute" "$f")
+  has_arr_tx=$(grep -c "await this\.prisma\.\$transaction(\[" "$f")
+  [ "$has_calc" -gt 0 ] && [ "$has_arr_tx" -gt 0 ] && echo "BULK-APPLY suspect: $f"
+done
 ```
 - [ ] Незалежні запити → `Promise.all([...])` (не sequential `await`)
 - [ ] Важкі операції (PDF, масовий import) → BullMQ, не request handler
 - [ ] Немає `fs.readFileSync` у request handlers
+- [ ] **Bulk-apply паттерн:** методи що `for (const line of po.lines)` → перевірити що (a) calc-service prefetched ОДИН раз перед loop (не fetch per-item), (b) updates batched у `$transaction(async tx => {...}, { timeout: N })` chunked по 100 — НЕ per-iteration `await $transaction([...])` (array-form без timeout default 5s; на 50+ items під load → cascading default-timeout fail). Приклад patter: див. `pricing.service.ts:applyRuleToGoods` (eталон) vs ANTI-pattern до Bug #194 у `purchase-orders.service.ts:applyPricing`
 
 #### §7.2 Frontend
 ```bash
@@ -898,6 +907,17 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 **Підхід до фіксу:** замінити `update` → `updateMany({ where: { id, orgId, ...filters } })` + `findFirstOrThrow({ where: { id, orgId }, include: ... })` для повернення з relations (бо updateMany не приймає include). Для DELETE — перевіряти `result.count === 0` і кидати NotFoundException замість окремого findFirst. Bug #191 pattern (PO/xlsx apply-pricing) уже встановлено — переносити на ВСІ нові endpoints що update entity
 **Критичність:** IMPORTANT — defense-in-depth gap (не immediate data breach, але порушує консистентність patterns у codebase і відкриває race-window для multi-session writes)
 **Де шукати ще:** будь-який новий PATCH/DELETE handler що приймає `id` через `@Param`, особливо catalog/довідникові endpoints де `@@unique` може спричинити resurrection після cross-session soft-delete
+
+---
+
+### 2026-05-30 — bulk-apply loop: per-iteration `await $transaction([...])` без timeout + N+1 на calculateX — §5 Business Rules / §6 Database / §7.1 Performance
+
+**Сигнал:** новий "bulk-apply" сервісний метод (`applyPricing`/`recalcAll`/`bulkUpdate`) пройшовся `for (const item of parent.children)` де: (1) всередині circle `await someService.calculateX()` що сам робить `findMany` (N+1 — N запитів правил/конфігів); (2) для кожної зміни — окремий `await this.prisma.$transaction([... 2-3 statements])` БЕЗ `{ timeout }` (array-form не приймає, але якщо переробити на callback-form з timeout — швидко рятує). При 50 лініях = 50 calc-queries + 50 окремих TX; на 5s default timeout під connection pool тиском може почати fail-ити з cascading effect
+**Причина виникнення:** copy-paste з 1-item методу (apply rule to ONE good → apply to PO lines); розробник не помічає що "atomic per-item" перетворюється на 50+ окремих TX (відомий патерн уникнення транзакційного локу, але тут навпаки — кожна TX лочить good row + price_history row, race з іншими користувачами); calc-service за дизайном fetches rules per-call (правильно для one-shot), а у bulk-context — потрібен prefetch
+**Підхід до виявлення:** grep `for.*of.*lines\|for.*of.*items` у `*.service.ts` → перевірити (1) чи всередині є `await this.prisma.$transaction(`, (2) чи всередині є `await this.<otherService>.calculate*`; **обидва ХОЛОДНІ сигнали** = bulk-apply pattern → треба refactor на (a) prefetch один раз + in-memory computation, (b) batch-update у одну/кілька chunked TX з explicit timeout
+**Підхід до фіксу:** (1) винести pure compute helper у calc-service як public + додати prefetch helper (`getActiveRulesForOrg(orgId)`); (2) переробити bulk-метод: `const rules = await calc.getActiveRulesForOrg(orgId)` → for-loop тільки compute у пам'яті → побудувати `plan: Update[]` → batch `$transaction(async tx => {...}, { timeout: 10_000 })` chunked по 100 (як уже працює `applyRuleToGoods` у `pricing.service`); (3) defense-in-depth status guard на початку bulk-методу — UI рендерить кнопку умовно, але клієнт обходиться (curl POST → можна розцінити CANCELLED)
+**Критичність:** CRITICAL — на великому PO (50+ ліній) silent default-timeout fail з частково-завершеною операцією (5 ліній розцінено, 45 ні, користувач не знає); на пустому PO degradation непомітна → пізно виявляється
+**Де шукати ще:** будь-який endpoint що "apply X to all Y" (apply pricing, recalc totals, sync prices, mass update); інкрементальні bulk endpoints де compute-service не bulk-aware
 
 ---
 
