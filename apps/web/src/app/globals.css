@@ -189,7 +189,7 @@ body {
 /* ─── Page layout helpers ─── */
 .page-container {
   padding: var(--spacing-page-y) var(--spacing-page-x);
-  max-width: 80rem;
+  max-width: 96rem;
   margin: 0 auto;
 }
 
