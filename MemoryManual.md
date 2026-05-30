@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+0ff559c docs(skills): add detail-include-vs-list-include + premature-optimization-rejection patterns to sto-optimize
 b39a25f docs(skills,memory): record Etap A-D review session — 4 new patterns to sto-review
 93ccc25 fix(review): Etap A-D — brandId update normalize + AnimatedBody rAF cleanup + useDetailPanelConfig race + user-prefs key guard
 c353de7 fix(tester): Bugs #182-#183 — @IsObject on DTO value field + user-preferences contract spec
@@ -211,7 +212,9 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 **Gotcha — CurrentUser decorator:** повертає `AuthenticatedUser` з полем `id` (не `sub`). `sub` є у `JwtPayload` але контролери отримують `AuthenticatedUser` після `validate()`.
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors (web + api + shared) — після Bug #184-#186 (verified 2026-05-30)
+TypeScript: ✅ 0 errors (web + api + shared) — після optimize audit Etap A-D (verified 2026-05-30, HEAD 0ff559c)
+Latest optimize: 2026-05-30 (AUTO, HEAD b39a25f → 0ff559c) — Етапи A-D повний perf audit (pricing.service.calculateSalePrice + pricing-rules.controller.findAll + user-preferences GET/PUT + useDetailPanelConfig dedup + AnimatedBody ×6 ResizeObserver + DetailPanel showConfig debounce). **0 фіксів — 0 реальних проблем з вимірюваним impact.** Всі 6 audit-питань перевірено по 4-чек філтру (frequency, lower-level dedup, invalidation cost, measurable impact) → жодне не пройшло поріг для фіксу. Підтвердження що поточний код вже good-enough: (1) `calculateSalePrice` include tiers потрібний для UI COST_TIER preview (`rule.tiers.map` у TableCell PricingRulesClient.tsx:632); _count не годиться; (2) cache (orgId+goodId+brandId+costPrice) має low hit rate + складна інвалідація — пропущено; (3) GET /user-preferences викликається 1× per mount (useEffect deps [apiKey,storageKey] стабільні) + apiFetch уже дедуплить in-flight через inFlight Map — Redis-кеш зайвий; (4) useDetailPanelConfig — AbortController вже cancel-ить попередній PUT, savePref має stable useCallback ref; (5) ResizeObserver ×6 modals дешевий, кожен має disconnect+cancelAnimationFrame у cleanup; shared observer був би premature; (6) DetailPanel toggle/PUT race вже захищений через AbortController. **Записано 2 мета-патерни у sto-optimize:** detail-include-vs-list-include (UI-перевірка перед видаленням include) + premature-optimization-rejection (4-чек філтр). Знайдено 1 candidate (PO receive N×pricingRule.findMany через N×batchService.createFromReceipt), але impact ~10ms total на середній PO 5-10 lines, async user action → не виправлено.
+Previous tsc state (after #184-#186):
 Unit+Contract: ✅ 376/376 passed (35 файлів) — +7 за сесію (4 COST_TIER edge cases + 3 brandId cross-tenant)
 Web component suite: ✅ 159/159 passed (15 файлів) — +11 за сесію (useDetailPanelConfig.test.tsx новий)
 Latest tester: 2026-05-30 (FULL, HEAD 5b4eafc → b39a25f) — Етапи A-D повне тестування. **3 баги виправлено** (test-coverage only — production-код був коректним). #184 MEDIUM — `pricing.service.spec` COST_TIER edge cases відсутні (empty tiers, cost=0, cost точно на верхній/нижній межі); фікс: +4 тести (19/19). #185 MEDIUM — `useDetailPanelConfig` без unit-тесту (юзер явно запросив); фікс: `useDetailPanelConfig.test.tsx` +11 тестів (optimistic localStorage read, API success/error, toggle/reset + PUT, rapid-toggle AbortController, різні pageKey). #186 MEDIUM — `pricing-rules.contract.spec` без `brandId` cross-tenant перевірки (новий FK без regression-захисту, той самий патерн Bug #161); фікс: +3 тести (POST own-org→201, POST other-org→404, PATCH other-org→404). Усі 3 — test-only, prod-код не чіпали.
