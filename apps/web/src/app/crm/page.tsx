@@ -13,7 +13,9 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { DataTable, type DataTableColumn } from '@/components/ui/table';
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/components/ui/table';
 import { DetailPanel, PanelField, PanelSection, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
@@ -146,6 +148,11 @@ export default function CrmPage() {
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
   const bulkSelect = useBulkSelect(data?.items ?? []);
+
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
 
   const bulkActions = useMemo<BulkAction[]>(() => [
     {
@@ -529,67 +536,119 @@ export default function CrmPage() {
       {/* Table + DetailPanel */}
       <div className="flex gap-0 flex-1 min-h-0">
         <div className="flex-1 min-w-0 overflow-auto">
-          {loading ? (
-            <div className="flex justify-center py-12"><Spinner size="md" /></div>
-          ) : data?.items.length === 0 ? (
-            <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" size="sm" />
-          ) : (
-            <DataTable
-              columns={[
-                ...visibleColumns.map((col): DataTableColumn => ({
-                  key: col.key,
-                  label: col.label,
-                  align: col.key === 'balance' ? 'right' : 'left',
-                })),
-                { key: 'actions', label: '' },
-              ]}
-              rows={(data?.items ?? []).map(cp => {
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-9 pr-0">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      ref={selectAllRef}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-3.5 w-3.5 rounded border-border"
+                      aria-label="Вибрати всіх"
+                    />
+                  </TableHead>
+                )}
+                {visibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && data?.items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                    <EmptyState icon={Users} title="Нічого не знайдено" description="Спробуйте змінити параметри пошуку" size="sm" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && data?.items.map(cp => {
                 const isDeleted = !!cp.deletedAt;
-                return {
-                  id: cp.id,
-                  name: (
-                    <div className={cn(isDeleted && 'opacity-60')}>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium text-primary">{displayName(cp)}</p>
-                        {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                return (
+                  <TableRow
+                    key={cp.id}
+                    className={cn(
+                      'transition-colors',
+                      detailPanel.enabled && 'cursor-pointer',
+                      isDeleted && 'opacity-60',
+                      selectedCp?.id === cp.id && 'bg-secondary',
+                      bulkSelect.isSelected(cp.id) && 'bg-primary/5',
+                    )}
+                    onClick={() => { if (detailPanel.enabled) setSelectedCp(prev => prev?.id === cp.id ? null : cp); }}
+                  >
+                    {features.bulkActionsEnabled && (
+                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={bulkSelect.isSelected(cp.id)}
+                          onChange={() => bulkSelect.toggle(cp.id)}
+                          className="h-3.5 w-3.5 rounded border-border"
+                          aria-label={`Вибрати ${displayName(cp)}`}
+                        />
+                      </TableCell>
+                    )}
+                    {visibleColumns.map(col => {
+                      if (col.key === 'name') return (
+                        <TableCell key="name">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-[13px] font-medium text-primary">{displayName(cp)}</p>
+                            {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                          </div>
+                          {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
+                        </TableCell>
+                      );
+                      if (col.key === 'type') return (
+                        <TableCell key="type">
+                          <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>{TYPE_LABELS[cp.type]}</Badge>
+                        </TableCell>
+                      );
+                      if (col.key === 'phone') return <TableCell key="phone" className="text-muted-foreground text-[13px]">{cp.phone ?? '—'}</TableCell>;
+                      if (col.key === 'edrpou') return <TableCell key="edrpou" className="text-muted-foreground text-[13px]">{cp.edrpou ?? '—'}</TableCell>;
+                      if (col.key === 'balance') return (
+                        <TableCell key="balance" className={cn('font-semibold tabular-nums text-[13px]', cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground')}>
+                          {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                        </TableCell>
+                      );
+                      return null;
+                    })}
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        {!isDeleted && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            title="Редагувати"
+                            onClick={() => openEdit(cp)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {!isDeleted && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                            title="Позначити на видалення"
+                            onClick={() => markDeleted(cp.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
-                      {cp.email && <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>}
-                    </div>
-                  ),
-                  type: <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>{TYPE_LABELS[cp.type]}</Badge>,
-                  phone: <span className={cn('text-muted-foreground', isDeleted && 'opacity-60')}>{cp.phone ?? '—'}</span>,
-                  edrpou: <span className={cn('text-muted-foreground', isDeleted && 'opacity-60')}>{cp.edrpou ?? '—'}</span>,
-                  balance: (
-                    <span className={cn('font-semibold tabular-nums', cp.balance < 0 ? 'text-destructive-text' : cp.balance > 0 ? 'text-success-text' : 'text-muted-foreground', isDeleted && 'opacity-60')}>
-                      {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
-                    </span>
-                  ),
-                  actions: !isDeleted ? (
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm" title="Редагувати" onClick={e => { e.stopPropagation(); openEdit(cp); }}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        title="Позначити на видалення"
-                        onClick={e => { e.stopPropagation(); void markDeleted(cp.id); }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ) : null,
-                };
+                    </TableCell>
+                  </TableRow>
+                );
               })}
-              selectable={features.bulkActionsEnabled}
-              selectedIds={bulkSelect.selected}
-              onSelectRow={bulkSelect.toggle}
-              onSelectAll={bulkSelect.toggleAll}
-              onRowClick={detailPanel.enabled ? row => setSelectedCp(prev => prev?.id === row.id ? null : (data?.items ?? []).find(c => c.id === row.id) ?? null) : undefined}
-              emptyText="Нічого не знайдено"
-            />
-          )}
+            </TableBody>
+          </Table>
 
           {/* Pagination */}
           {totalPages > 1 && (

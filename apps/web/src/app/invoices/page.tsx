@@ -17,7 +17,9 @@ import { SearchCombobox } from '@/components/ui/search-combobox';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { DataTable, type DataTableColumn } from '@/components/ui/table';
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/components/ui/table';
 import { DetailPanel, PanelField, PanelSection, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
@@ -137,6 +139,11 @@ export default function InvoicesPage() {
   // Bulk select
   const [data, setData] = useState<Paginated | null>(null);
   const bulkSelect = useBulkSelect(data?.items ?? []);
+
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
 
   const bulkCancel = useCallback(async (ids: string[]) => {
     const results = await Promise.allSettled(
@@ -534,52 +541,101 @@ export default function InvoicesPage() {
       {/* Table + DetailPanel */}
       <div className="flex gap-0 rounded-xl border border-border overflow-hidden">
         <div className="flex-1 min-w-0 overflow-auto border-r border-border">
-          {loading ? (
-            <div className="flex justify-center py-10"><Spinner size="md" /></div>
-          ) : invoices.length === 0 ? (
-            <EmptyState icon={Receipt} title="Рахунків не знайдено" />
-          ) : (
-            <DataTable
-              columns={[
-                ...visibleColumns.map((col): DataTableColumn => ({
-                  key: col.key,
-                  label: col.label,
-                  align: col.key === 'amount' ? 'right' : 'left',
-                })),
-                { key: 'actions', label: '' },
-              ]}
-              rows={invoices.map(inv => ({
-                id: inv.id,
-                number: <span className="font-medium">{inv.number}</span>,
-                counterparty: <span>{inv.counterpartyName ?? '—'}</span>,
-                workOrder: <span className="text-muted-foreground">{inv.workOrderNumber ?? '—'}</span>,
-                status: <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>{STATUS_LABELS[inv.status]}</Badge>,
-                amount: <span className="font-semibold tabular-nums">{fmt(inv.amount)}</span>,
-                dueDate: <span className="text-muted-foreground">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : '—'}</span>,
-                actions: (
-                  <div className="flex gap-1.5 justify-end" onClick={e => e.stopPropagation()}>
-                    {STATUS_TRANSITIONS[inv.status]?.map(s => (
-                      <Button
-                        key={s}
-                        variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={e => { e.stopPropagation(); s === 'PAID' ? setShowPayment(inv) : void handleTransition(inv, s); }}
-                        loading={savingId === inv.id}
-                      >
-                        {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
-                      </Button>
-                    ))}
-                  </div>
-                ),
-              }))}
-              selectable={features.bulkActionsEnabled}
-              selectedIds={bulkSelect.selected}
-              onSelectRow={bulkSelect.toggle}
-              onSelectAll={bulkSelect.toggleAll}
-              onRowClick={detailPanel.enabled ? row => { const inv = invoices.find(i => i.id === row.id); if (inv) void selectInvoice(inv); } : undefined}
-              emptyText="Рахунків не знайдено"
-            />
-          )}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-9 pr-0">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      ref={selectAllRef}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-3.5 w-3.5 rounded border-border"
+                      aria-label="Вибрати всі"
+                    />
+                  </TableHead>
+                )}
+                {visibleColumns.map(col => (
+                  col.key === 'amount'
+                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
+                    : <TableHead key={col.key}>{col.label}</TableHead>
+                ))}
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && invoices.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                    <EmptyState icon={Receipt} title="Рахунків не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && invoices.map(inv => (
+                <TableRow
+                  key={inv.id}
+                  onClick={() => { if (detailPanel.enabled) selectInvoice(inv); }}
+                  className={cn(
+                    detailPanel.enabled && 'cursor-pointer',
+                    'transition-colors',
+                    selectedInv?.id === inv.id && 'bg-primary/5',
+                    bulkSelect.isSelected(inv.id) && 'bg-primary/5',
+                  )}
+                >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(inv.id)}
+                        onChange={() => bulkSelect.toggle(inv.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={`Вибрати рахунок ${inv.number}`}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleColumns.map(col => {
+                    if (col.key === 'number') return <TableCell key="number" className="font-medium text-[13px]">{inv.number}</TableCell>;
+                    if (col.key === 'counterparty') return <TableCell key="counterparty" className="text-[13px]">{inv.counterpartyName ?? '—'}</TableCell>;
+                    if (col.key === 'workOrder') return <TableCell key="workOrder" className="text-[13px] text-muted-foreground">{inv.workOrderNumber ?? '—'}</TableCell>;
+                    if (col.key === 'status') return (
+                      <TableCell key="status">
+                        <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>{STATUS_LABELS[inv.status]}</Badge>
+                      </TableCell>
+                    );
+                    if (col.key === 'amount') return <TableCell key="amount" className="text-right font-semibold text-[13px]">{fmt(inv.amount)}</TableCell>;
+                    if (col.key === 'dueDate') return <TableCell key="dueDate" className="text-[13px] text-muted-foreground">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('uk-UA') : '—'}</TableCell>;
+                    return null;
+                  })}
+                  <TableCell>
+                    <div
+                      className="flex gap-1.5 justify-end"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {STATUS_TRANSITIONS[inv.status]?.map(s => (
+                        <Button
+                          key={s}
+                          variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s)}
+                          loading={savingId === inv.id}
+                        >
+                          {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
+                        </Button>
+                      ))}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
         <DetailPanel

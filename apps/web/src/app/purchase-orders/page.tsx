@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Plus, Search, Eye, EyeOff } from 'lucide-react';
+import { Plus, ShoppingCart, Search, Eye, EyeOff } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -16,11 +16,14 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
-import { DataTable, type DataTableColumn } from '@/components/ui/table';
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/components/ui/table';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
@@ -126,6 +129,11 @@ export default function PurchaseOrdersPage() {
 
   // Bulk select
   const bulkSelect = useBulkSelect(orders);
+
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
 
   // Unsaved guard for create/receive modals
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -463,35 +471,85 @@ export default function PurchaseOrdersPage() {
 
       {/* Table + DetailPanel */}
       <div className="flex gap-0">
-        <div className="flex-1 min-w-0">
-          {loading && <div className="flex justify-center py-12"><Spinner size="md" /></div>}
-          {!loading && (
-            <DataTable
-              columns={[
-                ...visibleColumns.map((col): DataTableColumn => ({
-                  key: col.key,
-                  label: col.label,
-                  align: col.key === 'amount' ? 'right' : 'left',
-                })),
-                { key: 'actions', label: '' },
-              ]}
-              rows={orders.map(po => ({
-                id: po.id,
-                number: (
-                  <span className={cn('font-medium text-[13px]', po.deletedAt && 'opacity-60')}>
-                    {po.number}
-                    {po.deletedAt && (
-                      <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
-                    )}
-                  </span>
-                ),
-                supplier: <span className="text-[13px]">{po.supplierName ?? '—'}</span>,
-                warehouse: <span className="text-[13px] text-muted-foreground">{po.warehouseName ?? '—'}</span>,
-                status: <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>{STATUS_LABELS[po.status]}</Badge>,
-                amount: <span className="font-semibold text-[13px]">{po.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</span>,
-                date: <span className="text-[13px] text-muted-foreground">{new Date(po.createdAt).toLocaleDateString('uk-UA')}</span>,
-                actions: (
-                  <div>
+        <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-9 pr-0">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      ref={selectAllRef}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-3.5 w-3.5 rounded border-border"
+                      aria-label="Вибрати всі"
+                    />
+                  </TableHead>
+                )}
+                {visibleColumns.map(col => (
+                  col.key === 'amount'
+                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
+                    : <TableHead key={col.key}>{col.label}</TableHead>
+                ))}
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && orders.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                    <EmptyState icon={ShoppingCart} title="Замовлень не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && orders.map(po => (
+                <TableRow
+                  key={po.id}
+                  className={cn(
+                    detailPanel.enabled && 'cursor-pointer',
+                    'transition-colors',
+                    selectedPO?.id === po.id && 'bg-secondary',
+                    bulkSelect.isSelected(po.id) && 'bg-primary/5',
+                    po.deletedAt && 'opacity-60',
+                  )}
+                  onClick={() => { if (detailPanel.enabled) setSelectedPO(prev => prev?.id === po.id ? null : po); }}
+                >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(po.id)}
+                        onChange={() => bulkSelect.toggle(po.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={`Вибрати замовлення ${po.number}`}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleColumns.map(col => {
+                    if (col.key === 'number') return (
+                      <TableCell key="number" className="font-medium text-[13px]">
+                        {po.number}
+                        {po.deletedAt && (
+                          <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">видалено</Badge>
+                        )}
+                      </TableCell>
+                    );
+                    if (col.key === 'supplier') return <TableCell key="supplier" className="text-[13px]">{po.supplierName ?? '—'}</TableCell>;
+                    if (col.key === 'warehouse') return <TableCell key="warehouse" className="text-[13px] text-muted-foreground">{po.warehouseName ?? '—'}</TableCell>;
+                    if (col.key === 'status') return <TableCell key="status"><Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>{STATUS_LABELS[po.status]}</Badge></TableCell>;
+                    if (col.key === 'amount') return <TableCell key="amount" className="text-right font-semibold text-[13px]">{po.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</TableCell>;
+                    if (col.key === 'date') return <TableCell key="date" className="text-[13px] text-muted-foreground">{new Date(po.createdAt).toLocaleDateString('uk-UA')}</TableCell>;
+                    return null;
+                  })}
+                  <TableCell>
                     <div className="flex items-center gap-1 flex-wrap">
                       <Button
                         type="button"
@@ -543,17 +601,11 @@ export default function PurchaseOrdersPage() {
                         )}
                       </div>
                     )}
-                  </div>
-                ),
-              }))}
-              selectable={features.bulkActionsEnabled}
-              selectedIds={bulkSelect.selected}
-              onSelectRow={bulkSelect.toggle}
-              onSelectAll={bulkSelect.toggleAll}
-              onRowClick={row => { if (detailPanel.enabled) setSelectedPO(prev => prev?.id === row.id ? null : orders.find(o => o.id === row.id) ?? null); }}
-              emptyText="Замовлень не знайдено"
-            />
-          )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
         {/* Detail panel */}

@@ -14,7 +14,7 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import {
-  DataTable, type DataTableColumn,
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { cn, daysUntil } from '@/lib/utils';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -229,108 +229,99 @@ export default function InfrastructurePage() {
       {/* BRANCHES */}
       {!loading && tab === 'branches' && (
         <Section title="Філії" onAdd={() => openModal('branch', { name: '', address: '' })}>
-          <DataTable
-            columns={[
-              { key: 'name', label: 'Назва' },
-              { key: 'address', label: 'Адреса' },
-              { key: 'timezone', label: 'Часовий пояс' },
-              { key: 'actions', label: '' },
-            ] satisfies DataTableColumn[]}
-            rows={branches.map(b => ({
-              id: b.id,
-              name: <span className="font-medium text-foreground">{b.name}</span>,
-              address: <span className="text-muted-foreground">{b.address}</span>,
-              timezone: <span className="text-muted-foreground">{b.timezone}</span>,
-              actions: (
-                <div className="flex items-center justify-end gap-1">
-                  <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditModal('branch', b.id, { name: b.name, address: b.address }); }} className="text-muted-foreground hover:text-foreground">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); void remove('/branches', b.id); }} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ),
-            }))}
-            emptyText="Немає філій"
-          />
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Назва</TableHead>
+                  <TableHead>Адреса</TableHead>
+                  <TableHead>Часовий пояс</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {branches.map(b => (
+                  <TableRow key={b.id}>
+                    <TableCell className="font-medium text-foreground">{b.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{b.address}</TableCell>
+                    <TableCell className="text-muted-foreground">{b.timezone}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal('branch', b.id, { name: b.name, address: b.address })} className="text-muted-foreground hover:text-foreground">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => remove('/branches', b.id)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </Section>
       )}
 
       {/* ZONES */}
       {!loading && tab === 'zones' && (
         <Section title="Зони" onAdd={() => openModal('zone', { branchId: branches[0]?.id ?? '', name: '', type: 'MECHANICAL' })}>
-          <DataTable
-            columns={[
-              { key: 'name', label: 'Назва' },
-              { key: 'type', label: 'Тип' },
-              { key: 'branch', label: 'Філія' },
-              { key: 'actions', label: '' },
-            ] satisfies DataTableColumn[]}
-            rows={zones.map(z => ({
-              id: z.id,
-              name: <span className="font-medium text-foreground">{z.name}</span>,
-              type: <span className="text-muted-foreground">{ZONE_TYPE_LABELS[z.type] ?? z.type}</span>,
-              branch: <span className="text-muted-foreground">{branches.find(b => b.id === z.branchId)?.name ?? '—'}</span>,
-              actions: (
-                <div className="flex items-center justify-end gap-1">
-                  <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditModal('zone', z.id, { branchId: z.branchId, name: z.name, type: z.type }); }} className="text-muted-foreground hover:text-foreground">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); void remove('/zones', z.id); }} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ),
-            }))}
-            emptyText="Немає зон"
-          />
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Назва</TableHead>
+                  <TableHead>Тип</TableHead>
+                  <TableHead>Філія</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {zones.map(z => (
+                  <TableRow key={z.id}>
+                    <TableCell className="font-medium text-foreground">{z.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{ZONE_TYPE_LABELS[z.type] ?? z.type}</TableCell>
+                    <TableCell className="text-muted-foreground">{branches.find(b => b.id === z.branchId)?.name ?? '—'}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal('zone', z.id, { branchId: z.branchId, name: z.name, type: z.type })} className="text-muted-foreground hover:text-foreground">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => remove('/zones', z.id)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </Section>
       )}
 
       {/* LIFTS */}
       {!loading && tab === 'lifts' && (
         <Section title="Пости" onAdd={() => openModal('lift', { zoneId: zones[0]?.id ?? '', name: '', type: 'TWO_POST', maxWeightKg: '', status: 'ACTIVE', serialNumber: '', purchaseDate: '', warrantyUntil: '', maintenanceIntervalDays: '', lastMaintenanceDate: '' })}>
-          <DataTable
-            columns={[
-              { key: 'name', label: 'Назва' },
-              { key: 'type', label: 'Тип' },
-              { key: 'status', label: 'Статус' },
-              { key: 'maxWeight', label: 'Вантажність, кг' },
-              { key: 'zone', label: 'Зона' },
-              { key: 'actions', label: '' },
-            ] satisfies DataTableColumn[]}
-            rows={lifts.map(l => {
-              const zoneName = zones.find(z => z.id === l.zoneId)?.name ?? '—';
-              const nextSoon = isWithin14Days(l.nextMaintenanceDate, nowMs);
-              const hasDetail = l.nextMaintenanceDate ?? l.lastMaintenanceDate;
-              return {
-                id: l.id,
-                name: (
-                  <div>
-                    <span className="font-medium text-foreground">{l.name}</span>
-                    {hasDetail && (
-                      <div className="mt-1 flex flex-wrap gap-x-6 gap-y-0.5 text-[12px]">
-                        {l.lastMaintenanceDate && (
-                          <span className="text-muted-foreground">Останнє ТО: <span className="text-foreground">{formatDate(l.lastMaintenanceDate)}</span></span>
-                        )}
-                        {l.nextMaintenanceDate && (
-                          <span className={cn(nextSoon ? 'text-warning font-medium' : 'text-muted-foreground')}>
-                            Наступне ТО: <span className={cn('font-medium', nextSoon ? 'text-warning' : 'text-foreground')}>{formatDate(l.nextMaintenanceDate)}</span>
-                            {nextSoon && <span className="ml-1 text-[11px]">(незабаром)</span>}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ),
-                type: <span className="text-muted-foreground">{LIFT_TYPE_LABELS[l.type] ?? l.type}</span>,
-                status: <Badge variant={LIFT_STATUS_BADGE[l.status] ?? 'secondary'} dot>{LIFT_STATUS_LABELS[l.status] ?? l.status}</Badge>,
-                maxWeight: <span className="text-muted-foreground">{l.maxWeightKg ?? '—'}</span>,
-                zone: <span className="text-muted-foreground">{zoneName}</span>,
-                actions: (
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditModal('lift', l.id, {
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Назва</TableHead>
+                  <TableHead>Тип</TableHead>
+                  <TableHead>Статус</TableHead>
+                  <TableHead>Вантажність, кг</TableHead>
+                  <TableHead>Зона</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lifts.map(l => (
+                  <LiftRow
+                    key={l.id}
+                    lift={l}
+                    zoneName={zones.find(z => z.id === l.zoneId)?.name ?? '—'}
+                    onEdit={() => openEditModal('lift', l.id, {
                       zoneId: l.zoneId, name: l.name, type: l.type,
                       maxWeightKg: l.maxWeightKg != null ? String(l.maxWeightKg) : '',
                       status: l.status,
@@ -339,69 +330,70 @@ export default function InfrastructurePage() {
                       warrantyUntil: l.warrantyUntil ? l.warrantyUntil.slice(0, 10) : '',
                       maintenanceIntervalDays: l.maintenanceIntervalDays != null ? String(l.maintenanceIntervalDays) : '',
                       lastMaintenanceDate: l.lastMaintenanceDate ? l.lastMaintenanceDate.slice(0, 10) : '',
-                    }); }} className="text-muted-foreground hover:text-foreground">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); void remove('/lifts', l.id); }} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ),
-              };
-            })}
-            emptyText="Немає постів"
-          />
+                    })}
+                    onRemove={() => remove('/lifts', l.id)}
+                    nowMs={nowMs}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </Section>
       )}
 
       {/* WAREHOUSES */}
       {!loading && tab === 'warehouses' && (
         <Section title="Склади" onAdd={() => openModal('warehouse', { branchId: branches[0]?.id ?? '', name: '', type: 'MAIN' })}>
-          <DataTable
-            columns={[
-              { key: 'name', label: 'Назва' },
-              { key: 'type', label: 'Тип' },
-              { key: 'branch', label: 'Філія' },
-              { key: 'isMain', label: 'Основний' },
-              { key: 'actions', label: '' },
-            ] satisfies DataTableColumn[]}
-            rows={warehouses.map(w => ({
-              id: w.id,
-              name: <span className="font-medium text-foreground">{w.name}</span>,
-              type: <span className="text-muted-foreground">{WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}</span>,
-              branch: <span className="text-muted-foreground">{branches.find(b => b.id === w.branchId)?.name ?? '—'}</span>,
-              isMain: (
-                <button
-                  type="button"
-                  title={w.isMain ? 'Основний склад' : 'Зробити основним'}
-                  onClick={async e => {
-                    e.stopPropagation();
-                    if (w.isMain) return;
-                    setSaving(true); setError('');
-                    try {
-                      await apiFetch(`/warehouses/${w.id}`, { method: 'PATCH', body: JSON.stringify({ isMain: true }) });
-                      loadAll();
-                    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Помилка'); }
-                    finally { setSaving(false); }
-                  }}
-                  className={cn('w-4 h-4 rounded border-2 flex items-center justify-center', w.isMain ? 'bg-primary border-primary' : 'border-border hover:border-primary/60')}
-                >
-                  {w.isMain && <span className="block w-2 h-2 rounded-sm bg-white" />}
-                </button>
-              ),
-              actions: (
-                <div className="flex items-center justify-end gap-1">
-                  <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditModal('warehouse', w.id, { branchId: w.branchId, name: w.name, type: w.type, isMain: w.isMain ? 'true' : '' }); }} className="text-muted-foreground hover:text-foreground">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); void remove('/warehouses', w.id); }} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ),
-            }))}
-            emptyText="Немає складів"
-          />
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Назва</TableHead>
+                  <TableHead>Тип</TableHead>
+                  <TableHead>Філія</TableHead>
+                  <TableHead>Основний</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {warehouses.map(w => (
+                  <TableRow key={w.id}>
+                    <TableCell className="font-medium text-foreground">{w.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}</TableCell>
+                    <TableCell className="text-muted-foreground">{branches.find(b => b.id === w.branchId)?.name ?? '—'}</TableCell>
+                    <TableCell>
+                      <button
+                        type="button"
+                        title={w.isMain ? 'Основний склад' : 'Зробити основним'}
+                        onClick={async () => {
+                          if (w.isMain) return;
+                          setSaving(true); setError('');
+                          try {
+                            await apiFetch(`/warehouses/${w.id}`, { method: 'PATCH', body: JSON.stringify({ isMain: true }) });
+                            loadAll();
+                          } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Помилка'); }
+                          finally { setSaving(false); }
+                        }}
+                        className={cn('w-4 h-4 rounded border-2 flex items-center justify-center', w.isMain ? 'bg-primary border-primary' : 'border-border hover:border-primary/60')}
+                      >
+                        {w.isMain && <span className="block w-2 h-2 rounded-sm bg-white" />}
+                      </button>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal('warehouse', w.id, { branchId: w.branchId, name: w.name, type: w.type, isMain: w.isMain ? 'true' : '' })} className="text-muted-foreground hover:text-foreground">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => remove('/warehouses', w.id)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </Section>
       )}
 
@@ -543,6 +535,68 @@ function isWithin14Days(value: string | null | undefined, nowMs: number): boolea
   return diff !== null && diff >= 0 && diff <= 14;
 }
 
+function LiftRow({ lift, zoneName, onEdit, onRemove, nowMs }: { lift: Lift; zoneName: string; onEdit: () => void; onRemove: () => void; nowMs: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = lift.nextMaintenanceDate ?? lift.lastMaintenanceDate;
+  const nextSoon = isWithin14Days(lift.nextMaintenanceDate, nowMs);
+
+  return (
+    <>
+      <TableRow
+        className={cn(hasDetail && 'cursor-pointer select-none')}
+        onClick={hasDetail ? () => setExpanded(v => !v) : undefined}
+      >
+        <TableCell className="font-medium text-foreground">{lift.name}</TableCell>
+        <TableCell className="text-muted-foreground">{LIFT_TYPE_LABELS[lift.type] ?? lift.type}</TableCell>
+        <TableCell>
+          <Badge variant={LIFT_STATUS_BADGE[lift.status] ?? 'secondary'} dot>
+            {LIFT_STATUS_LABELS[lift.status] ?? lift.status}
+          </Badge>
+        </TableCell>
+        <TableCell className="text-muted-foreground">{lift.maxWeightKg ?? '—'}</TableCell>
+        <TableCell className="text-muted-foreground">{zoneName}</TableCell>
+        <TableCell className="text-right">
+          <div className="flex items-center justify-end gap-1">
+            <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); onEdit(); }} className="text-muted-foreground hover:text-foreground">
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={e => { e.stopPropagation(); onRemove(); }}
+              className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </TableCell>
+      </TableRow>
+      {expanded && hasDetail && (
+        <TableRow>
+          <TableCell colSpan={6} className="bg-surface-subtle px-6 py-3">
+            <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
+              {lift.lastMaintenanceDate && (
+                <span className="text-muted-foreground">
+                  Останнє ТО:{' '}
+                  <span className="text-foreground font-medium">{formatDate(lift.lastMaintenanceDate)}</span>
+                </span>
+              )}
+              {lift.nextMaintenanceDate && (
+                <span className={cn('text-muted-foreground', nextSoon && 'text-warning font-medium')}>
+                  Наступне ТО:{' '}
+                  <span className={cn('font-medium', nextSoon ? 'text-warning' : 'text-foreground')}>
+                    {formatDate(lift.nextMaintenanceDate)}
+                  </span>
+                  {nextSoon && <span className="ml-1 text-xs">(незабаром)</span>}
+                </span>
+              )}
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
 
 function Section({ title, onAdd, children }: { title: string; onAdd: () => void; children: ReactNode }) {
   return (

@@ -22,7 +22,7 @@ import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
-  DataTable, type DataTableColumn,
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
@@ -159,6 +159,10 @@ function WorksTab() {
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
   const bulkSelect = useBulkSelect(works?.items ?? []);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
 
   // loadRef allows bulkDelete (defined before load) to call the latest load()
   const worksLoadRef = useRef<(() => void) | null>(null);
@@ -340,49 +344,91 @@ function WorksTab() {
 
       <div className="flex gap-0">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
-          <DataTable
-            columns={[
-              ...worksVisibleColumns.map(col => ({ key: col.key, label: col.label }) satisfies DataTableColumn),
-              { key: 'actions', label: '' },
-            ]}
-            rows={loading ? [] : (works?.items ?? []).map(w => ({
-              id: w.id as string,
-              name: (
-                <>
-                  <p className="text-[13px] font-medium text-foreground">{w.name}</p>
-                  {w.isWarranty && <span className="text-[11px] text-success">Гарантійна</span>}
-                  {w.description && <p className="text-[12px] text-muted-foreground mt-0.5">{w.description}</p>}
-                </>
-              ),
-              category: <span className="text-[13px] text-muted-foreground">{w.categoryName}</span>,
-              normo: <span className="text-[13px]">{w.normoHours}</span>,
-              price: <span className="font-medium text-[13px]">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</span>,
-              actions: (
-                <div className="flex items-center justify-end gap-1">
-                  <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditWork(w); }}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={e => { e.stopPropagation(); remove(w.id); }}
-                    disabled={deletingId === w.id}
-                    loading={deletingId === w.id}
-                    className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ),
-            }))}
-            onRowClick={row => { if (detailPanel.enabled) setSelectedWork(prev => prev?.id === row.id ? null : (works?.items.find(w => w.id === row.id) ?? null)); }}
-            selectable={features.bulkActionsEnabled}
-            selectedIds={bulkSelect.selected}
-            onSelectRow={id => bulkSelect.toggle(id)}
-            onSelectAll={bulkSelect.toggleAll}
-            emptyText="Нічого не знайдено"
-          />
-          {loading && <div className="flex justify-center py-10"><Spinner size="md" /></div>}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-10">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-4 w-4 accent-primary"
+                      aria-label="Обрати всі"
+                    />
+                  </TableHead>
+                )}
+                {worksVisibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={worksVisibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && works?.items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={worksVisibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                    <EmptyState icon={BookOpen} title="Нічого не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && works?.items.map(w => (
+                <TableRow
+                  key={w.id}
+                  className={`cursor-pointer ${selectedWork?.id === w.id ? 'bg-secondary' : ''}`}
+                  onClick={() => { if (detailPanel.enabled) setSelectedWork(prev => prev?.id === w.id ? null : w); }}
+                >
+                  {features.bulkActionsEnabled && (
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(w.id)}
+                        onChange={() => bulkSelect.toggle(w.id)}
+                        className="h-4 w-4 accent-primary"
+                        aria-label={`Обрати ${w.name}`}
+                      />
+                    </TableCell>
+                  )}
+                  {worksVisibleColumns.map(col => {
+                    if (col.key === 'name') return (
+                      <TableCell key="name">
+                        <p className="text-[13px] font-medium text-foreground">{w.name}</p>
+                        {w.isWarranty && <span className="text-[11px] text-success">Гарантійна</span>}
+                        {w.description && <p className="text-[12px] text-muted-foreground mt-0.5">{w.description}</p>}
+                      </TableCell>
+                    );
+                    if (col.key === 'category') return <TableCell key="category" className="text-[13px] text-muted-foreground">{w.categoryName}</TableCell>;
+                    if (col.key === 'normo') return <TableCell key="normo" className="text-[13px]">{w.normoHours}</TableCell>;
+                    if (col.key === 'price') return <TableCell key="price" className="font-medium text-[13px]">{w.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</TableCell>;
+                    return null;
+                  })}
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditWork(w); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={e => { e.stopPropagation(); remove(w.id); }}
+                        disabled={deletingId === w.id}
+                        loading={deletingId === w.id}
+                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
         {(() => {
@@ -620,6 +666,10 @@ function GoodsTab() {
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
   const bulkSelect = useBulkSelect(goods?.items ?? []);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
 
   const goodsLoadRef = useRef<(() => void) | null>(null);
 
@@ -887,52 +937,96 @@ function GoodsTab() {
 
       <div className="flex gap-0">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
-          <DataTable
-            columns={[
-              ...goodsVisibleColumns.map(col => ({ key: col.key, label: col.label }) satisfies DataTableColumn),
-              { key: 'goodType', label: 'Тип' },
-              { key: 'actions', label: '' },
-            ]}
-            rows={loading ? [] : (goods?.items ?? []).map(g => ({
-              id: g.id as string,
-              name: (
-                <>
-                  <p className="font-medium">{g.name}</p>
-                  {g.sku && <p className="text-muted-foreground text-[12px]">{g.sku}</p>}
-                </>
-              ),
-              category: <span className="text-[13px] text-muted-foreground">{g.category ?? '—'}</span>,
-              unit: <span className="text-[13px] text-muted-foreground">{g.unit}</span>,
-              purchase: <span className="text-[13px]">{g.purchasePrice != null ? `${g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : '—'}</span>,
-              sale: <span className="font-medium text-[13px]">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</span>,
-              goodType: g.goodType
-                ? <Badge variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}>{GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}</Badge>
-                : <span className="text-muted-foreground">—</span>,
-              actions: (
-                <div className="flex items-center justify-end gap-1">
-                  <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditGood(g); }}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={e => { e.stopPropagation(); setConfirmDeleteId(g.id); }}
-                    className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                    title="Помітити на видалення"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ),
-            }))}
-            onRowClick={row => { if (detailPanel.enabled) selectGood(selectedGood?.id === row.id ? null : (goods?.items.find(g => g.id === row.id) ?? null)); }}
-            selectable={features.bulkActionsEnabled}
-            selectedIds={bulkSelect.selected}
-            onSelectRow={id => bulkSelect.toggle(id)}
-            onSelectAll={bulkSelect.toggleAll}
-            emptyText="Нічого не знайдено"
-          />
-          {loading && <div className="flex justify-center py-10"><Spinner size="md" /></div>}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-10">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-4 w-4 accent-primary"
+                      aria-label="Обрати всі"
+                    />
+                  </TableHead>
+                )}
+                {goodsVisibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+                <TableHead>Тип</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && goods?.items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)} className="p-0">
+                    <EmptyState icon={Package} title="Нічого не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && goods?.items.map(g => (
+                <TableRow
+                  key={g.id}
+                  className={`cursor-pointer ${selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
+                  onClick={() => { if (detailPanel.enabled) selectGood(selectedGood?.id === g.id ? null : g); }}
+                >
+                  {features.bulkActionsEnabled && (
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(g.id)}
+                        onChange={() => bulkSelect.toggle(g.id)}
+                        className="h-4 w-4 accent-primary"
+                        aria-label={`Обрати ${g.name}`}
+                      />
+                    </TableCell>
+                  )}
+                  {goodsVisibleColumns.map(col => {
+                    if (col.key === 'name') return (
+                      <TableCell key="name">
+                        <p className="font-medium">{g.name}</p>
+                        {g.sku && <p className="text-muted-foreground text-[12px]">{g.sku}</p>}
+                      </TableCell>
+                    );
+                    if (col.key === 'category') return <TableCell key="category" className="text-[13px] text-muted-foreground">{g.category ?? '—'}</TableCell>;
+                    if (col.key === 'unit') return <TableCell key="unit" className="text-[13px] text-muted-foreground">{g.unit}</TableCell>;
+                    if (col.key === 'purchase') return <TableCell key="purchase" className="text-[13px]">{g.purchasePrice != null ? `${g.purchasePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : '—'}</TableCell>;
+                    if (col.key === 'sale') return <TableCell key="sale" className="font-medium text-[13px]">{g.salePrice.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴</TableCell>;
+                    return null;
+                  })}
+                  <TableCell>
+                    {g.goodType
+                      ? <Badge variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}>{GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}</Badge>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEditGood(g); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(g.id); }}
+                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        title="Помітити на видалення"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
         <DetailPanel
@@ -1574,6 +1668,10 @@ function ServicesTab() {
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
   const bulkSelect = useBulkSelect(services?.items ?? []);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+  }, [bulkSelect.someSelected]);
 
   const servicesLoadRef = useRef<(() => void) | null>(null);
 
@@ -1716,60 +1814,102 @@ function ServicesTab() {
 
       <div className="flex gap-0">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
-          <DataTable
-            columns={[
-              ...servicesVisibleColumns.map(col => ({ key: col.key, label: col.label }) satisfies DataTableColumn),
-              { key: 'works', label: 'Роботи' },
-              { key: 'goods', label: 'Товари' },
-              { key: 'actions', label: '' },
-            ]}
-            rows={loading ? [] : (services?.items ?? []).map(s => ({
-              id: s.id as string,
-              name: (
-                <>
-                  <p className="text-[13px] font-medium">{s.name}</p>
-                  {s.description && <p className="text-[12px] text-muted-foreground">{s.description}</p>}
-                </>
-              ),
-              price: (
-                <span className="font-medium text-foreground">
-                  {s.price != null ? `${s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : 'авто'}
-                </span>
-              ),
-              works: <span className="text-muted-foreground">{s.works.length > 0 ? s.works.map(w => w.workName).join(', ') : '—'}</span>,
-              goods: <span className="text-muted-foreground">{s.goods.length > 0 ? s.goods.map(g => g.goodName).join(', ') : '—'}</span>,
-              actions: (
-                <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    title="Редагувати"
-                    onClick={() => openEdit(s)}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                    title="Видалити"
-                    onClick={() => remove(s.id)}
-                    disabled={deletingId === s.id}
-                    loading={deletingId === s.id}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ),
-            }))}
-            onRowClick={row => { if (detailPanel.enabled) setSelectedService(prev => prev?.id === row.id ? null : (services?.items.find(s => s.id === row.id) ?? null)); }}
-            selectable={features.bulkActionsEnabled}
-            selectedIds={bulkSelect.selected}
-            onSelectRow={id => bulkSelect.toggle(id)}
-            onSelectAll={bulkSelect.toggleAll}
-            emptyText="Нічого не знайдено"
-          />
-          {loading && <div className="flex justify-center py-10"><Spinner size="md" /></div>}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-10">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-4 w-4 accent-primary"
+                      aria-label="Обрати всі"
+                    />
+                  </TableHead>
+                )}
+                {servicesVisibleColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+                <TableHead>Роботи</TableHead>
+                <TableHead>Товари</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={servicesVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)} className="py-10 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && services?.items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={servicesVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)} className="p-0">
+                    <EmptyState icon={Layers} title="Нічого не знайдено" />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && services?.items.map(s => (
+                <TableRow
+                  key={s.id}
+                  className={`cursor-pointer ${selectedService?.id === s.id ? 'bg-secondary' : ''}`}
+                  onClick={() => { if (detailPanel.enabled) setSelectedService(prev => prev?.id === s.id ? null : s); }}
+                >
+                  {features.bulkActionsEnabled && (
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(s.id)}
+                        onChange={() => bulkSelect.toggle(s.id)}
+                        className="h-4 w-4 accent-primary"
+                        aria-label={`Обрати ${s.name}`}
+                      />
+                    </TableCell>
+                  )}
+                  {servicesVisibleColumns.map(col => {
+                    if (col.key === 'name') return (
+                      <TableCell key="name">
+                        <p className="text-[13px] font-medium">{s.name}</p>
+                        {s.description && <p className="text-[12px] text-muted-foreground">{s.description}</p>}
+                      </TableCell>
+                    );
+                    if (col.key === 'price') return (
+                      <TableCell key="price" className="font-medium text-foreground">
+                        {s.price != null ? `${s.price.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴` : 'авто'}
+                      </TableCell>
+                    );
+                    return null;
+                  })}
+                  <TableCell className="text-muted-foreground">{s.works.length > 0 ? s.works.map(w => w.workName).join(', ') : '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.goods.length > 0 ? s.goods.map(g => g.goodName).join(', ') : '—'}</TableCell>
+                  <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Редагувати"
+                        onClick={() => openEdit(s)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        title="Видалити"
+                        onClick={() => remove(s.id)}
+                        disabled={deletingId === s.id}
+                        loading={deletingId === s.id}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
         {(() => {
@@ -1928,34 +2068,55 @@ function UnitsTab() {
       </div>
 
       <div className="border border-border rounded-xl bg-surface overflow-auto">
-        <DataTable
-          columns={[
-            { key: 'shortName', label: 'Скорочення' },
-            { key: 'name', label: 'Назва' },
-            { key: 'unitType', label: 'Тип' },
-            { key: 'actions', label: '' },
-          ]}
-          rows={loading ? [] : units.map(u => ({
-            id: u.id as string,
-            shortName: <span className="font-medium text-foreground">{u.shortName}</span>,
-            name: <span className="text-muted-foreground">{u.name}</span>,
-            unitType: u.isSystem
-              ? <span className="text-[11px] px-1.5 py-0.5 bg-info-subtle text-info rounded">системна</span>
-              : <span className="text-[11px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">власна</span>,
-            actions: !u.isSystem ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => remove(u.id)}
-                className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            ) : null,
-          }))}
-          emptyText="Одиниці відсутні"
-        />
-        {loading && <div className="flex justify-center py-10"><Spinner size="md" /></div>}
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Скорочення</TableHead>
+              <TableHead>Назва</TableHead>
+              <TableHead>Тип</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading && (
+              <TableRow>
+                <TableCell colSpan={4} className="py-10 text-center">
+                  <div className="flex justify-center"><Spinner size="md" /></div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && units.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={4} className="p-0">
+                  <EmptyState icon={Ruler} title="Одиниці відсутні" />
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && units.map(u => (
+              <TableRow key={u.id}>
+                <TableCell className="font-medium text-foreground">{u.shortName}</TableCell>
+                <TableCell className="text-muted-foreground">{u.name}</TableCell>
+                <TableCell>
+                  {u.isSystem
+                    ? <span className="text-[11px] px-1.5 py-0.5 bg-info-subtle text-info rounded">системна</span>
+                    : <span className="text-[11px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">власна</span>}
+                </TableCell>
+                <TableCell className="text-right">
+                  {!u.isSystem && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(u.id)}
+                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
 
       <Modal open={modal} onClose={() => setModal(false)} title="Нова одиниця виміру"
@@ -2071,34 +2232,51 @@ function BrandsTab() {
       </div>
 
       <div className="border border-border rounded-xl bg-surface overflow-auto">
-        <DataTable
-          columns={[
-            { key: 'name', label: 'Назва бренду' },
-            { key: 'actions', label: '', align: 'right' },
-          ]}
-          rows={loading ? [] : brands.map(b => ({
-            id: b.id as string,
-            name: <span className="font-medium text-foreground">{b.name}</span>,
-            actions: (
-              <div className="flex items-center justify-end gap-1">
-                <Button variant="ghost" size="sm" onClick={() => openEdit(b)}>
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  loading={deletingId === b.id}
-                  onClick={() => remove(b.id)}
-                  className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ),
-          }))}
-          emptyText="Бренди відсутні"
-        />
-        {loading && <div className="flex justify-center py-10"><Spinner size="md" /></div>}
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Назва бренду</TableHead>
+              <TableHead className="text-right">Дії</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading && (
+              <TableRow>
+                <TableCell colSpan={2} className="py-10 text-center">
+                  <div className="flex justify-center"><Spinner size="md" /></div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && brands.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={2} className="p-0">
+                  <EmptyState icon={Tag} title="Бренди відсутні" description="Додайте перший бренд" />
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && brands.map(b => (
+              <TableRow key={b.id}>
+                <TableCell className="font-medium text-foreground">{b.name}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => openEdit(b)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      loading={deletingId === b.id}
+                      onClick={() => remove(b.id)}
+                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
 
       <Modal

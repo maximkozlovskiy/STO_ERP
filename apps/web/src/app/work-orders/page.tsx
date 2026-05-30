@@ -17,7 +17,7 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
-  DataTable, type DataTableColumn,
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
 import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
@@ -510,128 +510,191 @@ export default function WorkOrdersPage() {
       {/* Table + DetailPanel */}
       <div className="flex gap-0 rounded-xl border border-border overflow-hidden">
         <div className="flex-1 min-w-0 overflow-auto border-r border-border">
-          {loading && (
-            <div className="flex justify-center py-12"><Spinner size="md" /></div>
-          )}
-          {!loading && data?.items.length === 0 && (
-            <EmptyState
-              icon={ClipboardList}
-              title="Нарядів не знайдено"
-              description={statusFilter ? 'Спробуйте змінити фільтр статусу' : 'Створіть перший наряд, натиснувши кнопку вище'}
-              size="sm"
-            />
-          )}
-          {!loading && data && (
-            <DataTable
-              columns={visibleColumns.map(col => ({
-                key: col.key,
-                label: col.label,
-                align: col.key === 'amount' ? 'right' as const : 'left' as const,
-              }))}
-              rows={data.items.map(wo => ({
-                id: wo.id as string,
-                number: (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
-                      {wo.hasActiveWarranty && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20">
-                          Гарантія
-                        </span>
-                      )}
-                    </div>
-                    {wo.repairCategory && (
-                      <p className="text-[11px] text-muted-foreground">
-                        {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
-                      </p>
-                    )}
-                  </div>
-                ),
-                client: (
-                  <>
-                    <p className="text-[13px] font-medium text-foreground">{wo.counterpartyName ?? '—'}</p>
-                    <p className="text-[12px] text-muted-foreground mt-0.5">{wo.vehicleSummary ?? '—'}</p>
-                  </>
-                ),
-                status: <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>{STATUS_LABELS[wo.status] ?? wo.status}</Badge>,
-                priority: inlineEdit.isEditing(wo.id, 'priority') ? (
-                  <select
-                    defaultValue={inlineEdit.editing?.value ?? wo.priority}
-                    onChange={e => { void inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
-                    onBlur={() => inlineEdit.cancelEdit()}
-                    onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancelEdit(); }}
-                    disabled={inlineEdit.saving}
-                    autoFocus
-                    className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
-                  >
-                    {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
-                      <option key={v} value={v}>{l}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <InlineViewCell
-                    value={wo.priority}
-                    enabled={features.inlineEditEnabled}
-                    onClick={() => inlineEdit.startEdit(wo.id, 'priority', wo.priority)}
-                  >
-                    <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
-                      {PRIORITY_LABELS[wo.priority] ?? wo.priority}
-                    </Badge>
-                  </InlineViewCell>
-                ),
-                amount: <span className="font-medium text-foreground tabular-nums">{wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}</span>,
-                plannedAt: (
-                  <span className="text-muted-foreground text-[12px]">
-                    {wo.plannedAt
-                      ? new Date(wo.plannedAt).toLocaleString('uk-UA', {
-                          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                        })
-                      : '—'}
-                  </span>
-                ),
-                dueDate: inlineEdit.isEditing(wo.id, 'dueDate') ? (
-                  <InlineEditCell
-                    value={wo.dueDate ? wo.dueDate.slice(0, 10) : ''}
-                    saving={inlineEdit.saving}
-                    onCommit={v => { void inlineEdit.commitEdit(v).catch(() => {}); }}
-                    onCancel={inlineEdit.cancelEdit}
-                    type="date"
-                    className="w-36"
-                  />
-                ) : (
-                  <InlineViewCell
-                    value={wo.dueDate ?? ''}
-                    enabled={features.inlineEditEnabled}
-                    onClick={() => inlineEdit.startEdit(wo.id, 'dueDate', wo.dueDate ? wo.dueDate.slice(0, 10) : '')}
-                  >
-                    {wo.dueDate ? (
-                      <span className={cn(
-                        'font-medium',
-                        isOverdue(wo.dueDate, nowMs) ? 'text-warning' : 'text-muted-foreground',
-                      )}>
-                        {formatDate(wo.dueDate)}
-                      </span>
-                    ) : <span className="text-muted-foreground">—</span>}
-                  </InlineViewCell>
-                ),
-                actions: (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => router.push(`/work-orders/${wo.id}`)}
-                  >
-                    Відкрити →
-                  </Button>
-                ),
-              }))}
-              onRowClick={wo => setSelectedWO(wo as unknown as WorkOrder)}
-              selectable={features.bulkActionsEnabled}
-              selectedIds={bulkSelect.selected}
-              onSelectRow={id => bulkSelect.toggle(id)}
-              onSelectAll={bulkSelect.toggleAll}
-              emptyText="Нарядів не знайдено"
-            />
-          )}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {features.bulkActionsEnabled && (
+                  <TableHead className="w-9 pr-0">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelect.allSelected}
+                      ref={selectAllRef}
+                      onChange={bulkSelect.toggleAll}
+                      className="h-3.5 w-3.5 rounded border-border"
+                      aria-label="Вибрати всі"
+                    />
+                  </TableHead>
+                )}
+                {visibleColumns.map(col => (
+                  col.key === 'amount'
+                    ? <TableHead key={col.key} className="text-right">{col.label}</TableHead>
+                    : <TableHead key={col.key}>{col.label}</TableHead>
+                ))}
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="py-12 text-center">
+                    <div className="flex justify-center"><Spinner size="md" /></div>
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {!loading && data?.items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)} className="p-0">
+                    <EmptyState
+                      icon={ClipboardList}
+                      title="Нарядів не знайдено"
+                      description={statusFilter ? 'Спробуйте змінити фільтр статусу' : 'Створіть перший наряд, натиснувши кнопку вище'}
+                      size="sm"
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {!loading && data?.items.map(wo => (
+                <TableRow
+                  key={wo.id}
+                  onClick={() => setSelectedWO(wo)}
+                  className={cn(
+                    selectedWO?.id === wo.id && 'bg-primary/5',
+                    bulkSelect.isSelected(wo.id) && 'bg-primary/5',
+                  )}
+                >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(wo.id)}
+                        onChange={() => bulkSelect.toggle(wo.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={`Вибрати наряд ${wo.number}`}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleColumns.map(col => {
+                    if (col.key === 'number') return (
+                      <TableCell key="number">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[13px] font-semibold text-primary">{wo.number}</span>
+                            {wo.hasActiveWarranty && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20">
+                                Гарантія
+                              </span>
+                            )}
+                          </div>
+                          {wo.repairCategory && (
+                            <p className="text-[11px] text-muted-foreground">
+                              {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
+                            </p>
+                          )}
+                        </div>
+                      </TableCell>
+                    );
+                    if (col.key === 'client') return (
+                      <TableCell key="client">
+                        <p className="text-[13px] font-medium text-foreground">{wo.counterpartyName ?? '—'}</p>
+                        <p className="text-[12px] text-muted-foreground mt-0.5">{wo.vehicleSummary ?? '—'}</p>
+                      </TableCell>
+                    );
+                    if (col.key === 'status') return (
+                      <TableCell key="status">
+                        <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>
+                          {STATUS_LABELS[wo.status] ?? wo.status}
+                        </Badge>
+                      </TableCell>
+                    );
+                    if (col.key === 'priority') return (
+                      <TableCell key="priority" onClick={e => e.stopPropagation()}>
+                        {inlineEdit.isEditing(wo.id, 'priority') ? (
+                          <select
+                            defaultValue={inlineEdit.editing?.value ?? wo.priority}
+                            onChange={e => { void inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
+                            onBlur={() => inlineEdit.cancelEdit()}
+                            onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancelEdit(); }}
+                            disabled={inlineEdit.saving}
+                            autoFocus
+                            className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
+                          >
+                            {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
+                              <option key={v} value={v}>{l}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <InlineViewCell
+                            value={wo.priority}
+                            enabled={features.inlineEditEnabled}
+                            onClick={() => inlineEdit.startEdit(wo.id, 'priority', wo.priority)}
+                          >
+                            <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
+                              {PRIORITY_LABELS[wo.priority] ?? wo.priority}
+                            </Badge>
+                          </InlineViewCell>
+                        )}
+                      </TableCell>
+                    );
+                    if (col.key === 'amount') return (
+                      <TableCell key="amount" className="font-medium text-foreground tabular-nums text-right">
+                        {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                    );
+                    if (col.key === 'plannedAt') return (
+                      <TableCell key="plannedAt" className="text-muted-foreground text-[12px]">
+                        {wo.plannedAt
+                          ? new Date(wo.plannedAt).toLocaleString('uk-UA', {
+                              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                            })
+                          : '—'}
+                      </TableCell>
+                    );
+                    if (col.key === 'dueDate') return (
+                      <TableCell key="dueDate" className="text-[12px]" onClick={e => e.stopPropagation()}>
+                        {inlineEdit.isEditing(wo.id, 'dueDate') ? (
+                          <InlineEditCell
+                            value={wo.dueDate ? wo.dueDate.slice(0, 10) : ''}
+                            saving={inlineEdit.saving}
+                            onCommit={v => { void inlineEdit.commitEdit(v).catch(() => {}); }}
+                            onCancel={inlineEdit.cancelEdit}
+                            type="date"
+                            className="w-36"
+                          />
+                        ) : (
+                          <InlineViewCell
+                            value={wo.dueDate ?? ''}
+                            enabled={features.inlineEditEnabled}
+                            onClick={() => inlineEdit.startEdit(wo.id, 'dueDate', wo.dueDate ? wo.dueDate.slice(0, 10) : '')}
+                          >
+                            {wo.dueDate ? (
+                              <span className={cn(
+                                'font-medium',
+                                isOverdue(wo.dueDate, nowMs) ? 'text-warning' : 'text-muted-foreground',
+                              )}>
+                                {formatDate(wo.dueDate)}
+                              </span>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </InlineViewCell>
+                        )}
+                      </TableCell>
+                    );
+                    return null;
+                  })}
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={e => { e.stopPropagation(); router.push(`/work-orders/${wo.id}`); }}
+                    >
+                      Відкрити →
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
         <DetailPanel

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import {
-  DataTable, type DataTableColumn, type DataTableFooterCell,
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
@@ -192,27 +192,26 @@ export default function ReportsPage() {
             <StatCard label="Механіків" value={String(data.rows.length)} />
           </div>
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <DataTable
-              columns={[
-                { key: 'employeeName', label: 'Механік' },
-                { key: 'normoHours', label: 'Норм-год', align: 'right' },
-                { key: 'linesCount', label: 'Позицій', align: 'right' },
-                { key: 'amount', label: 'Сума', align: 'right' },
-              ] satisfies DataTableColumn[]}
-              rows={data.rows.map(r => ({
-                id: r.employeeId,
-                employeeName: <span className="font-medium text-foreground">{r.employeeName}</span>,
-                normoHours: fmtNum(r.totalNormoHours),
-                linesCount: <span className="text-muted-foreground">{r.linesCount}</span>,
-                amount: <span className="font-semibold">{fmt(r.totalAmount)}</span>,
-              }))}
-              footer={[
-                { key: 'employeeName', value: <span className="text-muted-foreground">Всього</span> },
-                { key: 'normoHours', value: fmtNum(data.totalNormoHours), align: 'right' },
-                { key: 'linesCount', value: '' },
-                { key: 'amount', value: <span className="font-semibold">{fmt(data.totalAmount)}</span>, align: 'right' },
-              ] satisfies DataTableFooterCell[]}
-            />
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Механік</TableHead>
+                  <TableHead className="text-right">Норм-год</TableHead>
+                  <TableHead className="text-right">Позицій</TableHead>
+                  <TableHead className="text-right">Сума</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.rows.map((r) => (
+                  <TableRow key={r.employeeId}>
+                    <TableCell className="font-medium text-foreground">{r.employeeName}</TableCell>
+                    <TableCell className="text-right">{fmtNum(r.totalNormoHours)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{r.linesCount}</TableCell>
+                    <TableCell className="text-right font-semibold">{fmt(r.totalAmount)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}
@@ -225,39 +224,33 @@ export default function ReportsPage() {
             <StatCard label="Загальна вартість" value={fmt(data.totalValue)} />
           </div>
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <DataTable
-              columns={[
-                { key: 'good', label: 'Товар' },
-                { key: 'warehouse', label: 'Склад' },
-                { key: 'quantity', label: 'Кількість', align: 'right' },
-                { key: 'available', label: 'Доступно', align: 'right' },
-                { key: 'value', label: 'Вартість', align: 'right' },
-              ] satisfies DataTableColumn[]}
-              rows={data.stockItems.map((item, idx) => ({
-                id: String(idx),
-                good: (
-                  <>
-                    <div className="font-medium text-foreground">{item.goodName}</div>
-                    <div className="text-xs text-foreground-faint font-mono">{item.goodSku ?? '—'}</div>
-                  </>
-                ),
-                warehouse: <span className="text-muted-foreground">{item.warehouseName}</span>,
-                quantity: `${fmtNum(item.quantity)} ${item.unit}`,
-                available: (
-                  <span className={cn('font-medium', item.available <= 0 ? 'text-destructive' : 'text-success')}>
-                    {fmtNum(item.available)}
-                  </span>
-                ),
-                value: fmt(item.value),
-              }))}
-              footer={[
-                { key: 'good', value: <span className="text-muted-foreground">Всього позицій: {data.stockItems.length}</span> },
-                { key: 'warehouse', value: '' },
-                { key: 'quantity', value: '' },
-                { key: 'available', value: '' },
-                { key: 'value', value: <span className="font-semibold">{fmt(data.totalValue)}</span>, align: 'right' },
-              ] satisfies DataTableFooterCell[]}
-            />
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Товар</TableHead>
+                  <TableHead>Склад</TableHead>
+                  <TableHead className="text-right">Кількість</TableHead>
+                  <TableHead className="text-right">Доступно</TableHead>
+                  <TableHead className="text-right">Вартість</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.stockItems.map((i, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>
+                      <div className="font-medium text-foreground">{i.goodName}</div>
+                      <div className="text-xs text-foreground-faint font-mono">{i.goodSku ?? '—'}</div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{i.warehouseName}</TableCell>
+                    <TableCell className="text-right">{fmtNum(i.quantity)} {i.unit}</TableCell>
+                    <TableCell className={cn('text-right font-medium', i.available <= 0 ? 'text-destructive' : 'text-success')}>
+                      {fmtNum(i.available)}
+                    </TableCell>
+                    <TableCell className="text-right">{fmt(i.value)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}
@@ -272,21 +265,24 @@ export default function ReportsPage() {
           <div className="grid grid-cols-2 gap-6">
             <SettlementsChart rows={data.rows} />
             <div className="bg-surface rounded-xl border border-border overflow-hidden">
-              <DataTable
-                columns={[
-                  { key: 'counterpartyName', label: 'Контрагент' },
-                  { key: 'balance', label: 'Баланс', align: 'right' },
-                ] satisfies DataTableColumn[]}
-                rows={data.rows.filter(r => r.balance !== 0).map(r => ({
-                  id: r.counterpartyId,
-                  counterpartyName: <span className="text-foreground">{r.counterpartyName}</span>,
-                  balance: (
-                    <span className={cn('font-semibold', r.balance > 0 ? 'text-destructive' : 'text-success')}>
-                      {r.balance > 0 ? '+' : ''}{fmt(r.balance)}
-                    </span>
-                  ),
-                }))}
-              />
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Контрагент</TableHead>
+                    <TableHead className="text-right">Баланс</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.rows.filter((r) => r.balance !== 0).map((r) => (
+                    <TableRow key={r.counterpartyId}>
+                      <TableCell className="text-foreground">{r.counterpartyName}</TableCell>
+                      <TableCell className={cn('text-right font-semibold', r.balance > 0 ? 'text-destructive' : 'text-success')}>
+                        {r.balance > 0 ? '+' : ''}{fmt(r.balance)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           </div>
         </div>
@@ -303,28 +299,31 @@ export default function ReportsPage() {
           </div>
           <ProfitabilityChart data={data} />
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <DataTable
-              columns={[
-                { key: 'label', label: 'Показник' },
-                { key: 'amount', label: 'Сума', align: 'right' },
-                { key: 'pct', label: '% до виручки', align: 'right' },
-              ] satisfies DataTableColumn[]}
-              rows={[
-                { label: 'Виручка', value: data.totalRevenue, pct: 100 },
-                { label: '— Запчастини (собівартість)', value: data.totalCostParts, pct: data.totalRevenue > 0 ? (data.totalCostParts / data.totalRevenue) * 100 : 0 },
-                { label: '— Праця (оцінка 40%)', value: data.totalCostLabor, pct: data.totalRevenue > 0 ? (data.totalCostLabor / data.totalRevenue) * 100 : 0 },
-                { label: 'Валовий прибуток', value: data.grossProfit, pct: data.margin },
-              ].map(row => ({
-                id: row.label,
-                label: <span className="text-foreground">{row.label}</span>,
-                amount: (
-                  <span className={cn('font-semibold', row.label === 'Валовий прибуток' ? (row.value >= 0 ? 'text-success' : 'text-destructive') : '')}>
-                    {fmt(row.value)}
-                  </span>
-                ),
-                pct: <span className="text-muted-foreground">{row.pct.toFixed(1)}%</span>,
-              }))}
-            />
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Показник</TableHead>
+                  <TableHead className="text-right">Сума</TableHead>
+                  <TableHead className="text-right">% до виручки</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[
+                  { label: 'Виручка', value: data.totalRevenue, pct: 100 },
+                  { label: '— Запчастини (собівартість)', value: data.totalCostParts, pct: data.totalRevenue > 0 ? (data.totalCostParts / data.totalRevenue) * 100 : 0 },
+                  { label: '— Праця (оцінка 40%)', value: data.totalCostLabor, pct: data.totalRevenue > 0 ? (data.totalCostLabor / data.totalRevenue) * 100 : 0 },
+                  { label: 'Валовий прибуток', value: data.grossProfit, pct: data.margin },
+                ].map((row) => (
+                  <TableRow key={row.label}>
+                    <TableCell className="text-foreground">{row.label}</TableCell>
+                    <TableCell className={cn('text-right font-semibold', row.label === 'Валовий прибуток' ? (row.value >= 0 ? 'text-success' : 'text-destructive') : '')}>
+                      {fmt(row.value)}
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">{row.pct.toFixed(1)}%</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}
@@ -334,32 +333,37 @@ export default function ReportsPage() {
         <div className="space-y-6">
           <LoadChart rows={data.rows} />
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <DataTable
-              columns={[
-                { key: 'liftName', label: 'Підйомник' },
-                { key: 'zoneName', label: 'Зона' },
-                { key: 'slots', label: 'Слотів', align: 'right' },
-                { key: 'hours', label: 'Годин', align: 'right' },
-                { key: 'load', label: 'Завантаженість', align: 'right' },
-              ] satisfies DataTableColumn[]}
-              rows={data.rows.map(r => ({
-                id: r.liftId,
-                liftName: <span className="font-medium text-foreground">{r.liftName}</span>,
-                zoneName: <span className="text-muted-foreground">{r.zoneName}</span>,
-                slots: r.totalSlots,
-                hours: `${fmtNum(r.totalHours)}г`,
-                load: (
-                  <div className="flex items-center justify-end gap-2">
-                    <div className="w-24 bg-secondary rounded-full h-2">
-                      <div className="bg-primary h-2 rounded-full" style={{ width: `${Math.min(r.loadPercent, 100)}%` }} />
-                    </div>
-                    <span className={cn('text-xs font-medium', r.loadPercent >= 80 ? 'text-destructive' : r.loadPercent >= 50 ? 'text-warning' : 'text-success')}>
-                      {r.loadPercent}%
-                    </span>
-                  </div>
-                ),
-              }))}
-            />
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Підйомник</TableHead>
+                  <TableHead>Зона</TableHead>
+                  <TableHead className="text-right">Слотів</TableHead>
+                  <TableHead className="text-right">Годин</TableHead>
+                  <TableHead className="text-right">Завантаженість</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.rows.map((r) => (
+                  <TableRow key={r.liftId}>
+                    <TableCell className="font-medium text-foreground">{r.liftName}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.zoneName}</TableCell>
+                    <TableCell className="text-right">{r.totalSlots}</TableCell>
+                    <TableCell className="text-right">{fmtNum(r.totalHours)}г</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="w-24 bg-secondary rounded-full h-2">
+                          <div className="bg-primary h-2 rounded-full" style={{ width: `${Math.min(r.loadPercent, 100)}%` }} />
+                        </div>
+                        <span className={cn('text-xs font-medium', r.loadPercent >= 80 ? 'text-destructive' : r.loadPercent >= 50 ? 'text-warning' : 'text-success')}>
+                          {r.loadPercent}%
+                        </span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}
