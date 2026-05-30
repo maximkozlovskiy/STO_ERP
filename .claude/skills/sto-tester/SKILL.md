@@ -29,6 +29,7 @@ bypassPermissions: true
 > Не питай дозволу між кроками. Фіксуй одним реченням що робиш.
 
 **AUTO vs FULL:**
+
 - **AUTO** (після кожного commit, CLAUDE.md правило) → Кроки 0–4, 6–7; Крок 1 тільки змінені файли; Крок 5 пропустити
 - **FULL** (явний `/sto-tester`) → Всі кроки 0–7; Крок 1 повний аналіз
 
@@ -59,6 +60,7 @@ TS або unit (API **і** web) червоні → зафіксуй як Bug #0,
 
 **ОБОВ'ЯЗКОВО: перевірити `[x]`-маркери попередніх сесій проти реального стану файлів.**
 Попередня сесія могла позначити баги `[x] виправлено`, але закомітити лише docs (`MemoryManual.md`/`BUG_REPORT.md`) — фікси у коді відсутні. `[x]` без парного diff = хибно-зелений, гірший за відкритий баг (приховує блокер).
+
 ```bash
 # Для кожного нещодавнього [x]-бага у BUG_REPORT.md що згадує конкретний файл:рядок —
 # перевірити чи фікс РЕАЛЬНО у файлі (не довіряти статусу).
@@ -66,19 +68,20 @@ git log --oneline -5 --stat   # останній "fix(tester)" commit зміни
 # якщо останній tester-commit чіпає ТІЛЬКИ MemoryManual.md/BUG_REPORT.md → фікси не застосовані
 grep -n "Статус.*\[x\]" BUG_REPORT.md | tail -10   # звірити кожен з grep по реальному файлу
 ```
+
 Якщо `[x]`-баг не виправлений у коді → переклас на відкритий, виправити РЕАЛЬНО, додати meta-bug про хибний маркер.
 
 **AUTO: матриця що перевіряти за типом зміни**
 
-| Тип зміни | Секції Кроку 1 |
-|---|---|
+| Тип зміни                      | Секції Кроку 1                                                            |
+| ------------------------------ | ------------------------------------------------------------------------- |
 | Новий `@Controller` / endpoint | §1.1 (tenant, soft delete), §1.2 (TS, API contract), §1.5 (contract spec) |
-| Змінений `*.service.ts` | §1.1 (business logic, FSM, inventory, settlements) |
-| Нова `page.tsx` / зміна UI | §1.3 (frontend стани, hydration, routing) |
-| Новий `*.dto.ts` | §1.2 (validation guards, @IsUUID версія) |
-| `prisma/schema.prisma` | §1.1 (soft delete fields, orgId), §1.2 (TS) |
-| `components/ui/` only | §1.3 (стани), §1.6 (a11y) |
-| Config / docs / тести | §0 (tsc) — більше нічого |
+| Змінений `*.service.ts`        | §1.1 (business logic, FSM, inventory, settlements)                        |
+| Нова `page.tsx` / зміна UI     | §1.3 (frontend стани, hydration, routing)                                 |
+| Новий `*.dto.ts`               | §1.2 (validation guards, @IsUUID версія)                                  |
+| `prisma/schema.prisma`         | §1.1 (soft delete fields, orgId), §1.2 (TS)                               |
+| `components/ui/` only          | §1.3 (стани), §1.6 (a11y)                                                 |
+| Config / docs / тести          | §0 (tsc) — більше нічого                                                  |
 
 ---
 
@@ -94,6 +97,7 @@ grep -n "Статус.*\[x\]" BUG_REPORT.md | tail -10   # звірити кож
 ### §1.1 — Бізнес-логіка Backend
 
 #### FSM нарядів
+
 ```bash
 # FSM читається з map, не хардкодиться
 grep -rn "status.*===\|status.*==\b" apps/api/src/modules/work-orders/work-orders.service.ts | grep -v spec | grep -v "TRANSITIONS\[" | head -10
@@ -112,6 +116,7 @@ grep -rn "WRITEOFF\|CHARGE\|prisma\.\$transaction" apps/api/src/modules/work-ord
 - [ ] Недозволений перехід → `BadRequestException` українською
 
 #### Інвентар
+
 ```bash
 # Прямий update stockItem (заборонено поза InventoryService)
 grep -rn "stockItem\.update\|stockItem\.upsert" apps/api/src/modules/ --include="*.ts" | grep -v "inventory.service\|spec" | head -10
@@ -126,6 +131,7 @@ grep -n "available\|quantity\|BadRequestException" apps/api/src/modules/inventor
 - [ ] `quantity=0` → `BadRequestException`
 
 #### Розрахунки
+
 ```bash
 # Прямий update balance (заборонено поза SettlementsService)
 grep -rn "settlementAccount\.update\|balance.*decrement\|balance.*increment" apps/api/src/modules/ --include="*.ts" | grep -v "settlements.service\|spec" | head -5
@@ -135,6 +141,7 @@ grep -rn "settlementAccount\.update\|balance.*decrement\|balance.*increment" app
 - [ ] `CHARGE` збільшує баланс; `PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE` — зменшують
 
 #### Tenant Isolation
+
 ```bash
 # findFirst/findMany без orgId
 grep -rn "findFirst\|findMany\|findUnique" apps/api/src/modules/ --include="*.service.ts" | grep -v "orgId\|spec\|//.*find" | head -20
@@ -150,6 +157,7 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 - [ ] **Defense-in-depth для `update` (Bug #191):** жоден `prisma.X.update({ where: { id } })` на org-scoped таблиці без `orgId` у `where`. Prisma не підтримує `update({ where: { id, orgId } })` для primary-key (TS error) → використовувати `updateMany({ where: { id, orgId, deletedAt: null } })` + опціонально `if (count === 0) throw NotFoundException(...)`. Локально безпечно якщо `id` отриманий через org-scoped read, АЛЕ майбутній рефактор/copy-paste у controller без org-check = cross-tenant write без error. Grep: `grep -rn "\.update({ where: { id:" apps/api/src/modules/` — кожен match без `orgId` у where = LOW (profilatic), HIGH якщо викликається з prep-неперевіреним `id`
 
 #### Soft Delete
+
 ```bash
 # findFirst без deletedAt: null
 grep -rn "findFirst\|findMany" apps/api/src/modules/ --include="*.service.ts" | grep -v "deletedAt\|spec\|StockMovement\|SettlementTransaction\|Payment\|WorkOrderLineEmployee\|EmployeeBranch" | head -20
@@ -163,24 +171,30 @@ grep -rn "prisma\.[a-zA-Z]*\.delete(" apps/api/src/modules/ --include="*.service
 - [ ] Жодного `prisma.X.delete()` на бізнес-сутностях
 
 **Soft-delete + `@@unique` = P2002 при повторному створенні (Bug #152)**
+
 ```bash
 # Знайти @@unique без partial WHERE deletedAt IS NULL у міграції
 grep -n "@@unique" packages/database/prisma/schema.prisma
 grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "WHERE"
 ```
+
 - [ ] Якщо `@@unique([orgId, X])` без `deletedAt` у partial filter → `create()` має **resurrection pattern**: `findFirst({ NOT: { deletedAt: null } })` → якщо знайшов, `update({ ...dto, deletedAt: null })` замість `create`
 
 **PATCH що змінює unique-поле → ConflictException (Bug #151)**
+
 - [ ] `update()` з `dto.field` що є у `@@unique` → re-check: `findFirst({ orgId, field, NOT: { id } })` → `ConflictException` якщо знайшов
 
 #### List endpoints — API contract
+
 ```bash
 # findAll що повертають голий масив замість { items, total }
 grep -rn "return.*\[\]\|return items\b\|return result\b" apps/api/src/modules/ --include="*.service.ts" | grep -v "spec\|toDto\|map(" | head -10
 ```
+
 - [ ] Кожен list endpoint → `{ items, total }` (не голий масив)
 
 #### Raw SQL — casing та LIMIT
+
 ```bash
 # Raw SQL без LIMIT
 grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" | grep -v spec
@@ -188,10 +202,12 @@ grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" | grep -v spec
 # snake_case колонки у raw SQL (має бути camelCase з лапками)
 grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" -A 20 | grep -E "org_id|deleted_at|created_at|updated_at|good_id|warehouse_id|min_stock" | head -10
 ```
+
 - [ ] Кожен `$queryRaw` має `LIMIT N` (Prisma `take:` не впливає)
 - [ ] Raw SQL ідентифікатори — camelCase у лапках: `"orgId"`, `"deletedAt"` (не `org_id`)
 
 #### Алгоритми ціноутворення та партій
+
 ```bash
 # FEFO — nulls last обов'язково
 grep -n "expiryDate" apps/api/src/modules/inventory/batch.service.ts | head -5
@@ -206,6 +222,7 @@ grep -n "Number(l\.\|Number(p\.\|totalLabor\|totalParts" apps/api/src/modules/wo
 # Для кожного scope-поля у PricingRule (goodId, goodCategory, goodType, brandId) — є в where?
 grep -n "brandId\|goodCategory\|goodType\|goodId" apps/api/src/modules/inventory/pricing.service.ts | grep "where\|rule\." | head -20
 ```
+
 - [ ] FEFO: `[{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }]`
 - [ ] `PERCENT` = `cost * (1 + pct/100)`; `FIXED_AMOUNT` = `cost + delta`; `FIXED_PRICE` fallback = `fixedPrice ?? costPrice`
 - [ ] Округлення = `Math.round(result / r) * r`; захист від від'ємної ціни = `Math.max(0, result)`
@@ -215,6 +232,7 @@ grep -n "brandId\|goodCategory\|goodType\|goodId" apps/api/src/modules/inventory
 - [ ] **Nullable cost-input у calculateSalePrice → data corruption salePrice=0 (Bug #198):** будь-який сервіс що передає `costPrice` у `pricingService.calculateSalePrice` має ПЕРЕД викликом перевірити: `if (good.purchasePrice == null || Number(good.purchasePrice) <= 0)` → пропустити цей good (push у `notFound`/`skipped`, НЕ оновлювати salePrice). Інакше для `PERCENT`/`COMPETITOR_PLUS`/`COST_TIER` правил отримаєш `0 * (1 + p/100) = 0` → `Good.salePrice` **затирається у 0** без помилки. `Good.purchasePrice` у схемі nullable — будь-який новий код що читає його як `Number(good.purchasePrice ?? 0)` робить **silent data corruption** для товарів без собівартості. Виключення: `FIXED_PRICE` правило безпечне (повертає фіксовану ціну незалежно від cost). Grep: `grep -rn "calculateSalePrice\|purchasePrice ?? 0\|purchasePrice ?? null" apps/api/src/modules/ --include="*.ts"` — кожен виклик у сервісі що пише `salePrice` має мати prep-guard.
 
 #### $transaction timeout
+
 ```bash
 # $transaction без timeout
 for f in $(grep -rl "\$transaction(async" apps/api/src --include="*.ts" | grep -v spec); do
@@ -223,9 +241,11 @@ for f in $(grep -rl "\$transaction(async" apps/api/src --include="*.ts" | grep -
   if [ "$tx" -gt "$to" ]; then echo "MISMATCH $f: $tx transactions, $to timeouts"; fi
 done
 ```
+
 - [ ] Кожен `$transaction(async callback)` має `{ timeout: N }` (5000–15000ms)
 
 #### Deploy / infra (docker-compose, Dockerfile, nginx, reverse-proxy)
+
 ```bash
 # healthcheck бінарник vs базовий образ + шлях vs globalPrefix
 grep -n "healthcheck\|curl\|wget\|/health\|HEALTHCHECK" docker-compose*.yml apps/*/Dockerfile 2>/dev/null
@@ -257,6 +277,7 @@ grep -rn "@Controller.*health\|@Controller.*metrics\|@Sse\|@Controller.*webhook"
   fi
 done
 ```
+
 - [ ] Кожен compose healthcheck: бінарник є у базовому образі (alpine → НЕ curl; node → `node -e http.get`; **minio/minio → НЕ curl/НЕ wget, лише `mc` → `["CMD","mc","ready","local"]`**); шлях узгоджений з `setGlobalPrefix`/proxy-prefix (`/api/health` не `/health`). Не довіряти «alpine/curl» евристиці для НЕ-alpine образів (minio, distroless, mongo тощо) — перевіряти емпірично `docker run --rm --entrypoint sh <image> -c "command -v curl wget mc"`
 - [ ] Перевірити blast-radius: сервіси з `depends_on: X: { condition: service_healthy }` не стартують якщо healthcheck X завжди FAIL → CRITICAL
 - [ ] Root `.dockerignore` присутній якщо будь-який Dockerfile робить `COPY . .` (інакше node_modules/.git/.env/out у контексті — повільно + ризик leak)
@@ -388,6 +409,10 @@ grep -rn "apiFetch\b.*body:\s*\(fd\|formData\|new FormData\)" apps/web/src --inc
 grep -rn "body: \(fd\|formData\)" apps/web/src --include="*.tsx" -B3 | grep -E "apiFetch\b" | head -10
 # → кожен match — обов'язково замінити на apiMultipartFetch
 
+# Next.js App Router error.tsx з bare `error: Error` без `& { digest?: string }` (Bug #206)
+# Docs: https://nextjs.org/docs/app/api-reference/file-conventions/error
+grep -rn "error.*:\s*Error[^&]" apps/web/src/app --include="error.tsx" | grep -v "digest" | head -5
+
 # Нова browser-API залежність без jsdom-стабу (Bug #177) → каскадне падіння всіх тестів які монтують shared-компонент
 # tsc мовчить (типи в lib.dom.d.ts), prod працює (браузер має API), jsdom — НІ.
 grep -rnE "new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver)\(|window\.matchMedia\(|navigator\.(clipboard|share|wakeLock|geolocation|mediaDevices)|crypto\.subtle|new Notification\(" apps/web/src/components/ui apps/web/src/app --include="*.tsx" -l | while read f; do
@@ -409,6 +434,9 @@ done
 - [ ] Timeline/gantt drag/resize: кожен px→decimal-hours converter clamp-ить результат у `[WINDOW_START, WINDOW_END]` ПЕРЕД побудовою `new Date(...).toISOString()` (інакше `endH>maxHour`/`startH<0` → `"24:30"`/`"-1:00"` → Invalid Date → RangeError у `toISOString()` → handler мовчки падає). Resize-гілка ОКРЕМО від draw-гілки — draw зазвичай clamp-ить через `pxToDecimalHours`, resize рахує delta і clamp-ить тільки проти протилежного краю
 - [ ] Swallowed-fetch що годує **обов'язковий** контрол → MEDIUM (не LOW): якщо `.catch(() => {})`/`.catch(noop)` ховає помилку завантаження списку, який рендериться у `<Select required>` або гейтить `disabled={!state}` submit-кнопку — порожній список = назавжди заблокований workflow без feedback. Фікс: `errorState` + inline `<p>` під контролом
 - [ ] Мертвий стан після inline→shared-component рефактору: коли inline-патерн (dropdown/picker/search) замінюють на shared-компонент (`SearchPickerModal` тощо), старі `useState`/`useCallback`/`useRef` лишаються «сиротами». Ознака: setter викликається ТІЛЬКИ в reset-ефекті (`if (!open) setX('')`), а value НІКОЛИ не читається у JSX; handler (`searchX`) визначено але не викликано. `tsc` без `noUnusedLocals` мовчить. Видалити повністю (включно з cleanup-ефектом orphaned `timeoutRef`)
+- [ ] **Next.js App Router convention-файли — точна сигнатура (Bug #206):** `app/**/error.tsx` має приймати `{ error: Error & { digest?: string }; reset: () => void }` — bare `Error` валідний у tsc але блокує майбутній моніторинг (Sentry/Datadog) що читає `error.digest`. Перевіряти сигнатуру кожного нового error.tsx проти Next.js docs (`https://nextjs.org/docs/app/api-reference/file-conventions/error`). Аналогічно для `layout.tsx` (`{ children, params }`), `page.tsx` (`{ params, searchParams }`), `loading.tsx` (no props). Grep: `grep -rn "error.*:\s*Error[^&]" apps/web/src/app --include="error.tsx"` — кожен match без `digest` = Bug
+- [ ] **Decorative SVG/icon без `aria-hidden="true"` (Bug #207):** SVG-іконки що дублюють semantic-сигнал поряд (warning-icon біля заголовка "Помилка", info-icon біля banner-тексту) → `aria-hidden="true"` обов'язково, інакше screen-reader озвучує "image" перед текстом. Іконки-кнопки без тексту → `aria-label` (вже у §1.7). Іконки з текстом-аналогом поряд → `aria-hidden="true"`
+- [ ] **App Router convention-файли з інтерактивом (`useEffect`/`onClick`/`'use client'`) → парний `*.test.tsx` (Bug #208):** `error.tsx`/`not-found.tsx`/кастомний `global-error.tsx` потребують компонент-тестів. Шаблон: `apps/web/src/app/__tests__/error.test.tsx` — heading render, error.message render, fallback при empty, reset callback клік, navigate link/button, console.error effect, type-regression test (digest support), aria-hidden SVG. `loading.tsx` без логіки skip
 - [ ] **FormData upload через `apiFetch` замість `apiMultipartFetch` (Bug #197) → CRITICAL**: `apiFetch` ЖОРСТКО додає `Content-Type: application/json` до КОЖНОГО запиту → коли тіло — `FormData`, browser НЕ може автоматично виставити правильний `multipart/form-data; boundary=...`. Сервер отримує binary FormData з JSON content-type → `fastify-multipart` кидає `the request is not multipart` → upload завжди валиться 400/406. **Фіча повністю мертва у проді.** Grep: `grep -rn "apiFetch\b.*body:\s*\(fd\|formData\|new FormData\)" apps/web/src --include="*.tsx"` — кожен match замінити на `apiMultipartFetch(path, formData)` (БЕЗ ручного `method: POST` — функція сама POST). Особливо при додаванні нової upload-фічі: «нагуглив схожий аплоад» → `apiFetch` looks similar → CRITICAL регресія
 
 ---
@@ -481,6 +509,7 @@ done
 ```
 
 **Стала spec після рефактору сервісу (Bug #153-#155):**
+
 - [ ] Кожен `private readonly X: Type` у конструкторі сервісу → є `{ provide: Type, useValue: mock }` у `Test.createTestingModule({ providers })` спеки (інакше NestJS DI fail на всіх тестах файлу)
 - [ ] Кеш-мок: `CacheService.get` → `mockResolvedValue(null)` (cache miss → fallthrough на БД); `set/del/delPattern` → no-op
 - [ ] Якщо `service.create()/update()` спрощено з N `findFirst` до 1 (single round-trip resurrection/dup-check) → spec мокає `findFirst` РІВНО стільки разів скільки реальних викликів (не успадкований `mockResolvedValueOnce(null).mockResolvedValueOnce(...)`)
@@ -488,9 +517,11 @@ done
 - [ ] **Refactored public method usage + stale mock (Bug #200):** рефактор сервісу замінив виклик `private/inline X()` на нову public method `Y()` (наприклад `calculateSalePrice` → `getActiveRulesForOrg + computePriceFromRules`). Парний spec ще мокає СТАРИЙ виклик (`pricingService.calculateSalePrice.mockResolvedValueOnce(...)`) — тест проходить **випадково** бо `Y` не викликається насправді. Регресія: майбутній рефактор поверне виклик `X` → тест зелений але реальна логіка зламана. Grep: `git diff HEAD~1 -- service.ts` шукає `+ this.X.Y(` + перевірити що spec мок названо `Y` а не `Z`. Принцип: spec повинна мокати ТЕ ЩО СПРАВДІ викликається — не успадковане.
 
 **Query-shape фікс потребує service-spec, не contract-spec (Bug #163):**
+
 - [ ] Fix що змінив **relation-ім'я** (`customerGarage`→`customerGarages`), **форму вкладеного `where`** (`some`/`every`/nested `OR`), `include`/`select` shape, або `mode: 'insensitive'` → це **runtime `PrismaClientValidationError`**, який mock-based contract spec (`{ provide: Service, useValue: serviceMock }`) НЕ виконує. Потрібен **service-spec** який будує реальний `where` через `{ provide: PrismaService, useValue: { model: { findMany: vi.fn() }, $transaction: ops => Promise.all(ops) } }` і асертить форму `findMany.mock.calls[0][0].where` (правильні relation-імена + nested `deletedAt: null` + tenant `orgId`). Перевіряти ОБИДВА напрями: правильне ім'я присутнє AND singular/старе ім'я відсутнє
 
 **Обов'язкові contract тести для нових endpoints:**
+
 - `GET /X` → 200 + `{ items, total }`; 401 без токена
 - `POST /X` без обов'язкових полів → 400
 - `PATCH /X/:id` з чужим orgId → 404
@@ -588,6 +619,7 @@ grep -rn "toISOString\|toLocaleDateString" apps/web/src/app/ --include="*.tsx" |
 ```
 
 **Severity:**
+
 - `CRITICAL` — втрата даних, неправильні фінанси, cross-tenant витік
 - `HIGH` — порушення бізнес-правила (FSM, резерви), security
 - `MEDIUM` — TypeScript помилка, відсутній тест критичної гілки
@@ -611,6 +643,7 @@ grep -rn "toISOString\|toLocaleDateString" apps/web/src/app/ --include="*.tsx" |
 ```
 
 **Правила:**
+
 - Мінімальний diff — не чіпай нічого крім проблемного місця
 - Фікс потребує міграції БД → CRITICAL, повідоми користувача
 - Фікс потребує змін у `@sto/shared` → оновлюй синхронно
@@ -647,12 +680,12 @@ pnpm --filter @sto/api test --run --reporter=verbose 2>&1 | grep -E "invariant|p
 find apps/api/src -name "*.invariants.spec.ts" | sort
 ```
 
-| Модуль | Інваріанти |
-|---|---|
-| `work-orders.fsm` | всі пари (from, to) → blocked; ARCHIVED/CANCELLED = порожні |
-| `inventory` | quantity≥0, reserved≥0, available≥0 після валідних рухів |
-| `settlements` | CHARGE ↑balance; PAYMENT/REFUND/CREDIT_NOTE ↓balance |
-| `pricing` | PERCENT = `cost*(1+pct/100)`; округлення кратне roundTo; `Math.max(0,result)` |
+| Модуль            | Інваріанти                                                                    |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `work-orders.fsm` | всі пари (from, to) → blocked; ARCHIVED/CANCELLED = порожні                   |
+| `inventory`       | quantity≥0, reserved≥0, available≥0 після валідних рухів                      |
+| `settlements`     | CHARGE ↑balance; PAYMENT/REFUND/CREDIT_NOTE ↓balance                          |
+| `pricing`         | PERCENT = `cost*(1+pct/100)`; округлення кратне roundTo; `Math.max(0,result)` |
 
 ### 5.2 — E2E (Playwright)
 
@@ -693,18 +726,21 @@ git commit -m "fix(tester): <короткий підсумок всіх багі
 ```
 
 Оновити `MemoryManual.md`:
+
 ```markdown
 ## Останній commit
+
 <hash> fix(tester): <message>
 Дата: YYYY-MM-DD
 Latest tester: YYYY-MM-DD (<режим>, HEAD <hash>) — <N> баги: <перелік>.
 
 ## Поточний стан проєкту
-TypeScript:      ✅ 0 errors
-Unit+Contract:   ✅ N/N passed
-Property-based:  ✅ N passed  (або ⏭ fast-check не встановлений)
-Components:      ✅ N passed  (або ⏭ @testing-library не встановлений)
-E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлений)
+
+TypeScript: ✅ 0 errors
+Unit+Contract: ✅ N/N passed
+Property-based: ✅ N passed (або ⏭ fast-check не встановлений)
+Components: ✅ N passed (або ⏭ @testing-library не встановлений)
+E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлений)
 ```
 
 ---
@@ -716,11 +752,13 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 > **"Цей баг передбачений існуючим пунктом §1.1–§1.7?"**
 
 Якщо **НІ** — одразу оновити цей файл:
+
 1. Додати новий пункт у відповідний розділ з grep-командою
 2. Записати підхід у "Накопичені підходи" нижче
 3. Commit: `docs(skills): add <баг> to sto-tester checklist`
 
 **Що записувати:**
+
 - Новий **тип бага** якого не було в чеклісті
 - Новий **grep-сигнал** для автовиявлення
 - **Причину** чому баг виникає (щоб знати де шукати наступного разу)
@@ -744,6 +782,36 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-30 — Next.js App Router `error.tsx` props без `digest` — incomplete type breaks monitoring (Bug #206) — frontend, typescript, next-js-convention
+
+**Сигнал:** новий `apps/web/src/app/error.tsx` (Next.js App Router error boundary) з сигнатурою `({ error, reset }: { error: Error; reset: () => void })`. Поточний bare `Error` НЕ дозволяє типобезпечно прочитати `error.digest` — server-attached identifier що Next.js додає до помилок з Server Components (для крос-кореляції з логами / Sentry / Datadog). У runtime поле присутнє, але TypeScript reject будь-який майбутній код типу `Sentry.captureException(error, { tags: { digest: error.digest } })` → tsc error → розробник або змушений робити `(error as any).digest` (порушує §1.2), або забуває моніторинг взагалі. Документація Next.js (`https://nextjs.org/docs/app/api-reference/file-conventions/error`) явно показує `error: Error & { digest?: string }` як канонічний type. tsc сам по собі не ловить — bare `Error` валідний; ловиться лише через перегляд проти Next.js docs АБО через первинний пробіг tester-агента на новій error-boundary.
+**Причина виникнення:** copy-paste з generic React error-boundary прикладу де `Error` достатньо. Next.js convention специфічна — `digest` як проп є лише у App Router error.tsx, не у звичайних component-error-handler-ах. Розробник пише сигнатуру з пам'яті/loose-копії, не звертаючись до Next.js docs. Якщо проект не використовує Sentry/Datadog зараз — мотивації немає (`digest` зайвий); але майбутній моніторинговий sprint буде заблокований tsc-помилкою. Симетрично з іншими Next.js convention-файлами: `layout.tsx` приймає `params: { [key: string]: string | string[] }`, `page.tsx` — `searchParams: { [key: string]: ... }` — і кожен має точний type-signature у docs.
+**Підхід до виявлення:** при будь-якому новому `app/**/error.tsx` (включно з route-level error boundaries — `app/work-orders/error.tsx` тощо) — перевірити що сигнатура `error: Error & { digest?: string }`, не bare `Error`. Grep: `grep -rn "export default function.*error.*Error" apps/web/src/app --include="error.tsx"` → кожен match має `& { digest`. Перевірка через Next.js docs: error.js page → "Props" section явно показує `Error & { digest?: string }`. Не довіряти `tsc` (bare `Error` валідний); не довіряти eslint (no-unused-locals на `digest` бо поле опціональне).
+**Підхід до фіксу:** оновити сигнатуру: `({ error, reset }: { error: Error & { digest?: string }; reset: () => void })`. Додати regression-тест у парний `*.test.tsx`: `const error: Error & { digest?: string } = Object.assign(new Error('X'), { digest: 'abc' }); render(<GlobalError error={error} reset={...} />);` — якщо тип регресне на bare `Error`, тест перестане компілюватись.
+**Severity:** LOW — у поточному коді жоден споживач не читає `digest`, runtime коректний. Стає HIGH коли додасться моніторинговий interceptor / Sentry SDK що очікує `error.digest` як tag.
+**Де шукати ще:** будь-який майбутній route-level error boundary (`app/{calendar,crm,invoices,work-orders,...}/error.tsx`); будь-який Next.js convention-файл з documented type-signature (`app/**/{layout,page,template,not-found,error,loading}.tsx`). Профілактика: SKILL §1.3 тепер вимагає перевірки точної сигнатури проти Next.js docs для convention-файлів.
+
+---
+
+### 2026-05-30 — Next.js App Router convention-файли (`error.tsx`/`not-found.tsx`) без component-тесту → беззвучна регресія UI-контракту (Bug #208) — frontend, test-coverage
+
+**Сигнал:** новий `apps/web/src/app/error.tsx` (Next.js App Router error boundary з interactive логікою: `reset()` callback, `console.error` effect у `useEffect`, fallback message при empty `error.message`, navigate button на `/dashboard`) АБО `not-found.tsx` (link на `/dashboard`, кириличні тексти) — без жодного `*.test.tsx`. SKILL §1.6 вимагає тестів для нових shared UI-компонентів у `components/ui/`, але App Router convention-файли формально не в "shared UI", тому правило часто пропускається. Регресії, які стають беззвучними:
+
+- зміна fallback від `||` на `??` (різна поведінка для empty string)
+- видалення `console.error` effect → втрата моніторингу без сигналу
+- зміна link з `/dashboard` на `/` після рефакторингу нав
+- зміна кириличного тексту на англійський або з друкарською помилкою
+- регресія a11y (видалення `aria-hidden` з декоративної SVG, зміна heading level)
+- регресія типу (Bug #206): bare `Error` замість `Error & { digest?: string }`
+
+**Причина виникнення:** App Router convention-файли (`error.tsx`/`loading.tsx`/`not-found.tsx`/`template.tsx`) виглядають як "framework infrastructure" — розробник вважає їх "тестує сам Next.js" або "слугують лише як fallback". Реально вони мають bizness-логіку (текст українською, навігація на правильний route, моніторинговий effect, a11y-контракт). SKILL §1.6 формулювання "shared UI-компонент `components/ui/`" буквально не включає `app/**/(convention).tsx` → пропускається.
+**Підхід до виявлення:** при будь-якому новому `apps/web/src/app/**/{error,not-found}.tsx` (root-level АБО route-level) — створити парний `apps/web/src/app/__tests__/<name>.test.tsx` (АБО локально-розміщений `*.test.tsx`). Мінімум 4-8 кейсів: heading render, основний CTA (reset/link) клік, fallback при empty input, a11y перевірки (aria-hidden на декоративній SVG), regression на type-signature (Bug #206). `loading.tsx` — pure skeleton, можна skip (нема інтерактиву); але якщо `loading.tsx` має суттєву анімацію/dark-mode логіку — теж тест.
+**Підхід до фіксу:** створити `app/__tests__/error.test.tsx` за шаблоном `useSavedFilters.test.tsx` — `render(<GlobalError error={new Error('X')} reset={vi.fn()} />)` + `screen.getByRole('heading', { name: 'Виникла помилка' })` + `userEvent.click(getByRole('button', { name: 'Спробувати знову' }))` + `expect(reset).toHaveBeenCalledTimes(1)`. `console.error` mock через `vi.spyOn(console, 'error').mockImplementation(() => {})` у `beforeEach`. Для `not-found.tsx` — `screen.getByRole('link', { name: 'На головну' })` + `.getAttribute('href')` асерт.
+**Severity:** LOW — production коректний на момент написання, але нуль захисту від регресії UX-контракту. Може стати HIGH коли App Router convention-файл починає використовуватись для критичної UX-сигналізації (наприклад, error.tsx що показує `Sentry.lastEventId()` для support-тікетів — регресія "втратить" id без warning).
+**Де шукати ще:** будь-який майбутній route-level error/not-found (`app/work-orders/error.tsx`, `app/booking/not-found.tsx`); `template.tsx` (rare); `default.tsx` (parallel routes); кастомний `global-error.tsx`. Профілактика: SKILL §1.6 розширено — нові App Router convention-файли з ANY інтерактивом (`useEffect`, `onClick`, `'use client'`) → парний тест обов'язковий.
+
+---
 
 ### 2026-05-30 — Global APP_GUARD без skip-list для healthcheck/SSE/webhooks → docker cascade restart (Bug #203) — backend, deploy
 
@@ -792,9 +860,9 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 **Сигнал:** новий сервіс/метод що (а) читає `purchasePrice` товару з БД (де поле `Decimal?` nullable), (б) передає це значення у `pricingService.calculateSalePrice(orgId, goodId, ..., costPrice)`, (в) пише результат у `Good.salePrice`. Розробник пише `const costPrice = Number(good.purchasePrice ?? 0)` — здається безпечним fallback. Реально: `calculateSalePrice` для PERCENT/COMPETITOR_PLUS/COST_TIER повертає `0 * (1 + p/100) = 0`. Сервіс пише 0 у `salePrice` (non-nullable у схемі) → товар отримує нульову ціну продажу без помилки/попередження. PriceHistory зафіксує `oldPrice=130, newPrice=0` — post-mortem можлива, але дані відновлюються вручну.
 **Причина виникнення:** `??  0` як defensive fallback інтуїтивний (Number(null) = NaN, тому fallback). Розробник не думає про **семантичні наслідки** costPrice=0 для multiplicative rules. Кейс "немає purchasePrice" виглядає edge (зазвичай товари створюються з purchasePrice), але реально присутній: новий товар з фронту (тільки name + salePrice), імпорт з прайсу без cost, історичні товари з пустим полем. PERCENT/COMPETITOR_PLUS правила (найпоширеніші у STO ERP) повертають 0 → масове знищення цін при першому ж списковому імпорті.
 **Підхід до виявлення:** для будь-якого нового виклику `pricingService.calculateSalePrice(...)` — переконатись що ПЕРЕД викликом є guard `if (X.purchasePrice == null || Number(X.purchasePrice) <= 0) { /* skip */ }`. Grep: `grep -rn "calculateSalePrice\|purchasePrice ?? 0" apps/api/src/modules/ --include="*.ts"`. Особлива увага: list-import endpoints де input — лише ідентифікатор товару (sku/barcode), а cost береться з БД (а не з ряду файлу).
-**Підхід до фіксу:** `if (good.purchasePrice == null || Number(good.purchasePrice) <= 0) { notFound.push(\`${sku} (без собівартості)\`); continue; }` ПЕРЕД `calculateSalePrice`. Тест-кейси: (а) `purchasePrice=null → notFound + calculateSalePrice не викликаний + good.updateMany не викликаний`; (б) `purchasePrice=0 → notFound + калькуляція пропущена` (захист від ділення на нуль у майбутніх правилах).
+**Підхід до фіксу:** `if (good.purchasePrice == null || Number(good.purchasePrice) <= 0) { notFound.push(\`${sku} (без собівартості)\`); continue; }`ПЕРЕД`calculateSalePrice`. Тест-кейси: (а) `purchasePrice=null → notFound + calculateSalePrice не викликаний + good.updateMany не викликаний`; (б) `purchasePrice=0 → notFound + калькуляція пропущена` (захист від ділення на нуль у майбутніх правилах).
 **Severity:** HIGH — silent data corruption на фінансовому полі (`salePrice`); виявляється лише через скаргу користувача «у мене ціни стали 0»; повернення цін вручну з PriceHistory.
-**Де шукати ще:** будь-який майбутній сервіс що пише `Good.salePrice` на основі обчислення з nullable input — bulk-recalc CRON (якщо буде), price-sync endpoints для зовнішніх прайсів (Magento/1С), markup-recalc після зміни currency exchange rate. Профілактика: SKILL §1.1 тепер вимагає prep-guard для будь-якого виклику `calculateSalePrice` коли costPrice читається з nullable джерела (Good.purchasePrice, Batch.cost, StockMovement.price).
+**Де шукати ще:** будь-який майбутній сервіс що пише `Good.salePrice`на основі обчислення з nullable input — bulk-recalc CRON (якщо буде), price-sync endpoints для зовнішніх прайсів (Magento/1С), markup-recalc після зміни currency exchange rate. Профілактика: SKILL §1.1 тепер вимагає prep-guard для будь-якого виклику`calculateSalePrice` коли costPrice читається з nullable джерела (Good.purchasePrice, Batch.cost, StockMovement.price).
 
 ### 2026-05-30 — Новий boolean prop на існуючому компоненті без inverse-condition тесту → інверсія guard беззвучна — frontend, test-coverage
 
@@ -812,7 +880,7 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 **Підхід до виявлення:** для кожного `*.controller.ts` з `@ApiConsumes('multipart/form-data')` ↔ переконатись що helper для отримання файлу (`getUploadedFile`, `extractFile`, тощо) обгорнутий у try/catch + мапить помилку у `BadRequestException` українською. Grep: `grep -rn "await req.file()" apps/api/src/modules/` — кожен виклик має бути всередині try/catch АБО у helper що це робить. Contract spec має кейс «POST без multipart → 400».
 **Підхід до фіксу:** try/catch навколо `await req.file()` що мапить FastifyError у `BadRequestException(\`Файл не завантажено: <локалізована причина>\`)`. Особлива деталізація для `'not multipart'` випадку: «очікується multipart/form-data» (підказка фронт-розробнику). Фікс у helper покриває ВСІ endpoint-и одночасно — не потрібно правити кожен метод.
 **Severity:** MEDIUM — функціональна i18n-помилка (406+EN замість 400+UA); ймовірне з міграції фронтенду на нову форму завантаження (хибний content-type) → користувач бачить "the request is not multipart" українським UI. Не втрата даних, але псує UX і моніторинг (406 на DataDog/Sentry виглядає як "клієнтський баг" замість "наш UX").
-**Де шукати ще:** будь-який майбутній endpoint з multipart upload (інші файлові імпорти, аватари, attachments); будь-який FastifyError що мапиться у НЕ-400 (`FST_ERR_PAYLOAD_TOO_LARGE` → 413, `FST_ERR_VALIDATION` → 400 OK, `FST_ERR_INVALID_URL` → 400). Профілактика: helper для multipart завжди з try/catch; SKILL §1.5 contract-spec для нових import-endpoints вимагає кейсу «POST без multipart → 400 + укр. msg».
+**Де шукати ще:** будь-який майбутній endpoint з multipart upload (інші файлові імпорти, аватари, attachments); будь-який FastifyError що мапиться у НЕ-400 (`FST_ERR_PAYLOAD_TOO_LARGE`→ 413,`FST_ERR_VALIDATION`→ 400 OK,`FST_ERR_INVALID_URL` → 400). Профілактика: helper для multipart завжди з try/catch; SKILL §1.5 contract-spec для нових import-endpoints вимагає кейсу «POST без multipart → 400 + укр. msg».
 
 ### 2026-05-30 — `prisma.X.update({ where: { id } })` без `orgId` у `data: { ...dto }`-вільному коді → defense-in-depth gap навіть коли потік org-trusted — backend, tenant-isolation
 
@@ -838,13 +906,19 @@ E2E (Playwright):✅ N passed  (або ⏭ Playwright не встановлен�
 **Причина виникнення:** розробник пише FK-валідацію у контролері і думає «це service-логіка, contract spec тестує HTTP-shape». Contract spec мокає Prisma (`prismaMock`) — додавання тесту вимагає налаштувати `prismaMock.brand.findFirst.mockResolvedValueOnce(null)` для cross-tenant сценарію + `expect(prismaMock.X.create).not.toHaveBeenCalled()` — це додаткова робота. Service-spec теж не покриває бо валідація живе у КОНТРОЛЕРІ (через `prisma` injected у controller), не у service. Між service-spec і contract-spec випадає вікно — controller validate logic без покриття.
 **Підхід до виявлення:** на Кроці 1 §1.5 — для кожного `*.controller.ts` що містить `if (dto.XId) { const x = await this.prisma.X.findFirst(...); throw new NotFoundException(...) }` патерн → перевірити чи `*.contract.spec.ts` має 3 тести для КОЖНОГО таким захищеного FK: own-org→success, other-org→404, PATCH-other-org→404. Grep: `grep -n "if (dto\.[a-zA-Z]*Id)" apps/api/src/modules/**/*.controller.ts`; для кожного match шукати у відповідному `*.contract.spec.ts` тест зі `mockResolvedValueOnce(null)` на цьому моделі і `expect(prismaMock.X.create).not.toHaveBeenCalled()`. Якщо немає — gap.
 **Підхід до фіксу:** додати 3 контракт-тести з мок-схемою:
+
 ```typescript
 prismaMock.brand.findFirst.mockResolvedValueOnce(null); // інша org
-const res = await app.inject({ method: 'POST', url: '/...', payload: { brandId: 'cross-tenant-uuid' } });
+const res = await app.inject({
+  method: 'POST',
+  url: '/...',
+  payload: { brandId: 'cross-tenant-uuid' },
+});
 expect(res.statusCode).toBe(404);
 expect(res.json().message).toMatch(/Бренд не знайдено/);
 expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
 ```
+
 Кожен FK = +3 тести (POST own, POST other, PATCH other). Документує contract і ловить регресію.
 **Severity:** MEDIUM — production коректний на момент написання, але нуль захисту від регресії. Якщо регресія станеться у tenant-isolation — це HIGH (cross-tenant data linkage). MEDIUM = profileactic.
 **Де шукати ще:** будь-який модуль з optional FK у DTO + `findFirst(orgId)` у controller (не service): pricing-rules brandId/goodId (POST+PATCH), invoices counterpartyId/vehicleId, work-orders branchId, purchase-orders supplierId, будь-який майбутній модуль що додає preferredSupplierId/warehouseId. Профілактика: SKILL §1.5 тепер вимагає cross-tenant FK тестів у contract-spec.
@@ -968,10 +1042,10 @@ expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
 
 ### 2026-05-28 — Timeline drag/resize px→time без clamp → Invalid Date → RangeError — frontend
 
-**Сигнал:** timeline/calendar/gantt UI з drag або resize, де handler конвертує pointer delta у decimal-hours (`origEndH + deltaH`) і потім будує `new Date(\`${date}T${decimalHoursToHHMM(h)}:00\`).toISOString()`. Якщо resize-гілка clamp-ить результат ТІЛЬКИ проти протилежного краю (`origStartH + 0.25`) але НЕ проти меж видимого вікна — `h` може вийти за `[firstHour, lastHour+1]`. `decimalHoursToHHMM(24.5)` → `"24:30"`, `decimalHoursToHHMM(-1)` → `"-1:00"` → `new Date("...T24:30:00")` = **Invalid Date** → `.toISOString()` кидає `RangeError`. Помилка ловиться try/catch у pointerUp → показує нерелевантне "Помилка оновлення" і нічого не надсилає на сервер.
-**Причина виникнення:** розробник клампить нову координату проти бізнес-правила "мінімум 15 хв тривалість" (проти протилежного краю слоту), але забуває що видиме вікно (08:00–20:00) — теж межа. Draw-гілка зазвичай безпечна бо `pxToDecimalHours` вже clamp-ить у `Math.max(HOURS[0], Math.min(HOURS[last], raw))`; resize рахує **delta** окремою формулою `pxToHours` і цей clamp обходить.
-**Підхід до виявлення:** для кожного timeline/gantt page знайти ВСІ converter-и px→time (draw, resize-start, resize-end, drag-move — це різні гілки!). Для КОЖНОЇ перевірити: чи результат clamp-нутий у `[windowStart, windowEnd]` перед `new Date()`. Не довіряти що «draw clamp-ить, отже resize теж» — це окремі формули. Тест-сценарій: перетягнути край максимально за межу вікна.
-**Підхід до фіксу:** додати `WINDOW_START`/`WINDOW_END` константи; обгорнути кожну resize/drag координату у `Math.max(WINDOW_START, Math.min(WINDOW_END, val))`; додатково hard-clamp у самому converter-і (`decimalHoursToHHMM`: `Math.min(24*60, Math.max(0, totalMin))`) як остання лінія оборони для майбутніх викликачів.
+**Сигнал:** timeline/calendar/gantt UI з drag або resize, де handler конвертує pointer delta у decimal-hours (`origEndH + deltaH`) і потім будує `new Date(\`${date}T${decimalHoursToHHMM(h)}:00\`).toISOString()`. Якщо resize-гілка clamp-ить результат ТІЛЬКИ проти протилежного краю (`origStartH + 0.25`) але НЕ проти меж видимого вікна — `h`може вийти за`[firstHour, lastHour+1]`. `decimalHoursToHHMM(24.5)`→`"24:30"`, `decimalHoursToHHMM(-1)`→`"-1:00"`→`new Date("...T24:30:00")`= **Invalid Date** →`.toISOString()`кидає`RangeError`. Помилка ловиться try/catch у pointerUp → показує нерелевантне "Помилка оновлення" і нічого не надсилає на сервер.
+**Причина виникнення:** розробник клампить нову координату проти бізнес-правила "мінімум 15 хв тривалість" (проти протилежного краю слоту), але забуває що видиме вікно (08:00–20:00) — теж межа. Draw-гілка зазвичай безпечна бо `pxToDecimalHours`вже clamp-ить у`Math.max(HOURS[0], Math.min(HOURS[last], raw))`; resize рахує **delta** окремою формулою `pxToHours`і цей clamp обходить.
+**Підхід до виявлення:** для кожного timeline/gantt page знайти ВСІ converter-и px→time (draw, resize-start, resize-end, drag-move — це різні гілки!). Для КОЖНОЇ перевірити: чи результат clamp-нутий у`[windowStart, windowEnd]`перед`new Date()`. Не довіряти що «draw clamp-ить, отже resize теж» — це окремі формули. Тест-сценарій: перетягнути край максимально за межу вікна.
+**Підхід до фіксу:** додати `WINDOW_START`/`WINDOW_END`константи; обгорнути кожну resize/drag координату у`Math.max(WINDOW_START, Math.min(WINDOW_END, val))`; додатково hard-clamp у самому converter-і (`decimalHoursToHHMM`: `Math.min(24\*60, Math.max(0, totalMin))`) як остання лінія оборони для майбутніх викликачів.
 **Severity:** MEDIUM — не втрата даних (PATCH не надсилається), але resize мовчки ламається + misleading error; UX broken на легітимній дії.
 **Де шукати ще:** будь-який майбутній gantt/timeline/scheduler/booking-grid; mobile-планшет екран з drag слотів; будь-який handler що будує ISO timestamp з user-керованої координати.
 
@@ -1075,6 +1149,7 @@ expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
 ## Що вже перевірено (не дублювати)
 
 **Backend:**
+
 - ✅ FSM transition map pattern (work-orders.fsm.ts)
 - ✅ InventoryService guards (quantity=0, available < qty, RESERVATION_RELEASE)
 - ✅ SettlementsService guards (CHARGE ↑, PAYMENT ↓)
@@ -1086,9 +1161,10 @@ expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
 - ✅ Security headers (X-Content-Type-Options, X-Frame-Options, HSTS via @fastify/helmet@11)
 - ✅ SSRF guard: webhooks.processor (validatePublicUrl + redirect: 'manual')
 - ✅ ArrayMaxSize: inspection.dto, webhook payload
-- ✅ Deploy/infra (phase18): docker-compose api healthcheck node-http /api/health (Bug #164/#165); minio healthcheck `mc ready local` замість curl-less образу + пін RELEASE-тегу (Bug #170); root .dockerignore (Bug #166); build-prod.ps1 export→apps/web/out + $PSScriptRoot fallback (Bug #167); nginx _next/static immutable + gzip_types svg/js (Bug #168). /api/health публічний (HealthController без @UseGuards, auth per-controller) → healthcheck 200. minio/minio = лише mc, НЕ curl/wget (перевірено емпірично)
+- ✅ Deploy/infra (phase18): docker-compose api healthcheck node-http /api/health (Bug #164/#165); minio healthcheck `mc ready local` замість curl-less образу + пін RELEASE-тегу (Bug #170); root .dockerignore (Bug #166); build-prod.ps1 export→apps/web/out + $PSScriptRoot fallback (Bug #167); nginx \_next/static immutable + gzip_types svg/js (Bug #168). /api/health публічний (HealthController без @UseGuards, auth per-controller) → healthcheck 200. minio/minio = лише mc, НЕ curl/wget (перевірено емпірично)
 
 **Frontend:**
+
 - ✅ cancelled flag: AuthProvider, всі mount-fetches (settings, crm, work-orders)
 - ✅ SSR-safe today: useState(null) + useEffect → setToday(new Date())
 - ✅ apiFetch error array join: `Array.isArray(msg) ? msg.join('; ') : msg`
@@ -1097,6 +1173,7 @@ expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
 - ✅ React named imports (не React.ReactNode)
 
 **Tests:**
+
 - ✅ Contract specs: auth, work-orders, warehouses, counterparties, sync, settings, audit, pricing-rules, batches, currencies, bank-accounts, exchange-rates, cash-registers, calendar (GET/POST/PATCH/DELETE — resize/drag PATCH endpoint)
 - ✅ Service specs (query-shape): goods (FK validation), counterparties (?q= plural relation customerGarages→vehicles — Bug #163), work-orders (findAll calendarSlots include: plural relation + take:1 + deletedAt + orderBy asc; ?q= counterparty nested; employeeId some soft-delete — Bug #171)
 - ✅ Pricing service specs: COST_TIER tier matching (first/mid/last/none), brandId priority over goodType (Bug #179)
