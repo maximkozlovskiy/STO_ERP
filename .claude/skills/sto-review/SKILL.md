@@ -835,6 +835,61 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ---
 
+### 2026-05-30 — PATCH normalizeScope clear: всі exclusivity-сусіди мають однаковий null-out патерн — §5 Business Rules
+
+**Сигнал:** мульти-полий exclusive scope (наприклад, goodId/brandId/goodCategory/goodType) у PATCH. Після `normalizeScope(merged)` 3 з 4 полів пишуться як `normalized.X ?? null` (правильно "знизити" якщо вище-пріоритетне поле тепер встановлене), але одне (зазвичай **нове додане**) поле зберігає старий патерн `normalized.X !== undefined ? (normalized.X ?? null) : existing.X` → коли normalizeScope очищає його до undefined (бо вище-пріоритетне поле тепер виграє), update лишає старе DB значення → 2 exclusive поля одночасно у рядку
+**Причина виникнення:** додано нове поле (наприклад brandId до уже існуючих goodId/goodCategory/goodType) у середину пріоритетної ієрархії; розробник копіює "найбезпечніший" патерн (зберегти existing якщо undefined) не помічаючи що сусідні поля використовують агресивнішу `?? null`-нормалізацію; різниця "якщо normalizeScope нас знизив — все одно треба очистити" не очевидна без trace через сценарій
+**Підхід до виявлення:** для будь-якого PATCH-контролера з exclusivity (нормалізатором scope-полів) — звірити що ВСІ exclusive-поля використовують однакову форму write-back; якщо одне `?? null`, а інше з `existing.X` fallback — bug; альтернатива: трейс "PATCH {goodId:'g1'} на правилі з {brandId:'b1'}" → чи лишається brandId у DB?
+**Підхід до фіксу:** уніфікувати — `<field>: normalized.<field> ?? null` для всіх exclusive-сусідів; `existing.X` fallback потрібен ЛИШЕ для non-exclusive полів (name, priority, isActive)
+**Критичність:** CRITICAL — silent data corruption, порушення інваріанту scope-exclusivity; будь-який наступний `applyRule` / `calculateSalePrice` отримує неоднозначний контекст
+**Де шукати ще:** будь-який модуль із pricing-like exclusivity (taxes по type/category, discounts по brand/customer-group), FSM з кількома "терміналами"; коли PATCH контролер має `mergedScope` + `normalizeScope` patterns
+
+---
+
+### 2026-05-30 — fire-and-forget PUT у hook без AbortController → out-of-order writes — §8.2 UI Стани
+
+**Сигнал:** хук викликає `apiFetch('/x', { method: 'PUT', body }).catch(() => {})` без AbortController; локальний стан керується через `setState(prev => ...)` (правильно), але **серверний** стан останньою-резолвленою-партією → rapid toggle 10×, серверні writes резолвлять out-of-order, на сервері зберігається стале значення; на reload — користувач бачить НЕ те що було видно перед закриттям вкладки
+**Причина виникнення:** розробник правильно враховує race для локального стану (`setState(prev)`), але не думає про серверну upsert черговість; `.catch(() => {})` ховає AbortError так само як network-помилки; тестування у dev — usually one PUT at a time → ніколи не ловлять
+**Підхід до виявлення:** grep `apiFetch(.+, { method: 'PUT' }).catch` у хуках; будь-який callback-write що викликається у onChange/onClick з частою повторюваністю (toggle/slider/keystroke); якщо ref-trackera немає — кандидат
+**Підхід до фіксу:** `const abortRef = useRef<AbortController | null>(null); const save = useCallback((next) => { abortRef.current?.abort(); const ac = new AbortController(); abortRef.current = ac; apiFetch(..., { method: 'PUT', body, signal: ac.signal }).catch(() => {}); }, []);` + cleanup `useEffect(() => () => { abortRef.current?.abort(); }, [])` на unmount
+**Критичність:** IMPORTANT — server-state drift без crash; найгірше — між-сесійна неузгодженість що користувач помічає лише при логіні з іншого пристрою
+**Де шукати ще:** будь-який settings-хук (`useTableColumns`, `useDetailPanel`, `useUiFeatures` подібний з API-persistance); будь-яка фіча "save user preference" з debounce-у-голові-розробника-але-без-debounce-у-коді
+
+---
+
+### 2026-05-30 — `@Param('key')` без validation — нескінченний рядок у Prisma where — §2.3 Injection & Input Validation
+
+**Сигнал:** `@Param('key') key: string` (або інший рядковий path param НЕ uuid) → потрапляє у `prisma.X.findFirst({ where: { ..., key } })`. ValidationPipe не валідує `@Param` (валідує лише `@Body`/`@Query` через DTO). DTO body має `@MaxLength(200)` на тому самому полі, але path — без обмежень. Користувач/атакувальник може слати URL з 10KB ключем.
+**Причина виникнення:** уявлення що ParseUUIDPipe + DTO на body вже "все покривають"; non-uuid path param випадає з-під захисту; не SQL-injection (Prisma параметризує), але DoS-вектор (важкий B-tree lookup) + потенційне порушення CDN cache-key обмежень
+**Підхід до виявлення:** grep `@Param('[^']+')` без ParseUUIDPipe → перевірити що або (а) value passes through DTO validation, або (б) контролер має explicit guard на довжину/формат
+**Підхід до фіксу:** функція-guard `ensureValidKey(key)` що кидає `BadRequestException` при `length > N` (узгоджена з MaxLength у DTO); викликається на початку handler перед service-call. Альтернатива: створити custom pipe `KeyLengthPipe` для повторного використання
+**Критичність:** IMPORTANT — DoS vector + log/header pollution; не data breach, але порушує defence-in-depth
+**Де шукати ще:** user-preferences, search endpoints з path-param query, dynamic config endpoints, будь-який REST-у-стилі-name-як-id endpoint
+
+---
+
+### 2026-05-30 — Soft-delete rule з child-таблицею + type-switch → "відродження" дочірніх записів — §5 Business Rules
+
+**Сигнал:** parent-модель з типом-перемикачем (`type: 'COST_TIER' | 'PERCENT' | ...`) має один child-relation що активний лише для одного типу (`tiers` для `COST_TIER`). PATCH міняє `type` на інший, але child-таблиця НЕ чиститься → старі child-записи лишаються прив'язаними. Поки `type !== 'COST_TIER'` — не використовуються (бо `switch (rule.type)` ігнорує `case 'COST_TIER'`). Користувач перемикає назад → "відродження" старих тірів якими він давно не керує.
+**Причина виникнення:** frontend `buildPayload` правильно не надсилає `tiers` для non-COST_TIER type → controller `if (tiers !== undefined)` — false → skip tier-tx; розробник орієнтується на "чи у нас НОВІ дані для child?" замість "чи треба ВИДАЛИТИ старі child-дані?"
+**Підхід до виявлення:** для PATCH-контролерів з `type` switching + child-таблицями — звірити що `switchedAwayFrom<X>` логіка викликає `child.deleteMany` коли тип більше не сумісний з child-relation; інакше grep `prisma.<child>.deleteMany` у PATCH handler і перевірити що умова покриває type-switch case
+**Підхід до фіксу:** `const switchedAway = normalized.type !== undefined && normalized.type !== '<TYPE_X>' && existing.type === '<TYPE_X>';` → запустити `tx.<child>.deleteMany` у тій же транзакції; розширити умову входу в tier-tx: `if (tiers !== undefined || switchedAway) ...`
+**Критичність:** IMPORTANT — data drift, неочікувана поведінка при поверненні на тип; не immediate crash, але порушує модель "що бачу, тим і керую"
+**Де шукати ще:** PricingRule (this fix), TaxRate з type-switch + brackets, Discount з type-switch + rules — будь-яке "правило-з-варіантами-та-власною-таблицею-параметрів"
+
+---
+
+### 2026-05-30 — rAF у persistent effect (не toggle) без id-capture — §3.1 Memory Leaks
+
+**Сигнал:** компонент монтується назавжди (`useEffect(() => { ... requestAnimationFrame(() => style.X = Y) }, [])` — порожні deps), rAF мутує DOM (`.style.transition`/`.style.height`), id НЕ зберігається у ref → невозможно cancel при unmount; парний ResizeObserver правильно `disconnect()`-иться, що створює false sense of security
+**Причина виникнення:** розробник додає rAF для "next frame після initial measurement" (зняти `transition: none` після першого measure); фокусується на ResizeObserver-cleanup і пропускає rAF як "одноразову" дію; реальність: rAF planning queue може триматися 16-32ms, unmount між schedule і fire → rAF callback fire-ить на detached DOM (ref.current === null → noop, OK), або на щойно-перемонтованому компоненті того ж типу (rare React internals reuse → state corruption)
+**Підхід до виявлення:** grep `requestAnimationFrame(` всередині `useEffect` → перевірити (1) чи id зберігається у `useRef<number|null>(null)`; (2) чи cleanup return викликає `cancelAnimationFrame(rafRef.current)`; це справедливо НАВІТЬ для persistent effect (deps=[]), не лише для toggle (§3.1 попереднього патерну)
+**Підхід до фіксу:** `const rafRef = useRef<number|null>(null); ... rafRef.current = requestAnimationFrame(() => { rafRef.current = null; ... }); return () => { ro.disconnect(); if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); };` — комбінований cleanup для всіх registered async callbacks
+**Критичність:** IMPORTANT — інколи degradation без crash, інколи "ghost" DOM mutation; найбільш ризиково для AnimatedBody / Drawer / collapse-секцій що часто mount/unmount
+**Де шукати ще:** будь-який mount-only effect з rAF (initial measurement, scroll-into-view, focus management), persistent layout effect для height-auto detection
+
+---
+
 ### 2026-05-29 — event-handler fetch без request-token + stale похідний id — §8.2 UI Стани
 
 **Сигнал:** `openEdit(item)` / `openCard` / `onSelect` (обробник події, НЕ useEffect) робить `apiFetch(...).then(setState)`; при повторному відкритті для іншого id попередній in-flight fetch резолвиться пізніше й перезаписує стан. Додатково: похідний стан (`modalGarageId`, обраний рядок) не скидається на старті handler → на fetch-failure лишається id попередньої сутності
