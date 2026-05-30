@@ -2033,10 +2033,14 @@ function UnitsTab() {
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
-    setLoading(true);
+    // Seed from cache for instant first-paint, then refresh.
+    // Safe because load() is called after every create/remove mutation.
+    const cached = getCached<Unit[]>('cache:units');
+    if (cached) { setUnits(cached); setLoading(false); }
+    else setLoading(true);
     apiFetch<Unit[]>('/units')
       .then(d => { setUnits(d); setCache('cache:units', d); })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .catch((e: unknown) => { if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження'); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -2201,10 +2205,14 @@ function BrandsTab() {
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
-    setLoading(true);
+    // Seed from cache for instant first-paint, then refresh.
+    // Safe because load() is called after every save/remove mutation.
+    const cached = getCached<Brand[]>('cache:brands');
+    if (cached) { setBrands(cached); setLoading(false); }
+    else setLoading(true);
     apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200')
       .then(r => { setBrands(r.items); setCache('cache:brands', r.items); })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .catch((e: unknown) => { if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження'); })
       .finally(() => setLoading(false));
   }, []);
 
