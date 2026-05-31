@@ -490,6 +490,18 @@ grep -rn "@IsArray()" apps/api/src/modules/ --include="*.dto.ts" -A 2 | grep -v 
 
 # @IsString без @MaxLength (DoS)
 grep -rn "@IsString()" apps/api/src/modules/ --include="*.dto.ts" | grep -v "MaxLength\|IsIn\|IsEmail\|IsUrl\|Matches\|spec" | head -20
+
+# Public endpoint audit (Bugs #251 + #252) — controllers БЕЗ @UseGuards(JwtAuthGuard)
+# Знайти контролери де клас НЕ декорований JwtAuthGuard
+for c in $(find apps/api/src/modules -name "*.controller.ts" -not -name "*.spec.*"); do
+  if ! grep -q "@UseGuards(JwtAuthGuard\|@UseGuards.*JwtAuthGuard" "$c"; then
+    # перевірити що в файлі є хоча б один handler без guard
+    grep -q "@Get\|@Post\|@Patch\|@Delete\|@Sse" "$c" && echo "PUBLIC CTRL: $c"
+  fi
+done
+# Public-DTO double-strict audit: для кожного PUBLIC controller вивести його DTO file
+# і grep-нути на @IsArray БЕЗ @ArrayMaxSize у попередніх 3 рядках, та array UUID-поля
+# у service.create без tenant-FK count.
 ```
 
 - [ ] User-supplied URL що server fetch-ить → `validatePublicUrl()` (`apps/api/src/common/utils/url-guard.ts`)
@@ -497,6 +509,11 @@ grep -rn "@IsString()" apps/api/src/modules/ --include="*.dto.ts" | grep -v "Max
 - [ ] `@IsArray()` → `@ArrayMaxSize(N)` (N = реалістичний бізнес-ліміт)
 - [ ] Вільний `@IsString()` → `@MaxLength(N)` (anti-DoS)
 - [ ] `@IsIn(['A','B','C'])` для union-string типів (`'OK' | 'WARN' | 'CRITICAL'`)
+- [ ] **Public endpoint double-strict audit (Bugs #251 + #252):** для КОЖНОГО controller-методу без `@UseGuards(JwtAuthGuard)` (повний клас без guard АБО handler з `@Public()`):
+  - КОЖЕН `@IsArray()` поле у відповідному DTO має `@ArrayMaxSize(N)` (без cap — HIGH bug, ValidationPipe виконає N×regex до 400)
+  - КОЖЕН `string[]` / `UUID[]` поле що зберігається у service-create-методі через `data: { ...dto, fkList: dto.field }` має ПЕРЕД create-викликом виконуватись tenant-FK guard `prisma.X.count({ where: { id: { in: dto.field }, orgId, deletedAt: null } })` з порівнянням `count === dto.field.length` (без guard — HIGH bug, cross-tenant linkage у БД)
+  - КОЖЕН `@IsString()` поле без `@MaxLength` — anti-DoS gap
+  - Якщо викликається external service (SMS, ПРРО) — queue з attempts ≥ 10 + exponential backoff (offline-first invariant)
 
 ---
 
@@ -817,6 +834,39 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-31 — Публічний endpoint (no-auth) подвійна перевірка: array-cap у DTO + tenant-FK у service для кожного array UUID-ідентифікатора (Bugs #251 + #252) — backend, security, public-endpoint
+
+**Сигнал:** controller-метод БЕЗ `@UseGuards(JwtAuthGuard)` (повний клас БЕЗ `@UseGuards` на рівні контролеру або handler-method з `@Public()` / без guard у списку). Сценарії: booking widget на лендингу СТО, форма зворотного зв'язку, public catalog API. DTO такого endpoint часто скопійовано з auth-protected DTO без подвійного перегляду: `@IsArray() @IsUUID(undefined, { each: true })` ЗАЛИШЕНО але `@ArrayMaxSize(N)` пропущено; service `prisma.X.create({ data: { ...dto, fkList: dto.fkList } })` зберігає raw array UUID-ів без tenant-FK перевірки. Виявлено у `booking.dto.ts` (`serviceIds` на обох DTO) + `booking.service.ts` (no `prisma.work.count` guard).
+
+**Причина виникнення:** PR-описи фокусуються на use-case («публічний бронювальний віджет показує слоти за вибраним сервісом»). Розробник перевіряє happy path: 1-3 послуги, UUID валідний, branch належить org. Edge case (attacker контролює payload, has no auth, не обмежений швидкостями) рідко спливає у code review. Особливо ризик у monolith з global `ThrottlerGuard` що дає N запитів/хв на IP — `body` size перевіряється лише на nginx/Fastify рівні (типово 1MB), один запит з `Array(50_000).fill(UUID)` ВЖЕ ладить ValidationPipe в N×regex-перевірку до того як reach service.
+
+**Підхід до виявлення:** на Кроці 1 — окреме «public endpoint audit».
+
+1. Знайти всі controller-методи без auth:
+
+```bash
+# Контролери без @UseGuards(JwtAuthGuard) на класі
+grep -L "JwtAuthGuard" apps/api/src/modules/*/controller.ts 2>/dev/null
+# І окремо handler-методи без auth у захищеному контролері (рідкісно)
+grep -rB3 "@Get\(\|@Post\(\|@Patch\(\|@Delete\(\|@Sse\(" apps/api/src/modules --include="*.controller.ts" | grep -A1 "@Public\(\)"
+```
+
+2. Для кожного public endpoint → прочитати DTO + service:
+   - КОЖЕН `@IsArray()` у DTO → перевірити `@ArrayMaxSize(N)` суміжно. Без cap → HIGH bug (DoS).
+   - КОЖЕН `string[]` / `T[]` поле у service-create → перевірити tenant-FK guard (`prisma.X.count({ where: { id: { in: dto.field }, orgId, deletedAt: null } })`). Без guard → HIGH bug (cross-tenant linkage у БД).
+   - КОЖЕН `@IsString()` поле → `@MaxLength(N)` (anti-DoS).
+   - КОЖЕН `@IsUUID()` поле → ОК (UUID validator уже bounded).
+
+3. Парний сигнал: якщо public endpoint викликає external service (SMS, ПРРО) → перевірити що queue має attempts ≥ 10 + exponential backoff (offline-first invariant; уже у §1.1 «Bullq attempts»).
+
+**Підхід до фіксу:** обидва місця одночасно — DTO + service. Якщо ARRAY обмежено лише у DTO, але service приймає його як-є → captured tenant-FK gap. Якщо обмежено лише у service (tenant-guard є, але `@ArrayMaxSize` нема) → DoS-вектор НЕ закрито (validation відбувається ДО service). Шаблон фіксу — `Promise.all([branchGuard, serviceCountGuard])` паралельно (`branch.findFirst` + `work.count({ where: { id: { in: serviceIds }, orgId } })`), потім `if (count !== serviceIds.length) throw BadRequestException`.
+
+**Severity:** HIGH для кожного знайденого gap (DoS або cross-tenant linkage); CRITICAL якщо public endpoint модифікує fingerprint/audit/balance.
+
+**Де шукати ще:** будь-який майбутній public endpoint (form-builder, RFQ, customer-portal, B2B catalog). Профілактика: SKILL §1.4 раніше вимагав anti-DoS для всіх DTO. Тепер тестер повинен ОКРЕМО ідентифікувати public-endpoint set і застосувати **double-strict** правила: і `@ArrayMaxSize` у DTO, і tenant-FK у service. Парне з: paired-component req-id link (Bug #216) — public endpoint часто перший на отримання traffic-storm, тому correlation-id для них критичний.
+
+---
 
 ### 2026-05-31 — Inner DTO class з порожніми полями: @ValidateNested без декораторів усередині пропускає всі значення (Bug #247) — backend, security, dto-validation
 

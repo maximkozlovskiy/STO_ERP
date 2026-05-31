@@ -67,11 +67,36 @@ export class CommentsService {
     authorId: string,
     dto: CreateCommentDto,
   ): Promise<CommentResponseDto> {
+    // Bug #253: cross-tenant FK guard. `Comment.entityId` — поліморфне посилання
+    // без Prisma FK. Без перевірки автентифікований user з org A може створити
+    // коментар про сутність з org B → `Comment.orgId=A, entityId=<from-B>` лежить
+    // у БД невидимий обом сторонам, ламає audit-trail.
+    await this.assertEntityBelongsToOrg(orgId, dto.entityType, dto.entityId);
     const comment = await this.prisma.comment.create({
       data: { orgId, entityType: dto.entityType, entityId: dto.entityId, body: dto.body, authorId },
       include: { author: { select: { firstName: true, lastName: true } } },
     });
     return this.toDto(comment as CommentWithAuthor);
+  }
+
+  /**
+   * Bug #253: assert полиморфної сутності належить org. Перебирає `entityType`
+   * через мапу замість switch — простіше додавати нові типи (Vehicle, Invoice...).
+   */
+  private async assertEntityBelongsToOrg(
+    orgId: string,
+    entityType: CommentEntityType,
+    entityId: string,
+  ): Promise<void> {
+    const where = { id: entityId, orgId, deletedAt: null } as const;
+    const fetchers: Record<CommentEntityType, () => Promise<{ id: string } | null>> = {
+      WorkOrder: () => this.prisma.workOrder.findFirst({ where, select: { id: true } }),
+      Counterparty: () => this.prisma.counterparty.findFirst({ where, select: { id: true } }),
+      Vehicle: () => this.prisma.vehicle.findFirst({ where, select: { id: true } }),
+      Invoice: () => this.prisma.invoice.findFirst({ where, select: { id: true } }),
+    };
+    const parent = await fetchers[entityType]();
+    if (!parent) throw new NotFoundException('Сутність не знайдено');
   }
 
   async remove(orgId: string, id: string, user: { id: string; role: string }): Promise<void> {

@@ -9,14 +9,28 @@
 ## Останній commit
 
 ```
+<pending> fix(tester): cycle 2 — Bugs #251-#256 (booking DoS + cross-tenant FK + comments validation + specs)
+c5d04bc docs(skills): add RolesGuard-without-@Roles pattern to sto-review
+15e8203 docs(memory): record sto-review-agent cycle 2 — 6 defense-in-depth fixes
 6a84c11 fix(review): cycle 2 — defense-in-depth on B1/B3/B5/B12 endpoints + Search roles
 d2ea44c docs(memory): record sto-sync-agent cycle 2 results
-29ba099 fix(sync): align frontend types with API contracts + add bookings management page (cycle 2)
-ae03163 perf(web): Intl singletons sweep — TopShell widgets + calendar month-year + sync log
-68ba4f8 perf(api,db): parallel FK validation + Intl singletons + covering indexes
 Дата: 2026-05-31
 
-Latest review: 2026-05-31 (sto-review-agent цикл 2 з 5, HEAD d2ea44c → 6a84c11) — **6 IMPORTANT-severity знахідок** на модулях Фаз 21-22 (B1 webhooks, B3 booking, B5 search, B12 work-order-media). Усі — defense-in-depth ризики, фіксяться спільним паттерном `updateMany({id,orgId,deletedAt:null})` + `findFirstOrThrow` / `deleteMany` з компаундним `where` замість `findFirst + update({where:{id}})`.
+Latest tester: 2026-05-31 (sto-tester-agent цикл 2 з 5, HEAD c5d04bc → <pending>) — **6 багів виправлено** (2 HIGH + 3 MEDIUM + 1 LOW; фокус — Phase 21+22 модулі: booking/comments/warranties/loyalty/inspection).
+**Знайдено через статичний аналіз — 0 runtime регресій:**
+(1) Bug #251 (HIGH) §1.4 anti-DoS — booking.dto без `@ArrayMaxSize` на ПУБЛІЧНОМУ endpoint. Зловмисник міг POST-ити `Array(1M).fill(UUID)` → ValidationPipe виконав би N×regex перед 400 → DoS. Додано `@ArrayMaxSize(50)` до обох DTO (BookingAvailabilityQueryDto + CreateBookingRequestDto).
+(2) Bug #252 (HIGH) §1.1 cross-tenant FK — booking.service.create зберігав `serviceIds` (Postgres `text[]`, не FK) без перевірки що Work.orgId === orgId. Публічний endpoint приймав UUID-и з чужих org → cross-tenant linkage. Додано `prisma.work.count({ where: { id: { in: serviceIds }, orgId } })` паралельно з branch-guard. Regression-test у `booking.service.spec.ts`.
+(3) Bug #253 (MEDIUM) §1.1 cross-tenant FK — comments.service.create приймав поліморфний `entityId` без перевірки що належить org. User з org A міг створити коментар до entityId з org B → запис існує у БД невидимий обом сторонам, ламає audit-trail. Додано `assertEntityBelongsToOrg(orgId, entityType, entityId)` з мапою fetchers per entityType.
+(4) Bug #254 (MEDIUM) §1.5 test-coverage — створено 3 нові service-spec файли (booking, loyalty, inspection). 18 нових тестів. **loyalty.spec** критично: пинає atomic `updateMany({ where: { balance: { gte: points } } })` — без цього регресія `gte` → `gt` або зняття guard відкривала double-spend race.
+(5) Bug #255 (LOW) §1.1 dev-hygiene — comments.controller мав `@UseGuards(RolesGuard)` без жодного `@Roles(...)` декоратора (no-op). Додано `@Roles(...)` до кожного handler для фіксації наміру (захист від майбутніх refactor sweep).
+(6) Bug #256 (LOW) §1.3 lifecycle — `bookings/page.tsx` useEffect+load без cancelled-flag → setState на unmounted component при швидкій навігації. Додано `mountedRef` + cleanup-ефект.
+
+**TypeScript:** ✅ 0 errors (api + web + shared). **Unit:** API **482/482** (+18 нових), Web 218/218.
+**Build:** ✅ api webpack compiled successfully.
+**Покриття Phase 21+22:** raised from 6 specs (warranties.service, audit.contract, webhooks.processor, pdf.service, work-orders.service, work-orders.contract) до 9 (+ booking.service, loyalty.service, inspection.service). Залишилось без spec: search, comments, work-order-templates, work-order-media, dashboard, follow-up (notifications has followup.processor spec).
+**Нові SKILL patterns:** жоден з 6 багів не потребує нового підходу — усі покриті існуючими entries: Bug #251 §1.4 (anti-DoS @ArrayMaxSize), Bug #252+#253 §1.1 (cross-tenant FK Bug #161 pattern), Bug #254 §1.5 (test-coverage), Bug #255 §1.1 (RolesGuard hygiene — c5d04bc), Bug #256 §1.3 (cancelled-flag). Підтверджено: чекліст SKILL.md покриває реалії Phase 21+22 модулів. Самовдосконалення SKILL.md цього циклу: не потрібне.
+
+Previous review: 2026-05-31 (sto-review-agent цикл 2 з 5, HEAD d2ea44c → 6a84c11) — **6 IMPORTANT-severity знахідок** на модулях Фаз 21-22 (B1 webhooks, B3 booking, B5 search, B12 work-order-media). Усі — defense-in-depth ризики, фіксяться спільним паттерном `updateMany({id,orgId,deletedAt:null})` + `findFirstOrThrow` / `deleteMany` з компаундним `where` замість `findFirst + update({where:{id}})`.
 (1) SearchController без `@Roles` → RolesGuard no-op (пускає всіх авторизованих включаючи MECHANIC). Payload search-результату безпечний (немає cost/sale/margin), але explicit `@Roles` потрібен як invariant: будь-який майбутній refactor що додасть price-секцію перевіряється guard-ом.
 (2) WebhooksService.update — race-window між findFirst-guard і update({where:{id}}) → cross-tenant write. Замінено на `updateMany({id,orgId,deletedAt:null}) + findFirstOrThrow`.
 (3) WebhooksService.remove — те саме, для soft-delete.
@@ -494,7 +508,10 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 
 ## Поточний стан проєкту
 
-TypeScript: ✅ 0 errors (web + api + shared) — verified 2026-05-31, HEAD 7a9f079 (sto-optimize-agent ітерація-3)
+TypeScript: ✅ 0 errors (web + api + shared) — verified 2026-05-31, HEAD c5d04bc → pending (sto-tester-agent цикл 2 з 5)
+Unit+Contract API: ✅ **482/482** passed (45 файлів) — +18 нових (loyalty 6 + booking 7 + inspection 5)
+Web component suite: ✅ 218/218 passed (19 файлів)
+Build: ✅ api webpack compiled successfully
 
 Latest optimize: 2026-05-31 (sto-optimize-agent, HEAD a5a390d → 3b7a394) — 7 точкових perf фіксів за вказівкою користувача. **Backend:** (1) `reports.revenue()` — DB-side aggregation: $queryRaw з `DATE_TRUNC('day', completedAt AT TIME ZONE 'Europe/Kyiv')` + GROUP BY 1 замість findMany(take:10000) + JS reduce. Postgres повертає ~30 рядків (по одному на день) у потрібному форматі; контракт `{date, revenue, labor, parts, count}[]` зберігся. (2) `DashboardService.getSummary()` — приватний `withTimeout(p, ms)` хелпер на основі Promise.race: кожен з 4 sub-queries (activeWO count, todayRevenue aggregate, pendingInvoices count, lowStock $queryRaw) обгорнутий у 8s ceiling; timeout → null → поле сумарно 0 з warn log. Захищає SSE tick від blocking при slow Postgres або pool starvation. `setTimeout.unref()` щоб не тримати event loop. (3) `DashboardController.stream` SSE: `@SkipThrottle()` → `@Throttle({ ttl: 60_000, limit: 5 })` — лімітує лише нові з'єднання (5/хв на IP), не впливає на вже відкриті long-lived streams. Захист від reconnect-storm (broken proxies, tab spawn). (4) `PurchaseOrdersService.receive()` — tx timeout 15s → 30s для великих PO з сотнями рядків × createMovement з batch tracking. (5) `PrismaService` constructor: `datasourceUrl` з `connection_limit=25` + `pool_timeout=20` через `withConnectionPool(DATABASE_URL)`. Параметри додаються тільки якщо operator не задав їх у env. **DB:** (6) додано 2 індекси через міграцію `20260531100000_add_perf_indexes_wol_bc`: `work_order_lines(workOrderId, deletedAt)` — list lines by workOrder без orgId fan-out (WO detail nested fetches), `batch_consumptions(orgId, batchId, createdAt)` — FIFO/LIFO traversal per-batch у межах tenant. (7) `reports.service.ts` інші endpoints — verified that all findMany have explicit take caps (workOrders n/a (groupBy), stock 5000+500, settlements 5000, load 5000) — no-op fix. **§ Контракти збережено.** TS api/web 0 errors. Якщо хтось виставляв нестандартний `connection_limit` у env — він зберігається (no-op у withConnectionPool коли key вже у searchParams).
 

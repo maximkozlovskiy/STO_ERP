@@ -7769,3 +7769,161 @@ const updated = await this.prisma.warranty.findFirstOrThrow({
 **Статус:** [x] виправлено — створено `useInvoices.test.tsx` з 15 тестами: queryKey factory (4), enabled-gate (2), URLSearchParams build (5), signal abort (1), `useCreatePayment` cross-resource invalidation (1, regression-guard для Bug #245), `useDeleteInvoice` (1), `useInvoiceTransition` (1).
 
 ---
+
+## Session 2026-05-31 (cycle 2/5) — Phase 21+22: webhooks/inspection/booking/warranties/loyalty/search/audit/work-order-media/templates/comments/dashboard
+
+Фокус: нові модулі — webhooks, inspection, booking, warranties, loyalty, search, pdf-export, follow-up, SSE dashboard, branch-acl, audit, work-order-media, шаблони нарядів, коментарі. Edge cases: public endpoints без auth, FSM guards у booking, loyalty double-spend (atomic guard перевірено — OK), audit diff calculation.
+
+Baseline: TS clean (api+web+shared); unit/contract green (API 464/464, web 218/218). Перевірка `[x]`-маркерів попередніх Bugs #245–#250: усі справді виправлені у коді (повний reload через `find apps -name $f` confirms).
+
+---
+
+## Bug #251 — HIGH booking.dto: `serviceIds` без `@ArrayMaxSize` на ПУБЛІЧНОМУ endpoint — DoS vector
+
+**Файл:** `apps/api/src/modules/booking/booking.dto.ts:19-25,37-42`
+**Severity:** HIGH
+**Категорія:** security / dto-validation / public-endpoint
+
+**Опис:** Обидва DTO для публічного booking widget — `BookingAvailabilityQueryDto` (рядок 19-25) та `CreateBookingRequestDto` (рядок 37-42) — мають `serviceIds?: string[]` з `@IsArray() @IsUUID(undefined, { each: true })` АЛЕ БЕЗ `@ArrayMaxSize`. Endpoints `/booking/availability` та `/booking/request` не вимагають auth (рядки 39-82 у `booking.controller.ts`). Зловмисник може POST-ити `{serviceIds: Array(1_000_000).fill('...')}` → ValidationPipe виконає N×`@IsUUID()` (regex O(n)) перед тим як кинути 400 → OOM у Node або blackout всього API процесу. Парний з: `booking.service.create` зберігає `dto.serviceIds ?? []` у `BookingRequest.serviceIds` (Postgres `String[]`) без обмеження → перший раз пройшовши, наповнить DB-row масивом до 1 ГБ.
+
+**Очікувана поведінка:** `@ArrayMaxSize(50)` на обох DTO (50 — реалістичний максимум для одного бронювання, як `@ArrayMaxSize(50)` у `CreateInspectionDto.points`).
+
+**Фактична поведінка:** Жодного cap → DoS-вектор.
+
+**Підхід до фіксу:** додати `@ArrayMaxSize(50, { message: 'Не більше 50 послуг' })` у обох місцях.
+
+**Статус:** [x] виправлено — `@ArrayMaxSize(50)` додано до `BookingAvailabilityQueryDto.serviceIds` і `CreateBookingRequestDto.serviceIds` у `apps/api/src/modules/booking/booking.dto.ts`. tsc green.
+
+---
+
+## Bug #252 — HIGH booking.service: `serviceIds` зберігаються без tenant-FK validation — cross-tenant linkage
+
+**Файл:** `apps/api/src/modules/booking/booking.service.ts:142-178`
+**Severity:** HIGH
+**Категорія:** business-logic / tenant-isolation / cross-tenant-FK
+
+**Опис:** `BookingService.create` зберігає `dto.serviceIds ?? []` (UUID[]) у `BookingRequest.serviceIds` (Postgres `text[]`, не FK — поліморфне посилання на `Work.id`). Жодної перевірки `Work.orgId === orgId`. Той самий патерн Bug #161 для optional FK у DTO. У booking це особливо критично бо endpoint `/booking/request` ПУБЛІЧНИЙ — зловмисник може POST-ити `serviceIds: [<work-id-з-іншої-org>]`, заявка створиться, конфірмуюча SMS піде клієнту з cross-org даними. При подальшому конвертуванні booking → WorkOrder ці UUID-и навіть не існують у org → 404, але запис у БД лишається з невалідним FK.
+
+**Очікувана поведінка:** перед `prisma.bookingRequest.create` перевіряти що ВСІ `serviceIds` належать `org` через `prisma.work.findMany({ where: { id: { in: serviceIds }, orgId, deletedAt: null } })` і кидати `BadRequestException('Деякі послуги не знайдено')` якщо `count !== serviceIds.length`.
+
+**Фактична поведінка:** сирий `data.serviceIds = dto.serviceIds ?? []` → cross-tenant linkage.
+
+**Підхід до фіксу:** додати tenant-FK validation у `create` (після lookup `branch`, перед `prisma.bookingRequest.create`). Якщо `serviceIds` порожній — пропустити перевірку.
+
+**Статус:** [x] виправлено — `prisma.work.count({ where: { id: { in: serviceIds }, orgId, deletedAt: null } })` додано паралельно з branch-guard через `Promise.all`. Якщо `count !== serviceIds.length` → `BadRequestException('Деякі послуги не знайдено')`. Покрито regression-тестом `booking.service.spec.ts > create > Bug #252: cross-tenant serviceIds → BadRequestException`.
+
+---
+
+## Bug #253 — MEDIUM comments.service.create: відсутність cross-tenant FK перевірки полиморфного entityId
+
+**Файл:** `apps/api/src/modules/comments/comments.service.ts:65-75`
+**Severity:** MEDIUM
+**Категорія:** business-logic / tenant-isolation / cross-tenant-FK
+
+**Опис:** `Comment.entityId` — поліморфний UUID (вказує на `WorkOrder` / `Counterparty` / `Vehicle` / `Invoice`), без FK у Prisma schema. `CommentsService.create` (line 65) приймає `dto.entityType + dto.entityId` і робить `prisma.comment.create({ data: { orgId, entityType, entityId, body, authorId } })` БЕЗ перевірки що `entityId` належить `orgId`. Автентифікований користувач з org A може POST-ити коментар про `entityId` з org B (DTO-validation пройде: `@IsIn(types)` пройде, `@IsUUID()` пройде). У БД з'являється `Comment.orgId=A, entityId=<workOrder-of-B>` — коли власник наряду B читає GET /comments?entityType=WorkOrder&entityId=B → отримує `[]` бо `orgId` фільтр відсікає, але запис лежить у БД та витрачає storage, плюс ламає audit-trail (коментар «існує» але невидимий).
+
+**Очікувана поведінка:** перед `prisma.comment.create` робити tenant-guard за `entityType`:
+
+```ts
+const ENTITY_FETCHERS = {
+  WorkOrder: (id) => prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null }, select: { id: true } }),
+  Counterparty: ..., Vehicle: ..., Invoice: ...
+};
+const parent = await ENTITY_FETCHERS[entityType](entityId);
+if (!parent) throw new NotFoundException('Сутність не знайдено');
+```
+
+**Фактична поведінка:** сирий create без перевірки → cross-tenant linkage.
+
+**Підхід до фіксу:** додати lookup за `entityType` перед create.
+
+**Статус:** [x] виправлено — додано `assertEntityBelongsToOrg(orgId, entityType, entityId)` приватний метод у `comments.service.ts` з мапою fetchers (`WorkOrder`/`Counterparty`/`Vehicle`/`Invoice`); виклик одразу перед `prisma.comment.create`. Кидає `NotFoundException('Сутність не знайдено')` при cross-tenant entity.
+
+---
+
+## Bug #254 — MEDIUM Phase 21+22 модулі без service-spec (booking, loyalty, inspection)
+
+**Файли:**
+
+- `apps/api/src/modules/booking/booking.service.ts` — публічний endpoint без spec
+- `apps/api/src/modules/loyalty/loyalty.service.ts` — фінансова primitiva з atomic guard у `redeem` без regression spec
+- `apps/api/src/modules/inspection/inspection.service.ts` — FSM transition + auto-create lines без spec
+
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** SKILL §1.5 вимагає `*.spec.ts` для кожного нового `*.service.ts`. Phase 21+22 додав ці модулі без покриття. Особливо критично:
+
+- **`loyalty.service.redeem`** — atomic check-and-decrement через `updateMany({ where: { balance: { gte: points } } })`. Регресія (`gte` → `gt`, або зняття balance check) проходить tsc/code-review зеленою → у проді = double-spend race condition.
+- **`booking.service`** — публічний endpoint (`create`) без spec, при майбутньому рефакторі легко зламати tenant-FK для `serviceIds` (Bug #252) без видимого failure.
+- **`inspection.service.create`** — складна логіка з $transaction + N×workOrderLine.create + recalc totals; regression в `EDITABLE_STATUSES` guard може мовчки створювати lines у COMPLETED/PAID нарядах.
+
+**Очікувана поведінка:** мінімум 3 spec файли:
+
+- `loyalty.service.spec.ts` — redeem happy-path, недостатньо балів, рахунок не знайдено, atomic guard (`updateMany.mock.calls[0][0].where.balance.gte === points`)
+- `booking.service.spec.ts` — create happy-path, branch не знайдено, FSM idempotency
+- `inspection.service.spec.ts` — create happy-path, duplicate (ConflictException), не-editable WO + CRITICAL points → BadRequest
+
+**Фактична поведінка:** 0 покриття.
+
+**Підхід до фіксу:** додати 3 spec файли за шаблоном `warranties.service.spec.ts` (cycle 1).
+
+**Статус:** [x] виправлено — створено 3 spec файли:
+
+- `loyalty.service.spec.ts` (6 тестів): happy-path з атомарним `updateMany.where.balance.gte`, недостатньо балів (`count === 0` → BadRequest), cross-tenant counterparty, відсутній account, points<=0, redeemRate множник.
+- `booking.service.spec.ts` (7 тестів): create з/без serviceIds, Bug #252 cross-tenant guard, branch missing, confirm/cancel defense-in-depth `updateMany`, cancel idempotency.
+- `inspection.service.spec.ts` (5 тестів): happy-path no CRITICAL, duplicate → Conflict, cross-tenant WO, CRITICAL+non-editable → BadRequest, auto-create line з amount = normoHours × price.
+
+---
+
+## Bug #255 — LOW comments.controller: `RolesGuard` без жодного `@Roles` декоратора — no-op
+
+**Файл:** `apps/api/src/modules/comments/comments.controller.ts:24`
+**Severity:** LOW
+**Категорія:** dev-hygiene / dead-code
+
+**Опис:** `@UseGuards(JwtAuthGuard, RolesGuard)` на класі, але жоден з handler-методів (`findAll`, `create`, `remove`) не має `@Roles('OWNER', ...)`. `RolesGuard` (див. `apps/api/src/auth/guards/roles.guard.ts`) при відсутності `@Roles` декоратора повертає `true` (line 16: `if (!required || required.length === 0) return true`) — фактично no-op. Сигнал що або:
+
+1. розробник забув додати `@Roles(...)` (тоді endpoints більш open ніж очікувано — будь-який authenticated user читає/створює коментарі);
+2. `RolesGuard` тут зайвий і має бути видалений.
+
+Згідно з sto-review pattern «RolesGuard-without-@Roles» (commit c5d04bc) — це **дефенсивна гігієна**: видалити неактивний guard, щоб не дезорієнтувати майбутній review.
+
+**Очікувана поведінка:** або (а) видалити `RolesGuard` з `@UseGuards` (явно: коментарі доступні всім authenticated); або (б) додати `@Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')` до кожного handler-методу.
+
+**Фактична поведінка:** dead RolesGuard у декорації.
+
+**Підхід до фіксу:** додати `@Roles(...)` до кожного handler. Це безпечніше за варіант (а) — фіксує намір.
+
+**Статус:** [x] виправлено — `@Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')` додано до всіх трьох handler-методів (`findAll`, `create`, `remove`) у `comments.controller.ts`. Намір зафіксовано: коментарі доступні всім ролям що працюють зі сутностями.
+
+---
+
+## Bug #256 — LOW bookings/page.tsx: useEffect load() без cancelled-flag
+
+**Файл:** `apps/web/src/app/bookings/page.tsx:49-59`
+**Severity:** LOW
+**Категорія:** frontend / lifecycle
+
+**Опис:** `load = useCallback(() => apiFetch(...).then(setRequests).catch(setError).finally(setLoading(false)), [])` і `useEffect(() => { load(); }, [load])`. Жодного `let cancelled = false` + `return () => { cancelled = true }`. Якщо користувач навігує з /bookings до отримання response → `setRequests/setError/setLoading` викликаються на unmounted component → React warning + memory leak.
+
+**Очікувана поведінка:** SKILL §1.3 — cancelled-flag pattern:
+
+```ts
+useEffect(() => {
+  let cancelled = false;
+  setLoading(true);
+  apiFetch(...).then(r => { if (!cancelled) setRequests(r.items ?? []); })
+    .catch(e => { if (!cancelled) setError(...); })
+    .finally(() => { if (!cancelled) setLoading(false); });
+  return () => { cancelled = true; };
+}, []);
+```
+
+**Фактична поведінка:** немає race-protection.
+
+**Підхід до фіксу:** mountedRef або cancelled-flag.
+
+**Статус:** [x] виправлено — додано `mountedRef = useRef(true)` + cleanup-ефект; усі три setState виклики у `load` обгорнуто `if (mountedRef.current)`. Race-protection активний.
+
+---

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -45,13 +45,28 @@ export default function BookingsPage() {
   const [error, setError] = useState('');
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  // Bug #256: mountedRef для race-protection — без нього unmount під час
+  // fetch → setRequests/setLoading на unmounted component (React warning + leak).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
     apiFetch<{ items: BookingRequest[]; total: number }>('/booking')
-      .then(r => setRequests(r.items ?? []))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
-      .finally(() => setLoading(false));
+      .then(r => {
+        if (mountedRef.current) setRequests(r.items ?? []);
+      })
+      .catch((e: unknown) => {
+        if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      })
+      .finally(() => {
+        if (mountedRef.current) setLoading(false);
+      });
   }, []);
 
   useEffect(() => {

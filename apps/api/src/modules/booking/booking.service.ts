@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -140,10 +140,24 @@ export class BookingService {
   }
 
   async create(orgId: string, dto: CreateBookingRequestDto): Promise<BookingRequestResponseDto> {
-    const branch = await this.prisma.garageBranch.findFirst({
-      where: { id: dto.branchId, orgId, deletedAt: null },
-    });
+    // Bug #252: cross-tenant FK guard for poly-array `serviceIds`. Without this,
+    // public endpoint /booking/request can store work-IDs з ЧУЖОЇ org (Postgres
+    // text[] не FK, Prisma не валідує) → cross-tenant linkage у заявці. Parallel
+    // з branch-guard бо обидва незалежні (різні таблиці).
+    const [branch, serviceCount] = await Promise.all([
+      this.prisma.garageBranch.findFirst({
+        where: { id: dto.branchId, orgId, deletedAt: null },
+      }),
+      dto.serviceIds?.length
+        ? this.prisma.work.count({
+            where: { id: { in: dto.serviceIds }, orgId, deletedAt: null },
+          })
+        : Promise.resolve(0),
+    ]);
     if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (dto.serviceIds?.length && serviceCount !== dto.serviceIds.length) {
+      throw new BadRequestException('Деякі послуги не знайдено');
+    }
 
     const req = await this.prisma.bookingRequest.create({
       data: {

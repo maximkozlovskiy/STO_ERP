@@ -14,6 +14,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { CommentsService } from './comments.service';
@@ -27,6 +28,9 @@ export class CommentsController {
   constructor(private readonly service: CommentsService) {}
 
   @Get()
+  // Bug #255: explicit @Roles to make RolesGuard active (was no-op before).
+  // Comments — open для всіх ролей що працюють з нарядами/клієнтами/авто/рахунками.
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Коментарі до сутності' })
   @ApiQuery({ name: 'entityType', required: true })
   @ApiQuery({ name: 'entityId', required: true })
@@ -39,6 +43,7 @@ export class CommentsController {
   }
 
   @Post()
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Додати коментар' })
   create(
     @OrgContext() orgId: string,
@@ -49,6 +54,7 @@ export class CommentsController {
   }
 
   @Delete(':id')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити коментар (тільки автор або OWNER/ADMIN)' })
   remove(
