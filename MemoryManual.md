@@ -9,7 +9,8 @@
 ## Останній commit
 
 ```
-(pending) fix(tester): cycle 4 — Bugs #266-#272 (WO template hint + loyalty earn integration + PDF nullsafe + AVG_COST orderBy + NaN guard + stale spec)
+af41192 docs(skills,memory): add dead-feature-integration + frontend-hint-lies patterns + record tester cycle 4
+ec438bd fix(tester): cycle 4 — Bugs #266-#272 (WO template hint + loyalty earn integration + PDF nullsafe + AVG_COST orderBy + NaN guard + stale spec)
 cf60952 fix(review): cycle 4 — exhaustive-deps + ApiResponse coverage + safety take caps
 97e1ca3 fix(sync): cycle 4 — align frontend interfaces with API contracts
 319208b perf(optimize): cycle 3 — date-picker memoization + BatchRow memo
