@@ -182,6 +182,20 @@ interface PendingSlotBlockProps {
 
 const PENDING_DRAG_ID = '__pending__';
 
+// Module-level constant — stable ref avoids re-creation on every render
+const EMPTY_FORM: SlotForm = {
+  liftId: '',
+  employeeId: '',
+  counterpartyId: '',
+  counterpartyDisplay: '',
+  workOrderId: '',
+  workOrderDisplay: '',
+  startAt: '',
+  endAt: '',
+  notes: '',
+  normoHours: '',
+};
+
 const PendingSlotBlock = memo(function PendingSlotBlock({
   pending,
   onOpen,
@@ -395,18 +409,6 @@ export default function CalendarPage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState(false);
 
-  const EMPTY_FORM: SlotForm = {
-    liftId: '',
-    employeeId: '',
-    counterpartyId: '',
-    counterpartyDisplay: '',
-    workOrderId: '',
-    workOrderDisplay: '',
-    startAt: '',
-    endAt: '',
-    notes: '',
-    normoHours: '',
-  };
   const [form, setForm] = useState<SlotForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -668,9 +670,11 @@ export default function CalendarPage() {
       });
   }, [date]);
 
+  // Skip day-view fetch when user is in stats/month view — saves N round-trips
+  // on date changes that affect only the other view's data.
   useEffect(() => {
-    load();
-  }, [load]);
+    if (calView === 'day') load();
+  }, [load, calView]);
 
   const prevDay = () => {
     const d = new Date(date);
