@@ -276,14 +276,13 @@ export class InventoryService {
     stockItemId: string,
     minStock: number | null,
   ): Promise<{ id: string; minStock: number | null }> {
-    const item = await this.prisma.stockItem.findFirst({
+    // updateMany з orgId+deletedAt — захищає tenant ізоляцію + soft-delete за 1 RTT
+    // (раніше findFirst → if(!item) throw → update робив 2 RTT, де перший лише для 404).
+    const res = await this.prisma.stockItem.updateMany({
       where: { id: stockItemId, orgId, deletedAt: null },
-    });
-    if (!item) throw new NotFoundException('Залишок не знайдено');
-    const updated = await this.prisma.stockItem.update({
-      where: { id: stockItemId },
       data: { minStock },
     });
-    return { id: updated.id, minStock: updated.minStock ?? null };
+    if (res.count === 0) throw new NotFoundException('Залишок не знайдено');
+    return { id: stockItemId, minStock };
   }
 }

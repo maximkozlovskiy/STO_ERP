@@ -19,7 +19,11 @@ describe('BatchService', () => {
     priceHistory: { create: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
-  let pricing: { calculateSalePrice: ReturnType<typeof vi.fn> };
+  let pricing: {
+    calculateSalePrice: ReturnType<typeof vi.fn>;
+    getActiveRulesForOrg: ReturnType<typeof vi.fn>;
+    computePriceFromRules: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     prisma = {
@@ -40,7 +44,13 @@ describe('BatchService', () => {
         return Promise.all(arg as Promise<unknown>[]);
       }),
     };
-    pricing = { calculateSalePrice: vi.fn().mockResolvedValue(150) };
+    // Refactor (cycle 3): createFromReceipt тепер паралельно тягне good + active rules
+    // і використовує sync `computePriceFromRules` замість async `calculateSalePrice`.
+    pricing = {
+      calculateSalePrice: vi.fn().mockResolvedValue(150),
+      getActiveRulesForOrg: vi.fn().mockResolvedValue([]),
+      computePriceFromRules: vi.fn().mockReturnValue(150),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -73,7 +83,7 @@ describe('BatchService', () => {
         goodType: 'SPARE_PART',
         salePrice: 100,
       });
-      pricing.calculateSalePrice.mockResolvedValue(150);
+      pricing.computePriceFromRules.mockReturnValue(150);
       await service.createFromReceipt('org', {
         goodId: 'g1',
         warehouseId: 'wh1',
@@ -95,7 +105,7 @@ describe('BatchService', () => {
         goodType: null,
         salePrice: 150,
       });
-      pricing.calculateSalePrice.mockResolvedValue(150);
+      pricing.computePriceFromRules.mockReturnValue(150);
       await service.createFromReceipt('org', {
         goodId: 'g1',
         warehouseId: 'wh1',
@@ -114,7 +124,7 @@ describe('BatchService', () => {
         goodType: null,
         salePrice: 250,
       });
-      pricing.calculateSalePrice.mockResolvedValue(0); // pricing service may return 0 from 0 cost
+      pricing.computePriceFromRules.mockReturnValue(0); // pricing service may return 0 from 0 cost
       await service.createFromReceipt('org', {
         goodId: 'g1',
         warehouseId: 'wh1',

@@ -106,26 +106,28 @@ export class PricingService {
       ...(rule.goodType ? { goodType: rule.goodType as GoodType } : {}),
     };
 
-    const goods = await this.prisma.good.findMany({
-      where,
-      select: {
-        id: true,
-        purchasePrice: true,
-        salePrice: true,
-        category: true,
-        goodType: true,
-        brandId: true,
-      },
-      take: 5000,
-    });
-
-    // Prefetch all active rules once — avoid N+1 in calculateSalePrice loop
-    const allRules = await this.prisma.pricingRule.findMany({
-      where: { orgId, isActive: true, deletedAt: null },
-      include: { tiers: { orderBy: { sortOrder: 'asc' } } },
-      orderBy: { priority: 'asc' },
-      take: 200,
-    });
+    // Parallel: goods scope + active rules — обидва незалежні fetch'і, можуть виконуватись одночасно.
+    // Раніше було послідовно (goods → allRules), хоча allRules не залежить від goods.
+    const [goods, allRules] = await Promise.all([
+      this.prisma.good.findMany({
+        where,
+        select: {
+          id: true,
+          purchasePrice: true,
+          salePrice: true,
+          category: true,
+          goodType: true,
+          brandId: true,
+        },
+        take: 5000,
+      }),
+      this.prisma.pricingRule.findMany({
+        where: { orgId, isActive: true, deletedAt: null },
+        include: { tiers: { orderBy: { sortOrder: 'asc' } } },
+        orderBy: { priority: 'asc' },
+        take: 200,
+      }),
+    ]);
 
     // Compute new prices in memory, then batch-update via $transaction chunks
     type PriceUpdate = {

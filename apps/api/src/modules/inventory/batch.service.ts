@@ -54,28 +54,34 @@ export class BatchService {
   ): Promise<StockBatch> {
     const db = tx ?? this.prisma;
 
-    const good = await db.good.findFirst({
-      where: { id: dto.goodId, orgId, deletedAt: null },
-      select: {
-        id: true,
-        category: true,
-        goodType: true,
-        salePrice: true,
-        brandId: true,
-        unitId: true,
-      },
-    });
+    // Parallel: good fetch + pricing rules — обидва не залежать одне від одного.
+    // Раніше було послідовно: good.findFirst → calculateSalePrice (який внутрішньо тягнув rules).
+    // Тепер один RTT на обидва. computePriceFromRules — синхронний компуть.
+    const [good, allRules] = await Promise.all([
+      db.good.findFirst({
+        where: { id: dto.goodId, orgId, deletedAt: null },
+        select: {
+          id: true,
+          category: true,
+          goodType: true,
+          salePrice: true,
+          brandId: true,
+          unitId: true,
+        },
+      }),
+      this.pricing.getActiveRulesForOrg(orgId),
+    ]);
     if (!good) throw new BadRequestException('Товар не знайдено');
 
     const resolvedUnitOfMeasureId = dto.unitOfMeasureId ?? good.unitId ?? null;
 
     const currentSalePriceForBatch = Number(good.salePrice);
-    const computedSalePrice = await this.pricing.calculateSalePrice(
-      orgId,
+    const computedSalePrice = this.pricing.computePriceFromRules(
+      allRules,
       dto.goodId,
-      good.category ?? null,
-      good.goodType ?? null,
-      good.brandId ?? null,
+      good.category ?? undefined,
+      good.goodType ?? undefined,
+      good.brandId ?? undefined,
       dto.costPrice,
     );
     // Bug #14: при безкоштовному прийомі (costPrice=0) використовуємо поточну ціну товару,
