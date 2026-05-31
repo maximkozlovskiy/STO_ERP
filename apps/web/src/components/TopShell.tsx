@@ -354,6 +354,7 @@ export function TopShell({ children }: { children: ReactNode }) {
   const [bookmarks, setBookmarks] = useState<string[]>([]);
 
   const uiFeatures = useUiFeatures();
+  const queryClient = useQueryClient();
 
   useKeyboardShortcut(
     'ctrl+k',
@@ -470,8 +471,6 @@ export function TopShell({ children }: { children: ReactNode }) {
       router.push('/login');
     }
   };
-
-  const queryClient = useQueryClient();
 
   const NavLink = ({ item, showStar = true }: { item: NavItem; showStar?: boolean }) => {
     const active = isActive(pathname ?? '', item.href);
