@@ -25,6 +25,7 @@ import {
   Menu,
   Star,
   Search,
+  ClipboardList,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -68,6 +69,12 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Звіти',
     items: [
       { href: '/calendar', label: 'Календар', icon: CalendarDays },
+      {
+        href: '/bookings',
+        label: 'Онлайн-запис',
+        icon: ClipboardList,
+        roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
+      },
       { href: '/settlements', label: 'Розрахунки', icon: Wallet },
       {
         href: '/reports',
@@ -103,6 +110,12 @@ const NAV_GROUPS_FUNCTIONS: NavGroup[] = [
       { href: '/dashboard', label: 'Дашборд', icon: LayoutDashboard },
       { href: '/work-orders', label: 'Наряди', icon: Wrench },
       { href: '/calendar', label: 'Календар', icon: CalendarDays },
+      {
+        href: '/bookings',
+        label: 'Онлайн-запис',
+        icon: ClipboardList,
+        roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
+      },
       { href: '/crm', label: 'Контрагенти', icon: Users },
       { href: '/inventory', label: 'Склад', icon: Package },
       { href: '/purchase-orders', label: 'Замовлення', icon: ShoppingCart },

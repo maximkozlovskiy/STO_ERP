@@ -60,7 +60,7 @@ interface Counterparty {
 interface WOTemplate {
   id: string;
   name: string;
-  lines: { workId: string; quantity: number }[];
+  lines: { workId: string; quantity: number; note?: string }[];
   parts: { goodId: string; quantity: number }[];
 }
 

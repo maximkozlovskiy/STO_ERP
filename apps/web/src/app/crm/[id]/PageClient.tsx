@@ -96,8 +96,13 @@ interface LoyaltyTransaction {
 }
 interface Warranty {
   id: string;
+  orgId: string;
   workOrderId: string;
+  workOrderLineId?: string | null;
+  workOrderPartId?: string | null;
+  counterpartyId: string;
   workOrderNumber?: string;
+  counterpartyName?: string;
   expiresAt: string;
   description: string;
   claimedAt?: string | null;

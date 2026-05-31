@@ -98,9 +98,12 @@ interface WorkOrderDetail {
 
 interface Comment {
   id: string;
+  orgId: string;
+  entityType: string;
+  entityId: string;
   body: string;
   authorId: string;
-  authorName?: string;
+  authorName: string;
   createdAt: string;
 }
 
