@@ -12,6 +12,7 @@ export interface CreateBatchDto {
   expiryDate?: Date;
   receivedQty: number;
   costPrice: number;
+  unitOfMeasureId?: string | null;
 }
 
 export interface BatchConsumeResult {
@@ -34,6 +35,8 @@ export interface StockBatchDto {
   isActive: boolean;
   createdAt: Date;
   purchaseOrderNumber?: string | null;
+  unitOfMeasureId: string | null;
+  unitShortName: string | null;
 }
 
 @Injectable()
@@ -52,9 +55,18 @@ export class BatchService {
 
     const good = await db.good.findFirst({
       where: { id: dto.goodId, orgId, deletedAt: null },
-      select: { id: true, category: true, goodType: true, salePrice: true, brandId: true },
+      select: {
+        id: true,
+        category: true,
+        goodType: true,
+        salePrice: true,
+        brandId: true,
+        unitId: true,
+      },
     });
     if (!good) throw new BadRequestException('Товар не знайдено');
+
+    const resolvedUnitOfMeasureId = dto.unitOfMeasureId ?? good.unitId ?? null;
 
     const currentSalePriceForBatch = Number(good.salePrice);
     const computedSalePrice = await this.pricing.calculateSalePrice(
@@ -83,6 +95,7 @@ export class BatchService {
         remainingQty: dto.receivedQty,
         costPrice: dto.costPrice,
         salePrice,
+        unitOfMeasureId: resolvedUnitOfMeasureId,
       },
     });
 
@@ -239,6 +252,7 @@ export class BatchService {
         purchaseOrderLine: {
           include: { purchaseOrder: { select: { number: true } } },
         },
+        unitOfMeasure: { select: { shortName: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -258,6 +272,8 @@ export class BatchService {
       isActive: b.isActive,
       createdAt: b.createdAt,
       purchaseOrderNumber: b.purchaseOrderLine?.purchaseOrder?.number ?? null,
+      unitOfMeasureId: b.unitOfMeasureId,
+      unitShortName: b.unitOfMeasure?.shortName ?? null,
     }));
   }
 

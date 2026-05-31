@@ -24,6 +24,7 @@ export interface CreateMovementDto {
   purchaseOrderLineId?: string;
   batchNumber?: string;
   expiryDate?: Date;
+  unitOfMeasureId?: string | null;
 }
 
 @Injectable()
@@ -99,6 +100,7 @@ export class InventoryService {
         documentId: dto.documentId ?? null,
         notes: dto.notes ?? null,
         createdBy: dto.createdBy ?? null,
+        unitOfMeasureId: dto.unitOfMeasureId ?? null,
       },
     });
 
@@ -115,6 +117,7 @@ export class InventoryService {
           expiryDate: dto.expiryDate,
           receivedQty: dto.quantity,
           costPrice: resolvedCostPrice ?? 0,
+          unitOfMeasureId: dto.unitOfMeasureId ?? null,
         },
         db as Prisma.TransactionClient,
       );
