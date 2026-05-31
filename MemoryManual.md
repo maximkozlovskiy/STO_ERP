@@ -9,14 +9,22 @@
 ## Останній commit
 
 ```
+ffe3f07 fix(review): cycle 1 — schema-DB drift + warranty defense-in-depth + SMS attempts
+d137333 docs(memory): record sto-sync-agent cycle 1 — Invoice.amount fix
 cfbbf27 fix(sync): align Invoice interface with backend — amount not totalAmount
 0143e98 docs(skills,memory): add over-fetched-many-to-one-include pattern + record session 7a9f079
 7a9f079 perf(optimize): parallelize FK validation + narrow includes + covering index
-193945c docs(skills,memory): add parent-guard-helper-blocks-merger + js-aggregation-in-recalc patterns
-b530f17 perf(optimize): WO lines/parts hot-path + SQL aggregate + loyalty.redeem parallel
 Дата: 2026-05-31
 
-Latest sync: 2026-05-31 (sto-sync-agent цикл 1) — **1 Direction-3 мismatch виправлено**.
+Latest review: 2026-05-31 (sto-review-agent цикл 1 з 5, HEAD d137333 → ffe3f07) — **3 проблеми виправлено** (1 CRITICAL + 1 CRITICAL/IMPORTANT + 1 IMPORTANT).
+**Знайдено через статичний аналіз — 0 runtime регресій:**
+(1) CRITICAL §6 Database — `WorkOrderMedia` schema.prisma було оновлено у коміті `7a9f079` з `@@index([orgId, workOrderId])` → `@@index([orgId, workOrderId, createdAt])` (covering index для findAll з ORDER BY createdAt DESC), але міграція НЕ створена. Schema-DB drift: tsc green, але runtime у будь-якій running DB має старий 2-col індекс → Sort node на findAll все ще там. Створено `20260531120000_add_work_order_media_covering_index/migration.sql` з DROP старого + CREATE нового 3-col індексу.
+(2) CRITICAL/IMPORTANT §2.2 + §5 — `warranties.service.ts:claim` робив `prisma.warranty.update({ where: { id } })` БЕЗ `orgId` у where — defense-in-depth gap (pattern 2026-05-30). race-window: між `findFirst({ id, orgId })` guard і `update({ where: { id } })` інша сесія могла soft-delete-нути запис у тій же org → наш update «воскрешає» його з `claimedAt` на чужому рядку. Refactor: `updateMany({ where: { id, orgId, deletedAt: null } })` + `findFirstOrThrow` для повернення з relations.
+(3) IMPORTANT §2.5 + §10 Offline-First — `booking.service.ts:169` SMS confirmation черга мала `attempts: 5, delay: 30_000` — порушення skill-правила «SMS: attempts ≥ 10, delay 60_000» (offline-first invariant). На WAN/мобільному з'єднанні CTO 2g/3g 5 спроб з 30s базою — недостатньо для перевитривалості. Виправлено на `attempts: 10, delay: 60_000`.
+**TypeScript:** ✅ 0 errors (api + web + shared). **API tests:** 459/459 pass.
+**Нові SKILL patterns:** не виявлено — всі 3 проблеми покриті існуючими entries (schema-без-migration 2026-05-28, soft-delete-update-без-orgId 2026-05-30, BullMQ attempts §2.5).
+
+Previous sync: 2026-05-31 (sto-sync-agent цикл 1) — **1 Direction-3 мismatch виправлено**.
 **Mismatch:** `Invoice.totalAmount` у `useInvoices.ts` vs `InvoiceResponseDto.amount` у бекенді. Поле серіалізується як `amount` (не `totalAmount`), тому `inv.totalAmount` → `undefined` у runtime: список рахунків не показував суму, модаль оплати default-amount падав до NaN/0, placeholder та label були пусті. Виправлено: `totalAmount → amount` у hook interface + 5 call-sites у `invoices/page.tsx`.
 **Direction 1 (API→UI):** усі backend модулі мають UI — сторінки або embedded-вкладки. Виключення: auth/sync/health/files/notifications — норма.
 **Direction 2 (URL):** усі apiFetch URL перевірені — 0 розбіжностей.
