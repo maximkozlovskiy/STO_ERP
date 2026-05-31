@@ -1,35 +1,45 @@
-import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum, ValidateIf } from 'class-validator';
+import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
+
+// Порожній рядок "" конвертується в undefined щоб @IsUUID не кидав 400
+const emptyToUndefined = ({ value }: { value: unknown }) => (value === '' ? undefined : value);
 
 export class CreateCalendarSlotDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @ValidateIf(o => o.liftId != null)
+  @Transform(emptyToUndefined)
   @IsUUID()
   liftId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
-  @ValidateIf(o => o.employeeId != null)
+  @Transform(emptyToUndefined)
   @IsUUID()
   employeeId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
-  @ValidateIf(o => o.workOrderId != null)
+  @Transform(emptyToUndefined)
   @IsUUID()
   workOrderId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
-  @ValidateIf(o => o.counterpartyId != null)
+  @Transform(emptyToUndefined)
   @IsUUID()
   counterpartyId?: string;
+
   @ApiProperty() @IsISO8601() startAt!: string;
   @ApiProperty() @IsISO8601() endAt!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+
   @ApiPropertyOptional({ enum: CalendarSlotStatus })
   @IsOptional()
   @IsEnum(CalendarSlotStatus)
   status?: CalendarSlotStatus;
+
   @ApiPropertyOptional({ enum: CalendarSlotType })
   @IsOptional()
   @IsEnum(CalendarSlotType)
@@ -37,28 +47,30 @@ export class CreateCalendarSlotDto {
 }
 
 export class UpdateCalendarSlotDto {
-  // ValidateIf(o => o.liftId !== null) — пропускає null (переміщення без підйомника),
-  // @IsOptional — пропускає undefined (поле не передане взагалі).
   @ApiPropertyOptional()
   @IsOptional()
-  @ValidateIf(o => o.liftId !== null)
+  @Transform(emptyToUndefined)
   @IsUUID()
   liftId?: string | null;
+
   @ApiPropertyOptional()
   @IsOptional()
-  @ValidateIf(o => o.employeeId !== null)
+  @Transform(emptyToUndefined)
   @IsUUID()
   employeeId?: string | null;
+
   @ApiPropertyOptional()
   @IsOptional()
-  @ValidateIf(o => o.workOrderId !== null)
+  @Transform(emptyToUndefined)
   @IsUUID()
   workOrderId?: string | null;
+
   @ApiPropertyOptional()
   @IsOptional()
-  @ValidateIf(o => o.counterpartyId !== null)
+  @Transform(emptyToUndefined)
   @IsUUID()
   counterpartyId?: string | null;
+
   @ApiPropertyOptional() @IsOptional() @IsISO8601() startAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() endAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
