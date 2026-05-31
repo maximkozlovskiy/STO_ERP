@@ -75,6 +75,8 @@ export class PurchaseOrderLineResponseDto {
   @ApiPropertyOptional() goodName?: string;
   @ApiPropertyOptional() goodSku?: string | null;
   @ApiPropertyOptional() unit?: string;
+  @ApiPropertyOptional() unitShortName?: string;
+  @ApiPropertyOptional() coefficient?: number;
   @ApiProperty() quantity!: number;
   @ApiProperty() price!: number;
   @ApiProperty() amount!: number;

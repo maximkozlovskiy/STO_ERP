@@ -81,7 +81,16 @@ export class PurchaseOrdersService {
         warehouse: { select: { name: true } },
         lines: {
           where: { deletedAt: null },
-          include: { good: { select: { name: true, sku: true, unit: true } } },
+          include: {
+            good: {
+              select: {
+                name: true,
+                sku: true,
+                unit: true,
+                unitOfMeasure: { select: { shortName: true, coefficient: true } },
+              },
+            },
+          },
           take: 1000,
         },
       },
@@ -134,7 +143,16 @@ export class PurchaseOrdersService {
             lines: {
               where: { deletedAt: null },
               take: 1000,
-              include: { good: { select: { name: true, sku: true, unit: true } } },
+              include: {
+                good: {
+                  select: {
+                    name: true,
+                    sku: true,
+                    unit: true,
+                    unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                  },
+                },
+              },
             },
           },
         });
@@ -188,7 +206,16 @@ export class PurchaseOrdersService {
             lines: {
               where: { deletedAt: null },
               take: 1000,
-              include: { good: { select: { name: true, sku: true, unit: true } } },
+              include: {
+                good: {
+                  select: {
+                    name: true,
+                    sku: true,
+                    unit: true,
+                    unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                  },
+                },
+              },
             },
           },
         });
@@ -445,7 +472,12 @@ export class PurchaseOrdersService {
       quantity: number;
       price: import('@prisma/client').Prisma.Decimal;
       receivedQty: number;
-      good: { name: string; sku: string | null; unit: string } | null;
+      good: {
+        name: string;
+        sku: string | null;
+        unit: string;
+        unitOfMeasure: { shortName: string; coefficient: number } | null;
+      } | null;
     }>;
     _count?: { lines: number };
   }): PurchaseOrderResponseDto {
@@ -470,6 +502,8 @@ export class PurchaseOrdersService {
         goodName: l.good?.name,
         goodSku: l.good?.sku ?? null,
         unit: l.good?.unit,
+        unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
+        coefficient: l.good?.unitOfMeasure?.coefficient ?? 1,
         quantity: l.quantity,
         price: Number(l.price),
         amount: l.quantity * Number(l.price),

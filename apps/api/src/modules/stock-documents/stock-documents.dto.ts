@@ -72,6 +72,8 @@ export class StockDocumentLineResponseDto {
   @ApiPropertyOptional() goodName?: string;
   @ApiPropertyOptional() goodSku?: string | null;
   @ApiPropertyOptional() unit?: string;
+  @ApiPropertyOptional() unitShortName?: string;
+  @ApiPropertyOptional() coefficient?: number;
   @ApiProperty() quantity!: number;
   @ApiPropertyOptional() price?: number | null;
 }

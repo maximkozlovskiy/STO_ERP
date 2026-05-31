@@ -57,7 +57,16 @@ export class StockDocumentsService {
           lines: {
             where: { deletedAt: null },
             take: 1000,
-            include: { good: { select: { name: true, sku: true, unit: true } } },
+            include: {
+              good: {
+                select: {
+                  name: true,
+                  sku: true,
+                  unit: true,
+                  unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                },
+              },
+            },
           },
         },
       }),
@@ -77,7 +86,16 @@ export class StockDocumentsService {
         lines: {
           where: { deletedAt: null },
           take: 1000,
-          include: { good: { select: { name: true, sku: true, unit: true } } },
+          include: {
+            good: {
+              select: {
+                name: true,
+                sku: true,
+                unit: true,
+                unitOfMeasure: { select: { shortName: true, coefficient: true } },
+              },
+            },
+          },
         },
       },
     });
@@ -152,7 +170,16 @@ export class StockDocumentsService {
             lines: {
               where: { deletedAt: null },
               take: 1000,
-              include: { good: { select: { name: true, sku: true, unit: true } } },
+              include: {
+                good: {
+                  select: {
+                    name: true,
+                    sku: true,
+                    unit: true,
+                    unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                  },
+                },
+              },
             },
           },
         });
@@ -203,7 +230,16 @@ export class StockDocumentsService {
             lines: {
               where: { deletedAt: null },
               take: 1000,
-              include: { good: { select: { name: true, sku: true, unit: true } } },
+              include: {
+                good: {
+                  select: {
+                    name: true,
+                    sku: true,
+                    unit: true,
+                    unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                  },
+                },
+              },
             },
           },
         });
@@ -342,7 +378,12 @@ export class StockDocumentsService {
       goodId: string;
       quantity: number;
       price: Prisma.Decimal | null;
-      good: { name: string; sku: string | null; unit: string } | null;
+      good: {
+        name: string;
+        sku: string | null;
+        unit: string;
+        unitOfMeasure: { shortName: string; coefficient: number } | null;
+      } | null;
     }>;
   }): StockDocumentResponseDto {
     return {
@@ -365,6 +406,8 @@ export class StockDocumentsService {
         goodName: l.good?.name,
         goodSku: l.good?.sku ?? null,
         unit: l.good?.unit,
+        unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
+        coefficient: l.good?.unitOfMeasure?.coefficient ?? 1,
         quantity: l.quantity,
         price: l.price != null ? Number(l.price) : null,
       })),

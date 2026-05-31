@@ -525,6 +525,10 @@ export class InvoicesService {
     priceWithVat: Prisma.Decimal;
     sortOrder: number;
     createdAt: Date;
+    good?: {
+      unit: string;
+      unitOfMeasure: { shortName: string; coefficient: number } | null;
+    } | null;
   }): InvoiceLineResponseDto {
     return {
       id: l.id,
@@ -532,6 +536,8 @@ export class InvoicesService {
       goodId: l.goodId,
       workId: l.workId,
       description: l.description,
+      unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
+      coefficient: l.good?.unitOfMeasure?.coefficient ?? 1,
       quantity: l.quantity,
       unitPrice: Number(l.unitPrice),
       vatRate: Number(l.vatRate),
