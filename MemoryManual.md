@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+3b7a394 perf(api): load bottlenecks — indexes + queryRaw + timeouts + connection pool
 a5a390d fix(tester): Bugs #236-#240 — UoM krok 1+2 у StockBatch — release-blocker SD line + DiD guards
 83bcbea fix(review): krok 6 UoM — receive uses recv.unitOfMeasureId with org-scope validation; SD toDto returns unitOfMeasureId
 8adf21c feat(web): show UoM in batch table and batch viewer modal
@@ -368,7 +369,10 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 
 ## Поточний стан проєкту
 
-TypeScript: ✅ 0 errors (web + api + shared) — після Bug #236-#240 tester (verified 2026-05-31, HEAD a5a390d)
+TypeScript: ✅ 0 errors (web + api + shared) — після perf optimize (verified 2026-05-31, HEAD 3b7a394)
+
+Latest optimize: 2026-05-31 (sto-optimize-agent, HEAD a5a390d → 3b7a394) — 7 точкових perf фіксів за вказівкою користувача. **Backend:** (1) `reports.revenue()` — DB-side aggregation: $queryRaw з `DATE_TRUNC('day', completedAt AT TIME ZONE 'Europe/Kyiv')` + GROUP BY 1 замість findMany(take:10000) + JS reduce. Postgres повертає ~30 рядків (по одному на день) у потрібному форматі; контракт `{date, revenue, labor, parts, count}[]` зберігся. (2) `DashboardService.getSummary()` — приватний `withTimeout(p, ms)` хелпер на основі Promise.race: кожен з 4 sub-queries (activeWO count, todayRevenue aggregate, pendingInvoices count, lowStock $queryRaw) обгорнутий у 8s ceiling; timeout → null → поле сумарно 0 з warn log. Захищає SSE tick від blocking при slow Postgres або pool starvation. `setTimeout.unref()` щоб не тримати event loop. (3) `DashboardController.stream` SSE: `@SkipThrottle()` → `@Throttle({ ttl: 60_000, limit: 5 })` — лімітує лише нові з'єднання (5/хв на IP), не впливає на вже відкриті long-lived streams. Захист від reconnect-storm (broken proxies, tab spawn). (4) `PurchaseOrdersService.receive()` — tx timeout 15s → 30s для великих PO з сотнями рядків × createMovement з batch tracking. (5) `PrismaService` constructor: `datasourceUrl` з `connection_limit=25` + `pool_timeout=20` через `withConnectionPool(DATABASE_URL)`. Параметри додаються тільки якщо operator не задав їх у env. **DB:** (6) додано 2 індекси через міграцію `20260531100000_add_perf_indexes_wol_bc`: `work_order_lines(workOrderId, deletedAt)` — list lines by workOrder без orgId fan-out (WO detail nested fetches), `batch_consumptions(orgId, batchId, createdAt)` — FIFO/LIFO traversal per-batch у межах tenant. (7) `reports.service.ts` інші endpoints — verified that all findMany have explicit take caps (workOrders n/a (groupBy), stock 5000+500, settlements 5000, load 5000) — no-op fix. **§ Контракти збережено.** TS api/web 0 errors. Якщо хтось виставляв нестандартний `connection_limit` у env — він зберігається (no-op у withConnectionPool коли key вже у searchParams).
+
 Unit+Contract API: ✅ 449/449 passed (40 файлів) — повний прогін
 Web component suite: ✅ 203/203 passed (18 файлів)
 

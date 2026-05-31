@@ -51,6 +51,7 @@ cat MemoryManual.md | head -50
 ## Крок 1 — Backend аудит
 
 ### 1.1 N+1 запити
+
 ```bash
 # Async map — класичний N+1
 grep -rn "\.map.*await\|await.*\.map\|Promise\.all.*map" apps/api/src/modules/ --include="*.service.ts" | grep -v spec
@@ -63,21 +64,28 @@ grep -rn "include:.*true\b" apps/api/src/modules/ --include="*.service.ts" | gre
 ```
 
 **Патерн фіксу:**
+
 ```typescript
 // ❌ include: true — тягне всі колонки join-таблиці
-employeeZones: true
+employeeZones: true;
 
 // ✅ select — тільки потрібне поле
-employeeZones: { select: { zoneId: true } }
+employeeZones: {
+  select: {
+    zoneId: true;
+  }
+}
 ```
 
 ### 1.2 Послідовні незалежні запити
+
 ```bash
 # Два findFirst підряд (validation pattern)
 grep -rn "const .* = await.*findFirst" apps/api/src/modules/ --include="*.service.ts" -A 3 | grep -B 1 "await.*findFirst" | grep -v spec | head -20
 ```
 
 **Патерн фіксу:**
+
 ```typescript
 // ❌ Sequential — кожен чекає попереднього
 const cp = await prisma.counterparty.findFirst({ where: { id, orgId } });
@@ -93,6 +101,7 @@ const [cp, wo] = await Promise.all([
 ```
 
 ### 1.3 findMany без take ліміту
+
 ```bash
 grep -rn "findMany(" apps/api/src/modules/ --include="*.service.ts" | grep -v "take:" | grep -v spec | head -20
 ```
@@ -100,6 +109,7 @@ grep -rn "findMany(" apps/api/src/modules/ --include="*.service.ts" | grep -v "t
 **Фікс:** додати `take: N` (reference data: 100-500; list endpoints: 20-200; reports: 10000 max).
 
 ### 1.4 Відсутній Redis кеш для довідників
+
 ```bash
 # Знайти findMany без кешування що викликаються часто
 grep -rn "async findAll" apps/api/src/modules/ --include="*.service.ts" | grep -v spec | head -20
@@ -110,6 +120,7 @@ grep -rn "CacheService\|cache\.get\|cache\.set" apps/api/src/modules/ --include=
 **Кандидати для кешування (TTL 300s):** branches, warehouses, zones, lifts, work-categories, brands, units, payment-methods, currencies, bank-accounts, cash-registers — всі вже мають кеш.
 
 Шаблон:
+
 ```typescript
 async findAll(orgId: string): Promise<Dto[]> {
   const key = `ref:X:${orgId}`;
@@ -124,6 +135,7 @@ async findAll(orgId: string): Promise<Dto[]> {
 ```
 
 ### 1.5 Важкі list endpoints з lines/parts
+
 ```bash
 # findMany що включають lines або parts
 grep -rn "findMany" apps/api/src/modules/ --include="*.service.ts" -A 10 | grep -E "lines:|parts:" | head -10
@@ -132,6 +144,7 @@ grep -rn "findMany" apps/api/src/modules/ --include="*.service.ts" -A 10 | grep 
 **Фікс:** lines/parts у list endpoint → `_count: { select: { lines: ... } }` + lazy-load при відкритті деталей.
 
 ### 1.6 JS агрегація замість SQL
+
 ```bash
 # Завантаження > 1000 рядків + JS reduce/forEach
 grep -rn "take: 10000\|take: 5000\|take: 1000" apps/api/src/modules/ --include="*.service.ts" | grep -v spec
@@ -142,6 +155,7 @@ grep -rn "\.reduce\|\.forEach\|\.map" apps/api/src/modules/reports/ --include="*
 **Фікс:** замінити `findMany(take:10000) + JS reduce` на `$queryRaw GROUP BY` або `prisma.X.groupBy()`.
 
 ### 1.7 CORS preflight без maxAge
+
 ```bash
 # enableCors без maxAge → кожен fetch коштує OPTIONS + GET (2 RTT)
 grep -rn "enableCors" apps/api/src/main.ts
@@ -152,6 +166,7 @@ grep -rn "enableCors" apps/api/src/main.ts
 **Як перевірити що проблема є:** у HAR/Network panel шукати парі OPTIONS+GET на той самий endpoint при кожному mount сторінки. Якщо є — `maxAge` не налаштований.
 
 ### 1.8 Dashboard і SSE без кешу
+
 ```bash
 grep -rn "getSummary\|dashboard" apps/api/src/modules/dashboard/ --include="*.service.ts" | head -10
 ```
@@ -163,6 +178,7 @@ grep -rn "getSummary\|dashboard" apps/api/src/modules/dashboard/ --include="*.se
 ## Крок 2 — Frontend аудит
 
 ### 2.1 Пошук без debounce
+
 ```bash
 # Input onChange що напряму змінює state який тригерить API
 grep -rn "onChange.*setSearch\|onChange.*setQ\b\|onChange.*setQuery" apps/web/src/app/ --include="*.tsx" | head -20
@@ -173,17 +189,25 @@ grep -rn "useDebounce\|debouncedSearch\|debouncedQ" apps/web/src/app/ --include=
 **Фікс:** `const debouncedSearch = useDebounce(search, 300)` + замінити `search` → `debouncedSearch` у `useCallback` deps.
 
 ### 2.2 Послідовні useEffect при mount
+
 ```bash
 # Кілька useEffect що залежать від [id] або [] — потенційні waterfall
 grep -rn "useEffect.*\[id\]\|useEffect.*\[\]" apps/web/src/app/ --include="*.tsx" | head -20
 ```
 
 **Патерн фіксу:**
+
 ```typescript
 // ❌ 4 окремих useEffect — 4 мережевих хвилі
-useEffect(() => { loadComments(); }, [loadComments]);
-useEffect(() => { loadMedia(); }, [loadMedia]);
-useEffect(() => { loadAudit(); }, [loadAudit]);
+useEffect(() => {
+  loadComments();
+}, [loadComments]);
+useEffect(() => {
+  loadMedia();
+}, [loadMedia]);
+useEffect(() => {
+  loadAudit();
+}, [loadAudit]);
 
 // ✅ Один Promise.all — одна хвиля
 useEffect(() => {
@@ -201,6 +225,7 @@ useEffect(() => {
 ```
 
 ### 2.3 Waterfall запитів (forEach → Promise.all)
+
 ```bash
 grep -rn "forEach.*apiFetch\|\.forEach.*fetch\|forEach.*then" apps/web/src/app/ --include="*.tsx" | head -10
 ```
@@ -208,6 +233,7 @@ grep -rn "forEach.*apiFetch\|\.forEach.*fetch\|forEach.*then" apps/web/src/app/ 
 **Фікс:** замінити `garages.forEach(g => apiFetch(g.id))` на `Promise.all(garages.map(g => apiFetch(g.id)))`.
 
 ### 2.4 Відсутній sessionStorage кеш для reference data
+
 ```bash
 # Сторінки що завантажують branches/warehouses/zones без getCached
 grep -rn "apiFetch.*branches\|apiFetch.*warehouses\|apiFetch.*zones\|apiFetch.*lifts\|apiFetch.*work-categories" apps/web/src/app/ --include="*.tsx" | grep -v "getCached\|setCache" | head -20
@@ -216,13 +242,16 @@ grep -rn "apiFetch.*branches\|apiFetch.*warehouses\|apiFetch.*zones\|apiFetch.*l
 **Фікс:** використати `getCached` / `setCache` з `@/lib/ref-cache`.
 
 **Окремо — source/management сторінки довідників** (вони не лише читають, а й редагують список):
+
 ```bash
 # Сторінки що фетчать довідник у loadAll/load І в mutation-хендлерах — але не пишуть у кеш
 grep -rln "apiFetch.*/branches\|apiFetch.*/zones\|apiFetch.*/lifts\|apiFetch.*/warehouses" apps/web/src/app/ --include="*.tsx" | xargs grep -L "setCache"
 ```
+
 Якщо `loadAll()` викликається і на mount, і після КОЖНОЇ мутації → безпечно додати `getCached` (first-paint) + `setCache` (warm cache + пропагація правок споживачам). Якщо ні — НЕ кешувати (ризик stale).
 
 ### 2.5 Важкі бандли без lazy loading
+
 ```bash
 # Перевірити bundle sizes
 pnpm --filter @sto/web build 2>&1 | grep -E "Route.*kB|First Load" | sort -t'k' -k1 -rn | head -15
@@ -231,6 +260,7 @@ pnpm --filter @sto/web build 2>&1 | grep -E "Route.*kB|First Load" | sort -t'k' 
 **Кандидати для `next/dynamic`:** recharts, heavy chart libs, map components. Поріг: сторінка > 200kB First Load JS.
 
 **Шаблон:**
+
 ```typescript
 const HeavyChart = dynamic(() => import('./HeavyChart'), {
   ssr: false,
@@ -239,6 +269,7 @@ const HeavyChart = dynamic(() => import('./HeavyChart'), {
 ```
 
 ### 2.6 React.memo на list items
+
 ```bash
 # Компоненти в map() що не мають memo
 grep -rn "\.map.*<[A-Z]\|return.*map.*(" apps/web/src/app/ --include="*.tsx" | grep -v "memo\|spec\|import" | head -20
@@ -250,6 +281,7 @@ grep -rn "function.*Row\|function.*Card\|function.*Cell\|function.*Item" apps/we
 **Увага:** memo марний якщо пропсам передають `array.filter()` inline → використовувати `useMemo` Map для груп.
 
 ### 2.7 Стейт замість useMemo/константи
+
 ```bash
 # useState для значень що не змінюються
 grep -rn "useState.*new Date\|useState.*Date\.now\|setToday\|setNow\b" apps/web/src/app/ --include="*.tsx" | head -10
@@ -260,7 +292,8 @@ grep -rn "output.*export" apps/web/next.config.ts
 **CRITICAL для static export:** `new Date()` у `useMemo` запікає build-time дату → hydration mismatch.
 **Правильно:** `useState<Date|null>(null)` + `useEffect(() => setToday(new Date()), [])`.
 
-### 2.8 Intl.*Format у hot-path хелперах + годинник у render
+### 2.8 Intl.\*Format у hot-path хелперах + годинник у render
+
 ```bash
 # Конструкція форматера у тілі функції-хелпера (locale-data init на кожен виклик)
 grep -rn "new Intl\.\(DateTimeFormat\|NumberFormat\)\|\.toLocale\(Time\|Date\)String(" apps/web/src/ --include="*.tsx" | head -20
@@ -276,6 +309,7 @@ grep -rn "new Date()\|Date\.now()\|\.getMinutes()\|\.getHours()" apps/web/src/ap
 ## Крок 3 — DB аудит
 
 ### 3.1 Відсутні індекси на WHERE колонках
+
 ```bash
 # Перевірити які колонки фільтруються без індексів
 grep -rn "where.*status\|where.*completedAt\|where.*branchId\|where.*warehouseId\|where.*type\b" apps/api/src/modules/ --include="*.service.ts" | grep -v spec | head -20
@@ -294,6 +328,7 @@ grep -n "@@index\|@@unique" packages/database/prisma/schema.prisma | head -40
 | text search | `(number, firstName, lastName, name, sku)` | GIN trgm |
 
 ### 3.2 GIN trgm для пошуку
+
 ```bash
 # Перевірити чи є тргм індекси
 docker exec stoerp-postgres-1 psql -U sto -d sto_erp -c "SELECT indexname FROM pg_indexes WHERE indexname LIKE '%trgm%';" 2>/dev/null | head -15
@@ -306,12 +341,14 @@ docker exec stoerp-postgres-1 psql -U sto -d sto_erp -c "SELECT indexname FROM p
 ## Крок 4 — Виправлення
 
 Для кожної знайденої проблеми:
+
 1. Прочитай файл
 2. Застосуй мінімальний точковий фікс
 3. `pnpm --filter <package> exec tsc --noEmit` — 0 errors
 4. Якщо зміна в schema.prisma → `cd packages/database && npx prisma db push --skip-generate`
 
 **Пріоритет фіксів:**
+
 1. N+1 та waterfall (найбільший impact)
 2. Відсутні індекси (migration)
 3. Послідовні → паралельні запити
@@ -335,12 +372,15 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ## Крок 6 — Оновити MemoryManual.md
 
 Оновити:
+
 ```markdown
 ## Останній commit
+
 <hash> <message>
 Дата: YYYY-MM-DD
 
 ## Поточний стан проєкту
+
 TypeScript: ✅ 0 errors
 ```
 
@@ -355,12 +395,14 @@ TypeScript: ✅ 0 errors
 ### Що записувати
 
 **Записуй** якщо знайшов:
+
 - Новий **тип неефективності** якого не було в чеклісті (новий анти-патерн)
 - Новий **контекстний сигнал** — ознаку за якою можна автоматично виявляти проблему (grep, структура, назва)
 - **Причину** чому проблема виникла — це допомагає передбачити де шукати наступного разу
 - **Наслідок** — що реально покращилось (кількість запитів, ms, kB) — для калібрування пріоритетів
 
 **Не записуй:**
+
 - Конкретні файли, функції, рядки коду (вони змінюються)
 - Готові фікси або шаблони коду (для цього є Кроки 1-3)
 - Речі які вже є в чеклісті
@@ -383,6 +425,7 @@ TypeScript: ✅ 0 errors
 ### Як оновлювати чекліст
 
 Якщо новий патерн **підтверджений у коді** (не гіпотетичний):
+
 1. Додати в відповідний розділ (Крок 1 / Крок 2 / Крок 3) новий підрозділ з grep-командою
 2. Додати до "Що вже оптимізовано" після фіксу
 3. Коміт: `docs(skills): add <pattern> to sto-optimize`
@@ -416,7 +459,7 @@ TypeScript: ✅ 0 errors
 ### 2026-05-28 — Source/management page не наповнює спільний ref-cache — сторінки що редагують довідники
 
 **Сигнал:** сторінка-власник довідника (CRUD UI для branches/zones/lifts/warehouses/brands/units) фетчить ті самі списки що й consumer-сторінки, але БЕЗ `getCached`/`setCache` — хоча consumer-сторінки той самий список кешують
-**Причина виникнення:** ref-cache додавався з боку *споживачів* (де список — це дропдаун/лейбл). Сторінку-джерело пропускають, бо здається що "вона й так керує цими даними" — але вона теж платить cold-fetch і, головне, її правки не доходять до кешу споживачів
+**Причина виникнення:** ref-cache додавався з боку _споживачів_ (де список — це дропдаун/лейбл). Сторінку-джерело пропускають, бо здається що "вона й так керує цими даними" — але вона теж платить cold-fetch і, головне, її правки не доходять до кешу споживачів
 **Підхід до виявлення:** не плутати з Кроком 2.4. Тут шукати **source-сторінку** довідника: знайти у grep сторінку де той самий endpoint викликається і в `loadAll`/`load`, і у mutation-хендлерах (create/update/delete) — це ознака management UI. Перевірити чи вона торкається ref-cache взагалі
 **Підхід до фіксу:** safe-умова обов'язкова — фіксувати ТІЛЬКИ якщо `loadAll()` викликається і на mount, і після КОЖНОЇ мутації (інакше кеш стане джерелом stale-даних). Якщо так: seed з `getCached` для миттєвого first-paint + `setCache` після кожного свіжого фетчу. Це не лише прискорює саму сторінку — це пропагує її правки/видалення у кеш споживачів на їхній наступний mount
 **Реальний impact:** management-сторінка більше не cold-fetch при кожному відкритті; правки довідника видно на consumer-сторінках без чекання їхнього TTL
@@ -451,13 +494,14 @@ TypeScript: ✅ 0 errors
 **Сигнал:** запит від користувача містить фразу «чи варто кешувати», «чи потрібен debounce», «чи ефективно» — це питання, не директива. Перед фіксом перевіряй чи проблема **вимірна** і чи **частота виклику** виправдовує складність
 **Причина виникнення:** аудит-агент бачить кожне «можна було б покращити» як проблему. Реальність: 80% таких «оптимізацій» додають складність без impact, бо: low-frequency call, dedup вже існує на нижньому рівні (apiFetch in-flight Map), data invalidation складніша за виграш
 **Підхід до виявлення:** для кожного знайденого patterns спитати:
-  1. Скільки викликів на сесію? (1-10 = low; 100+ = high)
-  2. Чи є dedup на нижчому рівні? (apiFetch inFlight, browser HTTP cache, Prisma query batching)
-  3. Чи інвалідація складніша за виграш? (multi-key cache, cross-tenant TTL)
-  4. Чи буде візуальний/measurable impact? (< 50ms total = ні)
-**Підхід до фіксу:** **записати в звіт "не виправлено, бо X"** замість тихо ігнорувати. Користувач має знати чому. Приклади: «GET /user-preferences/:key не кешується бо викликається 1× per mount + apiFetch уже дедуплить in-flight», «calculateSalePrice cache key (orgId+goodId+brandId+costPrice) дав би < 5% hit rate і складну інвалідацію — пропущено»
-**Реальний impact:** уникнення збільшення складності коду в low-impact гарячих шляхах; чесний звіт, який не маскує бездіяльність як «все ОК»
-**Де шукати ще:** будь-яке запитання-аудит з «чи варто/чи ефективно» — застосовувати 4-чек філтр перед діями
+
+1. Скільки викликів на сесію? (1-10 = low; 100+ = high)
+2. Чи є dedup на нижчому рівні? (apiFetch inFlight, browser HTTP cache, Prisma query batching)
+3. Чи інвалідація складніша за виграш? (multi-key cache, cross-tenant TTL)
+4. Чи буде візуальний/measurable impact? (< 50ms total = ні)
+   **Підхід до фіксу:** **записати в звіт "не виправлено, бо X"** замість тихо ігнорувати. Користувач має знати чому. Приклади: «GET /user-preferences/:key не кешується бо викликається 1× per mount + apiFetch уже дедуплить in-flight», «calculateSalePrice cache key (orgId+goodId+brandId+costPrice) дав би < 5% hit rate і складну інвалідацію — пропущено»
+   **Реальний impact:** уникнення збільшення складності коду в low-impact гарячих шляхах; чесний звіт, який не маскує бездіяльність як «все ОК»
+   **Де шукати ще:** будь-яке запитання-аудит з «чи варто/чи ефективно» — застосовувати 4-чек філтр перед діями
 
 ---
 
@@ -466,13 +510,14 @@ TypeScript: ✅ 0 errors
 **Сигнал:** користувач ставить запитання у формі "чи є cleanup для setTimeout?", "скільки ResizeObserver одночасно?", "чи потрібна virtualization?", "transition при кожному ререндері чи тільки при зміні?". Це **діагностичні питання**, а не директиви на фікс
 **Причина виникнення:** запит часто формулюється з підозрою на проблему, але код може бути вже правильним (cleanup є, RO мало, pagination вже обмежує, CSS transition спрацьовує лише при зміні значення). Аудит-агент має схильність "знайти щось щоб виправити" — і додає захисні зміни що ускладнюють код без impact
 **Підхід до виявлення:** для кожного запитання-діагностики виконати **точкову верифікацію**:
-  1. Cleanup setTimeout/setInterval/observers? → прочитати `useEffect` return statement, перевірити `clearTimeout(id)`/`clearInterval(id)`/`.disconnect()`
-  2. Кількість одночасних observers? → grep по conditional renders (`{flag && <X/>}`); оцінити max active count
-  3. Virtualization потрібна? → знайти pagination ліміт (`limit: '20'`, `take: 20`); якщо < 100 видимих рядків — НЕ потрібна
-  4. CSS transition при ререндері? → CSS `transition: prop Xms` запускає анімацію **лише** при зміні значення `prop`, не при ререндері. Inline `style={{}}` об'єкт recreated each render — React diff'ить ефективно
-**Підхід до фіксу:** якщо верифікація показала що проблеми **немає** — **НЕ робити фікс**. Замість цього: чесно відповісти у звіті "0 проблем — cleanup є / pagination 20 / transition тільки при size change". Це валідно, це показує що код у хорошому стані. **Не вигадувати фіктивні фікси щоб виглядати продуктивним**
-**Реальний impact:** уникнення додавання захисних змін у вже-коректний код; чесний нульовий-фікс звіт зміцнює довіру до агента
-**Де шукати ще:** будь-який prompt з 3+ запитаннями типу "чи..." — імовірно це чек-лист на верифікацію, не на фікс
+
+1. Cleanup setTimeout/setInterval/observers? → прочитати `useEffect` return statement, перевірити `clearTimeout(id)`/`clearInterval(id)`/`.disconnect()`
+2. Кількість одночасних observers? → grep по conditional renders (`{flag && <X/>}`); оцінити max active count
+3. Virtualization потрібна? → знайти pagination ліміт (`limit: '20'`, `take: 20`); якщо < 100 видимих рядків — НЕ потрібна
+4. CSS transition при ререндері? → CSS `transition: prop Xms` запускає анімацію **лише** при зміні значення `prop`, не при ререндері. Inline `style={{}}` об'єкт recreated each render — React diff'ить ефективно
+   **Підхід до фіксу:** якщо верифікація показала що проблеми **немає** — **НЕ робити фікс**. Замість цього: чесно відповісти у звіті "0 проблем — cleanup є / pagination 20 / transition тільки при size change". Це валідно, це показує що код у хорошому стані. **Не вигадувати фіктивні фікси щоб виглядати продуктивним**
+   **Реальний impact:** уникнення додавання захисних змін у вже-коректний код; чесний нульовий-фікс звіт зміцнює довіру до агента
+   **Де шукати ще:** будь-який prompt з 3+ запитаннями типу "чи..." — імовірно це чек-лист на верифікацію, не на фікс
 
 ---
 
@@ -593,7 +638,7 @@ TypeScript: ✅ 0 errors
 **Підхід до виявлення:** для кожного `async calculate*` у сервісі прочитати тіло. Якщо перший await — це `findMany`/`findFirst` для довідника, не для основного entity input — кандидат на split. Перевірити чи метод викликається у циклі деінде (grep `calculateX(`)
 **Підхід до фіксу:** split на дві функції: `getRulesForOrg(orgId)` (async, тримати у PricingService) + `computeFromRules(rules, ...inputs)` (sync, чистий розрахунок). Existing `calculateX` робить обидві операції підряд — зворотно-сумісний. Batch-споживачі викликають `getRulesForOrg` ОДИН раз і map'ять `computeFromRules` синхронно
 **Реальний impact:** для applyPricingFromList з 500 items: 500 fetch правил → 1 fetch + 500 синхронних compute. Раніше було ~15s (500 × 30ms RTT) → < 1s. Аналогічно для tax/discount/loyalty калькуляторів
-**Де шукати ще:** будь-який *Service з методом «розрахуй X»: pricing, tax, discount, loyalty earn, commission. Коли вони викликаються у репортах, bulk-операціях, batch-операціях — extract pure compute
+**Де шукати ще:** будь-який \*Service з методом «розрахуй X»: pricing, tax, discount, loyalty earn, commission. Коли вони викликаються у репортах, bulk-операціях, batch-операціях — extract pure compute
 
 ---
 
@@ -630,11 +675,44 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — SSE/long-poll endpoints без throttle на нові підключення — `@SkipThrottle()` на @Sse() через тривале з'єднання
+
+**Сигнал:** контролер з `@Sse()` або `@Get('stream')`/SSE/long-poll помічений `@SkipThrottle()` для того щоб throttler не лічив це як rapid-fire request. Логіка коректна за наявністю самого з'єднання (вже відкритий stream — це 1 з'єднання, не 1 запит/30с), але **нові підключення** (initial connect, browser reconnect, broken proxy retries) повністю безконтрольні
+**Причина виникнення:** автори SkipThrottle для SSE йдуть за міркуванням «throttler рахує запити, а SSE — один тривалий запит, тому виключаємо». Не помічають що сам акт connect — це окремий запит, і broken proxy/reverse-tunnel може ретриєвати connect десятки разів на секунду. На стороні API це cold-start + JWT verify + initial DB fetch на кожен connect
+**Підхід до виявлення:** grep `@SkipThrottle\(\)` у контролерах разом із `@Sse()` / `@Get.*stream` / `@Post.*upload-chunks` / будь-який long-lived. Якщо метод повертає Observable з `interval()` або довгий stream — це кандидат на throttling **підключень**
+**Підхід до фіксу:** замінити `@SkipThrottle()` на `@Throttle({ default: { ttl: 60_000, limit: 5 } })` (або інші числа залежно від профілю). Throttler `@nestjs/throttler` рахує тільки нові HTTP request'и — вже відкритий stream не тригерить лічильник. Це лімітує лише **спам connect'ів** з однієї IP, не впливає на normal flow (5 нових з'єднань/хв з однієї машини більш ніж достатньо для legitimate reconnect після network blip)
+**Реальний impact:** при broken proxy / unstable network у клієнта — ~50-500 connect/min блокується до 5/min на IP. Усуває cold-start DDoS-shape spike на дашборді/SSE. Перший connect завжди проходить
+**Де шукати ще:** будь-який `@Sse()`, WebSocket upgrade endpoint, long-poll `Get('/notifications')` з interval, file-upload streaming endpoints, server-side render endpoints що тримають з'єднання
+
+---
+
+### 2026-05-31 — Sub-query timeout у Promise.allSettled fan-out — dashboard/aggregated endpoints що збирають кілька незалежних метрик
+
+**Сигнал:** метод `getSummary`/`getDashboard`/`getAggregatedReport` робить `Promise.allSettled([q1, q2, q3, q4])` з декількох незалежних DB-запитів. `allSettled` ловить exception per-query, але **не обмежує час**: якщо один запит зависне (slow plan, lock wait, pool starvation) — увесь endpoint чекатиме до Prisma default timeout (немає таймауту on query, тільки на connection). У SSE-контексті це валить tick для всіх клієнтів
+**Причина виникнення:** `Promise.allSettled` сприймається як «безпечна паралельність — одна помилка не вб'є інші». Але failure mode «зависання» (не reject) залишається без обробки. Розробник пише isolation per-query через allSettled і вважає це достатнім
+**Підхід до виявлення:** grep `Promise\.allSettled\(` у backend сервісах, особливо у dashboard/reports/aggregated endpoints. Перевірити чи будь-який з sub-queries може бути повільним (cross-join, JSON aggregate, $queryRaw з великим scan). Якщо endpoint викликається у hot polling loop (SSE, websocket, frequent client poll) — обов'язковий timeout per query
+**Підхід до фіксу:** додати приватний helper `withTimeout<T>(p, ms): Promise<T | null>` через `Promise.race([p, timeoutPromise])`. timeoutPromise resolves `null` (НЕ reject — інакше allSettled поверне `rejected` що ускладнює downstream код). `setTimeout(...).unref()` щоб не тримати Node event loop alive. Обгорнути кожен sub-query у `this.withTimeout(query, 8_000)`. Downstream check: `result.status === 'fulfilled' && result.value !== null` (null → timeout, log warn, fallback значення)
+**Реальний impact:** одне повільне поле більше не валить весь tick. Дашборд показує `lowStockCount: 0` з warn-логом замість 504 для всіх клієнтів. SLA для polled endpoints стає predictable (ceiling 8s × N queries ÷ parallelism)
+**Де шукати ще:** будь-який Promise.allSettled у backend (особливо dashboard, reports aggregated, multi-stream readers, batch validators). Прикладні зони: `getSummary`, `getOverview`, `getStats`, multi-resource search endpoints
+
+---
+
+### 2026-05-31 — Прихована відсутність Prisma connection pool sizing — DATABASE_URL без `connection_limit`/`pool_timeout`
+
+**Сигнал:** PrismaService створюється через `new PrismaClient()` без явного `datasourceUrl`. Prisma за замовчуванням бере `num_physical_cpus * 2 + 1` connection limit і `pool_timeout=10s`. На багатоядерній машині це може бути 17-25 на сервер; в Docker/CI з обмеженням CPU — лише 3-5. Symptom: під навантаженням `Timed out fetching a new connection from the connection pool` без жодних інших помилок
+**Причина виникнення:** Prisma docs згадують connection pooling у production checklist, але dev-режим зазвичай працює без явного sizing — `pnpm dev` на потужній dev-машині отримує 17 з'єднань і ніколи не уперлось. У production контейнерах із CPU limit пул стає 3-5 і будь-який бурст падає. Розробники не помічають бо staging часто має той самий small-shape що й dev
+**Підхід до виявлення:** read `PrismaService` constructor — якщо `super()` без аргументів або без `datasourceUrl` з URL-параметрами, перевірити `DATABASE_URL` у `.env*`. Якщо URL чистий (без `?connection_limit=`/`&pool_timeout=`), Prisma бере дефолти що залежать від cpus → unpredictable. Будь-який endpoint що робить `Promise.all([...])` з 5+ paralel queries у hot path — multiplier до пулу
+**Підхід до фіксу:** обгорнути URL в helper `withConnectionPool(url): string` через `new URL(url)` + `searchParams.set()` тільки якщо key ще не виставлений (operator override has precedence). Рекомендовані дефолти: `connection_limit=25` (10 per cpu вистачає для типового API + дашборд + reports + SSE), `pool_timeout=20` (запит чекає 20s на вільне з'єднання, потім throw). Передати у `super({ datasourceUrl, log })`. Logger conditional на NODE_ENV щоб уникнути spammy info-логів у prod
+**Реальний impact:** на dev-машині незмінно (operator може override). На staging/prod у Docker з CPU limit — пул із 3-5 стає 25, перестають з'являтись pool-timeout 504. Bonus: explicit logging level фіксує prod на `error` (раніше Prisma міг емітити query log на default → noise)
+**Де шукати ще:** будь-який сервіс з `extends PrismaClient` — перевір чи constructor оголошує `datasourceUrl` з pool params. Аналогічно: інші клієнти БД (MongoClient, Redis ioredis cluster mode), черги BullMQ Redis connection (`maxRetriesPerRequest`)
+
+---
+
 ### 2026-05-28 — Читання `new Date()` / годинника всередині render — компоненти з time-залежним UI
 
 **Сигнал:** `new Date()`, `Date.now()`, `.getMinutes()`/`.getHours()` викликані прямо у JSX або у `.map()` що генерує опції/комірки — особливо для disabled-логіки «минулий час». Це і impure render (різний результат при однакових props), і повторний виклик на кожен елемент
 **Причина виникнення:** «потрібен поточний час щоб задизейблити минулі опції» — найпростіше прочитати годинник там де він потрібен. Але render має бути чистим; час — це зовнішній стан
-**Підхід до виявлення:** grep `new Date()`/`Date.now()`/`.getMinutes()`/`.getHours()` у *.tsx поза `useEffect`/`useCallback`/хендлерами; якщо збіг у render-гілці або в `.map` колбеку — проблема
+**Підхід до виявлення:** grep `new Date()`/`Date.now()`/`.getMinutes()`/`.getHours()` у \*.tsx поза `useEffect`/`useCallback`/хендлерами; якщо збіг у render-гілці або в `.map` колбеку — проблема
 **Підхід до фіксу:** тримати поточний час у стейті (`nowMs`), оновлювати по інтервалу в `useEffect`; похідні граничні значення (minHour, minMinute) рахувати через `useMemo([nowMs])`; передавати їх у дочірні компоненти як props замість читання годинника в них. Дочірній компонент стає чистим і memo-friendly
 **Реальний impact:** прибирає impure render + per-element виклики Date; робить time-gated списки опцій детермінованими і memo-сумісними
 **Де шукати ще:** time/date picker'и з disabled минулих значень, «сьогодні»-підсвітка у календарі/таблицях, countdown/таймери, будь-який disabled на основі «зараз»
@@ -644,10 +722,15 @@ TypeScript: ✅ 0 errors
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
+
 - ✅ CORS preflight cache: `enableCors({ maxAge: 86400 })` — браузер кешує OPTIONS, ~50% менше RTT в dev
 - ✅ CacheService + Redis TTL 300s: branches, warehouses, zones, lifts, work-categories, brands, units, payment-methods, currencies, bank-accounts, cash-registers
 - ✅ Dashboard cache 25s TTL
-- ✅ Reports: $queryRaw GROUP BY замість JS aggregation
+- ✅ Reports: $queryRaw GROUP BY замість JS aggregation (revenue/workOrders/profitability — всі 3 hot reports)
+- ✅ DashboardService.getSummary: Promise.race 8s timeout на кожен sub-query (slow PG → null → 0, не валить tick)
+- ✅ Dashboard SSE: Throttle 5 connections / 60s — лімітує лише нові connect, не data stream
+- ✅ PurchaseOrders.receive: tx timeout 30s (для великих PO з сотнями рядків × batch tracking)
+- ✅ PrismaService: explicit `datasourceUrl` з `connection_limit=25` + `pool_timeout=20` (operator override через env працює)
 - ✅ Purchase-orders list без lines
 - ✅ Employees: `select: { xId: true }` замість `include: true`
 - ✅ Invoices create: parallel Promise.all
@@ -677,6 +760,7 @@ TypeScript: ✅ 0 errors
 - ✅ goods update: parallel findOne tenant guard + sku-uniqueness + FK validation (3 RTT → 1)
 
 **Frontend:**
+
 - ✅ useDebounce(300ms) на 8 сторінках (work-orders, crm, invoices, purchase-orders, inventory, employees, catalog ×3)
 - ✅ next/dynamic recharts: dashboard (235→124kB), reports (269→149kB)
 - ✅ sessionStorage ref-cache: branches, warehouses, zones, lifts, work-categories, brands, units, suppliers, wo-templates, currencies, bank-accounts, works
@@ -700,6 +784,7 @@ TypeScript: ✅ 0 errors
 - ✅ lib/format.ts Intl singletons (fmtMoney/fmtInt/fmtDate/fmtDateTime/fmtShortDateTime): 9 сторінок (catalog/crm/employees/invoices/pricing-rules/purchase-orders/stock-documents/work-orders[list+detail]) — заміна inline `n.toLocaleString('uk-UA', {...})` і `new Date(...).toLocaleDateString(...)` у table-cell rendering hot-path
 
 **DB:**
+
 - ✅ work_orders: `(orgId, status, branchId, deletedAt)`, `(orgId, completedAt, deletedAt)`
 - ✅ stock_items: `(orgId, warehouseId, deletedAt)`
 - ✅ stock_movements: `(orgId, warehouseId, createdAt)`
@@ -707,3 +792,5 @@ TypeScript: ✅ 0 errors
 - ✅ GIN trgm: work_orders.number, counterparties.(firstName/lastName/companyName), goods.(name/sku)
 - ✅ audit_events: `(orgId, entityType, entityId, createdAt)` covering — findByEntity timeline без sort node
 - ✅ settlement_transactions: `(orgId, settlementAccountId, createdAt)` covering — paginated list + reconciliation period scans
+- ✅ work_order_lines: `(workOrderId, deletedAt)` — list lines by WO без orgId fan-out у nested fetch
+- ✅ batch_consumptions: `(orgId, batchId, createdAt)` — chronological FIFO/LIFO traversal per-batch
