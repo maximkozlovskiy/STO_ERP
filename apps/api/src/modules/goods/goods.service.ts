@@ -159,12 +159,19 @@ export class GoodsService {
   // ─── Barcodes ────────────────────────────────────────────────────────────────
 
   async getBarcodes(orgId: string, goodId: string): Promise<GoodBarcodeResponseDto[]> {
-    await this.findOne(orgId, goodId);
-    const barcodes = await this.prisma.goodBarcode.findMany({
-      where: { orgId, goodId },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+    // Same-aggregate parent + child: tenant-safe to parallelize (-1 RTT).
+    const [good, barcodes] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id: goodId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.goodBarcode.findMany({
+        where: { orgId, goodId },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+    ]);
+    if (!good) throw new NotFoundException('Товар не знайдено');
     return barcodes.map(b => this.toBarcodeDto(b));
   }
 
@@ -173,15 +180,22 @@ export class GoodsService {
     goodId: string,
     dto: CreateGoodBarcodeDto,
   ): Promise<GoodBarcodeResponseDto> {
-    await this.findOne(orgId, goodId);
-
     if (!dto.barcode || !dto.barcode.trim()) {
       throw new BadRequestException('Штрихкод не може бути порожнім');
     }
 
-    const existing = await this.prisma.goodBarcode.findFirst({
-      where: { orgId, barcode: dto.barcode },
-    });
+    // Parallel: parent-good guard + duplicate-barcode check — independent reads.
+    const [good, existing] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id: goodId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.goodBarcode.findFirst({
+        where: { orgId, barcode: dto.barcode },
+        select: { id: true },
+      }),
+    ]);
+    if (!good) throw new NotFoundException('Товар не знайдено');
     if (existing) {
       throw new ConflictException('Штрихкод уже використовується');
     }
@@ -210,15 +224,27 @@ export class GoodsService {
   // ─── Good UoM ──────────────────────────────────────────────────────────────
 
   async getUoMs(orgId: string, goodId: string): Promise<GoodUoMResponseDto[]> {
-    const good = await this.prisma.good.findFirst({
-      where: { id: goodId, orgId, deletedAt: null },
-    });
+    // Same-aggregate parent + child sequential read — collapse у Promise.all (-1 RTT).
+    // goodUoM.findMany has orgId+goodId where, so it's tenant-safe even without parent guard.
+    const [good, uoms] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id: goodId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.goodUoM.findMany({
+        where: { orgId, goodId },
+        // Tighten include → select to avoid over-fetching unitOfMeasure metadata
+        // (orgId, deletedAt, syncVersion, etc. are unused by toUoMDto).
+        select: {
+          id: true,
+          unitOfMeasureId: true,
+          isDefault: true,
+          unitOfMeasure: { select: { name: true, shortName: true, coefficient: true } },
+        },
+        orderBy: { isDefault: 'desc' },
+      }),
+    ]);
     if (!good) throw new NotFoundException('Товар не знайдено');
-    const uoms = await this.prisma.goodUoM.findMany({
-      where: { orgId, goodId },
-      include: { unitOfMeasure: true },
-      orderBy: { isDefault: 'desc' },
-    });
     return uoms.map(u => this.toUoMDto(u));
   }
 
@@ -232,12 +258,15 @@ export class GoodsService {
     if (!good) throw new NotFoundException('Товар не знайдено');
     if (!unit) throw new NotFoundException('Одиницю виміру не знайдено');
 
-    const existing = await this.prisma.goodUoM.findFirst({
-      where: { orgId, goodId, unitOfMeasureId: dto.unitOfMeasureId },
-    });
+    // Parallel: existing-row dup check + count of all UoMs for this good — independent reads.
+    const [existing, count] = await Promise.all([
+      this.prisma.goodUoM.findFirst({
+        where: { orgId, goodId, unitOfMeasureId: dto.unitOfMeasureId },
+        select: { id: true },
+      }),
+      this.prisma.goodUoM.count({ where: { orgId, goodId } }),
+    ]);
     if (existing) throw new ConflictException('Ця одиниця виміру вже додана до товару');
-
-    const count = await this.prisma.goodUoM.count({ where: { orgId, goodId } });
     const isFirst = count === 0;
 
     let uom;
@@ -246,7 +275,12 @@ export class GoodsService {
         async tx => {
           const created = await tx.goodUoM.create({
             data: { orgId, goodId, unitOfMeasureId: dto.unitOfMeasureId, isDefault: isFirst },
-            include: { unitOfMeasure: true },
+            select: {
+              id: true,
+              unitOfMeasureId: true,
+              isDefault: true,
+              unitOfMeasure: { select: { name: true, shortName: true, coefficient: true } },
+            },
           });
           if (isFirst) {
             // Bug #224: defense-in-depth — updateMany with orgId guard so any future
@@ -276,13 +310,23 @@ export class GoodsService {
 
   async setDefaultUoM(orgId: string, goodId: string, uomId: string): Promise<GoodUoMResponseDto> {
     // Bug #223: validate Good itself exists and is not soft-deleted in this org
-    // before mutating any UoM rows for it (admin could otherwise mutate a deleted Good).
-    await this.findOne(orgId, goodId);
-
-    const uom = await this.prisma.goodUoM.findFirst({
-      where: { id: uomId, orgId, goodId },
-      include: { unitOfMeasure: true },
-    });
+    // before mutating any UoM rows for it. Parallel parent-guard + child-fetch (-1 RTT).
+    const [good, uom] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id: goodId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.goodUoM.findFirst({
+        where: { id: uomId, orgId, goodId },
+        select: {
+          id: true,
+          unitOfMeasureId: true,
+          isDefault: true,
+          unitOfMeasure: { select: { name: true, shortName: true, coefficient: true } },
+        },
+      }),
+    ]);
+    if (!good) throw new NotFoundException('Товар не знайдено');
     if (!uom) throw new NotFoundException('Запис одиниці виміру не знайдено');
 
     await this.prisma.$transaction([
@@ -300,12 +344,20 @@ export class GoodsService {
 
   async removeUoM(orgId: string, goodId: string, uomId: string): Promise<void> {
     // Bug #223: ensure parent Good is in this org and not soft-deleted.
-    await this.findOne(orgId, goodId);
-
-    const uom = await this.prisma.goodUoM.findFirst({ where: { id: uomId, orgId, goodId } });
+    // Parallel parent-guard + uom-fetch + count (-2 RTT vs sequential).
+    const [good, uom, total] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id: goodId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.goodUoM.findFirst({
+        where: { id: uomId, orgId, goodId },
+        select: { id: true, isDefault: true },
+      }),
+      this.prisma.goodUoM.count({ where: { orgId, goodId } }),
+    ]);
+    if (!good) throw new NotFoundException('Товар не знайдено');
     if (!uom) throw new NotFoundException('Запис одиниці виміру не знайдено');
-
-    const total = await this.prisma.goodUoM.count({ where: { orgId, goodId } });
     if (total === 1) throw new BadRequestException('Не можна видалити єдину одиницю виміру');
 
     await this.prisma.$transaction(
@@ -314,7 +366,11 @@ export class GoodsService {
         if (uom.isDefault) {
           const next = await tx.goodUoM.findFirst({
             where: { orgId, goodId },
-            include: { unitOfMeasure: true },
+            select: {
+              id: true,
+              unitOfMeasureId: true,
+              unitOfMeasure: { select: { shortName: true } },
+            },
             orderBy: { createdAt: 'asc' },
           });
           if (next) {

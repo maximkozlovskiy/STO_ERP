@@ -142,12 +142,19 @@ export class CounterpartiesService {
   // ─── Garages ─────────────────────────────────────────────
 
   async findGarages(orgId: string, counterpartyId: string): Promise<GarageResponseDto[]> {
-    await this.findOne(orgId, counterpartyId);
-    const items = await this.prisma.customerGarage.findMany({
-      where: { counterpartyId, orgId, deletedAt: null },
-      orderBy: { name: 'asc' },
-      take: 50,
-    });
+    // Parallel parent guard + child list — independent tenant-safe reads (-1 RTT).
+    const [cp, items] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.customerGarage.findMany({
+        where: { counterpartyId, orgId, deletedAt: null },
+        orderBy: { name: 'asc' },
+        take: 50,
+      }),
+    ]);
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
     return items.map(item => this.toGarageDto(item));
   }
 
@@ -164,10 +171,18 @@ export class CounterpartiesService {
   }
 
   async removeGarage(orgId: string, counterpartyId: string, garageId: string): Promise<void> {
-    await this.findOne(orgId, counterpartyId);
-    const garage = await this.prisma.customerGarage.findFirst({
-      where: { id: garageId, counterpartyId, orgId, deletedAt: null },
-    });
+    // Parallel parent (counterparty) guard + child (garage) tenant-scoped fetch (-1 RTT).
+    const [cp, garage] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.customerGarage.findFirst({
+        where: { id: garageId, counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+    ]);
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
     if (!garage) throw new NotFoundException('Гараж не знайдено');
     await this.prisma.customerGarage.update({
       where: { id: garageId, orgId },

@@ -55,16 +55,18 @@ export class InspectionService {
     dto: CreateInspectionDto,
     userId: string,
   ): Promise<InspectionResponseDto> {
-    // Перевірити що WO існує і належить org
-    const wo = await this.prisma.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-    });
+    // Parallel: WO tenant guard + existing-report check (@@unique workOrderId). Both
+    // read on the same logical aggregate but різні таблиці — independent (-1 RTT).
+    const [wo, existing] = await Promise.all([
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+      }),
+      this.prisma.inspectionReport.findUnique({
+        where: { workOrderId },
+        select: { id: true },
+      }),
+    ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-
-    // Перевірити що звіту ще немає (workOrderId is @@unique → ConflictException on duplicate)
-    const existing = await this.prisma.inspectionReport.findUnique({
-      where: { workOrderId },
-    });
     if (existing) throw new ConflictException('Звіт огляду вже існує для цього наряду');
 
     // Find critical points and pre-fetch matching works in a single query (N+1 fix).

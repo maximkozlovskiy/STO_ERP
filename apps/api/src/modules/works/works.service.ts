@@ -61,13 +61,22 @@ export class WorksService {
   }
 
   async update(orgId: string, id: string, dto: UpdateWorkDto): Promise<WorkResponseDto> {
-    await this.findOne(orgId, id);
-    if (dto.categoryId) {
-      const category = await this.prisma.workCategory.findFirst({
-        where: { id: dto.categoryId, orgId, deletedAt: null },
-      });
-      if (!category) throw new NotFoundException('Категорію не знайдено');
-    }
+    // Parallel tenant guard + optional category FK check — independent reads (-1 RTT).
+    const [existing, category] = await Promise.all([
+      this.prisma.work.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      dto.categoryId
+        ? this.prisma.workCategory.findFirst({
+            where: { id: dto.categoryId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null as { id: string } | null),
+    ]);
+    if (!existing) throw new NotFoundException('Роботу не знайдено');
+    if (dto.categoryId && !category) throw new NotFoundException('Категорію не знайдено');
+
     const item = await this.prisma.work.update({
       where: { id, orgId },
       data: dto,

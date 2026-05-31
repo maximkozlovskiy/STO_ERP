@@ -55,16 +55,19 @@ export class ExchangeRatesService {
   }
 
   async create(orgId: string, dto: CreateExchangeRateDto): Promise<ExchangeRateResponseDto> {
-    const currency = await this.prisma.currency.findFirst({
-      where: { id: dto.currencyId, orgId, deletedAt: null },
-    });
-    if (!currency) throw new NotFoundException('Валюту не знайдено');
-
     const date = parseDateOnly(dto.date);
-    // Single query: fetch any row (active or soft-deleted) for this unique key (Bug #152 + merge).
-    const anyExisting = await this.prisma.exchangeRate.findFirst({
-      where: { orgId, currencyId: dto.currencyId, date },
-    });
+    // Parallel: currency FK validation + existing-row dup check (Bug #152 + merge).
+    // Both queries scoped by orgId, independent — collapse у Promise.all (-1 RTT).
+    const [currency, anyExisting] = await Promise.all([
+      this.prisma.currency.findFirst({
+        where: { id: dto.currencyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.exchangeRate.findFirst({
+        where: { orgId, currencyId: dto.currencyId, date },
+      }),
+    ]);
+    if (!currency) throw new NotFoundException('Валюту не знайдено');
     if (anyExisting) {
       if (!anyExisting.deletedAt) throw new ConflictException('Курс на цю дату вже існує');
       // Soft-deleted row occupies the unique index — resurrect it

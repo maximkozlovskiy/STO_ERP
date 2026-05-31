@@ -56,13 +56,22 @@ export class WorkCategoriesService {
     id: string,
     dto: UpdateWorkCategoryDto,
   ): Promise<WorkCategoryResponseDto> {
-    await this.findOne(orgId, id);
-    if (dto.parentId) {
-      const parent = await this.prisma.workCategory.findFirst({
-        where: { id: dto.parentId, orgId, deletedAt: null },
-      });
-      if (!parent) throw new NotFoundException('Батьківську категорію не знайдено');
-    }
+    // Parallel tenant guard + optional parent FK check — independent reads (-1 RTT).
+    const [existing, parent] = await Promise.all([
+      this.prisma.workCategory.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      dto.parentId
+        ? this.prisma.workCategory.findFirst({
+            where: { id: dto.parentId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null as { id: string } | null),
+    ]);
+    if (!existing) throw new NotFoundException('Категорію не знайдено');
+    if (dto.parentId && !parent) throw new NotFoundException('Батьківську категорію не знайдено');
+
     const item = await this.prisma.workCategory.update({ where: { id, orgId }, data: dto });
     await this.cache.del(cacheKey(orgId));
     return { ...this.toDto(item), children: [] };

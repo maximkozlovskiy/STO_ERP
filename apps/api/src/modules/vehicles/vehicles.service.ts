@@ -52,12 +52,19 @@ export class VehiclesService {
   // ─── VehicleNodes ────────────────────────────────────────
 
   async findNodes(orgId: string, vehicleId: string): Promise<VehicleNodeResponseDto[]> {
-    await this.findOne(orgId, vehicleId);
-    const items = await this.prisma.vehicleNode.findMany({
-      where: { vehicleId, orgId, deletedAt: null },
-      orderBy: { category: 'asc' },
-      take: 200,
-    });
+    // Parallel parent guard + child list (-1 RTT).
+    const [vehicle, items] = await Promise.all([
+      this.prisma.vehicle.findFirst({
+        where: { id: vehicleId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.vehicleNode.findMany({
+        where: { vehicleId, orgId, deletedAt: null },
+        orderBy: { category: 'asc' },
+        take: 200,
+      }),
+    ]);
+    if (!vehicle) throw new NotFoundException('Автомобіль не знайдено');
     return items.map(item => this.toNodeDto(item));
   }
 
@@ -72,10 +79,18 @@ export class VehiclesService {
   }
 
   async removeNode(orgId: string, vehicleId: string, nodeId: string): Promise<void> {
-    await this.findOne(orgId, vehicleId);
-    const node = await this.prisma.vehicleNode.findFirst({
-      where: { id: nodeId, vehicleId, orgId, deletedAt: null },
-    });
+    // Parallel parent (vehicle) guard + child (node) tenant-scoped fetch (-1 RTT).
+    const [vehicle, node] = await Promise.all([
+      this.prisma.vehicle.findFirst({
+        where: { id: vehicleId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.vehicleNode.findFirst({
+        where: { id: nodeId, vehicleId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+    ]);
+    if (!vehicle) throw new NotFoundException('Автомобіль не знайдено');
     if (!node) throw new NotFoundException('Вузол не знайдено');
     await this.prisma.vehicleNode.update({
       where: { id: nodeId, orgId },
