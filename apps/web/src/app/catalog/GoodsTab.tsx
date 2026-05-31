@@ -497,11 +497,14 @@ export default function GoodsTab() {
     }
   };
 
-  const selectGood = (g: Good | null) => {
-    setSelectedGood(g);
-    setGoodDetailTab('info');
-    if (g) loadBarcodes(g.id);
-  };
+  const selectGood = useCallback(
+    (g: Good | null) => {
+      setSelectedGood(g);
+      setGoodDetailTab('info');
+      if (g) loadBarcodes(g.id);
+    },
+    [loadBarcodes],
+  );
 
   const openEditGood = (g: Good) => {
     setEditGood(g);
@@ -838,9 +841,11 @@ export default function GoodsTab() {
                   <TableRow
                     key={g.id}
                     className={`cursor-pointer ${selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
-                    onClick={() => {
-                      if (detailPanel.enabled) selectGood(selectedGood?.id === g.id ? null : g);
-                    }}
+                    onClick={
+                      detailPanel.enabled
+                        ? () => selectGood(selectedGood?.id === g.id ? null : g)
+                        : undefined
+                    }
                   >
                     {features.bulkActionsEnabled && (
                       <TableCell onClick={e => e.stopPropagation()}>

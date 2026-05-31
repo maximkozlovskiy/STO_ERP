@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
@@ -52,7 +53,12 @@ async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export default function BookingPage() {
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const { data: branches = [] } = useQuery<Branch[]>({
+    queryKey: ['booking', 'branches'],
+    queryFn: () => publicFetch<Branch[]>('/booking/branches'),
+    staleTime: 5 * 60_000, // публічні філії майже не міняються
+    gcTime: 10 * 60_000,
+  });
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [date, setDate] = useState('');
   // Bug (cycle-2): `new Date()` in render is a hydration mismatch (server vs
@@ -73,21 +79,6 @@ export default function BookingPage() {
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     setMinDate(`${yyyy}-${mm}-${dd}`);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    publicFetch<Branch[]>('/booking/branches')
-      .then(d => {
-        if (cancelled) return;
-        if (Array.isArray(d)) setBranches(d);
-      })
-      .catch(() => {
-        /* widget shows "Завантаження..." until branches arrive; failure is silent */
-      });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {

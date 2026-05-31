@@ -172,6 +172,9 @@ const ALL_NAV_ITEMS: NavItem[] = (() => {
     });
 })();
 
+// Module-level Kyiv date formatter для calendar prefetch (один інстанс на модуль).
+const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+
 // Prefetch API даних при hover на NavLink — дані готові до кліку (~200мс).
 // prefetchQuery — no-op якщо дані вже fresh (staleTime не минув), безпечно.
 type PrefetchFn = (qc: ReturnType<typeof useQueryClient>) => void;
@@ -293,6 +296,21 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       queryFn: ({ signal }) => apiFetch('/works?page=1&limit=30', { signal }),
       staleTime: 30_000,
     }),
+  // Calendar: підйомники — стабільні reference data, prefetch при hover.
+  // Слоти прив'язані до конкретної дати — prefetch today.
+  '/calendar': qc => {
+    const today = KYIV_DATE_FMT.format(new Date());
+    void qc.prefetchQuery({
+      queryKey: infraKeys.lifts,
+      queryFn: ({ signal }) => apiFetch('/lifts', { signal }),
+      staleTime: 5 * 60_000,
+    });
+    void qc.prefetchQuery({
+      queryKey: ['calendar', 'slots', today],
+      queryFn: ({ signal }) => apiFetch(`/calendar/slots?date=${today}`, { signal }),
+      staleTime: 30_000,
+    });
+  },
 };
 
 const ROLE_LABELS: Record<string, string> = {

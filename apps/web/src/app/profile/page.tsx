@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -26,33 +27,26 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function ProfilePage() {
-  useRequireAuth();
+  const { employee } = useRequireAuth();
 
-  const [me, setMe] = useState<Me | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const {
+    data: me,
+    isLoading: loading,
+    error: queryError,
+  } = useQuery<Me>({
+    queryKey: ['auth', 'me'],
+    queryFn: ({ signal }) => apiFetch('/auth/me', { signal }),
+    enabled: !!employee,
+    staleTime: 5 * 60_000, // профіль рідко міняється
+    gcTime: 10 * 60_000,
+  });
+
+  const error = queryError instanceof Error ? queryError.message : '';
 
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
   const [pwError, setPwError] = useState('');
   const [pwSuccess, setPwSuccess] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch<Me>('/auth/me')
-      .then(d => {
-        if (!cancelled) setMe(d);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження профілю');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const changePassword = async () => {
     setPwError('');
