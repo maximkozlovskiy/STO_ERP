@@ -145,3 +145,82 @@ describe('LoyaltyService.redeem', () => {
     expect(result.discountAmount).toBe(100); // 50 балів × 2 грн
   });
 });
+
+describe('LoyaltyService.earn', () => {
+  let service: LoyaltyService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  const orgId = 'org-1';
+  const counterpartyId = 'cp-1';
+
+  beforeEach(async () => {
+    prisma = {
+      counterparty: { findFirst: vi.fn() },
+      organisationSettings: { findFirst: vi.fn() },
+      loyaltyAccount: {
+        upsert: vi.fn().mockResolvedValue({ id: 'acc-1', balance: 0 }),
+        update: vi.fn(),
+      },
+      loyaltyTransaction: {
+        create: vi.fn(),
+      },
+      $transaction: vi.fn(async (cb: (tx: typeof prisma) => Promise<unknown>) => cb(prisma)),
+    };
+    const loyaltyQueueMock = { add: vi.fn() };
+    const module = await Test.createTestingModule({
+      providers: [
+        LoyaltyService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: getQueueToken('loyalty'), useValue: loyaltyQueueMock },
+      ],
+    }).compile();
+    service = module.get(LoyaltyService);
+  });
+
+  it('Bug #271: paymentAmount=NaN → ранній return без doторкання $transaction', async () => {
+    await service.earn(orgId, counterpartyId, Number.NaN);
+    expect(prisma.organisationSettings.findFirst).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.loyaltyTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it('Bug #271: paymentAmount=Infinity → ранній return без $transaction', async () => {
+    await service.earn(orgId, counterpartyId, Number.POSITIVE_INFINITY);
+    expect(prisma.organisationSettings.findFirst).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('Bug #271: paymentAmount=0 → ранній return без $transaction', async () => {
+    await service.earn(orgId, counterpartyId, 0);
+    expect(prisma.organisationSettings.findFirst).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('loyaltyEnabled=false → ранній return після перевірки settings', async () => {
+    prisma.organisationSettings.findFirst.mockResolvedValueOnce({ loyaltyEnabled: false });
+    await service.earn(orgId, counterpartyId, 1000);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.loyaltyTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it('happy path: paymentAmount=1000, earnPer=100, earnPoints=1 → +10 points', async () => {
+    prisma.counterparty.findFirst.mockResolvedValue({ id: counterpartyId });
+    prisma.organisationSettings.findFirst.mockResolvedValueOnce({
+      loyaltyEnabled: true,
+      loyaltyEarnPer: 100,
+      loyaltyEarnPoints: 1,
+    });
+    await service.earn(orgId, counterpartyId, 1000);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.loyaltyAccount.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { balance: { increment: 10 } },
+      }),
+    );
+    expect(prisma.loyaltyTransaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ type: 'EARN', points: 10 }),
+      }),
+    );
+  });
+});

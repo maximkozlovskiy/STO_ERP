@@ -1068,11 +1068,15 @@ export default function WorkOrdersPage() {
               {selectedTemplate &&
                 (selectedTemplate.lines.length > 0 || selectedTemplate.parts.length > 0) && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
+                    {/* Bug #266: попередній текст брехав «буде додано після відкриття». */}
+                    {/* Бекенд не копіює lines/parts при створенні (потребує employeeId + */}
+                    {/* warehouseId які не зберігаються у шаблоні), тому користувач має */}
+                    {/* додати їх вручну на сторінці наряду. */}
                     Шаблон містить:{' '}
                     {selectedTemplate.lines.length > 0 && `${selectedTemplate.lines.length} роб.`}
                     {selectedTemplate.lines.length > 0 && selectedTemplate.parts.length > 0 && ', '}
                     {selectedTemplate.parts.length > 0 && `${selectedTemplate.parts.length} запч.`}
-                    {' — '} буде додано після відкриття наряду
+                    {' — '} додайте вручну на сторінці наряду після створення
                   </p>
                 )}
             </div>

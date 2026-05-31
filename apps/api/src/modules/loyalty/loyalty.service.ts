@@ -101,6 +101,13 @@ export class LoyaltyService {
     paymentAmount: number,
     documentId?: string,
   ): Promise<void> {
+    // Bug #271: paymentAmount приходить з PaymentsService де `dto.amount: number` —
+    // якщо upstream дав NaN/Infinity (race з Decimal-конвертацією, malformed queue job),
+    // `Math.floor(NaN) === NaN`, `NaN <= 0 === false` → guard `points <= 0` НЕ ловить,
+    // `prisma.loyaltyAccount.update({ data: { balance: { increment: NaN } } })` зберігає
+    // NaN/null у БД → балансу немає, але `loyaltyTransaction` створено. Захист.
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) return;
+
     const settings = await this.prisma.organisationSettings.findFirst({ where: { orgId } });
     if (!settings?.loyaltyEnabled) return;
 

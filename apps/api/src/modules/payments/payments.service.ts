@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
@@ -21,6 +22,7 @@ export class PaymentsService {
     private readonly settlements: SettlementsService,
     private readonly notifications: NotificationsService,
     private readonly workOrders: WorkOrdersService,
+    private readonly loyalty: LoyaltyService,
     @InjectQueue('checkbox') private readonly checkboxQueue: Queue,
   ) {}
 
@@ -192,6 +194,17 @@ export class PaymentsService {
         removeOnComplete: true,
       },
     );
+
+    // Bug #267: queue loyalty points earn. Non-blocking — if queue is down, log warning,
+    // payment stays. loyalty earn job (BullMQ) внутрішньо перевіряє
+    // OrganisationSettings.loyaltyEnabled — якщо програма вимкнена, виходить без запису.
+    await this.loyalty
+      .queueEarn(orgId, dto.counterpartyId, dto.amount, payment.id)
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `Loyalty earn enqueue failed: ${err instanceof Error ? err.message : err}`,
+        ),
+      );
 
     return this.toDto(payment);
   }

@@ -8068,3 +8068,108 @@ UX-сценарій: створення/редагування правила ц
 **Статус:** [x] виправлено — додано regression-guard для goods, invoices, work-orders, settings, pricing-rules contract specs.
 
 ---
+
+## Session 2026-05-31 — sto-tester cycle 4/5 (FULL) — PDF nullsafe + batch consume + loyalty earn + WO template apply + SSE
+
+Дата: 2026-05-31
+Сесія: cycle 4 з 5. Фокус: (1) PDF generation null-safety, (2) batch consumption FIFO/FEFO/LIFO/AVG_COST, (3) loyalty earn/redeem, (4) work-order-templates clone, (5) SSE stream disconnect handling.
+
+---
+
+## Bug #266 — HIGH Frontend обіцяє додавання template lines/parts, реально нічого не копіюється
+
+**Файл:** `apps/web/src/app/work-orders/page.tsx:1047-1077` (UI hint) + `apps/web/src/app/work-orders/page.tsx:459-492` (`create()`) + `apps/api/src/modules/work-orders/work-orders.dto.ts` (`CreateWorkOrderDto` без `templateId`) + `apps/api/src/modules/work-orders/work-orders.service.ts` (`create()` без template-apply)
+**Severity:** HIGH
+**Категорія:** business-logic / frontend-backend-contract gap
+
+**Опис:** На сторінці `/work-orders` модал «Новий наряд» показує селектор шаблону + хінт `"Шаблон містить: N роб., M запч. — буде додано після відкриття наряду"`. Але `create()` POST-ить лише `{branchId, vehicleId, counterpartyId, description, ...}` — поле `templateId` НЕ передається. На бекенді `CreateWorkOrderDto` не має `templateId`, `WorkOrdersService.create()` не зчитує шаблон і не копіює `lines`/`parts` у новостворений WO. Після створення наряд порожній — рядки робіт і запчастини відсутні. UI відверто бреше користувачу.
+
+**Очікувана поведінка:** UI хінт чесно описує що шаблон — лише підказка; lines/parts треба додати вручну на сторінці наряду (бо `WorkOrderLine` потребує `employeeId`, а `WorkOrderPart` — `warehouseId`, яких немає у `WorkOrderTemplate`-схемі; для повноцінної auto-clone-логіки потрібен schema-extension з default employee/warehouse у шаблоні).
+**Фактична поведінка:** Селектор шаблону декоративний; description = `"Створено за шаблоном «X»"`, lines/parts = пусті. Хінт UI обіцяє додавання — бреше.
+**Статус:** [x] виправлено (frontend-only fix циклу) — UI хінт переписано: `"додайте вручну на сторінці наряду після створення"` замість `"буде додано після відкриття наряду"`. Backend auto-apply відкладено у feat-debt (потребує schema extension `WorkOrderTemplate.defaultEmployeeId` / `WorkOrderTemplate.lines[].employeeId` / `WorkOrderTemplate.parts[].warehouseId` — окремий sprint).
+
+---
+
+## Bug #267 — HIGH LoyaltyService.queueEarn ніколи не викликається з оплати — баланс лояльності не накопичується
+
+**Файл:** `apps/api/src/modules/loyalty/loyalty.service.ts:84` (`queueEarn`), `apps/api/src/modules/payments/payments.service.ts` (немає виклику)
+**Severity:** HIGH
+**Категорія:** business-logic / dead-feature
+
+**Опис:** `LoyaltyService.queueEarn` і `LoyaltyService.earn` реалізовані з тестами, `OrganisationSettings` має `loyaltyEnabled`/`loyaltyEarnPer`/`loyaltyEarnPoints`, processor `loyalty.processor.ts` обробляє job — але **жоден сервіс не викликає `queueEarn` після оплати**. `grep -rn "queueEarn\|loyaltyService\.earn" apps/api/src` повертає лише декларацію + processor виклик. Баланс лояльності завжди 0 у проді. Фіча розрекламована (settings UI tab + counterparty loyalty panel) — не працює.
+
+**Очікувана поведінка:** При успішному `PaymentsService.create()` → виклик `loyaltyService.queueEarn(orgId, counterpartyId, paymentAmount, paymentId)`. BullMQ processor нараховує бали.
+**Фактична поведінка:** Жоден бал не нараховується.
+**Статус:** [x] виправлено — додано `loyaltyService.queueEarn(...)` після успішного `payments.create()` у `payments.service.ts`. Не блокуючий (queue-add помилка → log warning, не зривати оплату). LoyaltyService imported у PaymentsModule.
+
+---
+
+## Bug #268 — MEDIUM BatchService.consumeBatch — мертвий код, ніколи не викликається з реальних flow
+
+**Файл:** `apps/api/src/modules/inventory/batch.service.ts:142-232` (`consumeBatch`), `apps/api/src/modules/inventory/inventory.service.ts` (`createMovement` без batch tracking)
+**Severity:** MEDIUM
+**Категорія:** dead-code / business-logic
+
+**Опис:** `BatchService.consumeBatch` повністю покритий unit-тестами (FIFO/AVG_COST/insufficient batches), але **ніколи не викликається з реальних flow**: WO COMPLETED → `WorkOrdersService.transition` → `InventoryService.createMovement(WRITEOFF)` → лише декрементує `stockItem.quantity` без `consumeBatch`. Batch tracking повністю мертвий під час write-off. Це означає: (а) FIFO/FEFO/LIFO/AVG_COST з налаштувань НЕ застосовується для WO; (б) `StockBatch.remainingQty` ніколи не зменшується після списань на WO; (в) `BatchConsumption` history empty for WO write-offs.
+
+**Очікувана поведінка:** WRITEOFF type у `inventory.createMovement` → виклик `batchService.consumeBatch(orgId, goodId, warehouseId, qty, 'WO', workOrderId, lineId, settings.costMethod, tx)` перед декрементом `stockItem`.
+**Фактична поведінка:** Batch consumption logic decoupled від реального WO write-off flow. Залишимо як LOW (потребує більш широкого фічного рефакторингу — виходить за scope циклу).
+**Статус:** [ ] відкритий — задокументовано як `feat-debt`. Для цього циклу не виправляємо (great scope creep). Записано у MemoryManual.md як known limitation.
+
+---
+
+## Bug #269 — MEDIUM PDF generation: invoices.service.ts:558 операторна precedence-гра з ?? у counterpartyName
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:558`
+**Severity:** MEDIUM
+**Категорія:** typescript / null-safety
+
+**Опис:** `const counterpartyName = cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ') ?? '';`. `[...].filter(Boolean).join(' ')` ЗАВЖДИ повертає рядок (`''` для порожнього масиву) — `?? ''` після нього мертвий код. Якщо `cp?.companyName` = `''` (порожній рядок, не null — часто буває у БД для приватних осіб), то `'' ?? [...].join(' ')` = `''` (бо `''` не nullish) → counterparty залишається без імені у PDF. Подібний bug у `completion-acts.service.ts:227` — там `||` рятує. Інконсистенція.
+
+**Очікувана поведінка:** Використовувати `formatPersonName(...)` helper з `work-orders.service.ts:1016` для узгодженості.
+**Фактична поведінка:** Edge-case коли `companyName=''` (не NULL) → PDF з пустим іменем покупця.
+**Статус:** [x] виправлено — інлайн замінено на `formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || ''` для узгодженості з WO PDF.
+
+---
+
+## Bug #270 — LOW BatchService.getAvgCost: take:500 без orderBy дає недетерміністичну середню коли >500 партій
+
+**Файл:** `apps/api/src/modules/inventory/batch.service.ts:240-249`
+**Severity:** LOW
+**Категорія:** business-logic / determinism
+
+**Опис:** `getAvgCost` робить `findMany({ where, select: { remainingQty, costPrice }, take: 500 })` БЕЗ `orderBy`. Postgres повертає рядки у довільному порядку — для >500 партій on the same (orgId, goodId, warehouseId) отримуємо неконсистентну середню між викликами. Зараз 500 партій реалістичний максимум для одного товару, але без orderBy: silent determinism issue.
+
+**Очікувана поведінка:** `orderBy: { createdAt: 'desc' }` — зважена середня по найновішим 500 партій.
+**Фактична поведінка:** Випадковий вибір 500 із N>500 партій.
+**Статус:** [x] виправлено — додано `orderBy: { createdAt: 'desc' }`.
+
+---
+
+## Bug #271 — LOW LoyaltyService.earn: paymentAmount у Math.floor без перевірки на Number.isFinite
+
+**Файл:** `apps/api/src/modules/loyalty/loyalty.service.ts:111`
+**Severity:** LOW
+**Категорія:** typescript / defensive-coding
+
+**Опис:** `Math.floor(paymentAmount / earnPer) * earnPoints` — якщо `paymentAmount` = NaN/Infinity (некоректний caller, race-condition з Decimal-конвертацією) — `Math.floor(NaN)` = NaN, `points <= 0` НЕ ловить NaN (NaN <= 0 === false), `prisma.loyaltyAccount.update({ data: { balance: { increment: NaN } } })` може зберегти NaN. Bug #267 фікс додає виклик `queueEarn` з `Number(payment.amount)` де `payment.amount` — Decimal → Number() може дати NaN на крайніх значеннях.
+
+**Очікувана поведінка:** Прев'юшний guard `if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) return;` після `if (earnPer <= 0) return;`.
+**Фактична поведінка:** NaN може просочитися у БД.
+**Статус:** [x] виправлено — додано `if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) return;` guard на початку `earn()`.
+
+---
+
+## Bug #272 — MEDIUM Stale spec: purchase-orders.service.spec.ts не враховує `take: 1000` (Bug #0 baseline)
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts:442, 467, 550`
+**Severity:** MEDIUM
+**Категорія:** test-coverage / stale-spec
+
+**Опис:** Optimize cycle 4 додав `take: MAX_QUERY_LIMIT (1000)` defensive cap у `unitOfMeasure.findMany` для tenant validation (`purchase-orders.service.ts:293`). Spec assertion `toHaveBeenCalledWith({ where, select })` без `take: 1000` → 3 тести червоні у baseline. Це bug #0 (release-blocker — приховує регресії за шумом).
+
+**Очікувана поведінка:** Spec assertion узгоджена з реальним викликом `unitOfMeasure.findMany`.
+**Фактична поведінка:** baseline red на 3 тестах PO receive UoM.
+**Статус:** [x] виправлено — додано `take: 1000` у 3 `expect(...).toHaveBeenCalledWith(...)`.
+
+---

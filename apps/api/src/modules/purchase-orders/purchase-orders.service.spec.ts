@@ -442,6 +442,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
     expect(prisma.unitOfMeasure.findMany).toHaveBeenCalledWith({
       where: { orgId: ORG, id: { in: [OWN_UOM_ID] }, deletedAt: null },
       select: { id: true },
+      take: 1000,
     });
     // resolvedUomId = override (не good.unitId)
     expect(inventory.createMovement).toHaveBeenCalledWith(
@@ -467,6 +468,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
     expect(prisma.unitOfMeasure.findMany).toHaveBeenCalledWith({
       where: { orgId: ORG, id: { in: [CROSS_UOM_ID] }, deletedAt: null },
       select: { id: true },
+      take: 1000,
     });
     // Жоден write — захист от cross-tenant linkage
     expect(inventory.createMovement).not.toHaveBeenCalled();
@@ -554,6 +556,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
         deletedAt: null,
       },
       select: { id: true },
+      take: 1000,
     });
   });
 

@@ -72,4 +72,39 @@ describe('PdfService — pdfmake integration', () => {
     });
     expect(buf.length).toBeGreaterThan(500);
   }, 15_000);
+
+  // Bug #269: null-safety smoke — counterparty з усіма optional полями = null/undefined,
+  // org з пустим edrpou, empty invoice без рядків. Перевіряє що pdfmake не падає на NULL.
+  it('Bug #269: handles minimal Invoice data (empty lines, null edrpou, empty counterparty fields)', async () => {
+    const buf = await service.generateInvoicePdf({
+      org: { name: 'СТО', edrpou: null },
+      counterparty: { name: '', phone: null, edrpou: null },
+      number: 'INV-EMPTY-001',
+      date: new Date('2026-05-31T00:00:00Z'),
+      dueDate: null,
+      lines: [],
+      subtotal: 0,
+      vatTotal: 0,
+      grandTotal: 0,
+    });
+    expect(Buffer.isBuffer(buf)).toBe(true);
+    expect(buf.length).toBeGreaterThan(500);
+    expect(buf.slice(0, 4).toString('ascii')).toBe('%PDF');
+  }, 15_000);
+
+  // Bug #269: WO with all-null counterparty + vehicle fields — pdf must still render.
+  it('Bug #269: handles WorkOrder with empty counterparty/vehicleLabel without crashing', async () => {
+    const buf = await service.generateWorkOrderPdf({
+      org: { name: 'СТО' },
+      counterparty: { name: '', phone: null },
+      vehicleLabel: '',
+      number: 'WO-EMPTY-001',
+      date: new Date('2026-05-31T00:00:00Z'),
+      works: [],
+      parts: [],
+      total: 0,
+    });
+    expect(Buffer.isBuffer(buf)).toBe(true);
+    expect(buf.length).toBeGreaterThan(500);
+  }, 15_000);
 });

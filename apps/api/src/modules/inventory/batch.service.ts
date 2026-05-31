@@ -240,6 +240,10 @@ export class BatchService {
     const batches = await this.prisma.stockBatch.findMany({
       where: filter,
       select: { remainingQty: true, costPrice: true },
+      // Bug #270: без orderBy при take:500 Postgres повертає рядки в довільному
+      // порядку — для >500 партій того ж goodId+warehouseId середня була
+      // недетерміністична між викликами. Беремо найновіші — старі вже списані.
+      orderBy: { createdAt: 'desc' },
       take: 500,
     });
     if (!batches.length) return 0;

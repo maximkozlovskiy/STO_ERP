@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InvoiceStatus, Prisma } from '@prisma/client';
+import { formatPersonName } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
@@ -554,8 +555,12 @@ export class InvoicesService {
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
 
     const cp = inv.counterparty;
-    const counterpartyName =
-      cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ') ?? '';
+    // Bug #269: попередній `cp?.companyName ?? [...].join(' ') ?? ''` мав мертвий `?? ''`
+    // після `.join(' ')` (завжди string), і провалював edge-case `companyName=''` (порожній
+    // рядок не nullish → `?? [...]` НЕ переходить до lastName/firstName). Уніфіковано з
+    // work-orders.service.ts:1016 — `formatPersonName(...) || ''` коректно обробляє
+    // companyName=null/undefined/''.
+    const counterpartyName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || '';
 
     return this.pdf.generateInvoicePdf({
       org: { name: org?.name ?? '', edrpou: org?.edrpou },
