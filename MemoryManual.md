@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+cf60952 fix(review): cycle 4 — exhaustive-deps + ApiResponse coverage + safety take caps
 97e1ca3 fix(sync): cycle 4 — align frontend interfaces with API contracts
 319208b perf(optimize): cycle 3 — date-picker memoization + BatchRow memo
 490ec8e perf(optimize): cycle 3 — batch.service parallelize good+rules, inventory.updateMinStock 1-RTT
@@ -16,6 +17,25 @@
 61720e3 fix(review): cycle 3 — emptyToUndefined on optional UUID/Enum/Date DTOs + TRANSACTION_TIMEOUT_MS unification
 39d2667 fix(sync): align frontend interfaces with API response DTOs (cycle 3)
 Дата: 2026-05-31
+
+Latest review: 2026-05-31 (sto-review-agent цикл 4 з 5, HEAD 8197d60 → cf60952) — **8 файлів** виправлено (5 backend + 3 frontend). Фокус циклу: (1) useEffect exhaustive-deps, (2) findMany без take, (3) контролери без @ApiResponse, (4) форми disabled, (5) catch блоки.
+**Frontend (3 fixes):**
+(1) vehicles/[id]/PageClient.tsx:165 — `useEffect(() => load(), [id])` без eslint-disable; load recreated each render → потенційний infinite loop якщо deps оновити. Додано `eslint-disable-next-line react-hooks/exhaustive-deps` з поясненням.
+(2-3) employees/page.tsx + stock-documents/page.tsx — eslint-disable стояв не на правильному рядку (на закритій дужці, не на dep array). ESLint емітить warning на deps line. Перенесено disable на сам deps array → 0 lint warnings.
+**Backend (5 fixes):**
+(4) warehouses.controller.ts — findOne/update/remove без @ApiOperation+@ApiResponse → +3 Swagger декоратори.
+(5) zones.controller.ts — Zone + Lift findOne/update/remove без @ApiOperation+@ApiResponse → +6 Swagger декоратори.
+(6) goods.service.ts:235 — `goodUoM.findMany` без take → `take: 50` safety cap (1 good × N UoMs, типово 1-5).
+(7) xlsx.service.ts — 3 bulk-prefetch findMany (purchaseOrderLine, stockDocumentLine, workOrderPart) без take → `take: MAX_QUERY_LIMIT` (1000). Також заімпортовано MAX_QUERY_LIMIT з @sto/shared (раніше orphan constant — fixed per skill pattern 2026-05-30).
+(8) purchase-orders.service.ts:288 — `unitOfMeasure.findMany` validation для override UoMs без take → `take: MAX_QUERY_LIMIT`.
+
+**Перевірено (не знайдено проблем):**
+- 5 focus checks: useEffect deps (3 warnings → 0), findMany take (5 знайдено + виправлено), @ApiResponse coverage (2 контролери знайдено + виправлено), form disabled state (22 файли з saving — всі мають правильний `loading={saving}` на submit), catch блоки (13 `.catch(() => {})` — всі для background sub-resource load або inline-edit з власною обробкою; не критично).
+- §2.1 RolesGuard без @Roles — перевірено ZonesController/WarehousesController — кожен метод має @Roles. ОК.
+- §13 API Contract — всі ResponseDto узгоджені (від cycle 4 sync).
+
+**TypeScript:** ✅ 0 errors (api + web + shared). **Lint:** ✅ 0 warnings (next lint --dir src).
+**Нові SKILL patterns:** 0 нових (всі знайдені паттерни вже покриті існуючими — exhaustive-deps cycle 4 не виявив нових сигналів за межами вже відомих patterns 2026-05-30 для orphan MAX_QUERY_LIMIT та 2026-05-31 для RolesGuard без @Roles).
 
 Latest optimize: 2026-05-31 (sto-optimize-agent цикл 3 з 5, HEAD 1cf7098 → 319208b) — **5 точкових perf фіксів** (3 backend + 2 frontend + 3 нові SKILL patterns) фокус на нові великі сервіси (batch/pricing) і нові UI компоненти (date-picker, batch-viewer-modal).
 **Backend (3 fixes):**
