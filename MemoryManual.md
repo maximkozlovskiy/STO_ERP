@@ -9,12 +9,24 @@
 ## Останній commit
 
 ```
+6a84c11 fix(review): cycle 2 — defense-in-depth on B1/B3/B5/B12 endpoints + Search roles
+d2ea44c docs(memory): record sto-sync-agent cycle 2 results
 29ba099 fix(sync): align frontend types with API contracts + add bookings management page (cycle 2)
 ae03163 perf(web): Intl singletons sweep — TopShell widgets + calendar month-year + sync log
 68ba4f8 perf(api,db): parallel FK validation + Intl singletons + covering indexes
-ca27a57 docs(skills,memory): add inner-DTO-no-decorators pattern + record /sto-tester cycle 1
-757ee3b fix(tester): cycle 1 — Bugs #245-#250 (cross-resource invalidation + DTO validation + spec coverage)
 Дата: 2026-05-31
+
+Latest review: 2026-05-31 (sto-review-agent цикл 2 з 5, HEAD d2ea44c → 6a84c11) — **6 IMPORTANT-severity знахідок** на модулях Фаз 21-22 (B1 webhooks, B3 booking, B5 search, B12 work-order-media). Усі — defense-in-depth ризики, фіксяться спільним паттерном `updateMany({id,orgId,deletedAt:null})` + `findFirstOrThrow` / `deleteMany` з компаундним `where` замість `findFirst + update({where:{id}})`.
+(1) SearchController без `@Roles` → RolesGuard no-op (пускає всіх авторизованих включаючи MECHANIC). Payload search-результату безпечний (немає cost/sale/margin), але explicit `@Roles` потрібен як invariant: будь-який майбутній refactor що додасть price-секцію перевіряється guard-ом.
+(2) WebhooksService.update — race-window між findFirst-guard і update({where:{id}}) → cross-tenant write. Замінено на `updateMany({id,orgId,deletedAt:null}) + findFirstOrThrow`.
+(3) WebhooksService.remove — те саме, для soft-delete.
+(4) BookingService.confirm — те саме.
+(5) BookingService.cancel — те саме (CANCELLED + soft-delete за один atomic запит).
+(6) WorkOrderMediaService.remove — hard-delete `delete({where:{id}})` → `deleteMany({id,orgId,workOrderId})` з компаундним where; findFirst лишається бо потребує fileKey для MinIO cleanup, але видалення тепер atomic + tenant-scoped.
+
+**TypeScript:** ✅ 0 errors (api + web --incremental false).
+**Тести не зачеплені** — patterns вже покриті у warranties.service.spec (Bug #249).
+**Інше:** Перевірені модулі B2 inspection, B4 warranties, B6 search (вже мають правильний паттерн), B7 pdf (stateless), B8 follow-up (BullMQ correct: attempts=10, backoff exp 60s), B11 audit (read-only) — clean. BullMQ retry для webhooks/booking/loyalty/notifications attempts=10 + exponential backoff підтверджені. B5 webhooks SSRF/redirect=manual + defense-in-depth у processor підтверджені.
 
 Latest optimize: 2026-05-31 (sto-optimize-agent цикл 1 з 5, HEAD 757ee3b → ae03163) — **22 точкових perf фіксів** (10 backend + 7 frontend + 2 DB indexes + 3 SKILL pattern entries).
 **Backend (10 fixes у 9 сервісах):**
