@@ -9,7 +9,6 @@ import {
   IsString,
   IsUUID,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
 import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
 
 // ─── Zone DTOs ───────────────────────────────────────────

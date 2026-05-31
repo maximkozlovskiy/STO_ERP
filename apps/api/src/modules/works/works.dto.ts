@@ -9,9 +9,9 @@ import {
   IsPositive,
   IsBoolean,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateWorkDto {
   @ApiProperty()
@@ -37,7 +37,7 @@ export class UpdateWorkDto extends PartialType(CreateWorkDto) {}
 export class WorkQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   categoryId?: string;
 

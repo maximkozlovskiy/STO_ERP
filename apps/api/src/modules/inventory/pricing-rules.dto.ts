@@ -11,10 +11,10 @@ import {
   Max,
   ValidateNested,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PricingRuleType, GoodType } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class PricingRuleTierDto {
   id!: string;
@@ -70,7 +70,7 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   goodId?: string;
 
@@ -89,7 +89,7 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   brandId?: string;
 
@@ -150,7 +150,7 @@ export class UpdatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   goodId?: string;
 
@@ -167,7 +167,7 @@ export class UpdatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   brandId?: string;
 

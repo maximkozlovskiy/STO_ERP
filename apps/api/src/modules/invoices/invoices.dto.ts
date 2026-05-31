@@ -11,6 +11,7 @@ import {
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InvoiceStatus } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateInvoiceDto {
   @ApiProperty()
@@ -18,7 +19,7 @@ export class CreateInvoiceDto {
   counterpartyId!: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   workOrderId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
@@ -48,12 +49,12 @@ export class CreateInvoiceLineDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) vatRate?: number;
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   goodId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   workId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) sortOrder?: number;

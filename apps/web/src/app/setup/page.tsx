@@ -174,6 +174,7 @@ export default function SetupPage() {
                 value={data.orgName}
                 onChange={v => update('orgName', v)}
                 placeholder="СТО Авто-Майстер"
+                required
               />
               <Field
                 label="ЄДРПОУ"
@@ -189,6 +190,7 @@ export default function SetupPage() {
                   onChange={v => update('ownerEmail', v)}
                   placeholder="owner@sto.local"
                   type="email"
+                  required
                 />
                 <Field
                   label="Пароль"
@@ -196,6 +198,7 @@ export default function SetupPage() {
                   onChange={v => update('ownerPassword', v)}
                   placeholder="мін. 6 символів"
                   type="password"
+                  required
                 />
                 <div className="grid grid-cols-2 gap-3">
                   <Field
@@ -203,12 +206,14 @@ export default function SetupPage() {
                     value={data.ownerFirstName}
                     onChange={v => update('ownerFirstName', v)}
                     placeholder="Іван"
+                    required
                   />
                   <Field
                     label="Прізвище"
                     value={data.ownerLastName}
                     onChange={v => update('ownerLastName', v)}
                     placeholder="Коваль"
+                    required
                   />
                 </div>
               </div>
@@ -222,12 +227,14 @@ export default function SetupPage() {
                 value={data.branchName}
                 onChange={v => update('branchName', v)}
                 placeholder="Головна філія"
+                required
               />
               <Field
                 label="Адреса"
                 value={data.branchAddress}
                 onChange={v => update('branchAddress', v)}
                 placeholder="вул. Гагаріна 12, Київ"
+                required
               />
             </>
           )}
@@ -239,6 +246,7 @@ export default function SetupPage() {
                 value={data.warehouseName}
                 onChange={v => update('warehouseName', v)}
                 placeholder="Основний склад"
+                required
               />
               <p className="text-sm text-muted-foreground">Основний склад запчастин вашого СТО.</p>
             </>
@@ -306,24 +314,31 @@ function Field({
   onChange,
   placeholder,
   type = 'text',
+  required = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  required?: boolean;
 }) {
   // Browser autocomplete hints — purely UX, no security impact (one-shot wizard).
   const autoComplete = type === 'email' ? 'email' : type === 'password' ? 'new-password' : 'off';
   return (
     <div className="mb-3">
-      <label className="block text-sm font-medium text-foreground mb-1">{label}</label>
+      <label className="block text-sm font-medium text-foreground mb-1">
+        {label}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
+      </label>
       <input
         type={type}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         autoComplete={autoComplete}
+        required={required}
+        aria-required={required || undefined}
         className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
       />
     </div>

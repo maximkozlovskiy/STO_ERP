@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateBankAccountDto {
   @ApiProperty({ example: 'Поточний рахунок ПриватБанк' })
@@ -29,7 +30,7 @@ export class CreateBankAccountDto {
 
   @ApiPropertyOptional({ example: 'uuid' })
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   branchId?: string;
 
@@ -65,7 +66,7 @@ export class UpdateBankAccountDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   currencyId?: string;
 
@@ -76,7 +77,7 @@ export class UpdateBankAccountDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   branchId?: string | null;
 

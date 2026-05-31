@@ -9,6 +9,7 @@ import {
   Matches,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class BookingAvailabilityQueryDto {
   @ApiProperty() @IsDateString() date!: string;
@@ -17,7 +18,7 @@ export class BookingAvailabilityQueryDto {
   branchId!: string;
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsArray()
   @IsUUID(undefined, { each: true })
   serviceIds?: string[];
@@ -35,7 +36,7 @@ export class CreateBookingRequestDto {
   @ApiProperty() @IsDateString() requestedDate!: string;
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsArray()
   @IsUUID(undefined, { each: true })
   serviceIds?: string[];

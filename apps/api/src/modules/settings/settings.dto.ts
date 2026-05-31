@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { VatMode, BatchCostMethod } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export interface UiFeatures {
   toastEnabled: boolean;
@@ -50,7 +51,7 @@ export class UpdateOrganisationSettingsDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   defaultVatRateId?: string;
 
@@ -274,7 +275,7 @@ export class UpdateOrganisationDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @ValidateIf(o => o.bankAccountId !== null)
   @IsUUID()
   bankAccountId?: string | null;

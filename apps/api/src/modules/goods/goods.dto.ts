@@ -9,10 +9,10 @@ import {
   IsEnum,
   IsUUID,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import { GoodType } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateGoodDto {
   @ApiPropertyOptional() @IsOptional() @IsString() sku?: string;
@@ -20,12 +20,12 @@ export class CreateGoodDto {
   @ApiPropertyOptional({ default: 'шт' }) @IsOptional() @IsString() unit?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   unitId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   brandId?: string;
 
@@ -43,7 +43,7 @@ export class CreateGoodDto {
   @ApiPropertyOptional({ enum: GoodType }) @IsOptional() @IsEnum(GoodType) goodType?: GoodType;
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   preferredSupplierId?: string;
 }

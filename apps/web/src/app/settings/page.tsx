@@ -344,6 +344,16 @@ export default function SettingsPage() {
   const [removingLogo, setRemovingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
+  // Закриття lightbox по Escape (a11y)
+  useEffect(() => {
+    if (!logoLightbox) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLogoLightbox(null);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [logoLightbox]);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem(NAV_MODE_KEY) as NavMode | null;
@@ -1413,7 +1423,7 @@ export default function SettingsPage() {
             <div className="flex items-start gap-5">
               {/* Preview box */}
               <div
-                className={`relative shrink-0 w-48 h-28 rounded-xl border-2 border-dashed border-border bg-secondary flex items-center justify-center overflow-hidden transition-all ${logoPreview || orgInfo?.logoUrl ? 'cursor-zoom-in hover:border-primary/50 hover:shadow-md' : ''}`}
+                className={`group relative shrink-0 w-48 h-28 rounded-xl border-2 border-dashed border-border bg-secondary flex items-center justify-center overflow-hidden transition-all ${logoPreview || orgInfo?.logoUrl ? 'cursor-zoom-in hover:border-primary/50 hover:shadow-md' : ''}`}
                 onClick={() => {
                   const src = logoPreview ?? orgInfo?.logoUrl;
                   if (src) setLogoLightbox(src);
@@ -1444,7 +1454,7 @@ export default function SettingsPage() {
                   className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted-foreground"
                 >
                   <ImageIcon className="w-10 h-10 opacity-30" />
-                  <span className="text-[12px] opacity-50">Немає логотипу</span>
+                  <span className="text-xs opacity-50">Немає логотипу</span>
                 </div>
                 {/* Zoom hint */}
                 {(logoPreview || orgInfo?.logoUrl) && (
@@ -1487,7 +1497,7 @@ export default function SettingsPage() {
                     Видалити
                   </Button>
                 )}
-                <p className="text-[12px] text-muted-foreground">PNG, JPG, SVG · макс. 2 МБ</p>
+                <p className="text-xs text-muted-foreground">PNG, JPG, SVG · макс. 2 МБ</p>
               </div>
             </div>
           </div>
@@ -1495,6 +1505,9 @@ export default function SettingsPage() {
           {/* Lightbox */}
           {logoLightbox && (
             <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Перегляд логотипу"
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
               onClick={() => setLogoLightbox(null)}
             >
@@ -1508,6 +1521,8 @@ export default function SettingsPage() {
                   className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
                 />
                 <button
+                  type="button"
+                  aria-label="Закрити перегляд"
                   onClick={() => setLogoLightbox(null)}
                   className="absolute -top-3 -right-3 w-8 h-8 bg-surface rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary transition-colors shadow-lg"
                 >

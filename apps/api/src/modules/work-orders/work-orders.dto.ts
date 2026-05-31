@@ -11,10 +11,10 @@ import {
   IsBoolean,
   IsBooleanString,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 // ─── Work Order ───────────────────────────────────────────
 
@@ -77,22 +77,22 @@ export class WorkOrderQueryDto {
   status?: WorkOrderStatus;
   @ApiPropertyOptional({ enum: WorkOrderPriority })
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsEnum(WorkOrderPriority)
   priority?: WorkOrderPriority;
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   branchId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   counterpartyId?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   vehicleId?: string;
 
@@ -100,7 +100,7 @@ export class WorkOrderQueryDto {
   // so an employee sees an order if ANY of its line items reference them as the executor.
   @ApiPropertyOptional({ description: 'Фільтр за виконавцем (через рядки робіт)' })
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   employeeId?: string;
 
@@ -205,7 +205,7 @@ export class CreateWorkOrderLineDto {
   employeeId!: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   liftId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) normoHours?: number;

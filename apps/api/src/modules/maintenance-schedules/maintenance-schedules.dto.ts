@@ -1,7 +1,6 @@
 import { IsUUID, IsString, IsOptional, IsBoolean, IsInt, IsDateString, Min } from 'class-validator';
-import { Transform } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateMaintenanceScheduleDto {
   @ApiProperty()

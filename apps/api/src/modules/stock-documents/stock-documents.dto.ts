@@ -8,9 +8,9 @@ import {
   ValidateNested,
   IsEnum,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class StockDocumentLineDto {
   @ApiProperty()
@@ -34,7 +34,7 @@ export class CreateStockDocumentDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   targetWarehouseId?: string;
 

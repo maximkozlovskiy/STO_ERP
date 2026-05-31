@@ -2,9 +2,7 @@ import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum } from 'class-validator
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
-
-// Порожній рядок "" конвертується в undefined щоб @IsUUID не кидав 400
-const emptyToUndefined = ({ value }: { value: unknown }) => (value === '' ? undefined : value);
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateCalendarSlotDto {
   @ApiPropertyOptional()

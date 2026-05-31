@@ -8,7 +8,6 @@ import {
   IsUUID,
   Min,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
 import { Type } from 'class-transformer';
 
 export class CreateExchangeRateDto {
