@@ -244,9 +244,16 @@ export class WarrantiesService {
 
     if (!claimWo) throw new NotFoundException('Гарантійний наряд не знайдено');
 
-    const updated = await this.prisma.warranty.update({
-      where: { id },
+    // Defense-in-depth: scope update by orgId (compound where) so a race-window
+    // between the findFirst guard and update cannot let a cross-org record be mutated.
+    // Prisma requires a compound @@id or @@unique to use multiple keys here — warranty
+    // has @@unique([id, orgId]) hint? Use updateMany + findFirstOrThrow для безпеки.
+    await this.prisma.warranty.updateMany({
+      where: { id, orgId, deletedAt: null },
       data: { claimedAt: new Date(), claimWoId: dto.claimWoId },
+    });
+    const updated = await this.prisma.warranty.findFirstOrThrow({
+      where: { id, orgId },
       include: {
         workOrder: { select: { number: true } },
         counterparty: { select: { companyName: true, firstName: true, lastName: true } },

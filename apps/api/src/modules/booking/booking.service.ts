@@ -166,7 +166,8 @@ export class BookingService {
           branchName: branch.name,
         },
       },
-      { attempts: 5, backoff: { type: 'exponential', delay: 30_000 } },
+      // Offline-first SMS retry: 10 attempts (skill rule), exponential backoff 60s start
+      { attempts: 10, backoff: { type: 'exponential', delay: 60_000 } },
     );
 
     return this.toDto(req);
