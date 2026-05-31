@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Sun, Moon, Monitor, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { Sun, Moon, Monitor, Pencil, Plus, Trash2, Upload, ImageIcon } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -1397,48 +1397,75 @@ export default function SettingsPage() {
         <div className="bg-surface rounded-xl border border-border p-6 space-y-5">
           {/* Logo */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">Логотип</label>
-            {(logoPreview || orgInfo?.logoUrl) && (
-              <div className="mb-3 inline-flex items-start gap-2">
-                <img
-                  src={logoPreview ?? orgInfo!.logoUrl!}
-                  alt="Логотип"
-                  className="h-16 rounded object-contain border border-border bg-white p-1"
-                  loading="lazy"
-                  decoding="async"
-                  onError={e => {
-                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+            <label className="block text-sm font-medium text-foreground mb-3">Логотип</label>
+            <div className="flex items-center gap-4">
+              {/* Preview box — завжди відображається */}
+              <div className="relative shrink-0 w-24 h-24 rounded-xl border-2 border-dashed border-border bg-secondary flex items-center justify-center overflow-hidden">
+                {logoPreview || orgInfo?.logoUrl ? (
+                  <img
+                    src={logoPreview ?? orgInfo!.logoUrl!}
+                    alt="Логотип організації"
+                    className="w-full h-full object-contain p-2"
+                    loading="lazy"
+                    decoding="async"
+                    onError={e => {
+                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                      const parent = e.currentTarget.parentElement;
+                      if (parent) {
+                        const fallback = parent.querySelector(
+                          '[data-logo-fallback]',
+                        ) as HTMLElement | null;
+                        if (fallback) fallback.style.display = 'flex';
+                      }
+                    }}
+                  />
+                ) : null}
+                {/* Fallback — показується якщо немає URL або img не завантажився */}
+                <div
+                  data-logo-fallback
+                  style={{ display: logoPreview || orgInfo?.logoUrl ? 'none' : 'flex' }}
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted-foreground"
+                >
+                  <ImageIcon className="w-8 h-8 opacity-40" />
+                  <span className="text-[11px] opacity-60">Немає</span>
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadLogo(f);
                   }}
                 />
-                <button
-                  aria-label="Видалити логотип"
-                  onClick={removeLogo}
-                  disabled={removingLogo || uploadingLogo}
-                  className="mt-1 text-destructive/70 hover:text-destructive transition-colors disabled:opacity-40"
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => logoInputRef.current?.click()}
+                  loading={uploadingLogo}
                 >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                  <Upload className="w-4 h-4 mr-2" />
+                  {orgInfo?.logoUrl || logoPreview ? 'Замінити логотип' : 'Завантажити логотип'}
+                </Button>
+                {(orgInfo?.logoUrl || logoPreview) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={removeLogo}
+                    disabled={removingLogo || uploadingLogo}
+                    className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Видалити
+                  </Button>
+                )}
+                <p className="text-[12px] text-muted-foreground">PNG, JPG, SVG · макс. 2 МБ</p>
               </div>
-            )}
-            <div>
-              <input
-                ref={logoInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={e => {
-                  const f = e.target.files?.[0];
-                  if (f) uploadLogo(f);
-                }}
-              />
-              <Button
-                variant="outline"
-                onClick={() => logoInputRef.current?.click()}
-                loading={uploadingLogo}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                {orgInfo?.logoUrl || logoPreview ? 'Замінити логотип' : 'Завантажити логотип'}
-              </Button>
             </div>
           </div>
 
