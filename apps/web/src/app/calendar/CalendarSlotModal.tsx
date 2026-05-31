@@ -160,6 +160,7 @@ export function CalendarSlotModal({
 
   // ── Counterparty search state ─────────────────────────────────────────────
 
+  const [cpPhone, setCpPhone] = useState<string | null>(null);
   const [cpOptions, setCpOptions] = useState<CounterpartyOption[]>([]);
   const [cpLoading, setCpLoading] = useState(false);
   const [showCpDropdown, setShowCpDropdown] = useState(false);
@@ -271,6 +272,7 @@ export function CalendarSlotModal({
     if (!open) {
       setCpOptions([]);
       setCpDisplay('');
+      setCpPhone(null);
       setNewCpOpen(false);
     }
   }, [open, setCpDisplay]);
@@ -487,6 +489,14 @@ export function CalendarSlotModal({
     }
     if (!form.counterpartyId && !form.workOrderId) {
       setError('Оберіть клієнта');
+      return;
+    }
+    if (form.liftId && !UUID_RE.test(form.liftId)) {
+      setError('Некоректний підйомник — оберіть зі списку');
+      return;
+    }
+    if (form.employeeId && !UUID_RE.test(form.employeeId)) {
+      setError('Некоректний співробітник — оберіть зі списку');
       return;
     }
     if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
@@ -734,6 +744,7 @@ export function CalendarSlotModal({
                     type="button"
                     onClick={() => {
                       setCpDisplay('');
+                      setCpPhone(null);
                       setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' }));
                     }}
                     className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
@@ -754,6 +765,14 @@ export function CalendarSlotModal({
                   </Button>
                 )}
               </div>
+              {cpPhone && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  📞{' '}
+                  <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
+                    {cpPhone}
+                  </a>
+                </p>
+              )}
             </div>
 
             <div>
@@ -1031,6 +1050,7 @@ export function CalendarSlotModal({
                 });
                 if (!ok) return;
                 setCpDisplay(item.primary);
+                setCpPhone(item.phone ?? null);
                 setForm(f => ({
                   ...f,
                   counterpartyId: item.id,
@@ -1041,6 +1061,7 @@ export function CalendarSlotModal({
                 return;
               }
               setCpDisplay(item.primary);
+              setCpPhone(item.phone ?? null);
               setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary }));
             }}
           />
