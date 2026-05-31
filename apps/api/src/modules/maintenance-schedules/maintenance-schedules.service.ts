@@ -145,14 +145,13 @@ export class MaintenanceSchedulesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.maintenanceSchedule.findFirst({
+    // Defense-in-depth: atomic soft-delete via updateMany з orgId guard
+    // (sto-optimize 1-RTT pattern 2026-05-31). 2 RTT → 1 RTT.
+    const result = await this.prisma.maintenanceSchedule.updateMany({
       where: { id, orgId, deletedAt: null },
-    });
-    if (!existing) throw new NotFoundException('Графік ТО не знайдено');
-    await this.prisma.maintenanceSchedule.update({
-      where: { id, orgId },
       data: { deletedAt: new Date() },
     });
+    if (result.count === 0) throw new NotFoundException('Графік ТО не знайдено');
   }
 
   async updateAfterWorkOrder(

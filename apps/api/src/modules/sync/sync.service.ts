@@ -318,9 +318,16 @@ export class SyncService {
     lastSyncAt: Date | null;
     maxSyncVersion: number;
   }> {
-    const [pending, failed, ...maxVersionResults] = await Promise.all([
+    // lastJob fetch is independent of count/aggregate queries — merge into single Promise.all
+    // to collapse 2 sequential round-trips into one. PULL_TABLES.length + 3 queries run in parallel.
+    const [pending, failed, lastJob, ...maxVersionResults] = await Promise.all([
       this.prisma.syncJob.count({ where: { orgId, status: 'PENDING' } }),
       this.prisma.syncJob.count({ where: { orgId, status: 'FAILED' } }),
+      this.prisma.syncJob.findFirst({
+        where: { orgId, status: 'DONE' },
+        orderBy: { processedAt: 'desc' },
+        select: { processedAt: true },
+      }),
       // Query max syncVersion across all pull tables to give clients a correct since cursor
       ...PULL_TABLES.map(table =>
         this.model(table)
@@ -331,12 +338,6 @@ export class SyncService {
           .catch(() => ({ _max: { syncVersion: null } })),
       ),
     ]);
-
-    const lastJob = await this.prisma.syncJob.findFirst({
-      where: { orgId, status: 'DONE' },
-      orderBy: { processedAt: 'desc' },
-      select: { processedAt: true },
-    });
 
     type AggResult = { _max: { syncVersion: bigint | null } };
     const maxSyncVersion = (maxVersionResults as AggResult[]).reduce((max, res) => {

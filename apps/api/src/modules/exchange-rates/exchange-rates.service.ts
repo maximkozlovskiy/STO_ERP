@@ -97,28 +97,39 @@ export class ExchangeRatesService {
     id: string,
     dto: UpdateExchangeRateDto,
   ): Promise<ExchangeRateResponseDto> {
-    const existing = await this.prisma.exchangeRate.findFirst({
-      where: { id, orgId, deletedAt: null },
-    });
+    // Tier merger: tenant guard + optional duplicate-date check у єдиний Promise.all
+    // (sto-optimize pattern 2026-05-31). Duplicate read сходиться через NOT: {id} +
+    // фіксована currencyId/date з DTO — тенант-safe незалежно від existing.
+    // Race-edge: якщо dto.date === existing.date (no calendar change) — фільтруємо
+    // duplicate ПІСЛЯ awaits. 2 RTT → 1 RTT.
+    const newDate = dto.date !== undefined ? parseDateOnly(dto.date) : null;
+    const [existing, duplicate] = await Promise.all([
+      this.prisma.exchangeRate.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { currencyId: true, date: true },
+      }),
+      // Speculative duplicate-check: дата ще не порівняна з existing.date,
+      // тому інколи запит виявиться зайвим. На warm-cache це 1 індекс-hit — копійки.
+      newDate
+        ? this.prisma.exchangeRate.findFirst({
+            where: {
+              orgId,
+              date: newDate,
+              NOT: { id },
+              deletedAt: null,
+            },
+            select: { id: true, currencyId: true },
+          })
+        : Promise.resolve(null),
+    ]);
     if (!existing) throw new NotFoundException('Курс валюти не знайдено');
 
     // Bug #151: зміна дати має поважати унікальність (orgId, currencyId, date).
     // Інакше PATCH на зайняту дату падає на DB P2002 → generic 409 замість
     // локалізованого повідомлення (так само як у create()).
-    if (dto.date !== undefined) {
-      const newDate = parseDateOnly(dto.date);
-      // Only check for conflicts when the calendar date actually changes
-      if (newDate.getTime() !== new Date(existing.date).setUTCHours(0, 0, 0, 0)) {
-        const duplicate = await this.prisma.exchangeRate.findFirst({
-          where: {
-            orgId,
-            currencyId: existing.currencyId,
-            date: newDate,
-            NOT: { id },
-            deletedAt: null,
-          },
-        });
-        if (duplicate) throw new ConflictException('Курс на цю дату вже існує');
+    if (newDate && newDate.getTime() !== new Date(existing.date).setUTCHours(0, 0, 0, 0)) {
+      if (duplicate && duplicate.currencyId === existing.currencyId) {
+        throw new ConflictException('Курс на цю дату вже існує');
       }
     }
 

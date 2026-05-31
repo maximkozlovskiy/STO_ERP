@@ -83,12 +83,14 @@ export class CashRegistersService {
     id: string,
     dto: UpdateCashRegisterDto,
   ): Promise<CashRegisterResponseDto> {
-    const existing = await this.prisma.cashRegister.findFirst({
-      where: { id, orgId, deletedAt: null },
-    });
-    if (!existing) throw new NotFoundException('Касу не знайдено');
-
-    const [currency, branch] = await Promise.all([
+    // Tier merger: existing tenant guard + optional FK validation у єдиний Promise.all
+    // (sto-optimize pattern 2026-05-31). existing.branchId потрібен для cache invalidation,
+    // тому select narrow projection. 3 RTT → 1 RTT.
+    const [existing, currency, branch] = await Promise.all([
+      this.prisma.cashRegister.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { branchId: true },
+      }),
       dto.currencyId
         ? this.prisma.currency.findFirst({ where: { id: dto.currencyId, orgId, deletedAt: null } })
         : Promise.resolve(true as const),
@@ -98,6 +100,7 @@ export class CashRegistersService {
           })
         : Promise.resolve(true as const),
     ]);
+    if (!existing) throw new NotFoundException('Касу не знайдено');
     if (dto.currencyId && !currency) throw new NotFoundException('Валюту не знайдено');
     if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
 

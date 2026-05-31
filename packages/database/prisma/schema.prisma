@@ -1188,6 +1188,11 @@ model PurchaseOrder {
 
   @@index([orgId, status, deletedAt])
   @@index([orgId, syncVersion])
+  // sto-optimize covering: findAll сортує по createdAt DESC з фільтром
+  // (orgId, deletedAt). Без цього індекса Postgres робить Sort node поверх
+  // index scan на (orgId, status, deletedAt). Covering включає createdAt у
+  // кінці — повертає рядки в потрібному порядку без sort node.
+  @@index([orgId, deletedAt, createdAt])
   @@map("purchase_orders")
 }
 
@@ -1240,6 +1245,9 @@ model StockDocument {
   @@index([orgId, status, deletedAt])
   @@index([orgId, type, deletedAt])
   @@index([orgId, syncVersion])
+  // sto-optimize covering: findAll сортує по createdAt DESC. Унфільтрований шлях
+  // (без type/status) використовує цей covering — Sort node зникає.
+  @@index([orgId, deletedAt, createdAt])
   @@map("stock_documents")
 }
 
@@ -1425,6 +1433,9 @@ model Invoice {
 
   @@index([orgId, status, deletedAt])
   @@index([orgId, syncVersion])
+  // sto-optimize covering: findAll сортує по createdAt DESC. Без status filter
+  // це найгарячіший шлях — covering eliminate Sort node.
+  @@index([orgId, deletedAt, createdAt])
   @@map("invoices")
 }
 

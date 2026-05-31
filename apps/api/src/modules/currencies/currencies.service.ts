@@ -63,16 +63,24 @@ export class CurrenciesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateCurrencyDto): Promise<CurrencyResponseDto> {
-    const existing = await this.prisma.currency.findFirst({
-      where: { id, orgId, deletedAt: null },
-    });
+    // Tier merger: tenant guard + optional duplicate-code check у єдиний Promise.all
+    // (sto-optimize pattern 2026-05-31). Duplicate-check сходиться у where через NOT: {id},
+    // тенант-safe незалежно від existing — обидва запити мають orgId. 2 RTT → 1 RTT.
+    const [existing, duplicate] = await Promise.all([
+      this.prisma.currency.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { code: true },
+      }),
+      dto.code
+        ? this.prisma.currency.findFirst({
+            where: { orgId, code: dto.code, NOT: { id }, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
     if (!existing) throw new NotFoundException('Валюту не знайдено');
-
-    if (dto.code && dto.code !== existing.code) {
-      const duplicate = await this.prisma.currency.findFirst({
-        where: { orgId, code: dto.code, NOT: { id }, deletedAt: null },
-      });
-      if (duplicate) throw new ConflictException(`Валюта з кодом "${dto.code}" вже існує`);
+    if (dto.code && dto.code !== existing.code && duplicate) {
+      throw new ConflictException(`Валюта з кодом "${dto.code}" вже існує`);
     }
 
     // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).

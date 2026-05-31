@@ -81,12 +81,14 @@ export class BankAccountsService {
     id: string,
     dto: UpdateBankAccountDto,
   ): Promise<BankAccountResponseDto> {
-    const existing = await this.prisma.bankAccount.findFirst({
-      where: { id, orgId, deletedAt: null },
-    });
-    if (!existing) throw new NotFoundException('Банківський рахунок не знайдено');
-
-    const [currency, branch] = await Promise.all([
+    // Tier merger: existing tenant guard + optional FK validation у єдиний Promise.all
+    // (sto-optimize pattern 2026-05-31). Усі три читання незалежні (FK queries
+    // мають свій orgId guard), 3 RTT → 1 RTT.
+    const [existing, currency, branch] = await Promise.all([
+      this.prisma.bankAccount.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { id: true },
+      }),
       dto.currencyId
         ? this.prisma.currency.findFirst({ where: { id: dto.currencyId, orgId, deletedAt: null } })
         : Promise.resolve(true as const),
@@ -96,6 +98,7 @@ export class BankAccountsService {
           })
         : Promise.resolve(true as const),
     ]);
+    if (!existing) throw new NotFoundException('Банківський рахунок не знайдено');
     if (dto.currencyId && !currency) throw new NotFoundException('Валюту не знайдено');
     if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
 

@@ -45,13 +45,17 @@ export default function SyncPage() {
     setError('');
     try {
       const since = status?.maxSyncVersion ?? 0;
-      const pulled = await apiFetch<SyncRecord[]>(`/sync/pull?since=${since}`);
+      // sto-optimize: pull and push are independent operations (web has no local
+      // dirty records to push, so push is effectively a no-op acceptance count).
+      // Promise.all collapses 2 sequential round-trips into one.
+      const [pulled, pushResult] = await Promise.all([
+        apiFetch<SyncRecord[]>(`/sync/pull?since=${since}`),
+        apiFetch<{ accepted: number; conflicts: number }>('/sync/push', {
+          method: 'POST',
+          body: JSON.stringify({ records: [] }),
+        }),
+      ]);
       const pulledCount = Array.isArray(pulled) ? pulled.length : 0;
-
-      const pushResult = await apiFetch<{ accepted: number; conflicts: number }>('/sync/push', {
-        method: 'POST',
-        body: JSON.stringify({ records: [] }), // web client has no local dirty records to push
-      });
 
       setMsg(
         `Синхронізація завершена. Отримано ${pulledCount} записів. ` +

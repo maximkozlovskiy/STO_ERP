@@ -22,6 +22,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { fmtMoney } from '@/lib/format';
+import { getCached, setCache } from '@/lib/ref-cache';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -555,6 +556,12 @@ export default function PricingRulesClient() {
 
   useEffect(() => {
     let cancelled = false;
+    // sto-optimize: seed brands from ref-cache (used by catalog/BrandsTab + goods).
+    // Brand modal opens instantly if cache hot from prior session navigation.
+    // goods is not in ref-cache — too high cardinality (could be 1000+).
+    const cachedBrands = getCached<Brand[]>('cache:brands');
+    if (cachedBrands?.length) setBrands(cachedBrands);
+
     // Bug #32: `/goods?limit=500` валиться на ValidationPipe (GoodQueryDto.@Max(200)).
     // Узгоджуємо з рештою сторінок (dashboard, work-orders, invoices використовують limit=200).
     Promise.all([
@@ -565,6 +572,7 @@ export default function PricingRulesClient() {
         if (!cancelled) {
           setGoods(goodsRes.items);
           setBrands(brandsRes.items);
+          setCache('cache:brands', brandsRes.items);
         }
       })
       .catch((e: unknown) => {
