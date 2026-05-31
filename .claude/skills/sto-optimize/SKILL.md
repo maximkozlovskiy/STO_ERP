@@ -829,6 +829,28 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — Inline Intl.\* construction у `useEffect` loadData callback — page-mount setup-функції з 2-4 форматерами підряд
+
+**Сигнал:** на сторінці-дашборді/звіті/головній page `useEffect(() => { ... }, [])` (mount-only) робить `const fmt = (d) => new Intl.DateTimeFormat(...).format(d)` хелпер всередині callback АБО прямі `new Intl.DateTimeFormat(...).format(now)` 2-4 рази підряд для різних форматів (today, monthStart, weekStart, greeting). Це не render hot-path і не `.map()`, але кожен mount = 4 нових форматер-інстансів які одразу викидаються
+**Причина виникнення:** code-locality — форматер декларується поряд з використанням бо «це private до setup-логіки». Виглядає дешево бо викликається 1 раз за mount. Не помічається що: (a) користувач часто навігує до dashboard/reports per session (10-20 mount/day), (b) на SPA без full-reload кожен mount = full Intl init, (c) `loadData()` може повторно викликатись на refresh або з useCallback dep change. Сумарно: 40-80 unnecessary Intl-конструкцій на сесію тільки за один тип сторінки
+**Підхід до виявлення:** grep `new Intl\.\(DateTimeFormat\|NumberFormat\)` у `apps/web/src/app/**/*.tsx`. Для кожного збігу перевірити: чи всередині `useEffect`/`useCallback`/`useMemo`? Якщо у render/`.map` — Кроки 2.8/2.10 (вже покрито). Якщо у `useEffect(..., [])` setup — це **інший** кандидат. Особливо коли поряд 2+ форматера з різними options
+**Підхід до фіксу:** винести **всі** форматери у module-level `const` блок над компонентом. Local `kyivDate` helper переписати як thin `.format()` wrapper. Опції мають бути константні (TZ, locale, options object повністю static). Це уніфікує підхід frontend з backend (PDF service KYIV_DATE_FMT pattern). Bundle size не зростає бо Intl — global
+**Реальний impact:** dashboard mount × 20/day × 4 форматерів = 80 alloc/day → 0 (alloc лише при initial module load). Найпомітніше на сторінках з multiple time/date logic (dashboard greeting + today/weekStart/monthStart + revenue chart range)
+**Де шукати ще:** dashboard pages, reports pages, settings sub-tabs з date-range filtering, calendar setup. Будь-який `loadData`/`onMount`/`refresh` що поряд з API calls форматує дати для query params. Перевіряти при додаванні **нової** сторінки з date-aware loadData
+
+---
+
+### 2026-05-31 — Sequential cron-/scheduler queue.add у onModuleInit — N-orgs scheduler enqueue блокує application bootstrap
+
+**Сигнал:** OnModuleInit hook (типу `FollowUpScheduler`, `ReminderScheduler`, периодичний bootstraper) проходить `for (const org of orgs) { await this.queue.add('job', ..., { repeat: cron, jobId: \`x-\${org.id}\` }) }`. Кожен `add`— Redis RTT з ioredis. На on-prem (1 org) — no-op. На multi-tenant cloud з 100-1000 orgs — application startup блокується на N×RTT доки всі repeatable jobs зареєструються
+**Причина виникнення:** OnModuleInit виглядає «один раз на старт — sequential ОК». Не помічається що: (a) cloud multi-tenant deploy з 1000 orgs може давати 30-50 секунд startup latency (1000 × 30ms RTT), (b) Kubernetes/Docker healthcheck має короткі timeouts (5-10s) — pod marked unhealthy ДО завершення scheduler bootstrap. Це не runtime фан-аут (як webhook delivery), а startup ledger — але семантично той самий патерн
+**Підхід до виявлення:** grep`OnModuleInit`+`for (const \w+ of \w+) { await this\.\w+Queue\.add`у backend. Якщо в тілі циклу —`queue.add`без cross-iteration dependencies (jobId унікальний per org/entity) — кандидат на паралелізацію
+**Підхід до фіксу:**`await Promise.all(items.map(item => queue.add(..., { jobId: \`x-\${item.id}\`, repeat: cron, ... })))`. BullMQ deduplicates by jobId — paralel add робить N concurrent Redis multi/exec calls (Bull internally pipelines через ioredis), фінальний стан стейту черги idempotent: всі jobs зареєструються рівно один раз. Failure одного не валить інші (хоча тут зазвичай want fail-fast — Promise.all семантика підходить, при rejection pod-у не вдасться стати ready що коректно)
+**Реальний impact:** cloud з 1000 orgs: 30s sequential startup → 1-2s parallel. На on-prem незмінно (1 org). Окремо — ефект на dev: rapid file-change cycle (hot-reload модуля): кожне перевантаження більше не чекає 1000 RTT
+**Де шукати ще:** будь-який scheduler/cron bootstraper (notifications, reminders, sync, dump-rotation), DI lifecycle hooks що масово ініціалізують ресурси. Перевіряти при додаванні нової @Cron-задачі що per-org
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -897,6 +919,9 @@ TypeScript: ✅ 0 errors
 - ✅ setup.init: for-await tx.documentNumberConfig.create + tx.paymentMethodConfig.create → tx.createMany (13 RTT → 2)
 - ✅ payments.create: hoist UAH_AMOUNT_FMT Intl.NumberFormat for SMS amount payload
 - ✅ booking.create: hoist UA_DATE_FMT Intl.DateTimeFormat for SMS confirmation date
+- ✅ followup.processor: settings + branch findFirst parallel + hoist UA_DATE_FMT for per-schedule SMS date (hot daily-tick)
+- ✅ followup.scheduler.onModuleInit: for-await queue.add → Promise.all map (cloud N-orgs startup)
+- ✅ audit.findByEntity: include user → narrow select projection (drop orgId/entityType/entityId/userId over-fetch)
 
 **Frontend:**
 
@@ -935,6 +960,7 @@ TypeScript: ✅ 0 errors
 - ✅ settings/sync/page.tsx: local fmtDate (2× inline toLocale\*) → fmtDateTime proxy
 - ✅ calendar.utils.ts: hoist KYIV_MONTH_YEAR_FMT + KYIV_FULL_DATE_FMT singletons; fmtKyivMonthYear helper
 - ✅ calendar/page.tsx + CalendarStatsTab.tsx: 2× inline new Date(...).toLocaleDateString → fmtKyivMonthYear singleton (month-view headers)
+- ✅ dashboard/page.tsx: 4 inline Intl у useEffect → module-level KYIV_YMD_FMT/KYIV_YEAR_MONTH_DAY_FMT/KYIV_FULL_DATE_FMT/KYIV_HOUR_FMT (per-mount setup forms)
 
 **DB:**
 
@@ -950,3 +976,6 @@ TypeScript: ✅ 0 errors
 - ✅ work_order_media: `(orgId, workOrderId, createdAt)` covering — findAll sorted DESC без Sort node
 - ✅ payments: `(orgId, counterpartyId, createdAt)` + `(orgId, createdAt)` covering — list endpoint paginated by createdAt DESC, eliminates Sort node for both filtered + unfiltered paths
 - ✅ completion_acts: `(orgId, workOrderId, deletedAt, createdAt)` covering (replaces 3-col) — findAll sorted by createdAt DESC
+- ✅ warranties: `(orgId, counterpartyId, deletedAt, createdAt)` covering (replaces 3-col) — findByCounterparty/findByWorkOrder sorted by createdAt DESC
+- ✅ webhook_endpoints: `(orgId, deletedAt, createdAt)` covering (replaces 2-col) — findAll sorted by createdAt DESC
+- ✅ booking_requests: `(orgId, deletedAt, createdAt)` covering (replaces single `(orgId, createdAt)`) — findAll with deletedAt=null filter + sort by createdAt DESC

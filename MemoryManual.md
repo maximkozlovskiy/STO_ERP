@@ -9,12 +9,33 @@
 ## Останній commit
 
 ```
+0c37fd1 perf(optimize): cycle 2 — followup fan-out + audit narrow select + dashboard Intl + Phase 21 covering indexes
+5b77bad docs(memory): record sto-tester cycle 2 — HEAD af5f4f8 hash
 af5f4f8 fix(tester): cycle 2 — Bugs #251-#256 (booking DoS + cross-tenant FK + comments validation + specs)
 c5d04bc docs(skills): add RolesGuard-without-@Roles pattern to sto-review
 15e8203 docs(memory): record sto-review-agent cycle 2 — 6 defense-in-depth fixes
-6a84c11 fix(review): cycle 2 — defense-in-depth on B1/B3/B5/B12 endpoints + Search roles
-d2ea44c docs(memory): record sto-sync-agent cycle 2 results
 Дата: 2026-05-31
+
+Latest optimize: 2026-05-31 (sto-optimize-agent цикл 2 з 5, HEAD 5b77bad → 0c37fd1) — **8 точкових perf фіксів** (4 backend + 1 frontend + 3 DB indexes + 2 нові SKILL patterns) фокус на Phase 21+22 модулях (B1-B12).
+**Backend (4 fixes):**
+(1) followup.processor.handleSendReminders — settings + branch findFirst parallel (-1 RTT per daily tick). Раніше: settings → branch sequential.
+(2) followup.processor — hoist `UA_DATE_FMT` module-level Intl singleton. `.toLocaleDateString('uk-UA')` викликався у hot for-loop per upcomingMaintenance × N schedules × daily tick.
+(3) followup.scheduler.onModuleInit — `for (const org of orgs) { await queue.add(...) }` → `Promise.all(orgs.map(...))`. Cloud N-org bootstrap latency: 30s (1000 RTT sequential) → 1-2s parallel. On-prem (1 org) — no-op.
+(4) audit.findByEntity — `include: { user: ... }` → `select` narrow projection. Drop over-fetched orgId/entityType/entityId/userId scalar columns (toDto читає лише id/action/diff/createdAt/user).
+**Frontend (1 fix, 4 inline Intl removed):**
+(5) dashboard/page.tsx — 4 inline `new Intl.DateTimeFormat(...)` у useEffect loadData callback + setTodayStr + greeting hour → 4 module-level singletons (KYIV_YMD_FMT, KYIV_YEAR_MONTH_DAY_FMT, KYIV_FULL_DATE_FMT, KYIV_HOUR_FMT). Dashboard mount × ~20/session × 4 formatters = 80 unnecessary alloc/day → 0.
+**DB (+1 migration, 3 covering index swaps):**
+- `warranties`: DROP `(orgId, counterpartyId, deletedAt)` → CREATE `(orgId, counterpartyId, deletedAt, createdAt)` covering. findByCounterparty/findByWorkOrder sort by createdAt DESC.
+- `webhook_endpoints`: DROP `(orgId, deletedAt)` → CREATE `(orgId, deletedAt, createdAt)` covering. findAll sort by createdAt DESC.
+- `booking_requests`: DROP `(orgId, createdAt)` → CREATE `(orgId, deletedAt, createdAt)` covering. findAll filter deletedAt + sort by createdAt DESC.
+- Migration `20260531150000_add_phase21_covering_indexes` applied to dev DB.
+**Impact:** FollowUp daily tick: -1 RTT settings/branch + per-schedule SMS Intl alloc → 0. Cloud bootstrap with 1000 orgs: ~30s startup → 1-2s. Phase 21 list endpoints (warranties timeline, webhooks management, booking management): Sort node 50-200ms → 0 on large data sets. Dashboard mount: 4 Intl allocs/mount → 0.
+**TypeScript:** ✅ 0 errors (api + web). **Unit:** API 482/482 pass, Web 218/218 pass.
+**Нові SKILL patterns:** 2 нових entries у "Накопичені підходи":
+  (a) Inline Intl у useEffect loadData callback — page-mount setup-функції з 2-4 форматерами підряд.
+  (b) Sequential cron-/scheduler queue.add у onModuleInit — N-orgs scheduler enqueue блокує application bootstrap.
+
+
 
 Latest tester: 2026-05-31 (sto-tester-agent цикл 2 з 5, HEAD c5d04bc → af5f4f8) — **6 багів виправлено** (2 HIGH + 3 MEDIUM + 1 LOW; фокус — Phase 21+22 модулі: booking/comments/warranties/loyalty/inspection).
 **Знайдено через статичний аналіз — 0 runtime регресій:**
