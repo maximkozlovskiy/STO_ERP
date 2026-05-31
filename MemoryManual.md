@@ -9,12 +9,28 @@
 ## Останній commit
 
 ```
+39d2667 fix(sync): align frontend interfaces with API response DTOs (cycle 3)
 0c37fd1 perf(optimize): cycle 2 — followup fan-out + audit narrow select + dashboard Intl + Phase 21 covering indexes
 5b77bad docs(memory): record sto-tester cycle 2 — HEAD af5f4f8 hash
 af5f4f8 fix(tester): cycle 2 — Bugs #251-#256 (booking DoS + cross-tenant FK + comments validation + specs)
 c5d04bc docs(skills): add RolesGuard-without-@Roles pattern to sto-review
-15e8203 docs(memory): record sto-review-agent cycle 2 — 6 defense-in-depth fixes
 Дата: 2026-05-31
+
+Latest sync: 2026-05-31 (sto-sync-agent цикл 3 з 5, HEAD 0c37fd1 → 39d2667) — **9 interface оновлень** (Direction 3: типи).
+Direction 1 (API→UI): 0 missing — всі backend модулі мають UI (або у known exceptions).
+Direction 2 (URL): 0 wrong — всі apiFetch URL відповідають реальним контролерам.
+Direction 3 (Types): 9 interface файлів — додані optional поля що backend DTO повертає але frontend interfaces не оголошували:
+  - WorkOrder hook: +hasActiveWarranty, +slotStartAt/End/LiftName, +orgId
+  - WorkOrderDetail page: +hasActiveWarranty, +slotStartAt/End/LiftName, +orgId, +updatedAt
+  - WorkOrderLine/Part: +workOrderId, +createdAt
+  - Invoice hook: +orgId, +totalWithoutVat, +totalVat, +invoiceType, +workOrderNumber, +paidAmount
+  - InvoiceWithOptionals: прибрано дубльовані поля (тепер у базовому Invoice)
+  - PurchaseOrder hook: +orgId
+  - Counterparty hook: +orgId, +notes, +legal/bank/contact optional fields
+  - Counterparty CRM detail: +orgId, +createdAt, +updatedAt, +deletedAt
+  - OrgInfo settings: +orgId, +updatedAt
+  - MaintenanceSchedule dashboard: +intervalMileage, +notes
+TypeScript: ✅ 0 errors (web). API — не перевірявся (змін не було).
 
 Latest optimize: 2026-05-31 (sto-optimize-agent цикл 2 з 5, HEAD 5b77bad → 0c37fd1) — **8 точкових perf фіксів** (4 backend + 1 frontend + 3 DB indexes + 2 нові SKILL patterns) фокус на Phase 21+22 модулях (B1-B12).
 **Backend (4 fixes):**
