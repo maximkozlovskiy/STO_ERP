@@ -7310,3 +7310,129 @@ price = parseFloat(l.price) / coeff;            // per base unit
 **Статус:** [x] виправлено — race-guard змінено з `idx === i && x.goodId === selectedGoodId` на `x.goodId === selectedGoodId && x.goodUoMs.length === 0`. Видалено залежність від index. Виправлено для PO + SD.
 
 ---
+
+## Session 2026-05-31 — sto-tester UoM Krok 1+2 у StockBatch (HEAD 268ed9c)
+
+Scope: Krok 1+2 — додано nullable `unitOfMeasureId` поле у `StockBatch`/`PurchaseOrderLine`/`StockDocumentLine`/`StockMovement` + backfill міграція; `batch.service.ts.createFromReceipt` зберігає UoM з fallback `dto.unitOfMeasureId ?? good.unitId ?? null`; `StockBatchDto.unitShortName` для відображення; PO `receive()` приймає `ReceiveLineDto.unitOfMeasureId` override з org-scope tenant validation; SD `transition(CONFIRMED)` передає `unitOfMeasureId` у `inventory.createMovement` з `good.unitId`; UI `GoodsTab` — нова колонка "Одиниця" у таблиці партій; `batch-viewer-modal.tsx` — `unitShortName` у відображенні кількостей.
+
+Файли під перевіркою:
+
+- `packages/database/prisma/schema.prisma` + `20260531090000_add_uom_to_stock_models/migration.sql`
+- `apps/api/src/modules/inventory/batch.service.ts`
+- `apps/api/src/modules/inventory/inventory.service.ts`
+- `apps/api/src/modules/purchase-orders/purchase-orders.service.ts` + `.dto.ts`
+- `apps/api/src/modules/stock-documents/stock-documents.service.ts` + `.dto.ts`
+- `apps/web/src/app/catalog/GoodsTab.tsx`
+- `apps/web/src/components/ui/batch-viewer-modal.tsx`
+
+### Baseline (Крок 0)
+
+- TypeScript API/web/shared — ✅ 0 errors
+- API unit/contract tests — ✅ 440/440 passed (40 файлів)
+- Web component tests — ✅ 203/203 passed (18 файлів)
+- Перевірка хибно-зеленого `[x]`: останній `fix(review): krok 6 UoM ...` (83bcbea) реально міняє код у `purchase-orders.service.ts`/`stock-documents.service.ts`. Зелений.
+
+### Знайдені баги
+
+---
+
+## Bug #236 — HIGH backend / data integrity
+
+**Файл:** `apps/api/src/modules/stock-documents/stock-documents.service.ts:283-352` (transition CONFIRMED)
+**Severity:** HIGH
+**Категорія:** business-logic / data-persistence / specification gap
+
+**Опис:** Brief specifies "StockDocumentLine.unitOfMeasureId записується у transition(CONFIRMED)". Поточна реалізація обчислює `lineUnitId` з `line.good?.unitId`, передає його у `inventory.createMovement(unitOfMeasureId: lineUnitId)` — `StockMovement` рядки отримують коректну UoM. АЛЕ сама `StockDocumentLine` row НЕ оновлюється — `tx.stockDocumentLine.update({ where: { id: line.id }, data: { unitOfMeasureId: lineUnitId } })` відсутній. `toDto` мапить `l.unitOfMeasureId ?? null` з SD рядка, тому API завжди повертає `unitOfMeasureId: null` для SD lines, навіть після CONFIRMED.
+
+**Наслідки:**
+
+1. SD UI/PDF/report не може показати UoM конкретної лінії документа — завжди null.
+2. Cross-resource консистентність: `StockMovement.unitOfMeasureId` (історія руху) ≠ `StockDocumentLine.unitOfMeasureId` (поточний стан рядка). Аудит ускладнено.
+3. Майбутні sync/export endpoints що читають SD lines (для 1С/Excel) отримують NULL.
+
+**Очікувана поведінка:** Кожен `for (const line of doc.lines)` у `transition(CONFIRMED)` має додати `await tx.stockDocumentLine.update({ where: { id: line.id }, data: { unitOfMeasureId: lineUnitId } })` ВСЕРЕДИНІ `$transaction` блоку.
+
+**Фактична поведінка:** SD line `unitOfMeasureId` назавжди залишається NULL після CONFIRMED — навіть коли `inventory.createMovement` отримав коректне значення.
+
+**Підхід до фіксу:** додати один `tx.stockDocumentLine.update()` виклик у цикл, в обох гілках (`TRANSFER` і non-TRANSFER), всередині `$transaction`.
+
+**Статус:** [x] виправлено — додано `tx.stockDocumentLine.update({ where: { id: line.id }, data: { unitOfMeasureId: lineUnitId } })` у єдиному місці після обох гілок (TRANSFER і non-TRANSFER) щоб уникнути дублювання. Guard `if (lineUnitId)` пропускає null no-op (Good без unitId).
+
+---
+
+## Bug #237 — LOW backend / data freshness
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:333-339` (receive — purchaseOrderLine.update)
+**Severity:** LOW
+**Категорія:** data-freshness / partial-receive consistency
+
+**Опис:** PO `receive()` пише `tx.purchaseOrderLine.update({ data: { unitOfMeasureId: resolvedUomId } })` для КОЖНОГО receive виклика, навіть якщо `recv.unitOfMeasureId` не передано (fallback на `good.unitId`). Партіальний receive flow (ORDERED → PARTIAL → RECEIVED) може мати ДВА послідовних receive: перший з explicit UoM "уп" (упаковки), другий без override (fallback на `good.unitId = "шт"`). `StockMovement` зберігає історію (один з "уп", другий з "шт" коректно). АЛЕ `PurchaseOrderLine.unitOfMeasureId` зберігає тільки ОСТАННЄ значення — користувач втрачає видимість що частина була отримана у іншій UoM.
+
+**Очікувана поведінка:** оновлювати `purchaseOrderLine.unitOfMeasureId` ТІЛЬКИ якщо (а) це перший receive (поточний `receivedQty === 0`) АБО (б) `recv.unitOfMeasureId` передано explicit. Якщо partial receive продовжується без override — НЕ перезаписувати line UoM.
+
+**Фактична поведінка:** Лінія UoM перезаписується на кожен receive call, втрачає історію.
+
+**Підхід до фіксу:** conditional update: `if (line.receivedQty === 0 || recv.unitOfMeasureId)` → update; інакше — skip UoM update (тільки `receivedQty: { increment }`).
+
+**Статус:** [x] виправлено — додано `shouldUpdateLineUom` guard у PO `receive()`. `unitOfMeasureId` пишеться у `purchaseOrderLine.update` лише коли `line.receivedQty === 0` (перший receive) АБО `recv.unitOfMeasureId` явно передано. Інакше — тільки `receivedQty: { increment }`. Покрито 2 unit-тестами у PO service.spec.
+
+---
+
+## Bug #238 — LOW backend / defense-in-depth
+
+**Файл:** `apps/api/src/modules/inventory/inventory.service.ts:91-105` (createMovement)
+**Severity:** LOW
+**Категорія:** tenant-isolation / defense-in-depth
+
+**Опис:** `InventoryService.createMovement` приймає `dto.unitOfMeasureId` і записує його напряму у `stockMovement.create({ data: { unitOfMeasureId } })` БЕЗ перевірки чи UoM належить до `orgId`. Поточні callers (PO `receive`, SD `transition`, batch.service) самі валідують або використовують org-trusted значення (`good.unitId`), тому **runtime ризику зараз НЕМАЄ**. Але це **public API** — будь-який майбутній caller (work-orders.service для writeoff, mobile sync push, manual stock adjustment endpoint) може передати cross-tenant UoM ID без валідації → silent cross-tenant linkage. SKILL §1.1 Bug #161 патерн: «Optional FK у data: { ...dto } / data: dto → сервіс валідує КОЖЕН наданий FK через findFirst({ id: dto.XId, orgId, deletedAt: null }) ПЕРЕД write».
+
+**Очікувана поведінка:** якщо `dto.unitOfMeasureId` передано — валідувати org-scope: `if (dto.unitOfMeasureId) { const u = await db.unitOfMeasure.findFirst({ where: { id: dto.unitOfMeasureId, orgId, deletedAt: null }, select: { id: true } }); if (!u) throw new BadRequestException('Одиницю виміру не знайдено в межах організації'); }`.
+
+**Фактична поведінка:** UoM ID пишеться напряму, FK перевіряє лише глобальне існування ID, не org-scope.
+
+**Підхід до фіксу:** додати org-scope `findFirst` перевірку у `createMovement` ПЕРЕД `stockMovement.create`. Дублікат org-перевірки з PO `receive` — прийнятна defense-in-depth ціна.
+
+**Статус:** [x] виправлено — у `InventoryService.createMovement` додано `if (dto.unitOfMeasureId) { findFirst({ id, orgId, deletedAt: null }) → throw BadRequest if not found }` ПЕРЕД `stockMovement.create`. PO `receive()` робить власну батч-перевірку — додатковий per-call findFirst у InventoryService це **дублювання** для цього caller, але **необхідно** для майбутніх callers (work-orders, mobile sync, manual adjustments). Покрито 3 unit-тестами у inventory.service.spec.
+
+---
+
+## Bug #239 — MEDIUM test-coverage / backend
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts` (немає describe для receive)
+**Severity:** MEDIUM
+**Категорія:** test-coverage / tenant-isolation regression
+
+**Опис:** PO `receive()` має новий 21-рядковий блок org-scope tenant validation для `recv.unitOfMeasureId` override (lines 276-297): enumerate overrides → query `unitOfMeasure.findMany({ orgId, id: { in: ids } })` → set difference → throw `BadRequestException` якщо є missing. Critical security-affecting код БЕЗ жодного тесту. Existing `purchase-orders.service.spec.ts` має лише `describe('applyPricing')` — 0 тестів для `receive`. Per SKILL §1.5 Bug #186 / cross-tenant FK contract test: «POST з FK з ЦІЄЇ org → 201 + findFirst викликаний з правильним {id, orgId}; POST з FK з ЧУЖОЇ org → 404/400 + create НЕ викликаний».
+
+**Очікувана поведінка:** мінімум 4 нових `it`-блоки у новому `describe('receive')`:
+
+1. receive без override → resolvedUomId = good.unitId (fallback).
+2. receive з explicit own-org UoM override → unitOfMeasure.findMany викликаний з orgId, resolvedUomId = override.
+3. receive з cross-tenant UoM ID → BadRequestException, inventory.createMovement НЕ викликаний.
+4. receive з НЕВАЛІДНИМ форматом UoM ID — валідація class-validator пропускає (контрактний тест), але service-level не повинен ламатися.
+
+**Фактична поведінка:** 0 тестів для нової логіки. Регресія (видалення org-check, або заміна `orgId` на `dto.orgId` під рефактор) пройде CI зеленою → cross-tenant write без error.
+
+**Підхід до фіксу:** додати `describe('receive — UoM override tenant validation')` у `purchase-orders.service.spec.ts` за зразком existing applyPricing describe (мок Prisma findMany + inventory.createMovement + settlements.createTransaction + $transaction).
+
+**Статус:** [x] виправлено — додано 6 нових `it`-блоків у `describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug #239)')`. Покривають: (1) fallback на good.unitId без override; (2) own-org override + findMany з orgId; (3) cross-tenant → BadRequestException + жоден inventory/settlements/line.update write (Bug #186); (4) батч-валідація кількох UoMs одним findMany; (5) Bug #237 partial receive без override → unitOfMeasureId НЕ оновлюється; (6) Bug #237 partial receive з override → оновлюється. API: 449/449 (440 → 446 → 449).
+
+---
+
+## Bug #240 — LOW test-coverage / backend
+
+**Файл:** `apps/api/src/modules/stock-documents/` (немає `stock-documents.service.spec.ts` ані `stock-documents.contract.spec.ts`)
+**Severity:** LOW
+**Категорія:** test-coverage
+
+**Опис:** SD module має `controller.ts`, `service.ts`, `module.ts`, `dto.ts` — АЛЕ нуль test-coverage. Жоден `.spec.ts` файл не існує. Новий код `transition(CONFIRMED)` що передає UoM у `inventory.createMovement` (~30 рядків критичної бізнес-логіки) — повністю не покритий. Регресія типу «забуто передати `unitOfMeasureId` у createMovement», «змінено on-DELETE поведінку», «зламано FSM» — пройде CI зеленою. Перенесено у LOW бо: (а) module стабільний і існує давно без тестів; (б) Bug #236 фікс (одиничний `tx.stockDocumentLine.update`) — атомарний, ризик регресії невеликий; (в) повний spec — окремий sprint.
+
+**Очікувана поведінка:** мінімум один `stock-documents.contract.spec.ts` (HTTP layer) АБО `stock-documents.service.spec.ts` (logic) з кейсами для CONFIRMED transition: створює правильну кількість movements, передає `unitOfMeasureId`, оновлює `stockDocumentLine.unitOfMeasureId` (Bug #236 fix), запис у $transaction атомарний.
+
+**Фактична поведінка:** 0 spec файлів — регресія невидима.
+
+**Підхід до фіксу:** документувати як known-state у MemoryManual — спека module ВЖЕ існує без тестів, не блокуючий. Skip у цій сесії.
+
+**Статус:** [ ] не виправлено — задокументовано як known-state технічний борг
+
+---

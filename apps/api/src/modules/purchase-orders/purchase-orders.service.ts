@@ -330,11 +330,15 @@ export class PurchaseOrdersService {
             tx,
           );
 
+          // Bug #237: avoid overwriting an existing PO line UoM on subsequent partial
+          // receives. Only persist UoM when (a) this is the first receive (no prior qty),
+          // or (b) the caller passed an explicit override — otherwise keep the original.
+          const shouldUpdateLineUom = line.receivedQty === 0 || !!recv.unitOfMeasureId;
           await tx.purchaseOrderLine.update({
             where: { id: recv.lineId, orgId },
             data: {
               receivedQty: { increment: recv.receivedQty },
-              unitOfMeasureId: resolvedUomId,
+              ...(shouldUpdateLineUom ? { unitOfMeasureId: resolvedUomId } : {}),
             },
           });
 

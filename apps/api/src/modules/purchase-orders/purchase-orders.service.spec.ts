@@ -265,3 +265,392 @@ describe('PurchaseOrdersService.applyPricing', () => {
     expect(prisma.good.updateMany).not.toHaveBeenCalled();
   });
 });
+
+// Bug #239: regression-захист для UoM override tenant validation у receive().
+// Покриває: (a) fallback на good.unitId коли override відсутній; (b) explicit own-org override;
+// (c) cross-tenant UoM ID → BadRequestException + жоден inventory write; (d) fallback коли good.unitId=null.
+// Bug #237: conditional update line.unitOfMeasureId — лише на першому receive або з explicit override.
+describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug #239)', () => {
+  let service: PurchaseOrdersService;
+  let prisma: {
+    purchaseOrder: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    purchaseOrderLine: { update: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
+    unitOfMeasure: { findMany: ReturnType<typeof vi.fn> };
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+  let inventory: { createMovement: ReturnType<typeof vi.fn> };
+  let settlements: { createTransaction: ReturnType<typeof vi.fn> };
+
+  const ORG = 'org-A';
+  const PO_ID = '11111111-1111-4111-8111-111111111111';
+  const LINE_ID = '22222222-2222-4222-8222-222222222222';
+  const GOOD_ID = '33333333-3333-4333-8333-333333333333';
+  const SUPPLIER_ID = '44444444-4444-4444-8444-444444444444';
+  const WAREHOUSE_ID = '55555555-5555-4555-8555-555555555555';
+  const USER_ID = '66666666-6666-4666-8666-666666666666';
+  const GOOD_UNIT_ID = '77777777-7777-4777-8777-777777777777'; // own-org default UoM
+  const OWN_UOM_ID = '88888888-8888-4888-8888-888888888888'; // own-org override UoM
+  const CROSS_UOM_ID = '99999999-9999-4999-8999-999999999999'; // foreign-org UoM
+
+  beforeEach(async () => {
+    prisma = {
+      purchaseOrder: {
+        findFirst: vi.fn(),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      purchaseOrderLine: {
+        update: vi.fn().mockResolvedValue({}),
+        findMany: vi.fn(),
+      },
+      unitOfMeasure: { findMany: vi.fn() },
+      $transaction: vi.fn().mockImplementation((arg: unknown) => {
+        if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+        return Promise.resolve(arg);
+      }),
+    };
+    inventory = { createMovement: vi.fn().mockResolvedValue(undefined) };
+    settlements = { createTransaction: vi.fn().mockResolvedValue(undefined) };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        PurchaseOrdersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: InventoryService, useValue: inventory },
+        { provide: SettlementsService, useValue: settlements },
+        { provide: DocumentNumberService, useValue: {} },
+        { provide: PricingService, useValue: {} },
+      ],
+    }).compile();
+    service = module.get(PurchaseOrdersService);
+
+    // Default PO fixture: ORDERED status, one line, RECEIVED qty = 0
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.ORDERED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 0,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+    // After increment all received → triggers RECEIVED status branch
+    prisma.purchaseOrderLine.findMany.mockResolvedValue([
+      { id: LINE_ID, quantity: 10, receivedQty: 10 },
+    ]);
+    // findOne after receive — return same PO (service calls this.findOne at end)
+    // Will be matched by 2nd findFirst call
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.ORDERED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 0,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+  });
+
+  it('receive без unitOfMeasureId override → fallback на good.unitId, createMovement отримує good.unitId', async () => {
+    // Final findOne after receive (для return value) — service викликає findOne(orgId, id) внутрішньо
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 10,
+          good: { name: 'X', sku: null, unit: 'шт', unitOfMeasure: null },
+          unitOfMeasureId: GOOD_UNIT_ID,
+        },
+      ],
+      supplier: { firstName: 'S', lastName: '', companyName: null },
+      warehouse: { name: 'W' },
+    });
+
+    await service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 10 }] }, USER_ID);
+
+    // unitOfMeasure.findMany НЕ викликаний (overrideUomIds порожній)
+    expect(prisma.unitOfMeasure.findMany).not.toHaveBeenCalled();
+    // inventory.createMovement отримав unitOfMeasureId з good.unitId
+    expect(inventory.createMovement).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ unitOfMeasureId: GOOD_UNIT_ID, goodId: GOOD_ID }),
+      expect.anything(),
+    );
+  });
+
+  it('receive з own-org unitOfMeasureId override → unitOfMeasure.findMany викликано з orgId, override застосовано', async () => {
+    prisma.unitOfMeasure.findMany.mockResolvedValueOnce([{ id: OWN_UOM_ID }]);
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 10,
+          good: { name: 'X', sku: null, unit: 'шт', unitOfMeasure: null },
+          unitOfMeasureId: OWN_UOM_ID,
+        },
+      ],
+      supplier: { firstName: 'S', lastName: '', companyName: null },
+      warehouse: { name: 'W' },
+    });
+
+    await service.receive(
+      ORG,
+      PO_ID,
+      { lines: [{ lineId: LINE_ID, receivedQty: 10, unitOfMeasureId: OWN_UOM_ID }] },
+      USER_ID,
+    );
+
+    // Tenant validation викликана з orgId і id ∈ overrideUomIds
+    expect(prisma.unitOfMeasure.findMany).toHaveBeenCalledWith({
+      where: { orgId: ORG, id: { in: [OWN_UOM_ID] }, deletedAt: null },
+      select: { id: true },
+    });
+    // resolvedUomId = override (не good.unitId)
+    expect(inventory.createMovement).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ unitOfMeasureId: OWN_UOM_ID }),
+      expect.anything(),
+    );
+  });
+
+  it('receive з cross-tenant unitOfMeasureId → BadRequestException, inventory write НЕ викликаний (Bug #186)', async () => {
+    // findMany повертає порожній масив — UoM не знайдено в org
+    prisma.unitOfMeasure.findMany.mockResolvedValueOnce([]);
+
+    await expect(
+      service.receive(
+        ORG,
+        PO_ID,
+        { lines: [{ lineId: LINE_ID, receivedQty: 10, unitOfMeasureId: CROSS_UOM_ID }] },
+        USER_ID,
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.unitOfMeasure.findMany).toHaveBeenCalledWith({
+      where: { orgId: ORG, id: { in: [CROSS_UOM_ID] }, deletedAt: null },
+      select: { id: true },
+    });
+    // Жоден write — захист от cross-tenant linkage
+    expect(inventory.createMovement).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrderLine.update).not.toHaveBeenCalled();
+  });
+
+  it('receive — кілька рядків з різними override-UoM: всі валідуються одним findMany (батч)', async () => {
+    const LINE_ID_2 = '22222222-2222-4222-8222-222222222223';
+    const OWN_UOM_ID_2 = '88888888-8888-4888-8888-888888888889';
+
+    prisma.unitOfMeasure.findMany.mockResolvedValueOnce([{ id: OWN_UOM_ID }, { id: OWN_UOM_ID_2 }]);
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.ORDERED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 5,
+          price: 100,
+          receivedQty: 0,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+        {
+          id: LINE_ID_2,
+          goodId: GOOD_ID,
+          quantity: 5,
+          price: 100,
+          receivedQty: 0,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+    prisma.purchaseOrderLine.findMany.mockResolvedValueOnce([
+      { id: LINE_ID, quantity: 5, receivedQty: 5 },
+      { id: LINE_ID_2, quantity: 5, receivedQty: 5 },
+    ]);
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 5,
+          price: 100,
+          receivedQty: 5,
+          good: { name: 'X', sku: null, unit: 'шт', unitOfMeasure: null },
+          unitOfMeasureId: OWN_UOM_ID,
+        },
+      ],
+      supplier: { firstName: 'S', lastName: '', companyName: null },
+      warehouse: { name: 'W' },
+    });
+
+    await service.receive(
+      ORG,
+      PO_ID,
+      {
+        lines: [
+          { lineId: LINE_ID, receivedQty: 5, unitOfMeasureId: OWN_UOM_ID },
+          { lineId: LINE_ID_2, receivedQty: 5, unitOfMeasureId: OWN_UOM_ID_2 },
+        ],
+      },
+      USER_ID,
+    );
+
+    // Один батчевий findMany з in:[a,b], не два окремих запита
+    expect(prisma.unitOfMeasure.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.unitOfMeasure.findMany).toHaveBeenCalledWith({
+      where: {
+        orgId: ORG,
+        id: expect.objectContaining({ in: expect.arrayContaining([OWN_UOM_ID, OWN_UOM_ID_2]) }),
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+  });
+
+  // Bug #237: partial receive не перезаписує line UoM коли override відсутній
+  it('Bug #237: partial receive без override → line.unitOfMeasureId НЕ оновлюється (receivedQty > 0)', async () => {
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.PARTIAL,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 3, // already partially received
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+    prisma.purchaseOrderLine.findMany.mockResolvedValueOnce([
+      { id: LINE_ID, quantity: 10, receivedQty: 10 },
+    ]);
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [],
+      supplier: { firstName: 'S', lastName: '', companyName: null },
+      warehouse: { name: 'W' },
+    });
+
+    await service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 7 }] }, USER_ID);
+
+    // line.update called — БЕЗ unitOfMeasureId в data (тільки receivedQty increment)
+    expect(prisma.purchaseOrderLine.update).toHaveBeenCalledWith({
+      where: { id: LINE_ID, orgId: ORG },
+      data: { receivedQty: { increment: 7 } },
+    });
+  });
+
+  it('Bug #237: partial receive з explicit override → line.unitOfMeasureId оновлюється (intent)', async () => {
+    prisma.unitOfMeasure.findMany.mockResolvedValueOnce([{ id: OWN_UOM_ID }]);
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.PARTIAL,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 3,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+    prisma.purchaseOrderLine.findMany.mockResolvedValueOnce([
+      { id: LINE_ID, quantity: 10, receivedQty: 10 },
+    ]);
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [],
+      supplier: { firstName: 'S', lastName: '', companyName: null },
+      warehouse: { name: 'W' },
+    });
+
+    await service.receive(
+      ORG,
+      PO_ID,
+      { lines: [{ lineId: LINE_ID, receivedQty: 7, unitOfMeasureId: OWN_UOM_ID }] },
+      USER_ID,
+    );
+
+    // explicit override → unitOfMeasureId присутній у data
+    expect(prisma.purchaseOrderLine.update).toHaveBeenCalledWith({
+      where: { id: LINE_ID, orgId: ORG },
+      data: { receivedQty: { increment: 7 }, unitOfMeasureId: OWN_UOM_ID },
+    });
+  });
+});

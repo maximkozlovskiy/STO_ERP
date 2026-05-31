@@ -154,4 +154,55 @@ describe('InventoryService.createMovement guards', () => {
       }),
     );
   });
+
+  // Bug #238: defense-in-depth tenant guard for caller-supplied unitOfMeasureId
+  describe('Bug #238: unitOfMeasureId tenant guard', () => {
+    const OWN_UOM = '11111111-1111-4111-8111-111111111111';
+    const CROSS_UOM = '22222222-2222-4222-8222-222222222222';
+
+    beforeEach(() => {
+      // Extend prisma mock with unitOfMeasure.findFirst (was missing in base setup)
+      (
+        prisma as unknown as { unitOfMeasure: { findFirst: ReturnType<typeof vi.fn> } }
+      ).unitOfMeasure = { findFirst: vi.fn() };
+    });
+
+    it('cross-tenant unitOfMeasureId → BadRequestException, stockMovement.create НЕ викликаний', async () => {
+      (
+        prisma as unknown as { unitOfMeasure: { findFirst: ReturnType<typeof vi.fn> } }
+      ).unitOfMeasure.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.createMovement(
+          'org-1',
+          dto({ type: 'RECEIPT', quantity: 10, price: 50, unitOfMeasureId: CROSS_UOM }),
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+      expect(prisma.stockItem.upsert).not.toHaveBeenCalled();
+    });
+
+    it('own-org unitOfMeasureId → проходить + записує у stockMovement.create', async () => {
+      (
+        prisma as unknown as { unitOfMeasure: { findFirst: ReturnType<typeof vi.fn> } }
+      ).unitOfMeasure.findFirst.mockResolvedValueOnce({ id: OWN_UOM });
+      await service.createMovement(
+        'org-1',
+        dto({ type: 'RECEIPT', quantity: 10, price: 50, unitOfMeasureId: OWN_UOM }),
+      );
+      expect(prisma.stockMovement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ unitOfMeasureId: OWN_UOM }),
+      });
+    });
+
+    it('unitOfMeasureId не передано → findFirst НЕ викликаний (skip guard)', async () => {
+      await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10, price: 50 }));
+      expect(
+        (prisma as unknown as { unitOfMeasure: { findFirst: ReturnType<typeof vi.fn> } })
+          .unitOfMeasure.findFirst,
+      ).not.toHaveBeenCalled();
+      expect(prisma.stockMovement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ unitOfMeasureId: null }),
+      });
+    });
+  });
 });

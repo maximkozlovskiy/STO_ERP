@@ -64,6 +64,21 @@ export class InventoryService {
       resolvedCostPrice = good?.purchasePrice != null ? Number(good.purchasePrice) : 0;
     }
 
+    // Bug #238 defense-in-depth: validate tenant boundary for caller-supplied UoM.
+    // Current callers (PO receive, SD transition, batch.service) already validate or
+    // pass org-trusted values, but InventoryService is a public API surface — any
+    // future caller (work-orders, mobile sync, manual adjustments) could leak
+    // cross-tenant linkage. FK alone enforces only global existence, not orgId.
+    if (dto.unitOfMeasureId) {
+      const uom = await db.unitOfMeasure.findFirst({
+        where: { id: dto.unitOfMeasureId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!uom) {
+        throw new BadRequestException('Одиницю виміру не знайдено в межах організації');
+      }
+    }
+
     if (dto.quantity < 0 || dto.type === 'RESERVATION' || dto.type === 'RESERVATION_RELEASE') {
       const item = await db.stockItem.findFirst({
         where: { orgId, goodId: dto.goodId, warehouseId: dto.warehouseId, deletedAt: null },

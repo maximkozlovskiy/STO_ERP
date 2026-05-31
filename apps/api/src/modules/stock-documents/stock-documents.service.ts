@@ -341,6 +341,16 @@ export class StockDocumentsService {
                 tx,
               );
             }
+
+            // Bug #236: persist resolved UoM on the SD line so toDto returns it,
+            // keeping StockMovement.unitOfMeasureId consistent with StockDocumentLine.unitOfMeasureId
+            // for audit/export consumers. Only write when we actually resolved a UoM (skip null no-op).
+            if (lineUnitId) {
+              await tx.stockDocumentLine.update({
+                where: { id: line.id },
+                data: { unitOfMeasureId: lineUnitId },
+              });
+            }
           }
 
           await tx.stockDocument.update({
