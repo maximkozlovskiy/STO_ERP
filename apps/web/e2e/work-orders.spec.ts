@@ -93,28 +93,30 @@ test.describe('Наряди — картка', () => {
     }
   });
 
-  test('mock: картка з неіснуючим ID не крашить додаток', async ({ page }) => {
+  test('неіснуючий ID → показує повідомлення "не знайдено"', async ({ page }) => {
+    // Bug fix: раніше сторінка зависала на спінері нескінченно.
+    // Після фіксу (woLoading state) — показує "Наряд не знайдено" або error message.
     await page.goto('/work-orders/00000000-0000-0000-0000-000000000000');
-    await page.waitForLoadState('domcontentloaded');
-    const hasNotFound = await page.locator('text=/404|не знайдено|not found/i').isVisible();
-    const isOnList = page.url().includes('/work-orders') && !page.url().includes('/00000000');
-    expect(hasNotFound || isOnList || true).toBe(true);
+    await expect(page.getByText(/не знайдено|Наряд не знайдено|not found/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
-  test('FSM кнопки відображаються на картці', async ({ page }) => {
+  test('картка наряду показує статус або FSM-кнопки', async ({ page }) => {
     await page.goto('/work-orders');
     await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
     const firstRow = page.locator('table tbody tr').first();
-    if (await firstRow.isVisible({ timeout: 10_000 })) {
-      await firstRow.click();
-      await page.waitForLoadState('domcontentloaded');
-      const fsmBtn = page
-        .locator(
-          'button:has-text("Затвердити"), button:has-text("В роботу"), button:has-text("Завершити"), button:has-text("Виставити рахунок")',
-        )
-        .first();
-      const hasFsm = await fsmBtn.isVisible({ timeout: 3_000 }).catch(() => false);
-      expect(typeof hasFsm).toBe('boolean');
-    }
+    if (!(await firstRow.isVisible({ timeout: 10_000 }))) return; // немає нарядів у БД — skip
+
+    await firstRow.click();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page).toHaveURL(/\/work-orders\/[a-z0-9-]+/, { timeout: 10_000 });
+
+    // Картка завжди показує або статус-badge, або FSM кнопки (або обидва)
+    // Статус-badge є завжди — це мінімальна перевірка що картка відрендерилась
+    const statusBadge = page.locator(
+      'text=/Чернетка|Кошторис|Затверджено|В роботі|Виконано|Виставлено|Оплачено|Архів|Скасовано/',
+    );
+    await expect(statusBadge.first()).toBeVisible({ timeout: 10_000 });
   });
 });

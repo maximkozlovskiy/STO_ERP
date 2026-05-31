@@ -70,11 +70,16 @@ test.describe('CRM — пошук', () => {
     await searchInput.fill('zzz_not_existing_xyz_123');
     await page.waitForTimeout(600); // debounce
 
+    // Після введення неіснуючого рядка: таблиця порожня АБО показує "Нічого не знайдено"
+    await page.waitForTimeout(700); // debounce 300ms + мережа
     const rows = page.locator('table tbody tr');
-    const emptyState = page.locator('[data-testid="empty-state"], text=/нічого не знайдено/i');
-    const count = await rows.count();
-    const hasEmpty = await emptyState.isVisible().catch(() => false);
-    expect(count === 0 || hasEmpty).toBe(true);
+    const emptyText = page.getByText(/Нічого не знайдено/i);
+    const rowCount = await rows.count();
+    const hasEmptyState = await emptyText.isVisible().catch(() => false);
+    expect(
+      rowCount === 0 || hasEmptyState,
+      `Очікувався порожній результат після пошуку 'zzz_not_existing_xyz_123', але знайдено ${rowCount} рядків`,
+    ).toBe(true);
   });
 });
 

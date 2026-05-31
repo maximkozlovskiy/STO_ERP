@@ -231,6 +231,7 @@ export default function WorkOrderCardPage() {
   const router = useRouter();
 
   const [wo, setWo] = useState<WorkOrderDetail | null>(null);
+  const [woLoading, setWoLoading] = useState(true);
   const [works, setWorks] = useState<Work[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -346,6 +347,7 @@ export default function WorkOrderCardPage() {
       apiFetch<InspectionReport | null>(`/work-orders/${id}/inspection`).catch(() => null),
     ]).then(([woResult, acts, inspectionData]) => {
       if (!mountedRef.current) return;
+      setWoLoading(false);
       if (woResult.kind === 'wo') {
         setWo(woResult.data);
       } else {
@@ -841,8 +843,10 @@ export default function WorkOrderCardPage() {
           <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
             {error}
           </p>
-        ) : (
+        ) : woLoading ? (
           <Spinner size="lg" />
+        ) : (
+          <p className="text-[13px] text-muted-foreground">Наряд не знайдено</p>
         )}
       </div>
     );
