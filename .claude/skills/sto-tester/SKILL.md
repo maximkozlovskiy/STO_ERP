@@ -375,6 +375,7 @@ done
 - [ ] **JSON/Record DTO поля** (`Record<string, unknown>`, `object`, `Json`) → обов'язково `@IsObject()` або `@ValidateNested()`. Без декоратора `whitelist: true` знімає поле мовчки → `dto.value === undefined` → сервіс записує `undefined/null` у БД без помилки (Bug #182). Перевіряти: `grep -A2 "!: Record\|?: Record\|!: object\|?: object" *.dto.ts | grep -v "@Is"`
 - [ ] **Multipart `await req.file()` обгорнутий у try/catch** (Bug #192): `fastify-multipart` кидає FastifyError "the request is not multipart" що мапиться у HTTP **406** з англ. messageом якщо клієнт відправляє НЕ-multipart body. Helper має ловити це і re-throw `BadRequestException` українською. Grep: `grep -rn "await req.file()" apps/api/src/modules/ --include="*.controller.ts"` — кожен виклик у try/catch АБО у helper з try/catch. Contract spec для нового multipart-endpoint вимагає тест `POST без multipart → 400 + укр. msg`
 - [ ] **Mass DTO migration completeness — grep variant audit (Bug #215):** sprint-wide refactor (наприклад «змінити `@Matches(uuid-regex)` → `@IsUUID()` у всіх DTO», «додати `@IsOptional()` до всіх `?:` полів», «замінити `string` → `string | null` для nullable DB полів») часто пропускає **варіантні форми** оригінального паттерну. Розробник grep-ить простий case (`@IsUUID('4')`) і пропускає декорації з додатковими args (`@IsUUID('4', { each: true })`, `@IsUUID('4', { message: '...' })`). Після sprint лишається 2-5 file-points з СТАРОЮ строгістю — тестові fixtures з ТОГО ж sprint можуть пройти бо їх теж зробили v4-layout, але production seeds/demo data з не-v4 UUID (e.g. `00000000-0000-0000-0000-000000000002`) ловлять 400 у dev. Grep: для кожного sprint-wide refactor — пройти ОБИДВА варіанти `@X()` і `@X(arg1, { each|message|... })`. Приклад для UUID: `grep -rn "@IsUUID(" apps/api/src/modules/ --include="*.dto.ts"` (NOT `@IsUUID('4')$`). Severity: HIGH коли блокує dev/seed workflow.
+- [ ] **Inner DTO class з порожніми полями (Bug #247):** будь-який nested DTO клас (зазвичай використовується через `@ValidateNested @Type(() => InnerDto)`) — у якому поля декларовані як `@ApiProperty() workId!: string; quantity!: number;` БЕЗ class-validator декораторів (`@IsUUID`/`@IsNumber`/`@IsString`/`@Min`/тощо). `whitelist: true` НЕ зачепить inner DTO (бо `@ValidateNested` валідує його повністю), АЛЕ якщо inner DTO нема жодного декоратора — pipe сприймає його як «порожній» клас і пропускає ВСІ значення (UUID-зломане, негативні числа, рядки 1М символів). Outer-DTO виглядає захищеним (`@ValidateNested + @Type`), але насправді захист зворотнього порядку — `@ValidateNested` потребує що внутрішній DTO САМ описує валідатори. Grep: `grep -rn "@ApiProperty()" apps/api/src/modules/ --include="*.dto.ts" -A1 | grep -B1 "[a-z]!: string\|[a-z]!: number" | grep -v "@Is\|@Min\|@Max\|@Matches\|@Length" | head -20` — кожен `@ApiProperty()` без сусіднього `@IsXXX` декоратора у inner DTO = bug. Парне з: `grep -B5 "@ValidateNested" apps/api/src/modules/ --include="*.dto.ts"` для перевірки що inner DTO має валідатори. Severity: HIGH (повна обходка validation для вкладеної структури + anti-DoS через відсутнє `@ArrayMaxSize`).
 
 ---
 
@@ -816,6 +817,51 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-31 — Inner DTO class з порожніми полями: @ValidateNested без декораторів усередині пропускає всі значення (Bug #247) — backend, security, dto-validation
+
+**Сигнал:** outer-DTO має `@IsArray() @ValidateNested({ each: true }) @Type(() => InnerDto) lines!: InnerDto[]` — все «правильно». АЛЕ inner DTO `InnerDto` оголошено як:
+
+```ts
+export class TemplateLineDto {
+  @ApiProperty() workId!: string;
+  @ApiProperty() quantity!: number;
+  @ApiProperty({ required: false }) note?: string;
+}
+```
+
+— тобто з `@ApiProperty()` (для Swagger), але БЕЗ жодного `@IsUUID`/`@IsNumber`/`@IsString`/`@Min`/`@MaxLength`. Outer-DTO виглядає захищеним (`@ValidateNested` + `@Type`), але `class-validator` валідує inner DTO **тільки** через його ВЛАСНІ декоратори — а їх нема → всі поля приймаються as-is (`workId: 'NOT-A-UUID'`, `quantity: -999`, `note: 'a'.repeat(1e6)`). `whitelist: true` теж не допомагає — він не знімає поля інформаційно (з точки зору schema-validator поле «задеклароване»).
+
+**Причина виникнення:** розробник, який пише inner DTO, фокусується на **shape** для Swagger (`@ApiProperty` дає правильний UI у docs). class-validator валідатори — це окрема концептуальна площина, і легко припустити: «outer-DTO має `@ValidateNested` → значить inner валідується автоматично». Хибно: `@ValidateNested` лише **вмикає** валідацію inner DTO; самі правила мають бути всередині нього. Це частіше виникає для «тривіальних» helper-DTO (template-lines, schedule-entries, contact-data) де розробник вважає що ID/quantity самі по собі «зрозумілі».
+
+**Підхід до виявлення:**
+
+1. На Кроці 1 §1.2 — після кожного `@ValidateNested @Type(() => InnerDto)` в outer-DTO знайти визначення InnerDto і перевірити чи кожне поле має class-validator декоратор.
+2. Grep-сигнатура (наближена): шукати inner DTO в `.dto.ts` де `@ApiProperty()` стоїть прямо перед `[a-z]!: string|number|boolean` без сусіднього class-validator декоратора у попередніх 3 рядках.
+3. **Парний сигнал anti-DoS:** outer-DTO з `@ValidateNested @Type(() => InnerDto)` БЕЗ `@ArrayMaxSize(N)` = double-bug (DoS attack vector + полна валідація bypass). Виправляти обидва одночасно.
+
+```bash
+# Знайти потенційні inner DTOs без декораторів
+for f in $(find apps/api/src/modules -name "*.dto.ts"); do
+  # для кожного class у файлі — перевірити чи поля мають @Is*
+  awk '/^export class/{cn=$3} /@ApiProperty\(\)$/{ap=NR} /[a-z]+!: (string|number|boolean)/ && ap==NR-1 {pre=""; for(i=NR-3;i<NR;i++) pre=pre line[i]; if(pre !~ /@Is|@Min|@Max|@Length|@Match/) print FILENAME":"NR": "cn" "$0}' "$f"
+done
+```
+
+**Підхід до фіксу:** для кожного поля inner DTO додати точний декоратор:
+
+- `workId/goodId/branchId` → `@IsUUID()`
+- `quantity/price/normoHours` → `@IsNumber() @Min(0)`
+- `note/description` → `@IsString() @MaxLength(500)` (плюс `@IsOptional` якщо `?:`)
+- enum-поля → `@IsEnum(EnumType)`
+
+Парне з: додати `@ArrayMaxSize(N)` у outer-DTO (Bug #248-style anti-DoS cap).
+
+**Severity:** HIGH — повна обходка validation для вкладеної структури + потенційний DoS через відсутнє `@ArrayMaxSize`. Не CRITICAL бо для exploit потрібна додаткова логіка (e.g. workOrderTemplate apply, який повинен сам перевіряти FK org-scope), але це другий вузол захисту — без першого attack surface значно ширший.
+
+**Де шукати ще:** будь-який сервіс що має «helper-DTO» (template-lines, schedule-entries, contact-info, batch-items, line-items, address-parts). Особливо новостворені модулі — там часто з'являються лише `@ApiProperty` без `@IsXXX`. Перевіряти ОБОВ'ЯЗКОВО кожен новий `*.dto.ts` що має >1 експорт класу.
+
+---
 
 ### 2026-05-31 — Shared helper з cross-DTO impact без unit-тесту → silent regression через десятки endpoint-ів (Bug #243) — backend, test-coverage, shared-utility
 

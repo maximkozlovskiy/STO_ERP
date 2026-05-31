@@ -9,14 +9,26 @@
 ## Останній commit
 
 ```
+757ee3b fix(tester): cycle 1 — Bugs #245-#250 (cross-resource invalidation + DTO validation + spec coverage)
+b8c8e4b docs(memory): record sto-review-agent cycle 1 — 3 fixes
 ffe3f07 fix(review): cycle 1 — schema-DB drift + warranty defense-in-depth + SMS attempts
 d137333 docs(memory): record sto-sync-agent cycle 1 — Invoice.amount fix
 cfbbf27 fix(sync): align Invoice interface with backend — amount not totalAmount
-0143e98 docs(skills,memory): add over-fetched-many-to-one-include pattern + record session 7a9f079
-7a9f079 perf(optimize): parallelize FK validation + narrow includes + covering index
 Дата: 2026-05-31
 
-Latest review: 2026-05-31 (sto-review-agent цикл 1 з 5, HEAD d137333 → ffe3f07) — **3 проблеми виправлено** (1 CRITICAL + 1 CRITICAL/IMPORTANT + 1 IMPORTANT).
+Latest tester: 2026-05-31 (sto-tester-agent цикл 1 з 5, FULL HEAD b8c8e4b → 757ee3b) — **6 багів виправлено** (1 HIGH + 4 MEDIUM + 2 LOW; повний static-аналіз §1.1–§1.7).
+**Знайдено через статичний аналіз — 0 runtime регресій:**
+(1) Bug #245 (MEDIUM) §1.3 cross-resource invalidation — `useCreatePayment` після POST /payments інвалідував лише `invoices` + `work-orders`, забув `counterparties`. `payments.service` викликає `settlements.createTransaction(PAYMENT)` → counterparty.balance змінюється → CRM-list показує стале значення до staleTime=30s. Додано `counterpartiesKeys.all` invalidation.
+(2) Bug #246 (LOW) §1.3 `key={i}` на mutable list items — `ServicesTab.tsx` (works/goods), `inventory/page.tsx` (lowItems сортується ASC quantity, може перевпорядкуватись). Замінено на стабільні ID.
+(3) Bug #247 (HIGH) §1.2 NEW PATTERN — `TemplateLineDto`/`TemplatePartDto` без жодних class-validator декораторів. `@ValidateNested` на outer-DTO вмикав валідацію, але inner-DTO без `@IsUUID`/`@IsNumber` приймав будь-яке значення (UUID-зломане, від'ємні числа, рядки 1М символів). Виправлено + `@ArrayMaxSize(200)`.
+(4) Bug #248 (LOW) §1.4 anti-DoS — 4 DTO з `@IsArray` без `@ArrayMaxSize`: pricing tiers→50, PO lines→500, services works/goods→100, stock-doc lines→500.
+(5) Bug #249 (MEDIUM) §1.5 регресія-guard — `WarrantiesService.claim` отримав defense-in-depth `updateMany` у cycle 1 review, але без spec. Створено `warranties.service.spec.ts` з 5 тестами що пинують контракт (`updateMany.where.orgId`, `where.deletedAt: null`, та `prisma.warranty.update` НЕ викликається).
+(6) Bug #250 (MEDIUM) §1.6 hook регресія-guard — `useInvoices.ts` (4 hooks) без `*.test.tsx`. Створено spec з 15 тестами (queryKey factory, enabled-gate, URLSearchParams, signal abort, cross-resource invalidation regression-guard для Bug #245).
+
+**TypeScript:** ✅ 0 errors (api + web + shared). **Unit:** API 464/464 (+5 нових warranties tests), Web 218/218 (+15 нових useInvoices tests).
+**Нові SKILL patterns:** 1 новий entry — "Inner DTO class з порожніми полями: @ValidateNested без декораторів усередині пропускає всі значення" (Bug #247). Outer-DTO виглядає захищеним, але інспектор валідує inner DTO виключно через його ВЛАСНІ декоратори. Парний сигнал anti-DoS: відсутнє `@ArrayMaxSize`.
+
+Previous review: 2026-05-31 (sto-review-agent цикл 1 з 5, HEAD d137333 → ffe3f07) — **3 проблеми виправлено** (1 CRITICAL + 1 CRITICAL/IMPORTANT + 1 IMPORTANT).
 **Знайдено через статичний аналіз — 0 runtime регресій:**
 (1) CRITICAL §6 Database — `WorkOrderMedia` schema.prisma було оновлено у коміті `7a9f079` з `@@index([orgId, workOrderId])` → `@@index([orgId, workOrderId, createdAt])` (covering index для findAll з ORDER BY createdAt DESC), але міграція НЕ створена. Schema-DB drift: tsc green, але runtime у будь-якій running DB має старий 2-col індекс → Sort node на findAll все ще там. Створено `20260531120000_add_work_order_media_covering_index/migration.sql` з DROP старого + CREATE нового 3-col індексу.
 (2) CRITICAL/IMPORTANT §2.2 + §5 — `warranties.service.ts:claim` робив `prisma.warranty.update({ where: { id } })` БЕЗ `orgId` у where — defense-in-depth gap (pattern 2026-05-30). race-window: між `findFirst({ id, orgId })` guard і `update({ where: { id } })` інша сесія могла soft-delete-нути запис у тій же org → наш update «воскрешає» його з `claimedAt` на чужому рядку. Refactor: `updateMany({ where: { id, orgId, deletedAt: null } })` + `findFirstOrThrow` для повернення з relations.
