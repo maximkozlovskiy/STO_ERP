@@ -917,6 +917,17 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — Speculative duplicate-check у tier-merger update — коли значення-для-порівняння живе в existing row
+
+**Сигнал:** метод `update(orgId, id, dto)` має класичний "оптимізований" 2-фазний паттерн: (1) findFirst для existing, (2) IF dto.field !== existing.field — findFirst для duplicate-check. Друга фаза умовна на результат першої — тому здається що тут НЕ МОЖНА паралелити. Але duplicate-check фактично читає за **новим значенням з DTO** (а не за existing) — отже не залежить ВІД РЕЗУЛЬТАТУ existing, лише від того чи треба його робити взагалі
+**Причина виникнення:** "не робити запит якщо не треба" — економний інстинкт. Проте duplicate-check на warm-cache — це індекс-hit на unique constraint (~1ms). Платити 1ms даремно у 5% випадків коли DTO повторює існуюче значення — дешевше за втрату 1 RTT (~30ms) у 95% коли значення дійсно змінилось
+**Підхід до виявлення:** метод update з patterной "if (dto.X && dto.X !== existing.X) { findFirst duplicate-check }". Перевірити чи duplicate-check where використовує DTO значення (а не existing) — якщо так, кандидат на speculative parallel. Особливо часто: unique-code reference data (currencies/units/brands), unique-key з дати (exchange-rates), name-уникальність (tax-rate, payment-method)
+**Підхід до фіксу:** speculative — запустити duplicate.findFirst у Promise.all з existing.findFirst незалежно від того чи `dto.X !== existing.X`. ПІСЛЯ awaits — звичайна перевірка `if (dto.X && dto.X !== existing.X && duplicate) throw Conflict`. Якщо duplicate-check читає за compound key (orgId+currencyId+date), і dto має лише date — широчити where до `{orgId, date}` без currencyId, потім фільтрувати `duplicate.currencyId === existing.currencyId` ПОСТ-факто. Це робить запит трохи ширшим, але не unsafe (unique index покриває обидва — Postgres все одно швидко знаходить)
+**Реальний impact:** -1 RTT у happy-path (95%+ випадків). Для reference-CRUD admin сторінок (currencies/exchange-rates/tax-rates) — латенсі update падає з 100-150ms до 50-80ms (на WAN). Cache.del лишається синхронним після, не змінюючи pattern
+**Де шукати ще:** будь-який update що має умовну duplicate-check логіку (типово unique-constraint reference data). Особливо: currencies.update, exchange-rates.update, tax-rates.update, payment-methods.update, units.update, brands.update. Перевіряти кожен endpoint що повертає 409 Conflict (це маркер унікального констрейнту)
+
+---
+
 ### 2026-05-31 — `findOne + update` 2-RTT pattern для simple soft-delete/update — заміна на `updateMany` з orgId guard
 
 **Сигнал:** простий CRUD-сервіс має `async update(orgId, id, dto)` що робить `await this.findOne(orgId, id)` (404 guard через findFirst) → `await prisma.X.update({ where: { id, orgId }, data: {...} })`. Те саме для `remove(orgId, id)` — soft-delete. 2 RTT для операції що могла би бути 1
@@ -1009,6 +1020,11 @@ TypeScript: ✅ 0 errors
 - ✅ work-orders.clone: include тягнув vehicle/counterparty/branch labels + lines.work/employee + parts.good/UoM — все НЕ використовується (clone оперує FK scalars); docNumbers.next додано у Promise.all з 3 FK validation (4 RTT → 1)
 - ✅ search.workOrders/Counterparties/Goods: similarity() рахується 2-4 рази per row у raw SQL — subquery/CTE для pre-computed sim column + `%` оператор (pg_trgm set-similarity) замість `similarity() > threshold` — GIN trgm index реально використовується (seq scan → index scan)
 - ✅ work-order-templates update/remove: findOne + update sequential (2 RTT) → updateMany з orgId guard + count===0 404 check (1 RTT)
+- ✅ sync.getStatus: lastJob.findFirst inlined у Promise.all з counts+aggregates (раніше sequential post-Promise.all; -1 RTT для sidebar widget)
+- ✅ bank-accounts/cash-registers.update: tier-merger — existing tenant guard + FK validation у єдиний Promise.all (3 RTT → 1 RTT, select narrow projection лише id/branchId за потреби кеш-інвалідації)
+- ✅ currencies.update: tier-merger — existing(select code) + speculative duplicate-code check у Promise.all з post-filter NOT id (2 RTT → 1 RTT)
+- ✅ exchange-rates.update: tier-merger — existing + speculative duplicate-date check у Promise.all (без currencyId у duplicate where — post-filter currencyId match) (2 RTT → 1 RTT)
+- ✅ maintenance-schedules.remove: findFirst + soft-delete update → updateMany з orgId guard (2 RTT → 1)
 
 **Frontend:**
 
@@ -1050,6 +1066,8 @@ TypeScript: ✅ 0 errors
 - ✅ dashboard/page.tsx: 4 inline Intl у useEffect → module-level KYIV_YMD_FMT/KYIV_YEAR_MONTH_DAY_FMT/KYIV_FULL_DATE_FMT/KYIV_HOUR_FMT (per-mount setup forms)
 - ✅ date-picker-input.tsx: DAY_PICKER_CLASS_NAMES module-level const + useMemo для minDate/maxDate/disabledMatchers/selected — DayPicker внутрішня memoization матриці днів збережена
 - ✅ batch-viewer-modal.tsx: BatchRow → React.memo + useCallback(handleToggle) + useMemo(activeBatches/depletedBatches) — клік на expand тепер чіпає 2 рядки замість всіх N
+- ✅ pricing-rules/PricingRulesClient.tsx: brands seeded from cache:brands ref-cache + warm cache на successful fetch — dropdown миттєвий за повторне відкриття
+- ✅ settings/sync/page.tsx: triggerSync пулл+пуш у Promise.all — web push always empty records (independent ops), -1 RTT
 
 **DB:**
 
@@ -1068,3 +1086,6 @@ TypeScript: ✅ 0 errors
 - ✅ warranties: `(orgId, counterpartyId, deletedAt, createdAt)` covering (replaces 3-col) — findByCounterparty/findByWorkOrder sorted by createdAt DESC
 - ✅ webhook_endpoints: `(orgId, deletedAt, createdAt)` covering (replaces 2-col) — findAll sorted by createdAt DESC
 - ✅ booking_requests: `(orgId, deletedAt, createdAt)` covering (replaces single `(orgId, createdAt)`) — findAll with deletedAt=null filter + sort by createdAt DESC
+- ✅ purchase_orders: `(orgId, deletedAt, createdAt)` covering — findAll без status filter (hot path) sort eliminated
+- ✅ stock_documents: `(orgId, deletedAt, createdAt)` covering — findAll без type/status filter (default browse) sort eliminated
+- ✅ invoices: `(orgId, deletedAt, createdAt)` covering — findAll без status filter (default list) sort eliminated

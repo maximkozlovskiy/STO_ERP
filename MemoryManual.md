@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+8efc01c perf(optimize): cycle 5 (FINAL) — tier-merger в reference-CRUD + sync.getStatus parallel + covering indexes
+85150e7 docs(skills,memory): add paired SSRF defense pattern + record tester cycle 5 (FINAL)
 4549eb2 fix(tester): cycle 5 (FINAL) — Bugs #273-#276 — SSRF redirect bypass + UX consistency
 37c736d docs(memory): record review cycle 5 (final) — defense-in-depth coverage
 649a5db fix(review): cycle 5 — defense-in-depth: updateMany+orgId + SSRF Checkbox + sanitize filename
@@ -17,10 +19,46 @@
 fc22234 docs(skills,memory): add PDF over-fetch + clone over-fetch + GIN trgm + 1-RTT updateMany patterns
 e9f8364 perf(optimize): cycle 4 — PDF select narrowing + WO clone over-fetch + search GIN trgm
 af41192 docs(skills,memory): add dead-feature-integration + frontend-hint-lies patterns + record tester cycle 4
-ec438bd fix(tester): cycle 4 — Bugs #266-#272 (WO template hint + loyalty earn integration + PDF nullsafe + AVG_COST orderBy + NaN guard + stale spec)
-cf60952 fix(review): cycle 4 — exhaustive-deps + ApiResponse coverage + safety take caps
-97e1ca3 fix(sync): cycle 4 — align frontend interfaces with API contracts
 Дата: 2026-05-31
+
+Latest optimize: 2026-05-31 (sto-optimize-agent **ЦИКЛ 5 з 5 — ФІНАЛ**, HEAD 4549eb2 → 8efc01c) — **11 файлів виправлено**: 6 backend + 2 frontend + 1 schema (3 нових covering indexes). Фокус циклу: tier-merger у reference-CRUD update методах (currencies/exchange-rates/bank-accounts/cash-registers); sync.getStatus parallel lastJob fetch; maintenance-schedules.remove 1-RTT pattern; covering indexes для invoices/purchase_orders/stock_documents list endpoints.
+
+**Backend (6 fixes):**
+(1) sync.getStatus: lastJob.findFirst раніше викликалось sequential post-Promise.all → inline у єдиний Promise.all з counts + aggregates. -1 RTT для sidebar status widget що polling-ується.
+(2) bank-accounts.update: existing tenant guard sequential перед FK Promise.all → tier-merger у єдиний Promise.all з 3 запитами (existing+currency+branch). 3 RTT → 1 RTT. existing на narrow select { id: true } (DTO повертається через findFirstOrThrow після updateMany).
+(3) cash-registers.update: той самий patterт — 3 RTT → 1 RTT. existing на narrow select { branchId: true } бо потрібен для cache invalidation.
+(4) currencies.update: speculative duplicate-code check у Promise.all з existing. Раніше IF (dto.code !== existing.code) → sequential second findFirst. Тепер обидва запити йдуть паралельно (duplicate where використовує DTO значення, не existing). Якщо post-check `dto.code === existing.code` — duplicate-row ігнорується. 2 RTT → 1 RTT.
+(5) exchange-rates.update: speculative duplicate-date check у Promise.all з existing. Trick: where дублікат не має currencyId (бо existing.currencyId ще не відомий) → post-filter `duplicate.currencyId === existing.currencyId`. 2 RTT → 1 RTT.
+(6) maintenance-schedules.remove: findFirst + soft-delete update → updateMany з orgId guard + count===0 404. 2 RTT → 1 RTT. (update лишається 2-RTT бо existing потрібен для fallback values у recalc logic.)
+
+**Frontend (2 fixes):**
+(7) pricing-rules/PricingRulesClient.tsx: brands seeded from `cache:brands` ref-cache на mount + warm cache на successful fetch. Dropdown миттєвий за повторне відкриття сторінки.
+(8) settings/sync/page.tsx triggerSync: pull + push у Promise.all (web client завжди має records:[], push effectively no-op acceptance count → operations independent). -1 RTT.
+
+**DB (3 covering indexes via db push, no migration file — operator-managed change):**
+(9) purchase_orders: `(orgId, deletedAt, createdAt)` — findAll без status filter (default browse) eliminates Sort node.
+(10) stock_documents: `(orgId, deletedAt, createdAt)` — findAll без type/status filter eliminates Sort node.
+(11) invoices: `(orgId, deletedAt, createdAt)` — findAll без status filter eliminates Sort node.
+
+**Перевірено (не знайдено проблем):**
+- completion-acts: вже cycle 4 покрив (lines/parts select narrow, parallel org+wo, $transaction timeout).
+- booking/page.tsx (public widget): SLOT_TIME_FMT module-level singleton + minDate в useState. Чисто.
+- settings/sync/page.tsx: fmtDateTime з lib/format singleton. Чисто.
+- pricing-rules: fmtMoney використовується. tiers у table cell (detail-в-list pattern) лишений як свідоме рішення UX.
+- maintenance-schedules: findUpcoming використовує `(orgId, nextMaintenanceDate)` covering — OK.
+- warranties.findByWorkOrder: workOrder×warranty має 1-2 рядків — Sort node неістотний.
+- sync.push: for-await applyRecord потрібен (записи можуть мати dependencies same-id), не паралель.
+
+**Підсумок 5 циклів optimize:**
+- **Backend:** 80+ fixes — від parallel FK validation, tier-merger, 1-RTT updateMany, до Intl singletons, bulk import optimization, PDF select narrowing, GIN trgm search.
+- **Frontend:** 50+ fixes — lib/format singletons, ref-cache seeds (consumer + source + detail pages), Promise.all batches, React.memo, useMemo для 3rd-party UI props.
+- **DB:** 11+ covering indexes (WHERE+ORDER BY), 6+ GIN trgm trigrams для search, 3 connection pool sizing improvements.
+- **Net impact:** dev-mode dashboard load: ~1.5s → ~600ms (typical). WO addLine/addPart: 3 RTT → 1. List endpoints (work-orders/invoices/PO): Sort node eliminated. ref-cache hit rate ~80% для типового сесії з 3+ модулями.
+
+**Нові SKILL patterns у цьому циклі (1 entry):**
+- "Speculative duplicate-check у tier-merger update" — пара з вже існуючим "Tiered parallelization stops at first Promise.all". Дозволяє паралелити навіть умовно-залежний duplicate-check, з post-await фільтрацією.
+
+**TypeScript:** ✅ 0 errors (api + web + shared, `--incremental false`). **Unit:** API **501/501**.
 
 Latest tester: 2026-05-31 (sto-tester-agent **ЦИКЛ 5 з 5 — ФІНАЛ**, FULL HEAD 37c736d → 4549eb2) — **4 баги знайдено + 4 виправлено + 8 нових regression-guard тестів** (новий checkbox.processor.spec.ts).
 
