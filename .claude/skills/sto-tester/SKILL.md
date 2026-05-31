@@ -156,6 +156,30 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 - [ ] **Optional FK у `data: { ...dto }` / `data: dto`** (`brandId`, `unitId`, `preferredSupplierId`, `vehicleId`, `branchId`...) → сервіс валідує КОЖЕН наданий FK через `findFirst({ id: dto.XId, orgId, deletedAt: null })` ПЕРЕД write (патерн Bug #90). Сирий DB FK перевіряє лише глобальне існування `id`, НЕ `orgId` → FK з чужої org проходить → cross-tenant linkage. P2003 ловить ТІЛЬКИ неіснуючий ID, не cross-tenant — тому «P2003 прийнятний» НЕ закриває tenant-isolation. Severity HIGH
 - [ ] **Defense-in-depth для `update` (Bug #191):** жоден `prisma.X.update({ where: { id } })` на org-scoped таблиці без `orgId` у `where`. Prisma не підтримує `update({ where: { id, orgId } })` для primary-key (TS error) → використовувати `updateMany({ where: { id, orgId, deletedAt: null } })` + опціонально `if (count === 0) throw NotFoundException(...)`. Локально безпечно якщо `id` отриманий через org-scoped read, АЛЕ майбутній рефактор/copy-paste у controller без org-check = cross-tenant write без error. Grep: `grep -rn "\.update({ where: { id:" apps/api/src/modules/` — кожен match без `orgId` у where = LOW (profilatic), HIGH якщо викликається з prep-неперевіреним `id`
 
+#### Prisma schema ↔ migration parity (release-blocker)
+
+```bash
+# Bug #220: schema.prisma модифіковано АЛЕ нема нової migration у migrations/
+# tsc green (Prisma client типи генеруються з schema, не з applied DB schema)
+# unit tests green (vi.fn() mocks не торкаються DB), runtime — P2021 "table does not exist"
+schema_changes=$(git diff HEAD~5 HEAD --name-only -- packages/database/prisma/schema.prisma)
+new_migrations=$(git diff HEAD~5 HEAD --name-only --diff-filter=A -- packages/database/prisma/migrations/)
+if [ -n "$schema_changes" ] && [ -z "$new_migrations" ]; then
+  echo "BUG #220: schema.prisma modified but no new migration directory created"
+fi
+
+# Для кожної нової `model X` у schema → grep у migrations/ за CREATE TABLE
+grep -E "^model [A-Z]" packages/database/prisma/schema.prisma | awk '{print $2}' | while read model; do
+  tbl=$(grep -A20 "^model $model " packages/database/prisma/schema.prisma | grep -oE "@@map\(\"[^\"]+\"\)" | head -1 | sed 's/@@map("//;s/")//')
+  [ -z "$tbl" ] && tbl=$(echo "$model" | sed 's/\([A-Z]\)/_\L\1/g' | sed 's/^_//')
+  if ! grep -rq "CREATE TABLE.*\"$tbl\"" packages/database/prisma/migrations/; then
+    echo "MISSING MIGRATION: model $model (table $tbl) — no CREATE TABLE in migrations/"
+  fi
+done
+```
+
+- [ ] **Schema↔migration parity (Bug #220)** — будь-який commit що модифікує `packages/database/prisma/schema.prisma` має закомітити **парний** SQL-файл у `packages/database/prisma/migrations/<timestamp>_<feature>/migration.sql`. Це CRITICAL release-blocker (фіча мертва у runtime з `P2021 table does not exist`). tsc green бо Prisma client типи генеруються з декларативної schema. Unit tests green бо vi.fn() mocks не торкаються DB. Ловиться ТІЛЬКИ статичним аудитом `git diff schema.prisma` ↔ `migrations/`. Перевіряти для: (а) нової `model X` → `CREATE TABLE`; (б) додавання field → `ALTER TABLE ADD COLUMN`; (в) нового `@@index` → `CREATE INDEX` (silent perf regression замість CRITICAL crash); (г) `@@unique` → `CREATE UNIQUE INDEX`. Не покладатись на `prisma migrate dev` (потребує live DB + interactive prompt); писати migration SQL вручну за шаблоном з найближчого попереднього migration з аналогічним relation pattern.
+
 #### Soft Delete
 
 ```bash
@@ -444,6 +468,7 @@ done
 - [ ] **React Query cross-resource invalidation audit (Bug #210-#212):** для КОЖНОГО `await apiFetch(/X/:id/Y, { method: 'POST'|'PATCH'|'DELETE' })` у migrated page → прочитати **серверний** controller+service цього endpoint і знайти всі side-effect updates на ІНШИХ resource-ах: (1) `inventory.createMovement(...)` → invalidate `inventoryKeys.all`; (2) `workOrders.transition(...)` → invalidate `workOrdersKeys.all`; (3) `settlements.createTransaction(...)` → invalidate `counterpartiesKeys.all` (якщо list показує balance); (4) `priceHistory.create(...)` + `good.update({ salePrice })` → invalidate `inventoryKeys.all` / `goodsKeys.all`. Same-resource invalidation (own-keys.all) — звичайна; cross-resource — невидимий gap бо клієнт не знає що endpoint мутує сторонній resource. Не покладатись на `staleTime=30s` — користувач може мати другий tab з відповідним list-view або переходити швидше за staleTime. Grep: `grep -B2 -A5 "method: 'POST'\|method: 'PATCH'\|method: 'DELETE'" apps/web/src/app/<migrated-page>` → кожен endpoint pair-check проти `apps/api/src/modules/<resource>/<resource>.service.ts`. Severity: MEDIUM коли впливає на бізнес-метрику (залишки/ціни/балансу); LOW коли лише UX (new row не з'являється у list до router.back)
 - [ ] **React Query migration completeness: mutation hooks експортовані але не використовуються (Bug #213):** після `feat(rq): migrate X` commits — grep usage `useXMutation`/`useDeleteX`/`useUpdateX` у `apps/web/src/app` (поза tests). Якщо count === 0 → migration зробила лише READ-path, WRITE-path лишається raw `apiFetch` + manual invalidate. Це **не runtime-bug**, але: (1) bundle bloat; (2) misleading commit-message; (3) maintenance burden (invalidation у двох місцях). Severity LOW; фікс: задокументувати у MemoryManual як known-state АБО видалити hooks; full migration = окремий sprint
 - [ ] **React Query custom hook без `*.test.tsx` (Bug #214):** новий `apps/web/src/hooks/api/use*.ts` з `useQuery`/`useMutation` потребує парний `*.test.tsx`. Тести покривають: (1) queryKey factory ізоляція (різні фільтри → різні ключі); (2) enabled-gate (`employee=null` → no fetch); (3) URLSearchParams build (кожне опціональне поле → відповідний URL param АБО відсутній якщо false-y); (4) signal abort (apiFetch отримує signal). Шаблон: `useWorkOrders.test.tsx`. Mock `apiFetch` + `useAuth`. Не використовувати реальний `QueryClientProvider` — створити свіжий `QueryClient` per-test з `retry: false`. Без цих тестів — silent URL param drift (як 3d5136d repairCategory regression) пройде CI зеленим
+- [ ] **Sub-resource default-flag mutation → parent-list staleness (Bug #226-#227):** для будь-якого sub-resource CRUD у modal-табі (`addX`/`setDefaultX`/`removeX` що викликають `/<parent>/:id/<sub>` ендпоінти) — pair-check проти backend service: чи endpoint виконує `prisma.<Parent>.update/updateMany({...})` (наприклад `Good.unitId` оновлюється коли default UoM змінюється)? Якщо так, success-handler frontend ОБОВ'ЯЗКОВО викликає `load()` для parent-table АБО invalidate `<parentKeys>.all`. Conditional: `addX` тільки коли `isFirst === true` (зчитати з backend → у response `created.isDefault`); `setDefaultX` завжди; `removeX` тільки якщо видаляли default (capture `wasDefault` перед DELETE). **Auto-promote next-default:** коли backend `removeX` логіка пише `findFirst({orderBy:createdAt asc}) + update({isDefault:true})` (наприклад `removeUoM` у `goods.service.ts`), оптимістичний `setModalXs(prev => prev.filter(...))` у клієнті НЕВІРНИЙ — replace optimistic filter на `refreshXs(parentId)` (race-guarded через існуючий reqRef). Grep: `grep -rn "apiFetch.*method:.*'POST\|PATCH\|DELETE'" apps/web/src/app --include="*.tsx" | grep -E "/uoms|/barcodes|/categories|/tax-rates|/warranties|/contacts|/services"` — pair-check проти backend. Severity: MEDIUM коли стале значення впливає на бізнес-сприйняття; HIGH коли стале значення гейтить наступну дію
 
 ---
 
@@ -788,6 +813,78 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-31 — Prisma schema mutation без парного migration (Bug #220) — database, release-blocker, schema-migration
+
+**Сигнал:** commit з `feat(X)` що додає або змінює модель у `packages/database/prisma/schema.prisma` (нова `model X { ... }`, додатковий field у існуючій моделі, новий `@@unique`/`@@index`) АЛЕ **не створює** парного SQL-файлу у `packages/database/prisma/migrations/<timestamp>_X/migration.sql`. tsc green (Prisma client типи генеруються з schema, не з applied DB schema), unit tests green (vi.fn() mocks не торкаються DB), API webpack build green. У runtime — `PrismaClientKnownRequestError P2021` ("The table `X` does not exist") при першому виклику нового endpoint. Прикладий випадок STO ERP: `0227c44 feat(uom): krok 1+2 — GoodUoM model + /goods/:id/uoms CRUD endpoints` додав `model GoodUoM { ... }` (18 рядків у schema) + 113 рядків service-логіки + 54 рядки controller, але міграцію забув — таблиця `good_uom` не існує у БД.
+
+**Причина виникнення:** Prisma toolchain розділяє **declarative schema** (`schema.prisma`) і **applied migrations** (`migrations/*.sql`). Розробник у момент дизайну фічі думає у термінах schema (Prisma client автоматично типизує `prisma.goodUoM.findMany()` після `prisma generate`), забуває що це **TypeScript-only ефект**. CI/dev workflow зазвичай має `prisma migrate dev` команду яка автоматично генерує migration від schema diff, але у безперервній CI/auto-mode розробника-AI ця команда не запускається (бо потребує live DB connection + interactive prompt для імені migration). Закомічено лише `schema.prisma` → reviewer (включно з sto-review) перевіряє правильність моделі, бачить індекси і FK у schema → схвалює → release-blocker проходить.
+
+**Підхід до виявлення:** на Кроці 1 §1.1 — для кожного commit що зачіпає `packages/database/prisma/schema.prisma`, перевірити `git diff HEAD~N HEAD -- packages/database/prisma/`:
+
+```bash
+# Якщо schema.prisma додав/змінив модель → має бути новий каталог у migrations/
+schema_changes=$(git diff HEAD~3 HEAD --name-only -- packages/database/prisma/schema.prisma)
+new_migrations=$(git diff HEAD~3 HEAD --name-only --diff-filter=A -- packages/database/prisma/migrations/)
+if [ -n "$schema_changes" ] && [ -z "$new_migrations" ]; then
+  echo "BUG: schema.prisma modified but no new migration directory created"
+fi
+
+# Конкретніше: кожна нова `model X` у schema → grep у migrations/ за CREATE TABLE "x_table"
+grep -E "^model [A-Z]" packages/database/prisma/schema.prisma | awk '{print $2}' | while read model; do
+  # convert PascalCase to snake_case (rough heuristic — better to check @@map)
+  table=$(echo "$model" | sed 's/\([A-Z]\)/_\L\1/g' | sed 's/^_//')
+  if ! grep -rq "CREATE TABLE.*\"$table\"\|CREATE TABLE.*${model}" packages/database/prisma/migrations/; then
+    echo "POSSIBLE MISSING MIGRATION: model $model has no CREATE TABLE in migrations/"
+  fi
+done
+```
+
+**Підхід до фіксу:** створити вручну `packages/database/prisma/migrations/<YYYYMMDDHHMMSS>_<feature>/migration.sql` з:
+
+1. `CREATE TABLE "table_name" (...)` — всі колонки з schema, дефолти, `NOT NULL` де треба;
+2. `CREATE UNIQUE INDEX` для кожного `@@unique([...])` (з суфіксом `_key` за конвенцією Prisma);
+3. `CREATE INDEX` для кожного `@@index([...])` (з суфіксом `_idx`);
+4. `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY ... REFERENCES ... ON DELETE X ON UPDATE Y` для кожного `@relation` — cascade тільки для child-таблиць parent→child (наприклад `goodId` ON DELETE CASCADE), `ON DELETE RESTRICT` для довідникових relations (`unitOfMeasureId` — не можна видалити одиницю якщо хтось її використовує).
+
+Шаблон копіюється з найближчого попереднього migration з аналогічним relation pattern (`grep -l "<related_table>" packages/database/prisma/migrations/*/migration.sql`).
+
+**НЕ запускати `prisma migrate dev`** — це **side-effect** (auto-apply до dev DB + перегенерація client + auto-name через interactive prompt). У AUTO-режимі агенту краще вручну писати SQL і покладатись на наступний deploy щоб `prisma migrate deploy` його застосував.
+
+**Severity:** CRITICAL — release-blocker. Фіча мертва у runtime; unit tests з mocks не ловлять; smoke-test через curl показує 500 на першому ж API call.
+
+**Де шукати ще:** будь-який commit з `feat(*)` що модифікує `schema.prisma`. Особлива увага: (а) розробник додає **колонку** у існуючу модель (`ALTER TABLE X ADD COLUMN Y` migration пропущений → SELECT з нової колонки кидає `column "Y" does not exist`); (б) додано `@@index` для performance — без migration index не створиться, queries працюватимуть але повільно (silent regression замість CRITICAL crash); (в) перейменовано field (Prisma може mapnути через `@map("old_name")` → migration не потрібен, але якщо @map немає — runtime crash). Профілактика: SKILL §1.1 тепер вимагає schema↔migration diff audit у Кроці 1 для кожного commit що зачіпає `schema.prisma`.
+
+---
+
+### 2026-05-31 — UoM/довідникові sub-resource: parent-list staleness після default-switching mutation (Bug #226-#227) — frontend, state-sync, react-query
+
+**Сигнал:** sub-resource CRUD у modal-табі (одиниці виміру/штрихкоди/гарантії/категорії) має «default flag» — одна з рядків — `isDefault: true`, решта `false`. Mutation що змінює default (`setDefaultUoM`, `setPrimaryBarcode`, `setActiveTaxRate`) на backend синхронізує **parent entity** (`Good.unitId`/`Good.unit`/`Vehicle.activeTaxRateId`). Frontend optimistic-update оновлює тільки modal-state (`setModalUoMs(prev => prev.map(u => ({ ...u, isDefault: u.id === uomId })))`) — забуває оновити **parent list** (`load()` для goods/vehicles table). Користувач закриває modal → у списку goods все ще старий unit. Розбіжність зникає лише після reload або refetch goods. Окремий subcase — auto-promote next default при `removeUoM`: optimistic `filter(u => u.id !== uomId)` не знає що backend підняв наступний UoM у default → UI показує жоден як default, DB — новий обраний.
+
+**Причина виникнення:** modal-таб (Edit Good) і parent table (Goods Tab) live в одному компоненті, але стейт-вузли роздільні (`modalUoMs` vs `goods`). Розробник, фокусуючись на UX модалу, реалізує всі CRUD-операції з оптимістичним оновленням `modalUoMs` (швидкий feedback у модалі) і пропускає крок «invalidate parent list». TypeScript і tests не ловлять — `load()` опціональний, не примусовий. У React Query era це класична **cross-cache invalidation gap** (Bug #210-#212 для sibling resources, але тут — для same-page parent state).
+
+**Підхід до виявлення:** у §1.3 frontend audit — для кожного sub-resource CRUD у modal-табі (`addX`/`setDefaultX`/`removeX` функції що викликають backend endpoints які можуть зачепити **parent** entity):
+
+1. Прочитати backend service для відповідного endpoint — знайти всі `prisma.<Parent>.update({...})` АБО `prisma.<Parent>.updateMany({...})` поза собою (тобто не на самому sub-resource).
+2. Для кожного знайденого parent-update — перевірити чи frontend success-handler викликає `load()` для parent table АБО invalidate `<parentKeys>.all` (для React Query).
+3. Auto-promote scenarios: коли backend `removeX` логіка пише `findFirst({ orderBy: createdAt asc })` + `update({ isDefault: true })` (auto-promote next-default) → optimistic `filter()` на клієнті НЕ ЗНАЄ про це → refetch sub-resource list після DELETE замість optimistic.
+
+```bash
+# Знайти sub-resource CRUD у modal-табах
+grep -rn "apiFetch.*method:.*'POST\|PATCH\|DELETE'" apps/web/src/app --include="*.tsx" | grep -E "/uoms|/barcodes|/categories|/tax-rates|/warranties" | head -10
+# Для кожного — pair-check проти backend service на parent-update side-effects
+```
+
+**Підхід до фіксу:** дві дисципліни:
+
+1. **Parent table refresh:** після успіху sub-resource mutation що може змінити parent — викликати `load()` (raw state) АБО `queryClient.invalidateQueries({ queryKey: parentKeys.all })` (React Query). Conditional: тільки коли реально був parent-side-effect (наприклад, `addUoM` оновлює Good лише якщо `isFirst === true` — invalidate тільки тоді; `setDefaultUoM` завжди — invalidate завжди; `removeUoM` тільки якщо видаляли default — capture `wasDefault` перед DELETE).
+2. **Sub-resource list refetch замість optimistic filter:** коли backend logic може зробити **state transitions** на інших рядках (auto-promote next default після delete) — оптимістичний `prev.filter(...)` НЕВІРНИЙ; робити `refreshXs(parentId)` (race-guarded через існуючий reqRef).
+
+**Severity:** MEDIUM — стале UI впливає на бізнес-сприйняття (користувач думає що unit не змінився); LOW коли немає бізнес-сенсу (декоративні badges); HIGH якщо стале значення гейтить наступну дію (наприклад, default tax rate у invoice creation).
+
+**Де шукати ще:** будь-який «sub-resource з default-flag» патерн — `/goods/:id/uoms`, `/goods/:id/barcodes` (`isPrimary`), `/counterparties/:id/contacts` (`isMain`), `/vehicles/:id/services` (`isPreferred`), `/employees/:id/branches` (default branch). Профілактика: SKILL §1.3 тепер вимагає parent-list-refresh audit для default-mutating sub-resource operations + refetch-on-delete для auto-promote scenarios.
+
+---
 
 ### 2026-05-31 — Paired correlation middleware + structured logger без спільного req-id source (Bug #216) — backend, logging, observability
 
