@@ -16,6 +16,7 @@ interface BatchItem {
   isActive: boolean;
   createdAt: string;
   purchaseOrderNumber: string | null;
+  unitShortName?: string | null;
 }
 
 interface PriceHistoryItem {
@@ -304,7 +305,9 @@ function BatchRow({
         <div className="flex items-center gap-4 shrink-0 ml-3">
           <div className="text-right">
             <p className="text-[13px] font-semibold text-foreground">
-              {batch.remainingQty} / {batch.receivedQty}
+              {batch.remainingQty}
+              {batch.unitShortName ? ` ${batch.unitShortName}` : ''} / {batch.receivedQty}
+              {batch.unitShortName ? ` ${batch.unitShortName}` : ''}
             </p>
             <p className="text-[11px] text-muted-foreground">{pct}% залишок</p>
           </div>

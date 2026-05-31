@@ -107,6 +107,8 @@ interface StockBatchDto {
   createdAt: string;
   purchaseOrderNumber: string | null;
   purchaseOrderLineId: string | null;
+  unitOfMeasureId: string | null;
+  unitShortName: string | null;
 }
 
 type GoodDetailTab = 'info' | 'barcodes' | 'batches';
@@ -1562,6 +1564,9 @@ export default function GoodsTab() {
                             <th className="text-right px-3 py-2 text-muted-foreground font-medium">
                               Залишок
                             </th>
+                            <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                              Одиниця
+                            </th>
                             <th className="text-right px-3 py-2 text-muted-foreground font-medium">
                               Собів., ₴
                             </th>
@@ -1593,6 +1598,9 @@ export default function GoodsTab() {
                                     {b.remainingQty}
                                   </span>
                                 )}
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground text-[12px]">
+                                {b.unitShortName ?? '—'}
                               </td>
                               <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">
                                 {fmtMoney(b.costPrice)}
