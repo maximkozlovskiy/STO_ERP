@@ -390,6 +390,7 @@ export class StockDocumentsService {
       goodId: string;
       quantity: number;
       price: Prisma.Decimal | null;
+      unitOfMeasureId?: string | null;
       good: {
         name: string;
         sku: string | null;
@@ -422,6 +423,7 @@ export class StockDocumentsService {
         coefficient: l.good?.unitOfMeasure?.coefficient ?? 1,
         quantity: l.quantity,
         price: l.price != null ? Number(l.price) : null,
+        unitOfMeasureId: l.unitOfMeasureId ?? null,
       })),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,

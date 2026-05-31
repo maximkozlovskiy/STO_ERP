@@ -273,6 +273,29 @@ export class PurchaseOrdersService {
       );
     }
 
+    // §2.2 Tenant isolation: validate that any unitOfMeasureId override the caller passed
+    // belongs to the same orgId (FK alone does not enforce tenant boundaries because UoM
+    // model has its own orgId and Prisma FK has no composite (orgId, id) constraint).
+    const overrideUomIds = Array.from(
+      new Set(
+        dto.lines
+          .map(l => l.unitOfMeasureId)
+          .filter((v): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    );
+    let allowedUomIds: Set<string> = new Set();
+    if (overrideUomIds.length) {
+      const allowed = await this.prisma.unitOfMeasure.findMany({
+        where: { orgId, id: { in: overrideUomIds }, deletedAt: null },
+        select: { id: true },
+      });
+      allowedUomIds = new Set(allowed.map(u => u.id));
+      const missing = overrideUomIds.filter(id => !allowedUomIds.has(id));
+      if (missing.length) {
+        throw new BadRequestException('Одиницю виміру не знайдено в межах організації');
+      }
+    }
+
     let receivedAmount = 0;
 
     await this.prisma.$transaction(
@@ -281,6 +304,15 @@ export class PurchaseOrdersService {
           const line = po.lines.find(l => l.id === recv.lineId);
           if (!line) continue;
           if (recv.receivedQty <= 0) continue;
+
+          // Prefer caller-provided UoM override (already validated against orgId above);
+          // fall back to Good.unitId, then null (backward compat with nullable column).
+          const resolvedUomId =
+            (recv.unitOfMeasureId && allowedUomIds.has(recv.unitOfMeasureId)
+              ? recv.unitOfMeasureId
+              : null) ??
+            line.good?.unitId ??
+            null;
 
           await this.inventory.createMovement(
             orgId,
@@ -293,7 +325,7 @@ export class PurchaseOrdersService {
               documentType: 'PurchaseOrder',
               documentId: id,
               createdBy: userId,
-              unitOfMeasureId: line.good?.unitId ?? null,
+              unitOfMeasureId: resolvedUomId,
             },
             tx,
           );
@@ -302,7 +334,7 @@ export class PurchaseOrdersService {
             where: { id: recv.lineId, orgId },
             data: {
               receivedQty: { increment: recv.receivedQty },
-              unitOfMeasureId: line.good?.unitId ?? null,
+              unitOfMeasureId: resolvedUomId,
             },
           });
 
