@@ -9,17 +9,52 @@
 ## Останній commit
 
 ```
+3367da8 perf(nav): reports prefetch + complete dashboard prefetch + reports keepPreviousData
+b5766eb fix(topshell): move useQueryClient above conditional returns — Rules of Hooks
+a24b975 docs(skills): add nav-prefetch + useQuery migration patterns to sto-optimize + sto-web
+9c92b3b perf(nav): calendar prefetch + profile/booking useQuery + GoodsTab memo
+4c3d18e perf(nav): migrate reports/sync/dashboard/catalog to useQuery + prefetch 16/17
+30280bd perf(nav): migrate bookings/pricing-rules/stock-docs/infrastructure to useQuery
+f017721 perf(nav): migrate employees+settlements to useQuery + extend prefetch
+e20fcc5 perf(nav): prefetch on hover + keepPreviousData + loading skeletons
 8efc01c perf(optimize): cycle 5 (FINAL) — tier-merger в reference-CRUD + sync.getStatus parallel + covering indexes
 85150e7 docs(skills,memory): add paired SSRF defense pattern + record tester cycle 5 (FINAL)
-4549eb2 fix(tester): cycle 5 (FINAL) — Bugs #273-#276 — SSRF redirect bypass + UX consistency
-37c736d docs(memory): record review cycle 5 (final) — defense-in-depth coverage
-649a5db fix(review): cycle 5 — defense-in-depth: updateMany+orgId + SSRF Checkbox + sanitize filename
-03f7bf4 docs(memory): update MemoryManual after sync cycle 5 (final)
-0305852 fix(sync): cycle 5 — completion-act cancel, invoice VAT display, booking branchName
-fc22234 docs(skills,memory): add PDF over-fetch + clone over-fetch + GIN trgm + 1-RTT updateMany patterns
-e9f8364 perf(optimize): cycle 4 — PDF select narrowing + WO clone over-fetch + search GIN trgm
-af41192 docs(skills,memory): add dead-feature-integration + frontend-hint-lies patterns + record tester cycle 4
 Дата: 2026-05-31
+
+Latest optimize: 2026-05-31 (sto-optimize-agent **ЦИКЛ 6** — nav prefetch follow-up, HEAD b5766eb → 3367da8) — **2 файли виправлено** (frontend only). Фокус циклу: повне покриття PREFETCH_MAP для multi-resource сторінок (dashboard 3→5 prefetches) + новий маршрут /reports у PREFETCH_MAP + placeholderData у useReport.
+
+**Frontend (2 fixes):**
+(1) TopShell PREFETCH_MAP `/dashboard`: раніше prefetch'ило 3 з 5 hooks (orders/lowStock/invoices). Додано prefetch revenue + maintenance — повне покриття всіх useDashboardData sub-hooks. Revenue chart і Upcoming maintenance тепер теж готові до кліку (раніше spinner на 300-500мс). KYIV_DATE_FMT singleton (вже наявний) використано для today + weekStart string ключів, ідентичних з тим що useDashboardRevenue генерує.
+(2) TopShell PREFETCH_MAP `/reports`: новий запис — prefetch revenue tab з YTD дат (yearStart = YYYY-01-01, to = today Kyiv) — точно як reports/page.tsx ініціалізує. При кліку графік відразу з кешу.
+(3) useReports: додано placeholderData: keepPreviousData — при зміні from/to/tab попередній графік лишається видимим поки новий завантажується.
+
+**Перевірено (не знайдено проблем):**
+- useBookingRequests / useDashboardData / useInfrastructure / usePricingRules / useStockDocuments / useSyncStatus / useWorks — всі мають коректні staleTime, employee guard (де треба), keepPreviousData (де є фільтри).
+- TopShell PREFETCH_MAP: 16 з 17 NAV items покрито (відсутній /settings — без useQuery migration prefetch не дав би виграшу, settings/page.tsx робить apiFetch напряму).
+- GoodsTab.tsx: brands/units/suppliers seed з ref-cache + Promise.all parallel fetch — оптимальний паттерн.
+- Backend: 0 нових endpoint-ів у цьому циклі.
+
+**Нові SKILL patterns (2 entries):**
+- "Частковий prefetch — сторінка має N hooks, у PREFETCH_MAP покрито лише M<N" — типова регресія коли додаєш новий hook у сторінку але забуваєш оновити PREFETCH_MAP. Сигнал: маршрут вже у PREFETCH_MAP, але не всі його useQuery hooks.
+- "keepPreviousData у hooks з form-control параметрами — не лише filter pills, а й from/to/tab dropdowns" — розширює патерн keepPreviousData з paginated lists на analytics/reports hooks. Будь-який useQuery з аргументами — кандидат.
+
+**TypeScript:** ✅ 0 errors (api + web, `--incremental false`).
+
+---
+
+Latest optimize: 2026-05-31 (sto-optimize-agent **ЦИКЛ 5 з 5 — ФІНАЛ**, HEAD 4549eb2 → 8efc01c) — **11 файлів виправлено**: 6 backend + 2 frontend + 1 schema (3 нових covering indexes). Фокус циклу: tier-merger у reference-CRUD update методах (currencies/exchange-rates/bank-accounts/cash-registers); sync.getStatus parallel lastJob fetch; maintenance-schedules.remove 1-RTT pattern; covering indexes для invoices/purchase_orders/stock_documents list endpoints.
+
+Попередні commits (з cycle 5 ФІНАЛ):
+```
+
+8efc01c perf(optimize): cycle 5 (FINAL) — tier-merger в reference-CRUD + sync.getStatus parallel + covering indexes
+4549eb2 fix(tester): cycle 5 (FINAL) — Bugs #273-#276 — SSRF redirect bypass + UX consistency
+649a5db fix(review): cycle 5 — defense-in-depth: updateMany+orgId + SSRF Checkbox + sanitize filename
+0305852 fix(sync): cycle 5 — completion-act cancel, invoice VAT display, booking branchName
+e9f8364 perf(optimize): cycle 4 — PDF select narrowing + WO clone over-fetch + search GIN trgm
+Дата: 2026-05-31
+
+```
 
 Latest optimize: 2026-05-31 (sto-optimize-agent **ЦИКЛ 5 з 5 — ФІНАЛ**, HEAD 4549eb2 → 8efc01c) — **11 файлів виправлено**: 6 backend + 2 frontend + 1 schema (3 нових covering indexes). Фокус циклу: tier-merger у reference-CRUD update методах (currencies/exchange-rates/bank-accounts/cash-registers); sync.getStatus parallel lastJob fetch; maintenance-schedules.remove 1-RTT pattern; covering indexes для invoices/purchase_orders/stock_documents list endpoints.
 

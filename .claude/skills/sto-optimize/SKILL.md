@@ -1071,6 +1071,28 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — Частковий prefetch — сторінка має N hooks, у PREFETCH_MAP покрито лише M<N
+
+**Сигнал:** маршрут є у PREFETCH_MAP, але сторінка викликає кілька різних useQuery hooks (5 для dashboard, 4 для infrastructure). У PREFETCH_MAP покрита тільки частина — інші hooks все одно роблять fetch після кліку. Симптом: skeleton/spinner на тій частині сторінки що не була prefetch'нута, хоча інша частина рендериться миттєво. Це **не "відсутній маршрут"**, а "неповне покриття маршруту".
+**Причина виникнення:** при першому додаванні prefetch розробник додає 1-3 найочевидніші hooks (зазвичай головний список). Решта (revenue chart, upcoming list, recommendations) — забуваються бо здаються "другорядними". При додаванні нового hook у сторінку — PREFETCH_MAP не оновлюється автоматично (немає TS-зв'язку), отже регресія непомітна.
+**Підхід до виявлення:** для **кожного** маршруту в PREFETCH_MAP відкрити відповідний `page.tsx` і знайти ВСІ виклики `useQuery`/`use<Hook>()` (включно з композитними hooks типу useDashboardData з 5 під-hooks). Порахувати скільки з них prefetch'аться в PREFETCH_MAP. Якщо менше — додати решту. Особливо часто на dashboard/reports сторінках з кількома картками-секціями
+**Підхід до фіксу:** додати решту `qc.prefetchQuery` у тому самому PrefetchFn — паралельно, у тому ж closure. Для date-залежних ключів (revenue chart з today+weekStart) — використати module-level KYIV_DATE_FMT singleton для генерації date strings, ідентичних тим що використовує hook. Перевірити queryKey ВЕРБАЛЬНО — він мусить точно збігатись з тим що hook генерує (інакше cache miss)
+**Реальний impact:** dashboard mount: 5 hooks lazy → 0 lazy (всі дані вже в кеші до кліку). Spinner-flashes на revenue chart і maintenance list зникають. На повільному WAN — економія ~300-500мс відчуття латенсі
+**Де шукати ще:** **кожна сторінка з кількома секціями/картками що завантажують різні ресурси** — dashboard, reports (різні tabs), settings (tabs), work-orders/[id] (3+ sub-fetches), calendar (slots + lifts + maintenance). При додаванні нового hook у сторінку — обов'язково додати в PREFETCH_MAP того ж маршруту
+
+---
+
+### 2026-05-31 — keepPreviousData у hooks з form-control параметрами — не лише filter pills, а й from/to/tab dropdowns
+
+**Сигнал:** reports/analytics-сторінка має 2-3 form controls (`from` date, `to` date, `tab` selector) — кожна зміна викликає новий запит з новим queryKey. Без `placeholderData: keepPreviousData` — графік/таблиця зникають (spinner) на 300-500мс при кожній зміні дати, табу, періоду. Часто розробник додає `keepPreviousData` тільки до "очевидних" pagination/search hooks, оминаючи reports/analytics (бо там "не фільтри, а контролери")
+**Причина виникнення:** ментально `keepPreviousData` асоціюється з pagination/search filters (де фільтр = "звуження одного списку"). Reports/analytics параметри (date range, tab) сприймаються як "інший запит" — `keepPreviousData` здається не підходить. Але UX-перспектива однакова: користувач не хоче бачити порожній графік на 300мс — попередні дані з оновленням це краще ніж blank state
+**Підхід до виявлення:** grep `useQuery` у `hooks/api/*.ts` що приймають параметри (НЕ нульова кількість аргументів у hook). Якщо параметри — це form controls (date, tab, period) і queryKey з них формується → кандидат на `keepPreviousData`. Особливо: useReport (tab+from+to), useStats (period), useChartData (granularity)
+**Підхід до фіксу:** додати `import { keepPreviousData } from '@tanstack/react-query'` + `placeholderData: keepPreviousData` у hook конфіг. Поведінка: при зміні параметрів React Query повертає `data` попередньої успішної query замість undefined, поки нова не завершиться. `isPlaceholderData` flag доступний якщо треба показати loading indicator над попередніми даними
+**Реальний impact:** для reports з частою зміною dateRange — графік/таблиця більше не мерехтять; для аналітичних дашбордів з tab-switcher — миттєвий перехід між табами якщо вони вже були завантажені (cache hit), плавна заміна якщо ні (старі дані → нові)
+**Де шукати ще:** **кожен** useQuery що приймає аргументи. Не лише list filters, а й form-controlled hooks: useReport, useStats, useChartData, useTimeRange, useSearch. Перевіряти при кожному новому `hooks/api/use*.ts` з аргументами
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -1200,7 +1222,8 @@ TypeScript: ✅ 0 errors
 - ✅ batch-viewer-modal.tsx: BatchRow → React.memo + useCallback(handleToggle) + useMemo(activeBatches/depletedBatches) — клік на expand тепер чіпає 2 рядки замість всіх N
 - ✅ pricing-rules/PricingRulesClient.tsx: brands seeded from cache:brands ref-cache + warm cache на successful fetch — dropdown миттєвий за повторне відкриття
 - ✅ settings/sync/page.tsx: triggerSync пулл+пуш у Promise.all — web push always empty records (independent ops), -1 RTT
-- ✅ TopShell PREFETCH_MAP: hover → prefetchQuery для 17/17 NAV items; employee guard; KYIV_DATE_FMT module-level singleton (не per-hover); calendar prefetch lifts + today slots паралельно; /infrastructure 4 паралельних prefetch; /dashboard 3 паралельних prefetch
+- ✅ TopShell PREFETCH_MAP: hover → prefetchQuery для 15+ NAV items; employee guard; KYIV_DATE_FMT module-level singleton (не per-hover); calendar prefetch lifts + today slots паралельно; /infrastructure 4 паралельних prefetch; /dashboard 5 паралельних prefetch (orders/lowStock/invoices/revenue/maintenance — повне покриття всіх useDashboardData hooks); /reports prefetch revenue tab з YTD дат
+- ✅ useReports: placeholderData: keepPreviousData — при зміні from/to/tab графік/таблиця не мерехтить
 - ✅ TanStack Query міграція 16 сторінок: useEffect+apiFetch+setState → useQuery(staleTime:30s, gcTime:5m, keepPreviousData); hooks у apps/web/src/hooks/api/
 - ✅ keepPreviousData у 5 query hooks (useWorkOrders/Counterparties/Invoices/Inventory/PurchaseOrders): зміна фільтрів без мерехтіння таблиці
 - ✅ gcTime: 5\*60_000 явно у query-client.ts (дефолт документований, захист від регресу)
