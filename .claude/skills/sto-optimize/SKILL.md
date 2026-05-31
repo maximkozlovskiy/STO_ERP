@@ -304,6 +304,105 @@ grep -rn "new Date()\|Date\.now()\|\.getMinutes()\|\.getHours()" apps/web/src/ap
 **Фікс Intl:** винести форматер у module-level `const` (опції мають бути константні), у хелпері лише `.format()`.
 **Фікс годинника:** тримати `nowMs` у стейті + interval; похідні граничні значення через `useMemo([nowMs])`; передавати як props у дочірні компоненти (роблячи їх чистими/memo-friendly).
 
+### 2.9 Навігаційний prefetch — відсутній або неповний PREFETCH_MAP
+
+```bash
+# Перевірити покриття — скільки NAV items мають prefetch
+grep -n "'/[a-z]" apps/web/src/components/TopShell.tsx | grep "PREFETCH_MAP\|prefetchQuery" | wc -l
+
+# Знайти маршрути що є у NAV_GROUPS але відсутні у PREFETCH_MAP
+grep -n "href:.*'/[a-z]" apps/web/src/components/TopShell.tsx | grep -v "PREFETCH_MAP"
+
+# Сторінки що досі на useEffect+apiFetch (не mіgровані на useQuery)
+grep -rln "useEffect.*\[\]" apps/web/src/app/ --include="*.tsx" | xargs grep -l "apiFetch" | grep -v "spec\|test"
+```
+
+**Мета:** 17/17 NAV items у PREFETCH_MAP. При hover (~200мс) → API запит вже виконується → кліку дані вже в кеші.
+
+**Патерн фіксу:**
+
+```typescript
+// TopShell.tsx — module-level, поза компонентом
+const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+
+type PrefetchFn = (qc: ReturnType<typeof useQueryClient>) => void;
+const PREFETCH_MAP: Record<string, PrefetchFn> = {
+  '/work-orders': qc => void qc.prefetchQuery({
+    queryKey: workOrdersKeys.list({}),
+    queryFn: ({ signal }) => apiFetch('/work-orders?limit=50', { signal }),
+    staleTime: 30_000,
+  }),
+  // Для сторінок з date-залежними даними (calendar):
+  '/calendar': qc => {
+    const today = KYIV_DATE_FMT.format(new Date());
+    void qc.prefetchQuery({ queryKey: infraKeys.lifts, ... });
+    void qc.prefetchQuery({ queryKey: ['calendar', 'slots', today], ... });
+  },
+};
+
+// NavLink onMouseEnter — guard на employee (щоб не prefetch без auth)
+onMouseEnter={() => employee && PREFETCH_MAP[item.href]?.(queryClient)}
+```
+
+**Правила:**
+
+- `prefetchQuery` — no-op якщо дані вже fresh (staleTime не минув), безпечно викликати
+- `employee` guard обов'язковий — без нього prefetch робить 401 → tryRefresh → зайвий RTT
+- module-level Intl singleton для date-залежних ключів (не per-hover construction)
+- Для сторінок що завантажують 4+ ресурси — запускати їх паралельно в одному `PrefetchFn`
+
+### 2.10 Сторінки на useEffect+apiFetch — відсутній TanStack Query кеш
+
+```bash
+# Сторінки де головний список завантажується через useEffect, а не useQuery
+grep -rn "useState.*\[\]\|setLoading.*true\|const load = " apps/web/src/app/ --include="*.tsx" \
+  | grep -v "spec\|hooks/api\|node_modules" | grep "setLoading\|const load" | head -20
+
+# Перевірити які сторінки вже мігровані
+ls apps/web/src/hooks/api/
+```
+
+**Проблема:** `useEffect → apiFetch → setState` — при кожному повторному відвідуванні сторінки дані завантажуються з нуля (немає кешу). З `useQuery(gcTime: 5m)` — повторний візит протягом 5 хвилин = 0 мережевих запитів.
+
+**Патерн міграції:**
+
+```typescript
+// ❌ ДО — перезавантаження кожного разу
+const [items, setItems] = useState<Item[]>([]);
+const [loading, setLoading] = useState(true);
+const load = useCallback(() => {
+  setLoading(true);
+  apiFetch('/items')
+    .then(setItems)
+    .finally(() => setLoading(false));
+}, [filters]);
+useEffect(() => {
+  load();
+}, [load]);
+
+// ✅ ПІСЛЯ — кеш 5 хв, keepPreviousData при зміні фільтрів
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+export const itemsKeys = {
+  all: ['items'] as const,
+  list: (f: Filter) => ['items', 'list', f] as const,
+};
+const { data, isLoading: loading } = useQuery({
+  queryKey: itemsKeys.list(filters),
+  queryFn: ({ signal }) => apiFetch(`/items?...`, { signal }),
+  enabled: !!employee,
+  staleTime: 30_000,
+  placeholderData: keepPreviousData,
+});
+const items = data?.items ?? [];
+// Після mutation: qc.invalidateQueries({ queryKey: itemsKeys.all })
+```
+
+**Файли hooks:** `apps/web/src/hooks/api/` — всі наявні hooks як зразок.
+
+**Вже мігровано (не переписувати):** useWorkOrders, useCounterparties, useInvoices, useInventory, usePurchaseOrders, useEmployees, useBookingRequests, usePricingRules, useStockDocuments, useInfrastructure, useReports, useSyncStatus, useDashboardData, useWorks.
+
+**Залишається немігрованим:** `calendar/page.tsx` (1460 рядків + dnd-kit — складний рефакторинг, відкладено).
+
 ---
 
 ## Крок 3 — DB аудит
@@ -939,6 +1038,39 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — Навігаційний prefetch при hover — дані готові до кліку (~200 мс)
+
+**Сигнал:** при переході між сторінками завжди є помітна пауза — spinner або skeleton після кліку на NavLink. Дані API починають завантажуватись тільки після mount компонента, хоча JS chunk вже prefetch'ений Next.js `<Link prefetch={true}>`.
+**Причина виникнення:** `Link prefetch={true}` завантажує тільки JS bundle, але не API дані. Будь-яка сторінка з `useQuery`/`useEffect` починає fetch після mount — тобто після кліку. Hover-час (~200мс) повністю марний.
+**Підхід до виявлення:** перевірити `TopShell.tsx` — скільки NAV items є у `PREFETCH_MAP`? Перевірити чи є `onMouseEnter` на NavLink. Перевірити чи є `employee` guard.
+**Підхід до фіксу:** module-level `PREFETCH_MAP: Record<string, (qc) => void>` з `qc.prefetchQuery(...)` для кожного NAV item. `onMouseEnter={() => employee && PREFETCH_MAP[href]?.(queryClient)}`. Обов'язково: (1) `employee` guard — без нього prefetch без auth → 401 → tryRefresh → зайвий RTT; (2) module-level Intl singleton для date-залежних ключів (calendar); (3) `staleTime` у prefetch = `staleTime` у hook; (4) для 4+ ресурсів — паралельно.
+**Реальний impact:** перехід між будь-якими 17 NAV items — дані вже в кеші до кліку. Суб'єктивно: instant navigation замість spinner на ~300-500мс.
+**Де шукати ще:** `TopShell.tsx` `PREFETCH_MAP` — при додаванні нового NAV item або нового hook → обов'язково додати prefetch. Перевіряти при кожному новому `hooks/api/use*.ts` файлі.
+
+---
+
+### 2026-05-31 — TanStack Query міграція list-сторінок — useEffect+apiFetch без кешу
+
+**Сигнал:** при повторному відвідуванні сторінки (A→B→A) — знову spinner/skeleton хоча дані тільки що були. `useEffect → apiFetch → setState` не кешує нічого між unmount/mount.
+**Причина виникнення:** початковий код писався як "fetch on mount" патерн — це природно і просто. TanStack Query встановлений, але не всі сторінки мігровані. Новий developer пише нову сторінку за старим шаблоном.
+**Підхід до виявлення:** grep `const load = useCallback\|useState.*\[\]\|setLoading.*true` у `app/**/*.tsx` + перевірити чи є `hooks/api/` hook для цього ресурсу. Якщо hook відсутній і сторінка list — кандидат на міграцію.
+**Підхід до фіксу:** (1) створити `hooks/api/useX.ts` з `useQuery(staleTime:30s, gcTime:5m, placeholderData:keepPreviousData, enabled:!!employee)`; (2) замінити useState/load/useEffect на `const { data, isLoading } = useX(filters)`; (3) mutations → `qc.invalidateQueries({ queryKey: xKeys.all })`; (4) додати prefetch у PREFETCH_MAP. Шаблон дивись §2.10 цього скіла.
+**Реальний impact:** повторний візит протягом 5 хв — 0 мережевих запитів, миттєвий render. Зміна фільтрів — таблиця залишається видимою (keepPreviousData), не мерехтить.
+**Де шукати ще:** **кожна нова сторінка** зі списком. При code review нових `.tsx` — перевірити чи є `const load = useCallback...` → якщо так, рекомендувати hook. Поточні мігровані: всі `hooks/api/use*.ts` файли (15+ hooks). Не мігровано: `calendar/page.tsx` (складний рефакторинг через dnd-kit).
+
+---
+
+### 2026-05-31 — keepPreviousData у useQuery — таблиця не мерехтить при зміні фільтрів
+
+**Сигнал:** при зміні статус-фільтра або введенні в search — таблиця зникає (spinner) на 300-500мс, потім з'являються нові дані. Спостерігається навіть при швидкій мережі.
+**Причина виникнення:** при зміні `filters` у `queryKey` TanStack Query вважає це новим запитом і показує `isLoading: true` поки старий кеш не підтягнуто. Без `placeholderData: keepPreviousData` — порожній render між старими і новими даними.
+**Підхід до виявлення:** grep `useQuery` у `hooks/api/*.ts` без `placeholderData`. Особливо: списки з фільтрами статусу (work-orders, invoices, stock-docs).
+**Підхід до фіксу:** `import { keepPreviousData } from '@tanstack/react-query'` + `placeholderData: keepPreviousData` у кожному `useQuery` для paginated list.
+**Реальний impact:** UX відчувається плавним — старі дані залишаються поки нові завантажуються. Особливо помітно при швидких фільтрах (натискання pill-кнопок статусу).
+**Де шукати ще:** **кожен новий** `useQuery` для списку з фільтрами. Перевіряти при code review `hooks/api/*.ts`.
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -1068,6 +1200,15 @@ TypeScript: ✅ 0 errors
 - ✅ batch-viewer-modal.tsx: BatchRow → React.memo + useCallback(handleToggle) + useMemo(activeBatches/depletedBatches) — клік на expand тепер чіпає 2 рядки замість всіх N
 - ✅ pricing-rules/PricingRulesClient.tsx: brands seeded from cache:brands ref-cache + warm cache на successful fetch — dropdown миттєвий за повторне відкриття
 - ✅ settings/sync/page.tsx: triggerSync пулл+пуш у Promise.all — web push always empty records (independent ops), -1 RTT
+- ✅ TopShell PREFETCH_MAP: hover → prefetchQuery для 17/17 NAV items; employee guard; KYIV_DATE_FMT module-level singleton (не per-hover); calendar prefetch lifts + today slots паралельно; /infrastructure 4 паралельних prefetch; /dashboard 3 паралельних prefetch
+- ✅ TanStack Query міграція 16 сторінок: useEffect+apiFetch+setState → useQuery(staleTime:30s, gcTime:5m, keepPreviousData); hooks у apps/web/src/hooks/api/
+- ✅ keepPreviousData у 5 query hooks (useWorkOrders/Counterparties/Invoices/Inventory/PurchaseOrders): зміна фільтрів без мерехтіння таблиці
+- ✅ gcTime: 5\*60_000 явно у query-client.ts (дефолт документований, захист від регресу)
+- ✅ loading.tsx skeleton для 9 нових сторінок (settings/dashboard/reports/settlements/infrastructure/bookings/pricing-rules/work-orders[id]/crm[id])
+- ✅ profile/page.tsx: useEffect('/auth/me') → useQuery(staleTime:5m, gcTime:10m)
+- ✅ booking/page.tsx public widget: useEffect('/booking/branches') → useQuery(staleTime:5m) через publicFetch
+- ✅ catalog/GoodsTab.tsx: selectGood → useCallback([loadBarcodes]); TableRow onClick conditional на detailPanel.enabled
+- ✅ vehicles/[id]/loading.tsx: новий skeleton для деталі авто
 
 **DB:**
 

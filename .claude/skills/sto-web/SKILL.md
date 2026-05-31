@@ -65,7 +65,22 @@ await apiFetch(`/resource/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }
 // DELETE (soft)
 await apiFetch(`/resource/${id}`, { method: 'DELETE' });
 
-// ❌ НЕ використовувати axios, TanStack Query, React Hook Form, Zod resolver
+// ✅ Для основного списку сторінки — useQuery (кеш, keepPreviousData, prefetch)
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+const { data, isLoading } = useQuery({
+  queryKey: ['resource', filters],
+  queryFn: ({ signal }) => apiFetch(`/resource?...`, { signal }),
+  staleTime: 30_000,
+  placeholderData: keepPreviousData,
+});
+
+// ✅ Після мутацій — invalidateQueries (не ручний load())
+const qc = useQueryClient();
+qc.invalidateQueries({ queryKey: ['resource'] });
+
+// ❌ НЕ використовувати axios, React Hook Form, Zod resolver
+// ❌ НЕ useEffect+apiFetch для основного списку (лише для on-demand detail/modal)
+// ✅ TanStack Query МОЖНА і ТРЕБА для list pages — useEffect+apiFetch лише для деталей
 ```
 
 ---
@@ -345,41 +360,41 @@ export default function MyListPage() {
 
 ## Готові UI-примітиви — таблиця
 
-| Компонент | Файл | Використовувати коли |
-|---|---|---|
-| `<Modal>` | `ui/modal.tsx` | Будь-яке модальне вікно |
-| `<ConfirmDialog>` | `ui/confirm-dialog.tsx` | Підтвердження дії (разом з `useConfirm`) |
-| `<Input>` | `ui/input.tsx` | Текстове поле |
-| `<Select>` | `ui/select.tsx` | Випадаючий список |
-| `<Button>` | `ui/button.tsx` | Кнопка (підтримує `loading`, `variant`) |
-| `<Badge>` | `ui/badge.tsx` | Статусний тег |
-| `<EmptyState>` | `ui/empty-state.tsx` | Порожній стан списку |
-| `<Spinner>` | `ui/spinner.tsx` | Індикатор завантаження |
-| `<DetailPanel>` | `ui/detail-panel.tsx` | Бокова панель деталей (split-view) |
-| `<SearchCombobox>` | `ui/search-combobox.tsx` | Autocomplete з сервер-стороннім пошуком |
-| `<SearchPickerModal>` | `ui/search-picker-modal.tsx` | Picker з пошуком і пагінацією |
-| `<DatePickerInput>` | `ui/date-picker-input.tsx` | Поле вибору дати |
-| `<ColumnsDropdown>` | `ui/columns-dropdown.tsx` | Управління видимістю колонок |
-| `<BulkActionsBar>` | `ui/bulk-actions-bar.tsx` | Панель групових дій |
-| `<SavedFiltersBar>` | `ui/saved-filters-bar.tsx` | Панель збережених фільтрів |
-| `<Table>` + friends | `ui/table.tsx` | Таблиця |
+| Компонент             | Файл                         | Використовувати коли                     |
+| --------------------- | ---------------------------- | ---------------------------------------- |
+| `<Modal>`             | `ui/modal.tsx`               | Будь-яке модальне вікно                  |
+| `<ConfirmDialog>`     | `ui/confirm-dialog.tsx`      | Підтвердження дії (разом з `useConfirm`) |
+| `<Input>`             | `ui/input.tsx`               | Текстове поле                            |
+| `<Select>`            | `ui/select.tsx`              | Випадаючий список                        |
+| `<Button>`            | `ui/button.tsx`              | Кнопка (підтримує `loading`, `variant`)  |
+| `<Badge>`             | `ui/badge.tsx`               | Статусний тег                            |
+| `<EmptyState>`        | `ui/empty-state.tsx`         | Порожній стан списку                     |
+| `<Spinner>`           | `ui/spinner.tsx`             | Індикатор завантаження                   |
+| `<DetailPanel>`       | `ui/detail-panel.tsx`        | Бокова панель деталей (split-view)       |
+| `<SearchCombobox>`    | `ui/search-combobox.tsx`     | Autocomplete з сервер-стороннім пошуком  |
+| `<SearchPickerModal>` | `ui/search-picker-modal.tsx` | Picker з пошуком і пагінацією            |
+| `<DatePickerInput>`   | `ui/date-picker-input.tsx`   | Поле вибору дати                         |
+| `<ColumnsDropdown>`   | `ui/columns-dropdown.tsx`    | Управління видимістю колонок             |
+| `<BulkActionsBar>`    | `ui/bulk-actions-bar.tsx`    | Панель групових дій                      |
+| `<SavedFiltersBar>`   | `ui/saved-filters-bar.tsx`   | Панель збережених фільтрів               |
+| `<Table>` + friends   | `ui/table.tsx`               | Таблиця                                  |
 
 ---
 
 ## Хуки — таблиця
 
-| Хук | Файл | Призначення |
-|---|---|---|
-| `useUiFeatures` | `hooks/useUiFeatures.ts` | Прапорці фіч (toast, bulk, columns...) |
-| `useTableColumns` | `hooks/useTableColumns.ts` | Видимість колонок → localStorage |
-| `useBulkSelect` | `hooks/useBulkSelect.ts` | Вибір рядків для групових дій |
-| `useSavedFilters` | `hooks/useSavedFilters.ts` | Збереження пресетів фільтрів |
-| `useDirtyForm` | `hooks/useDirtyForm.ts` | Захист форми від втрати змін |
-| `useConfirm` | `hooks/useConfirm.ts` | Промісний confirm-діалог |
-| `useDebounce` | `hooks/useDebounce.ts` | Дебаунс пошукового рядка |
-| `useRequireAuth` | `lib/auth.ts` | Захист сторінки по ролях |
-| `useInlineEdit` | `hooks/useInlineEdit.ts` | Inline редагування в таблиці |
-| `useKeyboardShortcut` | `hooks/useKeyboardShortcut.ts` | Глобальні гарячі клавіші |
+| Хук                   | Файл                           | Призначення                            |
+| --------------------- | ------------------------------ | -------------------------------------- |
+| `useUiFeatures`       | `hooks/useUiFeatures.ts`       | Прапорці фіч (toast, bulk, columns...) |
+| `useTableColumns`     | `hooks/useTableColumns.ts`     | Видимість колонок → localStorage       |
+| `useBulkSelect`       | `hooks/useBulkSelect.ts`       | Вибір рядків для групових дій          |
+| `useSavedFilters`     | `hooks/useSavedFilters.ts`     | Збереження пресетів фільтрів           |
+| `useDirtyForm`        | `hooks/useDirtyForm.ts`        | Захист форми від втрати змін           |
+| `useConfirm`          | `hooks/useConfirm.ts`          | Промісний confirm-діалог               |
+| `useDebounce`         | `hooks/useDebounce.ts`         | Дебаунс пошукового рядка               |
+| `useRequireAuth`      | `lib/auth.ts`                  | Захист сторінки по ролях               |
+| `useInlineEdit`       | `hooks/useInlineEdit.ts`       | Inline редагування в таблиці           |
+| `useKeyboardShortcut` | `hooks/useKeyboardShortcut.ts` | Глобальні гарячі клавіші               |
 
 ---
 
@@ -440,6 +455,7 @@ colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
 ```
 
 **Правила:**
+
 - `❌ {colVisible.has('X') && <TableHead>}` — СТАРИЙ паттерн, не порушує порядок
 - `✅ {visibleColumns.map(col => ...)}` — ПРАВИЛЬНИЙ паттерн, порядок з user config
 - `columns={orderedColumns}` в ColumnsDropdown — НЕ `COLUMNS` (щоб label і порядок відображались)
@@ -604,7 +620,7 @@ import { toast } from '@/lib/toast';
 toast.success('Збережено');
 toast.success(`Фільтр "${name}" збережено`);
 toast.success(`Видалено ${n}`);
-toast.warning(`Видалено ${ok} з ${total}. ${total - ok} помилок`);  // bulk partial
+toast.warning(`Видалено ${ok} з ${total}. ${total - ok} помилок`); // bulk partial
 toast.error(e instanceof Error ? e.message : 'Помилка');
 toast.info('Синхронізацію завершено');
 
@@ -625,9 +641,196 @@ useEffect(() => {
   const cached = getCached<Branch[]>('cache:branches');
   if (cached) setBranches(cached);
   apiFetch<Branch[]>('/branches')
-    .then(data => { setCache('cache:branches', data); setBranches(data); })
+    .then(data => {
+      setCache('cache:branches', data);
+      setBranches(data);
+    })
     .catch(() => {});
 }, []);
+```
+
+---
+
+## TanStack Query — useQuery для основного списку сторінки
+
+Для **нових сторінок зі списком** — замість `useEffect+apiFetch+setState` використовуй `useQuery`. Це дає безкоштовний кеш (gcTime 5 хв), `keepPreviousData` при зміні фільтрів, та prefetch при hover на NavLink.
+
+### Патерн hook файлу
+
+```typescript
+// apps/web/src/hooks/api/useMyResource.ts
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api-client';
+import { useAuth } from '@/lib/auth';
+
+export interface MyResource {
+  id: string;
+  name: string; /* ... */
+}
+export interface MyFilter {
+  page?: number;
+  limit?: number;
+  q?: string;
+  showDeleted?: boolean;
+}
+export interface PaginatedMyResource {
+  items: MyResource[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export const myResourceKeys = {
+  all: ['my-resource'] as const,
+  lists: () => [...myResourceKeys.all, 'list'] as const,
+  list: (f: MyFilter) => [...myResourceKeys.lists(), f] as const,
+};
+
+export function useMyResource(filters: MyFilter = {}) {
+  const { employee } = useAuth();
+  const params = new URLSearchParams({
+    page: String(filters.page ?? 1),
+    limit: String(filters.limit ?? 50),
+  });
+  if (filters.q) params.set('q', filters.q);
+  if (filters.showDeleted) params.set('showDeleted', 'true');
+
+  return useQuery<PaginatedMyResource>({
+    queryKey: myResourceKeys.list(filters),
+    queryFn: ({ signal }) => apiFetch(`/my-resource?${params}`, { signal }),
+    enabled: !!employee,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData, // таблиця не мерехтить при зміні фільтрів
+  });
+}
+
+export function useInvalidateMyResource() {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries({ queryKey: myResourceKeys.all });
+}
+```
+
+### Патерн сторінки з useQuery
+
+```typescript
+'use client';
+import { useState } from 'react'; // useEffect НЕ потрібен для завантаження даних
+import { useQueryClient } from '@tanstack/react-query';
+import { useMyResource, myResourceKeys } from '@/hooks/api/useMyResource';
+import { useDebounce } from '@/hooks/useDebounce';
+
+export default function MyPage() {
+  useRequireAuth(['OWNER', 'ADMIN']);
+  const qc = useQueryClient();
+
+  // Фільтри
+  const [q, setQ] = useState('');
+  const debouncedQ = useDebounce(q);
+  const [page, setPage] = useState(1);
+  const [showDeleted, setShowDeleted] = useState(false);
+
+  // Дані — автоматично завантажуються/оновлюються при зміні фільтрів
+  const { data, isLoading: loading } = useMyResource({
+    q: debouncedQ || undefined,
+    page,
+    showDeleted,
+  });
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+
+  // Після мутацій (create/update/delete) — інвалідуємо кеш
+  const invalidate = () => qc.invalidateQueries({ queryKey: myResourceKeys.all });
+
+  const create = async () => {
+    await apiFetch('/my-resource', { method: 'POST', body: JSON.stringify(form) });
+    toast.success('Створено');
+    invalidate(); // ← не load(), а invalidate
+  };
+
+  // ... render
+}
+```
+
+### Коли useEffect, а коли useQuery
+
+| Ситуація                                         | Рішення                                                 |
+| ------------------------------------------------ | ------------------------------------------------------- |
+| Основний список сторінки з фільтрами/пагінацією  | **useQuery** + hook у `hooks/api/`                      |
+| Reference data (branches, lifts, warehouses)     | **getCached + apiFetch** (ref-cache pattern)            |
+| On-demand дані (detail panel при кліку на рядок) | **useEffect** з `if (!id) return`                       |
+| Форми (detail при відкритті modal)               | **useEffect** в `openEdit()`                            |
+| Public widget без auth (`/booking`)              | **useQuery** з `publicFetch` (без `apiFetch`)           |
+| Dashboard з multiple independent fetches         | **5× useQuery паралельно** (не Promise.all в useEffect) |
+
+### Навігаційний prefetch (TopShell.tsx)
+
+Для кожної нової сторінки зі своїм useQuery hook — додати prefetch у `PREFETCH_MAP`:
+
+```typescript
+// apps/web/src/components/TopShell.tsx — PREFETCH_MAP
+import { myResourceKeys } from '@/hooks/api/useMyResource';
+
+'/my-resource': qc =>
+  void qc.prefetchQuery({
+    queryKey: myResourceKeys.list({}),
+    queryFn: ({ signal }) => apiFetch('/my-resource?limit=50', { signal }),
+    staleTime: 30_000,
+  }),
+```
+
+**Правила PREFETCH_MAP:**
+
+- guard `employee &&` у `onMouseEnter` обов'язковий (без нього — prefetch без auth → 401)
+- `staleTime` у prefetch = `staleTime` у hook (інакше stale одразу)
+- Інтл форматери у PREFETCH_MAP — module-level const, не per-hover
+- Для 4+ ресурсів на одній сторінці — запускати паралельно в одному PrefetchFn
+
+---
+
+## loading.tsx — skeleton для кожної сторінки
+
+**Обов'язково** для кожної нової сторінки. Без нього при першому відвідуванні — blank screen.
+
+```typescript
+// apps/web/src/app/my-page/loading.tsx
+export default function Loading() {
+  return (
+    <div className="page-container">
+      <div className="page-header">
+        <div className="skeleton h-7 w-48 rounded-lg" />
+        <div className="skeleton h-9 w-32 rounded-lg" />
+      </div>
+      <div className="space-y-2">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="skeleton h-12 w-full rounded-lg" />
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+Для detail-сторінок (`/resource/[id]/loading.tsx`) — skeleton з header + 3 картки + рядки:
+
+```typescript
+export default function Loading() {
+  return (
+    <div className="page-container">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="skeleton h-5 w-5 rounded" />
+        <div className="skeleton h-7 w-56 rounded-lg" />
+      </div>
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        {[1,2,3].map(i => <div key={i} className="skeleton h-24 rounded-xl" />)}
+      </div>
+      <div className="space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="skeleton h-14 w-full rounded-lg" />
+        ))}
+      </div>
+    </div>
+  );
+}
 ```
 
 ---
@@ -699,6 +902,7 @@ import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 ```
 
 **Правила паттерну:**
+
 - `Modal size="lg"` при редагуванні (більше місця для вкладок)
 - `Modal size="md"` при створенні (вкладки не показуються)
 - `ModalTabs` рендерується тільки `{editingItem && <ModalTabs ... />}`
@@ -708,6 +912,7 @@ import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 - Збереження дочірніх об'єктів — у `save()` разом з основним PATCH
 
 **Де застосовано:**
+
 - `crm/page.tsx` — редагування контрагента → вкладка "Авто клієнта"
 - `employees/page.tsx` — редагування співробітника → вкладки "Зони/Підйомники", "Категорії", "Філії"
 
@@ -732,6 +937,13 @@ import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 - [ ] Фільтри скидають `setActiveSavedFilterId(null)` при зміні
 - [ ] Кнопки видалення: `className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"`
 - [ ] `pnpm --filter @sto/web exec tsc --noEmit` — 0 помилок
+- [ ] **Новий hook у `hooks/api/`** якщо сторінка завантажує основний список (не useEffect+apiFetch)
+- [ ] **`loading.tsx`** для кожної нової сторінки (список і detail `/[id]/`)
+- [ ] **PREFETCH_MAP** у `TopShell.tsx` — додати новий маршрут якщо є hook
+- [ ] **`keepPreviousData`** у кожному новому `useQuery` для списку
+- [ ] **`placeholderData: keepPreviousData`** у hook — таблиця не мерехтить при зміні фільтрів
+- [ ] **Inline функції у `.map()`** — обгорнути `handler` у `useCallback`, row у `memo` якщо є expensive logic
+- [ ] **Intl форматери** — module-level const, не inline у render або useEffect callbacks
 
 ---
 
