@@ -187,6 +187,41 @@ describe('Calendar — HTTP Contract', () => {
         expect.objectContaining({ liftId: LIFT_ID }),
       );
     });
+
+    // Bug #244 regression-guard: @Transform(emptyToUndefined) у CreateCalendarSlotDto
+    // має зробити '' → undefined для liftId/employeeId/workOrderId/counterpartyId.
+    // Без цього sprint c551dd5 буде регресувати у 400 без видимих тестових провалів.
+    it('повертає 201 коли liftId="" і employeeId="" (порожні рядки → undefined)', async () => {
+      serviceMock.createSlot.mockResolvedValueOnce({
+        id: SLOT_ID,
+        liftId: null,
+        employeeId: null,
+        workOrderId: null,
+        startAt: new Date('2026-05-22T10:00:00.000Z'),
+        endAt: new Date('2026-05-22T11:00:00.000Z'),
+        notes: null,
+        status: 'BOOKED',
+        type: 'WORK',
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/calendar/slots',
+        payload: {
+          liftId: '',
+          employeeId: '',
+          workOrderId: '',
+          counterpartyId: '',
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const dtoArg = serviceMock.createSlot.mock.calls[0]![1] as Record<string, unknown>;
+      expect(dtoArg.liftId).toBeUndefined();
+      expect(dtoArg.employeeId).toBeUndefined();
+      expect(dtoArg.workOrderId).toBeUndefined();
+      expect(dtoArg.counterpartyId).toBeUndefined();
+    });
   });
 
   describe('PATCH /calendar/slots/:id', () => {

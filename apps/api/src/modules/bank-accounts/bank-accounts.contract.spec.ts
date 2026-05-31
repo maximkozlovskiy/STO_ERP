@@ -138,5 +138,41 @@ describe('BankAccounts — HTTP Contract', () => {
         expect.objectContaining({ ibanUA: VALID_IBAN }),
       );
     });
+
+    // Bug #244 regression-guard: sprint 7f052d5 додав @Transform(emptyToUndefined)
+    // саме щоб порожній рядок не давав 400. Якщо @Transform відкатять у refactor
+    // — tsc лишиться зеленим, а runtime поверне 400 → фронт ламається.
+    it('повертає 201 коли branchId="" (порожній рядок → @Transform(emptyToUndefined) → undefined)', async () => {
+      serviceMock.create.mockResolvedValueOnce({
+        id: 'ba-1',
+        orgId: 'org-1',
+        name: 'Поточний',
+        ibanUA: VALID_IBAN,
+        currencyId: CURRENCY_ID,
+        currencyCode: 'UAH',
+        bankName: null,
+        branchId: null,
+        branchName: null,
+        mfo: null,
+        edrpou: null,
+        bankAddress: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/bank-accounts',
+        payload: {
+          name: 'Поточний',
+          ibanUA: VALID_IBAN,
+          currencyId: CURRENCY_ID,
+          branchId: '',
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      // class-transformer прибирає branchId перш ніж DTO потрапить у service
+      const dtoArg = serviceMock.create.mock.calls[0]![1] as Record<string, unknown>;
+      expect(dtoArg.branchId).toBeUndefined();
+    });
   });
 });

@@ -8,9 +8,10 @@ import {
   ValidateNested,
   IsEnum,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { PurchaseOrderStatus } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class TransitionPurchaseOrderDto {
   @ApiProperty({ enum: PurchaseOrderStatus })
@@ -59,7 +60,11 @@ export class ReceiveLineDto {
   @IsUUID()
   lineId!: string;
   @ApiProperty() @IsNumber() @Min(0) receivedQty!: number;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() unitOfMeasureId?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  unitOfMeasureId?: string;
 }
 
 export class ReceivePurchaseOrderDto {
