@@ -9,13 +9,18 @@
 ## Останній commit
 
 ```
+cfbbf27 fix(sync): align Invoice interface with backend — amount not totalAmount
+0143e98 docs(skills,memory): add over-fetched-many-to-one-include pattern + record session 7a9f079
 7a9f079 perf(optimize): parallelize FK validation + narrow includes + covering index
 193945c docs(skills,memory): add parent-guard-helper-blocks-merger + js-aggregation-in-recalc patterns
 b530f17 perf(optimize): WO lines/parts hot-path + SQL aggregate + loyalty.redeem parallel
-659aa65 docs(skills,memory): add tiered-parallelization + many-to-one include patterns to sto-optimize
-2c8d5b9 perf(web): Intl singletons + lib/format proxies in 7 frontend pages
-846f8ff perf(api): parallelize parent-guard + child-fetch in 8 services + tighten goods.uom include→select
 Дата: 2026-05-31
+
+Latest sync: 2026-05-31 (sto-sync-agent цикл 1) — **1 Direction-3 мismatch виправлено**.
+**Mismatch:** `Invoice.totalAmount` у `useInvoices.ts` vs `InvoiceResponseDto.amount` у бекенді. Поле серіалізується як `amount` (не `totalAmount`), тому `inv.totalAmount` → `undefined` у runtime: список рахунків не показував суму, модаль оплати default-amount падав до NaN/0, placeholder та label були пусті. Виправлено: `totalAmount → amount` у hook interface + 5 call-sites у `invoices/page.tsx`.
+**Direction 1 (API→UI):** усі backend модулі мають UI — сторінки або embedded-вкладки. Виключення: auth/sync/health/files/notifications — норма.
+**Direction 2 (URL):** усі apiFetch URL перевірені — 0 розбіжностей.
+**TypeScript:** ✅ 0 errors (api + web).
 
 Latest optimize: 2026-05-31 (sto-optimize-agent ітерація-3, HEAD 193945c → 7a9f079) — **9 точкових perf фіксів** (7 backend + 1 frontend + 1 DB index) у untouched-by-previous-sweeps областях.
 **Backend (7 fixes):** `purchase-orders.applyPricing` + `xlsx.applyPricingFromList` — `include: { brand: true }` → select narrow projection (Brand record entirely unused — computePriceFromRules reads `good.brandId` scalar only); drops orgId/createdAt/syncVersion + heavy columns over-fetch per line × Brand row. `settlements-account.generateReconciliationPdf` — act + organisation findFirst parallel (-1 RTT). `brands.update` — tenant guard + duplicate-name check parallel (-1 RTT). `settings.updateOrganisation` — org guard + optional bankAccount FK validation parallel (-1 RTT). `warranties.autoCreate` — WO guard + idempotent existing check parallel (-1 RTT у post-WO COMPLETED hook). `warranties.claim` — warranty tenant guard + claimWo FK validation parallel (-1 RTT у happy path).
