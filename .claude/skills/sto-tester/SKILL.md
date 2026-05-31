@@ -817,6 +817,44 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-05-31 — Shared helper з cross-DTO impact без unit-тесту → silent regression через десятки endpoint-ів (Bug #243) — backend, test-coverage, shared-utility
+
+**Сигнал:** новий `apps/api/src/common/transforms/*.ts` або `apps/web/src/lib/*.ts` (pure-function helper) що імпортується у **N≥5 DTO/сервісах/компонентах**. Файл сам по собі — 1-3 рядки коду; жоден `*.spec.ts` поряд. Sprint-commit що додає helper здебільшого фокусується на use-sites (21 DTO update у `7f052d5`), не на самій utility — бо «logic тривіальна, очевидно працює». Регресія типу:
+
+- `value === ''` → `!value` (виглядає схожим, але хибне для `0`/`false`/`null`),
+- повертати `null` замість `undefined` (`@IsOptional` приймає лише `undefined` за замовчуванням),
+- зміна shape з `({ value })` на `(value)` (TransformFn signature breaks).
+
+— пройде CI зеленою бо тести DTO/components часто інтеграційні і не покривають всі гілки helper-логіки.
+
+**Причина виникнення:** psychological «це 3 рядки, що там тестувати». Sprint review зосереджується на що **використовує** helper (мерж 21 DTO), а не сам helper. Бо «якщо helper зламаний — це покажуть 21 інших тестів». Хибно: ці тести часто покривають лише happy path (UUID-валідний → 201), не альтернативні падіння (`null` → ??).
+
+**Підхід до виявлення:** після кожного commit що додає файл у `apps/api/src/common/` або `apps/web/src/lib/` з default-export чи named-export pure function — перевірити чи існує парний `*.spec.ts`. Якщо helper імпортується у >2 файли — spec обов'язковий. Grep: `git diff HEAD~5 HEAD --name-only --diff-filter=A | grep -E "common/|lib/" | grep -v ".spec." | grep ".ts$"` — кожен файл pair-check проти `find apps -name "$(basename $f .ts).spec.ts"`.
+
+**Підхід до фіксу:** створити `*.spec.ts` поруч з helper. Покрити мінімум: (1) happy path; (2) кожен boundary (`''`/`0`/`null`/`undefined`/`false` — особливо для pure transformers); (3) shape API (входить object, повертає primitive — або навпаки). Tests pure, без NestJS/Prisma — швидкі (<10ms).
+
+**Severity:** LOW — поточний код працює; стає HIGH коли регресуюча зміна потрапляє у helper (cascading break через N use-sites без видимого failure).
+
+**Де шукати ще:** будь-який майбутній `common/transforms/`, `common/utils/`, `common/decorators/`, `lib/format-currency.ts`, `lib/parse-decimal.ts`, `lib/api-client.ts` — все що pure/imported по проєкту. Профілактика: SKILL §1.5 unit-test матриця тепер вимагає spec для будь-якого нового shared helper (≥1 import у не-spec файлі).
+
+---
+
+### 2026-05-31 — Sprint що додає нову поведінку DTO/validation без regression-test точно для цієї поведінки (Bug #244) — backend, test-coverage, regression-guard
+
+**Сигнал:** commit-message виду «add @Transform(emptyToUndefined) for all optional UUID fields» / «add @ValidateNested для всіх масивних DTO» / «change @IsUUID() → @IsUUID('4')». Sprint виправляє конкретний клієнтський сценарій (фронт шле `''` для скинутого селекту → 400). Existing contract-spec тестує лише original cases (400 на невалідний UUID; 201 на валідний UUID), **але не саме той сценарій що додавали** (201 на `''` → undefined). Sprint реалізує те що задумано, тести **жодним чином не валідують саме нову поведінку**. Регресія типу «відкатили `@Transform` при refactor бо щось інше зламав» — tsc green (декоратор не обов'язковий), 400 повертається лише у production коли фронт шле `''`.
+
+**Причина виникнення:** sprint фокусується на implementation; review зосереджений на «чи додано декоратор у всіх DTO». Тести вже є (вони перевіряли 400 на невалідний UUID), і це створює false-confidence: «існуючі контракт-тести вже покривають валідацію». Хибно: вони перевіряють **інверсну** гілку (валідація FAILS), а нова поведінка — це що валідація **passes** для конкретного нового inputу. Без регресійного тесту саме на цю гілку — нікому не очевидно що `@Transform` ефективно працює.
+
+**Підхід до виявлення:** при review sprint-commit-у виду «add transform/validator/pipe для N DTO» — для **2-3 DTO найвищого ризику** (`bank-accounts`, `calendar`, `work-orders` тощо) перевірити чи existing contract-spec має `it(описати новий happy-path)` що: (1) шле саме той inputу що раніше валився; (2) assert 201/200 (не 400); (3) assert service-mock викликаний з **transformed** payload (`branchId: undefined`, не `branchId: ''`). Якщо відсутній — bug.
+
+**Підхід до фіксу:** додати 1 `it` блок у кожен з ~3 representative DTO-spec. Mock service create → success; inject POST з порожнім рядком у новий optional field; assert 201 + `mock.calls[0][1].fieldX === undefined` (саме `undefined`, не `null` чи `''`).
+
+**Severity:** MEDIUM — поточний код працює; регресія беззвучна (фронт ламається лише на production interactions, dev-fixtures зазвичай повний payload).
+
+**Де шукати ще:** будь-який sprint що змінює validation/transform/pipe shape для широкого набору DTO (наприклад: «зміна @MaxLength з 100 на 500», «новий @Trim() decorator», «зміна date format»). Профілактика: SKILL §1.5 тепер вимагає 1 «новий-happy-path» test для кожного wave-refactoring sprintу (regression-guard саме нової поведінки, не original strict-валідації).
+
+---
+
 ### 2026-05-31 — DTO write-side asymmetry: column declared, FSM transition не persists її у row (Bug #236) — backend, data-integrity, state-machine
 
 **Сигнал:** sprint додає nullable FK/scalar колонку у `*.prisma` модель + `unitOfMeasureId?: string | null` у `XLineResponseDto` + mapping `unitOfMeasureId: l.unitOfMeasureId ?? null` у `toDto`. FSM transition (CONFIRMED, RECEIVED, IN_PROGRESS) обчислює resolved value (`lineUnitId = good.unitId`) і пропагує його у **side-effect resource** (StockMovement через `inventory.createMovement(unitOfMeasureId)`), АЛЕ забуває оновити **сам поточний row** (`tx.stockDocumentLine.update({ data: { unitOfMeasureId: lineUnitId } })`). Симптом: `findOne(id)` ПІСЛЯ transition повертає `lines[i].unitOfMeasureId === null` навіть коли StockMovement рядки мають коректне значення. tsc green (поле nullable, no compile pressure), unit tests green (немає spec для transition), code review зосереджується на side-effect (movement) а не на самому row. **Cross-resource inconsistency**: history (movements) має X, current state (line.row) має NULL → audit/sync/export ламається.
