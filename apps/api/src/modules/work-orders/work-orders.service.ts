@@ -307,30 +307,43 @@ export class WorkOrdersService {
   }
 
   async clone(orgId: string, id: string, userId: string): Promise<WorkOrderResponseDto> {
-    // 1. Find original WO with lines and parts
+    // 1. Find original WO with lines and parts.
+    // Narrow select: clone-операція використовує лише FK scalars (vehicleId/counterpartyId/branchId)
+    // + lines/parts scalars (workId/employeeId/liftId/goodId/warehouseId/price/normoHours/amount/notes).
+    // Раніше include тягнув vehicle/counterparty/branch (повні labels) + lines.work.name + lines.employee.firstName/lastName
+    // + parts.good.name/unit/unitOfMeasure — все це НЕ використовується у clone (лише ID-based create).
     const original = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: {
-        vehicle: { select: { make: true, model: true, licensePlate: true } },
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-        branch: { select: { name: true } },
+      select: {
+        number: true,
+        vehicleId: true,
+        counterpartyId: true,
+        branchId: true,
+        description: true,
+        inMileage: true,
+        priority: true,
+        repairCategory: true,
+        dueDate: true,
         lines: {
           where: { deletedAt: null },
-          include: {
-            work: { select: { name: true } },
-            employee: { select: { firstName: true, lastName: true } },
+          select: {
+            workId: true,
+            employeeId: true,
+            liftId: true,
+            price: true,
+            normoHours: true,
+            notes: true,
+            amount: true,
           },
         },
         parts: {
           where: { deletedAt: null },
-          include: {
-            good: {
-              select: {
-                name: true,
-                unit: true,
-                unitOfMeasure: { select: { shortName: true, coefficient: true } },
-              },
-            },
+          select: {
+            goodId: true,
+            quantity: true,
+            price: true,
+            warehouseId: true,
+            amount: true,
           },
         },
       },
@@ -340,7 +353,8 @@ export class WorkOrdersService {
     // Bug #90: validate FK references still exist (not soft-deleted) BEFORE create.
     // Without this, FK violation surfaces as Prisma P2003 (HTTP 500) instead of a
     // friendly 404 with a clear message in Ukrainian.
-    const [vehicle, counterparty, branch] = await Promise.all([
+    // Perf: docNumbers.next не залежить від FK validation — паралелимо разом.
+    const [vehicle, counterparty, branch, number] = await Promise.all([
       this.prisma.vehicle.findFirst({
         where: { id: original.vehicleId, orgId, deletedAt: null },
         select: { id: true },
@@ -353,14 +367,12 @@ export class WorkOrdersService {
         where: { id: original.branchId, orgId, deletedAt: null },
         select: { id: true },
       }),
+      this.docNumbers.next(orgId, 'WORK_ORDER'),
     ]);
     if (!vehicle) throw new NotFoundException('Автомобіль було видалено — клонування неможливе');
     if (!counterparty)
       throw new NotFoundException('Контрагента було видалено — клонування неможливе');
     if (!branch) throw new NotFoundException('Філію було видалено — клонування неможливе');
-
-    // 2. Get new number
-    const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
 
     // 3. Pre-compute totals from the original's lines/parts so the cloned WO
     // ships consistent totalLabor/totalParts/totalAmount (Bug #81). Without this,
@@ -980,28 +992,37 @@ export class WorkOrdersService {
     const [wo, org] = await Promise.all([
       this.prisma.workOrder.findFirst({
         where: { id, orgId, deletedAt: null },
-        include: {
+        // PDF select narrow: тягнемо лише поля що рендеряться у docDef.
+        // Раніше include тягнув orgId/branchId/sortOrder/costPrice/description (lines/parts) + unit/coefficient (good)
+        // які не використовуються у PDF — лише name/quantity/price/amount + work.name + good.name.
+        select: {
+          number: true,
+          createdAt: true,
+          totalAmount: true,
           vehicle: { select: { make: true, model: true, licensePlate: true } },
           counterparty: {
             select: { firstName: true, lastName: true, companyName: true, phone: true },
           },
           lines: {
             where: { deletedAt: null },
-            include: { work: { select: { name: true } } },
             take: 500,
+            select: {
+              normoHours: true,
+              actualHours: true,
+              price: true,
+              amount: true,
+              work: { select: { name: true } },
+            },
           },
           parts: {
             where: { deletedAt: null },
-            include: {
-              good: {
-                select: {
-                  name: true,
-                  unit: true,
-                  unitOfMeasure: { select: { shortName: true, coefficient: true } },
-                },
-              },
-            },
             take: 500,
+            select: {
+              quantity: true,
+              price: true,
+              amount: true,
+              good: { select: { name: true } },
+            },
           },
         },
       }),

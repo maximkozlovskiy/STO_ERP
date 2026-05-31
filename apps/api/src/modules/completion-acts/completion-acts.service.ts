@@ -54,17 +54,32 @@ export class CompletionActsService {
             number: true,
             counterparty: { select: { firstName: true, lastName: true, companyName: true } },
             vehicle: { select: { make: true, model: true, licensePlate: true } },
+            // narrow projection: buildLines() use лише normoHours/price/amount/workId + work.name (lines)
+            // та quantity/price/amount/goodId + good.name (parts). Раніше include тягнув orgId/branchId/
+            // workOrderId/sortOrder/costPrice/description/deletedAt etc. per row × 500 take = багато зайвого.
             lines: {
               where: { deletedAt: null },
               orderBy: { createdAt: 'asc' },
-              include: { work: { select: { name: true } } },
               take: 500,
+              select: {
+                normoHours: true,
+                price: true,
+                amount: true,
+                workId: true,
+                work: { select: { name: true } },
+              },
             },
             parts: {
               where: { deletedAt: null },
               orderBy: { createdAt: 'asc' },
-              include: { good: { select: { name: true, unit: true } } },
               take: 500,
+              select: {
+                quantity: true,
+                price: true,
+                amount: true,
+                goodId: true,
+                good: { select: { name: true, unit: true } },
+              },
             },
           },
         },
@@ -203,11 +218,17 @@ export class CompletionActsService {
     const act = await this.findOne(orgId, id);
 
     // Parallel — org metadata and WO with relations are independent reads.
+    // PDF narrow select: ми тут читаємо лише name з org (для header) і counterparty/vehicle з WO
+    // (для party blocks). Раніше findFirst без select на organisation тягнув всі settings, syncVersion,
+    // logoUrl, тощо — десятки колонок зайвих для PDF header.
     const [org, wo] = await Promise.all([
-      this.prisma.organisation.findFirst({ where: { id: orgId } }),
+      this.prisma.organisation.findFirst({
+        where: { id: orgId },
+        select: { name: true },
+      }),
       this.prisma.workOrder.findFirst({
         where: { id: act.workOrderId, orgId },
-        include: {
+        select: {
           counterparty: {
             select: {
               firstName: true,

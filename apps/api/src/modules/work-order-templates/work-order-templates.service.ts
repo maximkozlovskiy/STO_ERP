@@ -53,26 +53,36 @@ export class WorkOrderTemplatesService {
     id: string,
     dto: UpdateWorkOrderTemplateDto,
   ): Promise<WorkOrderTemplateResponseDto> {
-    await this.findOne(orgId, id);
-    // `where: { id, orgId }` keeps tenant isolation at the SQL layer (defense-in-depth) —
-    // the findOne above is the primary guard but we don't want a future refactor to leak it.
-    const t = await this.prisma.workOrderTemplate.update({
-      where: { id, orgId },
+    // 1-RTT pattern: updateMany з тенант-where замість findOne+update.
+    // updateMany повертає { count } — 0 означає 404 (не знайдено в межах orgId).
+    // findFirstOrThrow безпечний, але потребує окремої findFirst → ця оптимізація
+    // зливає guard + update в один UPDATE statement.
+    const updated = await this.prisma.workOrderTemplate.updateMany({
+      where: { id, orgId, deletedAt: null },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.lines !== undefined && { lines: dto.lines as object[] }),
         ...(dto.parts !== undefined && { parts: dto.parts as object[] }),
       },
     });
+    if (updated.count === 0) throw new NotFoundException('Шаблон не знайдено');
+    // Read back: updateMany не повертає updated row, тому findFirst після update.
+    // 2 RTT total (замість 3 з findOne+update+toDto) — ще можна було б використати
+    // raw UPDATE...RETURNING, але Prisma не підтримує RETURNING через safe API.
+    const t = await this.prisma.workOrderTemplate.findFirst({
+      where: { id, orgId, deletedAt: null },
+    });
+    if (!t) throw new NotFoundException('Шаблон не знайдено');
     return this.toDto(t);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
-    await this.prisma.workOrderTemplate.update({
-      where: { id, orgId },
+    // Same 1-RTT pattern as update — updateMany з orgId guard, count===0 → 404.
+    const updated = await this.prisma.workOrderTemplate.updateMany({
+      where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
+    if (updated.count === 0) throw new NotFoundException('Шаблон не знайдено');
   }
 
   private toDto(t: {

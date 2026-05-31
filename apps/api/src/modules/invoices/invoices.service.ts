@@ -522,7 +522,17 @@ export class InvoicesService {
     const [inv, org] = await Promise.all([
       this.prisma.invoice.findFirst({
         where: { id, orgId, deletedAt: null },
-        include: {
+        // PDF select narrow: тягнемо ЛИШЕ поля що реально рендеряться у docDef.
+        // Не використовуються в PDF (раніше over-fetched через include): id/orgId/branchId/cashRegisterId/
+        // counterpartyName(parent), counterparty.id/orgId/sync*; lines.id/invoiceId/goodId/workId/sortOrder/
+        // priceWithoutVat/vatAmount, good.unit/unitOfMeasure.coefficient (PDF використовує лише shortName).
+        select: {
+          number: true,
+          createdAt: true,
+          dueDate: true,
+          totalWithoutVat: true,
+          totalVat: true,
+          totalWithVat: true,
           counterparty: {
             select: {
               firstName: true,
@@ -532,15 +542,19 @@ export class InvoicesService {
               edrpou: true,
             },
           },
-          // Bug #232: include good для unitShortName fallback у PDF generation.
           lines: {
             orderBy: { sortOrder: 'asc' },
             take: 500,
-            include: {
+            select: {
+              description: true,
+              quantity: true,
+              unitPrice: true,
+              vatRate: true,
+              priceWithVat: true,
               good: {
                 select: {
                   unit: true,
-                  unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                  unitOfMeasure: { select: { shortName: true } },
                 },
               },
             },
@@ -571,7 +585,8 @@ export class InvoicesService {
       lines: (inv.lines ?? []).map(l => ({
         description: l.description,
         quantity: l.quantity,
-        unit: 'шт',
+        // Раніше hardcoded 'шт' — тепер реально використовуємо include що тягне UoM.
+        unit: l.good?.unitOfMeasure?.shortName ?? l.good?.unit ?? 'шт',
         unitPrice: Number(l.unitPrice),
         vatRate: Number(l.vatRate),
         total: Number(l.priceWithVat),

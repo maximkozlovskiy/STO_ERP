@@ -161,14 +161,25 @@ export class SettlementsAccountService {
   ): Promise<Buffer> {
     // Perf: act + organisation мають незалежний tenant-isolation (act has orgId+actId+counterpartyId,
     // org has id=orgId) — паралель не псує семантику NotFound (throw після Promise.all).
+    // PDF narrow select: act має 10+ колонок (id/orgId/createdAt/syncVersion/deletedAt тощо),
+    // PDF використовує лише periodFrom/periodTo/openingBalance/closingBalance/snapshotJson + counterparty.
+    // org має 15+ settings колонок, PDF читає лише name.
     const [act, org] = await Promise.all([
       this.prisma.reconciliationAct.findFirst({
         where: { id: actId, orgId, counterpartyId },
-        include: {
+        select: {
+          periodFrom: true,
+          periodTo: true,
+          openingBalance: true,
+          closingBalance: true,
+          snapshotJson: true,
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         },
       }),
-      this.prisma.organisation.findFirst({ where: { id: orgId } }),
+      this.prisma.organisation.findFirst({
+        where: { id: orgId },
+        select: { name: true },
+      }),
     ]);
     if (!act) throw new NotFoundException('Акт звірки не знайдено');
     const cp = act.counterparty;
