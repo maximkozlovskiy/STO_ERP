@@ -9,17 +9,49 @@
 ## Останній commit
 
 ```
+649a5db fix(review): cycle 5 — defense-in-depth: updateMany+orgId + SSRF Checkbox + sanitize filename
+03f7bf4 docs(memory): update MemoryManual after sync cycle 5 (final)
+0305852 fix(sync): cycle 5 — completion-act cancel, invoice VAT display, booking branchName
+fc22234 docs(skills,memory): add PDF over-fetch + clone over-fetch + GIN trgm + 1-RTT updateMany patterns
 e9f8364 perf(optimize): cycle 4 — PDF select narrowing + WO clone over-fetch + search GIN trgm
 af41192 docs(skills,memory): add dead-feature-integration + frontend-hint-lies patterns + record tester cycle 4
 ec438bd fix(tester): cycle 4 — Bugs #266-#272 (WO template hint + loyalty earn integration + PDF nullsafe + AVG_COST orderBy + NaN guard + stale spec)
 cf60952 fix(review): cycle 4 — exhaustive-deps + ApiResponse coverage + safety take caps
 97e1ca3 fix(sync): cycle 4 — align frontend interfaces with API contracts
-319208b perf(optimize): cycle 3 — date-picker memoization + BatchRow memo
-490ec8e perf(optimize): cycle 3 — batch.service parallelize good+rules, inventory.updateMinStock 1-RTT
-1cf7098 docs(skills,memory): add mass-DTO variant-validator-family audit pattern + record tester cycle 3
-61720e3 fix(review): cycle 3 — emptyToUndefined on optional UUID/Enum/Date DTOs + TRANSACTION_TIMEOUT_MS unification
-39d2667 fix(sync): align frontend interfaces with API response DTOs (cycle 3)
 Дата: 2026-05-31
+
+Latest review: 2026-05-31 (sto-review-agent цикл 5 з 5 ФІНАЛ, HEAD 03f7bf4 → 649a5db) — **14 файлів виправлено** (12 backend + 2 spec). Фокус циклу: (1) consistency audit — defense-in-depth updateMany+orgId pattern застосований у всіх endpoint який раніше робив findFirst+update-by-id, (2) hard-delete захист через deleteMany+compound where, (3) SSRF defense у Checkbox processor для user-supplied API URL, (4) path-traversal sanitize у /files upload, (5) перевірка не покритих раніше модулів (audit, dashboard SSE, BullMQ processors, maintenance-schedules, warranties, inspection, webhooks).
+
+**Backend (12 fixes):**
+(1-4) bank-accounts/cash-registers/currencies/exchange-rates `update` + `remove`: findFirst+update sequential (без orgId у update where) → updateMany з компаундним where (id+orgId+deletedAt) + findFirstOrThrow для повернення з relations. Eliminates race-window 2026-05-30.
+(5) settings.service `updateTaxRate` + `deleteTaxRate` — той самий pattern для TaxRate.
+(6) employees.service `assignBranches` — tx.employee.update без orgId → updateMany з compound where.
+(7) comments.service `remove` — hard delete → deleteMany з orgId guard.
+(8) goods.service `deleteBarcode` — hard delete → deleteMany з compound where (orgId+goodId).
+(9) goods.service `removeUoM` tx body — tx.goodUoM.delete + tx.goodUoM.update next-id → deleteMany/updateMany з compound where (orgId+goodId).
+(10) invoices.service `removeLine` — hard delete → deleteMany з compound where (orgId+invoiceId).
+(11) payments/checkbox.processor — `branchSettings.checkboxApiUrl` (user-controlled, тільки `@IsString()` валідація) → validatePublicUrl при delivery; SSRF defense-in-depth (admin не повинен мати змогу націлити fiscal на internal services).
+(12) files.controller upload — `originalname` без sanitize → sanitizeFilename helper (path.basename + control-char strip + length cap; узгоджено з work-order-media.service).
+
+**Тести (2 specs):**
+(13) goods.service.spec — removeUoM очікує `tx.goodUoM.deleteMany`/`updateMany` замість delete/update.
+(14) exchange-rates.service.spec — update очікує `updateMany`+`findFirstOrThrow` замість update.
+
+**Перевірено (не знайдено проблем):**
+- §1 TypeScript: api+web+shared — 0 errors (strict: true everywhere).
+- §2.1 RolesGuard без @Roles: booking/dashboard public endpoints — навмисно без guards, OK.
+- §2.2 Tenant isolation: повний audit findFirst/findMany/update/delete по модулях — `webhooks`, `warranties`, `inspection`, `maintenance-schedules` вже використовують updateMany+orgId pattern.
+- §2.3 Injection: `@Param('id')` всі через ParseUUIDPipe; жодних raw queryRaw з рядковою інтерполяцією.
+- §2.5 BullMQ: всі `.add()` мають `attempts ≥ 10` + exponential backoff (booking SMS, loyalty earn, sms, payments checkbox, followup, webhooks).
+- §3.1 Memory leaks: useDashboardStream SSE — `mountedRef`+`esRef.close()`+`retryTimeoutRef.clearTimeout()` правильні; cleanup на unmount у return useEffect.
+- §3.2 Backend findMany без take: 0 матчів (всі мають take).
+- Security: SSRF — webhooks.processor (validatePublicUrl + redirect: 'manual'); Checkbox (тепер також validatePublicUrl). Path traversal — work-order-media.service вже захищений, files.controller тепер теж. XSS у PDF — pdfmake безпечний (PDF text rendering, не HTML).
+
+**TypeScript:** ✅ 0 errors (api + web + shared, `--incremental false`). **Unit:** API **493/493** (2 specs оновлені під нові updateMany/deleteMany патерни).
+
+**Нові SKILL patterns:** 0 нових (всі знайдені сигнали покриті існуючими патернами 2026-05-30 для defense-in-depth updateMany+orgId; cycle 5 — це систематичне застосування patterns до решти endpoint-ів).
+
+---
 
 Latest optimize: 2026-05-31 (sto-optimize-agent цикл 4 з 5, HEAD af41192 → e9f8364) — **9 backend perf фіксів** + 4 нові SKILL patterns. Фокус: PDF over-fetch, WO clone, search SQL efficiency, work-order-templates CRUD.
 **Backend (9 fixes):**
