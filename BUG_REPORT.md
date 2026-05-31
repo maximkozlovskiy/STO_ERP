@@ -7436,3 +7436,166 @@ Scope: Krok 1+2 — додано nullable `unitOfMeasureId` поле у `StockBa
 **Статус:** [ ] не виправлено — задокументовано як known-state технічний борг
 
 ---
+
+## Session 2026-05-31 — FULL tester: sprint @Transform emptyToUndefined + lightbox a11y + calendar дата (HEAD 767bc67)
+
+Scope (7 commits, fb94244..767bc67):
+
+- `fb94244` fix(ui): gap-3 між таблицею і detail panel на 9 сторінках
+- `aef1067` fix(calendar): валідація формату дати у findSlots + loading.tsx для 5 сторінок
+- `a1aa8e6` fix(calendar): показ повідомлення 400 у формі + валідація дати перед submit
+- `c551dd5` fix(calendar): @Transform emptyToUndefined для UUID полів — порожній рядок більше не дає 400
+- `7f052d5` fix(dto): @Transform emptyToUndefined для optional @IsUUID полів у 21 DTO
+- `4f7b726` fix(ui): прибрати ручні зірочки з label — Input/Select додають \* через required prop
+- `00d5f34` fix(review): shared emptyToUndefined helper + setup wizard required + lightbox a11y
+- `767bc67` docs(skills): 4 нових патерни до sto-review
+
+### Baseline (Крок 0)
+
+- TypeScript shared — ✅ 0 errors
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 449/449 passed (40 файлів)
+- Web components — ✅ 203/203 passed (18 файлів)
+- Перевірка хибно-зеленого `[x]` — пройдено: останні `fix(tester)` коміти чіпають реальний код (a5a390d UoM service, dec4b57 sprint-C tests).
+
+### Перевірка специфічна
+
+- `emptyToUndefined` helper (apps/api/src/common/transforms/empty-to-undefined.ts) — pure function: `value === '' ? undefined : value`. Логіка коректна, але **жодного unit-тесту** — Bug #243.
+- Аудит `@IsOptional() @IsUUID` пар у 22 DTO-файлах: 21 пара має `@Transform(emptyToUndefined)` між ними; **1 inline 1-рядкова пара пропущена** (`purchase-orders.dto.ts:62`) — Bug #241.
+- Контракт-тести `bank-accounts.contract.spec.ts` (5 тестів) і `calendar.contract.spec.ts` (10 тестів) — мають кейси для `liftId='not-a-uuid'` → 400, але **ЖОДНОГО кейсу `liftId=""` → 201** який саме перевіряє ефект Transform. Bug #244.
+- Setup wizard `Field` компонент — коректно показує `*` при `required={true}` (рядок 332: `{required && <span className="ml-0.5 text-destructive">*</span>}`) + `aria-required={required || undefined}` на input.
+- Settings lightbox (settings/page.tsx:1505-1533) — Escape handler через `useEffect` з cleanup (рядки 348-355), `role="dialog" aria-modal="true" aria-label`, backdrop click + stopPropagation на inner, close button з `aria-label="Закрити перегляд"`. **АЛЕ:** trigger `<div onClick={...}>` (рядок 1425) не має `role="button"`/`tabIndex`/`onKeyDown` — keyboard користувач не може відкрити lightbox. Bug #242.
+- Calendar service `findSlots` — валідація формату дати `/^\d{4}-\d{2}-\d{2}$/` → `BadRequestException('Невірний формат дати. Очікується YYYY-MM-DD')`. Правильно укр.
+- Calendar slot modal `addSlot` — `isNaN(startDate.getTime())` → "Вкажіть коректні дату та час". Правильно.
+- 10 loading.tsx файлів — pure presentational JSX (skeleton-структура з `Array.from`), no hooks/no logic. ✅
+- gap-3 на 9 сторінках — pure CSS зміна, не впливає на логіку.
+
+---
+
+## Bug #241 — HIGH typescript / api-contract
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.dto.ts:62`
+**Severity:** HIGH
+**Категорія:** mass-DTO-migration-completeness — grep variant audit
+
+**Опис:** Sprint-wide refactor `7f052d5` додав `@Transform(emptyToUndefined)` до 21 DTO для всіх `@IsOptional() @IsUUID` пар у multi-line форматі:
+
+```ts
+@ApiPropertyOptional()
+@IsOptional()
+@Transform(emptyToUndefined)
+@IsUUID()
+xyzId?: string;
+```
+
+Але **inline 1-рядкова форма** у `ReceiveLineDto.unitOfMeasureId` була пропущена:
+
+```ts
+@ApiPropertyOptional() @IsOptional() @IsUUID() unitOfMeasureId?: string;
+```
+
+Це **точно той же баг-патерн Bug #215** (mass DTO migration completeness — grep variant audit) із SKILL §1.2: розробник grep-ить простий case `@Transform(emptyToUndefined)` додавання на 4-рядкових pair-формах, а 1-line inline-формат не матчиться.
+
+**Очікувана поведінка:** `POST /purchase-orders/:id/receive` з payload `{ lines: [{ lineId, receivedQty: 5, unitOfMeasureId: "" }] }` → 201 (треба трактувати порожній рядок як `undefined` → fallback на `good.unitId`).
+
+**Фактична поведінка:** 400 Bad Request `unitOfMeasureId must be a UUID` — фронт що надсилає порожній рядок (типовий випадок коли selector скинули) отримує помилку валідації.
+
+**Підхід до фіксу:** додати `@Transform(emptyToUndefined)` між `@IsOptional()` і `@IsUUID()`, розбити на multi-line за стандартом інших 21 DTO.
+
+**Статус:** [x] виправлено — `ReceiveLineDto.unitOfMeasureId` оформлено у 4-рядковий формат з `@Transform(emptyToUndefined)`.
+
+---
+
+## Bug #242 — LOW a11y / frontend
+
+**Файл:** `apps/web/src/app/settings/page.tsx:1425-1431`
+**Severity:** LOW
+**Категорія:** a11y / keyboard-navigation
+
+**Опис:** Settings logo preview box відкриває lightbox по кліку:
+
+```tsx
+<div
+  className="group relative shrink-0 w-48 h-28 rounded-xl border-2 border-dashed ... cursor-zoom-in ..."
+  onClick={() => { const src = logoPreview ?? orgInfo?.logoUrl; if (src) setLogoLightbox(src); }}
+>
+```
+
+Це нативний non-interactive `<div>` з `onClick` без `role="button"`, `tabIndex={0}`, `onKeyDown` (Enter/Space). Користувач клавіатури не може відкрити lightbox; screen reader не оголошує його як інтерактивний елемент.
+
+**Очікувана поведінка:** trigger має бути доступним з клавіатури — `<button>` АБО `<div role="button" tabIndex={0} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && open()}>`.
+
+**Фактична поведінка:** клавіатура / screen reader не можуть взаємодіяти з trigger; lightbox недоступний без миші.
+
+**Підхід до фіксу:** додати `role="button"`, `tabIndex={(logoPreview || orgInfo?.logoUrl) ? 0 : -1}`, `aria-label="Збільшити логотип"`, `onKeyDown` що викликає той самий handler по Enter/Space. Альтернатива: обгорнути `<img>` у `<button type="button">` (повністю семантично коректно), але це змінює CSS hover/group behavior.
+
+**Статус:** [x] виправлено — додано `role="button"`, `tabIndex`, `onKeyDown` і `aria-label` до trigger-div (зміни CSS не потрібні; non-interactive div поставав інтерактивним за рахунок Tailwind hover/group, тепер також seantic).
+
+---
+
+## Bug #243 — LOW test-coverage / backend
+
+**Файл:** `apps/api/src/common/transforms/empty-to-undefined.ts` (немає `empty-to-undefined.spec.ts`)
+**Severity:** LOW
+**Категорія:** test-coverage / shared-utility regression
+
+**Опис:** Новий shared helper `emptyToUndefined` використовується у 21 DTO. Pure function 3 рядки коду:
+
+```ts
+export const emptyToUndefined = ({ value }: { value: unknown }): unknown =>
+  value === '' ? undefined : value;
+```
+
+Жоден unit-тест. Регресія типу:
+
+- зміна `value === ''` → `!value` (схоже але хибне для `0`, `false`, `null`)
+- зміна `=== ''` → `== ''` (`null == ''` is false у JS — OK, але семантика хитка)
+- зміна повернення `undefined` → `null` (зламає `@IsOptional` бо `IsOptional` дозволяє лише `undefined` за замовчуванням)
+
+— пройде CI зеленою бо тести DTO опосередкованих ефект не покривають.
+
+**Очікувана поведінка:** `*.spec.ts` файл з тестами:
+
+1. `''` → `undefined`
+2. `null` → `null` (pass-through)
+3. `undefined` → `undefined` (pass-through)
+4. `0` → `0` (pass-through — не плутати з falsy check)
+5. `false` → `false`
+6. `'abc'` → `'abc'`
+7. `[]` → `[]`
+8. shape: приймає `{ value: T }`, повертає `T`
+
+**Фактична поведінка:** 0 тестів — silent regression risk на критичній shared утиліті.
+
+**Підхід до фіксу:** створити `apps/api/src/common/transforms/empty-to-undefined.spec.ts` з 7-8 it-блоками. Чистий unit-тест без імпорту Nest/Prisma.
+
+**Статус:** [x] виправлено — створено spec з 8 тестами; покриває primitives, null/undefined, falsy non-empty, объект value-shape.
+
+---
+
+## Bug #244 — MEDIUM test-coverage / api-contract
+
+**Файл:** `apps/api/src/modules/bank-accounts/bank-accounts.contract.spec.ts`, `apps/api/src/modules/calendar/calendar.contract.spec.ts`
+**Severity:** MEDIUM
+**Категорія:** test-coverage / regression-guard
+
+**Опис:** Sprint `7f052d5` і `c551dd5` додали `@Transform(emptyToUndefined)` саме щоб фронт міг шле `branchId: ""`/`liftId: ""` без 400. АЛЕ existing contract-тести покривають лише:
+
+- `bank-accounts`: 400 при не-UA IBAN, 400 при відсутньому IBAN, 201 при валідному IBAN, 200/403 на GET. **Жодного кейсу `branchId: ""` → 201.**
+- `calendar`: 400 при `liftId: 'not-a-uuid'`, 400 при відсутніх startAt/endAt, 201 при валідному payload з `liftId: LIFT_ID`. **Жодного кейсу `liftId: ""` → 201.**
+
+Регресія типу "відкатили `@Transform(emptyToUndefined)` бо хтось видалив імпорт у refactor" — `tsc` залишиться зеленим (`@Transform` accept будь-який function, мовчить якщо взагалі прибрати декоратор), runtime поверне 400 → фронт ламається.
+
+**Очікувана поведінка:** мінімум **2** нових `it`-блоки:
+
+1. `bank-accounts`: `POST /bank-accounts` з `payload: { name, ibanUA, currencyId, branchId: '' }` → 201; `service.create` викликаний з `branchId: undefined`.
+2. `calendar`: `POST /calendar/slots` з `payload: { liftId: '', employeeId: '', startAt, endAt }` → 201; `service.createSlot` викликаний з `liftId: undefined, employeeId: undefined`.
+
+**Фактична поведінка:** немає regression-guard для main reason повного 21-DTO refactor.
+
+**Підхід до фіксу:** додати по одному `it` блоку у кожен contract-spec. Mock service-create → resolved DTO; assert statusCode 201; assert createSlot/create викликаний без branchId/liftId у payload.
+
+**Статус:** [x] виправлено — додано regression-кейс у bank-accounts.contract.spec.ts (1 it) і calendar.contract.spec.ts (1 it). Тести підтверджують shape `service.create({ ..., branchId: undefined })` і відсутність `liftId` у переданому DTO.
+
+---
