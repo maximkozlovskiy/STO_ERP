@@ -3,18 +3,20 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PdfService } from '../pdf/pdf.service';
 import { CreateReconciliationActDto } from './settlements.dto';
 
+// Module-level Intl singleton — DateTimeFormat constructor is the expensive part (locale-data init).
+// Both kyivStartOfDay/kyivEndOfDay used to allocate a new formatter per call; createReconciliationAct
+// invokes both per request → 2 allocations × every reconciliation.
+const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Kyiv',
+  hour: '2-digit',
+  hour12: false,
+});
+
 /** Returns the UTC instant corresponding to 00:00:00 Kyiv time on the given calendar date (YYYY-MM-DD). DST-safe. */
 function kyivStartOfDay(date: string): Date {
   // Use noon in UTC to safely determine the Kyiv offset for that calendar date
   const probe = new Date(`${date}T12:00:00Z`);
-  const kyivHour = parseInt(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Kyiv',
-      hour: '2-digit',
-      hour12: false,
-    }).format(probe),
-    10,
-  );
+  const kyivHour = parseInt(KYIV_HOUR_FMT.format(probe), 10);
   const offsetMs = ((kyivHour - probe.getUTCHours() + 24) % 24) * 3_600_000;
   return new Date(new Date(`${date}T00:00:00Z`).getTime() - offsetMs);
 }
@@ -22,14 +24,7 @@ function kyivStartOfDay(date: string): Date {
 /** Returns the UTC instant corresponding to 23:59:59.999 Kyiv time on the given calendar date (YYYY-MM-DD). DST-safe. */
 function kyivEndOfDay(date: string): Date {
   const probe = new Date(`${date}T12:00:00Z`);
-  const kyivHour = parseInt(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Kyiv',
-      hour: '2-digit',
-      hour12: false,
-    }).format(probe),
-    10,
-  );
+  const kyivHour = parseInt(KYIV_HOUR_FMT.format(probe), 10);
   const offsetMs = ((kyivHour - probe.getUTCHours() + 24) % 24) * 3_600_000;
   return new Date(new Date(`${date}T23:59:59.999Z`).getTime() - offsetMs);
 }

@@ -120,16 +120,25 @@ export class EmployeesService {
   // ─── Assignments ─────────────────────────────────────────
 
   async assignZones(orgId: string, id: string, dto: AssignZonesDto): Promise<EmployeeResponseDto> {
-    await this.findOne(orgId, id);
-    // Verify all zones belong to this org
-    if (dto.zoneIds.length > 0) {
-      const zones = await this.prisma.zone.findMany({
-        where: { id: { in: dto.zoneIds }, orgId, deletedAt: null },
-        take: 1000,
-      });
-      if (zones.length !== dto.zoneIds.length) {
-        throw new NotFoundException('Одну або кілька зон не знайдено');
-      }
+    // Parallel: tenant guard (employee exists) + cross-tenant FK validation (zones belong to org)
+    // are independent reads — collapse into a single RTT. Error messages preserved since both
+    // queries complete before any throw.
+    const [employee, zones] = await Promise.all([
+      this.prisma.employee.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      dto.zoneIds.length > 0
+        ? this.prisma.zone.findMany({
+            where: { id: { in: dto.zoneIds }, orgId, deletedAt: null },
+            take: 1000,
+            select: { id: true },
+          })
+        : Promise.resolve([] as Array<{ id: string }>),
+    ]);
+    if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    if (dto.zoneIds.length > 0 && zones.length !== dto.zoneIds.length) {
+      throw new NotFoundException('Одну або кілька зон не знайдено');
     }
     // Replace assignment atomically using callback form (array form doesn't guarantee atomicity in Prisma 5)
     await this.prisma.$transaction(
@@ -147,15 +156,22 @@ export class EmployeesService {
   }
 
   async assignLifts(orgId: string, id: string, dto: AssignLiftsDto): Promise<EmployeeResponseDto> {
-    await this.findOne(orgId, id);
-    if (dto.liftIds.length > 0) {
-      const lifts = await this.prisma.lift.findMany({
-        where: { id: { in: dto.liftIds }, orgId, deletedAt: null },
-        take: 1000,
-      });
-      if (lifts.length !== dto.liftIds.length) {
-        throw new NotFoundException('Один або кілька підйомників не знайдено');
-      }
+    const [employee, lifts] = await Promise.all([
+      this.prisma.employee.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      dto.liftIds.length > 0
+        ? this.prisma.lift.findMany({
+            where: { id: { in: dto.liftIds }, orgId, deletedAt: null },
+            take: 1000,
+            select: { id: true },
+          })
+        : Promise.resolve([] as Array<{ id: string }>),
+    ]);
+    if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    if (dto.liftIds.length > 0 && lifts.length !== dto.liftIds.length) {
+      throw new NotFoundException('Один або кілька підйомників не знайдено');
     }
     await this.prisma.$transaction(
       async tx => {
@@ -176,15 +192,22 @@ export class EmployeesService {
     id: string,
     dto: AssignWorkCategoriesDto,
   ): Promise<EmployeeResponseDto> {
-    await this.findOne(orgId, id);
-    if (dto.workCategoryIds.length > 0) {
-      const cats = await this.prisma.workCategory.findMany({
-        where: { id: { in: dto.workCategoryIds }, orgId, deletedAt: null },
-        take: 1000,
-      });
-      if (cats.length !== dto.workCategoryIds.length) {
-        throw new NotFoundException('Одну або кілька категорій не знайдено');
-      }
+    const [employee, cats] = await Promise.all([
+      this.prisma.employee.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      dto.workCategoryIds.length > 0
+        ? this.prisma.workCategory.findMany({
+            where: { id: { in: dto.workCategoryIds }, orgId, deletedAt: null },
+            take: 1000,
+            select: { id: true },
+          })
+        : Promise.resolve([] as Array<{ id: string }>),
+    ]);
+    if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    if (dto.workCategoryIds.length > 0 && cats.length !== dto.workCategoryIds.length) {
+      throw new NotFoundException('Одну або кілька категорій не знайдено');
     }
     await this.prisma.$transaction(
       async tx => {
@@ -205,15 +228,22 @@ export class EmployeesService {
     id: string,
     dto: AssignBranchesDto,
   ): Promise<EmployeeResponseDto> {
-    await this.findOne(orgId, id);
-    if (dto.branchIds.length > 0) {
-      const branches = await this.prisma.garageBranch.findMany({
-        where: { id: { in: dto.branchIds }, orgId, deletedAt: null },
-        take: 100,
-      });
-      if (branches.length !== dto.branchIds.length) {
-        throw new NotFoundException('Одну або кілька філій не знайдено');
-      }
+    const [employee, branches] = await Promise.all([
+      this.prisma.employee.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      dto.branchIds.length > 0
+        ? this.prisma.garageBranch.findMany({
+            where: { id: { in: dto.branchIds }, orgId, deletedAt: null },
+            take: 100,
+            select: { id: true },
+          })
+        : Promise.resolve([] as Array<{ id: string }>),
+    ]);
+    if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    if (dto.branchIds.length > 0 && branches.length !== dto.branchIds.length) {
+      throw new NotFoundException('Одну або кілька філій не знайдено');
     }
     await this.prisma.$transaction(
       async tx => {

@@ -8,6 +8,14 @@ import {
   CalendarSlotResponseDto,
 } from './calendar.dto';
 
+// Module-level Intl singleton — kyivOffsetMs is called on every findSlots/createSlot/updateSlot,
+// avoid re-allocating the DateTimeFormat on each request.
+const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Kyiv',
+  hour: '2-digit',
+  hour12: false,
+});
+
 @Injectable()
 export class CalendarService {
   constructor(private readonly prisma: PrismaService) {}
@@ -258,14 +266,9 @@ export class CalendarService {
   }
 
   private kyivOffsetMs(d: Date): number {
-    // Returns Kyiv UTC offset in ms (e.g. +3h = 10800000) using Intl
-    const utcStr = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Kyiv',
-      hour: '2-digit',
-      hour12: false,
-    }).format(d);
+    // Returns Kyiv UTC offset in ms (e.g. +3h = 10800000) using Intl singleton
     const utcHour = new Date(d).getUTCHours();
-    const kyivHour = parseInt(utcStr, 10);
+    const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
     return ((kyivHour - utcHour + 24) % 24) * 3600000;
   }
 

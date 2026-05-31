@@ -8,6 +8,10 @@ import {
   AvailabilitySlotDto,
 } from './booking.dto';
 
+// Module-level Intl singleton — `.toLocaleDateString('uk-UA')` allocates a new formatter
+// per call. Booking create runs on every public widget submit → hoist.
+const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA');
+
 @Injectable()
 export class BookingService {
   constructor(
@@ -162,7 +166,7 @@ export class BookingService {
         templateCode: 'BOOKING_CONFIRMATION',
         params: {
           clientName: dto.clientName,
-          date: new Date(dto.requestedDate).toLocaleDateString('uk-UA'),
+          date: UA_DATE_FMT.format(new Date(dto.requestedDate)),
           branchName: branch.name,
         },
       },

@@ -1447,7 +1447,11 @@ model Payment {
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
 
   @@index([orgId, workOrderId])
-  @@index([orgId, counterpartyId])
+  // Covering: list endpoint sorts by createdAt DESC + filters by counterpartyId.
+  // Замінює `(orgId, counterpartyId)` → Postgres віддає рядки в індекс-order, sort node зникає.
+  @@index([orgId, counterpartyId, createdAt])
+  // For unfiltered list (no counterpartyId): orgId + createdAt DESC + take
+  @@index([orgId, createdAt])
   @@map("payments")
 }
 
@@ -1613,7 +1617,9 @@ model CompletionAct {
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id])
 
   @@unique([orgId, number])
-  @@index([orgId, workOrderId, deletedAt])
+  // Covering: findAll(orgId, workOrderId?) sorted by createdAt DESC + take 100.
+  // Замінює `(orgId, workOrderId, deletedAt)` → робить Index Scan + sort node у 0.
+  @@index([orgId, workOrderId, deletedAt, createdAt])
   @@index([orgId, syncVersion])
   @@map("completion_acts")
 }

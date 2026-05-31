@@ -8,6 +8,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
+// Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
+// Intl.NumberFormat under the hood per call. Used on every payment.create when SMS sent.
+const UAH_AMOUNT_FMT = new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2 });
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -158,7 +162,7 @@ export class PaymentsService {
       this.notifications
         .send(orgId, 'PAYMENT_RECEIVED', {
           phone: counterparty.phone,
-          amount: dto.amount.toLocaleString('uk-UA', { minimumFractionDigits: 2 }),
+          amount: UAH_AMOUNT_FMT.format(dto.amount),
           clientName: formatPersonName(
             counterparty.lastName,
             counterparty.firstName,

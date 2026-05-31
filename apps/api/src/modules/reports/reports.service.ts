@@ -3,13 +3,16 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName } from '@sto/shared';
 
+// Module-level Intl singleton — locale-data init is the dominant cost; both
+// normalizeDateRange branches and report calls go through kyivOffsetMs.
+const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Kyiv',
+  hour: '2-digit',
+  hour12: false,
+});
+
 function kyivOffsetMs(d: Date): number {
-  const utcStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Kyiv',
-    hour: '2-digit',
-    hour12: false,
-  }).format(d);
-  const kyivHour = parseInt(utcStr, 10);
+  const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
   const utcHour = d.getUTCHours();
   return ((kyivHour - utcHour + 24) % 24) * 3_600_000;
 }

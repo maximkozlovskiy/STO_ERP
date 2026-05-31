@@ -26,19 +26,22 @@ export class NotificationsService {
       this.logger.debug(`branchId не вказано для org=${orgId}, event=${event} — SMS пропущено`);
       return;
     }
-    const branchSettings = await this.prisma.branchSettings.findFirst({
-      where: { branchId, orgId },
-    });
+    // Parallel: branchSettings + notificationTemplate are independent reads on different
+    // tables, both filtered by orgId. Both must succeed for SMS dispatch — running them
+    // concurrently collapses 2 sequential RTT into 1 on every notification fan-out.
+    const [branchSettings, template] = await Promise.all([
+      this.prisma.branchSettings.findFirst({
+        where: { branchId, orgId },
+      }),
+      this.prisma.notificationTemplate.findFirst({
+        where: { orgId, eventType: event, channel: 'SMS', isActive: true },
+      }),
+    ]);
 
     if (!branchSettings?.smsEnabled || !branchSettings?.smsApiKey) {
       this.logger.debug(`SMS не налаштовано для org=${orgId}, event=${event}`);
       return;
     }
-
-    // Load notification template
-    const template = await this.prisma.notificationTemplate.findFirst({
-      where: { orgId, eventType: event, channel: 'SMS', isActive: true },
-    });
 
     if (!template) {
       this.logger.debug(`Шаблон сповіщення ${event}/SMS не знайдено для org=${orgId}`);

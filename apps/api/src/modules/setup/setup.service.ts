@@ -68,16 +68,17 @@ export class SetupService {
           RECONCILIATION_ACT: 'АС',
         };
 
-        for (const docType of docTypes) {
-          await tx.documentNumberConfig.create({
-            data: {
-              orgId: org.id,
-              documentType: docType,
-              prefix: prefixMap[docType] ?? null,
-              resetPeriod: 'YEARLY',
-            },
-          });
-        }
+        // createMany — single round-trip per table replaces 8+5 sequential
+        // creates. Doc-configs and payment methods have no relations to set,
+        // so batch insert is safe inside the bootstrap transaction.
+        await tx.documentNumberConfig.createMany({
+          data: docTypes.map(docType => ({
+            orgId: org.id,
+            documentType: docType,
+            prefix: prefixMap[docType] ?? null,
+            resetPeriod: 'YEARLY' as const,
+          })),
+        });
 
         // 4. Default payment methods
         const methods = [
@@ -92,9 +93,9 @@ export class SetupService {
           { code: 'privat24_qr', name: 'PrivatPay QR', sortOrder: 4, requiresFiscal: true },
           { code: 'monobank_qr', name: 'MonoPay QR', sortOrder: 5, requiresFiscal: true },
         ];
-        for (const m of methods) {
-          await tx.paymentMethodConfig.create({ data: { orgId: org.id, ...m } });
-        }
+        await tx.paymentMethodConfig.createMany({
+          data: methods.map(m => ({ orgId: org.id, ...m })),
+        });
 
         // 5. Default tax rates
         await tx.taxRate.createMany({

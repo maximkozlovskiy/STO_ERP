@@ -2,6 +2,15 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentType } from '@prisma/client';
 
+// Module-level Intl singleton — `new Intl.DateTimeFormat()` is expensive (locale-data init).
+// Called on every document number generation (WO/Invoice/PO/SD/CompletionAct/ReconciliationAct create);
+// hoisting prevents allocating a new formatter on the hot create-document path.
+const KYIV_YEAR_MONTH_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Kyiv',
+  year: 'numeric',
+  month: '2-digit',
+});
+
 @Injectable()
 export class DocumentNumberService {
   constructor(private readonly prisma: PrismaService) {}
@@ -45,12 +54,7 @@ export class DocumentNumberService {
 
         const cfg = configs[0];
         const now = new Date();
-        const kyivFmt = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Europe/Kyiv',
-          year: 'numeric',
-          month: '2-digit',
-        });
-        const [currentYear, currentMonth] = kyivFmt.format(now).split('-').map(Number);
+        const [currentYear, currentMonth] = KYIV_YEAR_MONTH_FMT.format(now).split('-').map(Number);
 
         const needsYearlyReset =
           cfg.resetPeriod === 'YEARLY' &&
