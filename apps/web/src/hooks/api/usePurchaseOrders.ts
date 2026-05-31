@@ -8,6 +8,8 @@ export interface POLine {
   goodName?: string;
   goodSku?: string | null;
   unit?: string;
+  unitShortName?: string;
+  coefficient?: number;
   quantity: number;
   price: number;
   amount?: number;

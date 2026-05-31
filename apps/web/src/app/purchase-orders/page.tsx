@@ -578,7 +578,7 @@ export default function PurchaseOrdersPage() {
                   <p className="text-muted-foreground text-[12px]">{line.goodSku}</p>
                 )}
                 <p className="text-muted-foreground text-[12px] mt-0.5">
-                  {line.quantity} {line.unit ?? ''} × {fmtMoney(line.price)} ₴
+                  {line.quantity} {line.unitShortName ?? line.unit ?? ''} × {fmtMoney(line.price)} ₴
                 </p>
               </div>
             ))}
@@ -1032,6 +1032,7 @@ export default function PurchaseOrdersPage() {
                       value={l.goodId}
                       displayValue={l.goodName}
                       onSelect={async g => {
+                        const selectedGoodId = g.id;
                         setLines(ls =>
                           ls.map((x, idx) =>
                             idx === i
@@ -1051,30 +1052,35 @@ export default function PurchaseOrdersPage() {
                         // Завантажити UoM для цього товару
                         try {
                           const uoms = await apiFetch<GoodUoM[]>(`/goods/${g.id}/uoms`);
+                          // Race-guard: якщо користувач встиг обрати інший товар у цьому рядку,
+                          // не застосовувати застарілу відповідь
                           setLines(ls =>
-                            ls.map((x, idx) =>
-                              idx === i
-                                ? {
-                                    ...x,
-                                    goodUoMs: uoms,
-                                    // Автоматично встановити default UoM якщо є
-                                    ...(uoms.length > 0
-                                      ? {
-                                          unitId: uoms.find(u => u.isDefault)?.id || uoms[0].id,
-                                          unitShortName:
-                                            uoms.find(u => u.isDefault)?.unitShortName ||
-                                            uoms[0].unitShortName,
-                                          coefficient:
-                                            uoms.find(u => u.isDefault)?.coefficient ||
-                                            uoms[0].coefficient,
-                                        }
-                                      : {}),
-                                  }
-                                : x,
-                            ),
+                            ls.map((x, idx) => {
+                              if (idx !== i || x.goodId !== selectedGoodId) return x;
+                              const defaultUom = uoms.find(u => u.isDefault) ?? uoms[0];
+                              return {
+                                ...x,
+                                goodUoMs: uoms,
+                                ...(defaultUom
+                                  ? {
+                                      unitId: defaultUom.id,
+                                      unitShortName: defaultUom.unitShortName,
+                                      coefficient: defaultUom.coefficient || 1,
+                                    }
+                                  : {}),
+                              };
+                            }),
                           );
-                        } catch {
-                          // Якщо помилка при завантаженні UoM — продовжити без них
+                        } catch (err) {
+                          if (features.toastEnabled) {
+                            toast.error('Не вдалося завантажити одиниці виміру');
+                          } else {
+                            setError(
+                              err instanceof Error
+                                ? err.message
+                                : 'Не вдалося завантажити одиниці виміру',
+                            );
+                          }
                         }
                       }}
                       onClear={() =>
@@ -1122,8 +1128,8 @@ export default function PurchaseOrdersPage() {
                       onChange={e => {
                         const selectedUom = l.goodUoMs.find(u => u.id === e.target.value);
                         if (selectedUom) {
-                          const oldCoeff = l.coefficient;
-                          const newCoeff = selectedUom.coefficient;
+                          const oldCoeff = l.coefficient || 1;
+                          const newCoeff = selectedUom.coefficient || 1;
                           const currentQty = parseFloat(l.quantity) || 1;
                           const newQty = (currentQty * oldCoeff) / newCoeff;
                           setLines(ls =>
@@ -1233,7 +1239,7 @@ export default function PurchaseOrdersPage() {
                     <tr key={i}>
                       <td className="px-3 py-2 text-foreground">{l.goodName}</td>
                       <td className="px-3 py-2 text-right">
-                        {l.quantity} {(l as any).unitShortName ?? l.unit}
+                        {l.quantity} {l.unitShortName ?? l.unit}
                       </td>
                       <td
                         className={cn(
@@ -1300,8 +1306,8 @@ export default function PurchaseOrdersPage() {
                   <div className="flex-1">
                     <div className="text-sm font-medium text-foreground">{line.goodName}</div>
                     <div className="text-xs text-muted-foreground">
-                      Замовлено: {line.quantity} {(line as any).unitShortName ?? line.unit} ·
-                      Отримано раніше: {line.receivedQty ?? 0}
+                      Замовлено: {line.quantity} {line.unitShortName ?? line.unit} · Отримано
+                      раніше: {line.receivedQty ?? 0}
                     </div>
                   </div>
                   <Input
@@ -1320,7 +1326,7 @@ export default function PurchaseOrdersPage() {
                     className="w-28 text-right"
                   />
                   <span className="text-xs text-muted-foreground">
-                    {(line as any).unitShortName ?? line.unit}
+                    {line.unitShortName ?? line.unit}
                   </span>
                 </div>
               ))}
