@@ -9,14 +9,14 @@
 ## Останній commit
 
 ```
-<pending> fix(tester): cycle 2 — Bugs #251-#256 (booking DoS + cross-tenant FK + comments validation + specs)
+af5f4f8 fix(tester): cycle 2 — Bugs #251-#256 (booking DoS + cross-tenant FK + comments validation + specs)
 c5d04bc docs(skills): add RolesGuard-without-@Roles pattern to sto-review
 15e8203 docs(memory): record sto-review-agent cycle 2 — 6 defense-in-depth fixes
 6a84c11 fix(review): cycle 2 — defense-in-depth on B1/B3/B5/B12 endpoints + Search roles
 d2ea44c docs(memory): record sto-sync-agent cycle 2 results
 Дата: 2026-05-31
 
-Latest tester: 2026-05-31 (sto-tester-agent цикл 2 з 5, HEAD c5d04bc → <pending>) — **6 багів виправлено** (2 HIGH + 3 MEDIUM + 1 LOW; фокус — Phase 21+22 модулі: booking/comments/warranties/loyalty/inspection).
+Latest tester: 2026-05-31 (sto-tester-agent цикл 2 з 5, HEAD c5d04bc → af5f4f8) — **6 багів виправлено** (2 HIGH + 3 MEDIUM + 1 LOW; фокус — Phase 21+22 модулі: booking/comments/warranties/loyalty/inspection).
 **Знайдено через статичний аналіз — 0 runtime регресій:**
 (1) Bug #251 (HIGH) §1.4 anti-DoS — booking.dto без `@ArrayMaxSize` на ПУБЛІЧНОМУ endpoint. Зловмисник міг POST-ити `Array(1M).fill(UUID)` → ValidationPipe виконав би N×regex перед 400 → DoS. Додано `@ArrayMaxSize(50)` до обох DTO (BookingAvailabilityQueryDto + CreateBookingRequestDto).
 (2) Bug #252 (HIGH) §1.1 cross-tenant FK — booking.service.create зберігав `serviceIds` (Postgres `text[]`, не FK) без перевірки що Work.orgId === orgId. Публічний endpoint приймав UUID-и з чужих org → cross-tenant linkage. Додано `prisma.work.count({ where: { id: { in: serviceIds }, orgId } })` паралельно з branch-guard. Regression-test у `booking.service.spec.ts`.
