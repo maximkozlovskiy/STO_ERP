@@ -31,19 +31,25 @@ export class FollowUpScheduler implements OnModuleInit {
     // BullMQ deduplicates repeatable jobs by `jobId`, so add() is idempotent —
     // no need to delete-and-recreate on every restart (Bug #108).
     // Fires at 09:00 Kyiv time (BullMQ respects DST via tz: 'Europe/Kyiv').
-    for (const org of orgs) {
-      await this.followUpQueue.add(
-        'send-reminders',
-        { orgId: org.id },
-        {
-          repeat: { cron: '0 9 * * *', tz: 'Europe/Kyiv' },
-          attempts: 10,
-          backoff: { type: 'exponential', delay: 60_000 },
-          jobId: `followup-${org.id}`,
-          removeOnComplete: true,
-        },
-      );
-    }
+    // Parallel fan-out: queue.add робить незалежний Redis RTT на кожен org. Sequential
+    // await серіалізував їх N×(Redis RTT). Promise.all collapses у concurrent batch —
+    // Bull pipelines через ioredis multi/exec. На on-prem (1 org) — no-op; для cloud
+    // (N orgs) — startup ledger.
+    await Promise.all(
+      orgs.map(org =>
+        this.followUpQueue.add(
+          'send-reminders',
+          { orgId: org.id },
+          {
+            repeat: { cron: '0 9 * * *', tz: 'Europe/Kyiv' },
+            attempts: 10,
+            backoff: { type: 'exponential', delay: 60_000 },
+            jobId: `followup-${org.id}`,
+            removeOnComplete: true,
+          },
+        ),
+      ),
+    );
 
     this.logger.log(`FollowUp CRON зареєстровано для ${orgs.length} організацій`);
   }

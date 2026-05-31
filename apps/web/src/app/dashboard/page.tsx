@@ -95,6 +95,29 @@ function fmt(n: number) {
   return fmtInt(n) + ' ₴';
 }
 
+// Module-level Intl singletons — раніше створювались inline у useEffect (loadData kyivDate
+// callback + monthStart kyivStr + setTodayStr + greeting hour) = 4 формати на кожен mount.
+// Hoist robить кожен виклик дешевим .format() без locale-data init.
+const KYIV_YMD_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const KYIV_YEAR_MONTH_DAY_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Kyiv',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+const KYIV_FULL_DATE_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: 'Europe/Kyiv',
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+const KYIV_HOUR_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: 'Europe/Kyiv',
+  hour: 'numeric',
+  hour12: false,
+});
+
 const ALL_QUICK_ACTIONS = [
   { href: '/work-orders', label: 'Новий наряд', icon: Wrench },
   { href: '/crm', label: 'Новий клієнт', icon: Users },
@@ -133,16 +156,10 @@ export default function DashboardPage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const kyivDate = (d: Date) =>
-          new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
+        const kyivDate = (d: Date) => KYIV_YMD_FMT.format(d);
         const today = kyivDate(new Date());
         const now = new Date();
-        const kyivStr = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Europe/Kyiv',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }).format(now);
+        const kyivStr = KYIV_YEAR_MONTH_DAY_FMT.format(now);
         const [kyivYear, kyivMonth] = kyivStr.split('-').map(Number);
         const monthStart = `${kyivYear}-${String(kyivMonth).padStart(2, '0')}-01`;
         const weekStart = kyivDate(new Date(Date.now() - 6 * 86_400_000));
@@ -195,23 +212,8 @@ export default function DashboardPage() {
     };
 
     loadData();
-    setTodayStr(
-      new Date().toLocaleDateString('uk-UA', {
-        timeZone: 'Europe/Kyiv',
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      }),
-    );
-    const h = parseInt(
-      new Intl.DateTimeFormat('uk-UA', {
-        timeZone: 'Europe/Kyiv',
-        hour: 'numeric',
-        hour12: false,
-      }).format(new Date()),
-      10,
-    );
+    setTodayStr(KYIV_FULL_DATE_FMT.format(new Date()));
+    const h = parseInt(KYIV_HOUR_FMT.format(new Date()), 10);
     setGreeting(h < 12 ? 'Доброго ранку' : h < 18 ? 'Доброго дня' : 'Доброго вечора');
     try {
       const saved = localStorage.getItem(QA_STORAGE_KEY);

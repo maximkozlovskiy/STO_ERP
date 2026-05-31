@@ -1675,7 +1675,10 @@ model Warranty {
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
-  @@index([orgId, counterpartyId, deletedAt])
+  // Covering index: findByCounterparty/findByWorkOrder сортують по createdAt DESC,
+  // findExpiring сортує по expiresAt ASC. Раніше (orgId, counterpartyId, deletedAt) без
+  // createdAt → Sort node поверх Index Scan. Додаємо createdAt у covering для DESC-sort.
+  @@index([orgId, counterpartyId, deletedAt, createdAt])
   @@index([orgId, expiresAt, deletedAt])
   @@map("warranties")
 }
@@ -1741,7 +1744,9 @@ model WebhookEndpoint {
   org        Organisation      @relation(fields: [orgId], references: [id])
   deliveries WebhookDelivery[]
 
-  @@index([orgId, deletedAt])
+  // Covering index: findAll сортує по createdAt DESC + filter deletedAt. Без createdAt
+  // у індексі Postgres робив Sort node поверх Index Scan на (orgId, deletedAt).
+  @@index([orgId, deletedAt, createdAt])
   @@index([orgId, isActive])
   @@map("webhook_endpoints")
 }
@@ -1811,8 +1816,11 @@ model BookingRequest {
   org    Organisation  @relation(fields: [orgId], references: [id])
   branch GarageBranch  @relation(fields: [branchId], references: [id])
 
+  // Covering index: findAll сортує по createdAt DESC + filter deletedAt. Existing
+  // (orgId, createdAt) покривав unfiltered scan; для findAll з deletedAt=null фільтром
+  // (orgId, deletedAt, createdAt) даs covering без heap-read для розбраковки soft-deleted.
   @@index([orgId, status, deletedAt])
-  @@index([orgId, createdAt])
+  @@index([orgId, deletedAt, createdAt])
   @@map("booking_requests")
 }
 

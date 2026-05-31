@@ -14,6 +14,11 @@ const MAX_SCHEDULES_PER_RUN = 1000;
 const MAX_VEHICLES_PER_RUN = 1000;
 const MAINTENANCE_FORECAST_DAYS = 14;
 
+// Module-level Intl singleton — `.toLocaleDateString('uk-UA')` allocates a new formatter
+// per call. Used in hot loop через `for (const schedule of upcomingMaintenance)` × N schedules
+// × щоденний tick → hoist to module-level (sto-optimize: Intl.DateTimeFormat у hot-path).
+const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA');
+
 @Injectable()
 @Processor('followup')
 export class FollowUpProcessor {
@@ -28,16 +33,19 @@ export class FollowUpProcessor {
   async handleSendReminders(job: Job<FollowUpJob>) {
     const { orgId } = job.data;
 
-    const settings = await this.prisma.organisationSettings.findFirst({ where: { orgId } });
+    // Parallel: settings + branch — independent reads (різні таблиці, обидва orgId-scoped).
+    // -1 RTT на кожен daily tick. Раніше: послідовно settings → branch.
+    const [settings, branch] = await Promise.all([
+      this.prisma.organisationSettings.findFirst({ where: { orgId } }),
+      // Pick the oldest branch for SMS sender config (Bug #100).
+      // TODO: for multi-branch orgs, resolve per-vehicle by lastWorkOrderBranchId or
+      // expose Organisation-level SMS config. Current behaviour: stable "first created" branch.
+      this.prisma.garageBranch.findFirst({
+        where: { orgId, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
     if (!settings?.followUpActive) return;
-
-    // Pick the oldest branch for SMS sender config (Bug #100).
-    // TODO: for multi-branch orgs, resolve per-vehicle by lastWorkOrderBranchId or
-    // expose Organisation-level SMS config. Current behaviour: stable "first created" branch.
-    const branch = await this.prisma.garageBranch.findFirst({
-      where: { orgId, deletedAt: null },
-      orderBy: { createdAt: 'asc' },
-    });
     if (!branch) return;
 
     // DST-safe Kyiv "today" anchor (Bug #99). Set UTC 09:00 (= 11:00/12:00 Kyiv depending on DST)
@@ -150,7 +158,7 @@ export class FollowUpProcessor {
           vehicleModel: schedule.vehicle.model,
           licensePlate: schedule.vehicle.licensePlate ?? '',
           nextMaintenanceDate: schedule.nextMaintenanceDate
-            ? ` ${schedule.nextMaintenanceDate.toLocaleDateString('uk-UA')}`
+            ? ` ${UA_DATE_FMT.format(schedule.nextMaintenanceDate)}`
             : '',
         });
         sendSuccess++;

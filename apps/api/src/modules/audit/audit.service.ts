@@ -47,12 +47,20 @@ export class AuditService {
     // limit and silently hid extra events from the UI. Use a real $transaction count
     // so the frontend knows the actual number of events for this entity.
     const where = { orgId, entityType, entityId };
+    // Narrow select: toDto читає лише id/action/diff/createdAt/user — заміна `include` на
+    // явний `select` прибирає over-fetch (orgId/entityType/entityId/userId). Index
+    // (orgId, entityType, entityId, createdAt) залишається covering — Postgres відає рядки
+    // в індекс-order, без heap-read для непотрібних колонок.
     const [items, total] = await this.prisma.$transaction([
       this.prisma.auditEvent.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         take: 100,
-        include: {
+        select: {
+          id: true,
+          action: true,
+          diff: true,
+          createdAt: true,
           user: { select: { firstName: true, lastName: true } },
         },
       }),
