@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+3730db8 perf(calendar): skip day-view fetch in stats/month view + module-level EMPTY_FORM
+942f90b fix(sync): hide Slot button in stats view to prevent phantom showAdd state
 fix(tester): cycle 6 — Bugs #277-#282 — nav prefetch shape mismatch + sync error state + dead imports
 3367da8 perf(nav): reports prefetch + complete dashboard prefetch + reports keepPreviousData
 b5766eb fix(topshell): move useQueryClient above conditional returns — Rules of Hooks

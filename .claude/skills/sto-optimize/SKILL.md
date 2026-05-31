@@ -403,6 +403,41 @@ const items = data?.items ?? [];
 
 **Залишається немігрованим:** `calendar/page.tsx` (1460 рядків + dnd-kit — складний рефакторинг, відкладено).
 
+### 2.11 View-mode shared-state — data fetch не guard-ed по active view
+
+```bash
+# Сторінки з view switcher (calView/viewMode/mode/tab) — знайти effects без view-guard
+grep -rln "setCalView\|setViewMode\|setMode\|setActiveTab\|setTab" apps/web/src/app/ --include="*.tsx" | xargs grep -l "useEffect"
+
+# В кожному файлі-кандидаті — пошук useEffect що викликає load/fetch без deps на view
+# Шаблон: useEffect(() => { ... load() ... }, [shared_key]) — без calView/mode у deps
+```
+
+**Проблема:** Один `date`/`id`/`filters` state шарінгується між day/month/stats views. Effect що завантажує дані day-view має deps `[date]` без `calView` — стріляє і коли користувач у stats/month. Wasted RTT на кожну зміну shared key у не-активному виді.
+
+**Фікс:** Додати guard у тіло ефекту + view-state у deps:
+
+```typescript
+// ❌ ДО — стріляє у всіх видах
+useEffect(() => {
+  load();
+}, [load]);
+
+// ✅ ПІСЛЯ — тільки у активному виді; при поверненні до виду — оновить
+useEffect(() => {
+  if (calView === 'day') load();
+}, [load, calView]);
+```
+
+### 2.12 EMPTY*\*/DEFAULT*\* константа всередині компонента
+
+```bash
+# SCREAMING_CASE декларація всередині function body (не module-level)
+grep -rn "^  const [A-Z][A-Z_]\+\s*[:=]" apps/web/src/app/ --include="*.tsx" | grep -v "//\|^[^:]*:\s*$" | head -10
+```
+
+**Фікс:** Підняти декларацію на module-level (поза функцією-компонентом). Якщо тип з того ж файлу — теж підняти. Не плутати з `useMemo`-залежними значеннями.
+
 ---
 
 ## Крок 3 — DB аудит
@@ -532,6 +567,43 @@ TypeScript: ✅ 0 errors
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-01 — View-state-gated fetch effects — багатовидові сторінки (day/month/stats, list/grid/calendar)
+
+**Сигнал:** Сторінка має тумблер виду (`useState<'day'|'month'|'stats'>` або подібне), окремі `useEffect` для кожного виду, АЛЕ один із них залежить тільки від data-key (`[date]`, `[id]`, `[filters]`) без `[viewMode]`. Кожен новий `useEffect` для нового виду додається з guard `if (viewMode === 'X') loadX()`, тоді як старий "default" effect залишається без guard — успадковане технічне рішення з часів коли був один вид.
+
+**Причина виникнення:** Початково сторінка має один вид → `useEffect(() => load(), [key])` без guard. Коли додається другий/третій вид, розробник додає окремі guarded effects для нових видів, але забуває переписати «дефолтний» — він далі стріляє у всіх видах. Не помітно бо UI показує тільки потрібний вид, а в Network panel зайвий запит можна не помітити серед інших.
+
+**Підхід до виявлення:**
+
+1. Якщо у файлі є `setView/setMode/setTab/setCalView` → знайти всі `useEffect` що викликають data-load.
+2. Для кожного перевірити: чи усі гілки виду використовують цей дані? Чи дані шарінгуються (наприклад `date` між day/stats)?
+3. Якщо дані суто для одного виду, але effect стріляє завжди → знайдено.
+4. Швидкий grep: `useEffect.*\[load.*\]` без сусіднього `viewMode|tab|calView|activeTab` у деп-листі.
+
+**Підхід до фіксу:** Додати guard `if (viewMode === 'X') load()` до effect; додати `viewMode` у dep array. Так при поверненні до виду дані оновляться. Альтернатива — переписати з `useQuery({ enabled: viewMode === 'X' })`.
+
+**Реальний impact:** Один зайвий round-trip на кожну зміну shared key (date, id, filters) у not-active view. На сторінках з частою навігацією (calendar prev/next day, stats date picker) — десятки зайвих запитів за сесію.
+
+**Де шукати ще:** Reports з режимом chart/table, Inventory з режимом goods/movements, Dashboard з period-toggle, будь-яка сторінка з view switcher і shared date-state.
+
+---
+
+### 2026-06-01 — Object literals як local const у тілі компонента — DEFAULT/EMPTY initializers
+
+**Сигнал:** `const EMPTY_FORM = {...}` або `const DEFAULT_FILTERS = {...}` оголошені всередині функції-компонента (capslock назва = натяк на константу, але scope локальний).
+
+**Причина виникнення:** Розробник створює initializer для `useState(EMPTY_FORM)`, потім використовує той самий об'єкт у `setForm(EMPTY_FORM)` reset-хендлерах. Інстинктивно ставить decl поряд із `useState`. Capslock назва ховає той факт що об'єкт рекреюється на кожен render.
+
+**Підхід до виявлення:** У React-компонентах шукати `const [A-Z_]+\s*=\s*\{` всередині body (не на module level). Маркер: назва у SCREAMING_CASE → ймовірно мала бути константою.
+
+**Підхід до фіксу:** Підняти на module level. Якщо потрібна type-аннотація і тип оголошений у тому ж файлі — перенести оголошення типу вище. Перевірити що значення не залежить від props/state (якщо залежить — це не константа, treba useMemo).
+
+**Реальний impact:** Окрема allocation на кожен render — для важких компонентів з частими ре-рендерами (drag, resize, real-time updates) це міра десяток зайвих об'єктів/с. Також ref-equality для memo-children: `setForm(EMPTY_FORM)` тригерить change-detection у children що отримують `form` як prop, навіть коли значення семантично таке саме.
+
+**Де шукати ще:** Calendar, WorkOrder edit forms, Counterparty wizard, будь-який багатокроковий form-wizard з reset-логікою.
+
+---
 
 ### 2026-05-28 — Довідники без кешу — settings/catalog/infrastructure модулі
 
