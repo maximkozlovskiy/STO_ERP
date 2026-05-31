@@ -77,10 +77,7 @@ export class FilesService implements OnModuleInit {
             Effect: 'Allow',
             Principal: { AWS: ['*'] },
             Action: ['s3:GetObject'],
-            Resource: [
-              `arn:aws:s3:::${this.bucket}/orgs/*`,
-              `arn:aws:s3:::${this.bucket}/work-orders/*`,
-            ],
+            Resource: [`arn:aws:s3:::${this.bucket}/org/*`],
           },
         ],
       });
