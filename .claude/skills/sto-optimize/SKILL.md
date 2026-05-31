@@ -774,6 +774,28 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — Private parent-guard helper блокує tier merger — `await this.assertX/getEditableX` як перший рядок hot-path методу
+
+**Сигнал:** сервіс має приватний helper типу `getEditableWorkOrder(orgId, id)` / `assertCounterparty(orgId, id)` що робить parent.findFirst + business-rule check (status, isActive, deletedAt) і кидає виключення. Hot-path метод (addLine/addPart/updateLine/removeLine) починається з `await this.getEditableX(orgId, id)` — sequential — потім має `Promise.all([fk1, fk2])` parallel. Helper SEEM безпечним бо DRY, але він блокує tier merger: parent FK reads відбуваються в окремому RTT перед FK Promise.all
+**Причина виникнення:** parent-guard helper це рекомендована практика DRY у NestJS (тестабельний, переюзний, чітка відповідальність). Розробник не помічає що `await helper(...)` створює sequential point: parent fetch блокує наступні незалежні FK reads. Це антипатерн «encapsulation locked optimization» — добра абстракція стає performance bottleneck у вузьких місцях. Особливо болить на hot-path WO/invoice/PO/SD редагуванні де кожен click = +1 RTT
+**Підхід до виявлення:** для кожного hot-path методу (add/update/remove на дочірніх сутностях) перевірити чи перший await — це приватний helper-guard. Якщо так, прочитати helper: якщо він тільки робить parent.findFirst + sync business-rule check (без write/side-effect) — кандидат на inline merge. Helper можна СТЕРТИ або залишити для не-hot-path методів, а у гарячих — inline parent fetch у Promise.all з FK reads
+**Підхід до фіксу:** inline parent.findFirst всередину `Promise.all([wo, fk1, fk2])`. Перевірки `if (!wo) throw NotFound` та business-rule (`if (!EDITABLE.includes(wo.status)) throw`) перенести ПІСЛЯ awaits — порядок повідомлень про помилку зберігається. FK reads все одно безпечні від cross-tenant (їхній where має orgId). «Зайва» FK read для невалідного wo — це 1 RTT тратиться даремно у НЕЩАСНОМУ випадку (wo missing або locked) — копійки порівняно з виграшем у НОРМАЛЬНОМУ. Helper можна видалити якщо більше не використовується (DRY-програш менший за perf-виграш на hot-path)
+**Реальний impact:** для work-orders.addLine/addPart типового naryad-day flow (10+ edits на наряд) — кожен edit економить 1 RTT. На WAN 30-50ms × 10 edits × 5 нарядів на день = 1.5-2.5 сек збереження UI-латенсі на одного механіка. Recalc-помічники теж страждають від цього патерну
+**Де шукати ще:** будь-який приватний `async assertX/getEditableX/findOrThrow` у сервісі — для кожного use-site перевірити чи це hot-path (frequent calls per user session). Часті місця: WO line/part editing, invoice line editing, PO line editing, SD line editing, calendar slot updates. Helper-методи `private async findActive...` — теж кандидати
+
+---
+
+### 2026-05-31 — JS aggregation у post-mutation recalc helpers — `findMany({ select: { amount: true } }).reduce(...)` для перерахунку totals
+
+**Сигнал:** приватний helper типу `recalcTotals(parentId, tx)` робить `tx.X.findMany({ where: { parentId, orgId, deletedAt: null }, select: { amount: true }, take: 1000 })` потім `.reduce((s, l) => s + Number(l.amount), 0)`. Викликається після кожного add/update/remove на дочірніх сутностях (lines/parts/installments). На наряді з 20 рядками × 10 редагувань = 200 завантажень масиву + 200 JS reduce, хоча потрібен лише SUM
+**Причина виникнення:** "перевантажити з БД у пам'ять і обчислити" — найзвичніший підхід коли треба порахувати total. `findMany + reduce` читається лінійно. Розробник не помічає що Postgres має `SUM()` що рахує те саме у БД і повертає 1 рядок замість N. Take:1000 створює false-sense-of-safety («бо є ліміт»), але навіть 1000 рядків × N edits = непотрібний row marshaling N×1000
+**Підхід до виявлення:** grep `findMany.*select.*amount.*reduce` (або інші числові поля) у backend services. Для кожного збігу спитати: «це використання тільки для SUM/AVG/COUNT/MIN/MAX?» Якщо так — заміна на aggregate тривіальна. Особливо часто у helpers `recalcX`, `computeTotalY`, `updateBalance`, post-mutation hooks
+**Підхід до фіксу:** `prisma.X.aggregate({ where, _sum: { amount: true } })` замість findMany + JS reduce. Result: `{ _sum: { amount: Decimal | null } }`. `Number(result._sum.amount ?? 0)` дає число. Для кількох агрегацій з різних таблиць — `Promise.all([aggX, aggY])`. Index покриває WHERE — Postgres зазвичай робить index-only scan або bitmap scan без читання heap для непотрібних колонок. Видалити `take` (для aggregate не потрібен — Postgres сам ефективно агрегує всі рядки що відповідають WHERE)
+**Реальний impact:** для work-orders.recalcTotals (виклик на кожен add/update/remove line/part): 2× findMany(take:1000) + 2× JS reduce → 2× aggregate. Wire payload зменшується від 2× 1000 row × 4 bytes (Decimal) ≈ 8KB до 2× 1 row × 4 bytes ≈ 16 bytes. На наряді з активним редагуванням 10× recalcTotals — економія 80KB+ network + JS work. Найпомітніше у WO/PO/SD/Invoice де aggregates рахуються після кожного редагування рядка
+**Де шукати ще:** будь-який helper з ім'ям `recalc*/compute*/update*Totals/refresh*Balance` що приймає parentId і `tx`. Аналогічно: COUNT-only лічильники (`findMany(...).length` → `count(...)`), MIN/MAX через сортування + take:1. Перевіряти кожен post-mutation hook що рахує метрики
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -823,6 +845,10 @@ TypeScript: ✅ 0 errors
 - ✅ counterparties findGarages/removeGarage: parent (CP) + child (garage) у Promise.all (-1 RTT)
 - ✅ vehicles findNodes/removeNode: parent (vehicle) + child (node list/fetch) у Promise.all (-1 RTT)
 - ✅ inspection create: WO guard + @@unique inspectionReport check у Promise.all (-1 RTT)
+- ✅ work-orders addLine/addPart: tier merger — wo (parent-guard) + work/employee/good/warehouse у єдиний Promise.all (3 RTT → 1); helper getEditableWorkOrder inlined → removed
+- ✅ work-orders updateLine/removeLine/updatePart/removePart: same-aggregate parent (WO) + child (line/part) у Promise.all (-1 RTT each)
+- ✅ work-orders recalcTotals: findMany(take:1000) + JS reduce → prisma.aggregate({\_sum: amount}) — Postgres рахує SUM, повертає 2 числа замість 2000 рядків
+- ✅ loyalty redeem: assertCounterparty + organisationSettings у Promise.all (-1 RTT)
 
 **Frontend:**
 
@@ -854,6 +880,7 @@ TypeScript: ✅ 0 errors
 - ✅ reports/page.tsx + ReportsCharts.tsx: local fmt/fmtNum → fmtMoney + NUM_FMT_1 singleton; kyivDate → module-level KYIV_DATE_FMT/KYIV_YMD_FMT
 - ✅ settings/page.tsx: webhook delivery log timestamp → fmtShortDateTime
 - ✅ calendar/CalendarSlotModal.tsx: select-list item date → fmtKyivDate helper у calendar.utils (Kyiv-TZ DD.MM.YYYY singleton)
+- ✅ infrastructure/page.tsx: local formatDate (inline toLocaleDateString) → fmtDate proxy з @/lib/format — LiftRow рендерить 2× дати на рядок
 
 **DB:**
 

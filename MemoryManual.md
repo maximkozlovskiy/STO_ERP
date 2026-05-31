@@ -9,11 +9,21 @@
 ## Останній commit
 
 ```
+b530f17 perf(optimize): WO lines/parts hot-path + SQL aggregate + loyalty.redeem parallel
+659aa65 docs(skills,memory): add tiered-parallelization + many-to-one include patterns to sto-optimize
 2c8d5b9 perf(web): Intl singletons + lib/format proxies in 7 frontend pages
 846f8ff perf(api): parallelize parent-guard + child-fetch in 8 services + tighten goods.uom include→select
 Дата: 2026-05-31
 
-Latest optimize: 2026-05-31 (sto-optimize-agent ітерація-1, HEAD a334f99 → 2c8d5b9) — **15 точкових perf фіксів** в untouched-by-previous-sweeps областях (goods UoM/barcode endpoints, work-categories/works/vehicles/counterparties update+remove paths, dashboard/reports/vehicles[id]/RevenueChart/ReportsCharts intl singletons).
+Latest optimize: 2026-05-31 (sto-optimize-agent ітерація-2, HEAD 659aa65 → b530f17) — **8 точкових perf фіксів** на work-orders hot-path (lines/parts editing) + post-mutation recalc aggregate + loyalty.redeem.
+**Backend (8 fixes у 2 сервісах):** `work-orders.addLine`/`addPart` — tier merger getEditableWorkOrder helper inlined у Promise.all з FK reads (3 RTT → 1 кожен); `work-orders.updateLine`/`removeLine`/`updatePart`/`removePart` — same-aggregate parent (WO) + child (line/part) parallel (-1 RTT кожен); `work-orders.recalcTotals` — findMany(take:1000) × 2 + JS reduce замінено на `prisma.aggregate({_sum: amount})` × 2 (Postgres SUM, 2000 рядків → 2 числа); `loyalty.redeem` — assertCounterparty + organisationSettings parallel (-1 RTT). Helper getEditableWorkOrder видалено як unused.
+**Frontend (1 fix):** `infrastructure/page.tsx` — local formatDate (inline new Date().toLocaleDateString) → fmtDate proxy з @/lib/format. LiftRow рендерить lastMaintenance + nextMaintenance, тобто 2× Intl-конструкцій на рядок списку.
+**Impact:** WO line/part editing — daily hot-path (10+ edits на наряд). На WAN/VPN з RTT 30-50ms кожен edit швидший на 1-2 RTT, recalcTotals тепер не тягне 2000 рядків × N edits. Loyalty redeem менш hot, але -1 RTT тривіально. infrastructure list ререндери — 0 Intl-конструкцій замість 2N.
+**TypeScript:** ✅ 0 errors (api + web). work-orders tests 23/23 pass.
+**Нові SKILL patterns:** 2 нових entries у "Накопичені підходи" — (a) private parent-guard helper що блокує tier merger; (b) JS aggregation у post-mutation recalc helpers (findMany + reduce → aggregate _sum).
+**DB:** 0 нових індексів — existing `(orgId, workOrderId, deletedAt)` на WorkOrderLine/WorkOrderPart покриває aggregate.
+
+Previous optimize: 2026-05-31 (sto-optimize-agent ітерація-1, HEAD a334f99 → 2c8d5b9) — **15 точкових perf фіксів** в untouched-by-previous-sweeps областях (goods UoM/barcode endpoints, work-categories/works/vehicles/counterparties update+remove paths, dashboard/reports/vehicles[id]/RevenueChart/ReportsCharts intl singletons).
 **Backend (8 сервісів):** `goods.service.ts` getUoMs/addUoM/setDefaultUoM/removeUoM/getBarcodes/createBarcode — same-aggregate parent+child + count/dup collapsed у Promise.all (-1..-2 RTT each); UoM include: { unitOfMeasure: true } → select { name, shortName, coefficient } drop unused metadata. `exchange-rates.create` — currency + duplicate-check parallel (-1 RTT). `works.update` + `work-categories.update` — tenant guard + optional FK check у Promise.all. `counterparties.findGarages` + `removeGarage` — parent+child parallel. `vehicles.findNodes` + `removeNode` — same. `inspection.create` — WO guard + @@unique check у Promise.all (-1 RTT).
 **Frontend Intl singletons sweep (7 файлів):** `dashboard/page.tsx` — local fmt → fmtInt proxy + 2× toLocaleString у upcomingTO.map() → fmtInt/fmtDate. `vehicles/[id]/PageClient.tsx` — 6× inline .toLocale*  → fmtInt/fmtDate (nodes.map + schedules.map + 2 expiry blocks + mileage). `reports/page.tsx` — local fmt → fmtMoney proxy + fmtNum → module-level NUM_FMT_1 + kyivDate inline → module-level singletons. `reports/ReportsCharts.tsx` — local fmt → fmtMoney proxy. `dashboard/RevenueChart.tsx` — local fmt → fmtMoney proxy + tickFormatter inline → TICK_DATE_FMT module-level + labelFormatter → fmtDate. `settings/page.tsx` — webhook delivery log timestamp → fmtShortDateTime. `calendar/CalendarSlotModal.tsx` — select-list item date → new fmtKyivDate helper у calendar.utils (Kyiv-TZ DD.MM.YYYY singleton).
 **TypeScript:** ✅ 0 errors (api + web).
