@@ -492,6 +492,20 @@ grep -rn "validatePublicUrl\|url-guard" apps/api/src/modules/ --include="*.ts" |
 # fetch без redirect: 'manual' на user-supplied URL
 grep -rn "fetch(.*url\|fetch(dto\." apps/api/src/modules/ --include="*.ts" | grep -v "redirect:\|spec" | head -5
 
+# Bug #273: validatePublicUrl присутній АЛЕ redirect: 'manual' відсутній — defense-in-depth NOT PAIRED.
+# Сценарій атаки: validatePublicUrl блокує DIRECT внутрішні URL (127.0.0.1, link-local),
+# але атакувальник з OWNER правом ставить legit external host attacker.com → attacker.com
+# відповідає 302 Location: http://169.254.169.254/... → default fetch (redirect:'follow')
+# слідує redirect → POST з Authorization header летить у privately-routed VPC. Bypass.
+# Кожен файл що має ВЖЕ validatePublicUrl (або викликає fetch на user-controlled host) ПОВИНЕН
+# мати парний `redirect: 'manual'` + 3xx-rejection guard:
+for f in $(grep -l "validatePublicUrl\|branchSettings\.\|dto\.url\|dto\.webhookUrl\|endpoint\.url" \
+            apps/api/src/modules --include="*.ts" -r | grep -v spec); do
+  if grep -q "fetch(" "$f" && ! grep -q "redirect:\s*'manual'" "$f"; then
+    echo "BUG #273 MISSING: $f has fetch() to user-supplied host but no redirect: 'manual'"
+  fi
+done
+
 # @IsArray без @ArrayMaxSize
 grep -rn "@IsArray()" apps/api/src/modules/ --include="*.dto.ts" -A 2 | grep -v "ArrayMaxSize" | head -10
 
@@ -513,6 +527,7 @@ done
 
 - [ ] User-supplied URL що server fetch-ить → `validatePublicUrl()` (`apps/api/src/common/utils/url-guard.ts`)
 - [ ] `fetch(userUrl)` → `{ redirect: 'manual' }` + перевірка 3xx → block
+- [ ] **Paired SSRF defense (Bug #273):** `validatePublicUrl` (defense-in-depth #1) АБО `redirect: 'manual'` (defense-in-depth #2) **окремо** = частковий захист. ОБИДВА обов'язкові. Атакувальник з admin правом може поставити `branchSettings.checkboxApiUrl = "https://attacker.com"` (proxy legit external), і attacker.com відповідає `302 Location: http://169.254.169.254/...` → default fetch слідує redirect у cloud metadata з Authorization header. Webhooks вже мають обидва шари; будь-який новий outbound fetch (Checkbox, ПРРО, SMS provider, OAuth callback, postal API) автоматично має мати обидва. Grep: для кожного `fetch(...)` де URL = ${branchSettings.X}/${dto.X}/${cfg.X}/${endpoint.X} — перевірити (а) URL пройшов validatePublicUrl у тому ж scope; (б) options має `redirect: 'manual'`; (в) response.status у [300,400) → throw. Парне з контракт-тестом (checkbox.processor.spec.ts pattern: `301/302 → throw + НЕ оновлює DB`). Severity: CRITICAL (production SSRF, admin → cloud metadata access)
 - [ ] `@IsArray()` → `@ArrayMaxSize(N)` (N = реалістичний бізнес-ліміт)
 - [ ] Вільний `@IsString()` → `@MaxLength(N)` (anti-DoS)
 - [ ] `@IsIn(['A','B','C'])` для union-string типів (`'OK' | 'WARN' | 'CRITICAL'`)
@@ -841,6 +856,59 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-31 — Paired SSRF defense: validatePublicUrl + redirect: 'manual' завжди разом (Bug #273) — backend, security, ssrf, defense-in-depth
+
+**Сигнал:** код містить `validatePublicUrl(userUrl)` що блокує DIRECT внутрішні URL (loopback, link-local, RFC1918, cloud metadata), АЛЕ `fetch(...)` поряд не має `redirect: 'manual'`. Patterns:
+
+```bash
+# Шукати модулі що мають url-guard import + fetch():
+grep -l "validatePublicUrl" apps/api/src/modules --include="*.ts" -r | while read f; do
+  if grep -q "fetch(" "$f" && ! grep -q "redirect:\s*'manual'" "$f"; then
+    echo "MISSING #2 layer: $f"
+  fi
+done
+```
+
+Виявлено у `payments/checkbox.processor.ts` після cycle 5 review (649a5db) додав #1 шар (`validatePublicUrl(branchSettings.checkboxApiUrl)`) але забув #2.
+
+**Причина виникнення:** review-цикл, що додає захист SSRF, часто фокусується на ОЧЕВИДНОМУ сценарії: «admin поставив http://127.0.0.1». Розробник додає `validatePublicUrl(url)` → тест-кейс «loopback відхиляється» проходить → закриває PR. **АЛЕ** ATTACKER з admin правом не настільки наївний:
+
+1. Атакувальник ставить `userUrl = "https://attacker-controlled.com"` (легітимний external, **проходить** validatePublicUrl бо публічна IP).
+2. Сервер attacker-controlled.com отримує POST з Authorization/Bearer token.
+3. Server відповідає `HTTP/1.1 302 Found\nLocation: http://169.254.169.254/latest/meta-data/iam/security-credentials/` (AWS metadata) АБО `http://10.0.0.5:6379/` (internal Redis) АБО `http://localhost:5432/` (Postgres).
+4. Node fetch default `redirect: 'follow'` слідує redirect — НЕ перевіряє нову target проти validatePublicUrl (внутрішній механізм node-fetch не знає про наш guard).
+5. Auth header переноситься на новий host → cloud metadata / LAN service отримує POST з Authorization → можлива побічна-дія / token extraction.
+
+Webhooks processor вже мав обидва шари (Bug #114 + IPv6 cycle); Checkbox був додаваний пізніше, повторив ту саму інтуїтивну помилку.
+
+**Підхід до виявлення:** на Кроці 1 §1.4 — для КОЖНОГО `fetch(...)` де target URL походить з user-supplied джерела (DTO field, OrganisationSettings, BranchSettings, env var налаштованих UI):
+
+1. **Шар #1**: `validatePublicUrl(url)` ПЕРЕД fetch, throw якщо error.
+2. **Шар #2**: `fetch(url, { redirect: 'manual', ... })`.
+3. **Шар #3**: `if (response.status >= 300 && < 400) throw` — БЛОКУЄ redirect мовчки замість слідувати.
+
+ОБИДВА #2 і #3 обов'язкові — без #3 `redirect: 'manual'` повертає `Response` зі статусом 302, але код не throw → success-path виконується з порожнім body → silent fail / неконсистентний стан БД (`payment.fiscalReceiptId = undefined`).
+
+Парне з контракт-spec: `<processor>.spec.ts` має тести: (а) fetch викликається з `redirect: 'manual'`; (б) 301/302 → throw; (в) DB.update НЕ викликається коли redirect block; (г) pre-flight URL guard для loopback / cloud-metadata. Шаблон: `checkbox.processor.spec.ts` (8 тестів).
+
+**Підхід до фіксу:** додати ВСІ ТРИ шари одночасно + spec. Парний з шаблоном `webhooks.processor.ts:74-90`. Severity: CRITICAL якщо processor шле sensitive headers (Authorization, Bearer, API-Key) або data (payment amount, payload з PII).
+
+**Severity:** CRITICAL (production SSRF + cloud metadata extraction).
+
+**Де шукати ще:** будь-який майбутній outbound fetch з user-supplied URL:
+
+- ПРРО processor (фіскальні чеки)
+- SMS provider processor (turbosms, Twilio фінальні URL у settings)
+- OAuth callback handlers (redirect_uri з DTO)
+- Postal/delivery API integration
+- AI/ML провайдери (URL у org-settings для self-hosted endpoints)
+- Webhook outbound (вже захищені)
+- Outbound proxy для cloud sync (ADR-006)
+
+Профілактика: SKILL §1.4 тепер вимагає **парний** аудит — будь-який новий `validatePublicUrl` без `redirect: 'manual'` (або навпаки) = bug. Будь-який новий `*.processor.ts` що робить outbound fetch обов'язково має парний `*.processor.spec.ts` з redirect-block тестами.
+
+---
 
 ### 2026-05-31 — Dead-feature integration audit: implemented + tested service ніколи не викликається з реального flow (Bugs #267, #268) — backend, dead-code, business-logic-gap
 

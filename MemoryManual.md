@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+4549eb2 fix(tester): cycle 5 (FINAL) — Bugs #273-#276 — SSRF redirect bypass + UX consistency
+37c736d docs(memory): record review cycle 5 (final) — defense-in-depth coverage
 649a5db fix(review): cycle 5 — defense-in-depth: updateMany+orgId + SSRF Checkbox + sanitize filename
 03f7bf4 docs(memory): update MemoryManual after sync cycle 5 (final)
 0305852 fix(sync): cycle 5 — completion-act cancel, invoice VAT display, booking branchName
@@ -19,6 +21,35 @@ ec438bd fix(tester): cycle 4 — Bugs #266-#272 (WO template hint + loyalty earn
 cf60952 fix(review): cycle 4 — exhaustive-deps + ApiResponse coverage + safety take caps
 97e1ca3 fix(sync): cycle 4 — align frontend interfaces with API contracts
 Дата: 2026-05-31
+
+Latest tester: 2026-05-31 (sto-tester-agent **ЦИКЛ 5 з 5 — ФІНАЛ**, FULL HEAD 37c736d → 4549eb2) — **4 баги знайдено + 4 виправлено + 8 нових regression-guard тестів** (новий checkbox.processor.spec.ts).
+
+**Знайдено через regression + security аудит після 14 review-фіксів:**
+
+**Bug #273 (CRITICAL, security/ssrf):** checkbox.processor — fetch БЕЗ `redirect: 'manual'`. Cycle 5 review додав validatePublicUrl(apiUrl) у delivery time, АЛЕ не додав redirect-block. Атакувальник з OWNER правом ставить `checkboxApiUrl = "https://attacker.com"` (legit external, проходить URL guard), attacker сервер відповідає 302 Location: http://169.254.169.254/... → fetch (default redirect: 'follow') слідує redirect у AWS cloud metadata / RFC1918 LAN з Authorization header. SSRF redirect-bypass. **Фікс**: `redirect: 'manual'` + 3xx-rejection guard (парне з webhooks.processor.ts:82). Додано **checkbox.processor.spec.ts** з 8 regression-тестами: 200 OK happy path / 301/302 → throw + payment.update НЕ викликається / loopback + cloud-metadata pre-flight URL guard / skip paths (fiscalEnabled=false, checkboxLicenseKey=null).
+
+**Bug #274 (MEDIUM, ux/data-display):** invoices/page.tsx detail panel показував "Разом з ПДВ: 0,00 ₴" коли totalWithVat=0. Header-only invoice (через `create()` або `createFromWorkOrder` без addLine) має amount=N, але totalWith*=0 (Prisma defaults — лише `recalcTotals` після addLine оновлює). Display condition `!== inv.amount` для (0 !== 100) було true → оманливий нуль рендеруся. **Фікс**: `> 0` guard для totalWithoutVat і totalWithVat.
+
+**Bug #275 (HIGH, business-logic):** completion-acts.service findAll НЕ виключав CANCELLED. cancel() лише змінює status; deletedAt лишається null. Після cancel, page reload → `items[0]` = cancelled act → `setCompletionAct(...)` → UI рендерить cancelled act, але хіде Cancel/Sign кнопки, і "Сформувати акт" теж недоступна бо `completionAct !== null`. Користувач у inconsistent state. **Фікс**: `status: { not: CompletionActStatus.CANCELLED }` у where findAll (парне з createFromWorkOrder line 120).
+
+**Bug #276 (LOW, contract):** booking.confirm post-update fetch без `include: { branch }`. findFirstOrThrow повертав `r.branch=undefined` → toDto shipped `branchName: null` навіть для філій з name. Контракт-розходження: list має branchName, individual confirm response — null. Поточно masked бо frontend reloads після confirm. **Фікс**: додано include.
+
+**Auto-перевірено (не знайдено проблем):**
+- Cycle 5 review 14 fixes — `updateMany`/`deleteMany` patterns правильні; tsc green, all tests pass.
+- loyalty.queueEarn інтеграція з payments (Bug #267 cycle 4 fix): payments.service.create line 201 викликає `this.loyalty.queueEarn(orgId, dto.counterpartyId, dto.amount, payment.id).catch(...)` — pipeline правильний (payments→queueEarn→BullMQ→LoyaltyProcessor.handleEarn→service.earn з NaN guard Bug #271).
+- SSRF #1: validatePublicUrl у checkbox.processor — додано у cycle 5 review, працює.
+- Path traversal у files.controller — sanitizeFilename додано у cycle 5 review, працює.
+- Completion-act cancel button додано у cycle 5 sync, UI render правильний, тільки findAll фільтр був пропущений.
+- Invoice VAT lines display — у lines vatRate > 0 показує breakdown коректно, problem лише на header-level.
+
+**Property-based:** invariants spec — 7+8+11 tests pass (inventory/settlements/work-orders FSM).
+**Component tests:** 218/218 pass (web).
+**TypeScript:** ✅ 0 errors (api + web + shared, `--incremental false`). **Unit:** API **501/501** (493 + 8 new checkbox specs). **Property-based:** ✅ 26 tests passed.
+
+**Нові SKILL patterns:** 1 entry (Bug #273) — see §"Накопичені підходи" sto-tester:
+- "Defense-in-depth SSRF: validatePublicUrl pre-flight + redirect: 'manual' + 3xx-rejection" — обидва шари обов'язкові. Cycle 5 review додав #1 у Checkbox, забув #2; повторюється у будь-якому новому outbound fetch з user-supplied URL.
+
+
 
 Latest review: 2026-05-31 (sto-review-agent цикл 5 з 5 ФІНАЛ, HEAD 03f7bf4 → 649a5db) — **14 файлів виправлено** (12 backend + 2 spec). Фокус циклу: (1) consistency audit — defense-in-depth updateMany+orgId pattern застосований у всіх endpoint який раніше робив findFirst+update-by-id, (2) hard-delete захист через deleteMany+compound where, (3) SSRF defense у Checkbox processor для user-supplied API URL, (4) path-traversal sanitize у /files upload, (5) перевірка не покритих раніше модулів (audit, dashboard SSE, BullMQ processors, maintenance-schedules, warranties, inspection, webhooks).
 
