@@ -7,16 +7,17 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUUID,
   Matches,
+  Max,
+  Min,
 } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 // Accepts any UUID including nil UUID (00000000-...) used in seed data.
 // @IsUUID() from class-validator rejects nil UUIDs (version check fails).
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-import { Transform } from 'class-transformer';
-import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
-import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 // ─── Zone DTOs ───────────────────────────────────────────
 
@@ -74,8 +75,12 @@ export class CreateLiftDto {
   @IsEnum(LiftType)
   type!: LiftType;
 
-  @ApiPropertyOptional({ example: 3500 })
+  @ApiPropertyOptional({ example: 3500, description: 'Максимальна вага, кг (0..50000)' })
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(50000)
   maxWeightKg?: number;
 }
 
@@ -91,8 +96,12 @@ export class UpdateLiftDto {
   @IsEnum(LiftType)
   type?: LiftType;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 3500, description: 'Максимальна вага, кг (0..50000)' })
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(50000)
   maxWeightKg?: number;
 
   @ApiPropertyOptional({ enum: LiftStatus })

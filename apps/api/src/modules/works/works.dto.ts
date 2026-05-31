@@ -9,12 +9,13 @@ import {
   IsPositive,
   IsBoolean,
 } from 'class-validator';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+
+// Accepts any UUID including nil UUID (00000000-...) used in seed data.
+// class-validator @IsUUID rejects nil UUIDs (version check fails).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class CreateWorkDto {
   @ApiProperty()

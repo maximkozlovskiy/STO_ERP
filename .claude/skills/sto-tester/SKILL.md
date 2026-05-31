@@ -381,6 +381,7 @@ done
   - Enum: `@IsEnum(Type)`, `@IsEnum([lit1, lit2])`, `@IsIn([...])`
   - String-format: `@IsEmail`, `@IsUrl`, `@IsUUID`, `@IsUUID('4')`, `@Matches(regex)`
     ПЛЮС перевірити **inline 1-рядкові форми** (`@ApiPropertyOptional() @IsOptional() @IsX() field?: T;` — не матчиться multi-line grep) ПЛЮС `extends PartialType(X)` derivation chains (UpdateDto успадковує проблему від CreateDto). Парне з: для кожного DTO зі змінами — 1 contract-spec `it` «POST/PATCH з порожнім рядком у X → 201 + service отримує undefined» (Bug #244 regression-guard). Severity: HIGH (фіча мертва коли фронт шле `''`).
+- [ ] **Optional numeric DTO field з тільки @IsOptional() (Bug #283):** будь-яке поле `?: number` у `*.dto.ts` без хоча б одного з `@IsInt()` / `@IsNumber()` / `@Min()` / `@Max()` / `@Type(() => Number)` — bug. `class-validator` БЕЗ type-decorator пропускає string/Infinity/негативні/floats у Int colum. Severity HIGH (runtime crash + data corruption). Grep: `grep -rn "?: number\b" apps/api/src/modules/ --include="*.dto.ts"` → для кожного matched перевірити 5 рядків ПЕРЕД на наявність `@IsInt`/`@IsNumber`/`@Min`/`@Max`/`@IsPositive`. Парне з required: `grep -rn "!: number\b"`. Особливо вразливі: weight/quantity/limit/page/offset/percent/days/year поля. Регресія-guard: contract-spec який POST string `"abc"` / `-1` / `99999999` / `2.5` (для Int) → 400.
 - [ ] **Inner DTO class з порожніми полями (Bug #247):** будь-який nested DTO клас (зазвичай використовується через `@ValidateNested @Type(() => InnerDto)`) — у якому поля декларовані як `@ApiProperty() workId!: string; quantity!: number;` БЕЗ class-validator декораторів (`@IsUUID`/`@IsNumber`/`@IsString`/`@Min`/тощо). `whitelist: true` НЕ зачепить inner DTO (бо `@ValidateNested` валідує його повністю), АЛЕ якщо inner DTO нема жодного декоратора — pipe сприймає його як «порожній» клас і пропускає ВСІ значення (UUID-зломане, негативні числа, рядки 1М символів). Outer-DTO виглядає захищеним (`@ValidateNested + @Type`), але насправді захист зворотнього порядку — `@ValidateNested` потребує що внутрішній DTO САМ описує валідатори. Grep: `grep -rn "@ApiProperty()" apps/api/src/modules/ --include="*.dto.ts" -A1 | grep -B1 "[a-z]!: string\|[a-z]!: number" | grep -v "@Is\|@Min\|@Max\|@Matches\|@Length" | head -20` — кожен `@ApiProperty()` без сусіднього `@IsXXX` декоратора у inner DTO = bug. Парне з: `grep -B5 "@ValidateNested" apps/api/src/modules/ --include="*.dto.ts"` для перевірки що inner DTO має валідатори. Severity: HIGH (повна обходка validation для вкладеної структури + anti-DoS через відсутнє `@ArrayMaxSize`).
 
 ---
@@ -637,6 +638,7 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 - [ ] `smoke.spec.ts` — обов'язковий: `/`, `/login`, `/setup` без auth, auth redirect
 - [ ] **Component-vs-test drift:** якщо component-тест падає у baseline на `getByText(...)`/`getByRole(...)` — звірити чи компонент реально рендерить цей елемент. Тест може документувати UX-намір, від якого компонент розійшовся (видалили hint/label). Якщо намір легітимний → виправити КОМПОНЕНТ (повернути елемент); якщо застарів → виправити тест. НЕ ігнорувати «червоне і так було»
 - [ ] **Новий optional boolean prop у existing UI component (Bug #194):** будь-який diff що додає `propX?: boolean` до `InterfaceProps` у `components/ui/*.tsx` → парний `*.test.tsx` має МІНІМУМ 2 кейси для цього prop: (а) inverse-стан (`propX=true`) активує/блокує очікувану поведінку; (б) inverse-стан **не зачіпає інших елементів** (захист від занадто-широкого guard, copy-paste помилок). Default-стан зазвичай покрито existing-тестами, але inverse-стан без явного тесту = «mute regression»: інверсія guard (`!hideX` → `!!hideX`, `showX` → `!showX`) проходить зеленою. Особливо критично для prop, що впроваджується для увімкнення нового UX-режиму у N сторінках одночасно (як `hideSaveButton` у 8 page.tsx) — інверсія ламає UX на всіх 8 одночасно. Grep: `grep -nE "^\s+\w+\?: boolean" apps/web/src/components/ui/*.tsx` після diff
+- [ ] **Fake-green assertions у тестах (Bug #287):** будь-який `expect(<count|length>).toBeGreaterThanOrEqual(0)` — bug. `.count()` Playwright Locator повертає natural number (завжди ≥0), `arr.length` те саме → assertion завжди true → тест зеленіє назавжди, регресія не ловиться. Помилкова свідомість покриття. Grep: `grep -rn "toBeGreaterThanOrEqual(0)" apps/web/e2e apps/web/src --include="*.ts"`; також `expect(true)`, `expect(1).toBe(1)`, `toBeDefined()` на literal/number primitives. Фікс: знайти реальну очікувану кількість (`toBeGreaterThanOrEqual(N)` де N — мінімум з product spec; `toBe(N)` коли точна кількість); або переписати локатор на більш конкретний (`[data-testid="X"]` замість `[class*="X"]`); або видалити assertion якщо опціональна. Особливо підступно коли error-message string звучить як справжня перевірка (`'Має бути хоча б 3 KPI картки'`). Severity MEDIUM.
 - [ ] **jsdom browser-API стаби в `apps/web/src/__tests__/setup.ts`:** якщо diff чіпає `components/ui/` АБО `app/**/page.tsx` і додає `new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver)\(`, `window.matchMedia(`, `navigator.(clipboard|share|wakeLock|geolocation|mediaDevices)`, `crypto.subtle`, `Notification(` — перевірити що setup.ts стабає це API. tsc мовчить (типи у `lib.dom.d.ts`), prod працює (браузер має API), але jsdom падає → каскадне падіння всіх тестів які монтують компонент (включно з тестами далеких компонентів якщо shared-компонент усередині них). Фікс: noop-стаб під guard `typeof globalThis.X === 'undefined'`. Не стабати в самому компоненті, не вимикати тест
 
 ---
@@ -1976,3 +1978,116 @@ expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
 - ✅ Property-based invariants: inventory, settlements, FSM (26 invariants)
 - ✅ Component tests: 148/148 passed (14 файлів)
 - ✅ E2E: 42/42 passed (smoke, console-errors serial mode, inventory, api-errors)
+
+---
+
+### 2026-06-01 — Optional numeric DTO field з тільки @IsOptional() (Bug #283) — backend, validation, data-integrity
+
+**Сигнал:** DTO має optional поле типу `number?` (або `maxWeightKg?: number` / `priceCents?: number` / `quantity?: number` / `mileage?: number`) декороване **виключно** `@ApiPropertyOptional() @IsOptional()`. Жодного `@IsInt()` / `@IsNumber()` / `@Min()` / `@Max()` / `@Type(() => Number)`. `class-validator` БЕЗ type-decorator пропускає БУДЬ-ЯКЕ значення: string `"abc"`, `-99999`, `Number.POSITIVE_INFINITY`, `2.5` (для Int colum), масив, об'єкт. Validation pipe whitelist=true не фільтрує бо поле оголошене у DTO. Сервіс отримує garbage → Prisma kraх з `Invalid value Nan` / `Argument of type 'string' is not assignable to parameter of type 'number'` АБО silent data corruption (`Math.floor(2.5) = 2`).
+
+**Grep для виявлення:**
+
+```bash
+# Всі optional numeric поля без type/range decorators у DTO
+grep -rn "?: number\b" apps/api/src/modules/ --include="*.dto.ts" | while read line; do
+  file=$(echo "$line" | cut -d: -f1)
+  lineno=$(echo "$line" | cut -d: -f2)
+  # Перевірити 5 рядків ПЕРЕД полем — чи є @IsInt/@IsNumber/@Min/@Max декоратори?
+  startline=$((lineno > 5 ? lineno - 5 : 1))
+  ctx=$(sed -n "${startline},${lineno}p" "$file")
+  if ! echo "$ctx" | grep -qE "@IsInt|@IsNumber|@Min|@Max|@IsPositive|@Type\(\(\) => Number\)"; then
+    echo "MISSING numeric guard at $file:$lineno"
+  fi
+done
+
+# Аналогічно для required numeric fields (рідше bug, але буває)
+grep -rn "!: number\b" apps/api/src/modules/ --include="*.dto.ts" | grep -v ".service.ts:\|.spec.ts:"
+```
+
+**Причина виникнення:** розробник пише DTO інкрементально: спочатку додає поле зі швидким `@ApiPropertyOptional()`, потім (якщо встигне) повертається додати валідатори. Або скопіював існуюче поле з `@IsString()` + замінив тип на `number` забувши оновити декоратори. Або вірить що TypeScript `number` автоматично відбракує string на runtime (НЕ ВІДБРАКОВУЄ — typecasting тільки compile-time). Сприймає `@IsOptional()` як «достатньо, бо optional» — насправді `@IsOptional()` лише дозволяє undefined, не контролює тип.
+
+**Підхід до виявлення:**
+
+1. Grep усіх optional numeric полів у `*.dto.ts` (паттерн `?: number`).
+2. Для кожного — перевірити чи у попередніх 5 рядках є хоч один з: `@IsInt`, `@IsNumber`, `@Min`, `@Max`, `@IsPositive`, `@IsNegative`, `@Type(() => Number)`.
+3. Якщо ні — bug. Severity HIGH якщо поле зберігається у БД у NOT NULL колонці типу Int (crash на runtime) або у бізнес-розрахунку (silent data corruption через NaN/Infinity).
+4. Парне: перевіряти ВСІ numeric DTO поля (як required `!: number`, так optional `?: number`).
+
+**Підхід до фіксу:** додати повний пакет декораторів у такому порядку:
+
+```ts
+@ApiPropertyOptional({ example: 3500, description: '...' })
+@IsOptional()
+@Type(() => Number)              // приймає "3500" (string) → 3500 (number) для query/form-data
+@IsInt()                          // або @IsNumber({ maxDecimalPlaces: 2 }) для money
+@Min(0)
+@Max(50000)                       // domain-specific upper bound
+fieldName?: number;
+```
+
+Для money/decimal: `@IsNumber({ maxDecimalPlaces: 2 })` (Prisma Decimal toleratees). Для Int colum: завжди `@IsInt()`. Для дробових: `@IsNumber()`. `@Min(0)` майже завжди потрібен для лічильників/розмірів/ваги. `@Max(...)` залежить від domain — для maxWeightKg = `50_000` (50 тонн); для percentage = `100`; для year = `9999`.
+
+**Severity:** HIGH (validation повністю обходиться → runtime crash + data corruption). MEDIUM якщо поле використовується лише у звітності (read-only impact).
+
+**Де шукати ще:**
+
+- Будь-який новий DTO (CreateXDto / UpdateXDto) з numeric optional полями.
+- Query DTO з `limit?: number`, `page?: number`, `offset?: number` — мають бути `@IsInt() @Min(1) @Max(200)`.
+- DTO з опціональними часовими інтервалами (`intervalDays?: number`, `timeoutMs?: number`).
+- DTO з geo-координатами (`lat?: number`, `lng?: number`) — `@Min(-90) @Max(90)` для lat.
+- Зверніть увагу: `@Type(() => Number)` потрібен ТІЛЬКИ якщо input може прийти як string (query params, multipart/form-data). Для JSON body — class-validator довіряє типу.
+
+**Регресія-guard:** для кожного нового DTO з numeric optional поле — contract-spec який POST/PATCH-ить string `"abc"` / `-1` / `99999999` / float `2.5` (для Int) і очікує 400. Приклад: `lifts.contract.spec.ts` для Bug #283 додав 10 тестів (5 happy + 5 negative).
+
+---
+
+### 2026-06-01 — Fake-green assertion `toBeGreaterThanOrEqual(0)` (Bug #287) — test-reliability, dead-assertion
+
+**Сигнал:** Playwright/Vitest test містить assertion який **завжди true**: `expect(count).toBeGreaterThanOrEqual(0)` (count від `.count()` ВЖЕ non-negative), `expect(arr.length).toBeGreaterThanOrEqual(0)`, `expect(result).toBeTruthy()` де result statically гарантовано truthy. Особливо підступно коли message-параметр звучить як справжня перевірка: `expect(count, 'Має бути хоча б 3 KPI картки').toBeGreaterThanOrEqual(0)`. Тест зеленіє назавжди — навіть якщо весь UI зник. Гірше за відсутню перевірку: створює фальшиве враження покриття.
+
+**Grep для виявлення:**
+
+```bash
+# Fake-green patterns:
+grep -rn "toBeGreaterThanOrEqual(0)\b" apps/web/e2e apps/web/src apps/api/src --include="*.ts" --include="*.tsx" | head -20
+grep -rn "\.count().*toBeGreaterThanOrEqual\|\.length.*toBeGreaterThanOrEqual(0)" apps/web --include="*.ts"
+
+# Інші подібні:
+grep -rn "expect(true)\|expect(1).toBe(1)\|expect(0).toBe(0)" apps/web --include="*.ts"
+grep -rn "toBeDefined()" apps/web/e2e --include="*.ts" | head -10   # для primitives often fake (a number is always defined)
+```
+
+**Причина виникнення:**
+
+1. Розробник пише test scaffold з placeholder assertion: «треба буде уточнити локатор, поки що `>= 0`» → забуває уточнити.
+2. Локатор spam'ить false-negatives → розробник «послаблює» assertion щоб тест перестав падати, не розслідуючи причину. Замість fix локатора отримуємо oBeGreaterThanOrEqual(0).
+3. `.count()` повертає 0 коли список не завантажився → розробник хоче «м'якіший» тест → ставить `>= 0` (читає як «не fail») замість `>= 1` (читає як «хоча б 1»).
+4. Copy-paste з другого тесту де `>= 0` мав сенс (наприклад counter що може бути від'ємним), не адаптує під новий контекст.
+
+**Підхід до виявлення:**
+
+1. Grep `toBeGreaterThanOrEqual(0)` — кожен match є кандидат на bug.
+2. Для кожного: дивитись що `count` повертає. Якщо `.count()` (Playwright Locator) або `.length` (масив) → завжди `>= 0` → fake. Якщо `async aggregateBalance()` що може бути від'ємним → справжній.
+3. Перевірити message-string assertion: якщо message каже «хоча б N» / «мінімум M» — assertion має співпадати (`>= N`, не `>= 0`).
+4. `toBeDefined()` на `number` / `string` literal — підозра (literal завжди defined).
+
+**Підхід до фіксу:**
+
+1. Знайти **реальну очікувану кількість** з product/component spec. Якщо UI має ровно 6 KPI cards — `toBe(6)`. Якщо мінімум 3 з можливих 6 — `toBeGreaterThanOrEqual(3)`.
+2. Якщо локатор ненадійний (`[class*="kpi"]` ловить також breadcrumbs, тощо) — пере-локалізувати на більш конкретний selector (`[class*="kpi-card-"]` де `kpi-card-` точно у component, або `data-testid="kpi"`).
+3. Якщо assertion справді опціональна (page має 0..N elements залежно від data) — або (a) seed test data так щоб кількість була детермінована, або (b) видалити assertion взагалі (краще нічого ніж брехня).
+4. Використовувати `expect.poll(async () => locator.count()).toBeGreaterThanOrEqual(N)` для асинхронних UI.
+
+**Severity:** MEDIUM. Fake-green assertion не зловить регресію — UI поламається у production, тест залишиться зеленим, разробник не дізнається до user-report. Особливо критично для smoke-тестів які єдиний gate перед deploy.
+
+**Де шукати ще:**
+
+- E2E тести де count assertions
+- Unit тести де `expect(items.length).toBeGreaterThanOrEqual(0)`
+- Vitest snapshot тести без real content check (snapshot=undefined на 1-му запуску — passes до коли хтось не глянув)
+- Property-based тести з `fc.array().filter(() => true)` — ефективно вимикає filter
+- Будь-який `// TODO: tighten this assertion` коментар поряд з assertion
+
+**Профілактика:** lint-rule (custom ESLint plugin) що детектує `toBeGreaterThanOrEqual(0)` на `.count()` / `.length` return → попередження. Аналогічно `toBeTruthy()` на literal.
+
+---

@@ -6,12 +6,6 @@ test.describe.configure({ mode: 'serial' });
 
 const uid = () => Date.now().toString().slice(-6);
 
-// Хелпер: вибрати тип у першому select модалки
-async function selectType(modal: import('@playwright/test').Locator, value: string) {
-  // select має id="тип" — використовуємо label
-  await modal.getByRole('combobox').first().selectOption(value);
-}
-
 test.describe('CRM — CRUD контрагента', () => {
   test('створити фізособу-клієнта → перевірити в таблиці → видалити', async ({ page }) => {
     const name = `E2E-${uid()}`;

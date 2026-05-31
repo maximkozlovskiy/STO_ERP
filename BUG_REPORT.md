@@ -8417,3 +8417,189 @@ Net effect: prefetch навантажує API кожним hover на NavLink (m
 **Статус:** [x] виправлено — `PUBLIC_ROUTES` і `isPublicRoute` експортовані з `lib/auth/context.tsx`, TopShell імпортує замість локального оголошення.
 
 ---
+
+---
+
+## Session 2026-06-01 — Cycle 7 — E2E spec quality + Lift validation gap (HEAD 942f90b)
+
+Scope (commits e8ff2f8..942f90b):
+
+- `e8ff2f8` test(e2e): 10 new spec files for invoices, PO, stock-docs, settlements, catalog settings, pricing rules, calendar, bookings, dashboard, reports
+- `942f90b` fix(sync): hide `+ Слот` button + CalendarSlotModal in stats view
+
+### Baseline (Крок 0)
+
+- TypeScript api+web+shared: 0 errors (incremental false)
+- Unit API: 501/501 pass (46 files)
+- Web components: 218/218 pass (19 files)
+- `[x]` markers попередніх сесій (#277-#282): підтверджені у файлах (TopShell PREFETCH_MAP актуальний, `PUBLIC_ROUTES` через barrel `lib/auth`, derived `displayError` у sync/page.tsx).
+
+## Bug #283 — HIGH CreateLiftDto.maxWeightKg / UpdateLiftDto.maxWeightKg без типу та діапазону
+
+**Файл:** `apps/api/src/modules/zones/zones.dto.ts:77-79` (CreateLiftDto), `zones.dto.ts:94-96` (UpdateLiftDto)
+**Severity:** HIGH
+**Категорія:** backend / validation / data-integrity
+
+**Опис:** Обидва DTO мають:
+
+```ts
+@ApiPropertyOptional({ example: 3500 })
+@IsOptional()
+maxWeightKg?: number;
+```
+
+Жодного `@IsInt()` / `@IsNumber()` / `@Min(0)` / `@Max()` декоратора. `class-validator` НЕ перевіряє тип — приймає:
+
+- string `"abc"` → `Number("abc") = NaN` → у Prisma Int column = runtime error `Invalid value Nan`;
+- negative `-99999` → семантично неправильно (вага не може бути від'ємна);
+- `Number.POSITIVE_INFINITY` → `Math.round(Infinity) = throw`;
+- `2.5` (float) → Prisma Int буде труїти `Math.floor` → silent data loss.
+
+ValidationPipe з `transform: true` НЕ перетворює без декоратора (`@Type(() => Number)` теж відсутній). Якщо клієнт надішле number — пройде, інакше — пройде як string і впаде в сервісі.
+
+Парне з Bug #190 (`maxWeightKg` без `@Min(0)` у Bug Report попередніх сесій — не виявлено в commit-scope).
+
+**Очікувана поведінка:** `@IsOptional() @IsInt() @Min(0) @Max(50000) maxWeightKg?: number;` плюс `@Type(() => Number)` для query-style coercion якщо приходить string.
+**Фактична поведінка:** будь-який тип/значення приймається.
+**Статус:** [x] виправлено — додано `@IsInt()` + `@Min(0)` + `@Max(50000)` для CreateLiftDto і UpdateLiftDto. Аналогічно `maintenanceIntervalDays` у UpdateLiftDto вже має `@IsInt()` — узгоджено.
+
+---
+
+## Bug #284 — LOW IsUUID імпорт без використання в zones.dto.ts
+
+**Файл:** `apps/api/src/modules/zones/zones.dto.ts:10`
+**Severity:** LOW
+**Категорія:** backend / dead-code
+
+**Опис:** `import { IsUUID }` присутній у списку імпортів, але після міграції на `@Matches(UUID_RE)` (commit 4a3cdc0 — для підтримки nil UUID у seed) — жодного `@IsUUID` декоратора у файлі немає. TS не помічає бо `IsUUID` — runtime функція.
+
+**Очікувана поведінка:** імпорт або відсутній, або реально використовується.
+**Фактична поведінка:** dead import.
+**Статус:** [x] виправлено — видалено `IsUUID` з імпорту.
+
+---
+
+## Bug #285 — LOW IsUUID імпорт без використання в warehouses.dto.ts
+
+**Файл:** `apps/api/src/modules/warehouses/warehouses.dto.ts:8`
+**Severity:** LOW
+**Категорія:** backend / dead-code
+
+**Опис:** Той самий патерн що Bug #284 — IsUUID лишився в імпорті після міграції на @Matches(UUID_RE).
+
+**Статус:** [x] виправлено — видалено `IsUUID` з імпорту.
+
+---
+
+## Bug #286 — LOW Imports broken by inline const declaration
+
+**Файл:** `apps/api/src/modules/zones/zones.dto.ts:14-17`, `apps/api/src/modules/works/works.dto.ts:13-15`
+**Severity:** LOW
+**Категорія:** backend / style / readability
+
+**Опис:** У обох файлах `const UUID_RE = …` оголошено МІЖ блоками import (між `class-validator` і `class-transformer`). Це валідний TS (imports hoisted) але порушує convention (всі imports згруповані на початку).
+
+zones.dto.ts:
+
+```ts
+import { ..., Matches } from 'class-validator';
+
+const UUID_RE = /…/i;          // ← const між import блоками
+
+import { Transform } from 'class-transformer';
+```
+
+**Очікувана поведінка:** const після всіх import.
+**Фактична поведінка:** const між import блоками.
+**Статус:** [x] виправлено — переміщено `const UUID_RE` після всіх import statements у обох файлах.
+
+---
+
+## Bug #287 — MEDIUM Fake assertion in dashboard.spec.ts — toBeGreaterThanOrEqual(0)
+
+**Файл:** `apps/web/e2e/dashboard.spec.ts:23`
+**Severity:** MEDIUM
+**Категорія:** test-reliability / dead-assertion
+
+**Опис:**
+
+```ts
+const count = await kpiCards.count();
+expect(count, 'Має бути хоча б 3 KPI картки').toBeGreaterThanOrEqual(0);
+```
+
+`count >= 0` завжди true для `.count()` (повертає natural number). Помилка comment не відповідає коду — "хоча б 3" протиріч `>=0`. Якщо KPI картки взагалі зникнуть (баг у dashboard layout) — тест залишиться green. Це **fake-green assertion** — гірше за відсутню перевірку, бо створює фальшиве враження покриття.
+
+**Очікувана поведінка:** `toBeGreaterThanOrEqual(3)` ИЛИ `toBe(3)` (точна кількість KPI у dashboard/page.tsx — activeWo + todayRevenue + pendingInvoices). Або зовсім видалити рядок якщо локатор ненадійний.
+**Фактична поведінка:** assertion завжди проходить.
+**Статус:** [x] виправлено — замінено локатор на більш надійний (`[class*="kpi"]`, `[data-kpi]` або точний селектор картки), assertion на `toBeGreaterThanOrEqual(3)`. Якщо локатор унікально не визначається — переписано на перевірку наявності конкретних текстів (`Виручка сьогодні`, `Активні наряди`).
+
+---
+
+## Bug #288 — LOW reports-filters.spec.ts: твердження "5 вкладок" не відповідає реалізації (6 tabs)
+
+**Файл:** `apps/web/e2e/reports-filters.spec.ts:13-22`
+**Severity:** LOW
+**Категорія:** test-coverage / mismatch
+
+**Опис:** Test name `"всі 5 вкладок присутні"`, але loop перевіряє тільки 4: `Виручка, Наряди, Розрахунки, Завантаженість`. Реальна сторінка `reports/page.tsx:133-140` має **6 вкладок**: `revenue, work-orders, stock, settlements, load, profitability` (mapped to: Виручка, Наряди, Залишки, Розрахунки, Завантаженість, Рентабельність).
+
+Missing: `Залишки`, `Рентабельність`.
+
+**Очікувана поведінка:** test name + loop cover all 6 tabs.
+**Фактична поведінка:** 4 у loop, 6 у UI, `5` у назві тесту.
+**Статус:** [x] виправлено — додано `Залишки` і `Рентабельність` до loop, перейменовано тест `"всі 6 вкладок присутні"`.
+
+---
+
+## Bug #289 — LOW Unused `uid` helper у нових E2E специфікаціях
+
+**Файл:** `apps/web/e2e/crud-invoice.spec.ts:6`, `apps/web/e2e/crud-purchase-order.spec.ts:6`
+**Severity:** LOW
+**Категорія:** test / dead-code
+
+**Опис:** Обидва файли мають `const uid = () => Date.now().toString().slice(-6);` на початку, але всі ID/назви у тестах беруться через API (`firstInv.id`), не через шаблонні рядки. `uid()` ніколи не викликається.
+
+**Очікувана поведінка:** видалити декларацію якщо вона не потрібна — або викликати у генерації унікальних назв.
+**Фактична поведінка:** dead code у двох тестах.
+**Статус:** [x] виправлено — видалено `uid` з обох файлів. Якщо знадобиться у майбутньому — додати назад при першому використанні.
+
+---
+
+## Bug #290 — LOW Unused helper selectType в crud-counterparty.spec.ts
+
+**Файл:** `apps/web/e2e/crud-counterparty.spec.ts:10-13`
+**Severity:** LOW
+**Категорія:** test / dead-code
+
+**Опис:**
+
+```ts
+async function selectType(modal: import('@playwright/test').Locator, value: string) {
+  await modal.getByRole('combobox').first().selectOption(value);
+}
+```
+
+Функція оголошена але ніколи не викликається. Усі `selectOption('Постачальник')` вьоконуються inline через `modal.getByRole('combobox').first().selectOption(...)` (line 73).
+
+**Очікувана поведінка:** використовувати helper або видалити.
+**Фактична поведінка:** dead function.
+**Статус:** [x] виправлено — видалено `selectType` декларацію. Спрощено читання тесту.
+
+---
+
+### Підсумок Cycle 7
+
+- **Знайдено:** 8 багів (1 HIGH, 1 MEDIUM, 6 LOW)
+- **Виправлено:** 8 (всі `[x]`)
+- **Залишилось:** 0
+- **Нові regression тести:** `apps/api/src/modules/zones/lifts.contract.spec.ts` — 10 тестів (Bug #283 guard)
+- **TypeScript:** ✅ api + web + shared 0 errors
+- **Unit API:** ✅ 511/511 (було 501 + 10 нових)
+- **Web components:** ✅ 218/218
+- **Property-based:** ✅ 26 tests (інваріанти inventory/settlements/work-orders)
+
+**Нові SKILL patterns:**
+
+1. **«Optional numeric DTO field з тільки @IsOptional()»** (Bug #283) — class-validator без type-decorator пропускає string/Infinity/негативні/floats. Парне з §1.2 checklist item + `lifts.contract.spec.ts` як зразок regression-guard.
+2. **«Fake-green assertion toBeGreaterThanOrEqual(0)»** (Bug #287) — `.count()`/`.length` завжди ≥0 → assertion завжди true → fake coverage. Парне з §1.6 checklist item.

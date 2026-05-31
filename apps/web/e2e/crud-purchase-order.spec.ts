@@ -3,8 +3,6 @@ import { test, expect } from '@playwright/test';
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
 
-const uid = () => Date.now().toString().slice(-6);
-
 test.describe('Замовлення постачальнику — CRUD', () => {
   test('сторінка завантажується', async ({ page }) => {
     await page.goto('/purchase-orders');

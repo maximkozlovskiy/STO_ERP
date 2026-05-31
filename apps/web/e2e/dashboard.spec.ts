@@ -13,16 +13,27 @@ test.describe('Дашборд', () => {
   test('KPI картки відображаються (мін 3 штуки)', async ({ page }) => {
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
-    // Чекати завантаження — skeleton або реальні дані
 
-    // KPI картки — мінімум 3 (activeWo, todayRevenue, pendingInvoices)
-    const kpiCards = page
-      .locator('[class*="kpi"], [class*="KPI"], [class*="card"], [class*="Card"]')
-      .filter({ hasText: /₴|наряд|рахун|залишк/i });
-    const count = await kpiCards.count();
-    expect(count, 'Має бути хоча б 3 KPI картки').toBeGreaterThanOrEqual(0);
-    // Більш надійна перевірка — є цифри або числа
+    // Чекати завантаження main контейнера
     await expect(page.locator('main').first()).toBeVisible({ timeout: 10_000 });
+
+    // KPI картки використовують класи kpi-card-{blue|amber|green|violet|red}.
+    // Локатор — клас починається з "kpi-card-".
+    const kpiCards = page.locator('[class*="kpi-card-"]');
+    // Очікуємо появу хоча б 3 карток (типово dashboard рендерить 6: В роботі/Очікують/Виручка/Місяць/Несплачені/Низький залишок)
+    await expect
+      .poll(async () => kpiCards.count(), {
+        message: 'Має бути ≥3 KPI картки на дашборді',
+        timeout: 15_000,
+      })
+      .toBeGreaterThanOrEqual(3);
+
+    // Реальна перевірка контенту — хоча б одна картка з відомим лейблом
+    await expect(
+      page
+        .locator('text=/В роботі|Очікують|Виручка сьогодні|Несплачені рахунки|Низький залишок/')
+        .first(),
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test('quick actions присутні', async ({ page }) => {

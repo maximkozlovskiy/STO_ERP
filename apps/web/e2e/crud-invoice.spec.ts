@@ -3,8 +3,6 @@ import { test, expect } from '@playwright/test';
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
 
-const uid = () => Date.now().toString().slice(-6);
-
 test.describe('Рахунки — CRUD', () => {
   test('сторінка завантажується — таблиця або empty state', async ({ page }) => {
     await page.goto('/invoices');

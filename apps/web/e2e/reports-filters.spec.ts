@@ -10,11 +10,19 @@ test.describe('Звіти', () => {
     await expect(page.locator('nextjs-portal, [data-nextjs-dialog]')).not.toBeVisible();
   });
 
-  test('всі 5 вкладок присутні', async ({ page }) => {
+  test('всі 6 вкладок присутні', async ({ page }) => {
     await page.goto('/reports');
     await expect(page.locator('h1:has-text("Звіти")')).toBeVisible({ timeout: 20_000 });
 
-    for (const label of ['Виручка', 'Наряди', 'Розрахунки', 'Завантаженість']) {
+    // reports/page.tsx:133-140 — 6 tabs: revenue, work-orders, stock, settlements, load, profitability
+    for (const label of [
+      'Виручка',
+      'Наряди',
+      'Залишки',
+      'Розрахунки',
+      'Завантаженість',
+      'Рентабельність',
+    ]) {
       await expect(page.locator(`button:has-text("${label}")`).first()).toBeVisible({
         timeout: 10_000,
       });

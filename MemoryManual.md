@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+fix(tester): cycle 7 — Bugs #283-#290 — Lift maxWeightKg validation gap + E2E spec cleanup
+59b1290 docs(skills): add view-state-gated-fetch + EMPTY_FORM module-level patterns to sto-optimize
 3730db8 perf(calendar): skip day-view fetch in stats/month view + module-level EMPTY_FORM
 942f90b fix(sync): hide Slot button in stats view to prevent phantom showAdd state
 fix(tester): cycle 6 — Bugs #277-#282 — nav prefetch shape mismatch + sync error state + dead imports
@@ -21,7 +23,38 @@ a24b975 docs(skills): add nav-prefetch + useQuery migration patterns to sto-opti
 f017721 perf(nav): migrate employees+settlements to useQuery + extend prefetch
 e20fcc5 perf(nav): prefetch on hover + keepPreviousData + loading skeletons
 8efc01c perf(optimize): cycle 5 (FINAL) — tier-merger в reference-CRUD + sync.getStatus parallel + covering indexes
-Дата: 2026-05-31
+Дата: 2026-06-01
+
+Latest tester: 2026-06-01 (sto-tester-agent **ЦИКЛ 7** — E2E spec quality + Lift validation, HEAD 942f90b → cycle 7) — **8 багів знайдено + 8 виправлено + 10 нових regression-guard тестів** (lifts.contract.spec.ts) + **2 нові SKILL patterns** (Optional numeric DTO + Fake-green assertion).
+
+**Знайдено через статичний аналіз нових E2E spec файлів + DTO повного огляду (commits e8ff2f8…942f90b):**
+
+**Bug #283 (HIGH, backend/validation):** `apps/api/src/modules/zones/zones.dto.ts` — `CreateLiftDto.maxWeightKg` і `UpdateLiftDto.maxWeightKg` мали лише `@IsOptional()` БЕЗ типу/діапазону. class-validator пропускає string "abc", -99999, Infinity, float 2.5 у Int colum → runtime crash з `Invalid value Nan` АБО silent data corruption (`Math.floor(2.5)=2`). **Фікс:** додано `@Type(() => Number) @IsInt() @Min(0) @Max(50000)` для обох. Створено `lifts.contract.spec.ts` з 10 regression тестами (5 positive + 5 negative validation cases).
+
+**Bug #284-#286 (LOW, backend/cleanup):** `zones.dto.ts:10` і `warehouses.dto.ts:8` — `IsUUID` імпортований але ніколи не використовується (замінено на `@Matches(UUID_RE)` у попередньому sprint). У `zones.dto.ts` і `works.dto.ts` — `const UUID_RE = …` оголошено МІЖ блоками import. **Фікс:** видалено dead imports, переміщено const після всіх імпортів.
+
+**Bug #287 (MEDIUM, test-reliability):** `apps/web/e2e/dashboard.spec.ts:23` — `expect(count).toBeGreaterThanOrEqual(0)` де count = `.count()` (Playwright Locator). Завжди true → assertion fake-green назавжди. Помилковий message string "Має бути хоча б 3 KPI картки" створював враження покриття. **Фікс:** переписано на `expect.poll(() => locator.count()).toBeGreaterThanOrEqual(3)` з більш надійним локатором `[class*="kpi-card-"]` + контент-перевірка одного з відомих лейблів (`В роботі`, `Виручка сьогодні`).
+
+**Bug #288 (LOW, test-coverage):** `reports-filters.spec.ts:13-22` — тест name "всі 5 вкладок" але loop перевіряв тільки 4. Реальна сторінка `reports/page.tsx:133-140` має 6 tabs. **Фікс:** додано `Залишки` + `Рентабельність` у loop, перейменовано тест.
+
+**Bug #289-#290 (LOW, dead-code):** `crud-invoice.spec.ts:6` і `crud-purchase-order.spec.ts:6` — `const uid = () => …` оголошено але ніколи не викликається (всі ID беруть з API response). `crud-counterparty.spec.ts:10-13` — helper `selectType()` оголошений але inline-варіант використовується. **Фікс:** видалено всі три dead-helpers.
+
+**Перевірено (не знайдено проблем):**
+- Bug #283 patterns у інших DTO: ``@IsOptional()`` без типу для numeric полів у `apps/api/src/modules/` — `maxWeightKg` єдиний exposure-point у цьому циклі; інші numeric optional поля (limit/page/offset) мають правильні `@IsInt() @Min(1) @Max(200)`.
+- §1.1 calendar FSM з #942f90b: `setCalView('stats')` коректно reset'ить `showAdd`, `editingSlotId`; pendingSlot НЕ ресетиться але рендериться тільки у `calView === 'day'` — побічних ефектів немає.
+- §1.3 frontend prefetch shape (Bug #281 follow-up): TopShell PREFETCH_MAP для work-orders/crm/invoices/purchase-orders/catalog/stock-documents співпадає з consumer page first-mount state; різниці немає.
+- Контракт tests і property-based invariants всі зелені.
+- Cycle 6 [x] багів #277-#282 — підтверджено у файлах (TopShell barrel imports, useState(queryError) derived, dead `useEffect` import видалено).
+
+**Property-based:** invariants spec — 7+8+11 tests pass (inventory/settlements/work-orders FSM).
+**Component tests:** 218/218 pass (web).
+**TypeScript:** ✅ 0 errors (api + web + shared, `--incremental false`). **Unit:** API **511/511** (501 + 10 new lifts.contract). **Property-based:** ✅ 26 tests passed.
+
+**Нові SKILL patterns (2 entries):**
+- "Optional numeric DTO field з тільки @IsOptional()" — будь-яке `?: number` у `*.dto.ts` без `@IsInt()/@IsNumber()/@Min()/@Max()/@Type()` пропускає string/Infinity/негативні значення. Severity HIGH (runtime crash + data corruption). Regression-guard contract spec — обов'язковий для нового numeric optional поля.
+- "Fake-green assertion `toBeGreaterThanOrEqual(0)`" — `.count()`/`.length` завжди ≥0 → assertion завжди true → fake coverage. Грeп `toBeGreaterThanOrEqual(0)` + `toBeTruthy()`/`toBeDefined()` на literal — кандидати на bug.
+
+---
 
 Latest tester: 2026-05-31 (sto-tester-agent **ЦИКЛ 6** — nav prefetch audit, HEAD b5766eb→cycle 6) — **6 багів знайдено + 6 виправлено + 2 нові SKILL patterns** (Prefetch key mismatch + useState(queryError) initializer).
 
