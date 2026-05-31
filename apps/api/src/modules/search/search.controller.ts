@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { SearchService } from './search.service';
 import { SearchResponseDto } from './search.dto';
@@ -17,6 +18,10 @@ export class SearchController {
   constructor(private readonly service: SearchService) {}
 
   @Get()
+  // RolesGuard без @Roles — no-op (пускає всіх авторизованих). Explicitly enumerate
+  // roles that can search — payload не містить cost/sale/margin, тож MECHANIC
+  // допускається до work-orders/counterparty/good (id + name + available stock).
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Повнотекстовий пошук по нарядах, клієнтах, товарах' })
   async search(
     @OrgContext() orgId: string,

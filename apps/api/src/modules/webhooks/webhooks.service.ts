@@ -71,31 +71,33 @@ export class WebhooksService {
     id: string,
     dto: UpdateWebhookDto,
   ): Promise<WebhookEndpointResponseDto> {
-    const e = await this.prisma.webhookEndpoint.findFirst({
-      where: { id, orgId, deletedAt: null },
-    });
-    if (!e) throw new NotFoundException('Вебхук не знайдено');
     // Bug #114: re-validate URL on update (same SSRF defense as create).
     if (dto.url !== undefined) {
       const urlError = validatePublicUrl(dto.url);
       if (urlError) throw new BadRequestException(urlError);
     }
-    const updated = await this.prisma.webhookEndpoint.update({
-      where: { id },
+    // Defense-in-depth: scope by orgId у where (sto-review pattern 2026-05-30
+    // soft-delete update without orgId). Eliminate the race-window between
+    // findFirst guard and update — cross-tenant id could be mutated otherwise.
+    const result = await this.prisma.webhookEndpoint.updateMany({
+      where: { id, orgId, deletedAt: null },
       data: dto,
+    });
+    if (result.count === 0) throw new NotFoundException('Вебхук не знайдено');
+    const updated = await this.prisma.webhookEndpoint.findFirstOrThrow({
+      where: { id, orgId },
     });
     return this.toDto(updated);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const e = await this.prisma.webhookEndpoint.findFirst({
+    // Defense-in-depth: same pattern as update — atomic soft-delete with orgId
+    // guard inside the where. Eliminates a race window between findFirst and update.
+    const result = await this.prisma.webhookEndpoint.updateMany({
       where: { id, orgId, deletedAt: null },
-    });
-    if (!e) throw new NotFoundException('Вебхук не знайдено');
-    await this.prisma.webhookEndpoint.update({
-      where: { id },
       data: { deletedAt: new Date() },
     });
+    if (result.count === 0) throw new NotFoundException('Вебхук не знайдено');
   }
 
   async findDeliveries(

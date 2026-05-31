@@ -190,26 +190,28 @@ export class BookingService {
   }
 
   async confirm(orgId: string, id: string): Promise<BookingRequestResponseDto> {
-    const req = await this.prisma.bookingRequest.findFirst({
+    // Defense-in-depth: scope by orgId у where (sto-review pattern 2026-05-30
+    // soft-delete update without orgId). updateMany is atomic on the compound key.
+    const result = await this.prisma.bookingRequest.updateMany({
       where: { id, orgId, deletedAt: null },
-    });
-    if (!req) throw new NotFoundException('Заявку не знайдено');
-    const updated = await this.prisma.bookingRequest.update({
-      where: { id },
       data: { status: 'CONFIRMED' },
+    });
+    if (result.count === 0) throw new NotFoundException('Заявку не знайдено');
+    const updated = await this.prisma.bookingRequest.findFirstOrThrow({
+      where: { id, orgId },
     });
     return this.toDto(updated);
   }
 
   async cancel(orgId: string, id: string): Promise<void> {
-    const req = await this.prisma.bookingRequest.findFirst({
+    // Defense-in-depth: scope by orgId у where (sto-review pattern 2026-05-30
+    // soft-delete update without orgId). Cancel is idempotent — повторний DELETE
+    // на вже-скасованому записі поверне 404 (count === 0 бо deletedAt != null).
+    const result = await this.prisma.bookingRequest.updateMany({
       where: { id, orgId, deletedAt: null },
-    });
-    if (!req) throw new NotFoundException('Заявку не знайдено');
-    await this.prisma.bookingRequest.update({
-      where: { id },
       data: { status: 'CANCELLED', deletedAt: new Date() },
     });
+    if (result.count === 0) throw new NotFoundException('Заявку не знайдено');
   }
 
   private toDto(r: {

@@ -122,8 +122,13 @@ export class WorkOrderMediaService {
   }
 
   async remove(orgId: string, workOrderId: string, mediaId: string): Promise<void> {
+    // Defense-in-depth: scope by orgId+workOrderId на findFirst (для отримання
+    // fileKey) + deleteMany з тим самим компаундним where замість delete by id.
+    // Запобігає race-window cross-tenant видалення (sto-review pattern 2026-05-30).
+    // findFirst тут потрібен бо MinIO cleanup потребує fileKey ДО видалення з DB.
     const record = await this.prisma.workOrderMedia.findFirst({
       where: { id: mediaId, orgId, workOrderId },
+      select: { fileKey: true },
     });
     if (!record) throw new NotFoundException('Медіа не знайдено');
 
@@ -132,7 +137,10 @@ export class WorkOrderMediaService {
     // (file gone, DB row stays) is worse because findAll would generate broken
     // signedUrls forever. Failed MinIO cleanup becomes garbage that a batch
     // job can sweep later — we surface it as a warning, not a user error.
-    await this.prisma.workOrderMedia.delete({ where: { id: mediaId } });
+    const result = await this.prisma.workOrderMedia.deleteMany({
+      where: { id: mediaId, orgId, workOrderId },
+    });
+    if (result.count === 0) throw new NotFoundException('Медіа не знайдено');
     try {
       await this.files.deleteObject(record.fileKey);
     } catch (e) {
