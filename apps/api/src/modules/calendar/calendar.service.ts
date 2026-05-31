@@ -18,6 +18,8 @@ export class CalendarService {
     branchId?: string,
     employeeId?: string,
   ): Promise<CalendarSlotResponseDto[]> {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+      throw new BadRequestException('Невірний формат дати. Очікується YYYY-MM-DD');
     // Convert Kyiv calendar date to UTC range using Intl (handles DST correctly)
     const kyivOffset = this.kyivOffsetMs(new Date(`${date}T12:00:00Z`));
     const start = new Date(new Date(`${date}T00:00:00Z`).getTime() - kyivOffset);
