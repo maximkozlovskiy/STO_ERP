@@ -59,6 +59,7 @@ export class ReceiveLineDto {
   @IsUUID()
   lineId!: string;
   @ApiProperty() @IsNumber() @Min(0) receivedQty!: number;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() unitOfMeasureId?: string;
 }
 
 export class ReceivePurchaseOrderDto {
@@ -81,6 +82,7 @@ export class PurchaseOrderLineResponseDto {
   @ApiProperty() price!: number;
   @ApiProperty() amount!: number;
   @ApiProperty() receivedQty!: number;
+  @ApiPropertyOptional() unitOfMeasureId?: string | null;
 }
 
 export class PurchaseOrderResponseDto {

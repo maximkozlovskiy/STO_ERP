@@ -258,7 +258,13 @@ export class PurchaseOrdersService {
   ): Promise<PurchaseOrderResponseDto> {
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { lines: { where: { deletedAt: null }, take: 1000 } },
+      include: {
+        lines: {
+          where: { deletedAt: null },
+          take: 1000,
+          include: { good: { select: { unitId: true } } },
+        },
+      },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
     if (po.status !== PurchaseOrderStatus.ORDERED && po.status !== PurchaseOrderStatus.PARTIAL) {
@@ -287,13 +293,17 @@ export class PurchaseOrdersService {
               documentType: 'PurchaseOrder',
               documentId: id,
               createdBy: userId,
+              unitOfMeasureId: line.good?.unitId ?? null,
             },
             tx,
           );
 
           await tx.purchaseOrderLine.update({
             where: { id: recv.lineId, orgId },
-            data: { receivedQty: { increment: recv.receivedQty } },
+            data: {
+              receivedQty: { increment: recv.receivedQty },
+              unitOfMeasureId: line.good?.unitId ?? null,
+            },
           });
 
           receivedAmount += recv.receivedQty * Number(line.price);
@@ -472,6 +482,7 @@ export class PurchaseOrdersService {
       quantity: number;
       price: import('@prisma/client').Prisma.Decimal;
       receivedQty: number;
+      unitOfMeasureId?: string | null;
       good: {
         name: string;
         sku: string | null;
@@ -508,6 +519,7 @@ export class PurchaseOrdersService {
         price: Number(l.price),
         amount: l.quantity * Number(l.price),
         receivedQty: l.receivedQty,
+        unitOfMeasureId: l.unitOfMeasureId ?? null,
       })),
       createdAt: po.createdAt,
       updatedAt: po.updatedAt,
