@@ -9,13 +9,23 @@
 ## Останній commit
 
 ```
+7a9f079 perf(optimize): parallelize FK validation + narrow includes + covering index
+193945c docs(skills,memory): add parent-guard-helper-blocks-merger + js-aggregation-in-recalc patterns
 b530f17 perf(optimize): WO lines/parts hot-path + SQL aggregate + loyalty.redeem parallel
 659aa65 docs(skills,memory): add tiered-parallelization + many-to-one include patterns to sto-optimize
 2c8d5b9 perf(web): Intl singletons + lib/format proxies in 7 frontend pages
 846f8ff perf(api): parallelize parent-guard + child-fetch in 8 services + tighten goods.uom include→select
 Дата: 2026-05-31
 
-Latest optimize: 2026-05-31 (sto-optimize-agent ітерація-2, HEAD 659aa65 → b530f17) — **8 точкових perf фіксів** на work-orders hot-path (lines/parts editing) + post-mutation recalc aggregate + loyalty.redeem.
+Latest optimize: 2026-05-31 (sto-optimize-agent ітерація-3, HEAD 193945c → 7a9f079) — **9 точкових perf фіксів** (7 backend + 1 frontend + 1 DB index) у untouched-by-previous-sweeps областях.
+**Backend (7 fixes):** `purchase-orders.applyPricing` + `xlsx.applyPricingFromList` — `include: { brand: true }` → select narrow projection (Brand record entirely unused — computePriceFromRules reads `good.brandId` scalar only); drops orgId/createdAt/syncVersion + heavy columns over-fetch per line × Brand row. `settlements-account.generateReconciliationPdf` — act + organisation findFirst parallel (-1 RTT). `brands.update` — tenant guard + duplicate-name check parallel (-1 RTT). `settings.updateOrganisation` — org guard + optional bankAccount FK validation parallel (-1 RTT). `warranties.autoCreate` — WO guard + idempotent existing check parallel (-1 RTT у post-WO COMPLETED hook). `warranties.claim` — warranty tenant guard + claimWo FK validation parallel (-1 RTT у happy path).
+**Frontend (1 fix):** `batch-viewer-modal.tsx` — local `fmt(n: number)` повертало `n.toLocaleString` + `fmtDate(s)` робив `new Date().toLocaleDateString` → thin proxies до `fmtMoney`/`fmtDate` з `@/lib/format`. fmt викликалось 7× per render (good summary + history.map × 3 prices + batch detail × 2 prices), fmtDate — 3× (history createdAt + batch.createdAt + batch.expiryDate). Module-level Intl singletons заміняють per-call construction.
+**DB (1 index):** `WorkOrderMedia` — `(orgId, workOrderId)` → `(orgId, workOrderId, createdAt)` covering. findAll sorted DESC з take:50 — раніше Sort node поверх Index Scan, тепер віддає рядки в індекс-order.
+**Impact:** PO/xlsx pricing з 100-1000 рядків — wire payload падає ~30% (Brand row entirely cut). Post-WO COMPLETED hook -1 RTT на кожне завершення наряду. Modal batch viewer — 10 Intl-конструкцій → 0 per render. Sort node на WO media list зникає.
+**TypeScript:** ✅ 0 errors (api + web). API tests 459/459 pass.
+**Нові SKILL patterns:** 1 новий entry — over-fetched many-to-one include для scalar-only consumer (include: { brand: true } коли тіло читає тільки brandId scalar).
+
+Previous optimize: 2026-05-31 (sto-optimize-agent ітерація-2, HEAD 659aa65 → b530f17) — **8 точкових perf фіксів** на work-orders hot-path (lines/parts editing) + post-mutation recalc aggregate + loyalty.redeem.
 **Backend (8 fixes у 2 сервісах):** `work-orders.addLine`/`addPart` — tier merger getEditableWorkOrder helper inlined у Promise.all з FK reads (3 RTT → 1 кожен); `work-orders.updateLine`/`removeLine`/`updatePart`/`removePart` — same-aggregate parent (WO) + child (line/part) parallel (-1 RTT кожен); `work-orders.recalcTotals` — findMany(take:1000) × 2 + JS reduce замінено на `prisma.aggregate({_sum: amount})` × 2 (Postgres SUM, 2000 рядків → 2 числа); `loyalty.redeem` — assertCounterparty + organisationSettings parallel (-1 RTT). Helper getEditableWorkOrder видалено як unused.
 **Frontend (1 fix):** `infrastructure/page.tsx` — local formatDate (inline new Date().toLocaleDateString) → fmtDate proxy з @/lib/format. LiftRow рендерить lastMaintenance + nextMaintenance, тобто 2× Intl-конструкцій на рядок списку.
 **Impact:** WO line/part editing — daily hot-path (10+ edits на наряд). На WAN/VPN з RTT 30-50ms кожен edit швидший на 1-2 RTT, recalcTotals тепер не тягне 2000 рядків × N edits. Loyalty redeem менш hot, але -1 RTT тривіально. infrastructure list ререндери — 0 Intl-конструкцій замість 2N.
@@ -411,7 +421,7 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 
 ## Поточний стан проєкту
 
-TypeScript: ✅ 0 errors (web + api + shared) — verified 2026-05-31, HEAD 00d5f34 (sto-review post-@Transform-batch)
+TypeScript: ✅ 0 errors (web + api + shared) — verified 2026-05-31, HEAD 7a9f079 (sto-optimize-agent ітерація-3)
 
 Latest optimize: 2026-05-31 (sto-optimize-agent, HEAD a5a390d → 3b7a394) — 7 точкових perf фіксів за вказівкою користувача. **Backend:** (1) `reports.revenue()` — DB-side aggregation: $queryRaw з `DATE_TRUNC('day', completedAt AT TIME ZONE 'Europe/Kyiv')` + GROUP BY 1 замість findMany(take:10000) + JS reduce. Postgres повертає ~30 рядків (по одному на день) у потрібному форматі; контракт `{date, revenue, labor, parts, count}[]` зберігся. (2) `DashboardService.getSummary()` — приватний `withTimeout(p, ms)` хелпер на основі Promise.race: кожен з 4 sub-queries (activeWO count, todayRevenue aggregate, pendingInvoices count, lowStock $queryRaw) обгорнутий у 8s ceiling; timeout → null → поле сумарно 0 з warn log. Захищає SSE tick від blocking при slow Postgres або pool starvation. `setTimeout.unref()` щоб не тримати event loop. (3) `DashboardController.stream` SSE: `@SkipThrottle()` → `@Throttle({ ttl: 60_000, limit: 5 })` — лімітує лише нові з'єднання (5/хв на IP), не впливає на вже відкриті long-lived streams. Захист від reconnect-storm (broken proxies, tab spawn). (4) `PurchaseOrdersService.receive()` — tx timeout 15s → 30s для великих PO з сотнями рядків × createMovement з batch tracking. (5) `PrismaService` constructor: `datasourceUrl` з `connection_limit=25` + `pool_timeout=20` через `withConnectionPool(DATABASE_URL)`. Параметри додаються тільки якщо operator не задав їх у env. **DB:** (6) додано 2 індекси через міграцію `20260531100000_add_perf_indexes_wol_bc`: `work_order_lines(workOrderId, deletedAt)` — list lines by workOrder без orgId fan-out (WO detail nested fetches), `batch_consumptions(orgId, batchId, createdAt)` — FIFO/LIFO traversal per-batch у межах tenant. (7) `reports.service.ts` інші endpoints — verified that all findMany have explicit take caps (workOrders n/a (groupBy), stock 5000+500, settlements 5000, load 5000) — no-op fix. **§ Контракти збережено.** TS api/web 0 errors. Якщо хтось виставляв нестандартний `connection_limit` у env — він зберігається (no-op у withConnectionPool коли key вже у searchParams).
 

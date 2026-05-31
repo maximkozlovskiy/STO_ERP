@@ -785,6 +785,17 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — Over-fetched many-to-one include для scalar-only consumer — `include: { brand: true }` коли тіло читає лише `entity.brandId`
+
+**Сигнал:** `findMany`/`findFirst` має `include: { brand: true }` (або інший fkRelation) у запиті, але тіло методу/циклу читає лише foreign-key scalar — наприклад `line.good.brandId` чи `g.brandId` — без жодного звернення до `brand.name`/`brand.id`/`brand.x`. include тягне всю Brand row (orgId, createdAt, updatedAt, deletedAt, syncVersion + payload) лише щоб фронт-end-незалежний бекенд-розрахунок прочитав scalar який вже є на Good
+**Причина виникнення:** при додаванні brand-aware логіки (`computePriceFromRules(... brandId)`) розробник природно додає `include: { brand: true }` щоб «протягнути brand зв'язок». Не помічається що brandId scalar вже є на Good — Brand row entirely unused. Particularly common у applyPricing / report builders / migration scripts де FK тільки для ID-based dispatch
+**Підхід до виявлення:** для кожного `include: { brand: true }` (або brand/category/unitOfMeasure/supplier/currency single-row include) grep наступних 30 рядків тіла на `entity.brand.\w+` — якщо знаходить тільки `entity.brand` без властивостей АБО лише `entity.brandId` (scalar з parent table) — кандидат на видалення include
+**Підхід до фіксу:** замінити `include` на `select` з narrow projection: явно перелічити всі поля parent entity що читаються + явно вказати які FK scalars потрібні (brandId, categoryId, etc.). Видалити nested include entirely. Wire payload падає 30-50% бо Brand record ~10 колонок проти 1 FK scalar
+**Реальний impact:** на PO з 100 рядків кожен рядок мав `good.brand` join → 100 додаткових Brand rows × ~150 bytes JSON = ~15KB зайвого payload. На xlsx applyPricingFromList з 1000 goods — ще більше. Cumulative effect: менше bytes over the wire, менше V8 allocation pressure, менша time-to-first-byte на pricing endpoints
+**Де шукати ще:** будь-який pricing/report/migration сервіс що приймає FK і дисtch'ить логіку на основі ID. Особливо часто: pricing.computeFromRules, applyPricing у PO/SD/xlsx, recommendation engines, tax calculators, loyalty earners. Перевіряти кожен новий «розрахунок з правил» — чи дійсно потрібен related entity object, чи лише його ID
+
+---
+
 ### 2026-05-31 — JS aggregation у post-mutation recalc helpers — `findMany({ select: { amount: true } }).reduce(...)` для перерахунку totals
 
 **Сигнал:** приватний helper типу `recalcTotals(parentId, tx)` робить `tx.X.findMany({ where: { parentId, orgId, deletedAt: null }, select: { amount: true }, take: 1000 })` потім `.reduce((s, l) => s + Number(l.amount), 0)`. Викликається після кожного add/update/remove на дочірніх сутностях (lines/parts/installments). На наряді з 20 рядками × 10 редагувань = 200 завантажень масиву + 200 JS reduce, хоча потрібен лише SUM
@@ -849,6 +860,12 @@ TypeScript: ✅ 0 errors
 - ✅ work-orders updateLine/removeLine/updatePart/removePart: same-aggregate parent (WO) + child (line/part) у Promise.all (-1 RTT each)
 - ✅ work-orders recalcTotals: findMany(take:1000) + JS reduce → prisma.aggregate({\_sum: amount}) — Postgres рахує SUM, повертає 2 числа замість 2000 рядків
 - ✅ loyalty redeem: assertCounterparty + organisationSettings у Promise.all (-1 RTT)
+- ✅ purchase-orders applyPricing + xlsx applyPricingFromList: include: { brand: true } → select narrow projection (Brand record entirely unused — only brandId scalar read)
+- ✅ settlements-account generateReconciliationPdf: act + organisation у Promise.all (-1 RTT)
+- ✅ brands.update: tenant guard + duplicate-name check у Promise.all (-1 RTT)
+- ✅ settings.updateOrganisation: org guard + optional bankAccount FK validation у Promise.all (-1 RTT)
+- ✅ warranties.autoCreate: WO guard + idempotent existing check у Promise.all (-1 RTT post-WO COMPLETED hook)
+- ✅ warranties.claim: warranty tenant guard + claimWo FK validation у Promise.all (-1 RTT у happy path)
 
 **Frontend:**
 
@@ -893,3 +910,4 @@ TypeScript: ✅ 0 errors
 - ✅ settlement_transactions: `(orgId, settlementAccountId, createdAt)` covering — paginated list + reconciliation period scans
 - ✅ work_order_lines: `(workOrderId, deletedAt)` — list lines by WO без orgId fan-out у nested fetch
 - ✅ batch_consumptions: `(orgId, batchId, createdAt)` — chronological FIFO/LIFO traversal per-batch
+- ✅ work_order_media: `(orgId, workOrderId, createdAt)` covering — findAll sorted DESC без Sort node
