@@ -11,6 +11,7 @@ import {
   Max,
   ValidateNested,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PricingRuleType, GoodType } from '@prisma/client';
 import { Type } from 'class-transformer';
@@ -69,6 +70,7 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   goodId?: string;
 
@@ -87,6 +89,7 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   brandId?: string;
 
@@ -147,6 +150,7 @@ export class UpdatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   goodId?: string;
 
@@ -163,6 +167,7 @@ export class UpdatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   brandId?: string;
 

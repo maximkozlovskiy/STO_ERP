@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsUUID, IsDateString, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateWarrantyDto {
   @ApiProperty()
@@ -7,10 +8,12 @@ export class CreateWarrantyDto {
   workOrderId!: string;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   workOrderLineId?: string;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   workOrderPartId?: string;
   @ApiProperty()

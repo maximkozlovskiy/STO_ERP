@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateWorkCategoryDto {
   @ApiProperty({ example: 'Двигун' })
@@ -9,6 +10,7 @@ export class CreateWorkCategoryDto {
 
   @ApiPropertyOptional({ description: 'UUID батьківської категорії (null = коренева)' })
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   parentId?: string;
 
@@ -32,6 +34,7 @@ export class UpdateWorkCategoryDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   parentId?: string;
 

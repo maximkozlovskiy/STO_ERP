@@ -13,6 +13,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { Type } from 'class-transformer';
 import { EmployeeStatus, UserRole } from '@prisma/client';
 import { z } from 'zod';

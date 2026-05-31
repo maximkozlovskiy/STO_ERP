@@ -13,6 +13,7 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { VatMode, BatchCostMethod } from '@prisma/client';
 
 export interface UiFeatures {
@@ -49,6 +50,7 @@ export class UpdateOrganisationSettingsDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   defaultVatRateId?: string;
 
@@ -272,6 +274,7 @@ export class UpdateOrganisationDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @ValidateIf(o => o.bankAccountId !== null)
   @IsUUID()
   bankAccountId?: string | null;

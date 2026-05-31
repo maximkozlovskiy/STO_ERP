@@ -9,6 +9,7 @@ import {
   IsEnum,
   IsUUID,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { GoodType } from '@prisma/client';
@@ -19,10 +20,12 @@ export class CreateGoodDto {
   @ApiPropertyOptional({ default: 'шт' }) @IsOptional() @IsString() unit?: string;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   unitId?: string;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   brandId?: string;
 
@@ -40,6 +43,7 @@ export class CreateGoodDto {
   @ApiPropertyOptional({ enum: GoodType }) @IsOptional() @IsEnum(GoodType) goodType?: GoodType;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   preferredSupplierId?: string;
 }

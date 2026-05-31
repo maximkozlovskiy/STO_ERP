@@ -1,4 +1,5 @@
 import { IsUUID, IsOptional, IsNumber, Min, IsString, IsNotEmpty } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreatePaymentDto {
@@ -7,10 +8,12 @@ export class CreatePaymentDto {
   counterpartyId!: string;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   workOrderId?: string;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   invoiceId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;

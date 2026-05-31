@@ -8,6 +8,7 @@ import {
   IsUUID,
   Min,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 // ─── Vehicle ─────────────────────────────────────────────
 

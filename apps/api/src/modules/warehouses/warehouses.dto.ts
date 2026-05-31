@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { WarehouseType } from '@prisma/client';
 
 export class CreateWarehouseDto {

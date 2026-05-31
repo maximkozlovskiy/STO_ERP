@@ -11,6 +11,7 @@ import {
   IsBoolean,
   IsBooleanString,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
@@ -76,18 +77,22 @@ export class WorkOrderQueryDto {
   status?: WorkOrderStatus;
   @ApiPropertyOptional({ enum: WorkOrderPriority })
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsEnum(WorkOrderPriority)
   priority?: WorkOrderPriority;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   branchId?: string;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   counterpartyId?: string;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   vehicleId?: string;
 
@@ -95,6 +100,7 @@ export class WorkOrderQueryDto {
   // so an employee sees an order if ANY of its line items reference them as the executor.
   @ApiPropertyOptional({ description: 'Фільтр за виконавцем (через рядки робіт)' })
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   employeeId?: string;
 
@@ -199,6 +205,7 @@ export class CreateWorkOrderLineDto {
   employeeId!: string;
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   liftId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) normoHours?: number;

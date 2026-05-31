@@ -8,6 +8,7 @@ import {
   ValidateNested,
   IsEnum,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -33,6 +34,7 @@ export class CreateStockDocumentDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsUUID()
   targetWarehouseId?: string;
 
