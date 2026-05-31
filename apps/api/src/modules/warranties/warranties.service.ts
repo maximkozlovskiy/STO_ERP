@@ -124,21 +124,23 @@ export class WarrantiesService {
   }
 
   async autoCreate(orgId: string, workOrderId: string, warrantyDays: number): Promise<void> {
-    // Called after WO COMPLETED — create one warranty covering all work in the WO
-    const wo = await this.prisma.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-      select: { id: true, number: true, counterpartyId: true },
-    });
+    // Called after WO COMPLETED — create one warranty covering all work in the WO.
+    // Perf: WO guard + idempotent existing check мають orgId+workOrderId фільтри (tenant-isolated)
+    // і не залежать один від одного → Promise.all (-1 RTT у hot-path post-WO hook).
+    const [wo, existing] = await Promise.all([
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { id: true, number: true, counterpartyId: true },
+      }),
+      this.prisma.warranty.findFirst({
+        where: { orgId, workOrderId, deletedAt: null },
+      }),
+    ]);
     if (!wo || !wo.counterpartyId) return;
+    if (existing) return; // idempotent
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + warrantyDays);
-
-    // Idempotent: skip if warranty for this WO already exists
-    const existing = await this.prisma.warranty.findFirst({
-      where: { orgId, workOrderId, deletedAt: null },
-    });
-    if (existing) return;
 
     await this.prisma.warranty.create({
       data: {
@@ -220,7 +222,14 @@ export class WarrantiesService {
   }
 
   async claim(orgId: string, id: string, dto: ClaimWarrantyDto): Promise<WarrantyResponseDto> {
-    const w = await this.prisma.warranty.findFirst({ where: { id, orgId, deletedAt: null } });
+    // Perf: warranty tenant guard + claimWo FK validation — обидва tenant-isolated,
+    // не залежать один від одного → Promise.all (-1 RTT у happy path).
+    const [w, claimWo] = await Promise.all([
+      this.prisma.warranty.findFirst({ where: { id, orgId, deletedAt: null } }),
+      this.prisma.workOrder.findFirst({
+        where: { id: dto.claimWoId, orgId, deletedAt: null },
+      }),
+    ]);
     if (!w) throw new NotFoundException('Гарантію не знайдено');
 
     // Business rule: a warranty can be claimed exactly once. Re-claiming would silently
@@ -233,10 +242,6 @@ export class WarrantiesService {
       throw new BadRequestException('Термін гарантії минув');
     }
 
-    // Validate claimWo belongs to same org
-    const claimWo = await this.prisma.workOrder.findFirst({
-      where: { id: dto.claimWoId, orgId, deletedAt: null },
-    });
     if (!claimWo) throw new NotFoundException('Гарантійний наряд не знайдено');
 
     const updated = await this.prisma.warranty.update({

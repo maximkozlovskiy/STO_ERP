@@ -1636,7 +1636,10 @@ model WorkOrderMedia {
   workOrder WorkOrder    @relation(fields: [workOrderId], references: [id])
   uploader  Employee     @relation(fields: [uploadedBy], references: [id])
 
-  @@index([orgId, workOrderId])
+  // Covering index: findAll сортує по createdAt DESC (work-order-media.service.findAll, take:50).
+  // Раніше (orgId, workOrderId) покривав WHERE але вимагав Sort node поверх Index Scan.
+  // (orgId, workOrderId, createdAt) → Postgres віддає рядки в індекс-order, sort node зникає.
+  @@index([orgId, workOrderId, createdAt])
   @@index([orgId, syncVersion])
   @@map("work_order_media")
 }

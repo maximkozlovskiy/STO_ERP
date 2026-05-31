@@ -404,13 +404,29 @@ export class PurchaseOrdersService {
       newSalePrice: number;
     }[];
   }> {
+    // Perf: select narrow projection for pricing — Brand record entirely unused (only brandId
+    // scalar read), Good's heavy columns (description, barcodes, customFields) likewise unused.
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id: poId, orgId, deletedAt: null },
-      include: {
+      select: {
+        id: true,
+        number: true,
+        status: true,
         lines: {
           where: { deletedAt: null },
-          include: {
-            good: { include: { brand: true } },
+          select: {
+            goodId: true,
+            price: true,
+            good: {
+              select: {
+                id: true,
+                name: true,
+                salePrice: true,
+                category: true,
+                goodType: true,
+                brandId: true,
+              },
+            },
           },
         },
       },

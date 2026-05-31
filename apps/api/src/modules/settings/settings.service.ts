@@ -430,19 +430,22 @@ export class SettingsService {
     orgId: string,
     dto: UpdateOrganisationDto,
   ): Promise<OrganisationResponseDto> {
-    const org = await this.prisma.organisation.findFirst({
-      where: { orgId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!org) throw new NotFoundException('Організацію не знайдено');
-
-    if (dto.bankAccountId) {
-      const ba = await this.prisma.bankAccount.findFirst({
-        where: { id: dto.bankAccountId, orgId, deletedAt: null },
+    // Perf: tenant guard + optional bankAccount FK validation — обидва tenant-isolated,
+    // не залежать один від одного → Promise.all (-1 RTT коли bankAccountId присутній).
+    const [org, ba] = await Promise.all([
+      this.prisma.organisation.findFirst({
+        where: { orgId, deletedAt: null },
         select: { id: true },
-      });
-      if (!ba) throw new NotFoundException('Банківський рахунок не знайдено');
-    }
+      }),
+      dto.bankAccountId
+        ? this.prisma.bankAccount.findFirst({
+            where: { id: dto.bankAccountId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    if (!org) throw new NotFoundException('Організацію не знайдено');
+    if (dto.bankAccountId && !ba) throw new NotFoundException('Банківський рахунок не знайдено');
 
     const updated = await this.prisma.organisation.update({
       where: { id: org.id },

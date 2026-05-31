@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Package, TrendingUp, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { fmtMoney, fmtDate } from '@/lib/format';
 
 interface BatchItem {
   id: string;
@@ -42,12 +43,14 @@ interface BatchViewerModalProps {
   onClose: () => void;
 }
 
+// Thin proxy over @/lib/format module-level Intl singletons to avoid per-render
+// `new Intl.NumberFormat`/`toLocaleDateString` construction in batch.map() / history.map().
 function fmt(n: number) {
-  return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return fmtMoney(n);
 }
 
-function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString('uk-UA');
+function fmtDateString(s: string) {
+  return fmtDate(new Date(s));
 }
 
 function margin(sale: number, cost: number) {
@@ -251,7 +254,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
                     )}
                   </div>
                   <span className="text-[11px] text-muted-foreground shrink-0 ml-4">
-                    {fmtDate(h.createdAt)}
+                    {fmtDateString(h.createdAt)}
                   </span>
                 </div>
               ))}
@@ -299,7 +302,7 @@ function BatchRow({
                 <span className="ml-1 text-muted-foreground">№{batch.batchNumber}</span>
               )}
             </p>
-            <p className="text-[11px] text-muted-foreground">{fmtDate(batch.createdAt)}</p>
+            <p className="text-[11px] text-muted-foreground">{fmtDateString(batch.createdAt)}</p>
           </div>
         </div>
         <div className="flex items-center gap-4 shrink-0 ml-3">
@@ -341,7 +344,7 @@ function BatchRow({
           {batch.expiryDate && (
             <div>
               <p className="text-muted-foreground">Термін придатності</p>
-              <p className="font-medium text-foreground">{fmtDate(batch.expiryDate)}</p>
+              <p className="font-medium text-foreground">{fmtDateString(batch.expiryDate)}</p>
             </div>
           )}
         </div>

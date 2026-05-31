@@ -55,11 +55,15 @@ export class BrandsService {
   }
 
   async update(orgId: string, id: string, dto: UpdateBrandDto): Promise<BrandResponseDto> {
-    const existing = await this.prisma.brand.findFirst({ where: { id, orgId, deletedAt: null } });
+    // Perf: tenant guard + duplicate-name check паралелизуються — обидва тенант-ізольовані,
+    // duplicate-check читає по dto.name (не по existing) → немає залежності.
+    const [existing, duplicate] = await Promise.all([
+      this.prisma.brand.findFirst({ where: { id, orgId, deletedAt: null } }),
+      this.prisma.brand.findFirst({
+        where: { orgId, name: dto.name, NOT: { id }, deletedAt: null },
+      }),
+    ]);
     if (!existing) throw new NotFoundException('Бренд не знайдено');
-    const duplicate = await this.prisma.brand.findFirst({
-      where: { orgId, name: dto.name, NOT: { id }, deletedAt: null },
-    });
     if (duplicate) throw new ConflictException('Бренд з такою назвою вже існує');
     const item = await this.prisma.brand.update({ where: { id, orgId }, data: dto });
     await this.cache.del(cacheKey(orgId));

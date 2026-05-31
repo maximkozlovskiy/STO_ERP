@@ -134,7 +134,8 @@ describe('XlsxService', () => {
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
       expect(result.found).toBe(1);
-      // Bulk lookup: ОБИДВА варіанти (sku IN АБО barcodes IN) у одному findMany
+      // Bulk lookup: ОБИДВА варіанти (sku IN АБО barcodes IN) у одному findMany.
+      // Perf: select narrow projection — Brand record unused (only brandId scalar read).
       expect(prisma.good.findMany).toHaveBeenCalledWith({
         where: {
           orgId: ORG,
@@ -144,7 +145,17 @@ describe('XlsxService', () => {
             { barcodes: { some: { barcode: { in: ['4820123456789'] } } } },
           ],
         },
-        include: { brand: true, barcodes: { select: { barcode: true } } },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          salePrice: true,
+          purchasePrice: true,
+          category: true,
+          goodType: true,
+          brandId: true,
+          barcodes: { select: { barcode: true } },
+        },
         take: 10000,
       });
     });

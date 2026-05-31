@@ -164,13 +164,18 @@ export class SettlementsAccountService {
     counterpartyId: string,
     actId: string,
   ): Promise<Buffer> {
-    const act = await this.prisma.reconciliationAct.findFirst({
-      where: { id: actId, orgId, counterpartyId },
-      include: { counterparty: { select: { firstName: true, lastName: true, companyName: true } } },
-    });
+    // Perf: act + organisation мають незалежний tenant-isolation (act has orgId+actId+counterpartyId,
+    // org has id=orgId) — паралель не псує семантику NotFound (throw після Promise.all).
+    const [act, org] = await Promise.all([
+      this.prisma.reconciliationAct.findFirst({
+        where: { id: actId, orgId, counterpartyId },
+        include: {
+          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+        },
+      }),
+      this.prisma.organisation.findFirst({ where: { id: orgId } }),
+    ]);
     if (!act) throw new NotFoundException('Акт звірки не знайдено');
-
-    const org = await this.prisma.organisation.findFirst({ where: { id: orgId } });
     const cp = act.counterparty;
     const cpName =
       (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Контрагент';

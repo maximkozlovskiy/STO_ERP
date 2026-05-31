@@ -673,11 +673,24 @@ export class XlsxService {
     if (skus.length) orConditions.push({ sku: { in: skus } });
     if (barcodes.length) orConditions.push({ barcodes: { some: { barcode: { in: barcodes } } } });
 
+    // Perf: select narrow projection for pricing — Brand record entirely unused
+    // (computePriceFromRules reads only good.brandId scalar), Good's heavy columns
+    // (description, customFields, photoUrl) likewise unused.
     const [goods, rules] = await Promise.all([
       orConditions.length
         ? this.prisma.good.findMany({
             where: { orgId, deletedAt: null, OR: orConditions },
-            include: { brand: true, barcodes: { select: { barcode: true } } },
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              salePrice: true,
+              purchasePrice: true,
+              category: true,
+              goodType: true,
+              brandId: true,
+              barcodes: { select: { barcode: true } },
+            },
             take: 10000,
           })
         : Promise.resolve([]),
