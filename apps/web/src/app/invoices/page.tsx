@@ -457,13 +457,19 @@ export default function InvoicesPage() {
             label="Сума"
             value={inv.amount != null ? `${fmtMoney(inv.amount)} ₴` : undefined}
           />
-          {inv.totalWithoutVat != null && (
+          {/* Bug #274: hide breakdown rows коли totalWithoutVat=0 (header-only invoice
+              без lines) — то Prisma-default, не справжня сума. */}
+          {inv.totalWithoutVat != null && inv.totalWithoutVat > 0 && (
             <PanelField label="Без ПДВ" value={`${fmtMoney(inv.totalWithoutVat)} ₴`} />
           )}
           {inv.totalVat != null && inv.totalVat !== 0 && (
             <PanelField label="ПДВ" value={`${fmtMoney(inv.totalVat)} ₴`} />
           )}
-          {inv.totalWithVat != null && inv.totalWithVat !== inv.amount && (
+          {/* Bug #274: invoices with header-only data (no lines) keep totalWith*=0 в БД
+              (Prisma default), inv.amount містить реальну суму. Раніше умова `!== inv.amount`
+              була truth-сетна для (0 !== 100) → відображалось «Разом з ПДВ: 0,00 ₴» — оманливо.
+              Додано guard `> 0` щоб ховати нуль, але показувати реальний breakdown коли є lines. */}
+          {inv.totalWithVat != null && inv.totalWithVat > 0 && inv.totalWithVat !== inv.amount && (
             <PanelField label="Разом з ПДВ" value={`${fmtMoney(inv.totalWithVat)} ₴`} />
           )}
           <PanelField

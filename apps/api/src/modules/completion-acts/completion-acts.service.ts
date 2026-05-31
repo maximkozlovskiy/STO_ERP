@@ -24,7 +24,18 @@ export class CompletionActsService {
   ) {}
 
   async findAll(orgId: string, workOrderId?: string): Promise<PaginatedCompletionActsDto> {
-    const where = { orgId, deletedAt: null, ...(workOrderId ? { workOrderId } : {}) };
+    // Bug #275: CANCELLED acts мають бути виключені з активного списку.
+    // cancel() не робить soft-delete (deletedAt лишається null) — тільки змінює status.
+    // Без цього фронт після cancel перезавантажує сторінку → бачить «прихований» CANCELLED act
+    // у списку → setCompletionAct(items[0]) → користувач знову бачить cancelled act,
+    // не може клацнути «Сформувати акт» бо вже є запис у стані.
+    // Узгоджено з createFromWorkOrder line 120 (status: { not: CANCELLED }).
+    const where = {
+      orgId,
+      deletedAt: null,
+      status: { not: CompletionActStatus.CANCELLED },
+      ...(workOrderId ? { workOrderId } : {}),
+    };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.completionAct.findMany({
         where,

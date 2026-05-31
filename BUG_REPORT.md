@@ -8173,3 +8173,87 @@ UX-сценарій: створення/редагування правила ц
 **Статус:** [x] виправлено — додано `take: 1000` у 3 `expect(...).toHaveBeenCalledWith(...)`.
 
 ---
+
+## Session 2026-05-31 — sto-tester cycle 5 (FINAL) — regression + security + completion-act/invoice/loyalty
+
+## Bug #273 — CRITICAL Checkbox processor: SSRF redirect bypass — `redirect: 'manual'` відсутній
+
+**Файл:** `apps/api/src/modules/payments/checkbox.processor.ts:47`
+**Severity:** CRITICAL
+**Категорія:** security / ssrf
+
+**Опис:** `fetch(${apiUrl}/api/v1/receipts/sell, { method: 'POST', ... })` БЕЗ `redirect: 'manual'`. Cycle 5 review додав `validatePublicUrl(apiUrl)` на момент delivery, ЩОБ заблокувати OWNER/ADMIN, що поставив `branchSettings.checkboxApiUrl = http://169.254.169.254/...` напряму. АЛЕ:
+
+1. Атакувальник з OWNER/ADMIN правом ставить `checkboxApiUrl = "https://attacker.com"` (легітимний external host — пройде `validatePublicUrl`).
+2. Сервер `attacker.com` відповідає `302 Location: http://169.254.169.254/latest/meta-data/iam/security-credentials/...` (AWS cloud metadata) або `http://10.0.0.1/internal-redis` (LAN reachable).
+3. Node fetch з `redirect: 'follow'` (default) автоматично слідує redirect → POST з Authorization header letить у privately-routed VPC або loopback.
+
+Webhooks processor вже має `redirect: 'manual'` (line 82) — checkbox processor був пропущений під час cycle 5 review.
+
+**Очікувана поведінка:** `fetch(..., { redirect: 'manual' })` + явна перевірка `response.status >= 300 && < 400` → throw "Підозріла поведінка". Checkbox API legit-flow ніколи не повертає 3xx на /receipts/sell — будь-який redirect = ознака MITM/тампера.
+**Фактична поведінка:** Defense-in-depth #1 (URL validation) у одному місці; defense-in-depth #2 (redirect block) відсутній → bypass через 302.
+**Статус:** [x] виправлено — додано `redirect: 'manual'` + 3xx-rejection guard. Парний з webhooks.processor.ts:82.
+
+---
+
+## Bug #274 — MEDIUM Invoice detail panel: показує "Разом з ПДВ: 0,00 ₴" замість прихованого блоку коли totalWithVat=0
+
+**Файл:** `apps/web/src/app/invoices/page.tsx:460-468`
+**Severity:** MEDIUM
+**Категорія:** frontend / ux / data-display
+
+**Опис:** Інвойс створений через `create()` (header-only, без lines) має `amount = <реальна сума>`, але `totalWithoutVat/totalVat/totalWithVat = 0` (Prisma defaults). Раніше умова відображення була:
+
+```
+{inv.totalWithVat != null && inv.totalWithVat !== inv.amount && ...}
+```
+
+що для `(0 !== 100)` true → відображалось «Разом з ПДВ: 0,00 ₴» — оманливо. Користувач бачить інвойс на 100 грн → блок "Сума: 100 грн → Разом з ПДВ: 0 грн" → починає сумніватися чи це bug в розрахунках. Не помилка системи, а артефакт того, що VAT breakdown рахується тільки у lines, а не на header-level.
+
+`createFromWorkOrder` теж страждає — це ж `create()` з `amount: wo.totalAmount` (без lines).
+
+**Очікувана поведінка:** ховати breakdown якщо нуль (нема даних → нема показу).
+**Фактична поведінка:** показ нуля як легітимного значення.
+**Статус:** [x] виправлено — додано `> 0` guard для `totalWithoutVat` і `totalWithVat`.
+
+---
+
+## Bug #275 — HIGH CompletionAct list: показує CANCELLED акти → користувач блокується від створення нового
+
+**Файл:** `apps/api/src/modules/completion-acts/completion-acts.service.ts:26-46`
+**Severity:** HIGH
+**Категорія:** backend / business-logic / consistency
+
+**Опис:** `findAll` фільтрує тільки `deletedAt: null` — НЕ виключає `status: CANCELLED`. `cancel()` НЕ робить soft-delete (`deletedAt: null` лишається), лише змінює `status` на CANCELLED. Тому:
+
+1. Користувач створює акт → DRAFT
+2. Cancel → status: CANCELLED, deletedAt: null
+3. Перезавантажує сторінку → `apiFetch('/completion-acts?workOrderId=...')` повертає cancelled act у items
+4. Frontend: `if (acts.items.length > 0) setCompletionAct(acts.items[0])` → cancelled act рендериться
+5. UI приховує кнопку "Скасувати" (бо status !== 'DRAFT'), але user-flow стає неможливим — створити новий акт через UI неможливо без знання що цей CANCELLED виключений тільки на серверній перевірці.
+
+Backend `createFromWorkOrder` (line 120) правильно виключає CANCELLED — тому новий акт **може** бути створений, але користувач не має UI кнопки бо `completionAct !== null`.
+
+Видимий симптом: «акт виглядає як активний, але реально вже скасований». Інконсистентний стан між list і create.
+
+**Очікувана поведінка:** `findAll` виключає CANCELLED (парний з create).
+**Фактична поведінка:** cancelled act засмічує список.
+**Статус:** [x] виправлено — додано `status: { not: CompletionActStatus.CANCELLED }` у where findAll.
+
+---
+
+## Bug #276 — LOW booking.confirm response missing branchName (post-update fetch без include)
+
+**Файл:** `apps/api/src/modules/booking/booking.service.ts:215-217`
+**Severity:** LOW
+**Категорія:** backend / contract / dto-consistency
+
+**Опис:** Cycle 5 sync додав `branchName` field у `BookingRequestResponseDto` і у `findAll` (line 200) додано `include: { branch: { select: { name: true } } }`. Але `confirm()` пост-update fetch робить `findFirstOrThrow({ where: { id, orgId } })` БЕЗ include → toDto читає `r.branch?.name` → `undefined` → DTO має `branchName: null`. Контракт-розходження: list показує branchName, individual confirm response — null.
+
+Поточний фронт відразу робить `load()` після confirm → артефакт ховається. Але якщо майбутній рефактор додасть success-toast `Підтверджено для філії {branchName}` — повідомлення буде «Підтверджено для філії » (порожньо).
+
+**Очікувана поведінка:** post-update fetch паралельний з findAll — також з branch include.
+**Фактична поведінка:** branchName: null у confirm response.
+**Статус:** [x] виправлено — додано `include: { branch: { select: { name: true } } }` у findFirstOrThrow.
+
+---

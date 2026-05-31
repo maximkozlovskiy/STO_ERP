@@ -212,8 +212,13 @@ export class BookingService {
       data: { status: 'CONFIRMED' },
     });
     if (result.count === 0) throw new NotFoundException('Заявку не знайдено');
+    // Bug #276: post-update fetch має включати branch relation — без цього confirm()
+    // повертає BookingRequestResponseDto з branchName=null навіть якщо філія є.
+    // toDto() читає r.branch?.name; findFirstOrThrow без include → r.branch=undefined.
+    // Контракт DTO декларує branchName — клієнт може очікувати рендер у success-toast.
     const updated = await this.prisma.bookingRequest.findFirstOrThrow({
       where: { id, orgId },
+      include: { branch: { select: { name: true } } },
     });
     return this.toDto(updated);
   }

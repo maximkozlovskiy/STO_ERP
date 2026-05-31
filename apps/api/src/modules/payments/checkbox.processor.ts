@@ -43,9 +43,15 @@ export class CheckboxProcessor {
       throw new Error(`Невалідний Checkbox API URL: ${urlError}`);
     }
 
-    // Call Checkbox API
+    // Call Checkbox API.
+    // SSRF defense-in-depth #2: `redirect: 'manual'`. Без цього атакувальник з OWNER/ADMIN
+    // правом може поставити checkboxApiUrl на свій external host, який відповідає
+    // 302 Location: http://169.254.169.254/... → fetch (default redirect: 'follow') слідує
+    // у cloud metadata всередині privately-routed VPC, обходячи validatePublicUrl на оригіналі.
+    // Парний патерн з webhooks.processor.ts:82.
     const response = await fetch(`${apiUrl}/api/v1/receipts/sell`, {
       method: 'POST',
+      redirect: 'manual',
       headers: {
         Authorization: `Bearer ${branchSettings.checkboxLicenseKey}`,
         'Content-Type': 'application/json',
@@ -63,6 +69,14 @@ export class CheckboxProcessor {
         ],
       }),
     });
+
+    // Bug #273: any 3xx with redirect: 'manual' MUST be rejected — Checkbox API never
+    // returns 3xx on a sell endpoint; if it does, treat as suspicious tampering.
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(
+        `Checkbox API повернув перенаправлення ${response.status} — підозріла поведінка, запит відхилено`,
+      );
+    }
 
     if (!response.ok) {
       const err = await response.text();
