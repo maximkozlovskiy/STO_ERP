@@ -9,14 +9,28 @@
 ## Останній commit
 
 ```
-<pending tester-cycle-3 commit> fix(tester): cycle 3 — Bugs #257-#265 (DTO emptyToUndefined gap audit + regression-guard)
+319208b perf(optimize): cycle 3 — date-picker memoization + BatchRow memo
+490ec8e perf(optimize): cycle 3 — batch.service parallelize good+rules, inventory.updateMinStock 1-RTT
+1cf7098 docs(skills,memory): add mass-DTO variant-validator-family audit pattern + record tester cycle 3
 61720e3 fix(review): cycle 3 — emptyToUndefined on optional UUID/Enum/Date DTOs + TRANSACTION_TIMEOUT_MS unification
 39d2667 fix(sync): align frontend interfaces with API response DTOs (cycle 3)
 0c37fd1 perf(optimize): cycle 2 — followup fan-out + audit narrow select + dashboard Intl + Phase 21 covering indexes
-5b77bad docs(memory): record sto-tester cycle 2 — HEAD af5f4f8 hash
-af5f4f8 fix(tester): cycle 2 — Bugs #251-#256 (booking DoS + cross-tenant FK + comments validation + specs)
-c5d04bc docs(skills): add RolesGuard-without-@Roles pattern to sto-review
 Дата: 2026-05-31
+
+Latest optimize: 2026-05-31 (sto-optimize-agent цикл 3 з 5, HEAD 1cf7098 → 319208b) — **5 точкових perf фіксів** (3 backend + 2 frontend + 3 нові SKILL patterns) фокус на нові великі сервіси (batch/pricing) і нові UI компоненти (date-picker, batch-viewer-modal).
+**Backend (3 fixes):**
+(1) batch.service.createFromReceipt — sequential `good.findFirst → calculateSalePrice` (wrapper що внутрішньо тягне rules) → 2 RTT read-фаза. Тепер: `Promise.all([good, getActiveRulesForOrg])` + sync `computePriceFromRules`. Wrapper-метод `calculateSalePrice` лишився для одиничних викликів; hot-path inline'нув components.
+(2) inventory.service.updateMinStock — `findFirst` (для 404) + `update` (для запису) → 1 RTT через `updateMany({where:{id,orgId,deletedAt:null}})` + `count===0` для 404. Defense-in-depth tenant ізоляція.
+(3) pricing.service.applyRuleToGoods — `goods.findMany → pricingRule.findMany` (allRules) sequential → Promise.all. Обидва незалежні, виграш -1 RTT.
+**Frontend (2 fixes):**
+(4) date-picker-input.tsx — `disabledMatchers` array, `minDate`/`maxDate` Dates, `classNames` object, `selected` Date — всі перебудовувались на кожен ререндер. DayPicker диф-ить props по reference → втрачав внутрішню memoization матриці днів. Тепер: useMemo для minDate/maxDate/disabledMatchers/selected + module-level DAY_PICKER_CLASS_NAMES const.
+(5) batch-viewer-modal.tsx — BatchRow у `.map()` без `memo` + inline `onToggle={() => setExpandedId(...)}`. Клік на «expand» → batько ререндериться → всі 5-20 рядків. Тепер: `useCallback(handleToggle)` стабільний + `useMemo(activeBatches/depletedBatches)` + BatchRow `memo`. Тільки 2 рядки (старий + новий expanded) ререндеряться.
+
+**TypeScript:** ✅ 0 errors (api + web). **Unit:** inventory 88/88, ui components 139/139.
+**Нові SKILL patterns:** 3 entries —
+- "Async wrapper-method блокує parallelism" (extension of pure-compute extraction, Bug #14 spec batch).
+- "3rd-party UI lib props rebuilt each render" (DayPicker classNames/disabled — internal memoization loss).
+- "List item component без React.memo + inline callback — toggle expansion/selection у списку" (BatchRow).
 
 Latest tester: 2026-05-31 (sto-tester-agent цикл 3 з 5, FULL HEAD 61720e3) — **9 багів виявлено + виправлено** (7 HIGH DTO validation + 1 MEDIUM test-coverage). Фокус: DTO валідація після масової `@Transform(emptyToUndefined)` фіксації (review cycle 3 покрив 32 поля у 7 DTO, але пропустив 7 інших DTO + 22 поля), regression-guard тести для @Transform, перевірка sync interface (9 type fixes).
 **Знайдено через статичний аналіз — 0 runtime регресій:**

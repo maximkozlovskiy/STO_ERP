@@ -840,6 +840,39 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — Async wrapper-method блокує parallelism викликача — `calculateX(... )` що сам тягне rules перед чистим compute
+
+**Сигнал:** hot-path сервіс (приклад: `batch.createFromReceipt`) робить `entity = await prisma.X.findFirst(...)` потім `result = await this.other.calculateY(entity.fields, costPrice)`, де `calculateY` внутрішньо починає з `prisma.rules.findMany(...)`. Виглядає лінійно і чисто: знайди entity, передай у калькулятор. Насправді entity fetch і rules fetch — обидва незалежні від результату одне одного, отже мають бути паралельними. Сервіс уже має pure-compute helper (`computeYFromRules(rules, ...inputs)`) + async rule-source helper (`getActiveRulesForOrg`) — інкапсуляція доступна, її просто не використовують в hot-path
+**Причина виникнення:** «один API метод який все робить» — оригінальна абстракція. Викликач не знає про правила, він просто хоче відповідь. Паралелізація вимагає викликача знати про два внутрішніх helper'и (rules fetch + sync compute) замість одного wrapper. Розробник у hot-path виборав DRY (`await this.pricing.calculateSalePrice(...)`) над perf. **Pre-existing extraction** — patterт «Pure compute extraction» (2026-05-30) — створив helper'и, але hot-path call-site їх не використовує
+**Підхід до виявлення:** для кожного hot-path методу прочитай чи перший `await` — це wrapper-метод іншого сервісу що повертає `Promise<number>`/`Promise<X>`. Якщо такий wrapper існує, перевір чи сервіс має ДВА окремих helper: async data-source + sync compute. Якщо так — wrapper можна **inline'нути** у Promise.all з основним entity fetch
+**Підхід до фіксу:** `const [entity, rules] = await Promise.all([prisma.X.findFirst(...), this.other.getRulesForY(orgId)])`. Далі sync `this.other.computeYFromRules(rules, entity.fields, costPrice)`. Wrapper-метод `calculateY` НЕ видаляти — він потрібен для одиничних викликів де rule fetch overhead копійки. Hot-path inline'ить компоненти
+**Реальний impact:** -1 RTT per hot-path call. На batch.createFromReceipt (викликається при кожному прийомі товару — приймальні, інвентаризації, повернення) — типово 10-50 викликів на день × 30ms RTT = 300ms-1.5s збереження UI-латенсі. Sequential read-фаза одна з двох RTT, тепер one parallel
+**Де шукати ще:** будь-який hot-path сервіс що викликає external/async wrapper-калькулятор. pricing, tax, discount, loyalty earn, commission, validate — всі мають pure-compute extraction; перевір чи всі викликачі використовують extraction або wrapper. Якщо змішано — wrapper-калькулятори лишилися як «зручні» в hot-path, паралель не досягнуто
+
+---
+
+### 2026-05-31 — 3rd-party UI lib props rebuilt each render — DayPicker/Combobox/Table з inline classNames/disabled/columns
+
+**Сигнал:** компонент-обгортка над сторонньою UI-бібліотекою (DayPicker, React-Table, Combobox, MultiSelect) передає inline object/array літерал як props (`classNames={{...}}`, `disabled={[{before:...}, {after:...}]}`, `columns={[{header:...}, ...]}`). Лібка всередині має `useMemo` що diff-ить ці props по reference. Кожен ререндер батька → новий object reference → memoization інвалідується → бібліотека re-обчислює внутрішню data-structure (матриця днів, sort/filter, virtualized rows)
+**Причина виникнення:** code-locality — конфіг props пишеться поруч з JSX. classNames object виглядає readonly («це константи»), але JS все одно створює новий object на кожен виклик функції-компонента. Розробник не помічає бо UI працює коректно — продуктивність буває помітна тільки на повільних мобільних пристроях або при частих ререндерах батька (search/filter)
+**Підхід до виявлення:** для кожного UI-компонента що обгортає external lib (особливо ті що дисплеять колекції/grids/matrices), переглянути props: object literal? array literal через push()? `cn(...)` поверх кожного key? Якщо props великий і **похідний від stable inputs** — hoisтуй у module-level const або обгорни в `useMemo([deps])`. Особливо: `classNames`, `style`, `options`, `disabled`, `columns`, `rows`, `data`
+**Підхід до фіксу:** statically-known props → module-level `const DAY_PICKER_CLASS_NAMES = {...}` поза компонентом (один alloc на module load). Props що залежать від render input → `useMemo(() => [...], [dep1, dep2])`. Якщо в значенні є `cn(...)` чи інший виклик funcції — теж обгорнути у useMemo (cn не безкоштовний, і його результат — новий string). Перевірити що props не змінюються випадково (eg `cn(static-classes)` повертає той самий string, але виклик кожен раз робить роботу)
+**Реальний impact:** для DatePicker з 35-42 днями × ререндери батька (form change, validation) — без memoization кожен ререндер передраховує matchers і весь сітковий grid. З memoization — only at min/max change. Для table-grids з 50+ columns × 100+ rows — драматично (cells мають свою memoization що сильно залежить від stable columns array)
+**Де шукати ще:** будь-який `*.tsx` що оголошує component-wrapper над external UI lib. DatePicker (react-day-picker), Table (TanStack Table), Combobox (Headless UI), Select (react-select), Tree, Charts (recharts). Перевіряти при кожному додаванні нового UI-обгортки
+
+---
+
+### 2026-05-31 — List item component без React.memo + inline callback — toggle expansion/selection у списку
+
+**Сигнал:** компонент-рядок у `.map()` приймає stable primitive props (`{batch, expanded, onToggle, depleted}`) і **не обгорнутий у `memo`**. Батько передає `onToggle={() => setExpandedId(...)}` inline — нова функція на кожен ререндер → memo не врятує (props різні). Користувач клік на один рядок → setState змінює тільки `expandedId` → батько ререндериться → всі N рядків ререндеряться попри непомітну зміну. Особливо болить коли N>10 або всередині рядка є expensive computation (format, useMemo, nested map)
+**Причина виникнення:** memo сприймається як «оптимізація для пізніше». Inline callback виглядає чистим у JSX. Якщо рядок простий (одна div + text), memo не дає виграшу. Але як тільки рядок отримує expanded-section з grid/aggregations, кожен зайвий ререндер коштує. Розробник не помічає бо UI не «лагає» візуально — затримка ~1-2ms × 20 рядків = 20-40ms додаткового рендеру на клік
+**Підхід до виявлення:** для кожної сторінки-списку (table, grid, accordion, virtualized list) знайти інлайн-компонент-рядок (`Row`/`Card`/`Cell`/`Item` в тому ж файлі). Якщо рядок: (a) приймає primitive/stable props, (b) використовується у `.map()`, (c) рендерить більше ніж тривіальний JSX — кандидат на memo. Парно: батько передає event handlers inline (`onClick={() => ...}`)? — їх теж треба `useCallback` для memo щоб спрацювало
+**Підхід до фіксу:** `const Row = memo(function Row({...}) {...})`. Inline callback на батьку → `const handleX = useCallback((id) => setX(prev => prev === id ? null : id), [])`. Передавати `id` параметром у callback (не closure через map-scope) — це робить callback stable незалежно від ітерації. Перевірити що всі props — primitive або memoized (massive arrays через useMemo). Якщо рядок має внутрішні `.filter()`/`.map()` що залежить від props.list — теж useMemo
+**Реальний impact:** для batch-viewer modal з 5-20 активних батчів + 0-20 вичерпаних: клік на «expand» → раніше всі 20-40 рядків ререндерились; тепер 1-2 (новий + старий expanded). Multiplier × частота кліків × deep nested JSX = відчутна UI responsiveness. Найпомітніше на повільних пристроях (планшет механіка, mobile)
+**Де шукати ще:** modal-и з accordion/expansion (BatchViewerModal, FollowUpModal, MaintenanceScheduleModal), table-rows з selection (employees, work-orders list), card-grids (calendar slots, dashboard widgets). Перевіряти при додаванні **нового** списку-компонента у `.tsx` — це системно повторюваний патерн
+
+---
+
 ### 2026-05-31 — Sequential cron-/scheduler queue.add у onModuleInit — N-orgs scheduler enqueue блокує application bootstrap
 
 **Сигнал:** OnModuleInit hook (типу `FollowUpScheduler`, `ReminderScheduler`, периодичний bootstraper) проходить `for (const org of orgs) { await this.queue.add('job', ..., { repeat: cron, jobId: \`x-\${org.id}\` }) }`. Кожен `add`— Redis RTT з ioredis. На on-prem (1 org) — no-op. На multi-tenant cloud з 100-1000 orgs — application startup блокується на N×RTT доки всі repeatable jobs зареєструються
@@ -922,6 +955,9 @@ TypeScript: ✅ 0 errors
 - ✅ followup.processor: settings + branch findFirst parallel + hoist UA_DATE_FMT for per-schedule SMS date (hot daily-tick)
 - ✅ followup.scheduler.onModuleInit: for-await queue.add → Promise.all map (cloud N-orgs startup)
 - ✅ audit.findByEntity: include user → narrow select projection (drop orgId/entityType/entityId/userId over-fetch)
+- ✅ batch.createFromReceipt: parallel good.findFirst + pricing.getActiveRulesForOrg + sync computePriceFromRules (раніше wrapper calculateSalePrice блокував — sequential 2 RTT → parallel 1 RTT)
+- ✅ inventory.updateMinStock: findFirst (404 guard) + update → updateMany з orgId+deletedAt + count check (2 RTT → 1)
+- ✅ pricing.applyRuleToGoods: goods.findMany + pricingRule.findMany (allRules) — sequential → Promise.all (2 RTT → 1)
 
 **Frontend:**
 
@@ -961,6 +997,8 @@ TypeScript: ✅ 0 errors
 - ✅ calendar.utils.ts: hoist KYIV_MONTH_YEAR_FMT + KYIV_FULL_DATE_FMT singletons; fmtKyivMonthYear helper
 - ✅ calendar/page.tsx + CalendarStatsTab.tsx: 2× inline new Date(...).toLocaleDateString → fmtKyivMonthYear singleton (month-view headers)
 - ✅ dashboard/page.tsx: 4 inline Intl у useEffect → module-level KYIV_YMD_FMT/KYIV_YEAR_MONTH_DAY_FMT/KYIV_FULL_DATE_FMT/KYIV_HOUR_FMT (per-mount setup forms)
+- ✅ date-picker-input.tsx: DAY_PICKER_CLASS_NAMES module-level const + useMemo для minDate/maxDate/disabledMatchers/selected — DayPicker внутрішня memoization матриці днів збережена
+- ✅ batch-viewer-modal.tsx: BatchRow → React.memo + useCallback(handleToggle) + useMemo(activeBatches/depletedBatches) — клік на expand тепер чіпає 2 рядки замість всіх N
 
 **DB:**
 
