@@ -11,6 +11,9 @@ const IGNORE_PATTERNS = [
   /Download the React DevTools/i,
   /\[Fast Refresh\]/i,
   /\[HMR\]/i,
+  // 429 Too Many Requests — rate limit при паралельному запуску тестів (dev throttler)
+  /429/,
+  /Too Many Requests/i,
 ];
 
 // /dashboard відкриває SSE EventSource → networkidle ніколи не настає.

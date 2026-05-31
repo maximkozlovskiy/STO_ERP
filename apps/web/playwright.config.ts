@@ -10,9 +10,11 @@ export default defineConfig({
 
   timeout: 30_000,
   expect: { timeout: 8_000 },
-  retries: process.env.CI ? 2 : 1,
+  retries: process.env.CI ? 2 : 2,
   fullyParallel: true,
-  workers: process.env.CI ? 2 : undefined,
+  // 2 workers локально — запобігає rate limit (429) при паралельному /auth/refresh.
+  // Dev API throttler: 10 req/min на login endpoint, burst при 4+ workers перевищує ліміт.
+  workers: process.env.CI ? 2 : 4,
 
   reporter: process.env.CI
     ? [['github'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]

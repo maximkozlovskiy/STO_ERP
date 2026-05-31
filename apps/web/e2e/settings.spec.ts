@@ -7,7 +7,12 @@ test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe('Налаштування — сторінка', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/settings');
-    await page.waitForLoadState('domcontentloaded');
+    await expect(page).toHaveURL(/\/settings/, { timeout: 15_000 });
+    // Чекати таб "Організація" — стабільний індикатор готовності UI
+    await page
+      .locator('button:has-text("Організація")')
+      .first()
+      .waitFor({ state: 'visible', timeout: 20_000 });
   });
 
   test('сторінка завантажується без помилок', async ({ page }) => {
@@ -15,32 +20,30 @@ test.describe('Налаштування — сторінка', () => {
   });
 
   test('вкладки налаштувань присутні', async ({ page }) => {
-    // Очікуємо хоча б одну вкладку: Організація, Методи оплати, Оформлення тощо
-    const tabs = page.locator('[role="tab"], button[data-testid*="tab"]');
-    await expect(tabs.first()).toBeVisible({ timeout: 10_000 });
+    // settings/page.tsx: tabs — кастомні <button> з border-b-2, НЕ role="tab"
+    // Tabs: Організація, Реквізити, Валюти, ..., Оформлення, Інтерфейс, Нагадування, Інтеграції
+    const tab = page
+      .locator(
+        'button:has-text("Організація"), button:has-text("Оформлення"), button:has-text("Інтеграції")',
+      )
+      .first();
+    await expect(tab).toBeVisible({ timeout: 10_000 });
   });
 
   test('вкладка Організація відображає форму', async ({ page }) => {
-    // Натискаємо на таб Організація (може вже бути активним)
-    const orgTab = page
-      .locator('[role="tab"]:has-text("Організація"), button:has-text("Організація")')
-      .first();
-    if (await orgTab.isVisible()) {
+    const orgTab = page.locator('button:has-text("Організація")').first();
+    if (await orgTab.isVisible({ timeout: 5_000 })) {
       await orgTab.click();
     }
-    // Форма з полями організації
-    const nameField = page.locator('input, [data-testid*="org"]').first();
+    const nameField = page.locator('input').first();
     await expect(nameField).toBeVisible({ timeout: 10_000 });
   });
 
   test('вкладка Оформлення — перемикач теми присутній', async ({ page }) => {
-    const designTab = page
-      .locator('[role="tab"]:has-text("Оформлення"), button:has-text("Оформлення")')
-      .first();
-    if (!(await designTab.isVisible({ timeout: 3_000 }))) return;
-
+    const designTab = page.locator('button:has-text("Оформлення")').first();
+    if (!(await designTab.isVisible({ timeout: 5_000 }))) return;
     await designTab.click();
-    // Перемикач тем
+
     const themeToggle = page
       .locator('button:has-text("Світла"), button:has-text("Темна"), button:has-text("Системна")')
       .first();
@@ -48,14 +51,14 @@ test.describe('Налаштування — сторінка', () => {
   });
 
   test('вкладка Інтеграції — форма вебхуків', async ({ page }) => {
-    const intTab = page
-      .locator('[role="tab"]:has-text("Інтеграції"), button:has-text("Інтеграції")')
-      .first();
-    if (!(await intTab.isVisible({ timeout: 3_000 }))) return;
-
+    const intTab = page.locator('button:has-text("Інтеграції")').first();
+    if (!(await intTab.isVisible({ timeout: 5_000 }))) return;
     await intTab.click();
+
     const addWebhookBtn = page
-      .locator('button:has-text("Додати вебхук"), button:has-text("Новий вебхук")')
+      .locator(
+        'button:has-text("Додати вебхук"), button:has-text("Новий вебхук"), button:has-text("Додати")',
+      )
       .first();
     await expect(addWebhookBtn).toBeVisible({ timeout: 5_000 });
   });
@@ -66,11 +69,14 @@ test.describe('Налаштування — сторінка', () => {
 test.describe('Налаштування — темна тема', () => {
   test('перемикання на темну тему додає клас dark на html', async ({ page }) => {
     await page.goto('/settings');
-    await page.waitForLoadState('domcontentloaded');
+    await expect(page).toHaveURL(/\/settings/, { timeout: 15_000 });
+    // Чекати таб "Організація" — стабільний індикатор готовності UI
+    await page
+      .locator('button:has-text("Організація")')
+      .first()
+      .waitFor({ state: 'visible', timeout: 20_000 });
 
-    const designTab = page
-      .locator('[role="tab"]:has-text("Оформлення"), button:has-text("Оформлення")')
-      .first();
+    const designTab = page.locator('button:has-text("Оформлення")').first();
     if (!(await designTab.isVisible({ timeout: 5_000 }))) return;
     await designTab.click();
 
@@ -85,18 +91,22 @@ test.describe('Налаштування — темна тема', () => {
   });
 
   test('перемикання на світлу тему прибирає клас dark', async ({ page }) => {
-    // Спочатку встановлюємо темну
+    // ВАЖЛИВО: goto ПЕРЕД evaluate — localStorage недоступний до завантаження сторінки
+    await page.goto('/settings');
+    await expect(page).toHaveURL(/\/settings/, { timeout: 15_000 });
+    // Чекати таб "Організація" — стабільний індикатор готовності UI
+    await page
+      .locator('button:has-text("Організація")')
+      .first()
+      .waitFor({ state: 'visible', timeout: 20_000 });
+
+    // Встановлюємо темну тему через localStorage після завантаження сторінки
     await page.evaluate(() => {
       localStorage.setItem('sto_color_mode', 'dark');
       document.documentElement.classList.add('dark');
     });
 
-    await page.goto('/settings');
-    await page.waitForLoadState('domcontentloaded');
-
-    const designTab = page
-      .locator('[role="tab"]:has-text("Оформлення"), button:has-text("Оформлення")')
-      .first();
+    const designTab = page.locator('button:has-text("Оформлення")').first();
     if (!(await designTab.isVisible({ timeout: 5_000 }))) return;
     await designTab.click();
 

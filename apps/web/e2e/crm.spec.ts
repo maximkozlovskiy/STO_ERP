@@ -7,7 +7,13 @@ test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe('CRM — список контрагентів', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/crm');
-    await page.waitForLoadState('domcontentloaded');
+    await expect(page).toHaveURL(/\/crm/, { timeout: 15_000 });
+    // Чекати кнопку "Новий" — стабільний індикатор готовності UI
+    // Кнопка в CRM має текст "Додати" (leftIcon + "Додати")
+    await page
+      .locator('button:has-text("Додати")')
+      .first()
+      .waitFor({ state: 'visible', timeout: 20_000 });
   });
 
   test('сторінка завантажується', async ({ page }) => {
@@ -15,9 +21,12 @@ test.describe('CRM — список контрагентів', () => {
   });
 
   test('таблиця або empty state відображається', async ({ page }) => {
-    const table = page.locator('table, [role="table"]');
-    const emptyState = page.locator('[data-testid="empty-state"], text=/немає контрагентів/i');
-    await expect(table.or(emptyState).first()).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page
+        .locator('table, [role="table"]')
+        .or(page.getByText(/Нічого не знайдено|Контрагентів не знайдено|немає контрагентів/i))
+        .first(),
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test('пошук по контрагентах — input присутній', async ({ page }) => {
@@ -37,13 +46,11 @@ test.describe('CRM — список контрагентів', () => {
     await expect(typeFilter).toBeVisible({ timeout: 10_000 });
   });
 
-  test('кнопка "Новий контрагент" присутня', async ({ page }) => {
-    const newBtn = page
-      .locator(
-        'button:has-text("Новий"), button:has-text("Додати"), [data-testid="new-counterparty"]',
-      )
-      .first();
-    await expect(newBtn).toBeVisible({ timeout: 10_000 });
+  test('кнопка "Додати" контрагента присутня', async ({ page }) => {
+    // CRM page: кнопка має текст "Додати" (не "Новий")
+    await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({
+      timeout: 10_000,
+    });
   });
 });
 
