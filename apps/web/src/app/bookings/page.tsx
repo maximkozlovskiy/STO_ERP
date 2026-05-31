@@ -17,6 +17,7 @@ interface BookingRequest {
   clientPhone: string;
   requestedDate: string;
   branchId: string;
+  branchName?: string | null;
   notes?: string | null;
   createdAt: string;
 }
@@ -141,6 +142,7 @@ export default function BookingsPage() {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {r.clientPhone} · {fmtDate(r.requestedDate)}
+                    {r.branchName && ` · ${r.branchName}`}
                   </p>
                   {r.notes && (
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">{r.notes}</p>

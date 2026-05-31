@@ -197,6 +197,7 @@ export class BookingService {
         where: { orgId, deletedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 100,
+        include: { branch: { select: { name: true } } },
       }),
       this.prisma.bookingRequest.count({ where: { orgId, deletedAt: null } }),
     ]);
@@ -237,6 +238,7 @@ export class BookingService {
     branchId: string;
     notes: string | null;
     createdAt: Date;
+    branch?: { name: string } | null;
   }): BookingRequestResponseDto {
     return {
       id: r.id,
@@ -245,6 +247,7 @@ export class BookingService {
       clientPhone: r.clientPhone,
       requestedDate: r.requestedDate.toISOString(),
       branchId: r.branchId,
+      branchName: r.branch?.name ?? null,
       notes: r.notes ?? null,
       createdAt: r.createdAt.toISOString(),
     };

@@ -123,6 +123,8 @@ interface CompletionActSummary {
   status: 'DRAFT' | 'SIGNED' | 'CANCELLED';
   signedAt?: string | null;
   signedBy?: string | null;
+  clientPhone?: string | null;
+  notes?: string | null;
 }
 interface Work {
   id: string;
@@ -236,6 +238,7 @@ export default function WorkOrderCardPage() {
   const [completionAct, setCompletionAct] = useState<CompletionActSummary | null>(null);
   const [generatingAct, setGeneratingAct] = useState(false);
   const [signingAct, setSigningAct] = useState(false);
+  const [cancellingAct, setCancellingAct] = useState(false);
   const [downloadingActPdf, setDownloadingActPdf] = useState(false);
 
   const [lineModal, setLineModal] = useState(false);
@@ -789,6 +792,22 @@ export default function WorkOrderCardPage() {
     }
   };
 
+  const cancelAct = async (actId: string) => {
+    if (!(await confirm({ title: 'Скасувати акт виконаних робіт?', variant: 'destructive' })))
+      return;
+    setCancellingAct(true);
+    setError('');
+    try {
+      await apiFetch(`/completion-acts/${actId}`, { method: 'DELETE' });
+      setCompletionAct(null);
+      if (features.toastEnabled) toast.success('Акт скасовано');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка скасування акту');
+    } finally {
+      setCancellingAct(false);
+    }
+  };
+
   const saveInspection = async () => {
     setSavingInspection(true);
     try {
@@ -1045,6 +1064,17 @@ export default function WorkOrderCardPage() {
               >
                 PDF акту
               </Button>
+              {completionAct.status === 'DRAFT' && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => cancelAct(completionAct.id)}
+                  loading={cancellingAct}
+                  disabled={cancellingAct}
+                >
+                  Скасувати акт
+                </Button>
+              )}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Акт не сформовано</p>

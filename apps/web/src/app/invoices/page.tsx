@@ -457,6 +457,15 @@ export default function InvoicesPage() {
             label="Сума"
             value={inv.amount != null ? `${fmtMoney(inv.amount)} ₴` : undefined}
           />
+          {inv.totalWithoutVat != null && (
+            <PanelField label="Без ПДВ" value={`${fmtMoney(inv.totalWithoutVat)} ₴`} />
+          )}
+          {inv.totalVat != null && inv.totalVat !== 0 && (
+            <PanelField label="ПДВ" value={`${fmtMoney(inv.totalVat)} ₴`} />
+          )}
+          {inv.totalWithVat != null && inv.totalWithVat !== inv.amount && (
+            <PanelField label="Разом з ПДВ" value={`${fmtMoney(inv.totalWithVat)} ₴`} />
+          )}
           <PanelField
             label="Сплачено"
             value={inv.paidAmount != null ? `${fmtMoney(inv.paidAmount)} ₴` : undefined}
@@ -526,6 +535,12 @@ export default function InvoicesPage() {
                     {fmtMoney(line.priceWithVat)} ₴
                   </span>
                 </p>
+                {line.vatRate > 0 && (
+                  <p className="text-muted-foreground text-[11px] mt-0.5">
+                    Без ПДВ: {fmtMoney(line.priceWithoutVat)} ₴ · ПДВ {line.vatRate}%:{' '}
+                    {fmtMoney(line.vatAmount)} ₴
+                  </p>
+                )}
               </div>
             ))}
           </div>

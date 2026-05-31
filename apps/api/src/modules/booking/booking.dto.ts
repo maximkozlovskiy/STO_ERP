@@ -71,6 +71,7 @@ export class BookingRequestResponseDto {
   @ApiProperty() clientPhone!: string;
   @ApiProperty() requestedDate!: string;
   @ApiProperty() branchId!: string;
+  @ApiPropertyOptional() branchName?: string | null;
   @ApiPropertyOptional() notes?: string | null;
   @ApiProperty() createdAt!: string;
 }
