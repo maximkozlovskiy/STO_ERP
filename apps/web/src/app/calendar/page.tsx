@@ -1172,7 +1172,13 @@ export default function CalendarPage() {
             ).map(([v, label, Icon]) => (
               <button
                 key={v}
-                onClick={() => setCalView(v)}
+                onClick={() => {
+                  setCalView(v);
+                  if (v === 'stats') {
+                    setShowAdd(false);
+                    setEditingSlotId(null);
+                  }
+                }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors ${calView === v ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted-foreground hover:bg-secondary'}`}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -1264,9 +1270,9 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* ── Add / edit form ─────────────────────────────────────────────────── */}
+      {/* ── Add / edit form — hidden in stats view ──────────────────────────── */}
       <CalendarSlotModal
-        open={showAdd}
+        open={showAdd && calView !== 'stats'}
         onClose={handleModalClose}
         onSaved={handleModalSaved}
         date={date}
