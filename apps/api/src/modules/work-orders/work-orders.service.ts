@@ -695,13 +695,19 @@ export class WorkOrdersService {
     workOrderId: string,
     dto: CreateWorkOrderLineDto,
   ): Promise<WorkOrderLineResponseDto> {
-    await this.getEditableWorkOrder(orgId, workOrderId);
-
-    // Parallel cross-tenant FK validation — both reads are independent.
-    const [work, employee] = await Promise.all([
+    // Tiered parallelization — раніше було послідовно `getEditableWorkOrder` (1 RTT)
+    // + Promise.all([work, employee]) (1 RTT). Об'єднуємо у єдиний Promise.all (1 RTT)
+    // оскільки work і employee не залежать від результату парент-guard, а перевірка
+    // статусу WO робиться після всіх awaits (порядок NotFound зберігається).
+    const [wo, work, employee] = await Promise.all([
+      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
       this.prisma.work.findFirst({ where: { id: dto.workId, orgId, deletedAt: null } }),
       this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } }),
     ]);
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!EDITABLE_STATUSES.includes(wo.status)) {
+      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+    }
     if (!work) throw new NotFoundException('Роботу не знайдено');
     if (!employee) throw new NotFoundException('Співробітника не знайдено');
 
@@ -744,10 +750,18 @@ export class WorkOrdersService {
     lineId: string,
     dto: UpdateWorkOrderLineDto,
   ): Promise<WorkOrderLineResponseDto> {
-    await this.getEditableWorkOrder(orgId, workOrderId);
-    const line = await this.prisma.workOrderLine.findFirst({
-      where: { id: lineId, workOrderId, orgId, deletedAt: null },
-    });
+    // Parallel same-aggregate parent (editable WO) + child line fetch — both
+    // tenant-safe (orgId+workOrderId у where кожного запиту). -1 RTT per edit.
+    const [wo, line] = await Promise.all([
+      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
+      this.prisma.workOrderLine.findFirst({
+        where: { id: lineId, workOrderId, orgId, deletedAt: null },
+      }),
+    ]);
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!EDITABLE_STATUSES.includes(wo.status)) {
+      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+    }
     if (!line) throw new NotFoundException('Позицію не знайдено');
 
     const normoHours = dto.normoHours ?? line.normoHours;
@@ -781,10 +795,17 @@ export class WorkOrdersService {
   }
 
   async removeLine(orgId: string, workOrderId: string, lineId: string): Promise<void> {
-    await this.getEditableWorkOrder(orgId, workOrderId);
-    const line = await this.prisma.workOrderLine.findFirst({
-      where: { id: lineId, workOrderId, orgId, deletedAt: null },
-    });
+    // Parallel parent (editable WO) + child line fetch — same-aggregate same-tenant guard.
+    const [wo, line] = await Promise.all([
+      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
+      this.prisma.workOrderLine.findFirst({
+        where: { id: lineId, workOrderId, orgId, deletedAt: null },
+      }),
+    ]);
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!EDITABLE_STATUSES.includes(wo.status)) {
+      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+    }
     if (!line) throw new NotFoundException('Позицію не знайдено');
     await this.prisma.$transaction(
       async tx => {
@@ -805,13 +826,16 @@ export class WorkOrdersService {
     workOrderId: string,
     dto: CreateWorkOrderPartDto,
   ): Promise<WorkOrderPartResponseDto> {
-    await this.getEditableWorkOrder(orgId, workOrderId);
-
-    // Parallel cross-tenant FK validation — independent reads on Good and Warehouse.
-    const [good, warehouse] = await Promise.all([
+    // Tiered parallelization — wo + good + warehouse у єдиний Promise.all (3 RTT → 1).
+    const [wo, good, warehouse] = await Promise.all([
+      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
       this.prisma.good.findFirst({ where: { id: dto.goodId, orgId, deletedAt: null } }),
       this.prisma.warehouse.findFirst({ where: { id: dto.warehouseId, orgId, deletedAt: null } }),
     ]);
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!EDITABLE_STATUSES.includes(wo.status)) {
+      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+    }
     if (!good) throw new NotFoundException('Товар не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
 
@@ -855,10 +879,17 @@ export class WorkOrdersService {
     partId: string,
     dto: UpdateWorkOrderPartDto,
   ): Promise<WorkOrderPartResponseDto> {
-    await this.getEditableWorkOrder(orgId, workOrderId);
-    const part = await this.prisma.workOrderPart.findFirst({
-      where: { id: partId, workOrderId, orgId, deletedAt: null },
-    });
+    // Parallel parent (editable WO) + child part fetch — same-aggregate same-tenant guard.
+    const [wo, part] = await Promise.all([
+      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
+      this.prisma.workOrderPart.findFirst({
+        where: { id: partId, workOrderId, orgId, deletedAt: null },
+      }),
+    ]);
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!EDITABLE_STATUSES.includes(wo.status)) {
+      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+    }
     if (!part) throw new NotFoundException('Позицію не знайдено');
 
     const quantity = dto.quantity ?? part.quantity;
@@ -890,10 +921,17 @@ export class WorkOrdersService {
   }
 
   async removePart(orgId: string, workOrderId: string, partId: string): Promise<void> {
-    await this.getEditableWorkOrder(orgId, workOrderId);
-    const part = await this.prisma.workOrderPart.findFirst({
-      where: { id: partId, workOrderId, orgId, deletedAt: null },
-    });
+    // Parallel parent (editable WO) + child part fetch — same-aggregate same-tenant guard.
+    const [wo, part] = await Promise.all([
+      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
+      this.prisma.workOrderPart.findFirst({
+        where: { id: partId, workOrderId, orgId, deletedAt: null },
+      }),
+    ]);
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!EDITABLE_STATUSES.includes(wo.status)) {
+      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+    }
     if (!part) throw new NotFoundException('Позицію не знайдено');
     await this.prisma.$transaction(
       async tx => {
@@ -909,42 +947,27 @@ export class WorkOrdersService {
 
   // ─── Helpers ─────────────────────────────────────────────
 
-  private async getEditableWorkOrder(orgId: string, workOrderId: string) {
-    const wo = await this.prisma.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-    });
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
-    if (!EDITABLE_STATUSES.includes(wo.status)) {
-      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
-    }
-    return wo;
-  }
-
   private async recalcTotals(
     workOrderId: string,
     tx: Prisma.TransactionClient,
     orgId: string,
   ): Promise<void> {
-    const [lines, parts] = await Promise.all([
-      tx.workOrderLine.findMany({
+    // SQL-aggregation via Prisma `aggregate({_sum})` — раніше findMany take:1000 двох колекцій
+    // тягнув до 2000 рядків з amount у Node, потім reduce. Тепер SUM рахується у Postgres,
+    // повертається 2 числа. Index (orgId, workOrderId, deletedAt) на обох таблицях покриває
+    // WHERE — index-only scan або bitmap scan без читання heap для непотрібних колонок.
+    const [linesAgg, partsAgg] = await Promise.all([
+      tx.workOrderLine.aggregate({
         where: { workOrderId, orgId, deletedAt: null },
-        select: { amount: true },
-        take: 1000,
+        _sum: { amount: true },
       }),
-      tx.workOrderPart.findMany({
+      tx.workOrderPart.aggregate({
         where: { workOrderId, orgId, deletedAt: null },
-        select: { amount: true },
-        take: 1000,
+        _sum: { amount: true },
       }),
     ]);
-    const totalLabor = lines.reduce(
-      (s: number, l: { amount: Prisma.Decimal }) => s + Number(l.amount),
-      0,
-    );
-    const totalParts = parts.reduce(
-      (s: number, p: { amount: Prisma.Decimal }) => s + Number(p.amount),
-      0,
-    );
+    const totalLabor = Number(linesAgg._sum.amount ?? 0);
+    const totalParts = Number(partsAgg._sum.amount ?? 0);
     await tx.workOrder.update({
       where: { id: workOrderId, orgId },
       data: { totalLabor, totalParts, totalAmount: totalLabor + totalParts },

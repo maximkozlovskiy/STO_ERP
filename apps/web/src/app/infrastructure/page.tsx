@@ -22,6 +22,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn, daysUntil } from '@/lib/utils';
+import { fmtDate } from '@/lib/format';
 import { getCached, setCache } from '@/lib/ref-cache';
 
 // ─── Types ────────────────────────────────────────────────
@@ -880,12 +881,9 @@ function WarehouseMainCheckbox({
   );
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
+// Thin proxy to lib/format singleton (module-level Intl.DateTimeFormat). Замінює
+// per-render `d.toLocaleDateString('uk-UA', {...})` × кожен LiftRow (lastMaintenance + nextMaintenance).
+const formatDate = fmtDate;
 
 function isWithin14Days(value: string | null | undefined, nowMs: number): boolean {
   const diff = daysUntil(value, nowMs);

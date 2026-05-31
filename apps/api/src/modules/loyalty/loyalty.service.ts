@@ -139,9 +139,18 @@ export class LoyaltyService {
     points: number,
   ): Promise<{ discountAmount: number }> {
     if (points <= 0) throw new BadRequestException('Кількість балів має бути > 0');
-    await this.assertCounterparty(orgId, counterpartyId);
 
-    const settings = await this.prisma.organisationSettings.findFirst({ where: { orgId } });
+    // Parallel tenant guard + settings read — обидва незалежні reads на різних таблицях.
+    // assertCounterparty залишається як NotFound контракт, settings знадобиться у будь-якому
+    // випадку для розрахунку discountAmount. -1 RTT per redeem call.
+    const [cp, settings] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.organisationSettings.findFirst({ where: { orgId } }),
+    ]);
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
     const redeemRate = Number(settings?.loyaltyRedeemRate ?? 1);
     const discountAmount = points * redeemRate;
 
