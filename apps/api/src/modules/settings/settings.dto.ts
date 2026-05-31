@@ -44,8 +44,10 @@ export const UI_FEATURES_DEFAULTS: UiFeatures = {
 };
 
 export class UpdateOrganisationSettingsDto {
+  // Bug #263: emptyToUndefined gap — settings selects з default `''` → 400.
   @ApiPropertyOptional({ enum: VatMode })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(VatMode)
   vatMode?: VatMode;
 
@@ -91,8 +93,10 @@ export class UpdateOrganisationSettingsDto {
   @IsString()
   brandTheme?: string;
 
+  // Bug #263: emptyToUndefined gap.
   @ApiPropertyOptional({ enum: BatchCostMethod })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(BatchCostMethod)
   costMethod?: BatchCostMethod;
 

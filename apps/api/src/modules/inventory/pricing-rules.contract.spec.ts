@@ -150,6 +150,47 @@ describe('PricingRules — HTTP Contract', () => {
       expect(res.statusCode).toBe(400);
     });
 
+    // Bug #265 (regression-guard): POST з порожнім рядком у optional goodType-enum
+    // → 201 (не 400). @Transform(emptyToUndefined) перетворює '' на undefined ДО валідатора.
+    it('повертає 201 коли goodType="" → undefined у service (Bug #264)', async () => {
+      prismaMock.pricingRule.create.mockResolvedValueOnce({
+        id: 'rule-uuid',
+        orgId: 'org-1',
+        name: 'Universal +20%',
+        type: 'PERCENT',
+        priority: 10,
+        goodId: null,
+        goodCategory: null,
+        goodType: null,
+        brandId: null,
+        percentValue: 20,
+        fixedAmount: null,
+        fixedPrice: null,
+        roundTo: null,
+        isActive: true,
+        createdAt: new Date(),
+        good: null,
+        brand: null,
+        tiers: [],
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: {
+          name: 'Universal +20%',
+          type: 'PERCENT',
+          goodType: '',
+          percentValue: 20,
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      // Перевіряємо що prisma.create отримав goodType undefined (а не '')
+      const createCall = prismaMock.pricingRule.create.mock.calls[0]?.[0] as {
+        data?: Record<string, unknown>;
+      };
+      expect(createCall?.data?.goodType).toBeUndefined();
+    });
+
     it('повертає 201 + dto shape для валідного PERCENT правила', async () => {
       prismaMock.pricingRule.create.mockResolvedValueOnce({
         id: 'rule-uuid',

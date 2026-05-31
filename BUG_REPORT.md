@@ -7927,3 +7927,144 @@ useEffect(() => {
 **Статус:** [x] виправлено — додано `mountedRef = useRef(true)` + cleanup-ефект; усі три setState виклики у `load` обгорнуто `if (mountedRef.current)`. Race-protection активний.
 
 ---
+
+## Session 2026-05-31 — sto-tester cycle 3 з 5 (FULL) — DTO emptyToUndefined gap audit + sync types verify
+
+**Scope (3 commits, af5f4f8..61720e3):**
+
+- `0c37fd1` perf(optimize): cycle 2 — followup fan-out + audit narrow select + dashboard Intl + Phase 21 covering indexes
+- `39d2667` fix(sync): align frontend interfaces with API response DTOs (cycle 3) — 9 type fixes
+- `61720e3` fix(review): cycle 3 — emptyToUndefined on optional UUID/Enum/Date DTOs + TRANSACTION_TIMEOUT_MS unification (7 DTO + 15 services)
+
+**Фокус:** перевірка DTO валідації після масової `emptyToUndefined` фіксації (review цикл 3) на наявність пропущених варіантів.
+
+### Baseline (Крок 0)
+
+- TypeScript api/web/shared — ✅ 0 errors
+- Unit tests API — ✅ 482/482 passed (45 файлів)
+- Web component tests — ✅ 218/218 passed (19 файлів)
+
+### Знайдено через статичний аналіз: 22 пропущених поля у 7 DTO + tests gap
+
+---
+
+## Bug #257 — HIGH work-orders.dto: CreateWorkOrderDto.priority/repairCategory без @Transform(emptyToUndefined)
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.dto.ts:34-35`
+**Severity:** HIGH
+**Категорія:** dto-validation / typescript
+
+**Опис:** `CreateWorkOrderDto.priority?` і `.repairCategory?` оголошено як `@IsOptional() @IsEnum(...)` БЕЗ `@Transform(emptyToUndefined)`. Sprint Bug #244+#215 покрив 32 поля у 7 DTO, але `work-orders.dto.ts` був пропущений (як і ряд інших — fields у inline-форматі `@ApiPropertyOptional() @IsOptional() @IsEnum(X) field?: X;`). work-orders — CORE feature, ця прогалина CRITICAL для UX: створення наряду з порожнім priority/repairCategory у формі (default selectstate) → 400 Bad Request.
+
+**Очікувана поведінка:** POST /work-orders з `{priority: '', repairCategory: ''}` → 201 (поля інтерпретуються як undefined).
+**Фактична поведінка:** 400 Bad Request — `priority must be a valid enum value`.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #258 — HIGH work-orders.dto: CreateWorkOrderDto.plannedAt/dueDate без @Transform(emptyToUndefined)
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.dto.ts:37-45`
+**Severity:** HIGH
+**Категорія:** dto-validation / typescript
+
+**Опис:** `plannedAt?` і `dueDate?` декларовані як `@IsOptional() @IsISO8601()` без `@Transform`. Frontend `<input type="datetime-local">` коли користувач скидає значення шле `""` → `@IsISO8601` 400. Sprint cycle 3 додав `emptyToUndefined` тільки для `@IsDateString`, не для `@IsISO8601`.
+
+**Очікувана поведінка:** POST з `{plannedAt: ''}` → 201, поле undefined.
+**Фактична поведінка:** 400 `plannedAt must be a valid ISO 8601 date string`.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #259 — HIGH work-orders.dto: UpdateWorkOrderDto.priority/repairCategory/plannedAt/dueDate
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.dto.ts:52-65`
+**Severity:** HIGH
+**Категорія:** dto-validation / typescript
+
+**Опис:** PATCH `/work-orders/:id` версія тих самих полів — нема `@Transform(emptyToUndefined)`. Те саме що #257+#258 але на PATCH-шляху. UX-сценарій: редагування наряду, користувач очищує plannedAt → 400.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #260 — HIGH invoices.dto: CreateInvoiceDto/UpdateInvoiceDto.dueDate без @Transform
+
+**Файл:** `apps/api/src/modules/invoices/invoices.dto.ts:26,32`
+**Severity:** HIGH
+**Категорія:** dto-validation / typescript
+
+**Опис:** `dueDate?` (обидві Create+Update) — `@IsOptional() @IsDateString()` без `@Transform`. Скидання дати-оплати → 400.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #261 — HIGH calendar.dto: CreateCalendarSlotDto.status/type + UpdateCalendarSlotDto.startAt/endAt
+
+**Файл:** `apps/api/src/modules/calendar/calendar.dto.ts:36-44, 72-73`
+**Severity:** HIGH
+**Категорія:** dto-validation / typescript
+
+**Опис:** 4 поля без `@Transform`:
+
+- `CreateCalendarSlotDto.status?` `@IsOptional @IsEnum(CalendarSlotStatus)` — скинутий select → 400
+- `CreateCalendarSlotDto.type?` `@IsOptional @IsEnum(CalendarSlotType)` — те саме
+- `UpdateCalendarSlotDto.startAt?` `@IsOptional @IsISO8601` — partial PATCH з порожнім рядком → 400
+- `UpdateCalendarSlotDto.endAt?` те саме
+
+Sprint cycle 3 додав `emptyToUndefined` тільки для UUID-полів calendar (liftId/employeeId/workOrderId/counterpartyId), а enum/ISO пропустив.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #262 — HIGH goods.dto: CreateGoodDto.goodType без @Transform
+
+**Файл:** `apps/api/src/modules/goods/goods.dto.ts:43`
+**Severity:** HIGH
+**Категорія:** dto-validation / typescript
+
+**Опис:** `goodType?: GoodType` — `@IsOptional() @IsEnum(GoodType)` без `@Transform`. Створення товару з порожнім selectionType (default UI state) → 400. UpdateGoodDto extends `PartialType(CreateGoodDto)` → наслідує цей баг автоматично.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #263 — HIGH settings.dto: UpdateOrganisationSettingsDto.vatMode/costMethod без @Transform
+
+**Файл:** `apps/api/src/modules/settings/settings.dto.ts:47-50, 94-97`
+**Severity:** HIGH
+**Категорія:** dto-validation / typescript
+
+**Опис:** 2 enum-поля в налаштуваннях організації — `@IsOptional + @IsEnum` без `@Transform`. PATCH /settings/organisation з порожніми selects → 400. Налаштування — admin-only, проте баг блокує конфігурацію.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #264 — HIGH pricing-rules.dto: CreatePricingRuleDto.goodType + UpdatePricingRuleDto.type/goodType
+
+**Файл:** `apps/api/src/modules/inventory/pricing-rules.dto.ts:86-89, 142-145, 166-169`
+**Severity:** HIGH
+**Категорія:** dto-validation / typescript
+
+**Опис:** 3 enum-поля у pricing-rules — `@IsOptional + @IsEnum` без `@Transform`:
+
+- CreatePricingRuleDto.goodType (GoodType)
+- UpdatePricingRuleDto.type (PricingRuleType)
+- UpdatePricingRuleDto.goodType (GoodType)
+
+UX-сценарій: створення/редагування правила ціноутворення з опціональним фільтром "Тип товару" що скинутий → 400.
+**Статус:** [x] виправлено
+
+---
+
+## Bug #265 — MEDIUM Mass DTO migration без regression-guard contract тестів (Bug #244 pattern)
+
+**Файл:** apps/api/src/modules/{work-orders, invoices, calendar, goods, settings, pricing-rules, ...}/...contract.spec.ts
+**Severity:** MEDIUM
+**Категорія:** test-coverage / regression-guard
+
+**Опис:** Sprint cycle 3 додав `@Transform(emptyToUndefined)` у 32 поля 7 DTO, АЛЕ regression-guard тести існують ЛИШЕ у 2 модулях (bank-accounts.contract.spec, calendar.contract.spec). Решта 5+ модулів не мають `it`-блоку що перевіряє "POST з `field: ''` → 201 + service отримує `field: undefined`". Це Bug #244 pattern.
+
+**Очікувана поведінка:** для кожного DTO з emptyToUndefined-полями — contract тест "POST з порожнім рядком у X-полі → service.create викликаний з X=undefined".
+**Фактична поведінка:** sprint поведінка не покрита тестами; майбутній рефактор може видалити `@Transform` непомітно для CI.
+**Статус:** [x] виправлено — додано regression-guard для goods, invoices, work-orders, settings, pricing-rules contract specs.
+
+---

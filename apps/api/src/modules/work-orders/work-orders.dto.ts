@@ -31,16 +31,31 @@ export class CreateWorkOrderDto {
 
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
-  @ApiPropertyOptional() @IsOptional() @IsEnum(WorkOrderPriority) priority?: WorkOrderPriority;
-  @ApiPropertyOptional() @IsOptional() @IsEnum(RepairCategory) repairCategory?: RepairCategory;
 
+  // Bug #257: emptyToUndefined gap — sprint cycle 3 пропустив work-orders DTO.
+  // Frontend селекти що шлють `''` при default state → 400 без трансформу.
+  @ApiPropertyOptional({ enum: WorkOrderPriority })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(WorkOrderPriority)
+  priority?: WorkOrderPriority;
+
+  @ApiPropertyOptional({ enum: RepairCategory })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(RepairCategory)
+  repairCategory?: RepairCategory;
+
+  // Bug #258: emptyToUndefined gap — datetime-local input шле `''` при reset → 400.
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsISO8601()
   plannedAt?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsISO8601()
   dueDate?: string;
 }
@@ -49,18 +64,33 @@ export class UpdateWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) outMileage?: number;
-  @ApiPropertyOptional() @IsOptional() @IsEnum(WorkOrderPriority) priority?: WorkOrderPriority;
-  @ApiPropertyOptional() @IsOptional() @IsEnum(RepairCategory) repairCategory?: RepairCategory;
+
+  // Bug #259: emptyToUndefined gap у PATCH-шляху.
+  @ApiPropertyOptional({ enum: WorkOrderPriority })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(WorkOrderPriority)
+  priority?: WorkOrderPriority;
+
+  @ApiPropertyOptional({ enum: RepairCategory })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(RepairCategory)
+  repairCategory?: RepairCategory;
+
   @ApiPropertyOptional() @IsOptional() @IsBoolean() clientApproval?: boolean;
 
   // Nullable: passing `null` explicitly clears the field; omitting keeps it.
+  // emptyToUndefined: `''` від UI шле скинуте поле → undefined → omit (keeps existing).
   @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsISO8601()
   plannedAt?: string | null;
 
   @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsISO8601()
   dueDate?: string | null;
 }

@@ -40,7 +40,12 @@ export class CreateGoodDto {
   @ApiPropertyOptional() @IsOptional() @IsString() category?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
-  @ApiPropertyOptional({ enum: GoodType }) @IsOptional() @IsEnum(GoodType) goodType?: GoodType;
+  // Bug #262: emptyToUndefined gap — UpdateGoodDto extends PartialType успадковує цей баг.
+  @ApiPropertyOptional({ enum: GoodType })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(GoodType)
+  goodType?: GoodType;
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)

@@ -23,13 +23,23 @@ export class CreateInvoiceDto {
   @IsUUID()
   workOrderId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
+  // Bug #260: emptyToUndefined gap — date-input скидання → 400 без трансформу.
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  dueDate?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 
 export class UpdateInvoiceDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) amount?: number;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
+  // Bug #260: emptyToUndefined gap у PATCH-шляху.
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  dueDate?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 

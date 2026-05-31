@@ -267,6 +267,28 @@ describe('Settings — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(400);
     });
+
+    // Bug #265 (regression-guard): UI селект з default `''` для costMethod/vatMode
+    // → 200 (не 400). @Transform(emptyToUndefined) → undefined → service залишає поле без змін.
+    it('Bug #263: PATCH з costMethod="" → 200 (emptyToUndefined → undefined)', async () => {
+      redisMock.get.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { costMethod: '' },
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('Bug #263: PATCH з vatMode="" → 200 (emptyToUndefined → undefined)', async () => {
+      redisMock.get.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { vatMode: '' },
+      });
+      expect(res.statusCode).toBe(200);
+    });
   });
 
   // Bug #0a / #84 regression: schema/DTO/service must agree on followUp fields end-to-end.

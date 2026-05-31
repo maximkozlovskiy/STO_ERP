@@ -83,8 +83,10 @@ export class CreatePricingRuleDto {
   // Bug #33: goodType — це enum GoodType у БД, тому валідуємо як enum.
   // Без @IsEnum довільний рядок проходив DTO і валив `applyRuleToGoods` runtime exception
   // (`invalid input value for enum GoodType`).
+  // Bug #264: emptyToUndefined gap — UI Select з default `''` → 400.
   @ApiPropertyOptional({ enum: GoodType })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(GoodType)
   goodType?: GoodType;
 
@@ -139,8 +141,10 @@ export class UpdatePricingRuleDto {
   @IsString()
   name?: string;
 
+  // Bug #264: emptyToUndefined gap — UpdatePricingRuleDto.type.
   @ApiPropertyOptional({ enum: PricingRuleType })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(PricingRuleType)
   type?: PricingRuleType;
 
@@ -163,8 +167,10 @@ export class UpdatePricingRuleDto {
   goodCategory?: string;
 
   // Bug #33: goodType — enum, не довільний рядок (див. CreatePricingRuleDto).
+  // Bug #264: emptyToUndefined gap.
   @ApiPropertyOptional({ enum: GoodType })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(GoodType)
   goodType?: GoodType;
 

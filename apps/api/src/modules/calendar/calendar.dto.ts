@@ -33,13 +33,17 @@ export class CreateCalendarSlotDto {
   @ApiProperty() @IsISO8601() endAt!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 
+  // Bug #261: emptyToUndefined gap — sprint cycle 3 покрив тільки UUID-поля,
+  // enum-поля calendar лишилися без трансформу. Default selectstate `''` → 400.
   @ApiPropertyOptional({ enum: CalendarSlotStatus })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(CalendarSlotStatus)
   status?: CalendarSlotStatus;
 
   @ApiPropertyOptional({ enum: CalendarSlotType })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(CalendarSlotType)
   type?: CalendarSlotType;
 }
@@ -69,8 +73,17 @@ export class UpdateCalendarSlotDto {
   @IsUUID()
   counterpartyId?: string | null;
 
-  @ApiPropertyOptional() @IsOptional() @IsISO8601() startAt?: string;
-  @ApiPropertyOptional() @IsOptional() @IsISO8601() endAt?: string;
+  // Bug #261: emptyToUndefined gap у PATCH calendar slot — partial-update з порожнім рядком → 400.
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsISO8601()
+  startAt?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsISO8601()
+  endAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 

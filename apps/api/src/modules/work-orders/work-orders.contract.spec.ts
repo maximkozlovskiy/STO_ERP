@@ -164,6 +164,49 @@ describe('WorkOrders — HTTP Contract', () => {
       expect(res.statusCode).toBe(400);
     });
 
+    // Bug #265 (regression-guard): POST з порожніми рядками у optional enum/ISO полях
+    // → 201 (не 400). @Transform(emptyToUndefined) перетворює '' на undefined ДО валідатора.
+    // Без цього тесту регресія `@Transform` decorator removal пройде CI зеленою.
+    it('повертає 201 коли priority/repairCategory/plannedAt/dueDate = "" → undefined у service (Bug #257-#259)', async () => {
+      jwtAllow = true;
+      serviceMock.create.mockResolvedValueOnce({
+        id: 'wo-uuid',
+        orgId: 'org-1',
+        number: 'WO-2026-0002',
+        status: 'DRAFT',
+        branchId: 'b-uuid',
+        vehicleId: 'v-uuid',
+        counterpartyId: 'c-uuid',
+        totalLabor: 0,
+        totalParts: 0,
+        totalAmount: 0,
+        paidAmount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/work-orders',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({
+          branchId: '11111111-1111-4111-8111-111111111111',
+          vehicleId: '22222222-2222-4222-8222-222222222222',
+          counterpartyId: '33333333-3333-4333-8333-333333333333',
+          priority: '',
+          repairCategory: '',
+          plannedAt: '',
+          dueDate: '',
+        }),
+      });
+      expect(res.statusCode).toBe(201);
+      // class-transformer прибирає порожні поля перш ніж DTO потрапить у service
+      const dtoArg = serviceMock.create.mock.calls[0]![1] as Record<string, unknown>;
+      expect(dtoArg.priority).toBeUndefined();
+      expect(dtoArg.repairCategory).toBeUndefined();
+      expect(dtoArg.plannedAt).toBeUndefined();
+      expect(dtoArg.dueDate).toBeUndefined();
+    });
+
     it('повертає 201 + WO DTO shape при валідному body', async () => {
       jwtAllow = true;
       serviceMock.create.mockResolvedValueOnce({
