@@ -1,7 +1,18 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Sun, Moon, Monitor, Pencil, Plus, Trash2, Upload, ImageIcon } from 'lucide-react';
+import {
+  Sun,
+  Moon,
+  Monitor,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+  ImageIcon,
+  ZoomIn,
+  X,
+} from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -329,6 +340,7 @@ export default function SettingsPage() {
   const [savingOrgInfo, setSavingOrgInfo] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoLightbox, setLogoLightbox] = useState<string | null>(null);
   const [removingLogo, setRemovingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
@@ -1398,14 +1410,20 @@ export default function SettingsPage() {
           {/* Logo */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-3">Логотип</label>
-            <div className="flex items-center gap-4">
-              {/* Preview box — завжди відображається */}
-              <div className="relative shrink-0 w-24 h-24 rounded-xl border-2 border-dashed border-border bg-secondary flex items-center justify-center overflow-hidden">
+            <div className="flex items-start gap-5">
+              {/* Preview box */}
+              <div
+                className={`relative shrink-0 w-48 h-28 rounded-xl border-2 border-dashed border-border bg-secondary flex items-center justify-center overflow-hidden transition-all ${logoPreview || orgInfo?.logoUrl ? 'cursor-zoom-in hover:border-primary/50 hover:shadow-md' : ''}`}
+                onClick={() => {
+                  const src = logoPreview ?? orgInfo?.logoUrl;
+                  if (src) setLogoLightbox(src);
+                }}
+              >
                 {logoPreview || orgInfo?.logoUrl ? (
                   <img
                     src={logoPreview ?? orgInfo!.logoUrl!}
                     alt="Логотип організації"
-                    className="w-full h-full object-contain p-2"
+                    className="w-full h-full object-contain p-3"
                     loading="lazy"
                     decoding="async"
                     onError={e => {
@@ -1420,19 +1438,24 @@ export default function SettingsPage() {
                     }}
                   />
                 ) : null}
-                {/* Fallback — показується якщо немає URL або img не завантажився */}
                 <div
                   data-logo-fallback
                   style={{ display: logoPreview || orgInfo?.logoUrl ? 'none' : 'flex' }}
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted-foreground"
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted-foreground"
                 >
-                  <ImageIcon className="w-8 h-8 opacity-40" />
-                  <span className="text-[11px] opacity-60">Немає</span>
+                  <ImageIcon className="w-10 h-10 opacity-30" />
+                  <span className="text-[12px] opacity-50">Немає логотипу</span>
                 </div>
+                {/* Zoom hint */}
+                {(logoPreview || orgInfo?.logoUrl) && (
+                  <div className="absolute bottom-1.5 right-1.5 bg-black/40 rounded-md p-0.5 opacity-0 group-hover:opacity-100 pointer-events-none">
+                    <ZoomIn className="w-3.5 h-3.5 text-white" />
+                  </div>
+                )}
               </div>
 
               {/* Buttons */}
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 pt-0.5">
                 <input
                   ref={logoInputRef}
                   type="file"
@@ -1468,6 +1491,31 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+
+          {/* Lightbox */}
+          {logoLightbox && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+              onClick={() => setLogoLightbox(null)}
+            >
+              <div
+                className="relative max-w-[90vw] max-h-[90vh]"
+                onClick={e => e.stopPropagation()}
+              >
+                <img
+                  src={logoLightbox}
+                  alt="Логотип організації"
+                  className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
+                />
+                <button
+                  onClick={() => setLogoLightbox(null)}
+                  className="absolute -top-3 -right-3 w-8 h-8 bg-surface rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary transition-colors shadow-lg"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
 
           <Input
             label="Назва організації"
