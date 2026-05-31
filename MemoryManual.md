@@ -9,11 +9,11 @@
 ## Останній commit
 
 ```
+29ba099 fix(sync): align frontend types with API contracts + add bookings management page (cycle 2)
 ae03163 perf(web): Intl singletons sweep — TopShell widgets + calendar month-year + sync log
 68ba4f8 perf(api,db): parallel FK validation + Intl singletons + covering indexes
 ca27a57 docs(skills,memory): add inner-DTO-no-decorators pattern + record /sto-tester cycle 1
 757ee3b fix(tester): cycle 1 — Bugs #245-#250 (cross-resource invalidation + DTO validation + spec coverage)
-b8c8e4b docs(memory): record sto-review-agent cycle 1 — 3 fixes
 Дата: 2026-05-31
 
 Latest optimize: 2026-05-31 (sto-optimize-agent цикл 1 з 5, HEAD 757ee3b → ae03163) — **22 точкових perf фіксів** (10 backend + 7 frontend + 2 DB indexes + 3 SKILL pattern entries).
@@ -62,6 +62,15 @@ Previous review: 2026-05-31 (sto-review-agent цикл 1 з 5, HEAD d137333 → 
 (3) IMPORTANT §2.5 + §10 Offline-First — `booking.service.ts:169` SMS confirmation черга мала `attempts: 5, delay: 30_000` — порушення skill-правила «SMS: attempts ≥ 10, delay 60_000» (offline-first invariant). На WAN/мобільному з'єднанні CTO 2g/3g 5 спроб з 30s базою — недостатньо для перевитривалості. Виправлено на `attempts: 10, delay: 60_000`.
 **TypeScript:** ✅ 0 errors (api + web + shared). **API tests:** 459/459 pass.
 **Нові SKILL patterns:** не виявлено — всі 3 проблеми покриті існуючими entries (schema-без-migration 2026-05-28, soft-delete-update-без-orgId 2026-05-30, BullMQ attempts §2.5).
+
+Latest sync: 2026-05-31 (sto-sync-agent цикл 2 з 5, HEAD ae03163 → 29ba099) — **1 Direction-1 + 3 Direction-3 fixes**.
+**Direction 1 (API→UI):** `booking` module — GET/PATCH/DELETE staff endpoints мали 0 UI. Створено `/bookings/page.tsx` (список заявок на запис, підтвердження/скасування). Додано nav link "Онлайн-запис" у TopShell (OWNER/ADMIN/RECEPTIONIST). Фокус-модулі: warranties, completion-acts, work-order-templates, booking, comments, search, audit, work-order-media — усі перевірено.
+**Direction 2 (URL):** усі apiFetch URL для фокус-модулів перевірені — 0 розбіжностей. booking public widget використовує raw fetch (правильно — Bug #111). search: command-palette → `/search` (правильно). work-order-media: `/work-orders/${id}/media` (правильно, matching @Controller).
+**Direction 3 (Types):** 3 interface mismatches виправлено:
+  (1) `Warranty` (crm/[id]/PageClient.tsx) — missing `orgId, counterpartyId, workOrderLineId, workOrderPartId, counterpartyName` fields vs `WarrantyResponseDto`.
+  (2) `Comment` (work-orders/[id]/PageClient.tsx) — `authorName?` → `authorName: string` (backend toDto завжди повертає); missing `orgId, entityType, entityId` fields.
+  (3) `WOTemplate.lines` (work-orders/page.tsx) — missing `note?: string` field vs `TemplateLineDto`.
+**TypeScript:** ✅ 0 errors (api + web).
 
 Previous sync: 2026-05-31 (sto-sync-agent цикл 1) — **1 Direction-3 мismatch виправлено**.
 **Mismatch:** `Invoice.totalAmount` у `useInvoices.ts` vs `InvoiceResponseDto.amount` у бекенді. Поле серіалізується як `amount` (не `totalAmount`), тому `inv.totalAmount` → `undefined` у runtime: список рахунків не показував суму, модаль оплати default-amount падав до NaN/0, placeholder та label були пусті. Виправлено: `totalAmount → amount` у hook interface + 5 call-sites у `invoices/page.tsx`.
