@@ -55,6 +55,15 @@ interface Good {
   sku: string | null;
   unit: string;
 }
+
+interface GoodUoM {
+  id: string;
+  unitOfMeasureId: string;
+  unitName: string;
+  unitShortName: string;
+  coefficient: number;
+  isDefault: boolean;
+}
 interface DocLine {
   id?: string;
   goodId: string;
@@ -172,7 +181,16 @@ export default function StockDocumentsPage() {
     notes: '',
   });
   const [lines, setLines] = useState<
-    { goodId: string; goodName: string; quantity: string; price: string }[]
+    {
+      goodId: string;
+      goodName: string;
+      quantity: string;
+      price: string;
+      unitId: string;
+      unitShortName: string;
+      coefficient: number;
+      goodUoMs: GoodUoM[];
+    }[]
   >([]);
   const [saving, setSaving] = useState(false);
 
@@ -351,7 +369,7 @@ export default function StockDocumentsPage() {
           notes: form.notes || undefined,
           lines: validLines.map(l => ({
             goodId: l.goodId,
-            quantity: parseFloat(l.quantity),
+            quantity: parseFloat(l.quantity), // Перерахована кількість з урахуванням коефіцієнта
             price: l.price ? parseFloat(l.price) : undefined,
           })),
         }),
@@ -400,10 +418,27 @@ export default function StockDocumentsPage() {
   };
 
   const addLine = () =>
-    setLines(l => [...l, { goodId: '', goodName: '', quantity: '1', price: '' }]);
-  const updateLine = (i: number, field: string, value: string) =>
+    setLines(l => [
+      ...l,
+      {
+        goodId: '',
+        goodName: '',
+        quantity: '1',
+        price: '',
+        unitId: '',
+        unitShortName: '',
+        coefficient: 1,
+        goodUoMs: [],
+      },
+    ]);
+  const updateLine = (i: number, field: string, value: string) => {
     setLines(l => l.map((x, idx) => (idx === i ? { ...x, [field]: value } : x)));
-  const removeLine = (i: number) => setLines(l => l.filter((_, idx) => idx !== i));
+    dirty.markDirty();
+  };
+  const removeLine = (i: number) => {
+    setLines(l => l.filter((_, idx) => idx !== i));
+    dirty.markDirty();
+  };
 
   const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'];
   const statuses = ['', 'DRAFT', 'CONFIRMED', 'CANCELLED'];
@@ -893,17 +928,67 @@ export default function StockDocumentsPage() {
                       placeholder="Товар..."
                       value={l.goodId}
                       displayValue={l.goodName}
-                      onSelect={g => {
+                      onSelect={async g => {
                         setLines(ls =>
                           ls.map((x, idx) =>
-                            idx === i ? { ...x, goodId: g.id, goodName: g.name } : x,
+                            idx === i
+                              ? {
+                                  ...x,
+                                  goodId: g.id,
+                                  goodName: g.name,
+                                  unitId: '',
+                                  unitShortName: '',
+                                  coefficient: 1,
+                                  goodUoMs: [],
+                                }
+                              : x,
                           ),
                         );
                         dirty.markDirty();
+                        // Завантажити UoM для цього товару
+                        try {
+                          const uoms = await apiFetch<GoodUoM[]>(`/goods/${g.id}/uoms`);
+                          setLines(ls =>
+                            ls.map((x, idx) =>
+                              idx === i
+                                ? {
+                                    ...x,
+                                    goodUoMs: uoms,
+                                    // Автоматично встановити default UoM якщо є
+                                    ...(uoms.length > 0
+                                      ? {
+                                          unitId: uoms.find(u => u.isDefault)?.id || uoms[0].id,
+                                          unitShortName:
+                                            uoms.find(u => u.isDefault)?.unitShortName ||
+                                            uoms[0].unitShortName,
+                                          coefficient:
+                                            uoms.find(u => u.isDefault)?.coefficient ||
+                                            uoms[0].coefficient,
+                                        }
+                                      : {}),
+                                  }
+                                : x,
+                            ),
+                          );
+                        } catch {
+                          // Якщо помилка при завантаженні UoM — продовжити без них
+                        }
                       }}
                       onClear={() => {
                         setLines(ls =>
-                          ls.map((x, idx) => (idx === i ? { ...x, goodId: '', goodName: '' } : x)),
+                          ls.map((x, idx) =>
+                            idx === i
+                              ? {
+                                  ...x,
+                                  goodId: '',
+                                  goodName: '',
+                                  unitId: '',
+                                  unitShortName: '',
+                                  coefficient: 1,
+                                  goodUoMs: [],
+                                }
+                              : x,
+                          ),
                         );
                         dirty.markDirty();
                       }}
@@ -925,19 +1010,52 @@ export default function StockDocumentsPage() {
                     value={l.quantity}
                     onChange={e => {
                       updateLine(i, 'quantity', e.target.value);
-                      dirty.markDirty();
                     }}
                     placeholder="Кіл."
                     min="0.001"
                     step="0.001"
                     className="w-20 text-xs"
                   />
+                  {l.goodUoMs.length > 0 && (
+                    <Select
+                      value={l.unitId}
+                      onChange={e => {
+                        const selectedUom = l.goodUoMs.find(u => u.id === e.target.value);
+                        if (selectedUom) {
+                          const oldCoeff = l.coefficient;
+                          const newCoeff = selectedUom.coefficient;
+                          const currentQty = parseFloat(l.quantity) || 1;
+                          const newQty = (currentQty * oldCoeff) / newCoeff;
+                          setLines(ls =>
+                            ls.map((x, idx) =>
+                              idx === i
+                                ? {
+                                    ...x,
+                                    unitId: selectedUom.id,
+                                    unitShortName: selectedUom.unitShortName,
+                                    coefficient: newCoeff,
+                                    quantity: newQty.toFixed(3),
+                                  }
+                                : x,
+                            ),
+                          );
+                          dirty.markDirty();
+                        }
+                      }}
+                      className="w-20 text-xs"
+                    >
+                      {l.goodUoMs.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.unitShortName}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
                   <Input
                     type="number"
                     value={l.price}
                     onChange={e => {
                       updateLine(i, 'price', e.target.value);
-                      dirty.markDirty();
                     }}
                     placeholder="Ціна"
                     min="0"
@@ -1022,7 +1140,7 @@ export default function StockDocumentsPage() {
                         {l.goodSku ?? '—'}
                       </td>
                       <td className="px-3 py-2 text-right font-medium">
-                        {l.quantity} {l.unit}
+                        {l.quantity} {(l as any).unitShortName ?? l.unit}
                       </td>
                       <td className="px-3 py-2 text-right">
                         {l.price != null ? l.price.toFixed(2) + ' ₴' : '—'}

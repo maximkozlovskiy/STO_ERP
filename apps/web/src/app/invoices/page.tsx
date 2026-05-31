@@ -68,6 +68,8 @@ interface InvoiceLine {
   vatAmount: number;
   priceWithVat: number;
   sortOrder: number;
+  unitShortName?: string;
+  coefficient?: number;
 }
 
 interface InvoiceFilters extends Record<string, unknown> {
@@ -522,7 +524,8 @@ export default function InvoicesPage() {
               >
                 <p className="font-medium text-foreground">{line.description}</p>
                 <p className="text-muted-foreground text-[12px] mt-0.5">
-                  {line.quantity} × {fmtMoney(line.unitPrice)} ₴{' = '}
+                  {line.quantity} {(line as any).unitShortName} × {fmtMoney(line.unitPrice)} ₴
+                  {' = '}
                   <span className="text-foreground font-medium">
                     {fmtMoney(line.priceWithVat)} ₴
                   </span>

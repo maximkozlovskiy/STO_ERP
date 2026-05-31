@@ -67,6 +67,15 @@ interface Good {
   purchasePrice: number | null;
 }
 
+interface GoodUoM {
+  id: string;
+  unitOfMeasureId: string;
+  unitName: string;
+  unitShortName: string;
+  coefficient: number;
+  isDefault: boolean;
+}
+
 interface PoFilters extends Record<string, unknown> {
   status: string;
   q: string;
@@ -210,7 +219,16 @@ export default function PurchaseOrdersPage() {
   const [supplierDisplayName, setSupplierDisplayName] = useState('');
   const [form, setForm] = useState({ supplierId: '', warehouseId: '', notes: '' });
   const [lines, setLines] = useState<
-    { goodId: string; goodName: string; quantity: string; price: string }[]
+    {
+      goodId: string;
+      goodName: string;
+      quantity: string;
+      price: string;
+      unitId: string;
+      unitShortName: string;
+      coefficient: number;
+      goodUoMs: GoodUoM[];
+    }[]
   >([]);
   const [saving, setSaving] = useState(false);
 
@@ -325,7 +343,7 @@ export default function PurchaseOrdersPage() {
           notes: form.notes || undefined,
           lines: validLines.map(l => ({
             goodId: l.goodId,
-            quantity: parseFloat(l.quantity),
+            quantity: parseFloat(l.quantity), // Перерахована кількість з урахуванням коефіцієнта
             price: parseFloat(l.price),
           })),
         }),
@@ -446,7 +464,19 @@ export default function PurchaseOrdersPage() {
   };
 
   const addLine = () => {
-    setLines(l => [...l, { goodId: '', goodName: '', quantity: '1', price: '' }]);
+    setLines(l => [
+      ...l,
+      {
+        goodId: '',
+        goodName: '',
+        quantity: '1',
+        price: '',
+        unitId: '',
+        unitShortName: '',
+        coefficient: 1,
+        goodUoMs: [],
+      },
+    ]);
     dirty.markDirty();
   };
   const updateLine = (i: number, field: string, value: string) => {
@@ -1001,7 +1031,7 @@ export default function PurchaseOrdersPage() {
                       placeholder="Товар..."
                       value={l.goodId}
                       displayValue={l.goodName}
-                      onSelect={g =>
+                      onSelect={async g => {
                         setLines(ls =>
                           ls.map((x, idx) =>
                             idx === i
@@ -1010,14 +1040,58 @@ export default function PurchaseOrdersPage() {
                                   goodId: g.id,
                                   goodName: g.name,
                                   price: g.purchasePrice ? String(g.purchasePrice) : x.price,
+                                  unitId: '',
+                                  unitShortName: '',
+                                  coefficient: 1,
+                                  goodUoMs: [],
                                 }
                               : x,
                           ),
-                        )
-                      }
+                        );
+                        // Завантажити UoM для цього товару
+                        try {
+                          const uoms = await apiFetch<GoodUoM[]>(`/goods/${g.id}/uoms`);
+                          setLines(ls =>
+                            ls.map((x, idx) =>
+                              idx === i
+                                ? {
+                                    ...x,
+                                    goodUoMs: uoms,
+                                    // Автоматично встановити default UoM якщо є
+                                    ...(uoms.length > 0
+                                      ? {
+                                          unitId: uoms.find(u => u.isDefault)?.id || uoms[0].id,
+                                          unitShortName:
+                                            uoms.find(u => u.isDefault)?.unitShortName ||
+                                            uoms[0].unitShortName,
+                                          coefficient:
+                                            uoms.find(u => u.isDefault)?.coefficient ||
+                                            uoms[0].coefficient,
+                                        }
+                                      : {}),
+                                  }
+                                : x,
+                            ),
+                          );
+                        } catch {
+                          // Якщо помилка при завантаженні UoM — продовжити без них
+                        }
+                      }}
                       onClear={() =>
                         setLines(ls =>
-                          ls.map((x, idx) => (idx === i ? { ...x, goodId: '', goodName: '' } : x)),
+                          ls.map((x, idx) =>
+                            idx === i
+                              ? {
+                                  ...x,
+                                  goodId: '',
+                                  goodName: '',
+                                  unitId: '',
+                                  unitShortName: '',
+                                  coefficient: 1,
+                                  goodUoMs: [],
+                                }
+                              : x,
+                          ),
                         )
                       }
                       fetchItems={q =>
@@ -1042,6 +1116,41 @@ export default function PurchaseOrdersPage() {
                     step="0.001"
                     className="w-20 text-xs"
                   />
+                  {l.goodUoMs.length > 0 && (
+                    <Select
+                      value={l.unitId}
+                      onChange={e => {
+                        const selectedUom = l.goodUoMs.find(u => u.id === e.target.value);
+                        if (selectedUom) {
+                          const oldCoeff = l.coefficient;
+                          const newCoeff = selectedUom.coefficient;
+                          const currentQty = parseFloat(l.quantity) || 1;
+                          const newQty = (currentQty * oldCoeff) / newCoeff;
+                          setLines(ls =>
+                            ls.map((x, idx) =>
+                              idx === i
+                                ? {
+                                    ...x,
+                                    unitId: selectedUom.id,
+                                    unitShortName: selectedUom.unitShortName,
+                                    coefficient: newCoeff,
+                                    quantity: newQty.toFixed(3),
+                                  }
+                                : x,
+                            ),
+                          );
+                          dirty.markDirty();
+                        }
+                      }}
+                      className="w-20 text-xs"
+                    >
+                      {l.goodUoMs.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.unitShortName}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
                   <Input
                     type="number"
                     value={l.price}
@@ -1124,7 +1233,7 @@ export default function PurchaseOrdersPage() {
                     <tr key={i}>
                       <td className="px-3 py-2 text-foreground">{l.goodName}</td>
                       <td className="px-3 py-2 text-right">
-                        {l.quantity} {l.unit}
+                        {l.quantity} {(l as any).unitShortName ?? l.unit}
                       </td>
                       <td
                         className={cn(
@@ -1191,8 +1300,8 @@ export default function PurchaseOrdersPage() {
                   <div className="flex-1">
                     <div className="text-sm font-medium text-foreground">{line.goodName}</div>
                     <div className="text-xs text-muted-foreground">
-                      Замовлено: {line.quantity} {line.unit} · Отримано раніше:{' '}
-                      {line.receivedQty ?? 0}
+                      Замовлено: {line.quantity} {(line as any).unitShortName ?? line.unit} ·
+                      Отримано раніше: {line.receivedQty ?? 0}
                     </div>
                   </div>
                   <Input
@@ -1210,7 +1319,9 @@ export default function PurchaseOrdersPage() {
                     step="0.001"
                     className="w-28 text-right"
                   />
-                  <span className="text-xs text-muted-foreground">{line.unit}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {(line as any).unitShortName ?? line.unit}
+                  </span>
                 </div>
               ))}
             </div>
