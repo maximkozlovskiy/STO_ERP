@@ -1186,19 +1186,21 @@ export default function CalendarPage() {
               </button>
             ))}
           </div>
-          <Button
-            onClick={() => {
-              setPendingSlot(null);
-              setEditingSlotId(null);
-              setError('');
-              setCpDisplay('');
-              setForm(EMPTY_FORM);
-              setShowAdd(v => !v);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Слот
-          </Button>
+          {calView !== 'stats' && (
+            <Button
+              onClick={() => {
+                setPendingSlot(null);
+                setEditingSlotId(null);
+                setError('');
+                setCpDisplay('');
+                setForm(EMPTY_FORM);
+                setShowAdd(v => !v);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Слот
+            </Button>
+          )}
         </div>
       </div>
 
