@@ -495,6 +495,18 @@ export function CalendarSlotModal({
         }
       }
     }
+    const startDate = new Date(`${date}T${form.startAt}:00`);
+    const endDate = new Date(`${date}T${form.endAt}:00`);
+    if (
+      !date ||
+      !form.startAt ||
+      !form.endAt ||
+      isNaN(startDate.getTime()) ||
+      isNaN(endDate.getTime())
+    ) {
+      setError('Вкажіть коректні дату та час');
+      return;
+    }
     setSaving(true);
     setError('');
     const body = {
@@ -502,8 +514,8 @@ export function CalendarSlotModal({
       employeeId: form.employeeId || undefined,
       workOrderId: form.workOrderId || undefined,
       counterpartyId: form.counterpartyId || undefined,
-      startAt: new Date(`${date}T${form.startAt}:00`).toISOString(),
-      endAt: new Date(`${date}T${form.endAt}:00`).toISOString(),
+      startAt: startDate.toISOString(),
+      endAt: endDate.toISOString(),
       notes: form.notes || undefined,
     };
     try {
@@ -522,7 +534,9 @@ export function CalendarSlotModal({
       }
       onSaved();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка збереження');
+      const msg = e instanceof Error ? e.message : 'Помилка збереження';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
