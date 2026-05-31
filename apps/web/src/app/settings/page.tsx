@@ -170,12 +170,14 @@ interface CashRegister {
 }
 interface OrgInfo {
   id: string;
+  orgId?: string;
   name: string;
   edrpou?: string | null;
   logoUrl?: string | null;
   legalAddress?: string | null;
   actualAddress?: string | null;
   bankAccountId?: string | null;
+  updatedAt?: string;
 }
 
 const WEBHOOK_EVENT_OPTIONS = [

@@ -18,6 +18,7 @@ export interface POLine {
 
 export interface PurchaseOrder {
   id: string;
+  orgId?: string;
   number: string;
   status: string;
   supplierId: string;

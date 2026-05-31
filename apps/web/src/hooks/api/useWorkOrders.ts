@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 
 export interface WorkOrder {
   id: string;
+  orgId?: string;
   number: string;
   status: string;
   priority: string | null;
@@ -22,6 +23,10 @@ export interface WorkOrder {
   dueDate?: string | null;
   description?: string | null;
   inMileage?: number | null;
+  hasActiveWarranty?: boolean;
+  slotStartAt?: string | null;
+  slotEndAt?: string | null;
+  slotLiftName?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

@@ -36,10 +36,12 @@ interface MaintenanceSchedule {
   vehicleId: string;
   vehicleLabel?: string;
   maintenanceType: string;
+  intervalDays?: number | null;
+  intervalMileage?: number | null;
   nextMaintenanceDate?: string | null;
   nextMaintenanceMileage?: number | null;
-  intervalDays?: number | null;
   isActive: boolean;
+  notes?: string | null;
 }
 
 interface KPI {

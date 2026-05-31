@@ -5,13 +5,19 @@ import { counterpartiesKeys } from './useCounterparties';
 
 export interface Invoice {
   id: string;
+  orgId?: string;
   number: string;
   status: string;
   amount: number;
+  totalWithoutVat?: number | null;
+  totalVat?: number | null;
   totalWithVat?: number | null;
+  invoiceType?: string | null;
   counterpartyId: string;
   counterpartyName?: string;
   workOrderId?: string | null;
+  workOrderNumber?: string | null;
+  paidAmount?: number | null;
   dueDate?: string | null;
   notes?: string | null;
   createdAt: string;

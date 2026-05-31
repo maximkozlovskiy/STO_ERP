@@ -79,9 +79,6 @@ interface InvoiceFilters extends Record<string, unknown> {
 
 // Extend Invoice from hook with optional fields used in this page
 interface InvoiceWithOptionals extends Invoice {
-  workOrderNumber?: string | null;
-  invoiceType?: string | null;
-  paidAmount?: number | null;
   lines?: InvoiceLine[];
 }
 

@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 
 export interface Counterparty {
   id: string;
+  orgId?: string;
   type: string;
   firstName: string | null;
   lastName: string | null;
@@ -13,6 +14,14 @@ export interface Counterparty {
   edrpou: string | null;
   vatPayer: boolean;
   balance: number;
+  notes?: string | null;
+  legalForm?: string | null;
+  legalAddress?: string | null;
+  actualAddress?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  contactPerson?: string | null;
+  taxNumber?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;

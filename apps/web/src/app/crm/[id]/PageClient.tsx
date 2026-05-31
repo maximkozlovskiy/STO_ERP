@@ -18,6 +18,7 @@ import { fmtMoney, fmtInt, fmtDate } from '@/lib/format';
 
 interface Counterparty {
   id: string;
+  orgId?: string;
   type: string;
   firstName: string | null;
   lastName: string | null;
@@ -35,6 +36,9 @@ interface Counterparty {
   bankName?: string | null;
   contactPerson?: string | null;
   taxNumber?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
 }
 interface Garage {
   id: string;

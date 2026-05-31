@@ -47,6 +47,7 @@ interface AuditEventItem {
 
 interface WorkOrderLine {
   id: string;
+  workOrderId?: string;
   workId: string;
   workName?: string;
   employeeId: string;
@@ -57,9 +58,11 @@ interface WorkOrderLine {
   price: number;
   amount: number;
   notes?: string | null;
+  createdAt?: string;
 }
 interface WorkOrderPart {
   id: string;
+  workOrderId?: string;
   goodId: string;
   goodName?: string;
   unitShortName?: string;
@@ -68,9 +71,11 @@ interface WorkOrderPart {
   quantity: number;
   price: number;
   amount: number;
+  createdAt?: string;
 }
 interface WorkOrderDetail {
   id: string;
+  orgId?: string;
   number: string;
   status: string;
   branchId: string;
@@ -92,6 +97,11 @@ interface WorkOrderDetail {
   totalParts: number;
   totalAmount: number;
   paidAmount: number;
+  hasActiveWarranty?: boolean;
+  slotStartAt?: string | null;
+  slotEndAt?: string | null;
+  slotLiftName?: string | null;
+  updatedAt?: string;
   lines: WorkOrderLine[];
   parts: WorkOrderPart[];
 }
