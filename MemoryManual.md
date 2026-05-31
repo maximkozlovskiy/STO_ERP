@@ -9,10 +9,17 @@
 ## Останній commit
 
 ```
-9bf80ac perf(optimize): parallelize invoices FK validation + Intl singletons in 5 frontend pages
+2c8d5b9 perf(web): Intl singletons + lib/format proxies in 7 frontend pages
+846f8ff perf(api): parallelize parent-guard + child-fetch in 8 services + tighten goods.uom include→select
 Дата: 2026-05-31
 
-Latest optimize: 2026-05-31 (sto-optimize-agent, HEAD 00d5f34 → 9bf80ac) — **9 точкових perf фіксів** після 30-комітного огляду (включно з UoM krok 5, calendar @Transform sprint, settings logo lightbox, MinIO policy, loading.tsx skeletons).
+Latest optimize: 2026-05-31 (sto-optimize-agent ітерація-1, HEAD a334f99 → 2c8d5b9) — **15 точкових perf фіксів** в untouched-by-previous-sweeps областях (goods UoM/barcode endpoints, work-categories/works/vehicles/counterparties update+remove paths, dashboard/reports/vehicles[id]/RevenueChart/ReportsCharts intl singletons).
+**Backend (8 сервісів):** `goods.service.ts` getUoMs/addUoM/setDefaultUoM/removeUoM/getBarcodes/createBarcode — same-aggregate parent+child + count/dup collapsed у Promise.all (-1..-2 RTT each); UoM include: { unitOfMeasure: true } → select { name, shortName, coefficient } drop unused metadata. `exchange-rates.create` — currency + duplicate-check parallel (-1 RTT). `works.update` + `work-categories.update` — tenant guard + optional FK check у Promise.all. `counterparties.findGarages` + `removeGarage` — parent+child parallel. `vehicles.findNodes` + `removeNode` — same. `inspection.create` — WO guard + @@unique check у Promise.all (-1 RTT).
+**Frontend Intl singletons sweep (7 файлів):** `dashboard/page.tsx` — local fmt → fmtInt proxy + 2× toLocaleString у upcomingTO.map() → fmtInt/fmtDate. `vehicles/[id]/PageClient.tsx` — 6× inline .toLocale*  → fmtInt/fmtDate (nodes.map + schedules.map + 2 expiry blocks + mileage). `reports/page.tsx` — local fmt → fmtMoney proxy + fmtNum → module-level NUM_FMT_1 + kyivDate inline → module-level singletons. `reports/ReportsCharts.tsx` — local fmt → fmtMoney proxy. `dashboard/RevenueChart.tsx` — local fmt → fmtMoney proxy + tickFormatter inline → TICK_DATE_FMT module-level + labelFormatter → fmtDate. `settings/page.tsx` — webhook delivery log timestamp → fmtShortDateTime. `calendar/CalendarSlotModal.tsx` — select-list item date → new fmtKyivDate helper у calendar.utils (Kyiv-TZ DD.MM.YYYY singleton).
+**TypeScript:** ✅ 0 errors (api + web).
+**DB:** 0 нових індексів — GoodUoM `@@index([orgId, goodId])`, InspectionReport `@@unique([workOrderId])` вже покривають всі нові parallel queries.
+
+Previous optimize: 2026-05-31 (sto-optimize-agent, HEAD 00d5f34 → 9bf80ac) — **9 точкових perf фіксів** після 30-комітного огляду (включно з UoM krok 5, calendar @Transform sprint, settings logo lightbox, MinIO policy, loading.tsx skeletons).
 **Backend (4):** invoices.service.ts updateLine/removeLine/createFromWorkOrder/addLine — same-aggregate parent+child sequential read collapsed у Promise.all (-1 RTT per call × кожне редагування рядка). На рахунку з 10 рядків редагування — 11 RTT економії за сесію.
 **Frontend Intl singletons sweep (5):** lib/format proxy у settlements/inventory/crm[id] (replaces local fmt() + inline toLocaleString у table cells). booking widget — module-level SLOT_TIME_FMT (public bundle без lib/format imports). CalendarSlotModal — ref-cache seed для branches (instant dropdown second mount у newWo wizard).
 **TypeScript:** ✅ 0 errors (api + web).

@@ -741,6 +741,28 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — Tiered parallelization stops at first Promise.all — addX/createX де є кілька груп незалежних reads
+
+**Сигнал:** метод сервісу `addX(orgId, parentId, dto)` або `createX(orgId, dto)` вже має один `Promise.all([parent.findFirst, fk.findFirst])` для першої групи перевірок (parent + FK). Але одразу після нього — два-три послідовних awaits (типово: existing-dup-check + count + інший FK), кожен з яких незалежний від результату попереднього і має повну tenant-isolation у where. Розробник зробив перший крок оптимізації (parent + FK parallel), але другу хвилю перевірок лишив послідовною
+**Причина виникнення:** перший Promise.all додається коли N+1/sequential FK validation стає очевидним (типово під час review). Решта `await`ів виглядають як «бізнес-логіка» (dup-check, count, secondary FK) і не сприймаються як кандидати на parallelize. Між хвилями немає dependency, але між ними часто стоїть `if (!parent) throw` — це **не блокує** парареллі, бо throw зупиняє виконання до наступних кроків лише якщо вони ВИКОНУЮТЬСЯ; параллельне виконання все одно усуває latency
+**Підхід до виявлення:** для кожного методу що вже має `Promise.all` грепнути наступні 15-20 рядків на `await this.prisma`. Якщо є ≥2 послідовних `findFirst`/`count`/`findMany` що читають за `orgId+goodId` (або іншою спільною ключовою парою) і не залежать від результату першого `Promise.all` — це друга хвиля що теж заслуговує бути parallel
+**Підхід до фіксу:** додати ДРУГИЙ `Promise.all([dup, count, ...])` після першого. Або, якщо обидві хвилі читають за одним базовим ключем (orgId+goodId), злити їх у ОДИН `Promise.all` коли parent-guard не блокує (parent.findFirst не дає інформації потрібної child queries). Перевірки `if (!parent) throw NotFound` робити ПІСЛЯ всіх awaits — порядок повідомлень про помилку зберігається бо всі запити вже виконані
+**Реальний impact:** addX/createX типово робить 3-4 RTT (parent + FK + dup + count). Після першого Promise.all — 2 RTT. Після другого (або злиття) — 1 RTT. Помітно на hot-path операціях (addUoM, addBarcode, addLine, addPart) які викликаються при кожному save рядка форми
+**Де шукати ще:** будь-який сервіс де вже зроблений один Promise.all — перевір наступні 15 рядків методу. Особливо часто: addLine/addPart/addUoM/addBarcode/createReconciliation/createPayment — там зазвичай є парент + FK + дуплікат + count
+
+---
+
+### 2026-05-31 — `include: { fk: true }` для many-to-one relation що використовує 2-3 поля — не лише join-таблиць
+
+**Сигнал:** `include: { unitOfMeasure: true }`, `include: { brand: true }`, `include: { category: true }` у `findMany`/`findFirst`/`create` — single related row, не one-to-many колекція. У toDto/.map() використовуються ЛИШЕ 2-3 поля (`name`, `shortName`, `coefficient`). Решта колонок (orgId, createdAt, updatedAt, deletedAt, syncVersion, додаткові nullable поля) пересилаються з Postgres → Node → JSON serialization → ігноруються
+**Причина виникнення:** `include: { fk: true }` — найкоротший синтаксис коли потрібно «протягнути назву», особливо для many-to-one (наприклад «showcase unit shortName разом з UoM record»). Розробник пише `include: true` бо це чотири символи менше за select projection. Не помічається бо response shape DTO вже фільтрує — лишається лише payload-overhead на wire + JIT/V8 object allocation
+**Підхід до виявлення:** не плутати з Кроком 1.1 (N+1 для include: true у join-таблицях). Тут — `findFirst`/`create`/`update` single-row. Грепнути `include: { \w+: true }` у service.ts, для кожного збігу прочитати `toDto`/return — якщо використовуються лише 2-3 поля related entity, замінити include на select projection
+**Підхід до фіксу:** `include: { fk: true }` → `select: { ...neededFields, fk: { select: { name: true, ...neededFields } } }`. Якщо у scope є кілька relations — увесь top-level теж стає select. TypeScript авто-наведе вузький тип, toDto signature за потреби звузити
+**Реальний impact:** ~30-50% менший row payload на wire (для UnitOfMeasure: 10 колонок → 3). За рік на середній СТО з 1000 запит-операцій × ~50 UoM records — ~150KB менше JSON serialization + менше V8 allocation pressure. Кумулятивно з backend кешем на reference-data — суттєвий
+**Де шукати ще:** усі `include: { brand: true }`, `include: { unitOfMeasure: true }`, `include: { category: true }`, `include: { author: true }` що супроводжують toDto яка читає лише `.name`/`.shortName`/`.code`. Особливо ймовірно: catalog (goods.uoms), exchange-rates, services (work/good), comments (author), counterparties (settlementAccount)
+
+---
+
 ### 2026-05-31 — Public widget без shared lib доступу — booking/embed сторінки що не імпортують `@/lib/format`
 
 **Сигнал:** публічна сторінка-віджет (booking, signup, reset-password) — це чорний-box без авторизації що рендерить `.map()` зі слотами/датами через inline `toLocaleString` чи `toLocaleTimeString`. На відміну від звичайних сторінок, тут імпорт `@/lib/format` може бути небажаним (зайвий код у public bundle) або **здаватися** небажаним
@@ -794,6 +816,13 @@ TypeScript: ✅ 0 errors
 - ✅ invoices updateLine/removeLine: parallel invoice + invoiceLine fetch (-1 RTT per call)
 - ✅ invoices createFromWorkOrder: parallel workOrder + duplicate-invoice check (-1 RTT)
 - ✅ invoices addLine: collapsed «invoice-then-parallel good+work» into single Promise.all (-1 RTT)
+- ✅ goods getUoMs/addUoM/setDefaultUoM/removeUoM/getBarcodes/createBarcode: same-aggregate parent+child + dup+count parallelized (-1..-2 RTT each)
+- ✅ goods UoM `include: { unitOfMeasure: true }` → `select: { name, shortName, coefficient }` (4 sites) — drops orgId/createdAt/syncVersion/decimals over-fetch
+- ✅ exchange-rates create: currency FK + duplicate-row check у Promise.all (-1 RTT)
+- ✅ works/work-categories update: tenant guard + optional FK check у Promise.all
+- ✅ counterparties findGarages/removeGarage: parent (CP) + child (garage) у Promise.all (-1 RTT)
+- ✅ vehicles findNodes/removeNode: parent (vehicle) + child (node list/fetch) у Promise.all (-1 RTT)
+- ✅ inspection create: WO guard + @@unique inspectionReport check у Promise.all (-1 RTT)
 
 **Frontend:**
 
@@ -820,6 +849,11 @@ TypeScript: ✅ 0 errors
 - ✅ lib/format.ts Intl singletons (fmtMoney/fmtInt/fmtDate/fmtDateTime/fmtShortDateTime): 13 сторінок (catalog/crm[list+detail]/employees/invoices/pricing-rules/purchase-orders/stock-documents/work-orders[list+detail]/settlements/inventory) — заміна inline `n.toLocaleString('uk-UA', {...})` і `new Date(...).toLocaleDateString(...)` у table-cell rendering hot-path; локальні `fmt()` хелпери переписані як thin proxy
 - ✅ booking/page.tsx (public widget): module-level SLOT_TIME_FMT Intl singleton — без імпорту lib/format для мінімального public bundle
 - ✅ CalendarSlotModal: ref-cache seed для branches (instant dropdown second mount у newWo wizard)
+- ✅ dashboard/page.tsx + RevenueChart.tsx: local fmt → fmtMoney/fmtInt proxy; upcomingTO.map() → fmtDate/fmtInt; tickFormatter → module-level TICK_DATE_FMT
+- ✅ vehicles/[id]/PageClient.tsx: 6× inline .toLocaleString/.toLocaleDateString → fmtInt/fmtDate (nodes + schedules .map() + expiry blocks)
+- ✅ reports/page.tsx + ReportsCharts.tsx: local fmt/fmtNum → fmtMoney + NUM_FMT_1 singleton; kyivDate → module-level KYIV_DATE_FMT/KYIV_YMD_FMT
+- ✅ settings/page.tsx: webhook delivery log timestamp → fmtShortDateTime
+- ✅ calendar/CalendarSlotModal.tsx: select-list item date → fmtKyivDate helper у calendar.utils (Kyiv-TZ DD.MM.YYYY singleton)
 
 **DB:**
 
