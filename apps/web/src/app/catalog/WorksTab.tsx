@@ -481,7 +481,7 @@ export default function WorksTab() {
         />
       )}
 
-      <div className="flex gap-0">
+      <div className="flex gap-3">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
           <Table>
             <TableHeader>

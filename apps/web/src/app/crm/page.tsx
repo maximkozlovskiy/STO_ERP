@@ -755,8 +755,8 @@ export default function CrmPage() {
       )}
 
       {/* Table + DetailPanel */}
-      <div className="flex gap-0 flex-1 min-h-0">
-        <div className="flex-1 min-w-0 overflow-auto">
+      <div className="flex gap-3 flex-1 min-h-0">
+        <div className="flex-1 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
           <Table>
             <TableHeader>
               <TableRow>
