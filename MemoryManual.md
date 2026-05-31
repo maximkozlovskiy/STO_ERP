@@ -9,10 +9,16 @@
 ## Останній commit
 
 ```
-00d5f34 fix(review): shared emptyToUndefined helper + setup wizard required indicators + lightbox a11y
+9bf80ac perf(optimize): parallelize invoices FK validation + Intl singletons in 5 frontend pages
 Дата: 2026-05-31
 
-Latest tester: 2026-05-31 (sto-tester-agent FULL, HEAD 767bc67) — full sweep після батча @Transform/required/lightbox фіксів (commits fb94244..767bc67). **4 нових багів виявлено + виправлено:**
+Latest optimize: 2026-05-31 (sto-optimize-agent, HEAD 00d5f34 → 9bf80ac) — **9 точкових perf фіксів** після 30-комітного огляду (включно з UoM krok 5, calendar @Transform sprint, settings logo lightbox, MinIO policy, loading.tsx skeletons).
+**Backend (4):** invoices.service.ts updateLine/removeLine/createFromWorkOrder/addLine — same-aggregate parent+child sequential read collapsed у Promise.all (-1 RTT per call × кожне редагування рядка). На рахунку з 10 рядків редагування — 11 RTT економії за сесію.
+**Frontend Intl singletons sweep (5):** lib/format proxy у settlements/inventory/crm[id] (replaces local fmt() + inline toLocaleString у table cells). booking widget — module-level SLOT_TIME_FMT (public bundle без lib/format imports). CalendarSlotModal — ref-cache seed для branches (instant dropdown second mount у newWo wizard).
+**TypeScript:** ✅ 0 errors (api + web).
+**Нові SKILL patterns:** 3 нових entries у "Накопичені підходи" — (a) same-aggregate parent+child sequential pattern; (b) local fmt() helper що маскує Intl-конструкції; (c) public widget без shared lib доступу — локальні Intl singletons прямо у файлі.
+
+Previous review: 2026-05-31 (sto-tester-agent FULL, HEAD 767bc67) — full sweep після батча @Transform/required/lightbox фіксів (commits fb94244..767bc67). **4 нових багів виявлено + виправлено:**
 (1) Bug #241 HIGH — `purchase-orders.dto.ts:62` `ReceiveLineDto.unitOfMeasureId` пропущено sprint-wide refactor `7f052d5` бо inline 1-рядкова форма не матчилась grep-шаблоном multi-line (Bug #215 pattern). Фронт що шле `unitOfMeasureId: ""` на `/purchase-orders/:id/receive` отримував 400. Фікс: розбито на 4-рядковий формат з `@Transform(emptyToUndefined)`.
 (2) Bug #242 LOW (a11y) — `settings/page.tsx:1425` lightbox trigger `<div onClick={...}>` без `role="button"`/`tabIndex`/`onKeyDown`. Keyboard-користувач не міг відкрити lightbox. Фікс: додано semantic-role + Enter/Space handler + focus-ring.
 (3) Bug #243 LOW (test-coverage) — `apps/api/src/common/transforms/empty-to-undefined.ts` (новий shared helper, 21 use-site) без unit-тестів. Регресія типу `!value` замість `value === ''` пройшла б CI зеленою. Фікс: створено `empty-to-undefined.spec.ts` з 8 it-блоків (boundary: ''/null/undefined/0/false/UUID/spaces/objects).

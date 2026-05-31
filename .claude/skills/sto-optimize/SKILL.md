@@ -719,6 +719,39 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — Same-aggregate parent + child sequential read — addLine/updateLine/removeLine та createFromX сервісів
+
+**Сигнал:** метод `updateLine(orgId, parentId, childId, dto)` чи `removeLine(orgId, parentId, childId)` робить дві послідовні findFirst: спочатку `parent.findFirst({ id: parentId, orgId, deletedAt: null })` для tenant-guard + status-перевірки, потім `child.findFirst({ id: childId, parentId, orgId })` щоб переконатися що child існує всередині цього parent. Друге query вже має orgId+parentId фільтр — отже воно безпечне tenant-wise, його не треба чекати після parent. Аналогічно `createFromX(orgId, sourceId)` робить `source.findFirst` потім `child.findFirst` для перевірки duplicate
+**Причина виникнення:** код виглядає лінійно та читабельно: «знайди batьковий, перевір статус, тоді знайди дочірній». Не помічають що дочірній запит має повну ізоляцію (orgId+parentId у where) і незалежний від результату першого. Це не FK validation з DTO (там очевидно паралель), а perceived-as-sequential aggregate-level check. На addLine/removeLine — це найгарячіший шлях редагування документів (рахунок-фактура, наряд-замовлення, акт) → multiplier per kожне натискання користувача
+**Підхід до виявлення:** grep `await this\.prisma\.\w+\.findFirst` у service-методах де перші 2-3 рядки методу — це послідовні findFirst для **різних** prisma моделей. Якщо обидва запити мають orgId у where, і другий додатково має foreign-key у where (на батьківський entity id з первого) — кандидат. Не плутати з аналізом по DTO (FK validation з dto.xId) — тут id приходить як параметр методу, не з DTO
+**Підхід до фіксу:** `const [parent, child] = await Promise.all([parent.findFirst(...), child.findFirst(...)])`. Перевірки `if (!parent) throw NotFound` та status-guards йдуть ПІСЛЯ Promise.all — порядок повідомлень про помилку зберігається бо обидва запити вже виконані. Третій випадок (addLine з опціональними DTO-FK): можна злити всі три у єдиний Promise.all замість «батьківський, потім [good, work]» — економить ще один RTT
+**Реальний impact:** -1 RTT per call. На рахунках з 10 рядків редагування: 10× updateLine + 1× removeLine = 11 RTT економії за сесію редагування. Помітно на повільному WAN/VPN де RTT 30-50ms
+**Де шукати ще:** будь-який метод сервісу з шаблоном `parent.findFirst → child.findFirst({ ..., parentId })`. Особливо часто: invoiceLine.updateLine/removeLine, workOrderLine.update/remove, workOrderPart.update/remove, stockDocumentLine.update/remove, purchaseOrderLine.update. Також `createFromX(sourceId)` що валідує source + перевіряє duplicate target — теж парний паттерн
+
+---
+
+### 2026-05-31 — Local fmt() helper що внутрішньо викликає toLocaleString — page-level «оптимізація» що нічого не оптимізує
+
+**Сигнал:** на сторінці є локальна функція `function fmt(n: number) { return n.toLocaleString('uk-UA', {...}) + ' ₴' }` (або `fmtDate`/`fmtTime`) що використовується у `.map()` table cells. Виглядає як абстракція що централізує форматування — насправді вона викликає `toLocaleString` під капотом, який створює `new Intl.NumberFormat(locale, options)` за кожним викликом. Тобто `fmt()` маскує проблему — імена різні, але hot-path той самий що і у inline `toLocaleString`
+**Причина виникнення:** розробник додає `fmt` як DRY-абстракцію поверх рекурсивного `toLocaleString` — здається що це і чистіше, і ефективніше. Не помічають що Intl-конструкція все одно відбувається; локальний хелпер не кешує форматер. У підсумку: 10 таблиць × 10 рядків × 5 ререндерів × 1 виклик `fmt` = 500 конструкцій Intl.NumberFormat
+**Підхід до виявлення:** grep `function fmt\(` / `const fmt = ` у `*.tsx` сторінках. Прочитати тіло — якщо там `n.toLocaleString(...)` без виклику module-level singleton — кандидат на проксі до `lib/format`. Те саме для локальних `fmtNumber`, `formatMoney`, `dt`, тощо
+**Підхід до фіксу:** імпортувати `fmtMoney`/`fmtInt`/`fmtDate`/`fmtDateTime` з `@/lib/format` і переписати локальний `fmt` як thin proxy: `function fmt(n) { return ${fmtMoney(n)} ₴ }`. Бажано злити з singleton повністю — але якщо `fmt` додає суфікс (` ₴`, ` км`, ` балів`) — proxy достатньо, не треба переписувати кожен виклик. Стара сигнатура збережена, hot-path тепер 1 інстанс на модуль
+**Реальний impact:** для сторінки списку із 30 рядків × 2 currency-комірок × 5 ререндерів (filter changes, search) — 300 конструкцій Intl → 1. Найпомітніше на settlements/inventory/dashboard/reports де `fmt` викликається у `.map()` і у summary-картках
+**Де шукати ще:** **кожен** новий `.tsx` файл-сторінка у `apps/web/src/app/`; при додаванні нової сторінки списку — перевір чи новий `fmt` хелпер не повторює стару пастку. Audit pattern: запускати `grep -rn "function fmt\|const fmt = " apps/web/src/app/ --include='*.tsx'` після кожного UI feature — якщо нові incidents — отримай `lib/format` proxy
+
+---
+
+### 2026-05-31 — Public widget без shared lib доступу — booking/embed сторінки що не імпортують `@/lib/format`
+
+**Сигнал:** публічна сторінка-віджет (booking, signup, reset-password) — це чорний-box без авторизації що рендерить `.map()` зі слотами/датами через inline `toLocaleString` чи `toLocaleTimeString`. На відміну від звичайних сторінок, тут імпорт `@/lib/format` може бути небажаним (зайвий код у public bundle) або **здаватися** небажаним
+**Причина виникнення:** автори widget-сторінок свідомо мінімізують залежності — навіть `lib/format` (~50 рядків коду) виглядає як «зайве, бо widget сам себе обслуговує». Але мінімальні `Intl.DateTimeFormat`/`NumberFormat` синглтони (3-5 рядків) можна оголосити локально, не імпортуючи нічого. Без них кожен slot рендериться через `toLocaleTimeString` що конструює форматер на місці
+**Підхід до виявлення:** grep `toLocaleTimeString\|toLocaleString` у `apps/web/src/app/booking/`, `apps/web/src/app/(public)/`, будь-яких `*Widget.tsx`, `embed/*` сторінках. Якщо знайдено в `.map()` коллбеку — кандидат
+**Підхід до фіксу:** оголосити module-level `const SLOT_TIME_FMT = new Intl.DateTimeFormat('uk-UA', { hour: '2-digit', minute: '2-digit' })` (або інший опції) **в тому самому файлі** — без імпорту з `lib/format`. Замінити inline `.toLocaleTimeString('uk-UA', {...})` на `SLOT_TIME_FMT.format(date)`. Bundle не росте бо `Intl` global, синглтон — 1 рядок коду
+**Реальний impact:** booking widget з 24-48 slots × ререндери при зміні дати — 100+ конструкцій Intl → 1. Для public-сторінки де performance критична (повільні мобільні клієнти, embeds на сторонніх сайтах) це особливо важливо
+**Де шукати ще:** будь-яка public widget сторінка; embed-сторінки що рендерять списки часу/дат; `not-found.tsx`/`error.tsx` що показують timestamps; будь-який `*.tsx` що НЕ можна або не варто залежити від `@/lib/format`
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -758,6 +791,9 @@ TypeScript: ✅ 0 errors
 - ✅ pricing-rules create/update: parallel goodId + brandId FK validation (+ tenant guard merged for update)
 - ✅ goods create: parallel sku-uniqueness check + validateFkReferences (2 RTT → 1)
 - ✅ goods update: parallel findOne tenant guard + sku-uniqueness + FK validation (3 RTT → 1)
+- ✅ invoices updateLine/removeLine: parallel invoice + invoiceLine fetch (-1 RTT per call)
+- ✅ invoices createFromWorkOrder: parallel workOrder + duplicate-invoice check (-1 RTT)
+- ✅ invoices addLine: collapsed «invoice-then-parallel good+work» into single Promise.all (-1 RTT)
 
 **Frontend:**
 
@@ -781,7 +817,9 @@ TypeScript: ✅ 0 errors
 - ✅ img lazy loading + decoding="async"
 - ✅ work-orders/[id] load(): WO + completion-acts + inspection → Promise.all (3 fire-and-forget → 1 batch, з explicit error fan-out)
 - ✅ work-orders/[id] handleMediaUpload: sequential for-await → Promise.allSettled (5 files: ~10s → ~2.5s)
-- ✅ lib/format.ts Intl singletons (fmtMoney/fmtInt/fmtDate/fmtDateTime/fmtShortDateTime): 9 сторінок (catalog/crm/employees/invoices/pricing-rules/purchase-orders/stock-documents/work-orders[list+detail]) — заміна inline `n.toLocaleString('uk-UA', {...})` і `new Date(...).toLocaleDateString(...)` у table-cell rendering hot-path
+- ✅ lib/format.ts Intl singletons (fmtMoney/fmtInt/fmtDate/fmtDateTime/fmtShortDateTime): 13 сторінок (catalog/crm[list+detail]/employees/invoices/pricing-rules/purchase-orders/stock-documents/work-orders[list+detail]/settlements/inventory) — заміна inline `n.toLocaleString('uk-UA', {...})` і `new Date(...).toLocaleDateString(...)` у table-cell rendering hot-path; локальні `fmt()` хелпери переписані як thin proxy
+- ✅ booking/page.tsx (public widget): module-level SLOT_TIME_FMT Intl singleton — без імпорту lib/format для мінімального public bundle
+- ✅ CalendarSlotModal: ref-cache seed для branches (instant dropdown second mount у newWo wizard)
 
 **DB:**
 
