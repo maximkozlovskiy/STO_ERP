@@ -28,8 +28,14 @@ import {
   ClipboardList,
   type LucideIcon,
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/api-client';
+import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
+import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
+import { invoicesKeys } from '@/hooks/api/useInvoices';
+import { purchaseOrdersKeys } from '@/hooks/api/usePurchaseOrders';
 import { ToastContainer } from '@/components/ui/toast';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -157,6 +163,42 @@ const ALL_NAV_ITEMS: NavItem[] = (() => {
       return true;
     });
 })();
+
+// Prefetch API даних при hover на NavLink — дані готові до кліку (~200мс).
+// prefetchQuery — no-op якщо дані вже fresh (staleTime не минув), безпечно.
+type PrefetchFn = (qc: ReturnType<typeof useQueryClient>) => void;
+const PREFETCH_MAP: Record<string, PrefetchFn> = {
+  '/work-orders': qc =>
+    void qc.prefetchQuery({
+      queryKey: workOrdersKeys.list({}),
+      queryFn: ({ signal }) => apiFetch('/work-orders?limit=50', { signal }),
+      staleTime: 30_000,
+    }),
+  '/crm': qc =>
+    void qc.prefetchQuery({
+      queryKey: counterpartiesKeys.list({}),
+      queryFn: ({ signal }) => apiFetch('/counterparties?limit=50', { signal }),
+      staleTime: 30_000,
+    }),
+  '/invoices': qc =>
+    void qc.prefetchQuery({
+      queryKey: invoicesKeys.list({}),
+      queryFn: ({ signal }) => apiFetch('/invoices?limit=50', { signal }),
+      staleTime: 30_000,
+    }),
+  '/inventory': qc =>
+    void qc.prefetchQuery({
+      queryKey: ['inventory', 'items', {}],
+      queryFn: ({ signal }) => apiFetch('/stock-items?limit=50', { signal }),
+      staleTime: 30_000,
+    }),
+  '/purchase-orders': qc =>
+    void qc.prefetchQuery({
+      queryKey: purchaseOrdersKeys.list({}),
+      queryFn: ({ signal }) => apiFetch('/purchase-orders?limit=50', { signal }),
+      staleTime: 30_000,
+    }),
+};
 
 const ROLE_LABELS: Record<string, string> = {
   OWNER: 'Власник',
@@ -316,6 +358,8 @@ export function TopShell({ children }: { children: ReactNode }) {
     }
   };
 
+  const queryClient = useQueryClient();
+
   const NavLink = ({ item, showStar = true }: { item: NavItem; showStar?: boolean }) => {
     const active = isActive(pathname ?? '', item.href);
     const Icon = item.icon;
@@ -326,6 +370,7 @@ export function TopShell({ children }: { children: ReactNode }) {
         key={item.href}
         href={item.href}
         prefetch={true}
+        onMouseEnter={() => PREFETCH_MAP[item.href]?.(queryClient)}
         title={collapsed ? item.label : undefined}
         className={cn(
           'group relative flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',

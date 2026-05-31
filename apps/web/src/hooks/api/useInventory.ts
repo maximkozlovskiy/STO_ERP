@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 
@@ -57,6 +57,7 @@ export function useStockItems(filters: InventoryFilter = {}) {
     queryFn: ({ signal }) => apiFetch(`/stock-items${qs ? `?${qs}` : ''}`, { signal }),
     enabled: !!employee,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 

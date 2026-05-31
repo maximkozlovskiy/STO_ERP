@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 
@@ -66,6 +66,7 @@ export function useCounterparties(filters: CounterpartiesFilter = {}) {
     queryFn: ({ signal }) => apiFetch(`/counterparties${qs ? `?${qs}` : ''}`, { signal }),
     enabled: !!employee,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 
