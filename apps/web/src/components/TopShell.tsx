@@ -29,7 +29,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/lib/auth';
+import { useAuth, isPublicRoute } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api-client';
 import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
@@ -180,22 +180,42 @@ const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv'
 // prefetchQuery — no-op якщо дані вже fresh (staleTime не минув), безпечно.
 type PrefetchFn = (qc: ReturnType<typeof useQueryClient>) => void;
 const PREFETCH_MAP: Record<string, PrefetchFn> = {
+  // Bug #281: prefetch queryKey МАЄ збігатися з тим що page-споживач передає у useXxx({...}).
+  // Якщо ключі різні — react-query тримає prefetched data у окремому cache slot який сторінка
+  // ніколи не читає. Default filter shape копіюємо з конкретної сторінки first-mount state.
   '/work-orders': qc =>
     void qc.prefetchQuery({
-      queryKey: workOrdersKeys.list({}),
-      queryFn: ({ signal }) => apiFetch('/work-orders?limit=50', { signal }),
+      // work-orders/page.tsx:195 — useWorkOrders({ page, limit, status, repairCategory, q, showDeleted, employeeId })
+      queryKey: workOrdersKeys.list({
+        page: 1,
+        limit: 20,
+        status: '',
+        repairCategory: undefined,
+        q: '',
+        showDeleted: false,
+        employeeId: undefined,
+      }),
+      queryFn: ({ signal }) => apiFetch('/work-orders?page=1&limit=20', { signal }),
       staleTime: 30_000,
     }),
   '/crm': qc =>
     void qc.prefetchQuery({
-      queryKey: counterpartiesKeys.list({}),
-      queryFn: ({ signal }) => apiFetch('/counterparties?limit=50', { signal }),
+      // crm/page.tsx:126 — useCounterparties({ page, limit, types, q, showDeleted })
+      queryKey: counterpartiesKeys.list({
+        page: 1,
+        limit: 20,
+        types: '',
+        q: '',
+        showDeleted: false,
+      }),
+      queryFn: ({ signal }) => apiFetch('/counterparties?page=1&limit=20', { signal }),
       staleTime: 30_000,
     }),
   '/invoices': qc =>
     void qc.prefetchQuery({
-      queryKey: invoicesKeys.list({}),
-      queryFn: ({ signal }) => apiFetch('/invoices?limit=50', { signal }),
+      // invoices/page.tsx:163 — useInvoices({ page, limit, status, q })
+      queryKey: invoicesKeys.list({ page: 1, limit: 20, status: '', q: '' }),
+      queryFn: ({ signal }) => apiFetch('/invoices?page=1&limit=20', { signal }),
       staleTime: 30_000,
     }),
   '/inventory': qc =>
@@ -206,19 +226,28 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
     }),
   '/purchase-orders': qc =>
     void qc.prefetchQuery({
-      queryKey: purchaseOrdersKeys.list({}),
-      queryFn: ({ signal }) => apiFetch('/purchase-orders?limit=50', { signal }),
+      // purchase-orders/page.tsx:165 — usePurchaseOrders({ page, limit, status, q, showDeleted })
+      queryKey: purchaseOrdersKeys.list({
+        page: 1,
+        limit: 20,
+        status: '',
+        q: '',
+        showDeleted: false,
+      }),
+      queryFn: ({ signal }) => apiFetch('/purchase-orders?page=1&limit=20', { signal }),
       staleTime: 30_000,
     }),
   '/employees': qc =>
     void qc.prefetchQuery({
-      queryKey: employeesKeys.list({}),
+      // employees/page.tsx — useEmployees({ q, role, showDeleted }) default all empty/undefined
+      queryKey: employeesKeys.list({ q: '', role: '', showDeleted: false }),
       queryFn: ({ signal }) => apiFetch('/employees', { signal }),
       staleTime: 30_000,
     }),
   '/settlements': qc =>
     void qc.prefetchQuery({
-      queryKey: counterpartiesKeys.list({ limit: 200 }),
+      // settlements/page.tsx:74 — useCounterparties({ limit: 200, q: debouncedQ || undefined }) default
+      queryKey: counterpartiesKeys.list({ limit: 200, q: undefined }),
       queryFn: ({ signal }) => apiFetch('/counterparties?limit=200', { signal }),
       staleTime: 30_000,
     }),
@@ -242,7 +271,14 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
     }),
   '/stock-documents': qc =>
     void qc.prefetchQuery({
-      queryKey: stockDocsKeys.list({}),
+      // stock-documents/page.tsx:171 — useStockDocuments({ page, limit, type, status, showDeleted })
+      queryKey: stockDocsKeys.list({
+        page: 1,
+        limit: 20,
+        type: undefined,
+        status: undefined,
+        showDeleted: false,
+      }),
       queryFn: ({ signal }) => apiFetch('/stock-documents?page=1&limit=20', { signal }),
       staleTime: 30_000,
     }),
@@ -307,7 +343,13 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
     }),
   '/catalog': qc =>
     void qc.prefetchQuery({
-      queryKey: worksKeys.list({}),
+      // catalog/WorksTab.tsx:106 — useWorks({ page: 1, limit: 30, categoryId: undefined, q: undefined })
+      queryKey: worksKeys.list({
+        page: 1,
+        limit: 30,
+        categoryId: undefined,
+        q: undefined,
+      }),
       queryFn: ({ signal }) => apiFetch('/works?page=1&limit=30', { signal }),
       staleTime: 30_000,
     }),
@@ -361,11 +403,8 @@ function isActive(pathname: string, href: string): boolean {
   return pathname.startsWith(href);
 }
 
-const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403', '/booking'];
-
-function isPublicRoute(pathname: string): boolean {
-  return PUBLIC_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
-}
+// Bug #282: PUBLIC_ROUTES + isPublicRoute імпортуються з @/lib/auth (SSOT). Раніше дублювались
+// тут, що ризикувало drift при додаванні нового public route (`/forgot-password` тощо).
 
 export function TopShell({ children }: { children: ReactNode }) {
   const { employee, isLoading, logout } = useAuth();

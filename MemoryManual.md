@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+fix(tester): cycle 6 — Bugs #277-#282 — nav prefetch shape mismatch + sync error state + dead imports
 3367da8 perf(nav): reports prefetch + complete dashboard prefetch + reports keepPreviousData
 b5766eb fix(topshell): move useQueryClient above conditional returns — Rules of Hooks
 a24b975 docs(skills): add nav-prefetch + useQuery migration patterns to sto-optimize + sto-web
@@ -18,8 +19,43 @@ a24b975 docs(skills): add nav-prefetch + useQuery migration patterns to sto-opti
 f017721 perf(nav): migrate employees+settlements to useQuery + extend prefetch
 e20fcc5 perf(nav): prefetch on hover + keepPreviousData + loading skeletons
 8efc01c perf(optimize): cycle 5 (FINAL) — tier-merger в reference-CRUD + sync.getStatus parallel + covering indexes
-85150e7 docs(skills,memory): add paired SSRF defense pattern + record tester cycle 5 (FINAL)
 Дата: 2026-05-31
+
+Latest tester: 2026-05-31 (sto-tester-agent **ЦИКЛ 6** — nav prefetch audit, HEAD b5766eb→cycle 6) — **6 багів знайдено + 6 виправлено + 2 нові SKILL patterns** (Prefetch key mismatch + useState(queryError) initializer).
+
+**Знайдено через статичний аналіз nav prefetch infrastructure (commits 30280bd…b5766eb):**
+
+**Bug #277 (LOW, dead-code):** `useDashboardData.ts` — `import { useAuth }` присутній, але `useAuth()` ніколи не викликається у файлі (5 hooks приймають `enabled: boolean` параметром, не self-gate). Інші 13 хуків (`useWorkOrders`, `useInvoices` тощо) використовують useAuth. **Фікс:** видалено import.
+
+**Bug #278 (MEDIUM, react-query / error-display):** `settings/sync/page.tsx:20` — `useState(statusError instanceof Error ? statusError.message : '')`. `useState`-initializer запускається ТІЛЬКИ на першому render, коли `statusError === undefined` (запит in-flight). Помилки `refetchInterval` (60s polling) ховаються бо `error` state застиглий на `''`. **Фікс:** замінено на derived `displayError = error || (statusError instanceof Error ? statusError.message : '')` (узгоджено з `bookings/page.tsx:62` правильним патерном). Парне з НОВИМ SKILL pattern.
+
+**Bug #279 (LOW, dead-code):** `reports/page.tsx:3` — `useEffect` імпортований після міграції на TanStack Query, але більше не викликається. Лишився лише оманливий коментар на line 98. **Фікс:** видалено `useEffect` з імпорту + оновлено коментар.
+
+**Bug #280 (LOW, dead-code / type-duplication):** `catalog/WorksTab.tsx:50-57` — імпортує `PaginatedWorks` тип (не використовується) + дублікат локальний `_PaginatedWorks`. **Фікс:** обидва видалено, лишився тільки `Work` import з useWorks.
+
+**Bug #281 (MEDIUM, react-query / wasted-work):** TopShell `PREFETCH_MAP` queryKeys БУЛО `workOrdersKeys.list({})` / `counterpartiesKeys.list({})` / etc. — порожній фільтр. АЛЕ page-споживачі викликають `useWorkOrders({ page: 1, limit: 20, status: '', q: '', showDeleted: false, employeeId: undefined, ... })` — повний об'єкт з default state. TanStack hashFn виробляє різні хеші → prefetched data ніколи не читається сторінкою → bandwidth+API load без жодного speedup. **Фікс:** приведено queryKey для 8 prefetch entries (`/work-orders`, `/crm`, `/invoices`, `/inventory`, `/purchase-orders`, `/employees`, `/settlements`, `/stock-documents`, `/catalog`) до exact same shape що first-mount page state передає. URL also updated `/x?page=1&limit=20`. Парне з НОВИМ SKILL pattern.
+
+**Bug #282 (LOW, DRY violation):** `PUBLIC_ROUTES` константа і `isPublicRoute` функція дублювались у `TopShell.tsx:364` і `lib/auth/context.tsx:18`. Drift risk при додаванні нового public route. **Фікс:** `PUBLIC_ROUTES` + `isPublicRoute` експортовані з `lib/auth/context.tsx` як SSOT через barrel `lib/auth/index.ts`; TopShell імпортує замість локального оголошення.
+
+**Перевірено (не знайдено проблем):**
+- §1.1 backend: жодних прямих `stockItem.update` / `settlementAccount.update` поза InventoryService/SettlementsService.
+- §1.1 FSM нарядів: hard-coded status checks 0 (всі через WORK_ORDER_TRANSITIONS map).
+- §1.1 tenant isolation: findFirst/findMany у sync.service/booking.service усі мають orgId+deletedAt: null.
+- §1.3 frontend: `.catch(() => {})` присутні тільки у settings/page.tsx (5×, не у scope циклу).
+- §1.3 `apiFetch(body: FormData)`: 0 матчів у scope (pricing-rules використовує `apiMultipartFetch` правильно).
+- §1.3 `new Date()` у render path: 0 у scope; `KYIV_DATE_FMT.format(new Date())` тільки у `PREFETCH_MAP` callbacks (run on hover, не render) і `useDashboardData.ts` функціях `kyivToday/kyivWeekStart` (run synchronously у хук-body, ok бо queryKey rebuild детермінований).
+- §1.3 booking/page.tsx (public widget): `publicFetch` правильно (не apiFetch), `SLOT_TIME_FMT` singleton, minDate у useState — чисто.
+- Контракт-tests і property-based invariants всі зелені.
+
+**Property-based:** invariants spec — 7+8+11 tests pass (inventory/settlements/work-orders FSM).
+**Component tests:** 218/218 pass (web).
+**TypeScript:** ✅ 0 errors (api + web + shared, `--incremental false`). **Unit:** API **501/501**. **Property-based:** ✅ 26 tests passed.
+
+**Нові SKILL patterns (2 entries):**
+- "Prefetch queryKey ↔ page queryKey shape mismatch" — для будь-якого `qc.prefetchQuery({ queryKey: Xkeys.list({}) })` поза hook — звірити shape з consumer page first-mount state. Default filters об'єкт з `useState('')` derived empty-string values НЕ дорівнює `{}`.
+- "useState(initializer) з React Query error як initializer" — `useState(error?.message ?? '')` запускає initializer тільки на 1-му render, коли queryError ще undefined. Refetch errors ховаються. Замінити на derived value.
+
+---
 
 Latest optimize: 2026-05-31 (sto-optimize-agent **ЦИКЛ 6** — nav prefetch follow-up, HEAD b5766eb → 3367da8) — **2 файли виправлено** (frontend only). Фокус циклу: повне покриття PREFETCH_MAP для multi-resource сторінок (dashboard 3→5 prefetches) + новий маршрут /reports у PREFETCH_MAP + placeholderData у useReport.
 

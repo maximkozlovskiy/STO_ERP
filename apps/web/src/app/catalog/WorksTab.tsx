@@ -47,14 +47,7 @@ interface Category {
   name: string;
   children: Category[];
 }
-import type { Work, PaginatedWorks } from '@/hooks/api/useWorks';
-
-interface _PaginatedWorks {
-  items: Work[];
-  total: number;
-  page: number;
-  limit: number;
-}
+import type { Work } from '@/hooks/api/useWorks';
 
 interface WorksFilters extends Record<string, unknown> {
   search: string;

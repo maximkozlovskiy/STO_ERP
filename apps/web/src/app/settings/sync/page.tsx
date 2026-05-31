@@ -17,7 +17,11 @@ export default function SyncPage() {
   const { data: status, isLoading: loading, error: statusError } = useSyncStatus();
   const [syncing, setSyncing] = useState(false);
   const [msg, setMsg] = useState('');
-  const [error, setError] = useState(statusError instanceof Error ? statusError.message : '');
+  const [error, setError] = useState('');
+  // Derived: показуємо локальну error (від manual triggerSync) АБО актуальну query-error.
+  // Bug #278: раніше було `useState(statusError ...)` — initializer запускається лише на
+  // першому render, коли statusError ще undefined → refetchInterval помилка ховається.
+  const displayError = error || (statusError instanceof Error ? statusError.message : '');
 
   const triggerSync = async () => {
     setSyncing(true);
@@ -66,9 +70,9 @@ export default function SyncPage() {
           {msg}
         </div>
       )}
-      {error && (
+      {displayError && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">
-          {error}
+          {displayError}
         </div>
       )}
 

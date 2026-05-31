@@ -479,6 +479,8 @@ done
 - [ ] **UoM display-vs-base mismatch на submit (Bug #231):** будь-який `<Select>` що дозволяє перемикати UoM з recalc display quantity (Krok 5 patten: `coefficient` + `unitId` + `unitShortName` у local lines state) ОБОВ'ЯЗКОВО має у submit-функції конвертувати display→base: `quantity: parseFloat(l.quantity) * (l.coefficient || 1)` і `price: parseFloat(l.price) / (l.coefficient || 1)`. Display-transition formula `newDisplay = oldDisplay * oldCoeff / newCoeff` зберігає інваріант між двома UoMs, АЛЕ submit потребує **окремої** конверсії до base. Якщо submit шле `parseFloat(l.quantity)` як-є → backend (що очікує base units) отримує display value → silent data corruption у stock movement / payable / applyPricing. Видно ЛИШЕ коли coefficient != 1; happy-path з default UoM (coeff=1) — без регресії. Grep: `grep -rnE "quantity:\s*parseFloat\(l\.quantity\)[^*]" apps/web/src/app --include="*.tsx" -B5 | grep -B5 "coefficient"` — кожен match без `* coeff`/`* (l.coefficient` = CRITICAL bug. Backend пара: `inventory.createMovement(quantity: l.quantity)` без UoM-conversion — підтвердження що quantity ОЧІКУЄТЬСЯ у base units. Severity: CRITICAL (release-blocker)
 - [ ] **Mass DTO field migration completeness — include audit (Bug #232):** додавання нового поля (`unitShortName`/`coefficient`) у `*.dto.ts` `LineResponseDto` + `toLineDto`-mapping без оновлення Prisma `include` queries → поле завжди undefined у API response. Розробник додав `select: { unitOfMeasure: { select: { shortName, coefficient } } }` у service X, забув у service Y. Grep: для кожного `unitShortName`/`coefficient`/інше нове DTO-поле — для кожного `prisma.X.findFirst/findMany/findFirstOrThrow/create/update` що повертається через `toLineDto`/`toDto` → перевірити що relevant `include` присутній. Pair-check: `grep -n "good?.unitOfMeasure" apps/api/src/modules/**/*.service.ts` (consumer) vs `grep -n "unitOfMeasure:" apps/api/src/modules/**/*.service.ts | grep -v ".dto.ts"` (producer/include). Якщо consumer-count > producer-count за модулем — bug. Severity: MEDIUM (data display, не runtime crash; але feature що додано саме для UX — мертвий)
 - [ ] **Frontend hint обіцяє backend behavior якого немає (Bug #266):** для кожного UI-хінту що містить «буде (додано|застосовано|скопійовано|створено|нараховано|використано|враховано|оновлено)» / «автоматично (X|застосується|створиться|нарахується|спрацює)» / «після (створення|відкриття|збереження)» — знайти найближчу POST/PATCH-функцію + перевірити чи body передає поле що упроваджує обіцяну дію. Grep: `grep -rnE "буде (додано|застосовано|скопійовано|створено|нараховано|використано|враховано|оновлено)|автоматично" apps/web/src --include="*.tsx"`. Парний сигнал: `<Select>`/`<input>` поряд з хінтом — value не передається у submit body → bug. Severity HIGH (feature розрекламована як автоматична). Фікс: реалізувати backend integration АБО переписати hint чесно `"додайте вручну ... після створення"`
+- [ ] **`useState(initializer)` з React Query error як initializer (Bug #278):** `const [error, setError] = useState(queryError instanceof Error ? queryError.message : '')` — **antipattern.** `useState`-initializer запускається ТІЛЬКИ на першому render. На першому render `queryError === undefined` (запит in-flight, не resolved) → `error` ініціалізується як `''`. Потім query завершується з error → `queryError` стає `Error` → але `error` state застиглий на `''`. UI не показує помилку. Подвійно небезпечно з `refetchInterval` — кожне poll-failure ховається. **Правильний паттерн:** derive `displayError` value на кожному render: `const displayError = error || (queryError instanceof Error ? queryError.message : '');`. Local `error` state лишається для manual mutations (post-action errors), `queryError` derive завжди актуальний. Grep: `grep -rn "useState(.*queryError\|useState(.*statusError\|useState(.*Error instanceof Error" apps/web/src/app --include="*.tsx"` — кожен match потребує перетворення у derived value. Severity: MEDIUM (silent failure mode для polling sync/dashboard widgets).
+- [ ] **Prefetch queryKey ↔ page queryKey shape mismatch (Bug #281):** `qc.prefetchQuery({ queryKey: Xkeys.list({}), queryFn: ... })` у `TopShell` / nav-prefetch буде у різному cache slot ніж сторінка що читає через `useX({ page: 1, limit: 20, status: '', q: '', showDeleted: false, ... })`. Default first-mount state хука зазвичай має **повний об'єкт** з derived empty-string/false values, НЕ `{}`. TanStack hashFn виробляє різні хеші. Prefetched data зберігається у unused cache slot, сторінка робить SECOND fetch при mount. Net: bandwidth+API load без жодного perceived speedup. Grep: для кожного `prefetchQuery` у `TopShell`/nav-компонентах знайти споживача сторінки → перевірити що `Xkeys.list({...})` shape ІДЕНТИЧНА (всі ключі і значення). Severity: MEDIUM (фіча декларована як «instant nav» не працює).
 - [ ] **Sub-resource default-flag mutation → parent-list staleness (Bug #226-#227):** для будь-якого sub-resource CRUD у modal-табі (`addX`/`setDefaultX`/`removeX` що викликають `/<parent>/:id/<sub>` ендпоінти) — pair-check проти backend service: чи endpoint виконує `prisma.<Parent>.update/updateMany({...})` (наприклад `Good.unitId` оновлюється коли default UoM змінюється)? Якщо так, success-handler frontend ОБОВ'ЯЗКОВО викликає `load()` для parent-table АБО invalidate `<parentKeys>.all`. Conditional: `addX` тільки коли `isFirst === true` (зчитати з backend → у response `created.isDefault`); `setDefaultX` завжди; `removeX` тільки якщо видаляли default (capture `wasDefault` перед DELETE). **Auto-promote next-default:** коли backend `removeX` логіка пише `findFirst({orderBy:createdAt asc}) + update({isDefault:true})` (наприклад `removeUoM` у `goods.service.ts`), оптимістичний `setModalXs(prev => prev.filter(...))` у клієнті НЕВІРНИЙ — replace optimistic filter на `refreshXs(parentId)` (race-guarded через існуючий reqRef). Grep: `grep -rn "apiFetch.*method:.*'POST\|PATCH\|DELETE'" apps/web/src/app --include="*.tsx" | grep -E "/uoms|/barcodes|/categories|/tax-rates|/warranties|/contacts|/services"` — pair-check проти backend. Severity: MEDIUM коли стале значення впливає на бізнес-сприйняття; HIGH коли стале значення гейтить наступну дію
 
 ---
@@ -860,6 +862,58 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-31 — Prefetch queryKey ↔ page queryKey shape mismatch (Bug #281) — frontend, react-query, wasted-work
+
+**Сигнал:** `TopShell` / nav-component / route-prefetch механізм викликає `queryClient.prefetchQuery({ queryKey: Xkeys.list({}), queryFn: () => apiFetch('/x?limit=N', ...) })` на hover/focus. Але цільова сторінка викликає `useX({ page: 1, limit: 20, status: '', q: '', showDeleted: false, ... })` — повний об'єкт з default state values. TanStack Query використовує deep-equality (через `JSON.stringify`) для cache key — `Xkeys.list({})` ≠ `Xkeys.list({ page: 1, limit: 20, status: '', ... })`. Два різні cache slots → prefetch ніколи НЕ читається сторінкою → бандвідт+API навантаження без жодного perceived speedup.
+
+**Grep для виявлення:**
+
+```bash
+# Знайти всі prefetchQuery виклики
+grep -rn "prefetchQuery\b" apps/web/src --include="*.tsx" -A5 | grep -B2 "queryKey:" | head -30
+
+# Для кожного prefetched key — знайти ВСІ виклики useX у сторінках і порівняти shape filters
+for prefetchKey in workOrdersKeys counterpartiesKeys invoicesKeys; do
+  echo "=== $prefetchKey ==="
+  grep -rn "$prefetchKey" apps/web/src --include="*.tsx" | grep -v "import\|export"
+done
+
+# Альтернатива: вивести queryKey у dev tools React Query devtools — якщо after prefetch
+# і page render видно ДВА окремі queries для тієї ж resource — bug.
+```
+
+**Причина виникнення:** розробник додає prefetch як «optimization layer» окремо від `useX` хука, не звіряє повну форму filter-default з тим що page first render передає. Часта помилка: prefetch fires з `{}` (порожній фільтр), а page hook сам **деривує** default-фільтри з local state (`useState('')` для search → `q: ''` у filters object → у queryKey).
+
+**Підхід до виявлення:**
+
+1. Кожен `prefetchQuery({ queryKey: ... })` пов'язаний з конкретним routes (URL pathname).
+2. Знайти сторінку що рендериться на цьому route → знайти `useX({...})` виклик з фільтрами.
+3. Порівняти **повну форму** filters object між prefetch і use-call. Object literal ordering у JS зазвичай однаковий, але важливо що **усі ті самі ключі присутні з тими самими значеннями**.
+4. Якщо є різниця — bug.
+
+**Підхід до фіксу:**
+
+1. Скопіювати **точну форму** filters-object з page first-mount state у prefetch (включно з `undefined` значеннями — `JSON.stringify` пропускає `undefined`, але react-query stable hash може поводитись по-різному залежно від версії).
+2. URL також має співпадати — якщо хук будує `/x?page=1&limit=20` а prefetch б'є `/x?limit=50` — навіть з правильним queryKey backend поверне інший response → cache буде з 50 елементами, але page очікує 20-paginated.
+3. Контракт-тест-альтернатива: створити `prefetch-key-parity.test.tsx` — для кожного entry у `PREFETCH_MAP` створити mock `useX` і пересвідчитись що cache hit після prefetch.
+
+**Severity:** MEDIUM коли впливає на perceived performance (вся фіча "instant nav" не працює); LOW коли prefetch — нагрівання rare cache (admin-only route). HIGH якщо prefetch tracking analytics — додатковий API hit враховується у usage metrics.
+
+**Де шукати ще:**
+
+- Будь-який майбутній `prefetchQuery`/`prefetchInfiniteQuery` поза react-query devtools auto-track
+- `<Link prefetch={true}>` з шляхом → коли Next.js prefetch-ує JS-чанк сторінки, але react-query cache залишається порожнім → перевірити що сторінка sub-mounts hooks-prefetcher
+- SSE / Websocket initial state hydration з prefetch
+- React Suspense `prefetch` patterns (Next.js 15 Server Components → Client Components handoff)
+
+**Профілактика:**
+
+1. Завести utility `apps/web/src/hooks/api/createPrefetcher.ts` що приймає `useX` hook і повертає prefetch-функцію — eliminate shape drift between definition and consumer.
+2. Альтернатива: спільна `defaultFilters` константа що використовується І у hook І у prefetch (`useWorkOrders.DEFAULT_FILTERS`).
+3. У контракт-тестах кожного нового useX-хука додати `it('prefetches with same key as render')` — використовує `QueryClient.getQueryData()` post-prefetch.
+
+---
 
 ### 2026-05-31 — Paired SSRF defense: validatePublicUrl + redirect: 'manual' завжди разом (Bug #273) — backend, security, ssrf, defense-in-depth
 

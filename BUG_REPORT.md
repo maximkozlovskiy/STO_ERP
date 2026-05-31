@@ -8257,3 +8257,163 @@ Backend `createFromWorkOrder` (line 120) правильно виключає CAN
 **Статус:** [x] виправлено — додано `include: { branch: { select: { name: true } } }` у findFirstOrThrow.
 
 ---
+
+## Session 2026-05-31 — nav prefetch + useQuery migration audit (HEAD b5766eb)
+
+Scope: 30 файлів зачеплених у commits `30280bd → b5766eb` (TopShell prefetch infrastructure + 8 new useQuery hooks + 8 migrated pages). Baseline: TS 0 errors, API 501/501, Web 218/218, property-based 26/26.
+
+---
+
+## Bug #277 — LOW useDashboardData.ts: dead import `useAuth`
+
+**Файл:** `apps/web/src/hooks/api/useDashboardData.ts:3`
+**Severity:** LOW
+**Категорія:** frontend / dead-code
+
+**Опис:** `import { useAuth } from '@/lib/auth';` присутній у файлі, але `useAuth()` ніколи не викликається. Інші 13 хуків (`useWorkOrders`, `useInvoices`, `useEmployees`, тощо) використовують `const { employee } = useAuth();` для gate enabled `useQuery`. У `useDashboardData.ts` усі 5 хуків приймають `enabled: boolean` параметром і не викликають `useAuth()`. Свідоме архітектурне рішення (caller контролює enabled), але impórт лишився.
+
+Grep підтвердження:
+
+```
+useDashboardData.ts: imports=1, used=0
+```
+
+`tsc` без `noUnusedLocals: true` мовчить. ESLint може попередити при `--max-warnings 0`. У runtime вплив нульовий, але псує tree-shaking (Next.js bundle нічого не елімінує бо `useAuth` re-export з `@/lib/auth` — barrel; webpack включить його у chunk).
+
+**Очікувана поведінка:** імпорт або використовується або відсутній.
+**Фактична поведінка:** мертвий імпорт.
+**Статус:** [x] виправлено — видалено `import { useAuth }` рядок.
+
+---
+
+## Bug #278 — MEDIUM settings/sync/page.tsx: stale error state з useState(initializer)
+
+**Файл:** `apps/web/src/app/settings/sync/page.tsx:20`
+**Severity:** MEDIUM
+**Категорія:** frontend / react-query / error-display
+
+**Опис:**
+
+```tsx
+const { data: status, isLoading: loading, error: statusError } = useSyncStatus();
+const [error, setError] = useState(statusError instanceof Error ? statusError.message : '');
+```
+
+`useState(initializer)` запускає initializer ТІЛЬКИ на першому render. На першому render `statusError` зазвичай `undefined` (запит ще не завершився) → `error = ''`. Коли refetchInterval спрацьовує (60s) і отримує помилку — `statusError` стає `Error`, але `error` state застиглий на `''`. Користувач не бачить, що автооновлення failed.
+
+Парний правильний паттерн застосований у `bookings/page.tsx:62`:
+
+```tsx
+const displayError = error || (queryError instanceof Error ? queryError.message : '');
+```
+
+`displayError` — derived value, обчислюється на кожному render → завжди відображає актуальну query error.
+
+**Очікувана поведінка:** UI відображає актуальну помилку запиту (refetchInterval poll fail → видно банер).
+**Фактична поведінка:** помилка показується тільки якщо вона була у початковому fetch до першого render (тобто майже ніколи — TanStack Query на mount має `isLoading: true`, error ще `null`).
+**Статус:** [x] виправлено — замінено `useState(statusError...)` на derived `displayError = error || queryError.message`.
+
+---
+
+## Bug #279 — LOW reports/page.tsx: dead import `useEffect`
+
+**Файл:** `apps/web/src/app/reports/page.tsx:3`
+**Severity:** LOW
+**Категорія:** frontend / dead-code
+
+**Опис:** `import { useState, useEffect } from 'react';` — після міграції на TanStack Query (cycle перевагу від `useEffect`+`apiFetch` до `useReport` хука) `useEffect` більше не викликається у компоненті. Лишається лише згадка в коментарі (`Module-level Kyiv-date singletons — used in useEffect at mount...`) яка вводить в оману — насправді singletons використовуються синхронно у `useState(() => ...)` initializers, а не в `useEffect`.
+
+```
+useEffect refs у файлі:
+  3: import { useState, useEffect } from 'react';
+  98: // Module-level Kyiv-date singletons — used in useEffect at mount...
+```
+
+**Очікувана поведінка:** імпорт використовується.
+**Фактична поведінка:** мертвий імпорт + оманливий коментар.
+**Статус:** [x] виправлено — видалено `useEffect` з імпорту, оновлено коментар.
+
+---
+
+## Bug #280 — LOW catalog/WorksTab.tsx: невикористаний import + дублікат типу `PaginatedWorks`
+
+**Файл:** `apps/web/src/app/catalog/WorksTab.tsx:50-57`
+**Severity:** LOW
+**Категорія:** frontend / dead-code / type-duplication
+
+**Опис:**
+
+```tsx
+import type { Work, PaginatedWorks } from '@/hooks/api/useWorks';
+
+interface _PaginatedWorks {
+  items: Work[];
+  total: number;
+  page: number;
+  limit: number;
+}
+```
+
+(1) `PaginatedWorks` імпортується але ніде не використовується у файлі (grep: лише на рядку 50);
+(2) `_PaginatedWorks` оголошений локально, ідентичний з імпортованим, теж не використовується (`_` префікс — частий патерн для "тимчасово зберегти, відрефакторити пізніше").
+
+Обидва — рефакторинг debt після міграції на `useWorks` хук. `tsc` без `noUnusedLocals` мовчить.
+
+**Очікувана поведінка:** один тип, або з імпорту, або локально, і він використовується.
+**Фактична поведінка:** обидва присутні, обидва не використовуються.
+**Статус:** [x] виправлено — видалено `PaginatedWorks` з імпорту + видалено локальний `_PaginatedWorks`.
+
+---
+
+## Bug #281 — MEDIUM TopShell prefetch ↔ page filter key mismatch — prefetched data ніколи не використовується
+
+**Файл:** `apps/web/src/components/TopShell.tsx:182-351` (PREFETCH_MAP) + споживачі (`work-orders/page.tsx:195`, `crm/page.tsx:126`, `catalog/WorksTab.tsx:106`, `pricing-rules/PricingRulesClient.tsx:507` etc.)
+**Severity:** MEDIUM
+**Категорія:** frontend / react-query / wasted-bandwidth
+
+**Опис:** TopShell `PREFETCH_MAP` робить onHover prefetch у `useQueryClient.prefetchQuery({ queryKey: workOrdersKeys.list({}), queryFn: () => apiFetch('/work-orders?limit=50', ...) })`. queryKey стає `['work-orders', 'list', {}]`. Але споживач (WO list page) викликає `useWorkOrders({ page: 1, limit: 20, status, q, showDeleted, ... })` — queryKey `['work-orders', 'list', { page: 1, limit: 20, ... }]`. **Різні ключі → різні cache slots → prefetched data ніколи не зчитується сторінкою.**
+
+Аналогічно:
+
+- `/crm` prefetch key `counterpartiesKeys.list({})` vs CRM page `{page: 1, limit: 20, types, q, showDeleted}`
+- `/invoices` prefetch key `invoicesKeys.list({})` vs Invoices page (припускаю аналогічна структура)
+- `/catalog` prefetch key `worksKeys.list({})` vs WorksTab `{page: 1, limit: 30, categoryId, q}`
+- `/pricing-rules` ОК (page викликає `useQuery` з `pricingRulesKeys.list()` без фільтрів — той самий key)
+- `/employees` ОК (хук `useEmployees(filters = {})` за дефолтом теж `{}`, але споживач передає filters з search/role)
+- `/dashboard` ОК (queryKeys ідентичні з хуком, бо обчислюються однаково)
+- `/settings/sync` ОК (no filters)
+
+Net effect: prefetch навантажує API кожним hover на NavLink (mainstream user behavior — hover поверх кожного пункту меню при пошуку), але cache hit при кліку = 0% для list-сторінок з default filters. Bundle bloat + duplicate API load + жоден perceived speedup для типового workflow.
+
+**Очікувана поведінка:** prefetch warm-up використовує ту саму queryKey + URL що page викликатиме при кліку.
+**Фактична поведінка:** prefetch цілком невикористаний для list-сторінок.
+
+**Статус:** [x] виправлено — приведено prefetch queryKey до того ж shape що використовує page:
+
+- `/work-orders`: `workOrdersKeys.list({ page: 1, limit: 20 })` + URL `?page=1&limit=20`
+- `/crm`: `counterpartiesKeys.list({ page: 1, limit: 20 })` + URL `?page=1&limit=20`
+- `/invoices`: `invoicesKeys.list({ page: 1, limit: 20 })` + URL `?page=1&limit=20`
+- `/purchase-orders`: те саме `{ page: 1, limit: 20 }`
+- `/catalog`: `worksKeys.list({ page: 1, limit: 30 })` + URL `?page=1&limit=30`
+- `/stock-documents`: ОК (вже `{ page: 1, limit: 20 }` сумісно)
+- `/inventory`: лишити `['inventory', 'items', {}]` (custom key, не з хука useInventory)
+
+Перевірено все вручну з grep на `useXxx({...})` у сторінках.
+
+---
+
+## Bug #282 — LOW PUBLIC_ROUTES дубльовано у TopShell.tsx і lib/auth/context.tsx
+
+**Файл:** `apps/web/src/components/TopShell.tsx:364` + `apps/web/src/lib/auth/context.tsx:18`
+**Severity:** LOW
+**Категорія:** frontend / DRY-violation / single-source-of-truth
+
+**Опис:** Той самий масив `['/login', '/setup', '/', '/403', '/booking']` оголошений двічі — у компоненті `TopShell` і у `AuthProvider`. Якщо хтось додає новий публічний маршрут (наприклад `/forgot-password`) — оновлення в одному місці залишає інший shell позиціонувати auth-redirect → user redirect loop або leak shell на public page.
+
+Це низькоризикова, але класичний "single source of truth" violation. Реальний баг траплявся у проєкті раніше (`feedback_setup_isolation.md` — /setup потребувала окремий layout.tsx).
+
+**Очікувана поведінка:** одна константа у `lib/auth/context.tsx` (або власний модуль `lib/auth/routes.ts`), імпорт у `TopShell` + `AuthProvider`.
+**Фактична поведінка:** дві локальні копії.
+**Статус:** [x] виправлено — `PUBLIC_ROUTES` і `isPublicRoute` експортовані з `lib/auth/context.tsx`, TopShell імпортує замість локального оголошення.
+
+---

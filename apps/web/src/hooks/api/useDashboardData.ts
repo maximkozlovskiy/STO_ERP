@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { useAuth } from '@/lib/auth';
 
 // Module-level Kyiv date formatters (singleton — no per-call construction)
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });

@@ -15,10 +15,15 @@ const TOKEN_KEY = 'sto_access_token';
 
 // Bug #131: публічні роути НЕ повинні робити refresh-запит на mount —
 // браузер логує 401 у console, що ламає console-errors.spec.ts і шумить у Sentry.
-const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403', '/booking'];
+// Bug #282: експортується тут як SSOT, TopShell використовує isPublicRoute з цього модуля.
+export const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403', '/booking'] as const;
+
+export function isPublicRoute(pathname: string): boolean {
+  return PUBLIC_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
+}
 
 function isPublicPathname(pathname: string): boolean {
-  return PUBLIC_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
+  return isPublicRoute(pathname);
 }
 
 // ─── State ───────────────────────────────────────────────

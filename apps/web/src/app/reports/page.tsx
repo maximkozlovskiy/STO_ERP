@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { useReport, type ReportTab } from '@/hooks/api/useReports';
 import { Button } from '@/components/ui/button';
@@ -95,8 +95,8 @@ function fmtNum(n: number) {
   return NUM_FMT_1.format(n);
 }
 
-// Module-level Kyiv-date singletons — used in useEffect at mount to derive default
-// from/to range. Конструкція раз на модуль замість раз на mount.
+// Module-level Kyiv-date singletons — used in useState initializers at mount to derive
+// default from/to range. Конструкція раз на модуль замість раз на mount.
 const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 const KYIV_YMD_FMT = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Kyiv',
