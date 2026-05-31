@@ -230,6 +230,24 @@ export default function GoodsTab() {
   const [batchError, setBatchError] = useState('');
   const modalBatchReqRef = useRef(0);
 
+  // ── Edit modal: UoM tab ───────────────────────────────────────────────────────
+  interface GoodUoM {
+    id: string;
+    unitOfMeasureId: string;
+    unitName: string;
+    unitShortName: string;
+    coefficient: number;
+    isDefault: boolean;
+  }
+  const [modalUoMs, setModalUoMs] = useState<GoodUoM[]>([]);
+  const [modalUoMsLoading, setModalUoMsLoading] = useState(false);
+  const [uomError, setUomError] = useState('');
+  const [showAddUoM, setShowAddUoM] = useState(false);
+  const [addUoMForm, setAddUoMForm] = useState({ unitOfMeasureId: '' });
+  const [addingUoM, setAddingUoM] = useState(false);
+  const [deletingUoMId, setDeletingUoMId] = useState<string | null>(null);
+  const modalUoMReqRef = useRef(0);
+
   const GOODS_COLUMNS = useMemo(
     () => [
       { key: 'name', label: 'Назва / Артикул', defaultVisible: true },
@@ -536,6 +554,77 @@ export default function GoodsTab() {
       .finally(() => {
         if (modalBatchReqRef.current === btReqId) setModalBatchesLoading(false);
       });
+
+    // Reset UoM tab state
+    setModalUoMs([]);
+    setUomError('');
+    setShowAddUoM(false);
+    setAddUoMForm({ unitOfMeasureId: '' });
+
+    // Race-guarded fetch for UoMs
+    const uomReqId = ++modalUoMReqRef.current;
+    setModalUoMsLoading(true);
+    apiFetch<GoodUoM[]>(`/goods/${g.id}/uoms`)
+      .then(data => {
+        if (modalUoMReqRef.current === uomReqId) setModalUoMs(data);
+      })
+      .catch(err => {
+        if (modalUoMReqRef.current === uomReqId)
+          setUomError(err instanceof Error ? err.message : 'Помилка завантаження одиниць виміру');
+      })
+      .finally(() => {
+        if (modalUoMReqRef.current === uomReqId) setModalUoMsLoading(false);
+      });
+  };
+
+  const addUoM = async (goodId: string) => {
+    if (!addUoMForm.unitOfMeasureId) return;
+    setAddingUoM(true);
+    try {
+      const created = await apiFetch<GoodUoM>(`/goods/${goodId}/uoms`, {
+        method: 'POST',
+        body: JSON.stringify({ unitOfMeasureId: addUoMForm.unitOfMeasureId }),
+      });
+      setModalUoMs(prev => [...prev, created]);
+      setAddUoMForm({ unitOfMeasureId: '' });
+      setShowAddUoM(false);
+      toast.success('Одиницю виміру додано');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка додавання одиниці');
+    } finally {
+      setAddingUoM(false);
+    }
+  };
+
+  const setDefaultUoM = async (goodId: string, uomId: string) => {
+    try {
+      const updated = await apiFetch<GoodUoM>(`/goods/${goodId}/uoms/${uomId}/default`, {
+        method: 'PATCH',
+      });
+      setModalUoMs(prev =>
+        prev.map(u => ({
+          ...u,
+          isDefault: u.id === uomId,
+        })),
+      );
+      toast.success('Основну одиницю змінено');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка встановлення основної одиниці');
+    }
+  };
+
+  const deleteUoM = async (goodId: string, uomId: string) => {
+    if (!(await confirm({ title: 'Видалити одиницю виміру?', variant: 'destructive' }))) return;
+    setDeletingUoMId(uomId);
+    try {
+      await apiFetch<void>(`/goods/${goodId}/uoms/${uomId}`, { method: 'DELETE' });
+      setModalUoMs(prev => prev.filter(u => u.id !== uomId));
+      toast.success('Одиницю видалено');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+    } finally {
+      setDeletingUoMId(null);
+    }
   };
 
   const saveEditGood = async () => {
@@ -1480,6 +1569,157 @@ export default function GoodsTab() {
                         </tbody>
                       </table>
                     </div>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'uoms',
+              label: 'Одиниці виміру',
+              icon: <Package className="h-3.5 w-3.5" />,
+              count: modalUoMs.length,
+              content: (
+                <div className="space-y-3">
+                  {modalUoMsLoading && (
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      Завантаження...
+                    </div>
+                  )}
+                  {!modalUoMsLoading && uomError && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
+                      {uomError}
+                    </div>
+                  )}
+                  {!modalUoMsLoading && !uomError && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[13px] text-muted-foreground">
+                          {modalUoMs.length} одиниці
+                        </span>
+                        {!showAddUoM && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            leftIcon={<Plus className="h-3.5 w-3.5" />}
+                            onClick={() => setShowAddUoM(true)}
+                          >
+                            Додати
+                          </Button>
+                        )}
+                      </div>
+                      {showAddUoM && (
+                        <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
+                          <Select
+                            label="Одиниця виміру"
+                            required
+                            value={addUoMForm.unitOfMeasureId}
+                            onChange={e =>
+                              setAddUoMForm(f => ({ ...f, unitOfMeasureId: e.target.value }))
+                            }
+                          >
+                            <option value="">— Виберіть одиницю —</option>
+                            {units.map(u => (
+                              <option key={u.id} value={u.id}>
+                                {u.shortName} ({u.name})
+                              </option>
+                            ))}
+                          </Select>
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setShowAddUoM(false);
+                                setAddUoMForm({ unitOfMeasureId: '' });
+                              }}
+                            >
+                              Скасувати
+                            </Button>
+                            <Button
+                              size="sm"
+                              loading={addingUoM}
+                              disabled={!addUoMForm.unitOfMeasureId}
+                              onClick={() => editGood && addUoM(editGood.id)}
+                            >
+                              Додати
+                            </Button>
+                          </div>
+                        </AnimatedBody>
+                      )}
+                      {modalUoMs.length > 0 && (
+                        <div className="rounded-xl border border-border overflow-hidden">
+                          <table className="w-full text-[13px]">
+                            <thead className="bg-secondary border-b border-border">
+                              <tr>
+                                <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                                  Одиниця
+                                </th>
+                                <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                                  Коефіцієнт
+                                </th>
+                                <th
+                                  className="w-10 px-3 py-2 text-muted-foreground"
+                                  title="Основна"
+                                >
+                                  <Star className="h-3.5 w-3.5" />
+                                </th>
+                                <th className="w-12" />
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {modalUoMs.map(u => (
+                                <tr
+                                  key={u.id}
+                                  className="bg-surface hover:bg-secondary/50 transition-colors"
+                                >
+                                  <td className="px-3 py-2 text-foreground">
+                                    <div>
+                                      <p className="font-medium">{u.unitShortName}</p>
+                                      <p className="text-[12px] text-muted-foreground">
+                                        {u.unitName}
+                                      </p>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2 text-muted-foreground">
+                                    {u.coefficient}
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    {u.isDefault ? (
+                                      <Star className="h-3.5 w-3.5 text-warning-text fill-warning-text mx-auto" />
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => editGood && setDefaultUoM(editGood.id, u.id)}
+                                        className="text-muted-foreground hover:text-warning-text transition-colors"
+                                        title="Встановити основною"
+                                      >
+                                        <Star className="h-3.5 w-3.5" />
+                                      </button>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <button
+                                      type="button"
+                                      disabled={deletingUoMId === u.id}
+                                      onClick={() => editGood && deleteUoM(editGood.id, u.id)}
+                                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
+                                      title="Видалити"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {modalUoMs.length === 0 && !showAddUoM && (
+                        <p className="text-[13px] text-muted-foreground text-center py-4">
+                          Додаткових одиниць не додано
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               ),
