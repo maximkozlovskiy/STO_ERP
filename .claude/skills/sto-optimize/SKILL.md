@@ -884,6 +884,50 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — PDF/export endpoints over-fetch via include — generatePdf методи з повним include для render data
+
+**Сигнал:** `async generatePdf(orgId, id)` / `async exportX()` робить `findFirst({ where, include: { lines: {...}, parts: {...}, counterparty: true, organisation: findFirst({ where: { id }}) } })`. PDF/CSV render використовує лише 5-10 scalar полів per row (description, quantity, price, amount, name). Раніше include тягнув всі колонки (id/orgId/createdAt/updatedAt/syncVersion/deletedAt + business поля які не показані у PDF: costPrice/sortOrder/branchId/cashRegisterId/discount). На PDF з 500 lines × 20 колонок = 10000 cells over-fetched
+**Причина виникнення:** PDF generation був написаний коли include був простіший («тягни все, потім сортуй у JS»). Як шаблон PDF стабілізувався, авторам не приходило в голову переглянути запит — він і так "робить роботу". Особливо часто: `this.prisma.organisation.findFirst({ where: { id: orgId } })` БЕЗ select — тягне 15+ settings колонок коли PDF використовує лише `name`. PDF це side-flow (не hot-path UI), тому review агенти його не зачіпали
+**Підхід до виявлення:** для кожного `generatePdf`/`generateXlsx`/`export*` методу прочитати скільки полів реально використовується в return docDef.body / output.cells (`.map(l => ({ description: l.X, quantity: l.Y, ... }))`). Якщо менше за 50% колонок — кандидат. Особливо `findFirst({where:{id:orgId}})` без select для organisation — це стабільний сигнал over-fetch (15+ unused settings columns)
+**Підхід до фіксу:** замінити `include` на `select` з точним переліком полів що рендеряться у docDef. organisation findFirst → `select: { name: true, edrpou?: true, address?: true }`. lines/parts include → `select: { description, quantity, unitPrice, amount, ... + nested narrow projection for related entity name only }`. Lines/parts type signatures для приватних `buildLines()` хелперів треба звузити одночасно (TypeScript наведе на необхідну зміну)
+**Реальний impact:** payload з 500-row PDF: ~50KB → ~15KB (зменшується overhead serialize + memory pressure у pdfmake docDef build). Кумулятивно на день генерації 50-100 PDF — суттєва економія DB → API memory transfer. Бонус: явний select показує що ДІЙСНО потрібно у PDF — якщо нове поле треба додати, помітно одразу
+**Де шукати ще:** усі PDF generators (`generateInvoicePdf`/`generateCompletionActPdf`/`generateReconciliationActPdf`/`generateWorkOrderPdf`), xlsx exporters, csv exporters, report generators. Перевіряти кожен новий PDF/export endpoint при додаванні. Перевіряти `findFirst({where:{id:orgId}})` для organisation БЕЗ select — це маркер для запиту-без-проекції що тягне всі settings
+
+---
+
+### 2026-05-31 — Clone/duplicate операції з ID-only create патерном — `clone(id)` що include тягне labels що НЕ використовуються у create
+
+**Сигнал:** `async clone(orgId, id, userId)` / `async duplicate(...)` робить `findFirst({ include: { related: { select: { name: true } }, lines: { include: { fk: { select: { name: true } } } } } })` — include тягне related entity labels (work.name, employee.firstName/lastName, good.name, vehicle.make/model). Далі у `create({ data: { ...original (FK scalars), lines: { create: original.lines.map(l => ({ workId: l.workId, ... })) } } })` НЕ використовуються related labels — лише FK ID scalars. labels тягнулись з якоїсь історичної причини (можливо для логування), не для create
+**Причина виникнення:** clone-методи часто пишуться як «знайди original з усіма зв'язками → створи новий з тих самих полів». Розробник копіює `include` з findOne (бо «треба ж все знати про original»), не помічаючи що `.map(l => ({...}))` бере лише ID scalars. Labels це pre-fetch для майбутнього використання якого ніколи не сталося — або ж потрібно для audit log, але audit log читає лише `cloned.number` та `original.number` (з parent WorkOrder, не з lines/parts)
+**Підхід до виявлення:** для кожного `clone`/`duplicate`/`copyOver` методу прочитати тіло після findFirst → перевірити чи `.map(...)` всередині `create.data.X.create` використовує тільки `.id`/`.xId` scalars. Якщо так — include на nested `work/employee/good/vehicle` (для лейблів) дармовий
+**Підхід до фіксу:** замінити include на narrow select що залишає ЛИШЕ FK scalars + business поля що йдуть у create (price/quantity/normoHours/amount/notes). Видалити related entity nested select entirely. AuditEvent extra payload — тільки parent-level fields (original.number, cloned.number) — ці поля лишаються у top-level select. Бонус: docNumbers.next можна додати у Promise.all з FK validation — він не залежить від original, але блокував sequential після
+**Реальний impact:** для clone WO з 20 lines + 30 parts: include тягло 20 work labels + 20 employee labels + 30 good labels + UoM = ~80 додаткових scalar reads + JSON serialization → 0. На повільному WAN — економія ~50-100ms per clone. Найпомітніше у роботі з масивними нарядами (DRAFT clone під час швидкого створення повторних візитів). Параллелизація docNumbers.next додатково -1 RTT
+**Де шукати ще:** будь-який clone/duplicate/createFromX метод сервісу. Особливо часто: work-orders.clone, invoices.createFromWorkOrder, completion-acts.createFromWorkOrder, calendar-slots.duplicate, work-order-templates.applyToWorkOrder. Перевіряти при додаванні нової «копіювати з існуючого» операції
+
+---
+
+### 2026-05-31 — `similarity()` обчислюється кілька разів per row у $queryRaw search — pg_trgm `%` оператор vs `similarity() > threshold`
+
+**Сигнал:** raw SQL search query використовує `similarity(col, $q) > 0.1` у WHERE І `ORDER BY similarity(col, $q) DESC` у тому ж запиті. Postgres не може дедуплікувати — обчислює `similarity()` двічі per row. Для multi-column пошуку (firstName+lastName+companyName) це може бути 4-6 викликів `similarity` per row. Окремо: `similarity() > threshold` робить sequential scan, бо planner не використовує GIN trgm index для **обчислення** similarity — індекс підтримує тільки оператори `%`, `<%`, `<<%`
+**Причина виникнення:** `similarity()` функція виглядає природньо для search — explicit threshold + ORDER BY за тим самим score. Розробник не знає що `%` оператор (`pg_trgm`) **використовує** GIN trgm index, а `similarity()` без оператора — НЕ використовує. На малих таблицях (< 1000 рядків) різниця непомітна, на 10k+ рядків — sequential scan на кожне натискання клавіші у command palette
+**Підхід до виявлення:** grep `similarity(` у `.service.ts` що використовує `$queryRaw`. Для кожного збігу полічити кількість викликів per query (WHERE + ORDER BY + кілька колонок). Якщо ≥2 — кандидат на subquery rewrite. Окремо перевірити WHERE: якщо `similarity() > N` замість `col % $q` — індекс не використовується, навіть якщо він є
+**Підхід до фіксу:** subquery або CTE винесе обчислення `similarity()` як column → ORDER BY читає pre-computed value. WHERE замінити на `col % $q` (set-similarity operator) — planner використовує GIN trgm index для filter; ще раз перевіряти `sim > 0.1` у outer query для довизначення threshold. Multi-column: окремі sim_X colonки + GREATEST(...) для ORDER BY. Для goods з aggregate stock — CTE pre-filter goods (мала вибірка) → LEFT JOIN stock_items → GROUP BY
+**Реальний impact:** для search палітра що викликається на кожен keystroke (з debounce 300ms): sequential scan з 10000 рядків × 6 викликів similarity → index scan з GIN trgm + 1 обчислення similarity per matched row. Типово 10-50ms → < 5ms. На UI: search-results з'являються миттєво замість 100-300ms лагу
+**Де шукати ще:** будь-який $queryRaw з `similarity(` або `LIKE '%pattern%'` що проганяється через index-aware operator. Особливо часто: command palette search, autocomplete dropdowns, full-text search across multiple tables. Перевіряти `% оператор` коли є GIN trgm індекс
+
+---
+
+### 2026-05-31 — `findOne + update` 2-RTT pattern для simple soft-delete/update — заміна на `updateMany` з orgId guard
+
+**Сигнал:** простий CRUD-сервіс має `async update(orgId, id, dto)` що робить `await this.findOne(orgId, id)` (404 guard через findFirst) → `await prisma.X.update({ where: { id, orgId }, data: {...} })`. Те саме для `remove(orgId, id)` — soft-delete. 2 RTT для операції що могла би бути 1
+**Причина виникнення:** `findOne + update` патерн природний бо findOne робить tenant guard + 404 throw. Розробник не знає що `updateMany` дозволяє tenant guard у WHERE: rows що не належать orgId не оновлюються, `count` повертає 0 → можна кинути 404. На відміну від `update`, який кидає P2025 при відсутності — це менш юзабельно, бо exception type leak з Prisma. `updateMany` обходить це
+**Підхід до виявлення:** для кожного service `update`/`remove` методу прочитати чи перший await — це `findOne`/`assertX` що повертає DTO **який не використовується далі** (тільки як guard). Якщо так — 1-RTT кандидат. Особливо часто у простих CRUD моделях без relations (templates, settings, configs)
+**Підхід до фіксу:** `await prisma.X.updateMany({ where: { id, orgId, deletedAt: null }, data })` → `if (updated.count === 0) throw NotFoundException`. Для `update` що має повернути updated row — додати окремий findFirst після (це все одно 2 RTT, але тенант-safe + чіткіше відлювлення 404). Для `remove` (void return) — справді 1 RTT. Для soft-delete (`data: { deletedAt: new Date() }`) — той самий патерн
+**Реальний impact:** для CRUD update/delete що викликаються 10-50 разів на сесію (settings, templates, configs) — економія 10-50 RTT. На повільному WAN 30-50ms × 50 = 1.5-2.5 sec UI latency покращення. Найпомітніше у адмінських flow (settings page, infrastructure manage, catalog edit)
+**Де шукати ще:** будь-який сервіс з простими CRUD (без relations що потрібні у відповіді). Особливо: templates, configs, settings, infrastructure (branches/zones/lifts/warehouses), catalog (units/brands), reference data. Перевіряти при додаванні нового CRUD endpoint — або відразу писати updateMany патерн
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -958,6 +1002,13 @@ TypeScript: ✅ 0 errors
 - ✅ batch.createFromReceipt: parallel good.findFirst + pricing.getActiveRulesForOrg + sync computePriceFromRules (раніше wrapper calculateSalePrice блокував — sequential 2 RTT → parallel 1 RTT)
 - ✅ inventory.updateMinStock: findFirst (404 guard) + update → updateMany з orgId+deletedAt + count check (2 RTT → 1)
 - ✅ pricing.applyRuleToGoods: goods.findMany + pricingRule.findMany (allRules) — sequential → Promise.all (2 RTT → 1)
+- ✅ invoices.generatePdf: include → narrow select (drop syncVersion/orgId/branchId/sortOrder/priceWithoutVat/vatAmount; reuse uoMshortName що раніше тягнули але хардкодили 'шт')
+- ✅ work-orders.generatePdf: include → narrow select (drop costPrice/description/sortOrder/orgId per row × 1000 take)
+- ✅ completion-acts.findOne + generatePdf: workOrder.lines/parts include → narrow select; org findFirst() без select → { name: true } (раніше тягнуло всі settings/syncVersion/logoUrl)
+- ✅ settlements-account.generateReconciliationPdf: act.include → narrow select (drop id/orgId/createdAt/syncVersion); organisation findFirst() без select → { name: true }
+- ✅ work-orders.clone: include тягнув vehicle/counterparty/branch labels + lines.work/employee + parts.good/UoM — все НЕ використовується (clone оперує FK scalars); docNumbers.next додано у Promise.all з 3 FK validation (4 RTT → 1)
+- ✅ search.workOrders/Counterparties/Goods: similarity() рахується 2-4 рази per row у raw SQL — subquery/CTE для pre-computed sim column + `%` оператор (pg_trgm set-similarity) замість `similarity() > threshold` — GIN trgm index реально використовується (seq scan → index scan)
+- ✅ work-order-templates update/remove: findOne + update sequential (2 RTT) → updateMany з orgId guard + count===0 404 check (1 RTT)
 
 **Frontend:**
 

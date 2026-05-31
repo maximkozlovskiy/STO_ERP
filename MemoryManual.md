@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+e9f8364 perf(optimize): cycle 4 — PDF select narrowing + WO clone over-fetch + search GIN trgm
 af41192 docs(skills,memory): add dead-feature-integration + frontend-hint-lies patterns + record tester cycle 4
 ec438bd fix(tester): cycle 4 — Bugs #266-#272 (WO template hint + loyalty earn integration + PDF nullsafe + AVG_COST orderBy + NaN guard + stale spec)
 cf60952 fix(review): cycle 4 — exhaustive-deps + ApiResponse coverage + safety take caps
@@ -19,6 +20,27 @@ cf60952 fix(review): cycle 4 — exhaustive-deps + ApiResponse coverage + safety
 61720e3 fix(review): cycle 3 — emptyToUndefined on optional UUID/Enum/Date DTOs + TRANSACTION_TIMEOUT_MS unification
 39d2667 fix(sync): align frontend interfaces with API response DTOs (cycle 3)
 Дата: 2026-05-31
+
+Latest optimize: 2026-05-31 (sto-optimize-agent цикл 4 з 5, HEAD af41192 → e9f8364) — **9 backend perf фіксів** + 4 нові SKILL patterns. Фокус: PDF over-fetch, WO clone, search SQL efficiency, work-order-templates CRUD.
+**Backend (9 fixes):**
+(1) invoices.generatePdf — include → narrow select (drop syncVersion/orgId/branchId/sortOrder/priceWithoutVat/vatAmount; реальне використання uoMshortName що раніше тягнули але хардкодили 'шт').
+(2) work-orders.generatePdf — include → narrow select (drop costPrice/description/sortOrder/orgId per row × 1000 take).
+(3) completion-acts.findOne — workOrder.lines/parts include → narrow select.
+(4) completion-acts.generatePdf — organisation findFirst() без select → { name: true } (15+ settings columns dropped).
+(5) settlements-account.generateReconciliationPdf — act.include → narrow select; organisation findFirst → { name: true }.
+(6) work-orders.clone — original include тягнув vehicle/counterparty/branch labels + lines.work/employee + parts.good/UoM — все НЕ використовується (clone оперує FK scalars); docNumbers.next додано у Promise.all з 3 FK validation (4 RTT → 1).
+(7) search.workOrders — similarity() рахується 2× per row (WHERE + ORDER BY) → subquery з pre-computed sim column + `%` оператор (pg_trgm).
+(8) search.counterparties — 4 виклики similarity per row → subquery + 2 sim cols + GREATEST для ORDER BY; `%` оператор.
+(9) search.goods — 2-фазний CTE: pre-filter goods → LEFT JOIN stock_items → GROUP BY; similarity 1×.
+(10) search.goods — similarity > 0.1 (seq scan) → col % $q (GIN trgm index scan).
+(11) work-order-templates.update — findOne + update sequential (2 RTT) → updateMany з orgId guard + count===0 404 check; те саме для remove.
+
+**TypeScript:** ✅ 0 errors (api + web). **Unit:** API 493/493 passed.
+**Нові SKILL patterns:** 4 entries —
+- "PDF/export endpoints over-fetch via include" — generatePdf методи з повним include для render data що використовує лише 10% колонок.
+- "Clone/duplicate операції з ID-only create патерном" — include тягне labels що НЕ використовуються у create.
+- "similarity() кілька разів per row у $queryRaw search" — pg_trgm `%` оператор vs `similarity() > threshold` (seq scan vs index scan).
+- "findOne + update 2-RTT pattern для simple soft-delete/update" — заміна на updateMany з orgId guard для CRUD без relations у response.
 
 Latest tester: 2026-05-31 (sto-tester-agent цикл 4 з 5, FULL HEAD cf60952) — **7 багів виявлено + 6 виправлено + 1 відкритий feat-debt**.
 Фокус циклу: (1) PDF generation null-safety pdfmake, (2) batch consumption FIFO/FEFO/LIFO/AVG_COST, (3) loyalty earn/redeem, (4) work-order-templates clone, (5) SSE stream disconnect handling.
