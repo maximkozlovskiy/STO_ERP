@@ -220,7 +220,8 @@ export default function InfrastructurePage() {
           name: form.name,
           type: form.type,
           maxWeightKg: w,
-          status: form.status || 'ACTIVE',
+          // status only allowed on PATCH (UpdateLiftDto) — CreateLiftDto has no status field
+          ...(editingId && { status: form.status || 'ACTIVE' }),
           serialNumber: form.serialNumber || undefined,
           purchaseDate: form.purchaseDate || undefined,
           warrantyUntil: form.warrantyUntil || undefined,

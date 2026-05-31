@@ -6,6 +6,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -54,6 +55,7 @@ export class CreateEmployeeDto {
     example: { type: 'percent_normo', params: { percent: 40 } },
     description: 'percent_normo | fixed_plus_bonus',
   })
+  @IsObject()
   rateScheme!: RateScheme;
 
   @ApiPropertyOptional({ example: '+38 (067) 123-45-67' })
@@ -104,6 +106,7 @@ export class UpdateEmployeeDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsObject()
   rateScheme?: RateScheme;
 
   @ApiPropertyOptional()

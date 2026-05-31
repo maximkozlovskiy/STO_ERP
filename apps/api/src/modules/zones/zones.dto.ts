@@ -8,7 +8,12 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
 } from 'class-validator';
+
+// Accepts any UUID including nil UUID (00000000-...) used in seed data.
+// @IsUUID() from class-validator rejects nil UUIDs (version check fails).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { Transform } from 'class-transformer';
 import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
@@ -17,7 +22,7 @@ import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateZoneDto {
   @ApiProperty()
-  @IsUUID()
+  @Matches(UUID_RE, { message: 'branchId must be a UUID' })
   branchId!: string;
 
   @ApiProperty({ example: 'Механічна зона А' })
@@ -57,7 +62,7 @@ export class ZoneResponseDto {
 
 export class CreateLiftDto {
   @ApiProperty()
-  @IsUUID()
+  @Matches(UUID_RE, { message: 'zoneId must be a UUID' })
   zoneId!: string;
 
   @ApiProperty({ example: 'Підйомник №1' })

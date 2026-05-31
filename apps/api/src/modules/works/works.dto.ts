@@ -1,21 +1,24 @@
 import {
   IsString,
   IsNotEmpty,
-  IsUUID,
   IsNumber,
+  Matches,
   Min,
   Max,
   IsOptional,
   IsPositive,
   IsBoolean,
 } from 'class-validator';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateWorkDto {
   @ApiProperty()
-  @IsUUID()
+  @Matches(UUID_RE, { message: 'categoryId must be a UUID' })
   categoryId!: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
   @ApiProperty({ description: 'Нормо-годин' }) @IsNumber() @Min(0) normoHours!: number;
@@ -38,7 +41,7 @@ export class WorkQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsUUID()
+  @Matches(UUID_RE, { message: 'categoryId must be a UUID' })
   categoryId?: string;
 
   @ApiPropertyOptional()
