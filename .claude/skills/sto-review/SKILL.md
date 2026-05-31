@@ -1073,6 +1073,79 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ---
 
+### 2026-05-31 — Inline lambda decorator повторений 10+ разів — §2.3 / §1 DRY
+
+**Сигнал:** `@Transform(({ value }) => (value === '' ? undefined : value))` (або інший inline-функційний-декоратор) зустрічається 20+ разів через grep по `apps/api/src/modules/`; кожне використання — точна копія
+**Причина виникнення:** розробник створює helper-декоратор inline на місці, далі копіює-вставляє у кожен DTO замість екстракту; швидко на 1-3 разах, скейлиться лінійно з кількістю optional UUID полів
+**Підхід до виявлення:** `grep -rn "@Transform\b" apps/api/src/modules/ --include="*.dto.ts" | wc -l` → якщо > 10 → перевірити чи лямбда однакова → `grep -c "value === '' ? undefined : value"` має бути значно меншим за кількість Transform
+**Підхід до фіксу:** створити `apps/api/src/common/transforms/<name>.ts` з named export → замінити inline → `@Transform(emptyToUndefined)`; синхронно прибрати dead `Transform` imports у DTO які цю утиліту не використовують, і об'єднати duplicate `class-transformer` import statements (`import { Transform } from 'class-transformer'` + `import { Type } from 'class-transformer'` → один import)
+**Критичність:** IMPORTANT — не баг, але hot-reload time + readability + reviewer fatigue; ще гірше — кожна нова DTO копіює застарілу версію helper-а коли пізніше треба «починаючий нуль теж в undefined»
+**Де шукати ще:** будь-який `class-transformer` декоратор з inline lambda, `class-validator` custom messages зі складною логікою, `pipe()` operators у RxJS
+
+---
+
+### 2026-05-31 — Видалили manual `*` припустивши що компонент додає його, а компонент кастомний — §8 Web Frontend
+
+**Сигнал:** коміт виду `fix(ui): прибрати ручні зірочки з label — Input/Select вже додають * через required prop` чіпає не лише `Input`/`Select` з `components/ui/`, а і **inline компонент Field/Select** у конкретній сторінці; manual `*` видалений з усіх label, але inline компонент не має render-блоку `{required && <span>*</span>}`
+**Причина виникнення:** rapid clean-up — розробник робить bulk replace `"X *"` → `"X"` по всіх використаннях; кастомні (per-page) wrappers `function Field({ label, ... })` мають той самий тип props як справжні UI компоненти, але render просто `<label>{label}</label>` без required-індикатора → користувач втрачає required-знак тихо, без TS/runtime помилки
+**Підхід до виявлення:** після будь-якого коміту "видалити manual `*`" — `grep -rn "function Field\|function Select\|function Input\|const Field\|const Select" apps/web/src/app --include="*.tsx"` → знайти всі inline-Field компоненти → звірити що рендер має `{required && <span ... >*</span>}` і `required?: boolean` у props
+**Підхід до фіксу:** додати `required?: boolean` у props inline-Field, render `{required && <span className="ml-0.5 text-destructive">*</span>}`, передати `required` на нативний `<input>` + `aria-required={required || undefined}`; пройтись по callsite і виставити `required` на реально-обов'язкових полях
+**Критичність:** IMPORTANT — UX regression: користувач не бачить required-маркера, форма дозволяє відправляти порожні значення → 400 з API без UI-підказки чому
+**Де шукати ще:** wizard сторінки (`/setup`), модалки з власним form-layout (CalendarSlotModal, AssignSlotModal), будь-яка сторінка з inline `function Field` яка дублює UI компонент
+
+---
+
+### 2026-05-31 — group-hover:\* без `group` класу на батьку → dead CSS — §1 Tailwind 4 / §8
+
+**Сигнал:** `<div className="... group-hover:opacity-100 ...">` всередині батька який НЕ має `className` що включає `group`; hover-зміна (zoom-hint, action buttons, overlay) ніколи не з'являється
+**Причина виникнення:** Tailwind 4 `group-*` модифікатор активний лише коли батько має `group` клас; розробник додає `group-hover:` на дитину, забуваючи додати `group` на батьку, або через рефактор втрачає `group` коли витягує overlay у окремий компонент
+**Підхід до виявлення:** `grep -rn "group-(hover|focus|active|disabled)" apps/web/src/ --include="*.tsx"` → для кожного — піднятися по JSX-дереву і знайти найближчий парент, який МАЄ ставити `group` клас; якщо нема — bug
+**Підхід до фіксу:** додати `group` клас на найближчий hover-target батько (зазвичай той самий що має `onClick`/`cursor-*`)
+**Критичність:** SUGGESTION/IMPORTANT — degradation без помилки: UI-підказка прихована, UX незрозумілий
+**Де шукати ще:** card-overlay patterns (delete-on-hover, edit-on-hover), badge на preview-картинці, action-toolbar поверх рядка таблиці
+
+---
+
+### 2026-05-31 — Modal/Lightbox без Escape + role=dialog + aria-modal — §8 Web Frontend (a11y)
+
+**Сигнал:** новий компонент `<div className="fixed inset-0 z-50 ...">` (lightbox/overlay/full-screen modal) без `role="dialog"`, без `aria-modal="true"`, без `aria-label`, без `useEffect` що ловить `Escape` keydown; close-button без `aria-label` та `type="button"`
+**Причина виникнення:** розробник пише lightbox вручну (не через `<Modal>` з `components/ui/`) бо хоче специфічний layout (масштабовану картинку, відео-плеєр); забуває a11y-каркас бо тести проходять (`onClick={() => close()}` на overlay + close-button з іконкою)
+**Підхід до виявлення:** `grep -rnE "className=['\"]fixed inset-0.*z-50" apps/web/src --include="*.tsx"` → для кожного — звірити (1) `role="dialog"`, (2) `aria-modal="true"`, (3) `aria-label`, (4) Escape-handler у `useEffect` з cleanup, (5) close-button з `aria-label` + `type="button"`
+**Підхід до фіксу:**
+
+```tsx
+{
+  open && (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="..."
+      onClick={close}
+      className="fixed inset-0 z-50 ..."
+    >
+      <div onClick={e => e.stopPropagation()}>... </div>
+      <button type="button" aria-label="Закрити" onClick={close}>
+        ×
+      </button>
+    </div>
+  );
+}
+// + у компоненті:
+useEffect(() => {
+  if (!open) return;
+  const h = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') close();
+  };
+  window.addEventListener('keydown', h);
+  return () => window.removeEventListener('keydown', h);
+}, [open]);
+```
+
+**Критичність:** IMPORTANT — недоступно для клавіатурних користувачів; ARIA не озвучує "dialog opened"
+**Де шукати ще:** lightbox для зображень/PDF/відео, full-screen forms, image-viewer, settings-preview overlays
+
+---
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
