@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+<pending tester-cycle-3 commit> fix(tester): cycle 3 — Bugs #257-#265 (DTO emptyToUndefined gap audit + regression-guard)
 61720e3 fix(review): cycle 3 — emptyToUndefined on optional UUID/Enum/Date DTOs + TRANSACTION_TIMEOUT_MS unification
 39d2667 fix(sync): align frontend interfaces with API response DTOs (cycle 3)
 0c37fd1 perf(optimize): cycle 2 — followup fan-out + audit narrow select + dashboard Intl + Phase 21 covering indexes
@@ -16,6 +17,23 @@
 af5f4f8 fix(tester): cycle 2 — Bugs #251-#256 (booking DoS + cross-tenant FK + comments validation + specs)
 c5d04bc docs(skills): add RolesGuard-without-@Roles pattern to sto-review
 Дата: 2026-05-31
+
+Latest tester: 2026-05-31 (sto-tester-agent цикл 3 з 5, FULL HEAD 61720e3) — **9 багів виявлено + виправлено** (7 HIGH DTO validation + 1 MEDIUM test-coverage). Фокус: DTO валідація після масової `@Transform(emptyToUndefined)` фіксації (review cycle 3 покрив 32 поля у 7 DTO, але пропустив 7 інших DTO + 22 поля), regression-guard тести для @Transform, перевірка sync interface (9 type fixes).
+**Знайдено через статичний аналіз — 0 runtime регресій:**
+(1) Bug #257 (HIGH) §1.2 work-orders.dto: CreateWorkOrderDto.priority/repairCategory без `@Transform(emptyToUndefined)`. Sprint Bug #215 patten — inline 1-рядкові форми (`@ApiPropertyOptional() @IsOptional() @IsEnum(X) field?: X;`) пропущені grep-шаблоном multi-line.
+(2) Bug #258 (HIGH) §1.2 work-orders.dto: CreateWorkOrderDto.plannedAt/dueDate `@IsOptional + @IsISO8601` без `@Transform`. Sprint cycle 3 додав emptyToUndefined тільки для `@IsDateString`, не для `@IsISO8601`.
+(3) Bug #259 (HIGH) §1.2 work-orders.dto: UpdateWorkOrderDto та сама проблема — PATCH-шлях. UX: редагування наряду з очищеним полем → 400.
+(4) Bug #260 (HIGH) §1.2 invoices.dto: CreateInvoiceDto/UpdateInvoiceDto.dueDate без `@Transform`. Date-input скидання → 400.
+(5) Bug #261 (HIGH) §1.2 calendar.dto: 4 поля без `@Transform`: CreateCalendarSlotDto.status/type + UpdateCalendarSlotDto.startAt/endAt. Sprint покрив тільки UUID-поля calendar, лишив enum/ISO.
+(6) Bug #262 (HIGH) §1.2 goods.dto: CreateGoodDto.goodType `@IsOptional + @IsEnum` без `@Transform`. UpdateGoodDto extends PartialType успадковує баг.
+(7) Bug #263 (HIGH) §1.2 settings.dto: UpdateOrganisationSettingsDto.vatMode/costMethod без `@Transform`. PATCH /settings з порожніми selects → 400.
+(8) Bug #264 (HIGH) §1.2 pricing-rules.dto: 3 enum-поля у pricing-rules без `@Transform`: CreatePricingRuleDto.goodType + UpdatePricingRuleDto.type/goodType.
+(9) Bug #265 (MEDIUM) §1.5 regression-guard — sprint cycle 3 додав `@Transform(emptyToUndefined)` у 32 поля, АЛЕ regression-guard тести існували ЛИШЕ у 2 модулях (bank-accounts, calendar). Додано 4 нових regression-guard `it`-блоки у work-orders.contract.spec.ts (priority/repairCategory/plannedAt/dueDate), pricing-rules.contract.spec.ts (goodType), settings.contract.spec.ts (costMethod + vatMode).
+
+**TypeScript:** ✅ 0 errors (api + web + shared). **Unit:** API **486/486** (+4 нових regression-guard), Web 218/218.
+**Sync types verify (9 interfaces):** перевірені 4 hooks (useWorkOrders, useInvoices, usePurchaseOrders, useCounterparties) + 5 PageClient interfaces — усі правильно відповідають backend Response DTO. Дрібні subtle відмінності (`paidAmount?: number | null` у frontend vs `paidAmount?: number` у backend) — не критичні, дозволяють opt-in null.
+**Нові SKILL patterns:** 1 новий entry — "Mass DTO migration variant audit: inline 1-рядкові форми + різні validator-типи (@IsEnum vs @IsISO8601 vs @IsDateString)" (Bug #257-#264). Розширення Bug #215 patten — у тому ж sprint потрібно перевіряти ВСІ варіантні форми validator-ів того ж класу (`@IsEnum`, `@IsDateString`, `@IsISO8601`, `@IsEmail`), не лише той що знайдений у simple grep. Sprint cycle 3 покрив тільки `@IsEmail`, `@IsEnum` (через окремий перегляд) + `@IsDateString`, але `@IsISO8601` залишив непокритим, бо grep-шаблон шукав тільки `@IsDateString`.
+
 
 Latest review: 2026-05-31 (sto-review-agent цикл 3 з 5, HEAD 39d2667 → 61720e3) — **22 файли** виправлено (7 DTO + 15 services).
 **§2.3 Input Validation (7 DTO):** додано `@Transform(emptyToUndefined)` для `@IsOptional` + `@IsEnum`/`@IsDateString`/`@IsEmail`:

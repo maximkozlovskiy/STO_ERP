@@ -375,6 +375,11 @@ done
 - [ ] **JSON/Record DTO поля** (`Record<string, unknown>`, `object`, `Json`) → обов'язково `@IsObject()` або `@ValidateNested()`. Без декоратора `whitelist: true` знімає поле мовчки → `dto.value === undefined` → сервіс записує `undefined/null` у БД без помилки (Bug #182). Перевіряти: `grep -A2 "!: Record\|?: Record\|!: object\|?: object" *.dto.ts | grep -v "@Is"`
 - [ ] **Multipart `await req.file()` обгорнутий у try/catch** (Bug #192): `fastify-multipart` кидає FastifyError "the request is not multipart" що мапиться у HTTP **406** з англ. messageом якщо клієнт відправляє НЕ-multipart body. Helper має ловити це і re-throw `BadRequestException` українською. Grep: `grep -rn "await req.file()" apps/api/src/modules/ --include="*.controller.ts"` — кожен виклик у try/catch АБО у helper з try/catch. Contract spec для нового multipart-endpoint вимагає тест `POST без multipart → 400 + укр. msg`
 - [ ] **Mass DTO migration completeness — grep variant audit (Bug #215):** sprint-wide refactor (наприклад «змінити `@Matches(uuid-regex)` → `@IsUUID()` у всіх DTO», «додати `@IsOptional()` до всіх `?:` полів», «замінити `string` → `string | null` для nullable DB полів») часто пропускає **варіантні форми** оригінального паттерну. Розробник grep-ить простий case (`@IsUUID('4')`) і пропускає декорації з додатковими args (`@IsUUID('4', { each: true })`, `@IsUUID('4', { message: '...' })`). Після sprint лишається 2-5 file-points з СТАРОЮ строгістю — тестові fixtures з ТОГО ж sprint можуть пройти бо їх теж зробили v4-layout, але production seeds/demo data з не-v4 UUID (e.g. `00000000-0000-0000-0000-000000000002`) ловлять 400 у dev. Grep: для кожного sprint-wide refactor — пройти ОБИДВА варіанти `@X()` і `@X(arg1, { each|message|... })`. Приклад для UUID: `grep -rn "@IsUUID(" apps/api/src/modules/ --include="*.dto.ts"` (NOT `@IsUUID('4')$`). Severity: HIGH коли блокує dev/seed workflow.
+- [ ] **Mass DTO migration variant validator-family audit (Bugs #257-#265):** sprint що додає `@Transform(emptyToUndefined)` для одного validator-сімейства (наприклад `@IsDateString`) часто пропускає **інші validator з тим самим symptom-ом**: `@IsISO8601`, `@IsDate` (Date), `@IsEnum([literal1, literal2])` (string-literal union), `@IsUUID('4')` (з аргументом). КОЖЕН validator що відхиляє `''` потребує `@Transform(emptyToUndefined)` якщо поле optional. Перевірка має пройти ВСІ варіанти:
+  - Date: `@IsDateString`, `@IsISO8601`, `@IsDate`
+  - Enum: `@IsEnum(Type)`, `@IsEnum([lit1, lit2])`, `@IsIn([...])`
+  - String-format: `@IsEmail`, `@IsUrl`, `@IsUUID`, `@IsUUID('4')`, `@Matches(regex)`
+    ПЛЮС перевірити **inline 1-рядкові форми** (`@ApiPropertyOptional() @IsOptional() @IsX() field?: T;` — не матчиться multi-line grep) ПЛЮС `extends PartialType(X)` derivation chains (UpdateDto успадковує проблему від CreateDto). Парне з: для кожного DTO зі змінами — 1 contract-spec `it` «POST/PATCH з порожнім рядком у X → 201 + service отримує undefined» (Bug #244 regression-guard). Severity: HIGH (фіча мертва коли фронт шле `''`).
 - [ ] **Inner DTO class з порожніми полями (Bug #247):** будь-який nested DTO клас (зазвичай використовується через `@ValidateNested @Type(() => InnerDto)`) — у якому поля декларовані як `@ApiProperty() workId!: string; quantity!: number;` БЕЗ class-validator декораторів (`@IsUUID`/`@IsNumber`/`@IsString`/`@Min`/тощо). `whitelist: true` НЕ зачепить inner DTO (бо `@ValidateNested` валідує його повністю), АЛЕ якщо inner DTO нема жодного декоратора — pipe сприймає його як «порожній» клас і пропускає ВСІ значення (UUID-зломане, негативні числа, рядки 1М символів). Outer-DTO виглядає захищеним (`@ValidateNested + @Type`), але насправді захист зворотнього порядку — `@ValidateNested` потребує що внутрішній DTO САМ описує валідатори. Grep: `grep -rn "@ApiProperty()" apps/api/src/modules/ --include="*.dto.ts" -A1 | grep -B1 "[a-z]!: string\|[a-z]!: number" | grep -v "@Is\|@Min\|@Max\|@Matches\|@Length" | head -20` — кожен `@ApiProperty()` без сусіднього `@IsXXX` декоратора у inner DTO = bug. Парне з: `grep -B5 "@ValidateNested" apps/api/src/modules/ --include="*.dto.ts"` для перевірки що inner DTO має валідатори. Severity: HIGH (повна обходка validation для вкладеної структури + anti-DoS через відсутнє `@ArrayMaxSize`).
 
 ---
@@ -834,6 +839,106 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-31 — Mass DTO migration variant audit: всі validator-варіанти + inline 1-рядкові форми (Bugs #257-#265) — backend, dto-validation, sprint-completeness
+
+**Сигнал:** sprint-commit виду «add @Transform(emptyToUndefined) for all optional X-fields» що фокусується на ОДНОМУ типі валідатора (`@IsEmail` або `@IsEnum` чи `@IsDateString`). Розробник grep-ить простий case і знаходить підмножину полів, але:
+
+1. **Пропускає інші validator-типи у тій же сімействі.** Sprint Bug #244 покрив `@IsDateString`, але `@IsISO8601` (інший date-валідатор з іншою сигнатурою) залишається непокритим. Аналогічно sprint можливо покриває `@IsEnum(X)` але пропускає `@IsEnum([literal1, literal2])` (масив-форму). У STO ERP виявлено:
+   - work-orders.dto: `@IsISO8601` (plannedAt, dueDate) — НЕ покрито sprintом `@IsDateString`
+   - Sprint покрив 32 поля у 7 DTO, але пропустив 22 поля у 7 інших DTO
+
+2. **Пропускає inline 1-рядкові форми.** Sprint grep-шаблон typically багаторядковий:
+
+   ```
+   @ApiPropertyOptional()
+   @IsOptional()
+   @IsEnum(X)
+   field?: X;
+   ```
+
+   АЛЕ у проєкті є inline-форма:
+
+   ```
+   @ApiPropertyOptional() @IsOptional() @IsEnum(X) field?: X;
+   ```
+
+   що не матчиться multi-line grep. Це Bug #215 patten.
+
+3. **Пропускає `extends PartialType(X)` derived DTO.** Якщо CreateDto має проблему, UpdateDto extends PartialType успадковує її автоматично — sprint бачить тільки одну точку, а їх дві (CreateGoodDto + UpdateGoodDto).
+
+**Причина виникнення:** sprint описі завдання фокусується на use-case («фронт шле `''` для скинутого селекту → 400»). Розробник:
+
+- запускає grep `@IsDateString` (з конкретної проблеми, де поле було `@IsDateString`),
+- знаходить 15 матчів,
+- додає трансформ у кожен,
+- closes sprint.
+
+АЛЕ:
+
+- `@IsISO8601` пропущено — інший валідатор, той самий symptom («фронт шле `''` → 400»).
+- inline `@ApiPropertyOptional() @IsOptional() @IsEnum(...) field?: X;` не матчиться multi-line grep шаблону «4 строки».
+- `@IsEnum([literal1, literal2])` (string-literal union форма) — інша грамматика, той самий symptom.
+
+**Підхід до виявлення:** для кожного sprint що додає трансформ/валідатор/pipe → **варіантний audit** перед closing:
+
+1. **Перерахувати всі validator-сімейства** що мають той самий symptom:
+   - Date/time: `@IsDateString`, `@IsISO8601`, `@IsDate` (різні validators, всі ловлять `''`)
+   - Enum: `@IsEnum(Type)`, `@IsEnum([literal1, literal2])`, `@IsIn([...])` (різні API, той самий ефект)
+   - Email/URL/UUID: `@IsEmail`, `@IsUrl`, `@IsUUID`, `@IsUUID('4')` (з аргументами і без)
+
+2. **Перевірити обидва формати** (multi-line + inline):
+
+   ```bash
+   # Multi-line (standard грамматика)
+   grep -rPzo "@IsOptional\(\)\s*\n\s*@IsX\(" apps/api/src/modules --include="*.dto.ts"
+   # Inline (1-рядкова грамматика)
+   grep -rE "@IsOptional\(\).*@IsX\(" apps/api/src/modules --include="*.dto.ts"
+   ```
+
+3. **Перевірити PartialType derivation chains:**
+
+   ```bash
+   grep -rE "extends PartialType\(" apps/api/src/modules --include="*.dto.ts"
+   ```
+
+   Для кожного — перевірити батьківський DTO не має проблеми (інакше UpdateDto автоматично її наслідує).
+
+4. **regression-guard тести для нового patten:** для кожного DTO з трансформом — додати 1 contract-spec `it`-блок «POST/PATCH з порожнім рядком у поле X → 201/200 + service отримує undefined». Без цих тестів регресія `@Transform` decorator removal пройде CI зеленою (Bug #244 patten).
+
+**Підхід до фіксу:** одночасно для всіх знайдених варіантних форм:
+
+```ts
+// Перед
+@ApiPropertyOptional() @IsOptional() @IsISO8601() plannedAt?: string;
+
+// Після (multi-line розгортка для зрозумілості + @Transform)
+@ApiPropertyOptional()
+@IsOptional()
+@Transform(emptyToUndefined)
+@IsISO8601()
+plannedAt?: string;
+```
+
+Додати regression-guard test для КОЖНОГО зміненого DTO (1 `it`-блок) у відповідний contract spec.
+
+**Severity:** HIGH для кожного знайденого gap (фіча мертва у проді коли фронт шле `''`); MEDIUM якщо існують тести але не покривають саме нову поведінку (regression-guard gap).
+
+**Де шукати ще:** будь-який майбутній mass-DTO sprint:
+
+- «Migrate `@IsString` → `@MaxLength + @IsString`» — перевірити `@IsString` + `@IsEmail` + `@IsUrl` + `@IsAlphanumeric` (всі string-валідатори)
+- «Add `@Transform(toLowercase)` для всіх email-полів» — перевірити `@IsEmail` + `@IsString` що використовуються для email
+- «Add `@Type(() => Number)` для всіх числових query params» — перевірити `@IsNumber` + `@IsInt` + `@IsDecimal` + `@IsPositive`
+- «Change date format» — `@IsDateString` + `@IsISO8601` + `@IsDate` + custom `@IsDateString({ strict: true })`
+
+Профілактика: SKILL §1.2 тепер вимагає **варіантний audit** для будь-якого mass-DTO sprintу:
+
+1. Перерахувати всі validator-сімейства того ж symptom-у.
+2. Перевірити inline + multi-line форми.
+3. Перевірити PartialType derivation chains.
+4. Додати regression-guard test для КОЖНОГО зміненого DTO (Bug #244 patten).
+
+---
 
 ### 2026-05-31 — Публічний endpoint (no-auth) подвійна перевірка: array-cap у DTO + tenant-FK у service для кожного array UUID-ідентифікатора (Bugs #251 + #252) — backend, security, public-endpoint
 
