@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { Package, TrendingUp, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -88,10 +88,25 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
     };
   }, [open, goodId, warehouseId]);
 
-  if (!open) return null;
+  // Memoize: filter() створює новий масив на кожен ререндер (включно з expandedId зміною).
+  // BatchRow обгорнутий у memo нижче — без стабільного array reference memo не спрацьовує
+  // ефективно, бо діти все одно отримують нові propsи.
+  const activeBatches = useMemo(
+    () => data?.batches.filter(b => b.isActive && b.remainingQty > 0) ?? [],
+    [data?.batches],
+  );
+  const depletedBatches = useMemo(
+    () => data?.batches.filter(b => !b.isActive || b.remainingQty <= 0) ?? [],
+    [data?.batches],
+  );
 
-  const activeBatches = data?.batches.filter(b => b.isActive && b.remainingQty > 0) ?? [];
-  const depletedBatches = data?.batches.filter(b => !b.isActive || b.remainingQty <= 0) ?? [];
+  // Stable callback для onToggle — без useCallback кожен ререндер створює нову функцію,
+  // що інвалідовує memo на BatchRow (props change через reference inequality).
+  const handleToggle = useCallback((id: string) => {
+    setExpandedId(prev => (prev === id ? null : id));
+  }, []);
+
+  if (!open) return null;
 
   return (
     <div
@@ -200,7 +215,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
                   key={b.id}
                   batch={b}
                   expanded={expandedId === b.id}
-                  onToggle={() => setExpandedId(expandedId === b.id ? null : b.id)}
+                  onToggle={handleToggle}
                 />
               ))}
               {/* Depleted batches */}
@@ -214,7 +229,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
                       key={b.id}
                       batch={b}
                       expanded={expandedId === b.id}
-                      onToggle={() => setExpandedId(expandedId === b.id ? null : b.id)}
+                      onToggle={handleToggle}
                       depleted
                     />
                   ))}
@@ -266,7 +281,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
   );
 }
 
-function BatchRow({
+const BatchRow = memo(function BatchRow({
   batch,
   expanded,
   onToggle,
@@ -274,7 +289,7 @@ function BatchRow({
 }: {
   batch: BatchItem;
   expanded: boolean;
-  onToggle: () => void;
+  onToggle: (id: string) => void;
   depleted?: boolean;
 }) {
   const pct =
@@ -285,7 +300,7 @@ function BatchRow({
       className={cn('border border-border rounded-lg overflow-hidden', depleted && 'opacity-50')}
     >
       <button
-        onClick={onToggle}
+        onClick={() => onToggle(batch.id)}
         className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/50 transition-colors text-left"
       >
         <div className="flex items-center gap-3 min-w-0">
@@ -351,4 +366,4 @@ function BatchRow({
       )}
     </div>
   );
-}
+});

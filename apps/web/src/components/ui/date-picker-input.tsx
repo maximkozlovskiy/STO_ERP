@@ -1,11 +1,32 @@
 'use client';
 
-import { useState, useRef, useEffect, type ChangeEvent } from 'react';
+import { useState, useRef, useEffect, useMemo, type ChangeEvent } from 'react';
 import { DayPicker, type Matcher } from 'react-day-picker';
 import { uk } from 'date-fns/locale';
 import { format, parse, isValid } from 'date-fns';
 import { Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+// Module-level class name table — DayPicker `classNames` має бути stable reference,
+// інакше внутрішня memoization інвалідовується на кожен ререндер батьківського компоненту.
+const DAY_PICKER_CLASS_NAMES = {
+  root: 'rdp-root',
+  month_caption: 'flex justify-center items-center mb-2 font-medium text-sm text-foreground',
+  nav: 'flex items-center gap-1',
+  button_previous: 'p-1 rounded hover:bg-secondary text-muted-foreground',
+  button_next: 'p-1 rounded hover:bg-secondary text-muted-foreground',
+  weeks: 'border-collapse',
+  weekdays: '',
+  weekday: 'text-[11px] text-muted-foreground font-normal w-8 text-center pb-1',
+  week: '',
+  day: 'w-8 h-8 text-sm',
+  day_button:
+    'w-8 h-8 rounded-lg text-sm text-foreground hover:bg-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-ring',
+  selected: 'bg-primary text-primary-foreground hover:bg-primary rounded-lg',
+  today: 'font-bold text-primary',
+  outside: 'text-muted-foreground opacity-40',
+  disabled: 'opacity-30 cursor-not-allowed',
+} as const;
 
 interface DatePickerInputProps {
   value: string; // YYYY-MM-DD для API
@@ -65,8 +86,11 @@ export function DatePickerInput({
   }, [open]);
 
   // Bug #87: parse min/max bounds and enforce them in both manual typing and DayPicker.
-  const minDate = parseApiDate(min ?? '');
-  const maxDate = parseApiDate(max ?? '');
+  // Memoize: parseApiDate створює новий Date об'єкт на кожен виклик. Без useMemo
+  // disabledMatchers нижче перебудовується на кожен ререндер → DayPicker втрачає
+  // внутрішню memoization і ре-обчислює всі дні щоразу.
+  const minDate = useMemo(() => parseApiDate(min ?? ''), [min]);
+  const maxDate = useMemo(() => parseApiDate(max ?? ''), [max]);
 
   const isWithinBounds = (d: Date): boolean => {
     if (minDate && d < minDate) return false;
@@ -96,12 +120,17 @@ export function DatePickerInput({
     setOpen(false);
   };
 
-  const selected = parseApiDate(value);
+  const selected = useMemo(() => parseApiDate(value), [value]);
 
   // Bug #87: react-day-picker `disabled` accepts an array of matchers.
-  const disabledMatchers: Matcher[] = [];
-  if (minDate) disabledMatchers.push({ before: minDate });
-  if (maxDate) disabledMatchers.push({ after: maxDate });
+  // Memoize: масив-літерал перебудовується на кожен ререндер. DayPicker всередині диф-ить
+  // disabled по reference — без useMemo втрачається mеmoization матриці днів.
+  const disabledMatchers = useMemo<Matcher[]>(() => {
+    const out: Matcher[] = [];
+    if (minDate) out.push({ before: minDate });
+    if (maxDate) out.push({ after: maxDate });
+    return out;
+  }, [minDate, maxDate]);
 
   return (
     <div ref={containerRef} className={cn('relative', className)}>
@@ -148,27 +177,7 @@ export function DatePickerInput({
             weekStartsOn={1}
             showOutsideDays
             disabled={disabledMatchers.length > 0 ? disabledMatchers : undefined}
-            classNames={{
-              root: 'rdp-root',
-              month_caption:
-                'flex justify-center items-center mb-2 font-medium text-sm text-foreground',
-              nav: 'flex items-center gap-1',
-              button_previous: 'p-1 rounded hover:bg-secondary text-muted-foreground',
-              button_next: 'p-1 rounded hover:bg-secondary text-muted-foreground',
-              weeks: 'border-collapse',
-              weekdays: '',
-              weekday: 'text-[11px] text-muted-foreground font-normal w-8 text-center pb-1',
-              week: '',
-              day: 'w-8 h-8 text-sm',
-              day_button: cn(
-                'w-8 h-8 rounded-lg text-sm text-foreground hover:bg-secondary transition-colors',
-                'focus:outline-none focus:ring-2 focus:ring-ring',
-              ),
-              selected: 'bg-primary text-primary-foreground hover:bg-primary rounded-lg',
-              today: 'font-bold text-primary',
-              outside: 'text-muted-foreground opacity-40',
-              disabled: 'opacity-30 cursor-not-allowed',
-            }}
+            classNames={DAY_PICKER_CLASS_NAMES}
           />
         </div>
       )}
