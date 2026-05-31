@@ -6,7 +6,7 @@ export interface Invoice {
   id: string;
   number: string;
   status: string;
-  totalAmount: number;
+  amount: number;
   totalWithVat?: number | null;
   counterpartyId: string;
   counterpartyName?: string;

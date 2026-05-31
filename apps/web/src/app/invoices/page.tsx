@@ -353,7 +353,7 @@ export default function InvoicesPage() {
   const handlePay = async () => {
     if (!showPayment) return;
     const rawAmt = parseFloat(payForm.amount);
-    const amt = !payForm.amount || !Number.isFinite(rawAmt) ? showPayment.totalAmount : rawAmt;
+    const amt = !payForm.amount || !Number.isFinite(rawAmt) ? showPayment.amount : rawAmt;
     setSaving(true);
     try {
       await apiFetch<{ id: string }>('/payments', {
@@ -458,7 +458,7 @@ export default function InvoicesPage() {
           />
           <PanelField
             label="Сума"
-            value={inv.totalAmount != null ? `${fmtMoney(inv.totalAmount)} ₴` : undefined}
+            value={inv.amount != null ? `${fmtMoney(inv.amount)} ₴` : undefined}
           />
           <PanelField
             label="Сплачено"
@@ -742,7 +742,7 @@ export default function InvoicesPage() {
                       if (col.key === 'amount')
                         return (
                           <TableCell key="amount" className="text-right font-semibold text-[13px]">
-                            {fmt(inv.totalAmount)}
+                            {fmt(inv.amount)}
                           </TableCell>
                         );
                       if (col.key === 'dueDate')
@@ -905,7 +905,7 @@ export default function InvoicesPage() {
         {showPayment && (
           <div className="space-y-4">
             <div className="p-3 bg-info-subtle rounded-lg text-sm text-info-text">
-              Сума до оплати: <strong>{fmt(showPayment.totalAmount)}</strong>
+              Сума до оплати: <strong>{fmt(showPayment.amount)}</strong>
             </div>
             <Select
               label="Метод оплати"
@@ -932,7 +932,7 @@ export default function InvoicesPage() {
               type="number"
               value={payForm.amount}
               onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
-              placeholder={String(showPayment.totalAmount)}
+              placeholder={String(showPayment.amount)}
               min="0.01"
               step="0.01"
             />
