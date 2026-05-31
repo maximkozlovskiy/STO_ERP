@@ -86,8 +86,7 @@ interface WorkOrder {
   id: string;
   number: string;
   status: string;
-  vehicleMake: string;
-  vehicleModel: string;
+  vehicleSummary?: string | null;
   createdAt: string;
   totalAmount: number;
 }
@@ -930,7 +929,7 @@ export default function CounterpartyCardPage() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {wo.vehicleMake} {wo.vehicleModel} · {fmtDate(wo.createdAt)}
+                      {wo.vehicleSummary ?? '—'} · {fmtDate(wo.createdAt)}
                     </p>
                   </div>
                   <div className="text-right">

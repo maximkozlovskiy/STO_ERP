@@ -7,8 +7,8 @@ export interface WorkOrder {
   orgId?: string;
   number: string;
   status: string;
-  priority: string | null;
-  repairCategory: string | null;
+  priority: string;
+  repairCategory?: string | null;
   totalLabor: number;
   totalParts: number;
   totalAmount: number;
@@ -21,8 +21,11 @@ export interface WorkOrder {
   branchName?: string;
   plannedAt?: string | null;
   dueDate?: string | null;
+  completedAt?: string | null;
   description?: string | null;
   inMileage?: number | null;
+  outMileage?: number | null;
+  clientApproval?: boolean;
   hasActiveWarranty?: boolean;
   slotStartAt?: string | null;
   slotEndAt?: string | null;
@@ -36,6 +39,7 @@ export interface WorkOrdersFilter {
   page?: number;
   limit?: number;
   status?: string;
+  priority?: string;
   branchId?: string;
   counterpartyId?: string;
   vehicleId?: string;
@@ -66,6 +70,7 @@ export function useWorkOrders(filters: WorkOrdersFilter = {}) {
   if (filters.page) params.set('page', String(filters.page));
   if (filters.limit) params.set('limit', String(filters.limit));
   if (filters.status) params.set('status', filters.status);
+  if (filters.priority) params.set('priority', filters.priority);
   if (filters.branchId) params.set('branchId', filters.branchId);
   if (filters.counterpartyId) params.set('counterpartyId', filters.counterpartyId);
   if (filters.vehicleId) params.set('vehicleId', filters.vehicleId);

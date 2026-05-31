@@ -90,9 +90,9 @@ interface WorkOrderDetail {
   plannedAt?: string | null;
   completedAt?: string | null;
   dueDate?: string | null;
-  priority?: string | null;
+  priority?: string;
   repairCategory?: string | null;
-  clientApproval?: boolean | null;
+  clientApproval?: boolean;
   totalLabor: number;
   totalParts: number;
   totalAmount: number;

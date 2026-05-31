@@ -48,6 +48,7 @@ interface OrgSettings {
   orgId: string;
   currency: string;
   vatMode: string;
+  defaultVatRateId?: string | null;
   invoiceDueDays: number;
   autoArchiveDays: number;
   defaultWarrantyDays: number;
@@ -58,6 +59,10 @@ interface OrgSettings {
   followUpActive?: boolean;
   followUpDays?: number;
   uiFeatures?: UiFeatures;
+  loyaltyEnabled?: boolean;
+  loyaltyEarnPer?: number;
+  loyaltyEarnPoints?: number;
+  loyaltyRedeemRate?: number;
   updatedAt: string;
 }
 
