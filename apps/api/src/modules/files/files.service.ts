@@ -25,6 +25,7 @@ export class FilesService implements OnModuleInit {
   private client: {
     bucketExists(name: string): Promise<boolean>;
     makeBucket(name: string, region: string): Promise<void>;
+    setBucketPolicy(bucket: string, policy: string): Promise<void>;
     putObject(
       bucket: string,
       object: string,
@@ -67,6 +68,23 @@ export class FilesService implements OnModuleInit {
     try {
       const exists = await this.client.bucketExists(this.bucket);
       if (!exists) await this.client.makeBucket(this.bucket, 'eu-central-1');
+      // Allow public read for org assets (logos) and work-order media so browsers
+      // can load <img src="..."> directly without presigned URLs.
+      const policy = JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: { AWS: ['*'] },
+            Action: ['s3:GetObject'],
+            Resource: [
+              `arn:aws:s3:::${this.bucket}/orgs/*`,
+              `arn:aws:s3:::${this.bucket}/work-orders/*`,
+            ],
+          },
+        ],
+      });
+      await this.client.setBucketPolicy(this.bucket, policy);
     } catch {
       // Non-fatal at startup — will fail on first upload if MinIO is unavailable
     }
