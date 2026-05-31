@@ -75,17 +75,24 @@ export class CurrenciesService {
       if (duplicate) throw new ConflictException(`Валюта з кодом "${dto.code}" вже існує`);
     }
 
-    const item = await this.prisma.currency.update({ where: { id }, data: dto });
+    // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
+    const updated = await this.prisma.currency.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: dto,
+    });
+    if (updated.count === 0) throw new NotFoundException('Валюту не знайдено');
+    const item = await this.prisma.currency.findFirstOrThrow({ where: { id, orgId } });
     await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.currency.findFirst({
+    // Defense-in-depth: atomic soft-delete via updateMany (sto-review pattern 2026-05-30).
+    const result = await this.prisma.currency.updateMany({
       where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
     });
-    if (!existing) throw new NotFoundException('Валюту не знайдено');
-    await this.prisma.currency.update({ where: { id }, data: { deletedAt: new Date() } });
+    if (result.count === 0) throw new NotFoundException('Валюту не знайдено');
     await this.cache.del(cacheKey(orgId));
   }
 

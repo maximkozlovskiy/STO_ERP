@@ -214,12 +214,13 @@ export class GoodsService {
   }
 
   async deleteBarcode(orgId: string, goodId: string, barcodeId: string): Promise<void> {
-    const barcode = await this.prisma.goodBarcode.findFirst({
+    // Defense-in-depth: atomic deleteMany with full compound where (sto-review pattern 2026-05-30).
+    // Replaces findFirst + delete-by-id which had a race-window where a concurrent session
+    // could mutate ownership between the two queries.
+    const result = await this.prisma.goodBarcode.deleteMany({
       where: { id: barcodeId, orgId, goodId },
     });
-    if (!barcode) throw new NotFoundException('Штрихкод не знайдено');
-
-    await this.prisma.goodBarcode.delete({ where: { id: barcodeId } });
+    if (result.count === 0) throw new NotFoundException('Штрихкод не знайдено');
   }
 
   // ─── Good UoM ──────────────────────────────────────────────────────────────
@@ -366,7 +367,9 @@ export class GoodsService {
 
     await this.prisma.$transaction(
       async tx => {
-        await tx.goodUoM.delete({ where: { id: uomId } });
+        // Defense-in-depth: atomic deleteMany with compound where (sto-review pattern 2026-05-30)
+        // so any future refactor that loses the upstream guard cannot cross-tenant delete.
+        await tx.goodUoM.deleteMany({ where: { id: uomId, orgId, goodId } });
         if (uom.isDefault) {
           const next = await tx.goodUoM.findFirst({
             where: { orgId, goodId },
@@ -378,7 +381,11 @@ export class GoodsService {
             orderBy: { createdAt: 'asc' },
           });
           if (next) {
-            await tx.goodUoM.update({ where: { id: next.id }, data: { isDefault: true } });
+            // Defense-in-depth: updateMany with compound where (sto-review pattern 2026-05-30).
+            await tx.goodUoM.updateMany({
+              where: { id: next.id, orgId, goodId },
+              data: { isDefault: true },
+            });
             // Bug #224: defense-in-depth — updateMany with orgId+deletedAt guard.
             await tx.good.updateMany({
               where: { id: goodId, orgId, deletedAt: null },

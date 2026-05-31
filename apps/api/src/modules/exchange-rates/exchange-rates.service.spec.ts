@@ -12,8 +12,10 @@ describe('ExchangeRatesService', () => {
     currency: { findFirst: ReturnType<typeof vi.fn> };
     exchangeRate: {
       findFirst: ReturnType<typeof vi.fn>;
+      findFirstOrThrow: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
     };
   };
 
@@ -35,8 +37,10 @@ describe('ExchangeRatesService', () => {
       currency: { findFirst: vi.fn() },
       exchangeRate: {
         findFirst: vi.fn(),
+        findFirstOrThrow: vi.fn().mockResolvedValue(fullRow()),
         create: vi.fn().mockResolvedValue(fullRow()),
         update: vi.fn().mockResolvedValue(fullRow()),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const module = await Test.createTestingModule({
@@ -89,7 +93,7 @@ describe('ExchangeRatesService', () => {
       await expect(service.update('org-1', 'er-1', { date: '2026-06-01' })).rejects.toThrow(
         ConflictException,
       );
-      expect(prisma.exchangeRate.update).not.toHaveBeenCalled();
+      expect(prisma.exchangeRate.updateMany).not.toHaveBeenCalled();
     });
 
     it('дозволяє оновлення без зміни дати (без перевірки дубля)', async () => {
@@ -97,9 +101,12 @@ describe('ExchangeRatesService', () => {
         fullRow({ date: new Date('2026-05-28') }),
       );
       await service.update('org-1', 'er-1', { rate: 43 });
-      // findFirst викликається лише раз (existing), без duplicate-check
+      // findFirst викликається лише раз (existing), без duplicate-check.
+      // Bug #277 (review cycle 5): update переведено на updateMany+findFirstOrThrow
+      // defense-in-depth pattern 2026-05-30.
       expect(prisma.exchangeRate.findFirst).toHaveBeenCalledTimes(1);
-      expect(prisma.exchangeRate.update).toHaveBeenCalledTimes(1);
+      expect(prisma.exchangeRate.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.exchangeRate.findFirstOrThrow).toHaveBeenCalledTimes(1);
     });
 
     it('кидає NotFoundException якщо курс не знайдено', async () => {

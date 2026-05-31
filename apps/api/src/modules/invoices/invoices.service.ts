@@ -418,7 +418,12 @@ export class InvoicesService {
       throw new BadRequestException('Рядки можна видаляти лише з чернетки');
     if (!existing) throw new NotFoundException('Рядок не знайдено');
 
-    await this.prisma.invoiceLine.delete({ where: { id: lineId } });
+    // Defense-in-depth: atomic deleteMany with full compound where (sto-review pattern 2026-05-30).
+    // Removes the race-window between the findFirst guard above and a plain delete-by-id.
+    const result = await this.prisma.invoiceLine.deleteMany({
+      where: { id: lineId, invoiceId, orgId },
+    });
+    if (result.count === 0) throw new NotFoundException('Рядок не знайдено');
     await this.recalcTotals(orgId, invoiceId);
   }
 

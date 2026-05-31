@@ -109,7 +109,11 @@ export class CommentsService {
     if (!isAuthor && !isAdmin) {
       throw new ForbiddenException('Видаляти коментарі можуть лише автор або адміністратор');
     }
-    await this.prisma.comment.delete({ where: { id } });
+    // Defense-in-depth: atomic deleteMany with orgId guard (sto-review pattern 2026-05-30).
+    // Eliminates race-window between findFirst guard and hard delete that could otherwise
+    // permit cross-tenant removal under concurrent sessions.
+    const result = await this.prisma.comment.deleteMany({ where: { id, orgId } });
+    if (result.count === 0) throw new NotFoundException('Коментар не знайдено');
   }
 
   private toDto(c: CommentWithAuthor): CommentResponseDto {

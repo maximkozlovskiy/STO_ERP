@@ -127,20 +127,26 @@ export class ExchangeRatesService {
     if (dto.rate !== undefined) updateData['rate'] = dto.rate;
     if (dto.coefficient !== undefined) updateData['coefficient'] = dto.coefficient;
 
-    const item = await this.prisma.exchangeRate.update({
-      where: { id },
+    // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
+    const updated = await this.prisma.exchangeRate.updateMany({
+      where: { id, orgId, deletedAt: null },
       data: updateData,
+    });
+    if (updated.count === 0) throw new NotFoundException('Курс валюти не знайдено');
+    const item = await this.prisma.exchangeRate.findFirstOrThrow({
+      where: { id, orgId },
       include: { currency: { select: { code: true, name: true } } },
     });
     return this.toDto(item);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.exchangeRate.findFirst({
+    // Defense-in-depth: atomic soft-delete via updateMany (sto-review pattern 2026-05-30).
+    const result = await this.prisma.exchangeRate.updateMany({
       where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
     });
-    if (!existing) throw new NotFoundException('Курс валюти не знайдено');
-    await this.prisma.exchangeRate.update({ where: { id }, data: { deletedAt: new Date() } });
+    if (result.count === 0) throw new NotFoundException('Курс валюти не знайдено');
   }
 
   private toDto(item: {

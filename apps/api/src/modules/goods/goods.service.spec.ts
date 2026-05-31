@@ -358,13 +358,15 @@ describe('GoodsService', () => {
       prisma.goodUoM.findFirst.mockResolvedValueOnce({ ...uomRow, isDefault: false });
       prisma.goodUoM.count.mockResolvedValueOnce(2);
       const txFindFirst = vi.fn();
-      const txUpdate = vi.fn();
+      const txUpdateMany = vi.fn();
       prisma.$transaction.mockImplementationOnce(async (cb: any) =>
         cb({
           goodUoM: {
-            delete: vi.fn(),
+            // Bug #277 (review cycle 5): hard delete переведено на deleteMany
+            // з compound where (orgId+goodId guard) — defense-in-depth pattern 2026-05-30.
+            deleteMany: vi.fn(),
             findFirst: txFindFirst,
-            update: txUpdate,
+            updateMany: txUpdateMany,
           },
           good: { updateMany: vi.fn() },
         }),
@@ -372,14 +374,14 @@ describe('GoodsService', () => {
       await service.removeUoM('org-1', 'good-1', 'uom-1');
       // No auto-promote — uom was not default
       expect(txFindFirst).not.toHaveBeenCalled();
-      expect(txUpdate).not.toHaveBeenCalled();
+      expect(txUpdateMany).not.toHaveBeenCalled();
     });
 
     it('видалення default коли total>1 → промотує наступний UoM (createdAt asc) у default + оновлює Good.unit', async () => {
       prisma.good.findFirst.mockResolvedValueOnce(goodRow);
       prisma.goodUoM.findFirst.mockResolvedValueOnce({ ...uomRow, isDefault: true });
       prisma.goodUoM.count.mockResolvedValueOnce(2);
-      const txUpdate = vi.fn();
+      const txUpdateMany = vi.fn();
       const goodUpdateMany = vi.fn();
       const nextUom = {
         id: 'uom-2',
@@ -390,17 +392,17 @@ describe('GoodsService', () => {
       prisma.$transaction.mockImplementationOnce(async (cb: any) =>
         cb({
           goodUoM: {
-            delete: vi.fn(),
+            deleteMany: vi.fn(),
             findFirst: vi.fn().mockResolvedValueOnce(nextUom),
-            update: txUpdate,
+            updateMany: txUpdateMany,
           },
           good: { updateMany: goodUpdateMany },
         }),
       );
       await service.removeUoM('org-1', 'good-1', 'uom-1');
-      // Next UoM was promoted
-      expect(txUpdate).toHaveBeenCalledWith({
-        where: { id: 'uom-2' },
+      // Next UoM was promoted via updateMany з compound where (orgId+goodId guard)
+      expect(txUpdateMany).toHaveBeenCalledWith({
+        where: { id: 'uom-2', orgId: 'org-1', goodId: 'good-1' },
         data: { isDefault: true },
       });
       // Good.unit synced to new default (defense-in-depth: updateMany w/ orgId)

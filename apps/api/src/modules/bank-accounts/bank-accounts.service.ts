@@ -99,9 +99,15 @@ export class BankAccountsService {
     if (dto.currencyId && !currency) throw new NotFoundException('Валюту не знайдено');
     if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
 
-    const item = await this.prisma.bankAccount.update({
-      where: { id },
+    // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
+    // updateMany does not accept `include`, so re-fetch with relations afterwards.
+    const updated = await this.prisma.bankAccount.updateMany({
+      where: { id, orgId, deletedAt: null },
       data: dto,
+    });
+    if (updated.count === 0) throw new NotFoundException('Банківський рахунок не знайдено');
+    const item = await this.prisma.bankAccount.findFirstOrThrow({
+      where: { id, orgId },
       include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
     });
     await this.cache.del(cacheKey(orgId));
@@ -109,11 +115,14 @@ export class BankAccountsService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.bankAccount.findFirst({
+    // Defense-in-depth: atomic soft-delete via updateMany with orgId guard
+    // (sto-review pattern 2026-05-30). Eliminates the race-window between findFirst
+    // and update that could otherwise allow cross-tenant soft-delete.
+    const result = await this.prisma.bankAccount.updateMany({
       where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
     });
-    if (!existing) throw new NotFoundException('Банківський рахунок не знайдено');
-    await this.prisma.bankAccount.update({ where: { id }, data: { deletedAt: new Date() } });
+    if (result.count === 0) throw new NotFoundException('Банківський рахунок не знайдено');
     await this.cache.del(cacheKey(orgId));
   }
 

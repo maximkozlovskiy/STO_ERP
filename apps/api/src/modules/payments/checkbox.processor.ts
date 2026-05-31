@@ -2,6 +2,7 @@ import { Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { validatePublicUrl } from '../../common/utils/url-guard';
 
 interface FiscalReceiptJob {
   paymentId: string;
@@ -32,6 +33,15 @@ export class CheckboxProcessor {
     }
 
     const apiUrl = branchSettings.checkboxApiUrl ?? 'https://api.checkbox.ua';
+
+    // SSRF defense-in-depth: even an OWNER/ADMIN must not be able to point the Checkbox
+    // API URL at internal services (Redis/Postgres/cloud-metadata). The settings DTO
+    // accepts arbitrary strings — re-validate here at delivery time and fail fast.
+    const urlError = validatePublicUrl(apiUrl);
+    if (urlError) {
+      this.logger.warn(`Checkbox API URL для org=${orgId} відхилено: ${urlError}`);
+      throw new Error(`Невалідний Checkbox API URL: ${urlError}`);
+    }
 
     // Call Checkbox API
     const response = await fetch(`${apiUrl}/api/v1/receipts/sell`, {

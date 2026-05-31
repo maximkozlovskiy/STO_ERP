@@ -375,10 +375,10 @@ export class SettingsService {
     id: string,
     dto: { name?: string; rate?: number; isDefault?: boolean; isActive?: boolean },
   ) {
-    const existing = await this.prisma.taxRate.findFirst({ where: { id, orgId } });
-    if (!existing) throw new NotFoundException('Ставку ПДВ не знайдено');
-    const updated = await this.prisma.taxRate.update({
-      where: { id },
+    // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
+    // Eliminates race-window between findFirst guard and update by id.
+    const result = await this.prisma.taxRate.updateMany({
+      where: { id, orgId },
       data: {
         name: dto.name ?? undefined,
         rate: dto.rate ?? undefined,
@@ -386,6 +386,8 @@ export class SettingsService {
         isActive: dto.isActive ?? undefined,
       },
     });
+    if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
+    const updated = await this.prisma.taxRate.findFirstOrThrow({ where: { id, orgId } });
     return {
       id: updated.id,
       name: updated.name,
@@ -402,7 +404,12 @@ export class SettingsService {
     if (!existing) throw new NotFoundException('Ставку ПДВ не знайдено');
     if (existing.isDefault)
       throw new BadRequestException('Не можна видалити ставку за замовчуванням');
-    await this.prisma.taxRate.update({ where: { id }, data: { isActive: false } });
+    // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
+    const result = await this.prisma.taxRate.updateMany({
+      where: { id, orgId },
+      data: { isActive: false },
+    });
+    if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
   }
 
   private readonly orgSelect = {

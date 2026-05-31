@@ -2,11 +2,24 @@ import { Controller, Post, Req, UseGuards, BadRequestException } from '@nestjs/c
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
+import * as path from 'path';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { FilesService } from './files.service';
+
+const MAX_FILENAME_LENGTH = 255;
+
+// Захист від path traversal у оригінальній назві файлу: нормалізуємо POSIX/Windows
+// розділювачі, прибираємо керівні символи й обмежуємо довжину перед збереженням.
+// Узгоджено з work-order-media.service.ts sanitizeFilename.
+function sanitizeFilename(raw: string): string {
+  const base = path.basename(raw.replace(/\\/g, '/'));
+  const trimmed = base.replace(/[\x00-\x1f]/g, '').trim();
+  if (!trimmed) return 'upload';
+  return trimmed.slice(0, MAX_FILENAME_LENGTH);
+}
 
 @ApiTags('Files')
 @Controller('files')
@@ -51,9 +64,13 @@ export class FilesController {
     if (fileBuffer.length > 10 * 1024 * 1024)
       throw new BadRequestException('Файл завеликий (максимум 10 МБ)');
 
+    // Захист від path traversal у назві файлу + DB overflow guard (узгоджено
+    // з work-order-media.service.ts sanitizeFilename).
+    const safeName = sanitizeFilename(filename);
+
     return this.service.upload(
       orgId,
-      { buffer: fileBuffer, originalname: filename, mimetype, size: fileBuffer.length },
+      { buffer: fileBuffer, originalname: safeName, mimetype, size: fileBuffer.length },
       workOrderId,
     );
   }

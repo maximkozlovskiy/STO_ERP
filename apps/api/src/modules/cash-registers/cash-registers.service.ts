@@ -101,9 +101,14 @@ export class CashRegistersService {
     if (dto.currencyId && !currency) throw new NotFoundException('Валюту не знайдено');
     if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
 
-    const item = await this.prisma.cashRegister.update({
-      where: { id },
+    // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
+    const updated = await this.prisma.cashRegister.updateMany({
+      where: { id, orgId, deletedAt: null },
       data: dto,
+    });
+    if (updated.count === 0) throw new NotFoundException('Касу не знайдено');
+    const item = await this.prisma.cashRegister.findFirstOrThrow({
+      where: { id, orgId },
       include: {
         currency: { select: { code: true, symbol: true } },
         branch: { select: { name: true } },
@@ -115,11 +120,19 @@ export class CashRegistersService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    // Defense-in-depth: atomic soft-delete via updateMany (sto-review pattern 2026-05-30).
+    // We still need the branchId for cache invalidation, so capture it first via findFirst —
+    // but the actual mutation is the atomic guarded path.
     const existing = await this.prisma.cashRegister.findFirst({
       where: { id, orgId, deletedAt: null },
+      select: { branchId: true },
     });
     if (!existing) throw new NotFoundException('Касу не знайдено');
-    await this.prisma.cashRegister.update({ where: { id }, data: { deletedAt: new Date() } });
+    const result = await this.prisma.cashRegister.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (result.count === 0) throw new NotFoundException('Касу не знайдено');
     await this.cache.del(cacheKey(orgId));
     await this.cache.del(cacheKey(orgId, existing.branchId));
   }

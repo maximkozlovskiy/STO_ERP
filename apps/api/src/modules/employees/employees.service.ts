@@ -255,7 +255,11 @@ export class EmployeesService {
           });
         }
         if (dto.allBranches !== undefined) {
-          await tx.employee.update({ where: { id }, data: { allBranches: dto.allBranches } });
+          // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
+          await tx.employee.updateMany({
+            where: { id, orgId, deletedAt: null },
+            data: { allBranches: dto.allBranches },
+          });
         }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
