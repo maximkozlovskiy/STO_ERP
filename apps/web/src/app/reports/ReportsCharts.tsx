@@ -14,6 +14,7 @@ import {
   Cell,
   Legend,
 } from 'recharts';
+import { fmtMoney } from '@/lib/format';
 
 type RevenueRow = { date: string; revenue: number; labor: number; parts: number; count: number };
 type SettlementRow = { counterpartyId: string; counterpartyName: string; balance: number };
@@ -37,8 +38,10 @@ type ProfitabilityData = {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
+// Thin proxy to lib/format singleton — replaces per-tooltip Intl.NumberFormat
+// construction at every Recharts data point hover.
 function fmt(n: number) {
-  return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';
+  return fmtMoney(n) + ' ₴';
 }
 
 export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {

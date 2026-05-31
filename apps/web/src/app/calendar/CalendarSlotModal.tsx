@@ -31,6 +31,7 @@ import {
   pad,
   displayCounterparty,
   fmtTime,
+  fmtKyivDate,
 } from './calendar.utils';
 
 // ─── TimeSelect — hour + minute selects, 15-min step, bounded range ──────────
@@ -1065,13 +1066,8 @@ export function CalendarSlotModal({
                   <div className="flex items-center gap-1.5 text-xs text-primary mt-0.5">
                     <span>📅</span>
                     <span>
-                      {new Date(item.slotStartAt).toLocaleDateString('uk-UA', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        timeZone: KYIV_TZ,
-                      })}{' '}
-                      {fmtTime(item.slotStartAt)}–{item.slotEndAt ? fmtTime(item.slotEndAt) : ''}
+                      {fmtKyivDate(item.slotStartAt)} {fmtTime(item.slotStartAt)}–
+                      {item.slotEndAt ? fmtTime(item.slotEndAt) : ''}
                       {item.slotLiftName ? ` · ${item.slotLiftName}` : ''}
                     </span>
                   </div>

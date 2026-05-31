@@ -26,6 +26,7 @@ import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
 import { PickerModal } from '@/components/ui/picker-modal';
 import { cn } from '@/lib/utils';
+import { fmtShortDateTime } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { useUiFeatures, invalidateUiFeaturesCache, type UiFeatures } from '@/hooks/useUiFeatures';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -2613,12 +2614,7 @@ export default function SettingsPage() {
                             <span className="text-muted-foreground">HTTP {d.responseCode}</span>
                           )}
                           <span className="text-muted-foreground ml-auto">
-                            {new Date(d.createdAt).toLocaleString('uk-UA', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
+                            {fmtShortDateTime(d.createdAt)}
                           </span>
                         </div>
                       ))}

@@ -37,6 +37,14 @@ const TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
   hour12: false,
 });
 
+// `DD.MM.YYYY` у часовому поясі Києва — для рендеру дат у списках/пікерах календаря.
+const KYIV_DMY_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: KYIV_TZ,
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+});
+
 export function pad(n: number) {
   return String(n).padStart(2, '0');
 }
@@ -54,6 +62,14 @@ export function kyivHours(iso: string): number {
 
 export function fmtTime(iso: string) {
   return TIME_FMT.format(new Date(iso));
+}
+
+/**
+ * Дата у форматі `DD.MM.YYYY` у часовому поясі Києва. Викликається у `.map()`
+ * списків пошуку слотів/нарядів, тому переконайся що формат тільки .format(), не конструктор.
+ */
+export function fmtKyivDate(iso: string) {
+  return KYIV_DMY_FMT.format(new Date(iso));
 }
 
 export function decimalHoursToHHMM(h: number): string {

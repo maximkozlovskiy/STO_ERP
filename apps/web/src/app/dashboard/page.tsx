@@ -29,6 +29,7 @@ import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
+import { fmtInt, fmtDate } from '@/lib/format';
 
 interface MaintenanceSchedule {
   id: string;
@@ -88,8 +89,10 @@ interface LowStockItem {
   deficit: number;
 }
 
+// Thin proxy to lib/format singleton (module-level Intl.NumberFormat). Replaces
+// per-render `n.toLocaleString('uk-UA', {...})` × every KPI cell + map row.
 function fmt(n: number) {
-  return n.toLocaleString('uk-UA', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₴';
+  return fmtInt(n) + ' ₴';
 }
 
 const ALL_QUICK_ACTIONS = [
@@ -382,7 +385,7 @@ export default function DashboardPage() {
                 <div className="divide-y divide-border">
                   {upcomingTO.slice(0, 8).map(item => {
                     const dateStr = item.nextMaintenanceDate
-                      ? new Date(item.nextMaintenanceDate).toLocaleDateString('uk-UA')
+                      ? fmtDate(item.nextMaintenanceDate)
                       : null;
                     const isOverdue =
                       item.nextMaintenanceDate && nowMs > 0
@@ -401,7 +404,7 @@ export default function DashboardPage() {
                                 ? 'Сезонне ТО'
                                 : item.maintenanceType}
                             {item.nextMaintenanceMileage
-                              ? ` · ${item.nextMaintenanceMileage.toLocaleString('uk-UA')} км`
+                              ? ` · ${fmtInt(item.nextMaintenanceMileage)} км`
                               : ''}
                           </p>
                         </div>

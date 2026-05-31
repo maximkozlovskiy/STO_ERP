@@ -14,6 +14,7 @@ import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ExpiryBadge } from '@/components/ui/expiry-badge';
+import { fmtInt, fmtDate } from '@/lib/format';
 
 interface Vehicle {
   id: string;
@@ -363,7 +364,7 @@ export default function VehicleCardPage() {
         {vehicle.engineVolume && <Info label="Об'єм, л" value={String(vehicle.engineVolume)} />}
         {vehicle.fuelType && <Info label="Паливо" value={vehicle.fuelType} />}
         {vehicle.currentMileage != null && (
-          <Info label="Пробіг, км" value={vehicle.currentMileage.toLocaleString('uk-UA')} />
+          <Info label="Пробіг, км" value={fmtInt(vehicle.currentMileage)} />
         )}
         {vehicle.color && <Info label="Колір" value={vehicle.color} />}
         {vehicle.transmissionType && (
@@ -392,9 +393,7 @@ export default function VehicleCardPage() {
           <div>
             <p className="text-xs text-muted-foreground">Страховка до</p>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <p className="text-foreground">
-                {new Date(vehicle.insuranceExpiry).toLocaleDateString('uk-UA')}
-              </p>
+              <p className="text-foreground">{fmtDate(vehicle.insuranceExpiry)}</p>
               <ExpiryBadge
                 date={vehicle.insuranceExpiry}
                 nowMs={today?.getTime() ?? 0}
@@ -407,9 +406,7 @@ export default function VehicleCardPage() {
           <div>
             <p className="text-xs text-muted-foreground">Техогляд до</p>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <p className="text-foreground">
-                {new Date(vehicle.inspectionExpiry).toLocaleDateString('uk-UA')}
-              </p>
+              <p className="text-foreground">{fmtDate(vehicle.inspectionExpiry)}</p>
               <ExpiryBadge
                 date={vehicle.inspectionExpiry}
                 nowMs={today?.getTime() ?? 0}
@@ -503,7 +500,7 @@ export default function VehicleCardPage() {
                     <p className="text-sm text-foreground">{n.name}</p>
                     {n.mileageAtInstall != null && (
                       <p className="text-xs text-muted-foreground">
-                        Встановлено при {n.mileageAtInstall.toLocaleString('uk-UA')} км
+                        Встановлено при {fmtInt(n.mileageAtInstall)} км
                       </p>
                     )}
                     {n.notes && <p className="text-xs text-muted-foreground">{n.notes}</p>}
@@ -630,17 +627,17 @@ export default function VehicleCardPage() {
                     )}
                     {sc.intervalMileage && (
                       <p className="text-xs text-muted-foreground">
-                        Кожні {sc.intervalMileage.toLocaleString('uk-UA')} км
+                        Кожні {fmtInt(sc.intervalMileage)} км
                       </p>
                     )}
                     {sc.nextMaintenanceDate && (
                       <p className="text-xs text-muted-foreground">
-                        Наступне: {new Date(sc.nextMaintenanceDate).toLocaleDateString('uk-UA')}
+                        Наступне: {fmtDate(sc.nextMaintenanceDate)}
                       </p>
                     )}
                     {sc.nextMaintenanceMileage && (
                       <p className="text-xs text-muted-foreground">
-                        При {sc.nextMaintenanceMileage.toLocaleString('uk-UA')} км
+                        При {fmtInt(sc.nextMaintenanceMileage)} км
                       </p>
                     )}
                     {sc.notes && <p className="text-xs text-muted-foreground">{sc.notes}</p>}

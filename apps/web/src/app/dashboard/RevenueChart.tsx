@@ -1,13 +1,19 @@
 'use client';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { fmtMoney, fmtDate } from '@/lib/format';
 
 interface RevenuePoint {
   date: string;
   revenue: number;
 }
 
+// Module-level Intl singleton for chart axis ticks (day + short-month label).
+// Replaces per-tick Intl.DateTimeFormat construction inside recharts tickFormatter callback.
+const TICK_DATE_FMT = new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short' });
+
+// Thin proxy to lib/format singleton — replaces per-tooltip Intl.NumberFormat.
 function fmt(v: number) {
-  return v.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' грн';
+  return fmtMoney(v) + ' грн';
 }
 
 export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
@@ -20,9 +26,7 @@ export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
           tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
           axisLine={false}
           tickLine={false}
-          tickFormatter={d =>
-            new Date(d + 'T00:00').toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })
-          }
+          tickFormatter={d => TICK_DATE_FMT.format(new Date(d + 'T00:00'))}
         />
         <YAxis
           tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
@@ -39,7 +43,7 @@ export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
             boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
           }}
           formatter={v => [fmt(Number(v ?? 0)), 'Виручка']}
-          labelFormatter={d => new Date(d + 'T00:00').toLocaleDateString('uk-UA')}
+          labelFormatter={d => fmtDate(new Date(d + 'T00:00'))}
         />
         <Bar dataKey="revenue" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
       </BarChart>

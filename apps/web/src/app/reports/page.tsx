@@ -16,6 +16,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { fmtMoney } from '@/lib/format';
 import dynamic from 'next/dynamic';
 
 const RevenueCharts = dynamic(() => import('./ReportsCharts').then(m => m.RevenueCharts), {
@@ -82,13 +83,27 @@ type ReportData =
   | { _tab: 'load'; rows: LoadRow[] }
   | ({ _tab: 'profitability' } & ProfitabilityData);
 
+// Thin proxy to lib/format singleton (Intl.NumberFormat module-level). Replaces
+// per-render `n.toLocaleString('uk-UA', {...})` × every cell у table-heavy reports.
 function fmt(n: number) {
-  return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';
+  return fmtMoney(n) + ' ₴';
 }
 
-function fmtNum(n: number, dec = 1) {
-  return n.toLocaleString('uk-UA', { maximumFractionDigits: dec });
+// Local Intl singleton — non-default fraction digit count not in lib/format.
+const NUM_FMT_1 = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 1 });
+function fmtNum(n: number) {
+  return NUM_FMT_1.format(n);
 }
+
+// Module-level Kyiv-date singletons — used in useEffect at mount to derive default
+// from/to range. Конструкція раз на модуль замість раз на mount.
+const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const KYIV_YMD_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Kyiv',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -104,8 +119,6 @@ export default function ReportsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
 
   const [tab, setTab] = useState<Tab>('revenue');
-  const kyivDate = (d: Date) =>
-    new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [data, setData] = useState<ReportData | null>(null);
@@ -114,14 +127,9 @@ export default function ReportsPage() {
 
   useEffect(() => {
     const now = new Date();
-    const kyivNow = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Kyiv',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(now);
+    const kyivNow = KYIV_YMD_FMT.format(now);
     setFrom(`${kyivNow.slice(0, 4)}-01-01`);
-    setTo(kyivDate(now));
+    setTo(KYIV_DATE_FMT.format(now));
   }, []);
 
   const load = useCallback(async () => {
