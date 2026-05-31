@@ -1,15 +1,48 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsArray, IsOptional, MaxLength, MinLength } from 'class-validator';
+import {
+  IsString,
+  IsArray,
+  IsOptional,
+  MaxLength,
+  MinLength,
+  IsUUID,
+  IsNumber,
+  Min,
+  ValidateNested,
+  ArrayMaxSize,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
+// Bug #247: вкладені DTO без декораторів пропускали свавільні значення (workId без UUID,
+// quantity < 0, note довжиною 1М символів). `lines` / `parts` без @ArrayMaxSize дозволяли
+// DoS через мільйонні масиви. Тепер усі поля валідуються; масиви обмежені 200 елементами
+// (реалістичний максимум для нормо-карти).
 export class TemplateLineDto {
-  @ApiProperty() workId!: string;
-  @ApiProperty() quantity!: number;
-  @ApiProperty({ required: false }) note?: string;
+  @ApiProperty()
+  @IsUUID()
+  workId!: string;
+
+  @ApiProperty()
+  @IsNumber()
+  @Min(0)
+  quantity!: number;
+
+  @ApiProperty({ required: false, maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }
 
 export class TemplatePartDto {
-  @ApiProperty() goodId!: string;
-  @ApiProperty() quantity!: number;
+  @ApiProperty()
+  @IsUUID()
+  goodId!: string;
+
+  @ApiProperty()
+  @IsNumber()
+  @Min(0)
+  quantity!: number;
 }
 
 export class CreateWorkOrderTemplateDto {
@@ -22,11 +55,17 @@ export class CreateWorkOrderTemplateDto {
   @ApiProperty({ type: [TemplateLineDto], required: false })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(200, { message: 'Не більше 200 рядків робіт у шаблоні' })
+  @ValidateNested({ each: true })
+  @Type(() => TemplateLineDto)
   lines?: TemplateLineDto[];
 
   @ApiProperty({ type: [TemplatePartDto], required: false })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(200, { message: 'Не більше 200 запчастин у шаблоні' })
+  @ValidateNested({ each: true })
+  @Type(() => TemplatePartDto)
   parts?: TemplatePartDto[];
 }
 
@@ -40,11 +79,17 @@ export class UpdateWorkOrderTemplateDto {
   @ApiProperty({ type: [TemplateLineDto], required: false })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(200, { message: 'Не більше 200 рядків робіт у шаблоні' })
+  @ValidateNested({ each: true })
+  @Type(() => TemplateLineDto)
   lines?: TemplateLineDto[];
 
   @ApiProperty({ type: [TemplatePartDto], required: false })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(200, { message: 'Не більше 200 запчастин у шаблоні' })
+  @ValidateNested({ each: true })
+  @Type(() => TemplatePartDto)
   parts?: TemplatePartDto[];
 }
 

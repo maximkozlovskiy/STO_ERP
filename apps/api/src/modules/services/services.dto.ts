@@ -7,6 +7,7 @@ import {
   IsUUID,
   IsArray,
   ValidateNested,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
@@ -49,6 +50,8 @@ export class CreateServiceDto {
   @ApiPropertyOptional({ type: [ServiceWorkItemDto] })
   @IsOptional()
   @IsArray()
+  // Bug #248: anti-DoS cap; реалістичний максимум robotic-операцій у послузі.
+  @ArrayMaxSize(100, { message: 'Не більше 100 робіт у послузі' })
   @ValidateNested({ each: true })
   @Type(() => ServiceWorkItemDto)
   works?: ServiceWorkItemDto[];
@@ -56,6 +59,7 @@ export class CreateServiceDto {
   @ApiPropertyOptional({ type: [ServiceGoodItemDto] })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(100, { message: 'Не більше 100 запчастин у послузі' })
   @ValidateNested({ each: true })
   @Type(() => ServiceGoodItemDto)
   goods?: ServiceGoodItemDto[];

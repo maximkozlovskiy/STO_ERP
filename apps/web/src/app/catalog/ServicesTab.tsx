@@ -500,9 +500,9 @@ export default function ServicesTab() {
                   <p className="text-[13px] text-muted-foreground">Немає</p>
                 ) : (
                   <div className="space-y-2">
-                    {s.works.map((w, i) => (
+                    {s.works.map(w => (
                       <div
-                        key={i}
+                        key={w.workId}
                         className="rounded-lg border border-border px-3 py-2 text-[13px]"
                       >
                         <p className="font-medium text-foreground">{w.workName}</p>
@@ -522,9 +522,9 @@ export default function ServicesTab() {
                   <p className="text-[13px] text-muted-foreground">Немає</p>
                 ) : (
                   <div className="space-y-2">
-                    {s.goods.map((g, i) => (
+                    {s.goods.map(g => (
                       <div
-                        key={i}
+                        key={g.goodId}
                         className="rounded-lg border border-border px-3 py-2 text-[13px]"
                       >
                         <p className="font-medium text-foreground">{g.goodName}</p>

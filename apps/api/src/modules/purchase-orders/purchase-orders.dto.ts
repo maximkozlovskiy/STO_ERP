@@ -7,6 +7,7 @@ import {
   IsArray,
   ValidateNested,
   IsEnum,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
@@ -39,6 +40,8 @@ export class CreatePurchaseOrderDto {
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @IsOptional()
   @IsArray()
+  // Bug #248: anti-DoS cap; 500 рядків — гранично великий покупковий ордер.
+  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у покупковому ордері' })
   @ValidateNested({ each: true })
   @Type(() => PurchaseOrderLineDto)
   lines?: PurchaseOrderLineDto[];
@@ -50,6 +53,7 @@ export class UpdatePurchaseOrderDto {
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у покупковому ордері' })
   @ValidateNested({ each: true })
   @Type(() => PurchaseOrderLineDto)
   lines?: PurchaseOrderLineDto[];
@@ -70,6 +74,7 @@ export class ReceiveLineDto {
 export class ReceivePurchaseOrderDto {
   @ApiProperty({ type: [ReceiveLineDto] })
   @IsArray()
+  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у частковому прийнятті' })
   @ValidateNested({ each: true })
   @Type(() => ReceiveLineDto)
   lines!: ReceiveLineDto[];

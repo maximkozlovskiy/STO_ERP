@@ -7599,3 +7599,173 @@ export const emptyToUndefined = ({ value }: { value: unknown }): unknown =>
 **Статус:** [x] виправлено — додано regression-кейс у bank-accounts.contract.spec.ts (1 it) і calendar.contract.spec.ts (1 it). Тести підтверджують shape `service.create({ ..., branchId: undefined })` і відсутність `liftId` у переданому DTO.
 
 ---
+
+## Session 2026-05-31 — /sto-tester cycle 1/5 (FULL HEAD b8c8e4b)
+
+Baseline: TypeScript ✅, API 459/459 ✅, web 203/203 ✅. Scope: останні 5 комітів (warranties defense-in-depth, SMS attempts, invoice amount sync, work_order_media covering index, optimize patterns).
+
+---
+
+## Bug #245 — MEDIUM Cross-resource invalidation gap: useCreatePayment не інвалідує counterparties
+
+**Файл:** `apps/web/src/hooks/api/useInvoices.ts:85-95`
+**Severity:** MEDIUM
+**Категорія:** frontend / cross-resource invalidation (skill Bug #210-#212 pattern)
+
+**Опис:** `useCreatePayment` після `POST /payments` інвалідує `invoicesKeys.all` і `['work-orders']`, але **не** інвалідує `counterpartiesKeys.all`. Однак `payments.service.create()` викликає `settlements.createTransaction({ type: 'PAYMENT', counterpartyId })` → оновлюється `settlementAccount.balance` для counterparty. CRM-лист (`/crm`) показує `currentBalance` (через `useCounterparties`), і після створення оплати у Invoices-сторінці баланс у CRM лишається стариим до `staleTime=30s` АБО ручного refetch.
+
+**Очікувана поведінка:** після успішного `POST /payments` invalidate `counterpartiesKeys.all` додатково.
+
+**Фактична поведінка:** баланс counterparty у CRM-listу стале після оплати рахунку.
+
+**Підхід до фіксу:** додати `qc.invalidateQueries({ queryKey: counterpartiesKeys.all })` у onSuccess `useCreatePayment`. Імпортувати `counterpartiesKeys` з `useCounterparties`.
+
+**Статус:** [x] виправлено — додано import + invalidate-виклик у `useInvoices.ts`. Regression-guard у новому `useInvoices.test.tsx` асертить що всі 3 ключі (`invoices`, `work-orders`, `counterparties`) інвалідуються.
+
+---
+
+## Bug #246 — LOW key={i} на mutable list items зі стабільним ID
+
+**Файли:**
+
+- `apps/web/src/app/catalog/ServicesTab.tsx:505` (works.map(w, i) → key={i}; w.workId доступний)
+- `apps/web/src/app/catalog/ServicesTab.tsx:527` (goods.map(g, i) → key={i}; g.goodId доступний)
+- `apps/web/src/app/inventory/page.tsx:412` (lowItems.map(item, i) → key={i}; item.goodId доступний; список може перевпорядковуватись)
+
+**Severity:** LOW
+**Категорія:** frontend / React
+
+**Опис:** Списки рендерять `key={i}` при наявності стабільного ID у самих item-ах. Скільки список `lowItems` повертається з backendу за `quantity ASC` і може перевпорядковуватись між запитами (коли stock змінюється), React не може коректно reuse-нути DOM-вузли — це може спричиняти втрату фокуса/анімаційних станів та неправильні onClick handler binding під час reorder.
+
+**Очікувана поведінка:** `key={item.goodId}` (або компонована key для compound таблиць).
+
+**Фактична поведінка:** `key={i}` — стабільний у послідовності, але не у позицій item-ів коли список ре-фетчиться.
+
+**Підхід до фіксу:**
+
+- `ServicesTab.tsx:505` → `key={w.workId}`
+- `ServicesTab.tsx:527` → `key={g.goodId}`
+- `inventory/page.tsx:412` → compound key (`item.goodId + '-' + item.warehouseName`).
+
+**Статус:** [x] виправлено — застосовано стабільні ключі в усіх трьох locations.
+
+---
+
+## Bug #247 — HIGH WorkOrderTemplate DTO без вкладеної валідації + ArrayMaxSize
+
+**Файл:** `apps/api/src/modules/work-order-templates/work-order-templates.dto.ts:4-13, 22-30, 40-48`
+**Severity:** HIGH
+**Категорія:** security / DTO validation
+
+**Опис:** `TemplateLineDto` і `TemplatePartDto` не мають жодних декораторів — `workId`, `goodId`, `quantity` приймуть будь-яке значення. `CreateWorkOrderTemplateDto.lines` і `parts` — `@IsArray()` БЕЗ `@ValidateNested({ each: true })`, БЕЗ `@Type(() => …)`, БЕЗ `@ArrayMaxSize(N)`. Аналогічно `UpdateWorkOrderTemplateDto`.
+
+Наслідки:
+
+1. **Validation bypass:** `lines: [{ workId: 'NOT-A-UUID', quantity: -999, note: 'a'.repeat(1e6) }]` пройде whitelist → у БД зайдуть невалідні рядки → коли template застосовується до WorkOrder через `apply`, `prisma.workOrderLine.create({ data: { workId: 'NOT-A-UUID' } })` кидає P2003 → silent partial state.
+2. **Anti-DoS:** `lines: Array(1e6).fill({ workId: validUuid, quantity: 1 })` створить 1М рядків template — DoS на сервер та DB.
+3. **Cross-tenant FK:** `workId`/`goodId` не валідовані як UUID, тим паче не валідовані як org-scoped FK.
+
+**Очікувана поведінка:**
+
+- `TemplateLineDto.workId` → `@IsUUID()`; `quantity` → `@IsNumber() @Min(0)`; `note` → `@IsOptional() @IsString() @MaxLength(500)`.
+- `TemplatePartDto.goodId` → `@IsUUID()`; `quantity` → `@IsNumber() @Min(0)`.
+- Обидва array-поля → `@IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => TemplateLineDto)`.
+
+**Фактична поведінка:** validation повністю обходиться для вкладених об'єктів.
+
+**Підхід до фіксу:** додати декоратори у DTO.
+
+**Статус:** [x] виправлено — `TemplateLineDto.workId` отримав `@IsUUID()`; `quantity` — `@IsNumber() @Min(0)`; `note` — `@IsOptional() @IsString() @MaxLength(500)`. `TemplatePartDto.goodId` — `@IsUUID()`; `quantity` — `@IsNumber() @Min(0)`. Обидва array-поля у Create/Update DTO — `@ArrayMaxSize(200) @ValidateNested @Type(...)`.
+
+---
+
+## Bug #248 — LOW Декілька DTO @IsArray() без @ArrayMaxSize
+
+**Файли:**
+
+- `apps/api/src/modules/inventory/pricing-rules.dto.ts:98, 176` (tiers — COST_TIER правила)
+- `apps/api/src/modules/purchase-orders/purchase-orders.dto.ts:41, 52, 72` (lines)
+- `apps/api/src/modules/services/services.dto.ts:51, 58` (works, goods)
+- `apps/api/src/modules/stock-documents/stock-documents.dto.ts:45, 56` (lines)
+
+**Severity:** LOW (anti-DoS, ще нема відомого live attack)
+**Категорія:** security / anti-DoS
+
+**Опис:** `@IsArray() @ValidateNested @Type(...)` без `@ArrayMaxSize(N)` дозволяє клієнту надіслати `lines: Array(1e6).fill({...})` — кожен item проходить ValidateNested → CPU-heavy validation → DoS. Не блокер бо `whitelist: true` хоча б скидає інші поля, але обчислювальна вартість value validation == N items.
+
+**Очікувана поведінка:** додати `@ArrayMaxSize(N)`:
+
+- pricing tiers: 50
+- purchase order lines: 500
+- service works/goods: 100
+- stock document lines: 500
+
+**Фактична поведінка:** без верхньої межі.
+
+**Підхід до фіксу:** додати імпорт `ArrayMaxSize` з `class-validator` + декоратор з повідомленням українською.
+
+**Статус:** [x] виправлено — додано `@ArrayMaxSize` у 4 DTO файли (pricing-rules tiers=50, purchase-orders lines=500, services works/goods=100, stock-documents lines=500) з україномовними повідомленнями.
+
+---
+
+## Bug #249 — MEDIUM WarrantiesService без spec-файлу — defense-in-depth fix не покритий тестом
+
+**Файл:** `apps/api/src/modules/warranties/warranties.service.ts` (нема `warranties.service.spec.ts`)
+**Severity:** MEDIUM
+**Категорія:** test-coverage / regression-guard
+
+**Опис:** Cycle 1 review commit (`ffe3f07`) додав defense-in-depth у `WarrantiesService.markClaimed`:
+
+```ts
+await this.prisma.warranty.updateMany({
+  where: { id, orgId, deletedAt: null },
+  data: { claimedAt: new Date(), claimWoId: dto.claimWoId },
+});
+const updated = await this.prisma.warranty.findFirstOrThrow({
+  where: { id, orgId },
+  include: { ... },
+});
+```
+
+Це HIGH-IMPACT change (cross-tenant safety), але нема `warranties.service.spec.ts`. Регресія типу «майбутній рефактор повернув `update({ where: { id } })`» пройде CI зеленою. Контракт-тести з `useValue: serviceMock` не виконують real Prisma calls — defense-in-depth непокритий.
+
+**Очікувана поведінка:** `warranties.service.spec.ts` з кейсами:
+
+1. `markClaimed` happy path: `findFirst(claimWo)` + `findFirst(warranty)` повертають OK → `updateMany` викликаний з `{ where: { id, orgId, deletedAt: null } }` → `findFirstOrThrow` повертає updated DTO.
+2. Cross-tenant warranty (`findFirst(warranty)` → null): NotFoundException; updateMany НЕ викликаний.
+3. Cross-tenant claimWo (`findFirst(claimWo)` → null): NotFoundException; updateMany НЕ викликаний.
+4. (Property-like) defense-in-depth: assert `updateMany.mock.calls[0][0].where.orgId === ctxOrgId` ⊥ `where.deletedAt === null`.
+
+**Фактична поведінка:** 0 покриття для warranties.service.ts.
+
+**Підхід до фіксу:** створити мінімальний spec (Test.createTestingModule з PrismaService useValue + mock-based assertions) з 4 it-блоками.
+
+**Статус:** [x] виправлено — створено `warranties.service.spec.ts` з 5 тестами (happy path defense-in-depth, cross-tenant warranty, cross-tenant claimWo, already-claimed BadRequest, expired BadRequest). Тест явно асертить `updateMany.mock.calls[0][0].where.orgId` і `where.deletedAt: null`, а також що `prisma.warranty.update` НЕ викликаний.
+
+---
+
+## Bug #250 — MEDIUM useInvoices.ts hook без \*.test.tsx (Bug #214 pattern)
+
+**Файл:** `apps/web/src/hooks/api/useInvoices.ts` (нема `useInvoices.test.tsx`)
+**Severity:** MEDIUM
+**Категорія:** test-coverage / hook-regression
+
+**Опис:** `useInvoices.ts` містить 4 hook (`useInvoices`, `useInvoiceTransition`, `useDeleteInvoice`, `useCreatePayment`) з `useQuery`/`useMutation` + URLSearchParams build + queryKey factory + cross-resource invalidation. Аналогічно вже покритому `useWorkOrders.test.tsx`, цей файл потребує spec що покриває:
+
+1. queryKey factory ізоляція (`invoicesKeys.list(filters)` для різних filters → різні ключі).
+2. enabled-gate (`employee=null` → no fetch; `useQuery.enabled === false`).
+3. URLSearchParams build: кожне опціональне поле → відповідний URL param АБО відсутній якщо false-y.
+4. signal abort у queryFn.
+5. `useCreatePayment` cross-resource invalidation (після Bug #245 фіксу — також counterparties).
+
+Без цих тестів — silent URL-param drift і invalidation gaps проходять CI зелено.
+
+**Очікувана поведінка:** `useInvoices.test.tsx` з 8-10 it-блоками за зразком `useWorkOrders.test.tsx`.
+
+**Фактична поведінка:** 0 покриття.
+
+**Підхід до фіксу:** створити spec за шаблоном `useWorkOrders.test.tsx` (renderHook + QueryClientProvider з retry:false + mock apiFetch + mock useAuth).
+
+**Статус:** [x] виправлено — створено `useInvoices.test.tsx` з 15 тестами: queryKey factory (4), enabled-gate (2), URLSearchParams build (5), signal abort (1), `useCreatePayment` cross-resource invalidation (1, regression-guard для Bug #245), `useDeleteInvoice` (1), `useInvoiceTransition` (1).
+
+---

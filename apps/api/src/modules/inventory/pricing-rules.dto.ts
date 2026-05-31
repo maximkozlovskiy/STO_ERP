@@ -10,6 +10,7 @@ import {
   Min,
   Max,
   ValidateNested,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -96,6 +97,8 @@ export class CreatePricingRuleDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
+  // Bug #248: anti-DoS cap. COST_TIER з 50 рівнями — і так абсурд для реальної ціноутворення.
+  @ArrayMaxSize(50, { message: 'Не більше 50 рівнів у правилі ціноутворення' })
   @ValidateNested({ each: true })
   @Type(() => CreatePricingRuleTierDto)
   tiers?: CreatePricingRuleTierDto[];
@@ -174,6 +177,8 @@ export class UpdatePricingRuleDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
+  // Bug #248: anti-DoS cap. COST_TIER з 50 рівнями — і так абсурд для реальної ціноутворення.
+  @ArrayMaxSize(50, { message: 'Не більше 50 рівнів у правилі ціноутворення' })
   @ValidateNested({ each: true })
   @Type(() => CreatePricingRuleTierDto)
   tiers?: CreatePricingRuleTierDto[];

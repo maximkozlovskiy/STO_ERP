@@ -407,9 +407,9 @@ export default function InventoryPage() {
           </p>
         ) : (
           <div className="space-y-2">
-            {lowItems.map((item, i) => (
+            {lowItems.map(item => (
               <div
-                key={i}
+                key={`${item.goodId}-${item.warehouseName}`}
                 className="flex items-center justify-between p-3 bg-warning-subtle rounded-lg border border-warning/20"
               >
                 <div>

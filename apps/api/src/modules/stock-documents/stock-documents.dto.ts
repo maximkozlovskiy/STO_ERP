@@ -7,6 +7,7 @@ import {
   IsArray,
   ValidateNested,
   IsEnum,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -43,6 +44,8 @@ export class CreateStockDocumentDto {
   @ApiPropertyOptional({ type: [StockDocumentLineDto] })
   @IsOptional()
   @IsArray()
+  // Bug #248: anti-DoS cap.
+  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у документі обліку' })
   @ValidateNested({ each: true })
   @Type(() => StockDocumentLineDto)
   lines?: StockDocumentLineDto[];
@@ -54,6 +57,7 @@ export class UpdateStockDocumentDto {
   @ApiPropertyOptional({ type: [StockDocumentLineDto] })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у документі обліку' })
   @ValidateNested({ each: true })
   @Type(() => StockDocumentLineDto)
   lines?: StockDocumentLineDto[];
