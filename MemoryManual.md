@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+(pending) fix(tester): cycle 4 — Bugs #266-#272 (WO template hint + loyalty earn integration + PDF nullsafe + AVG_COST orderBy + NaN guard + stale spec)
 cf60952 fix(review): cycle 4 — exhaustive-deps + ApiResponse coverage + safety take caps
 97e1ca3 fix(sync): cycle 4 — align frontend interfaces with API contracts
 319208b perf(optimize): cycle 3 — date-picker memoization + BatchRow memo
@@ -17,6 +18,25 @@ cf60952 fix(review): cycle 4 — exhaustive-deps + ApiResponse coverage + safety
 61720e3 fix(review): cycle 3 — emptyToUndefined on optional UUID/Enum/Date DTOs + TRANSACTION_TIMEOUT_MS unification
 39d2667 fix(sync): align frontend interfaces with API response DTOs (cycle 3)
 Дата: 2026-05-31
+
+Latest tester: 2026-05-31 (sto-tester-agent цикл 4 з 5, FULL HEAD cf60952) — **7 багів виявлено + 6 виправлено + 1 відкритий feat-debt**.
+Фокус циклу: (1) PDF generation null-safety pdfmake, (2) batch consumption FIFO/FEFO/LIFO/AVG_COST, (3) loyalty earn/redeem, (4) work-order-templates clone, (5) SSE stream disconnect handling.
+
+**Знайдено через статичний аналіз + cross-module audit:**
+(0) Bug #272 (MEDIUM baseline blocker) — purchase-orders.service.spec.ts:442,467,550 — assertions без `take: 1000` (cycle 4 optimize додав safety cap). 3 червоних тести у baseline. Виправлено.
+(1) Bug #266 (HIGH frontend-only) — work-orders/page.tsx обіцяв `"шаблон буде додано після відкриття наряду"`, реально lines/parts ніколи не копіюються. Backend full-clone (потребує schema-extension `defaultEmployeeId`/`defaultWarehouseId` у TemplateLine/Part) відкладено у feat-debt. Фронт хінт переписано: `"додайте вручну на сторінці наряду після створення"`.
+(2) Bug #267 (HIGH) — LoyaltyService.queueEarn/earn покритий тестами, але ніколи не викликається з payments/invoices/settlements. Бали ніколи не нараховуються у проді. Додано виклик `loyaltyService.queueEarn(...)` у `PaymentsService.create()` після успішної оплати (non-blocking, log warn при queue-збої). PaymentsModule імпортує LoyaltyModule.
+(3) Bug #268 (MEDIUM, [feat-debt] не виправлено) — BatchService.consumeBatch покритий тестами, але `InventoryService.createMovement(WRITEOFF)` НЕ викликає його — лише декрементує stockItem.quantity. FIFO/FEFO/LIFO/AVG_COST з налаштувань НЕ застосовується при списанні у WO; `StockBatch.remainingQty` ніколи не зменшується після WO. Виправлення потребує refactor inventory.service + costMethod injection — окремий sprint.
+(4) Bug #269 (MEDIUM) — invoices.service.ts:558 `cp?.companyName ?? [...].filter(Boolean).join(' ') ?? ''` — мертвий `?? ''` (`.join` ЗАВЖДИ string); якщо `companyName=''` → counterparty без імені у Invoice PDF. Замінено на `formatPersonName(...) || ''` (узгоджено з work-orders.service.ts:1016). +2 regression-guard PDF specs.
+(5) Bug #270 (LOW) — batch.service.getAvgCost: `findMany({take: 500})` БЕЗ orderBy → недетерміністична AVG_COST коли >500 партій. Додано `orderBy: { createdAt: 'desc' }`.
+(6) Bug #271 (LOW) — loyalty.service.earn без guard на `Number.isFinite` → NaN з upstream Decimal → `Math.floor(NaN)===NaN`, `NaN<=0===false` → balance increment NaN. Додано guard. +4 regression tests (NaN/Infinity/0/happy-path).
+
+**TypeScript:** ✅ 0 errors (api + web + shared). **Unit:** API **493/493** (+7 нових), Web 218/218. **Property-based:** 26/26. **Build:** ✅ webpack 7.8s.
+
+**Known limitation (feat-debt):**
+- BatchService.consumeBatch decoupled від real WO write-off flow (Bug #268). Cost-method-based batch tracking працює тільки для PO receive (через `createFromReceipt`), не для WO write-off. FIFO/FEFO/LIFO/AVG_COST settings — не застосовується. Потребує окремого refactor sprint.
+- WorkOrderTemplate auto-apply lines/parts при create (Bug #266). Schema-extension needed: `TemplateLine.defaultEmployeeId`, `TemplatePart.defaultWarehouseId` АБО UI-step «pick employee/warehouse for template» before create.
+- Loyalty earn integration працює, але `loyaltyEnabled=false` → бали не нараховуються (тестовано unit specs). UI tab loyalty показує balance=0 поки не enable у settings.
 
 Latest review: 2026-05-31 (sto-review-agent цикл 4 з 5, HEAD 8197d60 → cf60952) — **8 файлів** виправлено (5 backend + 3 frontend). Фокус циклу: (1) useEffect exhaustive-deps, (2) findMany без take, (3) контролери без @ApiResponse, (4) форми disabled, (5) catch блоки.
 **Frontend (3 fixes):**

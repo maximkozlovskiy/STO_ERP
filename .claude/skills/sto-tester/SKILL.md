@@ -156,6 +156,7 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 - [ ] **Optional FK у `data: { ...dto }` / `data: dto`** (`brandId`, `unitId`, `preferredSupplierId`, `vehicleId`, `branchId`...) → сервіс валідує КОЖЕН наданий FK через `findFirst({ id: dto.XId, orgId, deletedAt: null })` ПЕРЕД write (патерн Bug #90). Сирий DB FK перевіряє лише глобальне існування `id`, НЕ `orgId` → FK з чужої org проходить → cross-tenant linkage. P2003 ловить ТІЛЬКИ неіснуючий ID, не cross-tenant — тому «P2003 прийнятний» НЕ закриває tenant-isolation. Severity HIGH
 - [ ] **Defense-in-depth для `update` (Bug #191):** жоден `prisma.X.update({ where: { id } })` на org-scoped таблиці без `orgId` у `where`. Prisma не підтримує `update({ where: { id, orgId } })` для primary-key (TS error) → використовувати `updateMany({ where: { id, orgId, deletedAt: null } })` + опціонально `if (count === 0) throw NotFoundException(...)`. Локально безпечно якщо `id` отриманий через org-scoped read, АЛЕ майбутній рефактор/copy-paste у controller без org-check = cross-tenant write без error. Grep: `grep -rn "\.update({ where: { id:" apps/api/src/modules/` — кожен match без `orgId` у where = LOW (profilatic), HIGH якщо викликається з prep-неперевіреним `id`
 - [ ] **FSM transition write-path persistence для new nullable row column (Bug #236):** sprint що додає `nullable colX?: TypeX` у row-модель (`PurchaseOrderLine`/`StockDocumentLine`/`InvoiceLine`/`WorkOrderPart`) + mapping `colX: l.colX ?? null` у `toDto` → у кожному `transition(STATE)` / `receive()` / `applyPricing()` / FSM-обчислювальному методі, де обчислюється resolved value (наприклад `lineUnitId = good.unitId`) і пропагується у side-effect resource (`inventory.createMovement(colX: lineUnitId)`/`stockMovement.create({ colX })`), ОБОВ'ЯЗКОВО має бути парний `tx.<rowTable>.update({ where: { id: line.id }, data: { colX: resolvedValue } })` для самого row, всередині $transaction. Інакше `findOne(id).lines[i].colX === null` назавжди → cross-resource inconsistency: history (movements) має X, current state (line) має NULL → audit/sync/export ламається. Symmetric-write для Bug #232 (read-side missing include). Grep: `grep -rnE "[a-z]*Id:\s*l\.[a-z]*Id\s*\?\?\s*null" apps/api/src/modules --include="*.service.ts"` → для кожного match у відповідному `transition()`/`receive()`/`applyPricing()` шукати `tx.<row>.update.*data.*colX`. Severity HIGH (silent data integrity)
+- [ ] **Dead-feature integration audit (Bugs #267, #268):** для КОЖНОГО `@Injectable` сервісу з queue/processor companion (`@nestjs/bull`, `@Processor`, `@InjectQueue`) — перевірити чи real callsite викликає його з payments/invoices/work-orders/settlements flow. Grep: `grep -rl "InjectQueue\|@Processor" apps/api/src/modules --include="*.ts"` → для кожного service-метода: `grep -rln "\.<method>(" apps/api/src --include="*.ts" | grep -v "spec\|<own-module>"` → якщо count=0 → bug. Парний сигнал: UI tab/sidebar/settings для фічі АЛЕ нема telemetry/trigger. Severity HIGH якщо feature розрекламована користувачу (`loyalty.queueEarn` ніколи не викликається з payments → бали не нараховуються); MEDIUM якщо admin/internal (`batch.consumeBatch` ніколи з inventory WRITEOFF → cost-method не застосовується). Фікс: додати виклик у trigger service (з `.catch(warn)` для non-blocking) + import відповідного Module у trigger Module + DI injection
 
 #### Prisma schema ↔ migration parity (release-blocker)
 
@@ -477,6 +478,7 @@ done
 - [ ] **React Query custom hook без `*.test.tsx` (Bug #214):** новий `apps/web/src/hooks/api/use*.ts` з `useQuery`/`useMutation` потребує парний `*.test.tsx`. Тести покривають: (1) queryKey factory ізоляція (різні фільтри → різні ключі); (2) enabled-gate (`employee=null` → no fetch); (3) URLSearchParams build (кожне опціональне поле → відповідний URL param АБО відсутній якщо false-y); (4) signal abort (apiFetch отримує signal). Шаблон: `useWorkOrders.test.tsx`. Mock `apiFetch` + `useAuth`. Не використовувати реальний `QueryClientProvider` — створити свіжий `QueryClient` per-test з `retry: false`. Без цих тестів — silent URL param drift (як 3d5136d repairCategory regression) пройде CI зеленим
 - [ ] **UoM display-vs-base mismatch на submit (Bug #231):** будь-який `<Select>` що дозволяє перемикати UoM з recalc display quantity (Krok 5 patten: `coefficient` + `unitId` + `unitShortName` у local lines state) ОБОВ'ЯЗКОВО має у submit-функції конвертувати display→base: `quantity: parseFloat(l.quantity) * (l.coefficient || 1)` і `price: parseFloat(l.price) / (l.coefficient || 1)`. Display-transition formula `newDisplay = oldDisplay * oldCoeff / newCoeff` зберігає інваріант між двома UoMs, АЛЕ submit потребує **окремої** конверсії до base. Якщо submit шле `parseFloat(l.quantity)` як-є → backend (що очікує base units) отримує display value → silent data corruption у stock movement / payable / applyPricing. Видно ЛИШЕ коли coefficient != 1; happy-path з default UoM (coeff=1) — без регресії. Grep: `grep -rnE "quantity:\s*parseFloat\(l\.quantity\)[^*]" apps/web/src/app --include="*.tsx" -B5 | grep -B5 "coefficient"` — кожен match без `* coeff`/`* (l.coefficient` = CRITICAL bug. Backend пара: `inventory.createMovement(quantity: l.quantity)` без UoM-conversion — підтвердження що quantity ОЧІКУЄТЬСЯ у base units. Severity: CRITICAL (release-blocker)
 - [ ] **Mass DTO field migration completeness — include audit (Bug #232):** додавання нового поля (`unitShortName`/`coefficient`) у `*.dto.ts` `LineResponseDto` + `toLineDto`-mapping без оновлення Prisma `include` queries → поле завжди undefined у API response. Розробник додав `select: { unitOfMeasure: { select: { shortName, coefficient } } }` у service X, забув у service Y. Grep: для кожного `unitShortName`/`coefficient`/інше нове DTO-поле — для кожного `prisma.X.findFirst/findMany/findFirstOrThrow/create/update` що повертається через `toLineDto`/`toDto` → перевірити що relevant `include` присутній. Pair-check: `grep -n "good?.unitOfMeasure" apps/api/src/modules/**/*.service.ts` (consumer) vs `grep -n "unitOfMeasure:" apps/api/src/modules/**/*.service.ts | grep -v ".dto.ts"` (producer/include). Якщо consumer-count > producer-count за модулем — bug. Severity: MEDIUM (data display, не runtime crash; але feature що додано саме для UX — мертвий)
+- [ ] **Frontend hint обіцяє backend behavior якого немає (Bug #266):** для кожного UI-хінту що містить «буде (додано|застосовано|скопійовано|створено|нараховано|використано|враховано|оновлено)» / «автоматично (X|застосується|створиться|нарахується|спрацює)» / «після (створення|відкриття|збереження)» — знайти найближчу POST/PATCH-функцію + перевірити чи body передає поле що упроваджує обіцяну дію. Grep: `grep -rnE "буде (додано|застосовано|скопійовано|створено|нараховано|використано|враховано|оновлено)|автоматично" apps/web/src --include="*.tsx"`. Парний сигнал: `<Select>`/`<input>` поряд з хінтом — value не передається у submit body → bug. Severity HIGH (feature розрекламована як автоматична). Фікс: реалізувати backend integration АБО переписати hint чесно `"додайте вручну ... після створення"`
 - [ ] **Sub-resource default-flag mutation → parent-list staleness (Bug #226-#227):** для будь-якого sub-resource CRUD у modal-табі (`addX`/`setDefaultX`/`removeX` що викликають `/<parent>/:id/<sub>` ендпоінти) — pair-check проти backend service: чи endpoint виконує `prisma.<Parent>.update/updateMany({...})` (наприклад `Good.unitId` оновлюється коли default UoM змінюється)? Якщо так, success-handler frontend ОБОВ'ЯЗКОВО викликає `load()` для parent-table АБО invalidate `<parentKeys>.all`. Conditional: `addX` тільки коли `isFirst === true` (зчитати з backend → у response `created.isDefault`); `setDefaultX` завжди; `removeX` тільки якщо видаляли default (capture `wasDefault` перед DELETE). **Auto-promote next-default:** коли backend `removeX` логіка пише `findFirst({orderBy:createdAt asc}) + update({isDefault:true})` (наприклад `removeUoM` у `goods.service.ts`), оптимістичний `setModalXs(prev => prev.filter(...))` у клієнті НЕВІРНИЙ — replace optimistic filter на `refreshXs(parentId)` (race-guarded через існуючий reqRef). Grep: `grep -rn "apiFetch.*method:.*'POST\|PATCH\|DELETE'" apps/web/src/app --include="*.tsx" | grep -E "/uoms|/barcodes|/categories|/tax-rates|/warranties|/contacts|/services"` — pair-check проти backend. Severity: MEDIUM коли стале значення впливає на бізнес-сприйняття; HIGH коли стале значення гейтить наступну дію
 
 ---
@@ -839,6 +841,115 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-31 — Dead-feature integration audit: implemented + tested service ніколи не викликається з реального flow (Bugs #267, #268) — backend, dead-code, business-logic-gap
+
+**Сигнал:** сервіс має повний implementation pattern (DI constructor + @Injectable + processor + BullMQ queue + unit-spec покриваючи happy/error paths) АЛЕ `grep -rn "<service>\.<method>(" apps/api/src --include="*.ts" | grep -v spec` повертає **тільки 2 рядки**:
+
+1. Самоопис у service.ts (`async X() { ... }`)
+2. Виклик у processor.ts (queue worker — bridge між BullMQ і service)
+
+Жоден інший сервіс (payments, invoices, settlements, work-orders) НЕ викликає `service.X` чи `service.queueX`. Це означає бізнес-flow, який мав би тригерити дію — ніколи не тригерить. Виявлено у:
+
+- **Bug #267 (HIGH)** — `LoyaltyService.queueEarn` / `LoyaltyService.earn`: повний BullMQ pipeline + unit specs + OrganisationSettings UI tab — ніколи не викликається з payments. Бали лояльності ніколи не нараховуються.
+- **Bug #268 (MEDIUM)** — `BatchService.consumeBatch`: повний FIFO/FEFO/LIFO/AVG_COST tests + integration з batch consumption table — ніколи не викликається з `inventory.createMovement(WRITEOFF)`. Batch tracking decoupled від WO write-off.
+
+**Причина виникнення:** sprint-структура (feat-sprint #1: «Implement loyalty service») vs (feat-sprint #2: «Integrate loyalty into payment flow») — другий sprint часто **відкладається** як «follow-up», робиться інша робота, через рік документація каже «фіча є», UI tab показує її, але **integration point не написаний**. Спостерігається у тестових системах де unit tests pass, contract specs pass (бо мокають service з payments) — НЕ покривають end-to-end flow. Code review бачить «сервіс OK, тести зелені» і пропускає.
+
+**Підхід до виявлення:** на Кроці 1 §1.1 — для КОЖНОГО `@Injectable` сервісу що має queue/processor companion (`@nestjs/bull`, `@Processor`):
+
+```bash
+# Знайти сервіси з queue infrastructure
+grep -rl "InjectQueue\|@Processor" apps/api/src/modules --include="*.ts" | while read f; do
+  service=$(dirname "$f")
+  # Знайти всі public методи сервісу
+  for method in $(grep -oE "async [a-zA-Z]+\(" "$service"/*.service.ts | sed 's/async //;s/(//' | sort -u); do
+    # Перевірити callsites поза модулем самого сервісу + поза spec
+    callers=$(grep -rln "\.$method\(" apps/api/src --include="*.ts" | grep -v "spec\|$service" | wc -l)
+    if [ "$callers" -eq 0 ]; then
+      echo "DEAD: $f::$method (only callers: own module + spec)"
+    fi
+  done
+done
+```
+
+Парний сигнал: UI має tab/sidebar/settings для цієї фічі (наприклад settings.tsx показує `loyaltyEnabled` toggle + counterparty page показує loyalty balance card) — це означає фіча розрекламована для користувача, але інтеграція мертва. Severity автоматично HIGH (broken promise).
+
+Також перевірити callsites через ` ` (грantion-symbol) — sometimes service called через event emitter / pub-sub без прямого `.method()` виклику.
+
+**Підхід до фіксу:** ідентифікувати **природний trigger point** для фічі і додати виклик там, з захистом:
+
+- **Не блокуючий** виклик (`.catch(err => logger.warn(...))`) — щоб помилка інтеграції не блокувала основний flow (платіж проходить навіть якщо queue вниз).
+- **Imported модуль** у відповідний `*.module.ts` (LoyaltyModule → PaymentsModule.imports[]).
+- **DI у constructor** з нової залежності.
+- **Spec-update** — додати integration-test що мокає loyaltyService.queueEarn і верифікує що `.toHaveBeenCalledWith(orgId, counterpartyId, amount, paymentId)` при успішному `payments.create`.
+
+**Severity:** HIGH коли feature розрекламована (UI tab/sidebar/settings); MEDIUM коли internal optimization (batch tracking — admin-only audit feature); CRITICAL коли security-критична (audit log integration).
+
+**Де шукати ще:** будь-який модуль з queue/processor companion (notifications, webhooks, exports, sync) — перевірити чи trigger-сервіс реально викликає `queueX`. Особливо коли:
+
+- Новий модуль доданий нещодавно (sprint 21+ у STO ERP).
+- Module має `BullModule.registerQueue` АЛЕ payments/work-orders/settlements не імпортує цей модуль.
+- Settings-tab/dashboard-card для фічі існує АЛЕ нема telemetry/audit-logs про trigger.
+
+---
+
+### 2026-05-31 — Frontend hint обіцяє backend behavior якого немає (Bug #266) — frontend, ux-lie, contract-gap
+
+**Сигнал:** UI-хінт (зазвичай `<p className="text-xs text-muted-foreground">`) під selector/checkbox/input обіцяє автоматичну backend-дію:
+
+- `"буде додано після відкриття наряду"`
+- `"автоматично застосується при наступному платежі"`
+- `"скопіюється у новий документ"`
+- `"буде використано як шаблон для X"`
+
+АЛЕ:
+
+- POST/PATCH body запиту НЕ містить відповідного поля (наприклад `templateId` для template apply).
+- DTO на бекенді НЕ має такого поля.
+- Service-метод НЕ виконує описаної дії.
+
+Знайдено у Bug #266: WO create modal показує `Select шаблону` + хінт «буде додано після відкриття наряду», але:
+
+1. `create()` POST body має `{branchId, vehicleId, counterpartyId, description, ...}` — НЕ `templateId`.
+2. `CreateWorkOrderDto` НЕ має `templateId`.
+3. `WorkOrdersService.create` НЕ зчитує шаблон і НЕ копіює `lines`/`parts`.
+
+UI відверто бреше користувачу. Користувач створює наряд, відкриває його, чекає на lines/parts → їх немає → confused/frustrated.
+
+**Причина виникнення:** UI-mockup створено раніше backend-логіки. Розробник пише UI-промо-текст («буде додано»), думаючи що backend подальше зробить це. Backend sprint фокусується на іншій частині, hint лишається. Code review не помічає, бо це лише `<p>` text — виглядає інформативно.
+
+**Підхід до виявлення:** на Кроці 1 §1.3 — grep всі UI-хінти зі словами-обіцянками:
+
+```bash
+# Знайти UI хінти що обіцяють backend-дію
+grep -rnE "буде (додано|застосовано|скопійовано|створено|нараховано|використано|враховано|оновлено)|автоматично (X|застосується|створиться|нарахується|спрацює)|після (створення|відкриття|збереження)" apps/web/src --include="*.tsx" | head -20
+
+# Для кожного хінту → знайти найближчу POST/PATCH-функцію → перевірити чи body містить
+# поле, яке упроваджує обіцяну дію (templateId, applyMaintenanceScheduleId, copyFromId).
+# Якщо НЕ містить — bug.
+```
+
+Парний сигнал: під хінтом є `<Select>` / `<input>` що збирає user-input — якщо value цього controlу НЕ передається у submit-body, hint бреше про backend (хоч можливо переноситься у iншу частину UI flow).
+
+**Підхід до фіксу:** один з двох:
+
+1. **Реалізувати backend integration** (preferred): додати поле у DTO, валідацію тенант-ізоляції, service-логіку, integration-test. + frontend передавати значення у POST.
+2. **Переписати hint чесно** (мінімум): якщо реалізація blocked (як WO template — потребує schema-extension `defaultEmployeeId`/`defaultWarehouseId`), замінити обіцянку на чесний опис:
+   - Було: `"буде додано після відкриття наряду"`
+   - Стало: `"додайте вручну на сторінці наряду після створення"`
+
+**Severity:** HIGH коли feature розрекламована як автоматична (selectсr + хінт у головному UI flow); MEDIUM коли opt-in (checkbox що користувач свідомо вмикає).
+
+**Де шукати ще:** modal-форми створення (create modal у \*.page.tsx) — найімовірніше місце для такого drift. Особливо коли:
+
+- Новий feature sprint торкнувся ТІЛЬКИ UI частини.
+- Backend має CRUD для resource, але «integration з X» — TODO.
+- UI hint містить слово-обіцянку без code-comment що пояснює гарантує-яка частина.
+
+Профілактика: SKILL §1.3 додано checklist item — перевіряти кожен UI-хінт-обіцянку проти POST body і service-логіки.
+
+---
 
 ### 2026-05-31 — Mass DTO migration variant audit: всі validator-варіанти + inline 1-рядкові форми (Bugs #257-#265) — backend, dto-validation, sprint-completeness
 
