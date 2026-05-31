@@ -1106,6 +1106,17 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ---
 
+### 2026-05-31 — Controller з `@UseGuards(JwtAuthGuard, RolesGuard)` без `@Roles` на методах → RolesGuard no-op — §2.1 Auth & Guards
+
+**Сигнал:** `@Controller` має `@UseGuards(JwtAuthGuard, RolesGuard)` (class- або method-level), але метод НЕ має `@Roles(...)` декоратора. `RolesGuard.canActivate` повертає `true` коли `required.length === 0` → guard стає no-op, пропускає **всіх** авторизованих користувачів незалежно від ролі (включно з MECHANIC до cost-чутливих endpoint-ів). TS зелений, ApiBearerAuth є — security gap невидимий статично без перевірки кожного методу.
+**Причина виникнення:** розробник додає `RolesGuard` на клас з ідеєю "потім додам @Roles на кожен метод"; для read-only endpoint вирішує "пускаємо всіх логнутих, payload безпечний"; забуває що (1) майбутній рефактор може додати чутливе поле; (2) defence-in-depth invariant порушений; (3) review-чекліст ловить тільки `@UseGuards` відсутність, а не `@Roles` відсутність окремо.
+**Підхід до виявлення:** для кожного method-level `@Get|@Post|@Patch|@Delete` у `*.controller.ts` що використовує `RolesGuard` — звірити що поряд є `@Roles(...)`. Один-рядковий grep: `grep -B5 "@Get\|@Post\|@Patch\|@Delete" *.controller.ts | grep -v "@Roles\|@Public"` → знайти методи без @Roles. Особливо ризиково для search/lookup/reference-data endpoints що "виглядають read-only".
+**Підхід до фіксу:** explicit `@Roles('OWNER','ADMIN',...)` з повним переліком ролей; якщо endpoint реально публічний — `@Public()`. Для search-подібних з різними payload-комбінаціями: rolse list = unión всіх що мають мати доступ; не "пропустимо всіх" silent.
+**Критичність:** IMPORTANT — degradation без immediate breach; payload може бути зараз безпечним, але інвариант "RolesGuard виконує перевірку" порушений → майбутній field-add без update @Roles = silent privilege escalation.
+**Де шукати ще:** будь-який lookup/search/reference endpoint (`/zones`, `/units`, `/lifts`, `/branches`, `/works`); після рефакторингу контролера що додає `RolesGuard` на клас але переніс method bodies без `@Roles`; під час phase-driven module додавання коли `@Roles` "залишається на наступний крок".
+
+---
+
 ### 2026-05-31 — Modal/Lightbox без Escape + role=dialog + aria-modal — §8 Web Frontend (a11y)
 
 **Сигнал:** новий компонент `<div className="fixed inset-0 z-50 ...">` (lightbox/overlay/full-screen modal) без `role="dialog"`, без `aria-modal="true"`, без `aria-label`, без `useEffect` що ловить `Escape` keydown; close-button без `aria-label` та `type="button"`
