@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useStockDocuments, stockDocsKeys } from '@/hooks/api/useStockDocuments';
 import { Plus, FileText, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -160,13 +162,22 @@ export default function StockDocumentsPage() {
 
   const detailPanel = useDetailPanel('stock-documents');
 
-  const [docs, setDocs] = useState<StockDoc[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
-  const [loading, setLoading] = useState(true);
+
+  const qc = useQueryClient();
+  const { data: docsData, isLoading: loading } = useStockDocuments({
+    page,
+    limit: 20,
+    type: typeFilter || undefined,
+    status: statusFilter || undefined,
+    showDeleted,
+  });
+  const docs = docsData?.items ?? [];
+  const total = docsData?.total ?? 0;
+  const invalidate = () => qc.invalidateQueries({ queryKey: stockDocsKeys.all });
   const [error, setError] = useState('');
 
   const [selectedDoc, setSelectedDoc] = useState<StockDoc | null>(null);
@@ -283,28 +294,7 @@ export default function StockDocumentsPage() {
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   const limit = 20;
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-      if (typeFilter) params.set('type', typeFilter);
-      if (statusFilter) params.set('status', statusFilter);
-      if (showDeleted) params.set('showDeleted', 'true');
-      const data = await apiFetch<Paginated>(`/stock-documents?${params}`);
-      setDocs(data.items);
-      setTotal(data.total);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, typeFilter, statusFilter, showDeleted]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const load = invalidate;
 
   useEffect(() => {
     if (!showCreate) return;

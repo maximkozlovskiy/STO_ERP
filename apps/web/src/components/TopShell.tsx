@@ -37,6 +37,10 @@ import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
 import { invoicesKeys } from '@/hooks/api/useInvoices';
 import { purchaseOrdersKeys } from '@/hooks/api/usePurchaseOrders';
 import { employeesKeys } from '@/hooks/api/useEmployees';
+import { bookingKeys } from '@/hooks/api/useBookingRequests';
+import { pricingRulesKeys } from '@/hooks/api/usePricingRules';
+import { stockDocsKeys } from '@/hooks/api/useStockDocuments';
+import { infraKeys } from '@/hooks/api/useInfrastructure';
 import { ToastContainer } from '@/components/ui/toast';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -211,6 +215,52 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       queryFn: ({ signal }) => apiFetch('/counterparties?limit=200', { signal }),
       staleTime: 30_000,
     }),
+  '/bookings': qc =>
+    void qc.prefetchQuery({
+      queryKey: bookingKeys.list(),
+      queryFn: ({ signal }) =>
+        apiFetch<{ items: unknown[]; total: number }>('/booking', { signal }).then(
+          r => r.items ?? [],
+        ),
+      staleTime: 30_000,
+    }),
+  '/pricing-rules': qc =>
+    void qc.prefetchQuery({
+      queryKey: pricingRulesKeys.list(),
+      queryFn: ({ signal }) =>
+        apiFetch<{ items: unknown[]; total: number }>('/pricing-rules', { signal }).then(
+          d => d.items,
+        ),
+      staleTime: 30_000,
+    }),
+  '/stock-documents': qc =>
+    void qc.prefetchQuery({
+      queryKey: stockDocsKeys.list({}),
+      queryFn: ({ signal }) => apiFetch('/stock-documents?page=1&limit=20', { signal }),
+      staleTime: 30_000,
+    }),
+  '/infrastructure': qc => {
+    void qc.prefetchQuery({
+      queryKey: infraKeys.branches,
+      queryFn: ({ signal }) => apiFetch('/branches', { signal }),
+      staleTime: 5 * 60_000,
+    });
+    void qc.prefetchQuery({
+      queryKey: infraKeys.zones,
+      queryFn: ({ signal }) => apiFetch('/zones', { signal }),
+      staleTime: 5 * 60_000,
+    });
+    void qc.prefetchQuery({
+      queryKey: infraKeys.lifts,
+      queryFn: ({ signal }) => apiFetch('/lifts', { signal }),
+      staleTime: 5 * 60_000,
+    });
+    void qc.prefetchQuery({
+      queryKey: infraKeys.warehouses,
+      queryFn: ({ signal }) => apiFetch('/warehouses', { signal }),
+      staleTime: 5 * 60_000,
+    });
+  },
 };
 
 const ROLE_LABELS: Record<string, string> = {

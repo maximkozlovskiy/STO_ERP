@@ -1,6 +1,10 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
+import { infraKeys } from '@/hooks/api/useInfrastructure';
+import { setCache } from '@/lib/ref-cache';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -23,7 +27,6 @@ import {
 } from '@/components/ui/table';
 import { cn, daysUntil } from '@/lib/utils';
 import { fmtDate } from '@/lib/format';
-import { getCached, setCache } from '@/lib/ref-cache';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -106,11 +109,47 @@ export default function InfrastructurePage() {
   useRequireAuth(['OWNER', 'ADMIN']);
   const { confirm, dialogProps } = useConfirm();
   const [tab, setTab] = useState<Tab>('branches');
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [zones, setZones] = useState<Zone[]>([]);
-  const [lifts, setLifts] = useState<Lift[]>([]);
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: infraKeys.all });
+  const opts = { staleTime: 5 * 60_000, placeholderData: keepPreviousData } as const;
+
+  const { data: branches = [], isLoading: loadingBranches } = useQuery<Branch[]>({
+    queryKey: infraKeys.branches,
+    queryFn: ({ signal }) =>
+      apiFetch<Branch[]>('/branches', { signal }).then(d => {
+        setCache('cache:branches', d);
+        return d;
+      }),
+    ...opts,
+  });
+  const { data: zones = [], isLoading: loadingZones } = useQuery<Zone[]>({
+    queryKey: infraKeys.zones,
+    queryFn: ({ signal }) =>
+      apiFetch<Zone[]>('/zones', { signal }).then(d => {
+        setCache('cache:zones', d);
+        return d;
+      }),
+    ...opts,
+  });
+  const { data: lifts = [], isLoading: loadingLifts } = useQuery<Lift[]>({
+    queryKey: infraKeys.lifts,
+    queryFn: ({ signal }) =>
+      apiFetch<Lift[]>('/lifts', { signal }).then(d => {
+        setCache('cache:lifts', d);
+        return d;
+      }),
+    ...opts,
+  });
+  const { data: warehouses = [], isLoading: loadingWarehouses } = useQuery<Warehouse[]>({
+    queryKey: infraKeys.warehouses,
+    queryFn: ({ signal }) =>
+      apiFetch<Warehouse[]>('/warehouses', { signal }).then(d => {
+        setCache('cache:warehouses', d);
+        return d;
+      }),
+    ...opts,
+  });
+  const loading = loadingBranches || loadingZones || loadingLifts || loadingWarehouses;
   const [error, setError] = useState('');
   const [modal, setModal] = useState<'branch' | 'zone' | 'lift' | 'warehouse' | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -123,46 +162,7 @@ export default function InfrastructurePage() {
     setNowMs(Date.now());
   }, []);
 
-  const loadAll = () => {
-    setLoading(true);
-    // Paint instantly from sessionStorage, then refresh in parallel. This page is
-    // the management source for these reference lists, so it always re-fetches
-    // fresh; writing setCache after the fetch warms the shared ref-cache AND
-    // propagates edits/deletes here to consumer pages (employees, work-orders,
-    // inventory…) on their next mount.
-    const cBranches = getCached<Branch[]>('cache:branches');
-    const cZones = getCached<Zone[]>('cache:zones');
-    const cLifts = getCached<Lift[]>('cache:lifts');
-    const cWarehouses = getCached<Warehouse[]>('cache:warehouses');
-    if (cBranches) setBranches(cBranches);
-    if (cZones) setZones(cZones);
-    if (cLifts) setLifts(cLifts);
-    if (cWarehouses) setWarehouses(cWarehouses);
-    Promise.all([
-      apiFetch<Branch[]>('/branches').then(d => {
-        setBranches(d);
-        setCache('cache:branches', d);
-      }),
-      apiFetch<Zone[]>('/zones').then(d => {
-        setZones(d);
-        setCache('cache:zones', d);
-      }),
-      apiFetch<Lift[]>('/lifts').then(d => {
-        setLifts(d);
-        setCache('cache:lifts', d);
-      }),
-      apiFetch<Warehouse[]>('/warehouses').then(d => {
-        setWarehouses(d);
-        setCache('cache:warehouses', d);
-      }),
-    ])
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    loadAll();
-  }, []);
+  const loadAll = invalidate;
 
   const openModal = (type: typeof modal, defaults: Record<string, string> = {}) => {
     setEditingId(null);

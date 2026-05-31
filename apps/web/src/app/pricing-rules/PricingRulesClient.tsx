@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
+import { pricingRulesKeys } from '@/hooks/api/usePricingRules';
 import { Plus, Pencil, Trash2, Zap, Upload } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
@@ -499,10 +502,20 @@ export default function PricingRulesClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
   const { confirm, dialogProps } = useConfirm();
-  const [rules, setRules] = useState<PricingRule[]>([]);
+  const qc = useQueryClient();
+  const { data: rules = [], isLoading: loading } = useQuery<PricingRule[]>({
+    queryKey: pricingRulesKeys.list(),
+    queryFn: ({ signal }) =>
+      apiFetch<{ items: PricingRule[]; total: number }>('/pricing-rules', { signal }).then(
+        d => d.items,
+      ),
+    enabled: true,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+  const invalidateRules = () => qc.invalidateQueries({ queryKey: pricingRulesKeys.all });
   const [goods, setGoods] = useState<Good[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modal, setModal] = useState(false);
   const [editRule, setEditRule] = useState<PricingRule | null>(null);
@@ -538,21 +551,7 @@ export default function PricingRulesClient() {
     };
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      const data = await apiFetch<{ items: PricingRule[]; total: number }>('/pricing-rules');
-      if (mountedRef.current) setRules(data.items);
-    } catch (e: unknown) {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    setLoading(true);
-    load();
-  }, [load]);
+  const load = invalidateRules;
 
   useEffect(() => {
     let cancelled = false;

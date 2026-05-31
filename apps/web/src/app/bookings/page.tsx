@@ -1,28 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { useQueryClient } from '@tanstack/react-query';
+import { useBookingRequests, bookingKeys } from '@/hooks/api/useBookingRequests';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { fmtDate, fmtDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface BookingRequest {
-  id: string;
-  status: string;
-  clientName: string;
-  clientPhone: string;
-  requestedDate: string;
-  branchId: string;
-  branchName?: string | null;
-  notes?: string | null;
-  createdAt: string;
-}
-
-// ─── Constants ───────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Очікує',
@@ -36,50 +22,23 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-secondary text-muted-foreground',
 };
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function BookingsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
 
-  const [requests, setRequests] = useState<BookingRequest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
+  const { data: requests = [], isLoading: loading, error: queryError } = useBookingRequests();
+  const invalidate = () => qc.invalidateQueries({ queryKey: bookingKeys.all });
+
   const [error, setError] = useState('');
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  // Bug #256: mountedRef для race-protection — без нього unmount під час
-  // fetch → setRequests/setLoading на unmounted component (React warning + leak).
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    apiFetch<{ items: BookingRequest[]; total: number }>('/booking')
-      .then(r => {
-        if (mountedRef.current) setRequests(r.items ?? []);
-      })
-      .catch((e: unknown) => {
-        if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
-      })
-      .finally(() => {
-        if (mountedRef.current) setLoading(false);
-      });
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const confirm = async (id: string) => {
     setConfirmingId(id);
     setError('');
     try {
       await apiFetch(`/booking/${id}/confirm`, { method: 'PATCH' });
-      load();
+      invalidate();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка підтвердження');
     } finally {
@@ -92,7 +51,7 @@ export default function BookingsPage() {
     setCancellingId(id);
     try {
       await apiFetch(`/booking/${id}`, { method: 'DELETE' });
-      load();
+      invalidate();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка скасування');
     } finally {
@@ -100,18 +59,20 @@ export default function BookingsPage() {
     }
   };
 
+  const displayError = error || (queryError instanceof Error ? queryError.message : '');
+
   return (
     <div className="page-container space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Онлайн-запис</h1>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={invalidate} disabled={loading}>
           Оновити
         </Button>
       </div>
 
-      {error && (
+      {displayError && (
         <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
-          {error}
+          {displayError}
         </p>
       )}
 
