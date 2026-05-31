@@ -1,0 +1,108 @@
+import { test, expect } from '@playwright/test';
+
+test.use({ storageState: 'e2e/.auth/admin.json' });
+
+// ─── Список контрагентів ─────────────────────────────────────────────────────
+
+test.describe('CRM — список контрагентів', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/crm');
+    await page.waitForLoadState('domcontentloaded');
+  });
+
+  test('сторінка завантажується', async ({ page }) => {
+    await expect(page.locator('nextjs-portal, [data-nextjs-dialog]')).not.toBeVisible();
+  });
+
+  test('таблиця або empty state відображається', async ({ page }) => {
+    const table = page.locator('table, [role="table"]');
+    const emptyState = page.locator('[data-testid="empty-state"], text=/немає контрагентів/i');
+    await expect(table.or(emptyState).first()).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('пошук по контрагентах — input присутній', async ({ page }) => {
+    const searchInput = page
+      .locator('input[placeholder*="Пошук"], input[placeholder*="пошук"], input[type="search"]')
+      .first();
+    await expect(searchInput).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('фільтр по типу контрагента присутній', async ({ page }) => {
+    // Select або кнопки: Клієнт / Постачальник / Всі
+    const typeFilter = page
+      .locator(
+        'select, button:has-text("Клієнт"), button:has-text("Постачальник"), [data-testid="type-filter"]',
+      )
+      .first();
+    await expect(typeFilter).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('кнопка "Новий контрагент" присутня', async ({ page }) => {
+    const newBtn = page
+      .locator(
+        'button:has-text("Новий"), button:has-text("Додати"), [data-testid="new-counterparty"]',
+      )
+      .first();
+    await expect(newBtn).toBeVisible({ timeout: 10_000 });
+  });
+});
+
+// ─── Пошук ───────────────────────────────────────────────────────────────────
+
+test.describe('CRM — пошук', () => {
+  test('пошук фільтрує результати', async ({ page }) => {
+    await page.goto('/crm');
+    await page.waitForLoadState('domcontentloaded');
+
+    const searchInput = page
+      .locator('input[placeholder*="Пошук"], input[placeholder*="пошук"]')
+      .first();
+    if (!(await searchInput.isVisible({ timeout: 5_000 }))) return;
+
+    // Введення рядка що точно не співпадає → empty state або менше результатів
+    await searchInput.fill('zzz_not_existing_xyz_123');
+    await page.waitForTimeout(600); // debounce
+
+    const rows = page.locator('table tbody tr');
+    const emptyState = page.locator('[data-testid="empty-state"], text=/нічого не знайдено/i');
+    const count = await rows.count();
+    const hasEmpty = await emptyState.isVisible().catch(() => false);
+    expect(count === 0 || hasEmpty).toBe(true);
+  });
+});
+
+// ─── Картка контрагента ─────────────────────────────────────────────────────
+
+test.describe('CRM — картка контрагента', () => {
+  test('картка відкривається та має таби', async ({ page }) => {
+    await page.goto('/crm');
+    await page.waitForLoadState('domcontentloaded');
+
+    const firstRow = page.locator('table tbody tr').first();
+    if (!(await firstRow.isVisible({ timeout: 5_000 }))) return;
+
+    await firstRow.click();
+    await page.waitForLoadState('domcontentloaded');
+
+    await expect(page).toHaveURL(/\/crm\/[a-z0-9-]+/, { timeout: 10_000 });
+
+    // Таби: Загальна інформація, Гаражі та авто, Взаєморозрахунки, Наряди
+    const tabs = page.locator('[role="tab"], button[data-state]');
+    await expect(tabs.first()).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('картка показує баланс контрагента', async ({ page }) => {
+    await page.goto('/crm');
+    await page.waitForLoadState('domcontentloaded');
+
+    const firstRow = page.locator('table tbody tr').first();
+    if (!(await firstRow.isVisible({ timeout: 5_000 }))) return;
+
+    await firstRow.click();
+    await page.waitForLoadState('domcontentloaded');
+
+    // Баланс у картці (може бути в DetailPanel або окремій секції)
+    const balanceEl = page.locator('text=/баланс|Balance|грн|₴/i').first();
+    await expect(balanceEl).toBeVisible({ timeout: 10_000 });
+  });
+});

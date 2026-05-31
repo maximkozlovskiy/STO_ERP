@@ -1,17 +1,53 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+
 export default defineConfig({
   testDir: './e2e',
   testIgnore: ['**/setup-auth.ts'],
   globalSetup: './e2e/setup-auth.ts',
+
   timeout: 30_000,
-  retries: 1,
+  expect: { timeout: 8_000 },
+  retries: process.env.CI ? 2 : 1,
   fullyParallel: true,
-  reporter: 'list',
+  workers: process.env.CI ? 2 : undefined,
+
+  reporter: process.env.CI
+    ? [['github'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]
+    : [['list'], ['html', { open: 'on-failure', outputFolder: 'playwright-report' }]],
+
   use: {
-    baseURL: 'http://localhost:3001',
+    baseURL: BASE_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    video: 'on-first-retry',
+    locale: 'uk-UA',
+    timezoneId: 'Europe/Kyiv',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+
+  // Автозапуск Next.js dev-сервера якщо він не запущений.
+  // CI: пропускаємо (сервер запускається окремо у workflow).
+  // Local: стартуємо якщо порт 3001 вільний.
+  webServer: process.env.CI
+    ? undefined
+    : {
+        command: 'pnpm --filter @sto/web dev',
+        url: BASE_URL,
+        reuseExistingServer: true,
+        timeout: 60_000,
+        env: {
+          NEXT_PUBLIC_API_URL: API_URL,
+        },
+      },
+
+  outputDir: 'test-results',
 });
