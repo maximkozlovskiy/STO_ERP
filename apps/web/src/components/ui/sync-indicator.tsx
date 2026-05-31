@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fmtTime } from '@/lib/format';
 
 type SyncStatus = 'idle' | 'syncing' | 'offline' | 'error';
 
@@ -63,7 +64,7 @@ export function SyncIndicator() {
         status === 'offline' && 'text-warning',
         status === 'error' && 'text-destructive',
       )}
-      title={lastSync ? `Синхронізовано: ${lastSync.toLocaleTimeString('uk-UA')}` : undefined}
+      title={lastSync ? `Синхронізовано: ${fmtTime(lastSync)}` : undefined}
     >
       {status === 'syncing' ? (
         <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />

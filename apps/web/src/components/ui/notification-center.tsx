@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Bell, X, CheckCheck, Info, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fmtTime } from '@/lib/format';
 
 export type NotifType = 'info' | 'success' | 'warning' | 'error';
 
@@ -199,10 +200,7 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
                         </p>
                       )}
                       <p className="text-[10px] text-muted-foreground mt-1">
-                        {new Date(n.createdAt).toLocaleTimeString('uk-UA', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {fmtTime(n.createdAt)}
                       </p>
                     </div>
                     <button

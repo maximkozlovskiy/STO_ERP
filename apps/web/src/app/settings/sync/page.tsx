@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
+import { fmtDateTime } from '@/lib/format';
 
 interface SyncStatus {
   pendingJobs: number;
@@ -64,15 +65,9 @@ export default function SyncPage() {
     }
   };
 
-  const fmtDate = (iso: string | null) => {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    return (
-      d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
-      ' ' +
-      d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
-    );
-  };
+  // Thin proxy to lib/format singleton — was inline `.toLocaleDateString` + `.toLocaleTimeString`
+  // що конструювало два Intl форматери на кожен виклик у status grid.
+  const fmtDate = (iso: string | null) => fmtDateTime(iso);
 
   return (
     <div className="page-container max-w-2xl">

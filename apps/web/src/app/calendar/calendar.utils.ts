@@ -45,6 +45,23 @@ const KYIV_DMY_FMT = new Intl.DateTimeFormat('uk-UA', {
   year: 'numeric',
 });
 
+// Місяць+рік (наприклад "травень 2026") у часовому поясі Києва — для header'ів місячного календаря
+// та CalendarStatsTab. Раніше викликався inline `.toLocaleDateString` що конструював форматер на кожен render.
+const KYIV_MONTH_YEAR_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: KYIV_TZ,
+  month: 'long',
+  year: 'numeric',
+});
+
+// Повний формат "weekday, DD month YYYY" у Kyiv TZ — для tab-headers у статистиці календаря.
+const KYIV_FULL_DATE_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: KYIV_TZ,
+  weekday: 'long',
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+});
+
 export function pad(n: number) {
   return String(n).padStart(2, '0');
 }
@@ -106,11 +123,15 @@ export function displayCounterparty(cp: CounterpartyOption): string {
 
 export function formatKyivDate(ds: string): string {
   if (!ds) return '';
-  return new Date(ds).toLocaleDateString('uk-UA', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-    timeZone: KYIV_TZ,
-  });
+  return KYIV_FULL_DATE_FMT.format(new Date(ds));
+}
+
+/**
+ * "Місяць рік" (наприклад "травень 2026") у часовому поясі Києва.
+ * Викликається у month-view header'ах календаря — використовує module-level singleton.
+ */
+export function fmtKyivMonthYear(date: string): string {
+  if (!date) return '';
+  // Полудень в UTC дає коректний місяць у Kyiv TZ незалежно від DST переходів.
+  return KYIV_MONTH_YEAR_FMT.format(new Date(date + 'T12:00:00'));
 }

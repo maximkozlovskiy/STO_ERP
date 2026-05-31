@@ -5,7 +5,13 @@ import { Button } from '@/components/ui/button';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import type { CalendarSlot, Lift, StatsPeriod } from './calendar.types';
-import { KYIV_TZ, toDateString, STATS_MAX_DAYS, WINDOW_END, WINDOW_START } from './calendar.utils';
+import {
+  toDateString,
+  STATS_MAX_DAYS,
+  WINDOW_END,
+  WINDOW_START,
+  fmtKyivMonthYear,
+} from './calendar.utils';
 import { formatKyivDate } from './calendar.utils';
 
 interface CalendarStatsTabProps {
@@ -127,11 +133,7 @@ export function CalendarStatsTab({
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
                 <span className="text-sm font-medium px-2 capitalize min-w-32 text-center">
-                  {new Date(date + 'T12:00:00').toLocaleDateString('uk-UA', {
-                    month: 'long',
-                    year: 'numeric',
-                    timeZone: KYIV_TZ,
-                  })}
+                  {fmtKyivMonthYear(date)}
                 </span>
                 <Button
                   variant="outline"

@@ -30,6 +30,10 @@ const SHORT_DATETIME_FMT = new Intl.DateTimeFormat('uk-UA', {
   hour: '2-digit',
   minute: '2-digit',
 });
+const TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
+  hour: '2-digit',
+  minute: '2-digit',
+});
 
 /**
  * Форматувати число як суму грн з двома цифрами після крапки.
@@ -87,4 +91,17 @@ export function fmtShortDateTime(d: string | Date | null | undefined): string {
   const date = typeof d === 'string' ? new Date(d) : d;
   if (Number.isNaN(date.getTime())) return '—';
   return SHORT_DATETIME_FMT.format(date);
+}
+
+/**
+ * Форматувати час як `HH:mm` (uk-UA, 24h). Підходить для notification timestamp у `.map()`,
+ * sync-indicator title (TopShell, рендериться на кожній сторінці).
+ *
+ * @example fmtTime('2026-05-30T14:30:00Z') → '17:30'
+ */
+export function fmtTime(d: string | Date | number | null | undefined): string {
+  if (d == null) return '—';
+  const date = typeof d === 'number' || typeof d === 'string' ? new Date(d) : d;
+  if (Number.isNaN(date.getTime())) return '—';
+  return TIME_FMT.format(date);
 }

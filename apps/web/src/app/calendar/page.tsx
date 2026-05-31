@@ -68,6 +68,7 @@ import {
   snapTo15,
   pxToHours,
   formatKyivDate,
+  fmtKyivMonthYear,
 } from './calendar.utils';
 import { CalendarMonthView } from './CalendarMonthView';
 import { CalendarStatsTab } from './CalendarStatsTab';
@@ -1213,13 +1214,7 @@ export default function CalendarPage() {
                 Попередній
               </Button>
               <span className="text-sm font-medium text-foreground capitalize">
-                {date
-                  ? new Date(date + 'T12:00:00').toLocaleDateString('uk-UA', {
-                      month: 'long',
-                      year: 'numeric',
-                      timeZone: 'Europe/Kyiv',
-                    })
-                  : ''}
+                {date ? fmtKyivMonthYear(date) : ''}
               </span>
               <Button
                 variant="outline"
