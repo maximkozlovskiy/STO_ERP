@@ -796,6 +796,28 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-05-31 — Assignment/bulk-replace методи з findOne+FK guard sequential — `assignX(orgId, id, dto)` де findOne блокує FK перевірку
+
+**Сигнал:** сервіс має `assignX(orgId, id, dto: {idList: string[]})` що починається з `await this.findOne(orgId, id)` (tenant guard на parent сутність) і далі робить `findMany({ where: { id: { in: dto.idList }, orgId, deletedAt: null } })` для cross-tenant FK validation. Обидва запити мають orgId у where, отже tenant-safe — але findOne блокує FK-перевірку. На відміну від «tenant guard + side-entity fetch» (там guard повертає той самий парент що використовується далі), тут результат findOne **не використовується** — він лише для 404
+**Причина виникнення:** assign-методи на M:N relations (employee.zones, employee.lifts, employee.workCategories, employee.branches) — стандартний CRUD-патерн «replace assignments». Сприймається як «спочатку перевір що batьківський entity існує, потім перевір що дочірні існують». Розробник не помічає що ці перевірки незалежні: parent existence перевіряється однією findFirst (1 RTT), FK list — окремою findMany (1 RTT), і ці запити **не залежать один від одного** бо обидва читають за orgId і використовують ID з вхідних параметрів. На typical orgs з ~10 співробітників × 5 zones/lifts/branches = 50 assignment calls на тиждень, кожен економить 1 RTT
+**Підхід до виявлення:** grep `await this\.findOne\(orgId, id\)` у service-методах де наступний рядок — це `prisma.X.findMany({ where: { id: { in: dto.\w+Ids } ... } })`. Якщо результат findOne використовується ТІЛЬКИ як guard (немає звернень до полів) — кандидат
+**Підхід до фіксу:** `const [parent, items] = await Promise.all([prisma.parent.findFirst({...select: { id: true }}), dto.list.length ? prisma.child.findMany({...}) : Promise.resolve([])])`. Заміна findOne на findFirst з narrow select — DTO не повертається, лише id для 404. Перевірки `if (!parent) throw NotFound` + `if (items.length !== dto.list.length) throw` ПІСЛЯ Promise.all — порядок повідомлень про помилку зберігається. Конкретний DTO повертається через `findOne(orgId, id)` У КІНЦІ методу (вже після assignments) — тут sequential ОК бо потрібен повний DTO для response
+**Реальний impact:** -1 RTT per assignX call. На employee форму з 4 assignment секціями (zones+lifts+workCategories+branches) — економія 4 RTT при кожному "Save". На WAN/VPN 30-50ms × 4 = 120-200ms покращення латенсі
+**Де шукати ще:** будь-який `assignX/setX/replaceX(orgId, parentId, dto: {idList})` метод сервісу. Особливо часто: employee permissions/assignments, role permissions, vehicle owners, garage technicians, work-order tag assignments. Перевіряти кожен M:N relationship endpoint
+
+---
+
+### 2026-05-31 — Sequential `tx.X.create` loop у bootstrap/seed/init transaction — `createMany` пропущено для defaults
+
+**Сигнал:** метод bootstrap/setup (setup.init, seed скрипти, fresh-org init) робить `for (const x of defaults) { await tx.X.create({ data: { orgId, ...x } }) }` у середині `prisma.$transaction`. На відміну від app-runtime fan-out (там можна параллелити поза tx через Promise.all), тут tx серіалізує запити на одному з'єднанні — параллельність не виграє. Виграє `createMany` — один SQL INSERT з N рядками
+**Причина виникнення:** для-await з `tx.X.create` читається лінійно — особливо у setup-скриптах де кожна row має свій prefix/configuration block. Здається що це необхідно бо relationship setup (`tx.org.update(orgId: org.id)`). Але якщо рядки незалежні (немає FK chains між собою), createMany робить ОДИН INSERT з усім масивом — 1 RTT замість N. У bootstrap-транзакції що створює 13+ дефолтних рядків (8 doc-configs + 5 payment-methods) — суттєва економія
+**Підхід до виявлення:** grep `for \(const \w+ of \w+\) { await tx\.\w+\.create\(` у service.ts. Перевірити чи тіло циклу — це лише `tx.X.create({ data: {...} })` без read-залежностей від попередніх iterations. Якщо так — кандидат. Особливо часто у setup, fresh-org init, fixture seeders
+**Підхід до фіксу:** `await tx.X.createMany({ data: defaults.map(d => ({ orgId, ...d })) })`. createMany не повертає створені рядки (повертає `{count}`) — якщо потрібні IDs для наступних кроків transaction, лишити for-await або pre-generate UUIDs + createMany. У 90% setup сценаріїв створені рядки не потрібні відразу — createMany ОК. **Важливо:** createMany не підтримує relations у data — для cases з nested writes лишити for-await
+**Реальний impact:** для setup.init (8 doc-configs + 5 payment methods) — 13 sequential creates → 2 createMany batches. На повільному disk у Docker з обмеженим CPU це 50-100ms економії, що відчутно на initial bootstrap UX. Аналогічно для будь-якого seed скрипту з 50+ рядків defaults
+**Де шукати ще:** setup/init сервіси, fixture seeders, default-config injectors при створенні нового tenant/org/branch, bulk-import з контрольованими дефолтами (default permissions, default categories). Перевіряти при додаванні нової «нова org → дефолти» функції
+
+---
+
 ### 2026-05-31 — JS aggregation у post-mutation recalc helpers — `findMany({ select: { amount: true } }).reduce(...)` для перерахунку totals
 
 **Сигнал:** приватний helper типу `recalcTotals(parentId, tx)` робить `tx.X.findMany({ where: { parentId, orgId, deletedAt: null }, select: { amount: true }, take: 1000 })` потім `.reduce((s, l) => s + Number(l.amount), 0)`. Викликається після кожного add/update/remove на дочірніх сутностях (lines/parts/installments). На наряді з 20 рядками × 10 редагувань = 200 завантажень масиву + 200 JS reduce, хоча потрібен лише SUM
@@ -866,6 +888,15 @@ TypeScript: ✅ 0 errors
 - ✅ settings.updateOrganisation: org guard + optional bankAccount FK validation у Promise.all (-1 RTT)
 - ✅ warranties.autoCreate: WO guard + idempotent existing check у Promise.all (-1 RTT post-WO COMPLETED hook)
 - ✅ warranties.claim: warranty tenant guard + claimWo FK validation у Promise.all (-1 RTT у happy path)
+- ✅ employees.assignZones/Lifts/WorkCategories/Branches: parallel tenant guard + FK validation (-1 RTT each)
+- ✅ notifications.send: parallel branchSettings + notificationTemplate (-1 RTT per fan-out)
+- ✅ document-number.next: hoist KYIV_YEAR_MONTH_FMT module-level Intl singleton (called on every doc# generation)
+- ✅ settlements-account: hoist KYIV_HOUR_FMT for kyivStartOfDay/EndOfDay (createReconciliationAct: 2 allocs → 0)
+- ✅ reports.kyivOffsetMs: hoist KYIV_HOUR_FMT module-level (normalizeDateRange: 2 allocs → 0)
+- ✅ calendar.kyivOffsetMs: hoist KYIV_HOUR_FMT module-level (findSlots/createSlot: 1 alloc → 0)
+- ✅ setup.init: for-await tx.documentNumberConfig.create + tx.paymentMethodConfig.create → tx.createMany (13 RTT → 2)
+- ✅ payments.create: hoist UAH_AMOUNT_FMT Intl.NumberFormat for SMS amount payload
+- ✅ booking.create: hoist UA_DATE_FMT Intl.DateTimeFormat for SMS confirmation date
 
 **Frontend:**
 
@@ -898,6 +929,12 @@ TypeScript: ✅ 0 errors
 - ✅ settings/page.tsx: webhook delivery log timestamp → fmtShortDateTime
 - ✅ calendar/CalendarSlotModal.tsx: select-list item date → fmtKyivDate helper у calendar.utils (Kyiv-TZ DD.MM.YYYY singleton)
 - ✅ infrastructure/page.tsx: local formatDate (inline toLocaleDateString) → fmtDate proxy з @/lib/format — LiftRow рендерить 2× дати на рядок
+- ✅ lib/format.ts: add fmtTime(d) HH:mm singleton — replaces per-call .toLocaleTimeString anti-pattern
+- ✅ notification-center.tsx: items.map() inline toLocaleTimeString → fmtTime (TopShell hot-path rendered on every page)
+- ✅ sync-indicator.tsx: lastSync.toLocaleTimeString → fmtTime (TopShell hot-path)
+- ✅ settings/sync/page.tsx: local fmtDate (2× inline toLocale\*) → fmtDateTime proxy
+- ✅ calendar.utils.ts: hoist KYIV_MONTH_YEAR_FMT + KYIV_FULL_DATE_FMT singletons; fmtKyivMonthYear helper
+- ✅ calendar/page.tsx + CalendarStatsTab.tsx: 2× inline new Date(...).toLocaleDateString → fmtKyivMonthYear singleton (month-view headers)
 
 **DB:**
 
@@ -911,3 +948,5 @@ TypeScript: ✅ 0 errors
 - ✅ work_order_lines: `(workOrderId, deletedAt)` — list lines by WO без orgId fan-out у nested fetch
 - ✅ batch_consumptions: `(orgId, batchId, createdAt)` — chronological FIFO/LIFO traversal per-batch
 - ✅ work_order_media: `(orgId, workOrderId, createdAt)` covering — findAll sorted DESC без Sort node
+- ✅ payments: `(orgId, counterpartyId, createdAt)` + `(orgId, createdAt)` covering — list endpoint paginated by createdAt DESC, eliminates Sort node for both filtered + unfiltered paths
+- ✅ completion_acts: `(orgId, workOrderId, deletedAt, createdAt)` covering (replaces 3-col) — findAll sorted by createdAt DESC

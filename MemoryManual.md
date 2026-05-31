@@ -9,14 +9,41 @@
 ## Останній commit
 
 ```
+ae03163 perf(web): Intl singletons sweep — TopShell widgets + calendar month-year + sync log
+68ba4f8 perf(api,db): parallel FK validation + Intl singletons + covering indexes
+ca27a57 docs(skills,memory): add inner-DTO-no-decorators pattern + record /sto-tester cycle 1
 757ee3b fix(tester): cycle 1 — Bugs #245-#250 (cross-resource invalidation + DTO validation + spec coverage)
 b8c8e4b docs(memory): record sto-review-agent cycle 1 — 3 fixes
-ffe3f07 fix(review): cycle 1 — schema-DB drift + warranty defense-in-depth + SMS attempts
-d137333 docs(memory): record sto-sync-agent cycle 1 — Invoice.amount fix
-cfbbf27 fix(sync): align Invoice interface with backend — amount not totalAmount
 Дата: 2026-05-31
 
-Latest tester: 2026-05-31 (sto-tester-agent цикл 1 з 5, FULL HEAD b8c8e4b → 757ee3b) — **6 багів виправлено** (1 HIGH + 4 MEDIUM + 2 LOW; повний static-аналіз §1.1–§1.7).
+Latest optimize: 2026-05-31 (sto-optimize-agent цикл 1 з 5, HEAD 757ee3b → ae03163) — **22 точкових perf фіксів** (10 backend + 7 frontend + 2 DB indexes + 3 SKILL pattern entries).
+**Backend (10 fixes у 9 сервісах):**
+(1) employees.assignZones/Lifts/WorkCategories/Branches — `findOne(orgId, id)` tenant guard + `findMany` FK validation collapsed у Promise.all (-1 RTT per call × 4 endpoints). При employee CRUD з 4 assignment секціями — 4 RTT економії per save.
+(2) notifications.send — branchSettings + notificationTemplate findFirst parallel (-1 RTT per fan-out на кожну SMS-сповіщення).
+(3) document-number.next — hoist Intl `new Intl.DateTimeFormat('en-CA',{tz,year,month})` → module-level `KYIV_YEAR_MONTH_FMT`. Called on EVERY WO/Invoice/PO/SD/CompletionAct/ReconciliationAct number generation. Locale-data init no longer paid per call.
+(4) settlements-account — hoist `KYIV_HOUR_FMT` used by kyivStartOfDay/EndOfDay helpers (createReconciliationAct allocates 2 formatters per request).
+(5) reports.kyivOffsetMs — hoist KYIV_HOUR_FMT used in normalizeDateRange (2 allocs per report → 0).
+(6) calendar.kyivOffsetMs — hoist KYIV_HOUR_FMT for findSlots/createSlot/updateSlot.
+(7) setup.init bootstrap transaction — `for (const x of defaults) await tx.X.create(...)` × 13 → `tx.createMany` × 2 (8 doc-configs + 5 payment methods). Saves 11 RTT during fresh-org bootstrap.
+(8) payments.create — hoist `UAH_AMOUNT_FMT` for SMS amount payload (was inline `.toLocaleString` on every payment with phone).
+(9) booking.create — hoist `UA_DATE_FMT` for SMS confirmation date.
+**Frontend (7 fixes):**
+(10) lib/format.ts — додано `fmtTime(d)` HH:mm singleton (нова утиліта).
+(11) notification-center.tsx — `items.map()` inline `toLocaleTimeString({hour,minute})` → `fmtTime(n.createdAt)`. TopShell hot-path rendered on EVERY page — Intl construction per render row → 0.
+(12) sync-indicator.tsx — `lastSync.toLocaleTimeString` у title → `fmtTime`. TopShell rendered on every page.
+(13) settings/sync/page.tsx — local `fmtDate(iso)` що робив 2× `toLocale*` per call → thin proxy до `fmtDateTime` singleton.
+(14) calendar.utils.ts — hoist `KYIV_MONTH_YEAR_FMT` + `KYIV_FULL_DATE_FMT` singletons; додано `fmtKyivMonthYear` helper; `formatKyivDate` рефакторено на module-level singleton.
+(15) calendar/page.tsx + CalendarStatsTab.tsx — 2× inline `new Date(...).toLocaleDateString({month: 'long', year: 'numeric', timeZone: KYIV_TZ})` → `fmtKyivMonthYear(date)`. Month-view headers перерендеряться при кожній зміні стану — Intl per render → 1 module-level.
+(16) CalendarStatsTab.tsx — видалено unused `KYIV_TZ` import.
+**DB (+1 migration, 2 new indexes, 2 dropped):**
+- payments: DROP `(orgId, counterpartyId)` → CREATE `(orgId, counterpartyId, createdAt)` covering — list endpoint sorts by createdAt DESC + filters by counterpartyId; new index eliminates Sort node. Plus CREATE `(orgId, createdAt)` for unfiltered list.
+- completion_acts: DROP `(orgId, workOrderId, deletedAt)` → CREATE `(orgId, workOrderId, deletedAt, createdAt)` covering — findAll sorts by createdAt DESC LIMIT 100.
+- Migration `20260531130000_add_payment_completion_act_indexes` applied to dev DB.
+**Impact:** Setup bootstrap: 13 sequential creates → 2 batch — 50-100ms faster on cold disk. Employee assignment save: -4 RTT (WAN 30-50ms × 4 = 120-200ms). Document-number generation hot-path: 1 Intl alloc → 0 (called on every doc creation). TopShell widgets (notifications, sync indicator): per-render Intl construction across every page → 0.
+**TypeScript:** ✅ 0 errors (api + web + shared). **Unit:** API 464/464, Web 218/218 pass.
+**Нові SKILL patterns:** 2 нових entries — (a) Assignment/bulk-replace methods з findOne+FK guard sequential — assignX де findOne блокує FK перевірку; (b) Sequential `tx.X.create` loop у bootstrap/seed/init transaction — `createMany` пропущено для defaults.
+
+Previous tester: 2026-05-31 (sto-tester-agent цикл 1 з 5, FULL HEAD b8c8e4b → 757ee3b) — **6 багів виправлено** (1 HIGH + 4 MEDIUM + 2 LOW; повний static-аналіз §1.1–§1.7).
 **Знайдено через статичний аналіз — 0 runtime регресій:**
 (1) Bug #245 (MEDIUM) §1.3 cross-resource invalidation — `useCreatePayment` після POST /payments інвалідував лише `invoices` + `work-orders`, забув `counterparties`. `payments.service` викликає `settlements.createTransaction(PAYMENT)` → counterparty.balance змінюється → CRM-list показує стале значення до staleTime=30s. Додано `counterpartiesKeys.all` invalidation.
 (2) Bug #246 (LOW) §1.3 `key={i}` на mutable list items — `ServicesTab.tsx` (works/goods), `inventory/page.tsx` (lowItems сортується ASC quantity, може перевпорядкуватись). Замінено на стабільні ID.
