@@ -1,17 +1,20 @@
 # STO ERP — Claude Code Instructions
 
 ## Проект
+
 STO ERP — гібридна ERP-система для автосервісів України.
 **Головна вимога: повна офлайн-незалежність.** Система працює без інтернету.
 Розгортання через Windows installer (.exe) на локальний ПК/сервер СТО.
 
 ## Середовище розробки
+
 - **ОС:** Windows 10/11 + WSL2
 - **IDE:** VSCode + Git Bash terminal
 - **Мова інтерфейсу:** У��раїнська (кирилиця)
 - **Пакетний менеджер:** pnpm (workspaces + Turborepo)
 
 ## Monorepo структура
+
 ```
 sto-erp/
 ├── apps/
@@ -31,6 +34,7 @@ sto-erp/
 ```
 
 ## Скіли — завантажувати на початку сесії
+
 ```
 /sto-context    <- ЗАВЖДИ ПЕРШИМ
 /sto-analyst    <- "що" потрібно: user stories, business rules, процеси (до планування)
@@ -44,6 +48,7 @@ sto-erp/
 /sto-sync       <- синхронізація API ↔ Frontend: відсутній UI, неправильні URL, типи
 /sto-review     <- code review (перевіряє що /sto-dev дотриманий)
 /sto-tester     <- тестування: знаходить баги, фіксує, виправляє
+/sto-e2e        <- Playwright E2E: запуск suite, кодогенерація, debug, MCP-взаємодія з браузером
 /sto-optimize   <- оптимізація: N+1, індекси, паралельні запити, bundle, кеш, re-renders
 /sto-installer  <- Windows installer
 /sto-git        <- git: commit, branch, changelog, статус
@@ -51,13 +56,15 @@ sto-erp/
 ```
 
 > **Різниця sto-analyst vs sto-feature:**
+>
 > - `sto-analyst` = відповідає на "ЩО": формалізує вимоги, user stories, business rules, acceptance criteria. Вихід — документ вимог.
 > - `sto-feature` = відповідає на "ЯК": розкладає на конкретні задачі (DB модель, API endpoint, web page), файли, оцінки. Вихід — план реалізації.
-> Типово: спочатку analyst, потім feature — але для простих змін можна одразу feature.
+>   Типово: спочатку analyst, потім feature — але для простих змін можна одразу feature.
 
 ## Типовий workflow нової фічі
 
 > **ПРАВИЛО: план мод обов'язковий перед реалізацією**
+>
 > 1. **Перед** будь-яким новим функціоналом — увійти в план мод (`/plan` або `EnterPlanMode`)
 > 2. Узгодити план з користувачем (кроки, файли, рішення)
 > 3. Після підтвердження — вийти з плану (`ExitPlanMode`) і реалізувати
@@ -67,11 +74,13 @@ sto-erp/
 
 > **ПРАВИЛО: dev-сервер обов'язковий при будь-яких змінах коду**
 > Перед початком реалізації — переконатись що запущені **всі три сервери**:
+>
 > ```bash
 > docker-compose -f docker-compose.dev.yml up -d   # БД + Redis + MinIO
 > pnpm --filter @sto/api dev                        # API  → http://localhost:3000
 > pnpm --filter @sto/web dev                        # Web  → http://localhost:3001
 > ```
+>
 > Після кожної зміни UI — **перевірити у браузері** (не тільки tsc). Якщо сервер впав — перезапустити перед наступним кроком.
 >
 > Це правило стосується: нові сторінки, зміни компонентів, нові API endpoints, будь-які зміни що впливають на UI.
@@ -95,28 +104,29 @@ ExitPlanMode
 
 ### Крок 1 — визначення скілів (читай ПЕРЕД написанням)
 
-| Тип зміни | Читати одразу |
-|---|---|
-| Будь-яка зміна коду | `MemoryManual.md` — **першим завжди** |
-| Зміна `schema.prisma`, нова міграція | `/sto-database` SKILL.md |
+| Тип зміни                                | Читати одразу                                 |
+| ---------------------------------------- | --------------------------------------------- |
+| Будь-яка зміна коду                      | `MemoryManual.md` — **першим завжди**         |
+| Зміна `schema.prisma`, нова міграція     | `/sto-database` SKILL.md                      |
 | Новий NestJS модуль / сервіс / контролер | `/sto-backend` SKILL.md + `/sto-dev` SKILL.md |
-| Зміна наявного сервісу чи DTO | `/sto-dev` SKILL.md (патерни) |
-| Новий Next.js компонент / сторінка / хук | `/sto-web` SKILL.md + `/sto-dev` SKILL.md |
-| Зміна Expo / mobile | `/sto-mobile` SKILL.md |
-| Новий Inno Setup / PowerShell скрипт | `/sto-installer` SKILL.md |
+| Зміна наявного сервісу чи DTO            | `/sto-dev` SKILL.md (патерни)                 |
+| Новий Next.js компонент / сторінка / хук | `/sto-web` SKILL.md + `/sto-dev` SKILL.md     |
+| Зміна Expo / mobile                      | `/sto-mobile` SKILL.md                        |
+| Новий Inno Setup / PowerShell скрипт     | `/sto-installer` SKILL.md                     |
 
 ### Крок 2 — визначення агентів (запускай ПІСЛЯ коміту)
 
-| Умова | Агент |
-|---|---|
-| Змінились і backend і frontend | `Agent(subagent_type="sto-sync-agent")` — обов'язково |
-| Будь-яка зміна коду | `Agent(subagent_type="sto-review-agent")` — обов'язково |
-| Після review | `Agent(subagent_type="sto-tester-agent")` — обов'язково |
+| Умова                                 | Агент                                                     |
+| ------------------------------------- | --------------------------------------------------------- |
+| Змінились і backend і frontend        | `Agent(subagent_type="sto-sync-agent")` — обов'язково     |
+| Будь-яка зміна коду                   | `Agent(subagent_type="sto-review-agent")` — обов'язково   |
+| Після review                          | `Agent(subagent_type="sto-tester-agent")` — обов'язково   |
 | Велика фіча / рефакторинг (>5 файлів) | `Agent(subagent_type="sto-optimize-agent")` — опціонально |
 
 ### Крок 3 — оновлення MemoryManual (після кожного коміту)
 
 Після **кожного** коміту — оновити `MemoryManual.md`:
+
 - `Останній commit` → нові хеші
 - `TypeScript:` рядок → актуальний статус
 - Нові компоненти/хуки/утиліти → розділ "UI / Компоненти"
@@ -174,6 +184,7 @@ Agent(subagent_type="sto-optimize-agent", description="perf audit after <block>"
 > "Цей баг/проблема були охоплені існуючим чеклістом?"
 
 Якщо **НІ** — одразу оновити відповідний скіл:
+
 - Новий патерн помилки → додати до `/sto-dev` (❌/✅ приклад) + `/sto-review` (checklist item)
 - Новий grep для автоматичного виявлення → додати bash команду в `/sto-review`
 - Бізнес-логіка специфічна для STO ERP (FSM, інвентар, розрахунки) → `/sto-dev` Business Rules + `/sto-review`
@@ -185,6 +196,7 @@ Agent(subagent_type="sto-optimize-agent", description="perf audit after <block>"
 ## Відновлення після ліміту / нова сесія
 
 Після відновлення (rate limit, новий контекст, нова сесія):
+
 1. Прочитати `MemoryManual.md` — поточний стан коду
 2. Прочитати `docs/PHASES.md` — де зупинились
 3. Прочитати `.claude/memory/MEMORY.md` — preferences
@@ -194,12 +206,15 @@ Agent(subagent_type="sto-optimize-agent", description="perf audit after <block>"
 ## Щогодинний моніторинг (loop)
 
 Cron живе тільки в межах сесії. При ст��рті нової сесії — перезапустити через:
+
 ```
 /loop 1h
 ```
+
 Промпт дл�� loop знаходиться у `.claude/scheduled_tasks.json`.
 
 Що роби��ь loop кожну годину:
+
 - Читає `MemoryManual.md` + `PHASES.md` + `MEMORY.md`
 - Якщо є `[~]` задача — продовжує виконання
 - Якщо є незавершене QA — запус��ає `/sto-review` -> `/sto-tester` -> оновлює `MemoryManual.md`
@@ -208,21 +223,25 @@ Cron живе тільки в межах сесії. При ст��рті н�
 ## Критичні правила (ОБОВ'ЯЗКОВО)
 
 ### Офлайн-незалежність
+
 1. **Зовнішні API** (SMS, ПРРО, прайси) — тільки через BullMQ чергу, ніколи прямий виклик
 2. **Черга з retry** — attempts >= 10, backoff exponential; для ПРРО attempts=288 (24 год)
 3. **Система не зупиняється** при відсутності інтернету
 
 ### База даних
+
 4. **Кожна таблиця** має: `id` (UUID), `orgId`, `createdAt`, `updatedAt`, `deletedAt`, `syncVersion`
 5. **Soft delete скрізь** — ніколи `prisma.X.delete()`, тільки `{ deletedAt: new Date() }`
 6. **Кожен запит** фільтрується по `orgId` (tenant isolation)
 
 ### Бізнес-логіка
+
 7. **Зміни залишків** — тільки через `InventoryService.createMovement()`
 8. **Зміни балансу** — тільки через `SettlementsService.createTransaction()`
 9. **FSM нарядів** — тільки через transition map у `WorkOrdersService.transition()`
 
 ### Конфігурованість (Configuration over Hardcode)
+
 10. **Налаштування в БД** — терміни, ліміти, шаблони, способи оплати -> моде��і `OrganisationSettings`, `BranchSettings`, `NotificationTemplate`, `PaymentMethodConfig`, `TaxRate`
 11. **ПРРО та SMS** -> `BranchSettings` (per branch), НЕ тільки в `.env`
 12. **Нумерація документів** -> `DocumentNumberConfig`, ніяких hardcoded форматів у коді
@@ -230,22 +249,25 @@ Cron живе тільки в межах сесії. При ст��рті н�
 14. **Шаблони повідомлень** — текст SMS/Viber/Email тільки з `NotificationTemplate`, не рядкові літерали у сервісах
 
 ### UI
+
 15. **Весь UI** — українською мовою (кирилиця)
 16. **Валідація** (Zod) — повідомлення українською
 17. **API помилки** — українською
 
 ## ADR — прийняті архітектурні рішення
-| Файл | Рішення |
-|------|---------|
-| ADR-001 | Local-first offline architecture |
-| ADR-002 | Docker Compose як одиниця розгортання |
+
+| Файл    | Рішення                                       |
+| ------- | --------------------------------------------- |
+| ADR-001 | Local-first offline architecture              |
+| ADR-002 | Docker Compose як одиниця розгортання         |
 | ADR-003 | Inno Setup + PowerShell для Windows installer |
-| ADR-004 | WatermelonDB для offline-first mobile |
-| ADR-005 | BullMQ черга для зовнішніх API |
-| ADR-006 | Опціональна cloud sync (Outbox Pattern) |
-| ADR-007 | Стратегія автоматичного оновлення |
+| ADR-004 | WatermelonDB для offline-first mobile         |
+| ADR-005 | BullMQ черга для зовнішніх API                |
+| ADR-006 | Опціональна cloud sync (Outbox Pattern)       |
+| ADR-007 | Стратегія автоматичного оновлення             |
 
 ## Запуск (розробка)
+
 ```bash
 docker-compose -f docker-compose.dev.yml up -d
 pnpm dev
@@ -256,6 +278,7 @@ pnpm dev
 ```
 
 ## Локаль та форматування
+
 - Мова: `uk-UA` | Timezone: `Europe/Kyiv`
 - Валюта: `UAH`, формат: `1 250,00 грн`
 - Дата: `DD.MM.YYYY` | Час: `HH:mm` (24-год)

@@ -763,23 +763,27 @@ find apps/api/src -name "*.invariants.spec.ts" | sort
 
 ### 5.2 — E2E (Playwright)
 
+> **Повний E2E workflow → `/sto-e2e`** (окремий скіл з детальними інструкціями, кодогенерацією через MCP, аналізом падінь).
+
+Мінімальний запуск для автоматичного tester-циклу:
+
 ```bash
-# Перевірити dev-сервери
+# Перевірити сервери
 docker ps --format "{{.Names}}\t{{.Status}}" | grep -E "postgres|redis|minio"
-curl -s http://localhost:3000/api/docs > /dev/null && echo "API:UP" || echo "API:DOWN"
-curl -s http://localhost:3001 > /dev/null && echo "WEB:UP" || echo "WEB:DOWN"
+curl -s http://localhost:3000/api/health | head -c 80 && echo "" || echo "API:DOWN"
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 | grep -qE "^(200|30)" && echo "WEB:UP" || echo "WEB:DOWN"
 
-# Якщо API:DOWN
-pnpm --filter @sto/api dev > /tmp/sto-api-dev.log 2>&1 &
-until curl -s http://localhost:3000/api/docs > /dev/null; do sleep 3; done && echo "API ready"
-
-# Запуск
-test -f apps/web/playwright.config.ts && \
-  pnpm --filter @sto/web exec playwright test --reporter=list 2>&1 | tail -40 || \
-  echo "⏭ Playwright не встановлений"
+# Запуск (82 тести, 8 spec файлів)
+cd apps/web && npx playwright test --reporter=list 2>&1 | tee /tmp/pw-results.txt | tail -40
 ```
 
-**⚠️ STALE DEV API = false-positive.** `404 "Cannot GET /api/X"` при роботі routes у коді = stale server (не перезапущений після нового модуля). Діагностика: `curl localhost:3000/api/<route>` → 404 = stale; 401 = route OK (auth). Фікс: вбити процес на порту 3000 і перезапустити.
+**⚠️ STALE API** — `404` при наявному маршруті = stale server. `curl localhost:3000/api/<route>` → `401` = OK, `404` = перезапустити API.
+
+**Структура suite:** `smoke` · `auth-flow` · `work-orders` · `crm` · `settings` · `inventory` · `console-errors` (serial) · `api-errors`
+
+**Auth state** (`e2e/.auth/admin.json`) оновлюється автоматично через `globalSetup`. Якщо відсутній — видалити і перезапустити.
+
+**Падіння → `/sto-e2e debug <spec>`** для повного аналізу.
 
 ### 5.3 — Component-тести (Testing Library)
 
