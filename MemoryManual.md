@@ -131,7 +131,19 @@ Latest review: 2026-05-31 (sto-review-agent цикл 3 з 5, HEAD 39d2667 → 61
 **Unit tests:** API 482/482 pass
 **Нові SKILL patterns:** жодного — всі виправлені пункти вже покриті §1.6 `emptyToUndefined` (2026-05-31 entry) та §5 transaction timeout (Bug #132 pattern). Самовдосконалення SKILL цього циклу — не потрібне, чекліст спрацював.
 
-Latest sync: 2026-05-31 (sto-sync-agent цикл 3 з 5, HEAD 0c37fd1 → 39d2667) — **9 interface оновлень** (Direction 3: типи).
+Latest sync: 2026-05-31 (sto-sync-agent цикл 5 з 5 ФІНАЛЬНИЙ, HEAD 39d2667 → 0305852) — **3 виправлення**.
+Direction 1 (API→UI): 1 fixed — CompletionAct DELETE (cancel) action додано в work-orders detail page (раніше DRAFT акт неможливо було скасувати через UI).
+Direction 2 (URL): 0 wrong — всі apiFetch URL підтверджено коректними.
+Direction 3 (Types): 3 fixed:
+  - CompletionActSummary: +clientPhone, +notes (поля з CompletionActResponseDto)
+  - InvoiceLine detail panel: додано рендер vatRate/priceWithoutVat/vatAmount для рядків з ПДВ
+  - Invoice info panel: додано totalWithoutVat/totalVat/totalWithVat summary поля
+  - BookingRequest: +branchName (backend тепер include branch relation у findAll → повертає branchName)
+  - Bookings list: відображає branchName поряд з телефоном/датою
+TypeScript: ✅ 0 errors (api + web)
+Коміт: 0305852
+
+Previous: 2026-05-31 (sto-sync-agent цикл 3 з 5, HEAD 0c37fd1 → 39d2667) — **9 interface оновлень** (Direction 3: типи).
 Direction 1 (API→UI): 0 missing — всі backend модулі мають UI (або у known exceptions).
 Direction 2 (URL): 0 wrong — всі apiFetch URL відповідають реальним контролерам.
 Direction 3 (Types): 9 interface файлів — додані optional поля що backend DTO повертає але frontend interfaces не оголошували:
