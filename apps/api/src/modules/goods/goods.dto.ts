@@ -98,7 +98,9 @@ export class PaginatedGoodsDto {
 
 export class CreateGoodUoMDto {
   @ApiProperty({ description: 'ID одиниці виміру' })
-  @IsUUID()
+  // Bug #229: sprint-C convention — use @IsUUID('4') for stricter v4 validation
+  // matching the rest of the DTO catalogue migrated in commit 6d48e9a.
+  @IsUUID('4')
   unitOfMeasureId!: string;
 }
 

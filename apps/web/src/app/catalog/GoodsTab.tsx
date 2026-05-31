@@ -578,6 +578,20 @@ export default function GoodsTab() {
       });
   };
 
+  // Bug #226: refetch UoM list from server so we observe backend side-effects
+  // (auto-promotion of next default after removeUoM; isDefault flag on
+  // first-add). Race-guarded by modalUoMReqRef shared with openEditGood.
+  const refreshUoMs = useCallback((goodId: string) => {
+    const reqId = ++modalUoMReqRef.current;
+    apiFetch<GoodUoM[]>(`/goods/${goodId}/uoms`)
+      .then(data => {
+        if (modalUoMReqRef.current === reqId) setModalUoMs(data);
+      })
+      .catch(() => {
+        // silent — toast already shown by caller for the mutation itself
+      });
+  }, []);
+
   const addUoM = async (goodId: string) => {
     if (!addUoMForm.unitOfMeasureId) return;
     setAddingUoM(true);
@@ -589,6 +603,10 @@ export default function GoodsTab() {
       setModalUoMs(prev => [...prev, created]);
       setAddUoMForm({ unitOfMeasureId: '' });
       setShowAddUoM(false);
+      // Bug #227: if this was the first UoM (server sets isDefault=true and
+      // updates Good.unit/unitId), refresh the parent goods table to avoid
+      // stale unit display.
+      if (created.isDefault) load();
       if (features.toastEnabled) toast.success('Одиницю виміру додано');
     } catch (e: unknown) {
       if (features.toastEnabled) {
@@ -612,6 +630,8 @@ export default function GoodsTab() {
             isDefault: u.id === uomId,
           })),
         );
+        // Bug #227: setDefault always updates Good.unit/unitId → refresh parent table.
+        load();
         if (features.toastEnabled) toast.success('Основну одиницю змінено');
       }
     } catch (e: unknown) {
@@ -625,10 +645,17 @@ export default function GoodsTab() {
 
   const deleteUoM = async (goodId: string, uomId: string) => {
     if (!(await confirm({ title: 'Видалити одиницю виміру?', variant: 'destructive' }))) return;
+    // Capture whether the deleted UoM was default BEFORE optimistic filter — used
+    // to decide if we need to refresh parent goods list (Bug #227).
+    const wasDefault = modalUoMs.find(u => u.id === uomId)?.isDefault === true;
     setDeletingUoMId(uomId);
     try {
       await apiFetch<void>(`/goods/${goodId}/uoms/${uomId}`, { method: 'DELETE' });
-      setModalUoMs(prev => prev.filter(u => u.id !== uomId));
+      // Bug #226: backend may auto-promote the next UoM to default; refetch
+      // instead of relying on the local `filter()` (which would leave UI with
+      // no default star while DB has a new one).
+      refreshUoMs(goodId);
+      if (wasDefault) load();
       if (features.toastEnabled) toast.success('Одиницю видалено');
     } catch (e: unknown) {
       if (features.toastEnabled) {

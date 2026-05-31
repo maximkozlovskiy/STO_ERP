@@ -6934,3 +6934,231 @@ const requestId = isValid ? candidate : randomUUID();
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-05-31 — FULL tester: UoM CRUD (GoodUoM model + sub-resource API + tab) (HEAD 3ecc312)
+
+Scope (3 commits):
+
+- `0227c44` krok 1+2 — `GoodUoM` Prisma model + `/goods/:id/uoms` CRUD endpoints (`getUoMs`/`addUoM`/`setDefaultUoM`/`removeUoM`)
+- `0839ef3` krok 3 — Web UI: таб "Одиниці виміру" у edit modal у `apps/web/src/app/catalog/GoodsTab.tsx`
+- `3ecc312` fix(review) — toast guards `if (features.toastEnabled)` + race-token `uomRefDefault` для `setDefaultUoM`
+
+### Baseline (Крок 0)
+
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 427/427 passed (40 файлів)
+- Web components — ✅ 203/203 passed (18 файлів)
+- Перевірка хибно-зеленого `[x]` — пройдено, попередні `[x]`-багі покриті реальним кодом.
+
+---
+
+## Bug #220 — CRITICAL database / release-blocker
+
+**Файл:** `packages/database/prisma/migrations/` (відсутній)
+**Severity:** CRITICAL (release-blocker)
+**Категорія:** database / schema-migration
+
+**Опис:** `feat(uom)` commit `0227c44` додав модель `GoodUoM` у `packages/database/prisma/schema.prisma:788-802`, але **не створив парний migration** у `packages/database/prisma/migrations/`. У dev/prod БД немає таблиці `good_uom` — будь-який виклик `/goods/:id/uoms` ендпоінтів кидає `prisma.goodUoM.findMany`/`create`/`update`/`delete` → `PrismaClientKnownRequestError P2021` ("The table `good_uom` does not exist") або P2010 syntax error. Фіча повністю мертва.
+
+**Очікувана поведінка:** Існує migration `packages/database/prisma/migrations/<YYYYMMDDHHMMSS>_add_good_uom/migration.sql` що:
+
+- `CREATE TABLE "good_uom"` з усіма колонками `id`/`orgId`/`goodId`/`unitOfMeasureId`/`isDefault`/`createdAt`;
+- `CREATE UNIQUE INDEX` на `(orgId, goodId, unitOfMeasureId)`;
+- `CREATE INDEX` на `(orgId, goodId)`;
+- FK `goodId` → `goods.id` `ON DELETE CASCADE`;
+- FK `unitOfMeasureId` → `units_of_measure.id` (без cascade — за усталеною конвенцією STO ERP referential).
+
+**Фактична поведінка:** Schema є, migration немає → `prisma migrate deploy` нічого не застосує, table не існує → API падає у runtime.
+
+**Підхід до фіксу:** Створити `packages/database/prisma/migrations/20260531080000_add_good_uom/migration.sql` з відповідним DDL. Не запускати `prisma migrate dev` (генерує client + auto-apply) — це side-effect; натомість зробити migration.sql вручну, синхронно з prior pattern (`20260524221943_add_good_barcodes`).
+
+**Статус:** [x] виправлено — створено `packages/database/prisma/migrations/20260531080000_add_good_uom/migration.sql` з CREATE TABLE + composite unique index `(orgId, goodId, unitOfMeasureId)` + covering index `(orgId, goodId)` + FK goodId ON DELETE CASCADE + FK unitOfMeasureId ON DELETE RESTRICT.
+
+---
+
+## Bug #221 — HIGH backend / business-logic
+
+**Файл:** `apps/api/src/modules/goods/goods.service.ts:243-255` (`addUoM`)
+**Severity:** HIGH
+**Категорія:** transaction-management / timeout
+
+**Опис:** `addUoM` використовує `this.prisma.$transaction(async tx => {...})` БЕЗ опції `{ timeout: N }`. Per SKILL §1.1 — кожен `$transaction(async callback)` потребує explicit timeout (5_000–15_000ms). Default interactive timeout Prisma = 5s, але без явної опції ризик регресій якщо global config зміниться. Усталений патерн у `apps/api/src/modules/`: `{ timeout: 5_000 }` (counterparties, employees, calendar, completion-acts).
+
+**Очікувана поведінка:** `this.prisma.$transaction(async tx => {...}, { timeout: 5_000 })`.
+
+**Фактична поведінка:** Опція timeout відсутня.
+
+**Підхід до фіксу:** додати `, { timeout: 5_000 }` другим аргументом.
+
+**Статус:** [x] виправлено — `addUoM` $transaction обгорнуто у try/catch з `{ timeout: 5_000 }` (фікс об'єднано з Bug #225 P2002 mapping).
+
+---
+
+## Bug #222 — HIGH backend / business-logic
+
+**Файл:** `apps/api/src/modules/goods/goods.service.ts:286-302` (`removeUoM`)
+**Severity:** HIGH
+**Категорія:** transaction-management / timeout
+
+**Опис:** Те саме що Bug #221 — `removeUoM` має `$transaction(async tx => {...})` без `{ timeout: N }`.
+
+**Очікувана поведінка:** `this.prisma.$transaction(async tx => {...}, { timeout: 5_000 })`.
+
+**Фактична поведінка:** Опція timeout відсутня.
+
+**Підхід до фіксу:** додати `, { timeout: 5_000 }`.
+
+**Статус:** [x] виправлено — `removeUoM` $transaction отримав другий аргумент `{ timeout: 5_000 }`.
+
+---
+
+## Bug #223 — HIGH backend / tenant-isolation
+
+**Файл:** `apps/api/src/modules/goods/goods.service.ts:260-277` (`setDefaultUoM`), `:279-303` (`removeUoM`)
+**Severity:** HIGH
+**Категорія:** tenant-isolation / soft-delete-bypass
+
+**Опис:** `setDefaultUoM` та `removeUoM` валідують `goodUoM.findFirst({ id, orgId, goodId })`, але **не перевіряють** що `Good` сам не `soft-deleted` (`deletedAt: null`). Користувач з admin-роллю може викликати ці ендпоінти для **видаленого товару** і змінити його UoM у БД (через FK cascade при остаточному hard delete не зачепить, але soft-deleted state стає inconsistent: `Good.deletedAt != null` АЛЕ `Good.unitId` оновлюється). Контракт `findOne(orgId, id)` у тому ж файлі завжди робить `deletedAt: null` — `setDefaultUoM`/`removeUoM` порушують цей інваріант.
+
+**Очікувана поведінка:** На вході обох методів — `await this.findOne(orgId, goodId)` (вже існує і кидає `NotFoundException('Товар не знайдено')` якщо deleted чи не в org), потім тільки шукати UoM.
+
+**Фактична поведінка:** Прямий пошук `goodUoM` без перевірки парного Good — soft-deleted товар відкритий для UoM-операцій.
+
+**Підхід до фіксу:** Додати `await this.findOne(orgId, goodId)` як перший рядок у `setDefaultUoM` та `removeUoM`. Унифікує з паттерном `addUoM` (який це робить inline через `prisma.good.findFirst({ deletedAt: null })`). Альтернатива: розширити inline-find у `setDefaultUoM`/`removeUoM` на include Good з deletedAt-фільтром.
+
+**Статус:** [x] виправлено — `setDefaultUoM` і `removeUoM` тепер викликають `await this.findOne(orgId, goodId)` як перший крок; soft-deleted/cross-tenant good кидає NotFoundException до будь-яких UoM-операцій. Покрито тестами в `goods.service.spec.ts`.
+
+---
+
+## Bug #224 — MEDIUM backend / defense-in-depth
+
+**Файл:** `apps/api/src/modules/goods/goods.service.ts:270-273` (`setDefaultUoM`), `:296-299` (`removeUoM`)
+**Severity:** MEDIUM
+**Категорія:** tenant-isolation / defense-in-depth
+
+**Опис:** Per SKILL §1.1 Defense-in-depth для update (Bug #191): жоден `prisma.X.update({ where: { id } })` на org-scoped таблиці без orgId у where. У `setDefaultUoM` рядок `this.prisma.good.update({ where: { id: goodId }, ... })` та у `removeUoM` `tx.good.update({ where: { id: goodId }, ... })`. Локально безпечно бо `goodId` пройшов org-scoped перевірку через `goodUoM.findFirst`, але майбутній рефактор/copy-paste без org-check = cross-tenant write.
+
+**Очікувана поведінка:** `updateMany({ where: { id: goodId, orgId, deletedAt: null }, data: {...} })` — гарантує тенант. Або хоча б `update({ where: { id: goodId, orgId } })` — Prisma підтримує compound primary-key syntax через `updateMany` (single-row write).
+
+**Фактична поведінка:** `prisma.good.update({ where: { id: goodId }, ... })` без orgId.
+
+**Підхід до фіксу:** заміна `update({where:{id:goodId},data})` на `updateMany({where:{id:goodId,orgId,deletedAt:null},data})`.
+
+**Статус:** [x] виправлено — три `prisma.good.update({ where:{id:goodId} })` місця у `addUoM`/`setDefaultUoM`/`removeUoM` замінено на `updateMany({ where:{id:goodId, orgId, deletedAt:null} })`. Тест у `removeUoM` асертить exact orgId+deletedAt у where.
+
+---
+
+## Bug #225 — MEDIUM backend / business-logic
+
+**Файл:** `apps/api/src/modules/goods/goods.service.ts:235-258` (`addUoM`)
+**Severity:** MEDIUM
+**Категорія:** race-condition / TOCTOU
+
+**Опис:** TOCTOU-race у `addUoM`: `existing` (line 235) та `count` (line 240) перевіряються **поза** `$transaction`-блоком, а `create` всередині. Два паралельні запити для одного товару + одной одиниці виміру можуть обидва пройти `if (existing) throw ConflictException` (line 238) → обидва підуть у транзакцію → одна впаде на `@@unique([orgId, goodId, unitOfMeasureId])` з generic Prisma P2002 (HTTP 500), а не дружнім `ConflictException` (HTTP 409). Те саме для `count === 0` (line 241) — дві паралельні перші вставки можуть обидві поставити `isDefault: true`. Хоча подвійний default-true не порушує invariant БД (unique constraint лише по `(orgId, goodId, unitOfMeasureId)`), у UI обидва бейджі покажуть Star.
+
+**Очікувана поведінка:** Catch Prisma `P2002` всередині `addUoM` і re-throw `ConflictException('Ця одиниця виміру вже додана')`. Бажано перевіряти existing/count **всередині** транзакції (`tx.goodUoM.findFirst` / `tx.goodUoM.count`) — гарантує atomicity при serializable isolation, але STO ERP не використовує SERIALIZABLE, тож P2002-catch достатній.
+
+**Фактична поведінка:** TOCTOU race → 500 замість 409, потенційний подвійний default.
+
+**Підхід до фіксу:** обгорнути `tx.goodUoM.create` у try/catch, мапити `Prisma.PrismaClientKnownRequestError` з `code === 'P2002'` у `ConflictException`. Alternatively — рознести existing+count checks у тіло транзакції.
+
+**Статус:** [x] виправлено — весь `addUoM` $transaction обгорнуто у try/catch що мапить `Prisma.PrismaClientKnownRequestError` з `code === 'P2002'` у `ConflictException('Ця одиниця виміру вже додана до товару')`. Покрито unit-тестом "TOCTOU race → P2002 у create мапиться у ConflictException 409".
+
+---
+
+## Bug #226 — MEDIUM frontend / data-display
+
+**Файл:** `apps/web/src/app/catalog/GoodsTab.tsx:626-640` (`deleteUoM`)
+**Severity:** MEDIUM
+**Категорія:** state-sync / data-display
+
+**Опис:** Після `deleteUoM` фронт-енд робить оптимістичний `setModalUoMs(prev => prev.filter(u => u.id !== uomId))`. Однак backend (`removeUoM`) автоматично **промотує** наступний UoM (у `createdAt asc`-порядку) до `isDefault: true` якщо видаляється поточний default. Клієнт цього не знає → у UI новий default залишається без зірочки, користувач думає що default взагалі немає. Реальний state DB → промочений новий default; UI → жоден не default. Розбіжність зникає тільки після reload.
+
+**Очікувана поведінка:** Після успіху `apiFetch DELETE` — refetch `/goods/:id/uoms` АБО (якщо backend повертає promotion-метадані) — клієнт сам перерахує: якщо віддалений `isDefault`, наступний за `createdAt`-порядком стає default.
+
+**Фактична поведінка:** Оптимістичний `filter` без recomputation default-state → stale UI.
+
+**Підхід до фіксу:** Найпростіше — після успішного DELETE, повторити `apiFetch<GoodUoM[]>('/goods/:id/uoms').then(setModalUoMs)`. Race-guard через `++modalUoMReqRef.current`.
+
+**Статус:** [x] виправлено — додано helper `refreshUoMs(goodId)` що race-guarded повторно завантажує список (++modalUoMReqRef.current). `deleteUoM` тепер замість `setModalUoMs(prev => prev.filter(...))` викликає `refreshUoMs(goodId)` → новий default з backend підхопиться у UI.
+
+---
+
+## Bug #227 — MEDIUM frontend / data-sync
+
+**Файл:** `apps/web/src/app/catalog/GoodsTab.tsx:581-600` (`addUoM`), `:602-624` (`setDefaultUoM`), `:626-640` (`deleteUoM`)
+**Severity:** MEDIUM
+**Категорія:** data-sync / table-staleness
+
+**Опис:** UoM-операції (`addUoM` як перша → робить її default, `setDefaultUoM`, `deleteUoM` з промотом наступного default) **змінюють** `Good.unit` та `Good.unitId` у БД (`addUoM` коли isFirst, `setDefaultUoM` завжди, `removeUoM` коли видаляють default). Goods-таблиця у parent-компоненті відображає `g.unit` — після таких операцій вона показує застаріле значення. Користувач відкриває модал, додає UoM "л", закриває → у списку все ще "шт".
+
+**Очікувана поведінка:** Після успіху будь-якої UoM-операції що може змінити `Good.unit`/`unitId` — викликати `load()` (parent goods-list reload). Race-guard через debounce якщо багато операцій.
+
+**Фактична поведінка:** Тільки `setModalUoMs(...)` оптимістично оновлюється; parent `load()` не викликається → goods-table стає stale.
+
+**Підхід до фіксу:** У `addUoM` (якщо `created.isDefault === true` ⇒ це був перший), у `setDefaultUoM` (завжди), у `deleteUoM` (якщо видалений був default) — після `await apiFetch` дофайн → `load()`.
+
+**Статус:** [x] виправлено — `addUoM` тепер викликає `load()` якщо `created.isDefault === true`; `setDefaultUoM` завжди викликає `load()` після успіху; `deleteUoM` capture `wasDefault` перед DELETE і викликає `load()` якщо видаляли default — goods-таблиця у parent компоненті завжди відображає актуальний `Good.unit`.
+
+---
+
+## Bug #228 — MEDIUM test-coverage / backend
+
+**Файл:** `apps/api/src/modules/goods/goods.service.spec.ts` (відсутні UoM-тести)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Per SKILL §1.5 — нові сервісні методи потребують unit-тестів. `getUoMs`/`addUoM`/`setDefaultUoM`/`removeUoM` (113 рядків логіки у `goods.service.ts`) — **0 тестів**. Існуючий `goods.service.spec.ts` покриває лише `findOne`/`create`/`update`. Регресії що пройдуть зеленими CI:
+
+- backend skip `findOne(deletedAt:null)` у `setDefaultUoM` (Bug #223);
+- зміна `isFirst` logic у `addUoM` (наприклад: завжди ставити `isDefault: true`);
+- видалення `tx.good.update({ unit: ... })` блоку — `Good.unit`-poле залишиться застарілим;
+- видалення `BadRequestException('Не можна видалити єдину одиницю виміру')` у `removeUoM`;
+- видалення NotFoundException якщо unit з іншої org.
+
+**Очікувана поведінка:** Додано >= 6 it-блоків:
+
+- `addUoM`: 1st-UoM сетить isDefault=true + Good.unit/unitId; 2nd-UoM не сетить; cross-tenant unit → 404; cross-tenant good → 404; existing → 409;
+- `setDefaultUoM`: попередній default → false, новий → true; cross-tenant uomId → 404; cross-org good → 404 (Bug #223);
+- `removeUoM`: total===1 → 400; видалення default → промотує наступний; cross-org good → 404.
+
+**Фактична поведінка:** 0 тестів для UoM.
+
+**Підхід до фіксу:** додати `describe('getUoMs'/'addUoM'/'setDefaultUoM'/'removeUoM')` у `goods.service.spec.ts` за усталеним патерном (`vi.fn()` mocks, `Test.createTestingModule`).
+
+**Статус:** [x] виправлено — додано 13 нових тестів у `goods.service.spec.ts` для `addUoM` (6 кейсів), `setDefaultUoM` (3), `removeUoM` (4). Покривають: isFirst-default-assignment, cross-tenant good/unit (#223), TOCTOU P2002 mapping (#225), promote-next-default invariant + defense-in-depth orgId guard (#224). API: 440/440 тестів passed (було 427, +13).
+
+---
+
+## Bug #229 — LOW backend / contract
+
+**Файл:** `apps/api/src/modules/goods/goods.dto.ts:99-103` (`CreateGoodUoMDto`)
+**Severity:** LOW
+**Категорія:** validation / DTO
+
+**Опис:** `CreateGoodUoMDto` має `@IsUUID()` (без аргументу) — per SKILL §1.2 Bug #215 — `@IsUUID()` без `'4'` приймає nil-UUID та v1/v3/v5 UUID. Конвенція sprint-C: `@IsUUID('4')` для всіх DTO у `apps/api/src/modules/`. Цей новий DTO порушує конвенцію — buyer-beware при тестуванні з seed UUID не-v4 формату (e.g. `00000000-0000-0000-0000-000000000001`).
+
+**Очікувана поведінка:** `@IsUUID('4')` для `unitOfMeasureId`.
+
+**Фактична поведінка:** `@IsUUID()` без `'4'`.
+
+**Підхід до фіксу:** замінити `@IsUUID()` → `@IsUUID('4')`. Те саме перевірити для `CreateGoodDto` `unitId`/`brandId`/`preferredSupplierId` — у `goods.dto.ts:21-44` всі мають `@IsUUID()` без `'4'` (вже існуючі — окремі Bugs з sprint-C migration?), але **нові** UoM DTO мають дотримуватись свіжої конвенції.
+
+**Статус:** [x] виправлено — `CreateGoodUoMDto.unitOfMeasureId` тепер використовує `@IsUUID('4')` згідно з sprint-C конвенцією. Інші поля у `CreateGoodDto` (`unitId`/`brandId`/`preferredSupplierId`) лишаються з `@IsUUID()` без `'4'` — це окремий технічний борг покритий Bug #215 series; не торкаємось у цьому session.
+
+---
+
+## Bug #230 — LOW test-coverage / frontend
+
+**Файл:** `apps/web/src/app/catalog/__tests__/GoodsTab.test.tsx` (відсутній)
+**Severity:** LOW
+**Категорія:** test-coverage
+
+**Опис:** Web UI UoM-таб (`addUoM`/`setDefaultUoM`/`deleteUoM` функції + JSX зі Star-toggle + form для додавання) — 0 component-тестів. Хоча CompleteGoodsTab монолітний (>1800 рядків) і повний component-тест важкий, мінімальний smoke-тест для UoM-функцій можна винести в окремий файл. Перенесено у low бо парний `goods.service.spec.ts` (Bug #228) важливіший для backend-логіки.
+
+**Підхід до фіксу:** skip або create stub. Не блокуючий.
+
+**Статус:** [ ] не виправлено — задокументовано як known-state, не critical через монолітність `GoodsTab.tsx`
+
+---

@@ -240,24 +240,45 @@ export class GoodsService {
     const count = await this.prisma.goodUoM.count({ where: { orgId, goodId } });
     const isFirst = count === 0;
 
-    const uom = await this.prisma.$transaction(async tx => {
-      const created = await tx.goodUoM.create({
-        data: { orgId, goodId, unitOfMeasureId: dto.unitOfMeasureId, isDefault: isFirst },
-        include: { unitOfMeasure: true },
-      });
-      if (isFirst) {
-        await tx.good.update({
-          where: { id: goodId },
-          data: { unitId: dto.unitOfMeasureId, unit: unit.shortName },
-        });
+    let uom;
+    try {
+      uom = await this.prisma.$transaction(
+        async tx => {
+          const created = await tx.goodUoM.create({
+            data: { orgId, goodId, unitOfMeasureId: dto.unitOfMeasureId, isDefault: isFirst },
+            include: { unitOfMeasure: true },
+          });
+          if (isFirst) {
+            // Bug #224: defense-in-depth — updateMany with orgId guard so any future
+            // refactor that loses the goodId/orgId pre-check cannot cross-tenant write.
+            await tx.good.updateMany({
+              where: { id: goodId, orgId, deletedAt: null },
+              data: { unitId: dto.unitOfMeasureId, unit: unit.shortName },
+            });
+          }
+          return created;
+        },
+        { timeout: 5_000 },
+      );
+    } catch (e) {
+      // Bug #225: TOCTOU between `existing`/`count` precheck and `tx.create` —
+      // two concurrent identical adds both pass precheck and one hits the
+      // (orgId, goodId, unitOfMeasureId) unique constraint. Map P2002 to a
+      // friendly Conflict (HTTP 409) instead of leaking Prisma 500.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('Ця одиниця виміру вже додана до товару');
       }
-      return created;
-    });
+      throw e;
+    }
 
     return this.toUoMDto(uom);
   }
 
   async setDefaultUoM(orgId: string, goodId: string, uomId: string): Promise<GoodUoMResponseDto> {
+    // Bug #223: validate Good itself exists and is not soft-deleted in this org
+    // before mutating any UoM rows for it (admin could otherwise mutate a deleted Good).
+    await this.findOne(orgId, goodId);
+
     const uom = await this.prisma.goodUoM.findFirst({
       where: { id: uomId, orgId, goodId },
       include: { unitOfMeasure: true },
@@ -267,8 +288,9 @@ export class GoodsService {
     await this.prisma.$transaction([
       this.prisma.goodUoM.updateMany({ where: { orgId, goodId }, data: { isDefault: false } }),
       this.prisma.goodUoM.update({ where: { id: uomId }, data: { isDefault: true } }),
-      this.prisma.good.update({
-        where: { id: goodId },
+      // Bug #224: defense-in-depth — updateMany with orgId+deletedAt guard.
+      this.prisma.good.updateMany({
+        where: { id: goodId, orgId, deletedAt: null },
         data: { unitId: uom.unitOfMeasureId, unit: uom.unitOfMeasure.shortName },
       }),
     ]);
@@ -277,29 +299,36 @@ export class GoodsService {
   }
 
   async removeUoM(orgId: string, goodId: string, uomId: string): Promise<void> {
+    // Bug #223: ensure parent Good is in this org and not soft-deleted.
+    await this.findOne(orgId, goodId);
+
     const uom = await this.prisma.goodUoM.findFirst({ where: { id: uomId, orgId, goodId } });
     if (!uom) throw new NotFoundException('Запис одиниці виміру не знайдено');
 
     const total = await this.prisma.goodUoM.count({ where: { orgId, goodId } });
     if (total === 1) throw new BadRequestException('Не можна видалити єдину одиницю виміру');
 
-    await this.prisma.$transaction(async tx => {
-      await tx.goodUoM.delete({ where: { id: uomId } });
-      if (uom.isDefault) {
-        const next = await tx.goodUoM.findFirst({
-          where: { orgId, goodId },
-          include: { unitOfMeasure: true },
-          orderBy: { createdAt: 'asc' },
-        });
-        if (next) {
-          await tx.goodUoM.update({ where: { id: next.id }, data: { isDefault: true } });
-          await tx.good.update({
-            where: { id: goodId },
-            data: { unitId: next.unitOfMeasureId, unit: next.unitOfMeasure.shortName },
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.goodUoM.delete({ where: { id: uomId } });
+        if (uom.isDefault) {
+          const next = await tx.goodUoM.findFirst({
+            where: { orgId, goodId },
+            include: { unitOfMeasure: true },
+            orderBy: { createdAt: 'asc' },
           });
+          if (next) {
+            await tx.goodUoM.update({ where: { id: next.id }, data: { isDefault: true } });
+            // Bug #224: defense-in-depth — updateMany with orgId+deletedAt guard.
+            await tx.good.updateMany({
+              where: { id: goodId, orgId, deletedAt: null },
+              data: { unitId: next.unitOfMeasureId, unit: next.unitOfMeasure.shortName },
+            });
+          }
         }
-      }
-    });
+      },
+      { timeout: 5_000 },
+    );
   }
 
   private toUoMDto(u: {

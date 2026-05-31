@@ -13,10 +13,26 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('GoodsService', () => {
   let service: GoodsService;
   let prisma: {
-    good: { findFirst: any; findMany: any; count: any; create: any; update: any };
+    good: {
+      findFirst: any;
+      findMany: any;
+      count: any;
+      create: any;
+      update: any;
+      updateMany: any;
+    };
     brand: { findFirst: any };
     unitOfMeasure: { findFirst: any };
     counterparty: { findFirst: any };
+    goodUoM: {
+      findFirst: any;
+      findMany: any;
+      count: any;
+      create: any;
+      update: any;
+      updateMany: any;
+      delete: any;
+    };
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -48,10 +64,20 @@ describe('GoodsService', () => {
         count: vi.fn(),
         create: vi.fn().mockResolvedValue(goodRow),
         update: vi.fn().mockResolvedValue(goodRow),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       brand: { findFirst: vi.fn() },
       unitOfMeasure: { findFirst: vi.fn() },
       counterparty: { findFirst: vi.fn() },
+      goodUoM: {
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+        count: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+        delete: vi.fn(),
+      },
       $transaction: vi.fn(),
     };
 
@@ -155,6 +181,233 @@ describe('GoodsService', () => {
         service.update('org-1', 'good-1', { brandId: '11111111-1111-4111-8111-111111111111' }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.good.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Bug #228: UoM CRUD unit coverage (addUoM/setDefaultUoM/removeUoM).
+  // Covers: tenant + soft-delete (#223), defense-in-depth (#224), TOCTOU
+  // P2002 mapping (#225), promotion-on-delete invariant.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  const unitRow = {
+    id: 'unit-1',
+    orgId: 'org-1',
+    name: 'Літр',
+    shortName: 'л',
+    coefficient: 1,
+  };
+  const uomRow = {
+    id: 'uom-1',
+    orgId: 'org-1',
+    goodId: 'good-1',
+    unitOfMeasureId: 'unit-1',
+    isDefault: false,
+    createdAt: new Date('2026-01-01'),
+    unitOfMeasure: { name: 'Літр', shortName: 'л', coefficient: 1 },
+  };
+
+  describe('addUoM', () => {
+    it('1-ша UoM сетить isDefault=true і оновлює Good.unit/unitId', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow); // good lookup
+      prisma.unitOfMeasure.findFirst.mockResolvedValueOnce(unitRow); // unit lookup
+      prisma.goodUoM.findFirst.mockResolvedValueOnce(null); // no existing
+      prisma.goodUoM.count.mockResolvedValueOnce(0); // first
+      // $transaction(async tx) — emulate by calling the callback with prisma
+      prisma.$transaction.mockImplementationOnce(async (cb: any) =>
+        cb({
+          goodUoM: {
+            create: vi.fn().mockResolvedValueOnce({ ...uomRow, isDefault: true }),
+            update: vi.fn(),
+            updateMany: vi.fn(),
+            findFirst: vi.fn(),
+            delete: vi.fn(),
+          },
+          good: { updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }) },
+        }),
+      );
+
+      const res = await service.addUoM('org-1', 'good-1', { unitOfMeasureId: 'unit-1' });
+      expect(res.isDefault).toBe(true);
+      expect(res.unitShortName).toBe('л');
+    });
+
+    it('N-та UoM не змінює default і не оновлює Good.unit', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      prisma.unitOfMeasure.findFirst.mockResolvedValueOnce(unitRow);
+      prisma.goodUoM.findFirst.mockResolvedValueOnce(null);
+      prisma.goodUoM.count.mockResolvedValueOnce(2); // not first
+      const goodUpdateMany = vi.fn();
+      prisma.$transaction.mockImplementationOnce(async (cb: any) =>
+        cb({
+          goodUoM: {
+            create: vi.fn().mockResolvedValueOnce({ ...uomRow, isDefault: false }),
+            update: vi.fn(),
+            updateMany: vi.fn(),
+            findFirst: vi.fn(),
+            delete: vi.fn(),
+          },
+          good: { updateMany: goodUpdateMany },
+        }),
+      );
+
+      const res = await service.addUoM('org-1', 'good-1', { unitOfMeasureId: 'unit-1' });
+      expect(res.isDefault).toBe(false);
+      expect(goodUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it('Bug #223: cross-tenant good (findFirst → null) → NotFoundException', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(null); // not in org
+      prisma.unitOfMeasure.findFirst.mockResolvedValueOnce(unitRow);
+      await expect(
+        service.addUoM('org-1', 'good-1', { unitOfMeasureId: 'unit-1' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('Bug #223: cross-tenant unit → NotFoundException', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      prisma.unitOfMeasure.findFirst.mockResolvedValueOnce(null); // unit not in org
+      await expect(
+        service.addUoM('org-1', 'good-1', { unitOfMeasureId: 'unit-1' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('existing UoM mapping → ConflictException, no create', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      prisma.unitOfMeasure.findFirst.mockResolvedValueOnce(unitRow);
+      prisma.goodUoM.findFirst.mockResolvedValueOnce(uomRow); // already exists
+      await expect(
+        service.addUoM('org-1', 'good-1', { unitOfMeasureId: 'unit-1' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('Bug #225: TOCTOU race → P2002 у create мапиться у ConflictException 409', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      prisma.unitOfMeasure.findFirst.mockResolvedValueOnce(unitRow);
+      prisma.goodUoM.findFirst.mockResolvedValueOnce(null);
+      prisma.goodUoM.count.mockResolvedValueOnce(1);
+      const p2002 = new Prisma.PrismaClientKnownRequestError('unique violation', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+      prisma.$transaction.mockImplementationOnce(async () => {
+        throw p2002;
+      });
+      await expect(
+        service.addUoM('org-1', 'good-1', { unitOfMeasureId: 'unit-1' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('setDefaultUoM', () => {
+    it('Bug #223: soft-deleted good → NotFoundException (findOne fails first)', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(null); // findOne → not found
+      await expect(service.setDefaultUoM('org-1', 'good-1', 'uom-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('uom з чужої org → NotFoundException', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow); // good OK
+      prisma.goodUoM.findFirst.mockResolvedValueOnce(null); // uom not in org/good
+      await expect(service.setDefaultUoM('org-1', 'good-1', 'uom-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('happy path: всі поточні UoMs скидаються, target стає isDefault, Good.unit оновлюється', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      prisma.goodUoM.findFirst.mockResolvedValueOnce(uomRow);
+      prisma.$transaction.mockResolvedValueOnce([{ count: 3 }, uomRow, { count: 1 }]);
+
+      const res = await service.setDefaultUoM('org-1', 'good-1', 'uom-1');
+      expect(res.isDefault).toBe(true);
+      // Verified that batch $transaction array form was called (3 ops)
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      const ops = prisma.$transaction.mock.calls[0][0];
+      expect(Array.isArray(ops)).toBe(true);
+      expect(ops.length).toBe(3);
+    });
+  });
+
+  describe('removeUoM', () => {
+    it('Bug #223: soft-deleted good → NotFoundException', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(null);
+      await expect(service.removeUoM('org-1', 'good-1', 'uom-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('total===1 → BadRequestException ("не можна видалити єдину...")', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      prisma.goodUoM.findFirst.mockResolvedValueOnce(uomRow);
+      prisma.goodUoM.count.mockResolvedValueOnce(1);
+      await expect(service.removeUoM('org-1', 'good-1', 'uom-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('видалення non-default коли total>1 → транзакція виконується, без auto-promote', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      prisma.goodUoM.findFirst.mockResolvedValueOnce({ ...uomRow, isDefault: false });
+      prisma.goodUoM.count.mockResolvedValueOnce(2);
+      const txFindFirst = vi.fn();
+      const txUpdate = vi.fn();
+      prisma.$transaction.mockImplementationOnce(async (cb: any) =>
+        cb({
+          goodUoM: {
+            delete: vi.fn(),
+            findFirst: txFindFirst,
+            update: txUpdate,
+          },
+          good: { updateMany: vi.fn() },
+        }),
+      );
+      await service.removeUoM('org-1', 'good-1', 'uom-1');
+      // No auto-promote — uom was not default
+      expect(txFindFirst).not.toHaveBeenCalled();
+      expect(txUpdate).not.toHaveBeenCalled();
+    });
+
+    it('видалення default коли total>1 → промотує наступний UoM (createdAt asc) у default + оновлює Good.unit', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      prisma.goodUoM.findFirst.mockResolvedValueOnce({ ...uomRow, isDefault: true });
+      prisma.goodUoM.count.mockResolvedValueOnce(2);
+      const txUpdate = vi.fn();
+      const goodUpdateMany = vi.fn();
+      const nextUom = {
+        id: 'uom-2',
+        unitOfMeasureId: 'unit-2',
+        isDefault: false,
+        unitOfMeasure: { shortName: 'кг', name: 'Кілограм', coefficient: 1 },
+      };
+      prisma.$transaction.mockImplementationOnce(async (cb: any) =>
+        cb({
+          goodUoM: {
+            delete: vi.fn(),
+            findFirst: vi.fn().mockResolvedValueOnce(nextUom),
+            update: txUpdate,
+          },
+          good: { updateMany: goodUpdateMany },
+        }),
+      );
+      await service.removeUoM('org-1', 'good-1', 'uom-1');
+      // Next UoM was promoted
+      expect(txUpdate).toHaveBeenCalledWith({
+        where: { id: 'uom-2' },
+        data: { isDefault: true },
+      });
+      // Good.unit synced to new default (defense-in-depth: updateMany w/ orgId)
+      expect(goodUpdateMany).toHaveBeenCalledWith({
+        where: { id: 'good-1', orgId: 'org-1', deletedAt: null },
+        data: { unitId: 'unit-2', unit: 'кг' },
+      });
     });
   });
 });
