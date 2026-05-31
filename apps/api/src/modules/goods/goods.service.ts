@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateGoodDto,
@@ -292,7 +293,7 @@ export class GoodsService {
           }
           return created;
         },
-        { timeout: 5_000 },
+        { timeout: TRANSACTION_TIMEOUT_MS },
       );
     } catch (e) {
       // Bug #225: TOCTOU between `existing`/`count` precheck and `tx.create` —
@@ -383,7 +384,7 @@ export class GoodsService {
           }
         }
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     );
   }
 

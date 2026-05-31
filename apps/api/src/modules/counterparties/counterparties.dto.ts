@@ -14,6 +14,7 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { CounterpartyType, LegalForm } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 // ─── Counterparty ────────────────────────────────────────
 
@@ -28,9 +29,13 @@ export class CreateCounterpartyDto {
   @ApiPropertyOptional() @IsOptional() @IsString() edrpou?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() vatPayer?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
-  @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
+  @ApiPropertyOptional() @IsOptional() @Transform(emptyToUndefined) @IsEmail() email?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
-  @ApiPropertyOptional({ enum: LegalForm }) @IsOptional() @IsEnum(LegalForm) legalForm?: LegalForm;
+  @ApiPropertyOptional({ enum: LegalForm })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(LegalForm)
+  legalForm?: LegalForm;
   @ApiPropertyOptional() @IsOptional() @IsString() legalAddress?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() actualAddress?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() bankAccount?: string;
@@ -46,9 +51,13 @@ export class UpdateCounterpartyDto {
   @ApiPropertyOptional() @IsOptional() @IsString() edrpou?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() vatPayer?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
-  @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
+  @ApiPropertyOptional() @IsOptional() @Transform(emptyToUndefined) @IsEmail() email?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
-  @ApiPropertyOptional({ enum: LegalForm }) @IsOptional() @IsEnum(LegalForm) legalForm?: LegalForm;
+  @ApiPropertyOptional({ enum: LegalForm })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(LegalForm)
+  legalForm?: LegalForm;
   @ApiPropertyOptional() @IsOptional() @IsString() legalAddress?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() actualAddress?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() bankAccount?: string;

@@ -6,7 +6,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MaintenanceSchedulesService } from '../maintenance-schedules/maintenance-schedules.service';
 import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
-import { formatPersonName } from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
 import {
@@ -738,7 +738,7 @@ export class WorkOrdersService {
         await this.recalcTotals(workOrderId, tx, orgId);
         return created;
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — create + recalcTotals (2 findMany take:1000 + update)
 
     return this.toLineDto(line);
@@ -788,7 +788,7 @@ export class WorkOrdersService {
         await this.recalcTotals(workOrderId, tx, orgId);
         return result;
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — update + recalcTotals
 
     return this.toLineDto(updated);
@@ -815,7 +815,7 @@ export class WorkOrdersService {
         });
         await this.recalcTotals(workOrderId, tx, orgId);
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — soft-delete + recalcTotals
   }
 
@@ -867,7 +867,7 @@ export class WorkOrdersService {
         await this.recalcTotals(workOrderId, tx, orgId);
         return created;
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — create + recalcTotals
 
     return this.toPartDto(part);
@@ -914,7 +914,7 @@ export class WorkOrdersService {
         await this.recalcTotals(workOrderId, tx, orgId);
         return result;
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — update + recalcTotals
 
     return this.toPartDto(updated);
@@ -941,7 +941,7 @@ export class WorkOrdersService {
         });
         await this.recalcTotals(workOrderId, tx, orgId);
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — soft-delete + recalcTotals
   }
 

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { formatPersonName } from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -157,7 +157,7 @@ export class PurchaseOrdersService {
           },
         });
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
 
     return this.toDto(po);
@@ -220,7 +220,7 @@ export class PurchaseOrdersService {
           },
         });
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
 
     return this.toDto(updated);
@@ -245,7 +245,7 @@ export class PurchaseOrdersService {
 
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }

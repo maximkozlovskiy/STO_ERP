@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { formatPersonName } from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -141,7 +141,7 @@ export class PaymentsService {
 
         return created;
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout — payment + settlement + invoice/WO updates
 
     // Apply FSM transition INVOICED→PAID via WorkOrdersService (outside tx — has its own transaction)

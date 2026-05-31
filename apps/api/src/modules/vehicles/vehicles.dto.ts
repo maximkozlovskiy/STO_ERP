@@ -8,6 +8,8 @@ import {
   IsUUID,
   Min,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 // ─── Vehicle ─────────────────────────────────────────────
 
 export class CreateVehicleDto {
@@ -28,8 +30,16 @@ export class CreateVehicleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() driveType?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() bodyType?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() engineCode?: string;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() insuranceExpiry?: string;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() inspectionExpiry?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  insuranceExpiry?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  inspectionExpiry?: string;
 }
 
 export class UpdateVehicleDto {
@@ -47,8 +57,16 @@ export class UpdateVehicleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() driveType?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() bodyType?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() engineCode?: string;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() insuranceExpiry?: string;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() inspectionExpiry?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  insuranceExpiry?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  inspectionExpiry?: string;
 }
 
 export class VehicleResponseDto {

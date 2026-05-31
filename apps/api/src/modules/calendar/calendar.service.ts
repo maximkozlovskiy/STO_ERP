@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
-import { formatPersonName } from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateCalendarSlotDto,
@@ -149,7 +149,7 @@ export class CalendarService {
         });
         // Bug #130: explicit 5s timeout (2 conflict checks + 1 create — well below default).
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     );
 
     return this.toDto(slot);
@@ -248,7 +248,7 @@ export class CalendarService {
           },
         });
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     );
 
     return this.toDto(updated);

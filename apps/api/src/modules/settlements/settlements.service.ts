@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma, SettlementTransactionType } from '@prisma/client';
 
@@ -64,7 +65,7 @@ export class SettlementsService {
       await run(tx);
     } else {
       // Bug #132: explicit timeout — викликається з work-orders COMPLETED flow, де можуть бути додаткові writes
-      await this.prisma.$transaction(run, { timeout: 5_000 });
+      await this.prisma.$transaction(run, { timeout: TRANSACTION_TIMEOUT_MS });
     }
   }
 

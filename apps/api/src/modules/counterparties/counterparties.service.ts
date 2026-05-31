@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CounterpartyType, LegalForm, Prisma } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CounterpartyQueryDto,
@@ -106,7 +107,7 @@ export class CounterpartiesService {
           include: { settlementAccount: { select: { balance: true } } },
         });
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
     return this.toDto(item);
   }

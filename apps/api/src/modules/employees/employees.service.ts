@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   AssignBranchesDto,
@@ -150,7 +151,7 @@ export class EmployeesService {
           });
         }
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
@@ -182,7 +183,7 @@ export class EmployeesService {
           });
         }
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
@@ -218,7 +219,7 @@ export class EmployeesService {
           });
         }
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }
@@ -257,7 +258,7 @@ export class EmployeesService {
           await tx.employee.update({ where: { id }, data: { allBranches: dto.allBranches } });
         }
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
     return this.findOne(orgId, id);
   }

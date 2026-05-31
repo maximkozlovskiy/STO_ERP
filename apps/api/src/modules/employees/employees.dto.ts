@@ -13,8 +13,9 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { EmployeeStatus, UserRole } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { z } from 'zod';
 
 // ─── rateScheme Zod validation ────────────────────────────
@@ -67,16 +68,19 @@ export class CreateEmployeeDto {
 
   @ApiPropertyOptional({ enum: EmployeeStatus })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(EmployeeStatus)
   status?: EmployeeStatus;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsDateString()
   dateOfHire?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsDateString()
   dateOfFire?: string;
 }
@@ -94,6 +98,7 @@ export class UpdateEmployeeDto {
 
   @ApiPropertyOptional({ enum: UserRole })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(UserRole)
   role?: UserRole;
 
@@ -113,16 +118,19 @@ export class UpdateEmployeeDto {
 
   @ApiPropertyOptional({ enum: EmployeeStatus })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(EmployeeStatus)
   status?: EmployeeStatus;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsDateString()
   dateOfHire?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsDateString()
   dateOfFire?: string;
 }

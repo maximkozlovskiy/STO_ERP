@@ -9,7 +9,9 @@ import {
   IsString,
   IsUUID,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 // ─── Zone DTOs ───────────────────────────────────────────
 
@@ -36,6 +38,7 @@ export class UpdateZoneDto {
 
   @ApiPropertyOptional({ enum: ZoneType })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(ZoneType)
   type?: ZoneType;
 }
@@ -79,6 +82,7 @@ export class UpdateLiftDto {
 
   @ApiPropertyOptional({ enum: LiftType })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(LiftType)
   type?: LiftType;
 
@@ -88,14 +92,27 @@ export class UpdateLiftDto {
 
   @ApiPropertyOptional({ enum: LiftStatus })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(LiftStatus)
   status?: LiftStatus;
 
   @ApiPropertyOptional() @IsOptional() @IsString() serialNumber?: string;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() purchaseDate?: string;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() warrantyUntil?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  purchaseDate?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  warrantyUntil?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() maintenanceIntervalDays?: number;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() lastMaintenanceDate?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  lastMaintenanceDate?: string;
 }
 
 export class LiftResponseDto {

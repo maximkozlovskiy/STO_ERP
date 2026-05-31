@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentType } from '@prisma/client';
 
@@ -88,7 +89,7 @@ export class DocumentNumberService {
         const prefix = cfg.prefix ? `${cfg.prefix}${cfg.separator}` : '';
         return `${prefix}${seqStr}`;
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #130: explicit 5s timeout — SELECT FOR UPDATE + UPDATE in one row
   }
 }

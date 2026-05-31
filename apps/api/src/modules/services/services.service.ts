@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateServiceDto,
@@ -123,7 +124,7 @@ export class ServicesService {
           },
         });
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
 
     return this.toDto(item);
@@ -203,7 +204,7 @@ export class ServicesService {
           },
         });
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
 
     return this.toDto(item);

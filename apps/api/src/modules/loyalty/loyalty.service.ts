@@ -185,7 +185,7 @@ export class LoyaltyService {
         });
         return discountAmount;
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout — atomic redeem з 2 операціями
 
     return { discountAmount: result };

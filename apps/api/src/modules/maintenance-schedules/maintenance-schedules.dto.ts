@@ -1,6 +1,7 @@
 import { IsUUID, IsString, IsOptional, IsBoolean, IsInt, IsDateString, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateMaintenanceScheduleDto {
   @ApiProperty()
@@ -9,7 +10,11 @@ export class CreateMaintenanceScheduleDto {
   @ApiPropertyOptional({ default: 'REGULAR' }) @IsOptional() @IsString() maintenanceType?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) intervalDays?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) intervalMileage?: number;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() lastMaintenanceDate?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  lastMaintenanceDate?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) lastMaintenanceMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
@@ -18,7 +23,11 @@ export class UpdateMaintenanceScheduleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() maintenanceType?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) intervalDays?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) intervalMileage?: number;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() lastMaintenanceDate?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  lastMaintenanceDate?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) lastMaintenanceMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) nextMaintenanceMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;

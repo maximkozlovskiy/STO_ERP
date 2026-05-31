@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { WarehouseType } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateWarehouseDto {
   @ApiProperty()
@@ -14,6 +16,7 @@ export class CreateWarehouseDto {
 
   @ApiPropertyOptional({ enum: WarehouseType, default: WarehouseType.MAIN })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(WarehouseType)
   type?: WarehouseType;
 
@@ -31,6 +34,7 @@ export class UpdateWarehouseDto {
 
   @ApiPropertyOptional({ enum: WarehouseType })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(WarehouseType)
   type?: WarehouseType;
 

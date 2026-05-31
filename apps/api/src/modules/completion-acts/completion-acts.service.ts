@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { CompletionActStatus } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
@@ -167,7 +168,7 @@ export class CompletionActsService {
         }
         workOrderId = act.workOrder?.id ?? null;
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #130: explicit 5s timeout
 
     if (workOrderId) {

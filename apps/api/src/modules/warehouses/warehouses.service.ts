@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { WarehouseType, Prisma } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { CreateWarehouseDto, UpdateWarehouseDto, WarehouseResponseDto } from './warehouses.dto';
@@ -52,7 +53,7 @@ export class WarehousesService {
           }
           return tx.warehouse.create({ data: { ...dto, orgId } });
         },
-        { timeout: 5_000 },
+        { timeout: TRANSACTION_TIMEOUT_MS },
       );
       await this.cache.delPattern(`ref:warehouses:${orgId}*`);
       return this.toDto(item);
@@ -79,7 +80,7 @@ export class WarehousesService {
           }
           return tx.warehouse.update({ where: { id, orgId }, data: dto });
         },
-        { timeout: 5_000 },
+        { timeout: TRANSACTION_TIMEOUT_MS },
       );
       await this.cache.delPattern(`ref:warehouses:${orgId}*`);
       return this.toDto(item);

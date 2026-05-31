@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma, BatchCostMethod, StockBatch } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from './pricing.service';
 
@@ -295,7 +296,7 @@ export class BatchService {
       // Bug #132: explicit timeout
       await this.prisma.$transaction(
         innerTx => this.returnToBatch(orgId, batchId, qty, documentType, documentId, innerTx),
-        { timeout: 5_000 },
+        { timeout: TRANSACTION_TIMEOUT_MS },
       );
       return;
     }

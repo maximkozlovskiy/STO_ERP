@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DocumentType, Prisma, StockDocumentType, StockMovementType } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -184,7 +185,7 @@ export class StockDocumentsService {
           },
         });
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
 
     return this.toDto(doc);
@@ -244,7 +245,7 @@ export class StockDocumentsService {
           },
         });
       },
-      { timeout: 5_000 },
+      { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #132: explicit timeout
 
     return this.toDto(updated);

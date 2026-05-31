@@ -8,7 +8,8 @@ import {
   IsUUID,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateExchangeRateDto {
   @ApiProperty({ example: 'uuid' })
@@ -37,6 +38,7 @@ export class CreateExchangeRateDto {
 export class UpdateExchangeRateDto {
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsDateString()
   date?: string;
 
