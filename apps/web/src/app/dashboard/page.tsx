@@ -1,8 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRequireAuth } from '@/lib/auth';
-import { apiFetch } from '@/lib/api-client';
+import {
+  useDashboardOrders,
+  useDashboardLowStock,
+  useDashboardInvoices,
+  useDashboardRevenue,
+  useDashboardMaintenance,
+} from '@/hooks/api/useDashboardData';
 import { useDashboardStream } from '@/hooks/useDashboardStream';
 import Link from 'next/link';
 import {
@@ -134,11 +140,16 @@ const QA_STORAGE_KEY = 'sto_quick_actions';
 
 export default function DashboardPage() {
   const { employee } = useRequireAuth();
-  const [kpi, setKpi] = useState<KPI | null>(null);
-  const [revenue, setRevenue] = useState<RevenueDay[]>([]);
-  const [upcomingTO, setUpcomingTO] = useState<MaintenanceSchedule[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const enabled = !!employee;
+
+  const { data: ordersData, isLoading: ordersLoading } = useDashboardOrders(enabled);
+  const { data: lowStockData, isLoading: lowStockLoading } = useDashboardLowStock(enabled);
+  const { data: invoicesData, isLoading: invoicesLoading } = useDashboardInvoices(enabled);
+  const { data: revenueData, isLoading: revenueLoading } = useDashboardRevenue(enabled);
+  const { data: maintenanceData } = useDashboardMaintenance(enabled);
+  const loading = ordersLoading || lowStockLoading || invoicesLoading || revenueLoading;
+
+  const [error] = useState('');
   const [todayStr, setTodayStr] = useState('');
   const [greeting, setGreeting] = useState('Вітаємо');
   const [enabledQA, setEnabledQA] = useState<string[]>(DEFAULT_QUICK_ACTIONS);
@@ -153,67 +164,44 @@ export default function DashboardPage() {
   // F7: Live SSE dashboard stream
   const { data: streamData, isLive } = useDashboardStream();
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const kyivDate = (d: Date) => KYIV_YMD_FMT.format(d);
-        const today = kyivDate(new Date());
-        const now = new Date();
-        const kyivStr = KYIV_YEAR_MONTH_DAY_FMT.format(now);
-        const [kyivYear, kyivMonth] = kyivStr.split('-').map(Number);
-        const monthStart = `${kyivYear}-${String(kyivMonth).padStart(2, '0')}-01`;
-        const weekStart = kyivDate(new Date(Date.now() - 6 * 86_400_000));
-
-        const [orders, lowStock, invoices, revenueData, toData] = await Promise.allSettled([
-          apiFetch<PaginatedWorkOrders>('/work-orders?limit=200'),
-          apiFetch<LowStockItem[]>('/stock-items/low'),
-          apiFetch<PaginatedInvoices>('/invoices?status=SENT&limit=200'),
-          apiFetch<RevenueReport>(`/reports/revenue?from=${weekStart}&to=${today}`),
-          apiFetch<MaintenanceSchedule[]>('/maintenance-schedules/upcoming?days=30'),
-        ]);
-
-        if (cancelled) return;
-
-        const ordersData = orders.status === 'fulfilled' ? orders.value : { items: [] };
-        const lowStockData = lowStock.status === 'fulfilled' ? lowStock.value : [];
-        const invoicesData = invoices.status === 'fulfilled' ? invoices.value : { items: [] };
-        const revData =
-          revenueData.status === 'fulfilled' ? revenueData.value : { rows: [], totalRevenue: 0 };
-        if (toData.status === 'fulfilled') setUpcomingTO(toData.value);
-
-        const allOrders: WorkOrderSummary[] = ordersData.items ?? [];
-        const todayOrders = allOrders.filter(
-          o => o.completedAt && o.completedAt.slice(0, 10) === today,
-        );
-        const allInvoices: InvoiceSummary[] = invoicesData.items ?? [];
-        const monthRevenue = (revData.rows as RevenueDay[])
-          .filter(r => r.date >= monthStart)
-          .reduce((s, r) => s + r.revenue, 0);
-
-        setKpi({
-          openOrders: allOrders.filter(o => ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(o.status))
-            .length,
-          inProgressOrders: allOrders.filter(o => o.status === 'IN_PROGRESS').length,
-          completedToday: todayOrders.length,
-          revenueToday: todayOrders.reduce((s, o) => s + o.totalAmount, 0),
-          revenueMonth: monthRevenue,
-          lowStockCount: Array.isArray(lowStockData) ? lowStockData.length : 0,
-          unpaidInvoices: allInvoices.length,
-          unpaidAmount: allInvoices.reduce((s, i) => s + i.amount, 0),
-        });
-
-        setRevenue(revData.rows ?? []);
-      } catch (e: unknown) {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : 'Помилка завантаження дашборду');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+  // KPI — обчислюється синхронно з TanStack Query даних (no useEffect needed)
+  const kpi = useMemo<KPI | null>(() => {
+    if (!ordersData || !lowStockData || !invoicesData) return null;
+    const today = KYIV_YMD_FMT.format(new Date());
+    const allOrders: WorkOrderSummary[] =
+      (ordersData as { items?: WorkOrderSummary[] }).items ?? [];
+    const todayOrders = allOrders.filter(
+      o => o.completedAt && o.completedAt.slice(0, 10) === today,
+    );
+    const allInvoices: InvoiceSummary[] =
+      (invoicesData as { items?: InvoiceSummary[] }).items ?? [];
+    const kyivStr = KYIV_YEAR_MONTH_DAY_FMT.format(new Date());
+    const [kyivYear, kyivMonth] = kyivStr.split('-').map(Number);
+    const monthStart = `${kyivYear}-${String(kyivMonth!).padStart(2, '0')}-01`;
+    const revRows = (revenueData as { rows?: RevenueDay[] } | undefined)?.rows ?? [];
+    const monthRevenue = revRows
+      .filter(r => r.date >= monthStart)
+      .reduce((s, r) => s + r.revenue, 0);
+    const lowArr = Array.isArray(lowStockData) ? lowStockData : [];
+    return {
+      openOrders: allOrders.filter(o => ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(o.status))
+        .length,
+      inProgressOrders: allOrders.filter(o => o.status === 'IN_PROGRESS').length,
+      completedToday: todayOrders.length,
+      revenueToday: todayOrders.reduce((s, o) => s + o.totalAmount, 0),
+      revenueMonth: monthRevenue,
+      lowStockCount: lowArr.length,
+      unpaidInvoices: allInvoices.length,
+      unpaidAmount: allInvoices.reduce((s, i) => s + i.amount, 0),
     };
+  }, [ordersData, lowStockData, invoicesData, revenueData]);
 
-    loadData();
+  const revenue: RevenueDay[] = (revenueData as { rows?: RevenueDay[] } | undefined)?.rows ?? [];
+  const upcomingTO: MaintenanceSchedule[] = Array.isArray(maintenanceData)
+    ? (maintenanceData as MaintenanceSchedule[])
+    : [];
+
+  useEffect(() => {
     setTodayStr(KYIV_FULL_DATE_FMT.format(new Date()));
     const h = parseInt(KYIV_HOUR_FMT.format(new Date()), 10);
     setGreeting(h < 12 ? 'Доброго ранку' : h < 18 ? 'Доброго дня' : 'Доброго вечора');
@@ -223,9 +211,6 @@ export default function DashboardPage() {
     } catch {
       /* ignore */
     }
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const toggleQA = useCallback((href: string) => {

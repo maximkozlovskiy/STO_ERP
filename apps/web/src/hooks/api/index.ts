@@ -8,3 +8,7 @@ export * from './useBookingRequests';
 export * from './usePricingRules';
 export * from './useStockDocuments';
 export * from './useInfrastructure';
+export * from './useReports';
+export * from './useSyncStatus';
+export * from './useDashboardData';
+export * from './useWorks';

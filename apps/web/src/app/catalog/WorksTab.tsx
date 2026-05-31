@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useWorks, worksKeys } from '@/hooks/api/useWorks';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, BookOpen } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -45,17 +47,9 @@ interface Category {
   name: string;
   children: Category[];
 }
-interface Work {
-  id: string;
-  categoryId: string;
-  categoryName: string;
-  name: string;
-  normoHours: number;
-  price: number;
-  description: string | null;
-  isWarranty: boolean;
-}
-interface PaginatedWorks {
+import type { Work, PaginatedWorks } from '@/hooks/api/useWorks';
+
+interface _PaginatedWorks {
   items: Work[];
   total: number;
   page: number;
@@ -102,13 +96,19 @@ export default function WorksTab() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
   const detailPanel = useDetailPanel('catalog-works');
+  const qc = useQueryClient();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [works, setWorks] = useState<PaginatedWorks | null>(null);
-  const [loading, setLoading] = useState(true);
   const [selectedCat, setSelectedCat] = useState('');
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
+
+  const { data: works, isLoading: loading } = useWorks({
+    page,
+    limit: 30,
+    categoryId: selectedCat || undefined,
+    q: debouncedQ || undefined,
+  });
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({
     categoryId: '',
@@ -249,23 +249,12 @@ export default function WorksTab() {
   }, [categories, modal]);
 
   const load = useCallback(() => {
-    setLoading(true);
-    const p = new URLSearchParams({ page: String(page), limit: '30' });
-    if (selectedCat) p.set('categoryId', selectedCat);
-    if (debouncedQ) p.set('q', debouncedQ);
-    apiFetch<PaginatedWorks>(`/works?${p}`)
-      .then(setWorks)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
-      .finally(() => setLoading(false));
-  }, [page, selectedCat, debouncedQ]);
+    qc.invalidateQueries({ queryKey: worksKeys.all });
+  }, [qc]);
 
   // Keep ref in sync so worksActions can call load() without depending on it
   useEffect(() => {
     worksLoadRef.current = load;
-  }, [load]);
-
-  useEffect(() => {
-    load();
   }, [load]);
 
   const flatCategories = (cats: Category[], depth = 0): Array<Category & { depth: number }> =>
@@ -331,12 +320,12 @@ export default function WorksTab() {
   const openEditWork = (w: Work) => {
     setEditWork(w);
     setEditForm({
-      categoryId: w.categoryId,
+      categoryId: w.categoryId ?? '',
       name: w.name,
       normoHours: String(w.normoHours),
       price: String(w.price),
       description: w.description ?? '',
-      isWarranty: w.isWarranty,
+      isWarranty: w.isWarranty ?? false,
     });
     setEditError('');
     editWorkDirty.resetDirty();

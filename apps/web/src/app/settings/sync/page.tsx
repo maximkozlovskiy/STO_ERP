@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSyncStatus, syncKeys } from '@/hooks/api/useSyncStatus';
 import type { SyncRecord } from '@sto/shared';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -9,35 +11,13 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { fmtDateTime } from '@/lib/format';
 
-interface SyncStatus {
-  pendingJobs: number;
-  failedJobs: number;
-  lastSyncAt: string | null;
-  maxSyncVersion: number;
-}
-
 export default function SyncPage() {
   useRequireAuth(['OWNER', 'ADMIN']);
-  const [status, setStatus] = useState<SyncStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
+  const { data: status, isLoading: loading, error: statusError } = useSyncStatus();
   const [syncing, setSyncing] = useState(false);
   const [msg, setMsg] = useState('');
-  const [error, setError] = useState('');
-
-  const loadStatus = async () => {
-    try {
-      const s = await apiFetch<SyncStatus>('/sync/status');
-      setStatus(s);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Не вдалося отримати статус синхронізації');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadStatus();
-  }, []);
+  const [error, setError] = useState(statusError instanceof Error ? statusError.message : '');
 
   const triggerSync = async () => {
     setSyncing(true);
@@ -61,7 +41,7 @@ export default function SyncPage() {
         `Синхронізація завершена. Отримано ${pulledCount} записів. ` +
           `Відправлено: ${pushResult.accepted} прийнято, ${pushResult.conflicts} конфліктів.`,
       );
-      await loadStatus();
+      qc.invalidateQueries({ queryKey: syncKeys.all });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка синхронізації');
     } finally {

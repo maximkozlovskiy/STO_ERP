@@ -41,6 +41,9 @@ import { bookingKeys } from '@/hooks/api/useBookingRequests';
 import { pricingRulesKeys } from '@/hooks/api/usePricingRules';
 import { stockDocsKeys } from '@/hooks/api/useStockDocuments';
 import { infraKeys } from '@/hooks/api/useInfrastructure';
+import { dashboardKeys } from '@/hooks/api/useDashboardData';
+import { syncKeys } from '@/hooks/api/useSyncStatus';
+import { worksKeys } from '@/hooks/api/useWorks';
 import { ToastContainer } from '@/components/ui/toast';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -261,6 +264,35 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       staleTime: 5 * 60_000,
     });
   },
+  '/dashboard': qc => {
+    void qc.prefetchQuery({
+      queryKey: dashboardKeys.orders(),
+      queryFn: ({ signal }) => apiFetch('/work-orders?limit=200', { signal }),
+      staleTime: 60_000,
+    });
+    void qc.prefetchQuery({
+      queryKey: dashboardKeys.lowStock(),
+      queryFn: ({ signal }) => apiFetch('/stock-items/low', { signal }),
+      staleTime: 60_000,
+    });
+    void qc.prefetchQuery({
+      queryKey: dashboardKeys.invoices(),
+      queryFn: ({ signal }) => apiFetch('/invoices?status=SENT&limit=200', { signal }),
+      staleTime: 60_000,
+    });
+  },
+  '/settings/sync': qc =>
+    void qc.prefetchQuery({
+      queryKey: syncKeys.status(),
+      queryFn: ({ signal }) => apiFetch('/sync/status', { signal }),
+      staleTime: 30_000,
+    }),
+  '/catalog': qc =>
+    void qc.prefetchQuery({
+      queryKey: worksKeys.list({}),
+      queryFn: ({ signal }) => apiFetch('/works?page=1&limit=30', { signal }),
+      staleTime: 30_000,
+    }),
 };
 
 const ROLE_LABELS: Record<string, string> = {

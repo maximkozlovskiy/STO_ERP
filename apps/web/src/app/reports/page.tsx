@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRequireAuth } from '@/lib/auth';
-import { apiFetch } from '@/lib/api-client';
+import { useReport, type ReportTab } from '@/hooks/api/useReports';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -36,7 +36,7 @@ const LoadChart = dynamic(() => import('./ReportsCharts').then(m => m.LoadChart)
   loading: () => <div className="h-72 bg-surface-hover animate-pulse rounded-xl" />,
 });
 
-type Tab = 'revenue' | 'work-orders' | 'stock' | 'settlements' | 'load' | 'profitability';
+type Tab = ReportTab;
 
 type RevenueRow = { date: string; revenue: number; labor: number; parts: number; count: number };
 type WorkOrderRow = {
@@ -119,33 +119,16 @@ export default function ReportsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
 
   const [tab, setTab] = useState<Tab>('revenue');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [data, setData] = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const now = new Date();
+  const now = new Date();
+  const [from, setFrom] = useState(() => {
     const kyivNow = KYIV_YMD_FMT.format(now);
-    setFrom(`${kyivNow.slice(0, 4)}-01-01`);
-    setTo(KYIV_DATE_FMT.format(now));
-  }, []);
+    return `${kyivNow.slice(0, 4)}-01-01`;
+  });
+  const [to, setTo] = useState(() => KYIV_DATE_FMT.format(now));
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setData(null);
-    setError('');
-    try {
-      const params = new URLSearchParams({ from, to });
-      const result = await apiFetch<Record<string, unknown>>(`/reports/${tab}?${params}`);
-      setData({ ...result, _tab: tab } as ReportData);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження звіту');
-    } finally {
-      setLoading(false);
-    }
-  }, [tab, from, to]);
+  const { data: rawData, isLoading: loading, error: queryError } = useReport(tab, from, to);
+  const data = rawData ? ({ ...rawData, _tab: tab } as ReportData) : null;
+  const error = queryError instanceof Error ? queryError.message : '';
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'revenue', label: 'Виручка' },
@@ -172,10 +155,7 @@ export default function ReportsPage() {
         {tabs.map(t => (
           <button
             key={t.id}
-            onClick={() => {
-              setTab(t.id);
-              setData(null);
-            }}
+            onClick={() => setTab(t.id)}
             className={cn(
               'px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
               tab === t.id
@@ -208,9 +188,9 @@ export default function ReportsPage() {
             />
           </>
         )}
-        <Button onClick={load} loading={loading}>
-          Сформувати
-        </Button>
+        {loading && (
+          <span className="text-xs text-muted-foreground animate-pulse">Завантаження…</span>
+        )}
         {data && (
           <Button
             variant="outline"
