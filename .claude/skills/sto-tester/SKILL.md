@@ -155,6 +155,7 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 - [ ] Кожен `findFirst` / `findMany` / `update` містить `orgId` у `where`
 - [ ] **Optional FK у `data: { ...dto }` / `data: dto`** (`brandId`, `unitId`, `preferredSupplierId`, `vehicleId`, `branchId`...) → сервіс валідує КОЖЕН наданий FK через `findFirst({ id: dto.XId, orgId, deletedAt: null })` ПЕРЕД write (патерн Bug #90). Сирий DB FK перевіряє лише глобальне існування `id`, НЕ `orgId` → FK з чужої org проходить → cross-tenant linkage. P2003 ловить ТІЛЬКИ неіснуючий ID, не cross-tenant — тому «P2003 прийнятний» НЕ закриває tenant-isolation. Severity HIGH
 - [ ] **Defense-in-depth для `update` (Bug #191):** жоден `prisma.X.update({ where: { id } })` на org-scoped таблиці без `orgId` у `where`. Prisma не підтримує `update({ where: { id, orgId } })` для primary-key (TS error) → використовувати `updateMany({ where: { id, orgId, deletedAt: null } })` + опціонально `if (count === 0) throw NotFoundException(...)`. Локально безпечно якщо `id` отриманий через org-scoped read, АЛЕ майбутній рефактор/copy-paste у controller без org-check = cross-tenant write без error. Grep: `grep -rn "\.update({ where: { id:" apps/api/src/modules/` — кожен match без `orgId` у where = LOW (profilatic), HIGH якщо викликається з prep-неперевіреним `id`
+- [ ] **FSM transition write-path persistence для new nullable row column (Bug #236):** sprint що додає `nullable colX?: TypeX` у row-модель (`PurchaseOrderLine`/`StockDocumentLine`/`InvoiceLine`/`WorkOrderPart`) + mapping `colX: l.colX ?? null` у `toDto` → у кожному `transition(STATE)` / `receive()` / `applyPricing()` / FSM-обчислювальному методі, де обчислюється resolved value (наприклад `lineUnitId = good.unitId`) і пропагується у side-effect resource (`inventory.createMovement(colX: lineUnitId)`/`stockMovement.create({ colX })`), ОБОВ'ЯЗКОВО має бути парний `tx.<rowTable>.update({ where: { id: line.id }, data: { colX: resolvedValue } })` для самого row, всередині $transaction. Інакше `findOne(id).lines[i].colX === null` назавжди → cross-resource inconsistency: history (movements) має X, current state (line) має NULL → audit/sync/export ламається. Symmetric-write для Bug #232 (read-side missing include). Grep: `grep -rnE "[a-z]*Id:\s*l\.[a-z]*Id\s*\?\?\s*null" apps/api/src/modules --include="*.service.ts"` → для кожного match у відповідному `transition()`/`receive()`/`applyPricing()` шукати `tx.<row>.update.*data.*colX`. Severity HIGH (silent data integrity)
 
 #### Prisma schema ↔ migration parity (release-blocker)
 
@@ -815,6 +816,55 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-31 — DTO write-side asymmetry: column declared, FSM transition не persists її у row (Bug #236) — backend, data-integrity, state-machine
+
+**Сигнал:** sprint додає nullable FK/scalar колонку у `*.prisma` модель + `unitOfMeasureId?: string | null` у `XLineResponseDto` + mapping `unitOfMeasureId: l.unitOfMeasureId ?? null` у `toDto`. FSM transition (CONFIRMED, RECEIVED, IN_PROGRESS) обчислює resolved value (`lineUnitId = good.unitId`) і пропагує його у **side-effect resource** (StockMovement через `inventory.createMovement(unitOfMeasureId)`), АЛЕ забуває оновити **сам поточний row** (`tx.stockDocumentLine.update({ data: { unitOfMeasureId: lineUnitId } })`). Симптом: `findOne(id)` ПІСЛЯ transition повертає `lines[i].unitOfMeasureId === null` навіть коли StockMovement рядки мають коректне значення. tsc green (поле nullable, no compile pressure), unit tests green (немає spec для transition), code review зосереджується на side-effect (movement) а не на самому row. **Cross-resource inconsistency**: history (movements) має X, current state (line.row) має NULL → audit/sync/export ламається.
+
+**Причина виникнення:** symmetric до Bug #232 (read-side: column declared у DTO, але Prisma `include` не fetch-ить — DTO віддає undefined). Write-side версія: розробник пише код side-effect rich operation і думає що головне — створити правильний StockMovement (це йде у history, append-only). Сам "owner" rowу (StockDocumentLine, PurchaseOrderLine) — це **поточний стан**, його теж треба оновити при transition. Логіка створення rowу (create) уже встановлювала всі поля одразу (тоді колонки ще не існували — backward compat), тому write-path не звичний. SKILL Bug #232 фікс додав `include` у read path; write path лишився непокритий.
+
+**Підхід до виявлення:** на Кроці 1 §1.1 — для будь-якого diff що додає nullable колонку у row-модель (`PurchaseOrderLine`, `StockDocumentLine`, `InvoiceLine`, `WorkOrderPart`) і **mapping `l.<field> ?? null` у toDto**:
+
+1. Знайти всі FSM transitions для цієї моделі (`transition(CONFIRMED|RECEIVED|IN_PROGRESS)`, `receive()`, `applyPricing()`, …).
+2. Для кожної — у тілі циклу `for (const line of doc.lines)` шукати чи resolved value (наприклад `lineUnitId = good.unitId`) пишеться у `tx.<row>.update({ data: { <field> } })`. Якщо передається лише у side-effect resource (`inventory.createMovement(<field>)`) — bug.
+3. Особлива увага: створення row через `create`/`createMany` без поля (поле залишається NULL) + transition не оновлює → row назавжди NULL.
+
+Grep-сигнатура (по diff):
+
+```bash
+# Знайти всі toDto що мапять l.<field> ?? null без update у transition
+grep -rnE "[a-z]*Id:\s*l\.[a-z]*Id\s*\?\?\s*null" apps/api/src/modules --include="*.service.ts"
+# Для кожного — у тому ж файлі знайти transition/receive/transitionToConfirm:
+grep -B5 "stockMovement.create\|inventory.createMovement\|workOrderPart.update" apps/api/src/modules/<module>/<module>.service.ts | grep -v "tx\.<row>\.update"
+```
+
+Property-test invariant: ПІСЛЯ transition `findOne(id).lines.every(l => l.unitOfMeasureId === movements[lineIdx].unitOfMeasureId)`.
+
+**Підхід до фіксу:** у `for (const line of doc.lines)` циклу transition додати explicit `update` для самого row перед/після side-effect:
+
+```ts
+if (resolvedValue) {
+  await tx.<row>.update({
+    where: { id: line.id },
+    data: { <field>: resolvedValue },
+  });
+}
+```
+
+Guard `if (resolvedValue)` пропускає null no-op коли fallback не знайшов значення. Розмістити після всіх side-effect creates (StockMovement) у тому ж блоці — атомарно у $transaction. **Не** робити окремий повторний цикл (зайвий round-trip + race-window). Якщо decision-table велика — окремий helper `await updateLineWithUom(tx, line.id, resolvedValue)`.
+
+**Severity:** HIGH — silent data integrity gap (UI/PDF/sync/audit показує NULL замість коректного UoM). Cross-resource consistency порушено (StockMovement.uomId ≠ StockDocumentLine.uomId). Дані у БД технічно "коректні" (NULL = backward-compat allowed), але feature що додавалась саме для display/audit — **мертва на write-path**.
+
+**Де шукати ще:** будь-який майбутній sprint що додає nullable колонку у row-модель з FSM transitions:
+
+- `WorkOrderPart.unitOfMeasureId` (якщо колись додасться) → transition(COMPLETED) має пропагувати у row;
+- `InvoiceLine.discountAppliedAmount` → transition(PAID) має зафіксувати застосовану знижку у row;
+- `BatchConsumption.consumedAt` → confirm-consumption має зафіксувати у row;
+- будь-який field з patterns "resolved при transition", "computed на CONFIRMED", "applied at FSM event".
+
+Профілактика: SKILL §1.1 тепер вимагає write-path audit для кожної nullable колонки що з'являється у `toDto` маппінгу — не лише read-path `include` (Bug #232).
+
+---
 
 ### 2026-05-31 — UoM/coefficient conversion missing на submit (Bug #231) — frontend, business-logic, data-corruption
 
