@@ -9,12 +9,12 @@
 ## Останній commit
 
 ```
+97e1ca3 fix(sync): cycle 4 — align frontend interfaces with API contracts
 319208b perf(optimize): cycle 3 — date-picker memoization + BatchRow memo
 490ec8e perf(optimize): cycle 3 — batch.service parallelize good+rules, inventory.updateMinStock 1-RTT
 1cf7098 docs(skills,memory): add mass-DTO variant-validator-family audit pattern + record tester cycle 3
 61720e3 fix(review): cycle 3 — emptyToUndefined on optional UUID/Enum/Date DTOs + TRANSACTION_TIMEOUT_MS unification
 39d2667 fix(sync): align frontend interfaces with API response DTOs (cycle 3)
-0c37fd1 perf(optimize): cycle 2 — followup fan-out + audit narrow select + dashboard Intl + Phase 21 covering indexes
 Дата: 2026-05-31
 
 Latest optimize: 2026-05-31 (sto-optimize-agent цикл 3 з 5, HEAD 1cf7098 → 319208b) — **5 точкових perf фіксів** (3 backend + 2 frontend + 3 нові SKILL patterns) фокус на нові великі сервіси (batch/pricing) і нові UI компоненти (date-picker, batch-viewer-modal).
