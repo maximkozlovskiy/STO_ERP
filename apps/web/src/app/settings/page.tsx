@@ -2743,7 +2743,7 @@ export default function SettingsPage() {
       >
         <div className="space-y-4">
           <Input
-            label="Назва *"
+            label="Назва"
             required
             value={currencyForm.name}
             errorMessage={currencyErrors.name}
@@ -2753,7 +2753,7 @@ export default function SettingsPage() {
             }}
           />
           <Input
-            label="Код (ISO 4217) *"
+            label="Код (ISO 4217)"
             required
             value={currencyForm.code}
             errorMessage={currencyErrors.code}
@@ -2832,7 +2832,7 @@ export default function SettingsPage() {
             </div>
           )}
           <Input
-            label="Дата *"
+            label="Дата"
             required
             type="date"
             value={rateForm.date}
@@ -2843,7 +2843,7 @@ export default function SettingsPage() {
             }}
           />
           <Input
-            label="Курс (UAH) *"
+            label="Курс (UAH)"
             required
             type="number"
             step="0.000001"
@@ -2887,7 +2887,7 @@ export default function SettingsPage() {
       >
         <div className="space-y-4">
           <Input
-            label="Назва рахунку *"
+            label="Назва рахунку"
             required
             value={baForm.name}
             onChange={e => {
@@ -2897,7 +2897,7 @@ export default function SettingsPage() {
             errorMessage={baErrors.name}
           />
           <Input
-            label="IBAN *"
+            label="IBAN"
             required
             value={baForm.ibanUA}
             onChange={e => {
@@ -2908,7 +2908,7 @@ export default function SettingsPage() {
             errorMessage={baErrors.ibanUA}
           />
           <Select
-            label="Валюта *"
+            label="Валюта"
             required
             value={baForm.currencyId}
             onChange={e => {
@@ -2977,7 +2977,7 @@ export default function SettingsPage() {
       >
         <div className="space-y-4">
           <Input
-            label="Назва *"
+            label="Назва"
             required
             value={crForm.name}
             onChange={e => {
@@ -2987,7 +2987,7 @@ export default function SettingsPage() {
             errorMessage={crErrors.name}
           />
           <Select
-            label="Валюта *"
+            label="Валюта"
             required
             value={crForm.currencyId}
             onChange={e => {
@@ -3004,7 +3004,7 @@ export default function SettingsPage() {
             ))}
           </Select>
           <Select
-            label="Філія *"
+            label="Філія"
             required
             value={crForm.branchId}
             onChange={e => {

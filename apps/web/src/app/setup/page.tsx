@@ -170,7 +170,7 @@ export default function SetupPage() {
           {step === 'org' && (
             <>
               <Field
-                label="Назва організації *"
+                label="Назва організації"
                 value={data.orgName}
                 onChange={v => update('orgName', v)}
                 placeholder="СТО Авто-Майстер"
@@ -184,14 +184,14 @@ export default function SetupPage() {
               <div className="border-t border-border pt-4 mt-2">
                 <p className="text-sm font-medium text-foreground mb-3">Обліковий запис власника</p>
                 <Field
-                  label="Email *"
+                  label="Email"
                   value={data.ownerEmail}
                   onChange={v => update('ownerEmail', v)}
                   placeholder="owner@sto.local"
                   type="email"
                 />
                 <Field
-                  label="Пароль *"
+                  label="Пароль"
                   value={data.ownerPassword}
                   onChange={v => update('ownerPassword', v)}
                   placeholder="мін. 6 символів"
@@ -199,13 +199,13 @@ export default function SetupPage() {
                 />
                 <div className="grid grid-cols-2 gap-3">
                   <Field
-                    label="Ім'я *"
+                    label="Ім'я"
                     value={data.ownerFirstName}
                     onChange={v => update('ownerFirstName', v)}
                     placeholder="Іван"
                   />
                   <Field
-                    label="Прізвище *"
+                    label="Прізвище"
                     value={data.ownerLastName}
                     onChange={v => update('ownerLastName', v)}
                     placeholder="Коваль"
@@ -218,13 +218,13 @@ export default function SetupPage() {
           {step === 'branch' && (
             <>
               <Field
-                label="Назва філії *"
+                label="Назва філії"
                 value={data.branchName}
                 onChange={v => update('branchName', v)}
                 placeholder="Головна філія"
               />
               <Field
-                label="Адреса *"
+                label="Адреса"
                 value={data.branchAddress}
                 onChange={v => update('branchAddress', v)}
                 placeholder="вул. Гагаріна 12, Київ"
