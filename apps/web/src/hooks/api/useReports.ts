@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 
@@ -27,6 +27,9 @@ export function useReport(tab: ReportTab, from: string, to: string) {
     enabled: !!employee && !!from && !!to,
     staleTime: 5 * 60_000, // звіти рідко міняються під час перегляду
     gcTime: 10 * 60_000,
+    // При зміні from/to/tab — лишаємо попередній звіт видимим поки новий
+    // завантажується (інакше графік/таблиця мерехтить на 300-500мс).
+    placeholderData: keepPreviousData,
   });
 }
 

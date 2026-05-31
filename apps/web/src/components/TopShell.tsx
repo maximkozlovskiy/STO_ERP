@@ -44,6 +44,7 @@ import { infraKeys } from '@/hooks/api/useInfrastructure';
 import { dashboardKeys } from '@/hooks/api/useDashboardData';
 import { syncKeys } from '@/hooks/api/useSyncStatus';
 import { worksKeys } from '@/hooks/api/useWorks';
+import { reportsKeys } from '@/hooks/api/useReports';
 import { ToastContainer } from '@/components/ui/toast';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -268,6 +269,9 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
     });
   },
   '/dashboard': qc => {
+    const today = KYIV_DATE_FMT.format(new Date());
+    // weekStart = 7 днів тому (як у useDashboardRevenue — Date.now() - 6 days).
+    const weekStart = KYIV_DATE_FMT.format(new Date(Date.now() - 6 * 86_400_000));
     void qc.prefetchQuery({
       queryKey: dashboardKeys.orders(),
       queryFn: ({ signal }) => apiFetch('/work-orders?limit=200', { signal }),
@@ -283,6 +287,17 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       queryFn: ({ signal }) => apiFetch('/invoices?status=SENT&limit=200', { signal }),
       staleTime: 60_000,
     });
+    void qc.prefetchQuery({
+      queryKey: dashboardKeys.revenue(weekStart, today),
+      queryFn: ({ signal }) =>
+        apiFetch(`/reports/revenue?from=${weekStart}&to=${today}`, { signal }),
+      staleTime: 60_000,
+    });
+    void qc.prefetchQuery({
+      queryKey: dashboardKeys.maintenance(),
+      queryFn: ({ signal }) => apiFetch('/maintenance-schedules/upcoming?days=30', { signal }),
+      staleTime: 60_000,
+    });
   },
   '/settings/sync': qc =>
     void qc.prefetchQuery({
@@ -296,6 +311,18 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       queryFn: ({ signal }) => apiFetch('/works?page=1&limit=30', { signal }),
       staleTime: 30_000,
     }),
+  // Reports: дефолтні дати на сторінці — from = початок року (Kyiv), to = today (Kyiv).
+  // Prefetch revenue tab (initial tab за замовчуванням) щоб графік відразу видно.
+  '/reports': qc => {
+    const today = KYIV_DATE_FMT.format(new Date());
+    const yearStart = `${today.slice(0, 4)}-01-01`;
+    void qc.prefetchQuery({
+      queryKey: reportsKeys.report('revenue', yearStart, today),
+      queryFn: ({ signal }) =>
+        apiFetch(`/reports/revenue?from=${yearStart}&to=${today}`, { signal }),
+      staleTime: 5 * 60_000,
+    });
+  },
   // Calendar: підйомники — стабільні reference data, prefetch при hover.
   // Слоти прив'язані до конкретної дати — prefetch today.
   '/calendar': qc => {
