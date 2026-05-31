@@ -24,6 +24,14 @@ interface AvailabilitySlot {
 // endpoints. Use raw `fetch` against the dedicated public `/api/booking/*` routes.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
+// Module-level Intl singleton — slots render у grid з .map(), без хостингу
+// форматер ініціалізувався б за кожен slot × кожен ререндер (O(slots × renders)
+// конструкцій locale-data, найдорожча частина Intl).
+const SLOT_TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
 async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}/api${path}`, {
     ...init,
@@ -226,10 +234,7 @@ export default function BookingPage() {
                               : 'border-border bg-input text-foreground hover:bg-secondary'
                           }`}
                         >
-                          {new Date(s.startAt).toLocaleTimeString('uk-UA', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          {SLOT_TIME_FMT.format(new Date(s.startAt))}
                         </button>
                       );
                     })}

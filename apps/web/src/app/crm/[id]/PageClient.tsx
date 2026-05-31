@@ -12,6 +12,7 @@ import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { cn, daysUntil } from '@/lib/utils';
 import { AnimatedBody } from '@/components/ui/modal';
+import { fmtMoney, fmtInt, fmtDate } from '@/lib/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -469,7 +470,7 @@ export default function CounterpartyCardPage() {
                 : 'text-muted-foreground',
           )}
         >
-          {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+          {fmtMoney(cp.balance)} ₴
           <p className="text-xs font-normal text-muted-foreground text-right">баланс</p>
         </div>
       </div>
@@ -786,9 +787,7 @@ export default function CounterpartyCardPage() {
                                     {[
                                       v.licensePlate,
                                       v.year,
-                                      v.currentMileage
-                                        ? `${v.currentMileage.toLocaleString()} км`
-                                        : null,
+                                      v.currentMileage ? `${fmtInt(v.currentMileage)} км` : null,
                                     ]
                                       .filter(Boolean)
                                       .join(' · ')}
@@ -813,12 +812,7 @@ export default function CounterpartyCardPage() {
                                       >
                                         <span>ТО: {s.maintenanceType}</span>
                                         {s.nextMaintenanceDate && (
-                                          <span>
-                                            · Наступне:{' '}
-                                            {new Date(s.nextMaintenanceDate).toLocaleDateString(
-                                              'uk-UA',
-                                            )}
-                                          </span>
+                                          <span>· Наступне: {fmtDate(s.nextMaintenanceDate)}</span>
                                         )}
                                         {isSoon && (
                                           <span className="px-1.5 py-0.5 bg-warning-subtle text-warning rounded text-[11px] font-medium">
@@ -858,7 +852,7 @@ export default function CounterpartyCardPage() {
                       : 'text-muted-foreground',
                 )}
               >
-                {cp.balance.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                {fmtMoney(cp.balance)} ₴
               </p>
             </div>
           </div>
@@ -875,9 +869,7 @@ export default function CounterpartyCardPage() {
                 <div key={t.id} className="flex items-center justify-between px-4 py-3">
                   <div>
                     <p className="text-sm text-foreground">{t.notes ?? t.documentType ?? t.type}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(t.createdAt).toLocaleDateString('uk-UA')}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{fmtDate(t.createdAt)}</p>
                   </div>
                   <span
                     className={cn(
@@ -890,7 +882,7 @@ export default function CounterpartyCardPage() {
                     {['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type)
                       ? '-'
                       : '+'}
-                    {Math.abs(t.amount).toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                    {fmtMoney(Math.abs(t.amount))} ₴
                   </span>
                 </div>
               ))}
@@ -929,13 +921,12 @@ export default function CounterpartyCardPage() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {wo.vehicleMake} {wo.vehicleModel} ·{' '}
-                      {new Date(wo.createdAt).toLocaleDateString('uk-UA')}
+                      {wo.vehicleMake} {wo.vehicleModel} · {fmtDate(wo.createdAt)}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-foreground">
-                      {wo.totalAmount.toLocaleString('uk-UA', { minimumFractionDigits: 2 })} ₴
+                      {fmtMoney(wo.totalAmount)} ₴
                     </p>
                     <span className="text-muted-foreground text-sm">→</span>
                   </div>
@@ -980,7 +971,7 @@ export default function CounterpartyCardPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <div className="text-[12px] text-muted-foreground">
-                          до {new Date(w.expiresAt).toLocaleDateString('uk-UA')}
+                          до {fmtDate(w.expiresAt)}
                         </div>
                         {w.isActive ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-success/10 text-success">
@@ -1024,7 +1015,7 @@ export default function CounterpartyCardPage() {
                 <div>
                   <div className="text-[13px] text-muted-foreground">Бали лояльності</div>
                   <div className="text-2xl font-bold text-foreground">
-                    {loyaltyBalance.toLocaleString('uk-UA')} балів
+                    {fmtInt(loyaltyBalance)} балів
                   </div>
                 </div>
                 <div className="flex gap-2 items-center">
@@ -1073,9 +1064,7 @@ export default function CounterpartyCardPage() {
                 <div className="divide-y divide-border max-h-60 overflow-y-auto">
                   {loyaltyTxs.map(t => (
                     <div key={t.id} className="flex items-center justify-between py-2 text-[12px]">
-                      <span className="text-muted-foreground">
-                        {new Date(t.createdAt).toLocaleDateString('uk-UA')}
-                      </span>
+                      <span className="text-muted-foreground">{fmtDate(t.createdAt)}</span>
                       <span className="text-foreground flex-1 px-3 truncate">
                         {t.notes ?? (t.type === 'EARN' ? 'Нарахування балів' : 'Списання балів')}
                       </span>

@@ -30,14 +30,18 @@ import {
 } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
 import { cn } from '@/lib/utils';
+import { fmtMoney } from '@/lib/format';
 
 interface Warehouse {
   id: string;
   name: string;
 }
 
+// Thin proxy над module-level Intl singleton (lib/format) — без локального форматера
+// у кожному файлі. Inline toLocaleString створює новий Intl.NumberFormat на кожну
+// комірку × ререндер; тут — один інстанс на весь модуль.
 function fmt(n: number) {
-  return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';
+  return `${fmtMoney(n)} ₴`;
 }
 
 export default function InventoryPage() {

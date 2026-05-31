@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
+import { fmtMoney, fmtDate } from '@/lib/format';
 
 interface Counterparty {
   id: string;
@@ -50,8 +51,11 @@ const TX_COLORS: Record<string, string> = {
   CREDIT_NOTE: 'text-muted-foreground',
 };
 
+// fmt() обгортка над lib/format.ts singletons — locale-data ініціалізується ОДИН раз
+// за модуль (Intl.NumberFormat). Inline `n.toLocaleString('uk-UA', {...})` ставив би
+// конструкцію форматера на КОЖНУ комірку × ререндер у списках transactions/acts.
 function fmt(n: number) {
-  return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴';
+  return `${fmtMoney(n)} ₴`;
 }
 
 export default function SettlementsPage() {
@@ -285,7 +289,7 @@ export default function SettlementsPage() {
                           </div>
                           <div className="text-[12px] text-muted-foreground">
                             {tx.documentType && <span>{tx.documentType} · </span>}
-                            {new Date(tx.createdAt).toLocaleDateString('uk-UA')}
+                            {fmtDate(tx.createdAt)}
                           </div>
                         </div>
                         <div
@@ -317,11 +321,10 @@ export default function SettlementsPage() {
                       >
                         <div className="flex-1">
                           <div className="font-medium text-foreground">
-                            {new Date(act.periodFrom).toLocaleDateString('uk-UA')} –{' '}
-                            {new Date(act.periodTo).toLocaleDateString('uk-UA')}
+                            {fmtDate(act.periodFrom)} – {fmtDate(act.periodTo)}
                           </div>
                           <div className="text-[12px] text-muted-foreground">
-                            {new Date(act.createdAt).toLocaleDateString('uk-UA')}
+                            {fmtDate(act.createdAt)}
                           </div>
                         </div>
                         <div className="text-right">

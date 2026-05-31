@@ -90,17 +90,20 @@ export class InvoicesService {
     workOrderId: string,
     userId?: string,
   ): Promise<InvoiceResponseDto> {
-    const wo = await this.prisma.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-    });
+    // Tenant-guard + duplicate-check run independently — both already filter by
+    // orgId so cross-tenant data cannot leak. Saves 1 RTT vs sequential.
+    const [wo, existing] = await Promise.all([
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+      }),
+      this.prisma.invoice.findFirst({
+        where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
+      }),
+    ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (!['COMPLETED', 'INVOICED'].includes(wo.status)) {
       throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
     }
-
-    const existing = await this.prisma.invoice.findFirst({
-      where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
-    });
     if (existing) throw new BadRequestException('Для цього наряду вже існує активний рахунок');
 
     return this.create(
@@ -281,15 +284,13 @@ export class InvoicesService {
     invoiceId: string,
     dto: CreateInvoiceLineDto,
   ): Promise<InvoiceLineResponseDto> {
-    const inv = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, orgId, deletedAt: null },
-    });
-    if (!inv) throw new NotFoundException('Рахунок не знайдено');
-    if (inv.status !== InvoiceStatus.DRAFT)
-      throw new BadRequestException('Рядки можна додавати лише до чернетки');
-
-    // Cross-tenant FK validation — parallel since goodId/workId are independent.
-    const [good, work] = await Promise.all([
+    // Tenant-guard invoice + FK validations (good/work) — all three independent
+    // and already orgId-scoped. Saves one RTT vs the previous «invoice-first, then
+    // parallel good+work» pattern.
+    const [inv, good, work] = await Promise.all([
+      this.prisma.invoice.findFirst({
+        where: { id: invoiceId, orgId, deletedAt: null },
+      }),
       dto.goodId
         ? this.prisma.good.findFirst({
             where: { id: dto.goodId, orgId, deletedAt: null },
@@ -303,6 +304,9 @@ export class InvoicesService {
           })
         : Promise.resolve(null),
     ]);
+    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (inv.status !== InvoiceStatus.DRAFT)
+      throw new BadRequestException('Рядки можна додавати лише до чернетки');
     if (dto.goodId && !good) throw new NotFoundException('Запчастину не знайдено');
     if (dto.workId && !work) throw new NotFoundException('Роботу не знайдено');
 
@@ -347,16 +351,20 @@ export class InvoicesService {
     lineId: string,
     dto: UpdateInvoiceLineDto,
   ): Promise<InvoiceLineResponseDto> {
-    const inv = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, orgId, deletedAt: null },
-    });
+    // Independent reads: tenant-guard invoice + existing line. Both queries already
+    // tenant-scoped via orgId → safe to parallelize. Throw checks stay after Promise.all
+    // so the user still gets the "invoice-first" diagnostic message.
+    const [inv, existing] = await Promise.all([
+      this.prisma.invoice.findFirst({
+        where: { id: invoiceId, orgId, deletedAt: null },
+      }),
+      this.prisma.invoiceLine.findFirst({
+        where: { id: lineId, invoiceId, orgId },
+      }),
+    ]);
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
     if (inv.status !== InvoiceStatus.DRAFT)
       throw new BadRequestException('Рядки можна редагувати лише у чернетці');
-
-    const existing = await this.prisma.invoiceLine.findFirst({
-      where: { id: lineId, invoiceId, orgId },
-    });
     if (!existing) throw new NotFoundException('Рядок не знайдено');
 
     const quantity = dto.quantity ?? existing.quantity;
@@ -394,16 +402,19 @@ export class InvoicesService {
   }
 
   async removeLine(orgId: string, invoiceId: string, lineId: string): Promise<void> {
-    const inv = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, orgId, deletedAt: null },
-    });
+    // Parallelize tenant-guard invoice + existing line fetch — both queries are
+    // independent and already tenant-scoped via orgId. Saves one RTT per call.
+    const [inv, existing] = await Promise.all([
+      this.prisma.invoice.findFirst({
+        where: { id: invoiceId, orgId, deletedAt: null },
+      }),
+      this.prisma.invoiceLine.findFirst({
+        where: { id: lineId, invoiceId, orgId },
+      }),
+    ]);
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
     if (inv.status !== InvoiceStatus.DRAFT)
       throw new BadRequestException('Рядки можна видаляти лише з чернетки');
-
-    const existing = await this.prisma.invoiceLine.findFirst({
-      where: { id: lineId, invoiceId, orgId },
-    });
     if (!existing) throw new NotFoundException('Рядок не знайдено');
 
     await this.prisma.invoiceLine.delete({ where: { id: lineId } });
