@@ -9,12 +9,32 @@
 ## Останній commit
 
 ```
+61720e3 fix(review): cycle 3 — emptyToUndefined on optional UUID/Enum/Date DTOs + TRANSACTION_TIMEOUT_MS unification
 39d2667 fix(sync): align frontend interfaces with API response DTOs (cycle 3)
 0c37fd1 perf(optimize): cycle 2 — followup fan-out + audit narrow select + dashboard Intl + Phase 21 covering indexes
 5b77bad docs(memory): record sto-tester cycle 2 — HEAD af5f4f8 hash
 af5f4f8 fix(tester): cycle 2 — Bugs #251-#256 (booking DoS + cross-tenant FK + comments validation + specs)
 c5d04bc docs(skills): add RolesGuard-without-@Roles pattern to sto-review
 Дата: 2026-05-31
+
+Latest review: 2026-05-31 (sto-review-agent цикл 3 з 5, HEAD 39d2667 → 61720e3) — **22 файли** виправлено (7 DTO + 15 services).
+**§2.3 Input Validation (7 DTO):** додано `@Transform(emptyToUndefined)` для `@IsOptional` + `@IsEnum`/`@IsDateString`/`@IsEmail`:
+  - counterparties: email + legalForm (Create+Update)
+  - employees: role/status/dateOfHire/dateOfFire (Create+Update)
+  - exchange-rates: date (Update)
+  - maintenance-schedules: lastMaintenanceDate (Create+Update)
+  - vehicles: insuranceExpiry/inspectionExpiry (Create+Update)
+  - warehouses: type enum (Create+Update)
+  - zones: ZoneType, LiftType/LiftStatus + purchaseDate/warrantyUntil/lastMaintenanceDate
+**Why:** frontend cleared selects/date-inputs шлють `""` → `@IsEnum`/`@IsDateString` 400 Bad Request попри `@IsOptional`. emptyToUndefined конвертує до validator.
+**§5/§7.1 Transaction timeout consistency (15 services, ~25 callsites):** заміна літералу `timeout: 5_000` → `timeout: TRANSACTION_TIMEOUT_MS` (з `@sto/shared`):
+  - calendar (×2), completion-acts, counterparties, document-number, employees (×4), goods (×2), inventory/batch, loyalty (×2), payments, purchase-orders (×3), services (×2), settlements, stock-documents (×2), warehouses (×2), work-orders (×6)
+  - Larger explicit timeouts (10_000/15_000/30_000) для важких bulk-операцій (xlsx import, PO apply, stock-document confirm) залишено як explicit literals — інтенційно довші за стандарт
+**§2.5 BullMQ retry verified (no fixes needed):** SMS=10/exp60s, Checkbox PRRO=288/exp300s (24h), Webhook=10/exp60s, Loyalty=10/exp30s, FollowUp=10/exp60s — всі compliant
+**§8 Next.js `use client` verified:** всі `page.tsx`/`layout.tsx` з hooks мають директиву або делегують у PageClient. `components/ui/table.tsx` — pure presentational pass-through (без хуків), безпечно як server component
+**TypeScript:** ✅ 0 errors (api + web --incremental false + shared)
+**Unit tests:** API 482/482 pass
+**Нові SKILL patterns:** жодного — всі виправлені пункти вже покриті §1.6 `emptyToUndefined` (2026-05-31 entry) та §5 transaction timeout (Bug #132 pattern). Самовдосконалення SKILL цього циклу — не потрібне, чекліст спрацював.
 
 Latest sync: 2026-05-31 (sto-sync-agent цикл 3 з 5, HEAD 0c37fd1 → 39d2667) — **9 interface оновлень** (Direction 3: типи).
 Direction 1 (API→UI): 0 missing — всі backend модулі мають UI (або у known exceptions).
