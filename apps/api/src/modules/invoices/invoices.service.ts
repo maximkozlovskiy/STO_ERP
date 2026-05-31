@@ -64,7 +64,20 @@ export class InvoicesService {
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: { select: { number: true } },
-        lines: { orderBy: { sortOrder: 'asc' }, take: 500 },
+        // Bug #232: include good.unit + unitOfMeasure щоб InvoiceLineResponseDto.unitShortName/coefficient
+        // не були завжди undefined. Krok 3 додав ці поля у DTO але includes не оновили.
+        lines: {
+          orderBy: { sortOrder: 'asc' },
+          take: 500,
+          include: {
+            good: {
+              select: {
+                unit: true,
+                unitOfMeasure: { select: { shortName: true, coefficient: true } },
+              },
+            },
+          },
+        },
         payments: { select: { amount: true } },
       },
     });
@@ -182,7 +195,19 @@ export class InvoicesService {
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: { select: { number: true } },
-        lines: { orderBy: { sortOrder: 'asc' }, take: 500 },
+        // Bug #232: include good.unitOfMeasure для коректного toDto(true) на завершенні clone.
+        lines: {
+          orderBy: { sortOrder: 'asc' },
+          take: 500,
+          include: {
+            good: {
+              select: {
+                unit: true,
+                unitOfMeasure: { select: { shortName: true, coefficient: true } },
+              },
+            },
+          },
+        },
       },
     });
     if (!original) throw new NotFoundException('Рахунок не знайдено');
@@ -301,6 +326,15 @@ export class InvoicesService {
         priceWithVat,
         sortOrder: dto.sortOrder ?? 0,
       },
+      // Bug #232: include good для unitShortName/coefficient у відповіді.
+      include: {
+        good: {
+          select: {
+            unit: true,
+            unitOfMeasure: { select: { shortName: true, coefficient: true } },
+          },
+        },
+      },
     });
 
     await this.recalcTotals(orgId, invoiceId);
@@ -343,6 +377,15 @@ export class InvoicesService {
         vatAmount,
         priceWithVat,
         sortOrder: dto.sortOrder ?? undefined,
+      },
+      // Bug #232: include good для unitShortName/coefficient у відповіді.
+      include: {
+        good: {
+          select: {
+            unit: true,
+            unitOfMeasure: { select: { shortName: true, coefficient: true } },
+          },
+        },
       },
     });
 
@@ -477,7 +520,19 @@ export class InvoicesService {
               edrpou: true,
             },
           },
-          lines: { orderBy: { sortOrder: 'asc' }, take: 500 },
+          // Bug #232: include good для unitShortName fallback у PDF generation.
+          lines: {
+            orderBy: { sortOrder: 'asc' },
+            take: 500,
+            include: {
+              good: {
+                select: {
+                  unit: true,
+                  unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                },
+              },
+            },
+          },
         },
       }),
       this.prisma.organisation.findFirst({

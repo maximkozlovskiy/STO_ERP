@@ -7162,3 +7162,151 @@ Scope (3 commits):
 **Статус:** [ ] не виправлено — задокументовано як known-state, не critical через монолітність `GoodsTab.tsx`
 
 ---
+
+## Session 2026-05-31 — sto-tester Крок 5 UoM (PO/SD/Invoice) (HEAD 5ba1504)
+
+Scope: Krok 5 — Select UoM у рядках PO/SD/Invoice з перерахунком кількості (`feat(uom): krok 5` + review-fix: `as any` касти прибрано, race guard для onSelect, div-by-zero захист, silent catch виправлено).
+
+Файли під перевіркою:
+
+- `apps/web/src/app/purchase-orders/page.tsx`
+- `apps/web/src/app/stock-documents/page.tsx`
+- `apps/web/src/app/invoices/page.tsx`
+- `apps/web/src/hooks/api/usePurchaseOrders.ts`
+
+### Baseline (Крок 0)
+
+- TypeScript API/web/shared — ✅ 0 errors
+- API unit/contract tests — ✅ 440/440 passed (40 файлів)
+- Web component tests — ✅ 203/203 passed (18 файлів)
+- Перевірка хибно-зеленого `[x]` (попередні сесії): останній `fix(tester) Bugs #220-#229` (8fd5cd1) — реально міняє код у `goods.service.ts`/`goods.controller.ts`/`goods.dto.ts`/`schema.prisma`/нова міграція + 13 тестів, не лише docs. Зелений.
+
+### Знайдені баги
+
+---
+
+## Bug #231 — CRITICAL backend ↔ frontend / business logic
+
+**Файл:** `apps/web/src/app/purchase-orders/page.tsx:344-348` (handleCreate)
+**Файл:** `apps/web/src/app/stock-documents/page.tsx:372-376` (handleCreate)
+**Severity:** CRITICAL
+**Категорія:** business-logic / data-corruption / unit conversion
+
+**Опис:** Krok 5 frontend має формулу `newQty = currentQty * (oldCoeff / newCoeff)` що зберігає інваріант `qty_base = display × coeff` при переключенні UoM. Але `handleCreate` шле `parseFloat(l.quantity)` як-є (display value, у обраній UoM), БЕЗ множення на коефіцієнт. Backend очікує quantity у базових одиницях товару (по `Good.unit`), а отримує у display UoM → data corruption по всьому inventory layer.
+
+**Приклад поломки (рідка одиниця):**
+
+1. Товар "Олія" з `Good.unit="л"`. UoM: л (coeff=1, default), мл (coeff=0.001).
+2. Користувач створює PO, обирає товар → default UoM "л", qty='1', coefficient=1.
+3. Користувач перемикає на "мл" → newQty = 1 × 1/0.001 = 1000, qty='1000.000', coefficient=0.001. Display: "1000 мл" (фізично = 1 л).
+4. Submit: backend отримує `quantity=1000`.
+5. `PurchaseOrderLine.quantity=1000` (інтерпретовано як 1000 л = 1000 базових одиниць, не 1000 мл = 1 л).
+6. При RECEIVE → `inventory.createMovement(quantity=1000)` → склад отримує 1000 л замість 1 л. Stock corruption × 1000.
+
+**Дзеркальний приклад (упаковки):**
+
+1. Товар "Винт" з `Good.unit="шт"`. UoM: шт (coeff=1, default), уп (coeff=10).
+2. Користувач хоче замовити 2 пачки = 20 шт. Перемикає на уп, вводить qty=2.
+3. l.quantity='2', l.coefficient=10.
+4. Submit: backend отримує `quantity=2` → PO.line.quantity=2 (інтерпретовано як 2 шт).
+5. Receive form (без UoM Select) — користувач вводить 20 (фізично отримані шт). Comparison `receivedQty(20) >= quantity(2)` → status=RECEIVED при отриманні лише 10% замовленого.
+6. Inventory отримує +20 шт, payable=2\*price. Якщо applyPricing тригериться — використовує `line.price` як cost-per-base-unit, але це cost-per-уп → ціна продажу × 10.
+
+Баг видно лише коли користувач перемикає UoM. Якщо завжди залишає default (coeff=1) — `qty * 1 = qty` → коректно. Регресія пройде happy-path ручне QA, але виявиться у проді коли реальні власники СТО заведуть UoMs у каталозі.
+
+**Очікувана поведінка:** При submit конвертувати display → base:
+
+```
+const coeff = l.coefficient || 1;
+quantity = parseFloat(l.quantity) * coeff;     // base units
+price = parseFloat(l.price) / coeff;            // per base unit
+```
+
+Тоді `totalAmount = quantity * price` зберігає інваріант: (qty_base × price_base) = (qty_display × price_display). Backward-compat: коли coeff=1 (default UoM, або відсутній UoM) — поведінка без змін.
+
+**Фактична поведінка:** Submit використовує `parseFloat(l.quantity)` без множення на coefficient → data corruption за нетривіальних UoM.
+
+**Підхід до фіксу:** У handleCreate перед мапою lines у API payload: `const coeff = l.coefficient || 1; quantity = displayQty * coeff; price = displayPrice / coeff`.
+
+**Статус:** [x] виправлено — додано `quantity: displayQty * coeff` + `price: displayPrice / coeff` у handleCreate для PO та SD. Stock-documents має optional `price` у line — null-safe конвертація через тернарний.
+
+---
+
+## Bug #232 — MEDIUM backend / data display
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:67,185,480` (findOne/clone/generatePdf line-includes)
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:289-307` (addLine)
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:335-345` (updateLine)
+**Severity:** MEDIUM
+**Категорія:** data-display / dead-field
+
+**Опис:** Krok 3 додав поля `unitShortName`/`coefficient` у `InvoiceLineResponseDto` і `toLineDto`. Проте в InvoicesService жодна Prisma query не робить `include: { good: { include: { unitOfMeasure: ... } } }` для lines. У findOne — `lines: { orderBy: { sortOrder: 'asc' }, take: 500 }` без include. У clone — те саме. У generatePdf — те саме. У addLine — `prisma.invoiceLine.create()` без include.
+
+Тому `l.good` завжди undefined → `toLineDto` віддає `unitShortName: undefined` і `coefficient: undefined`. Frontend (`apps/web/src/app/invoices/page.tsx:527`) рендерить `{line.quantity} {line.unitShortName ?? ''} × ...` → одиниця завжди порожня.
+
+**Очікувана поведінка:** Кожен query що завантажує lines і повертається через toLineDto має включати `good: { select: { unit: true, unitOfMeasure: { select: { shortName: true, coefficient: true } } } }`. У addLine/updateLine — теж include при create/update.
+
+**Фактична поведінка:** Поля у DTO завжди undefined; frontend silent fallback на порожній рядок.
+
+**Підхід до фіксу:** Додати include у 5 місцях: findOne, clone, generatePdf, addLine, updateLine.
+
+**Статус:** [x] виправлено — додано `include: { good: { select: { unit, unitOfMeasure: { select: { shortName, coefficient } } } } }` у findOne, clone, generatePdf, addLine, updateLine. Тип `toLineDto` сигнатура вже передбачала `good?.unitOfMeasure` — після include дані реально приходять.
+
+---
+
+## Bug #233 — MEDIUM frontend / UX
+
+**Файл:** `apps/web/src/app/purchase-orders/page.tsx:1116-1159`
+**Файл:** `apps/web/src/app/stock-documents/page.tsx:1018-1063`
+**Severity:** MEDIUM
+**Категорія:** UX / display
+
+**Опис:** Task-спека рядок #6: "Якщо UoM порожні → Select не відображається, `unit` показується як текст". Frontend код має `{l.goodUoMs.length > 0 && (<Select ... />)}` — Select рендериться тільки якщо UoMs є. Але коли UoMs порожні — нічого не показано між полями Quantity і Price. Користувач не бачить, у яких одиницях вимірюється кількість (ні Select, ні fallback-тексту). Це порушує спеку та погіршує UX: типовий товар без явно доданих UoMs (всі старі товари створені до GoodUoM моделі) → користувач вводить "1" не знаючи "1 чого".
+
+**Очікувана поведінка:** Коли `l.goodUoMs.length === 0`, рендерити `<span>{l.unit}</span>` як fallback. Зберегти `g.unit` у line state при onSelect.
+
+**Фактична поведінка:** Порожнє місце замість Select; одиниця взагалі не відображається.
+
+**Підхід до фіксу:** Додати `unit: string` у line-state-тип, зберігати `unit: g.unit` при onSelect Good, відобразити як `<span>` коли goodUoMs порожні. Робиться для PO + SD (Invoice не має create-lines form).
+
+**Статус:** [x] виправлено — у PO/SD lines-state додано `unit: string` поле; зберігається `unit: g.unit` при onSelect Good; додано fallback `<span>` що показує `l.unit` коли `goodUoMs.length === 0`. Скидається до '' при clear.
+
+---
+
+## Bug #234 — LOW frontend / robustness
+
+**Файл:** `apps/web/src/app/purchase-orders/page.tsx:1128-1149` (UoM Select onChange)
+**Файл:** `apps/web/src/app/stock-documents/page.tsx:1032-1053` (UoM Select onChange)
+**Severity:** LOW
+**Категорія:** UX / edge-case
+
+**Опис:** UoM Select onChange має `const currentQty = parseFloat(l.quantity) || 1;` — це fallback на 1 коли користувач очистив поле кількості. Якщо користувач обнулив поле кількості (щоб ввести нове), а потім випадково тапнув на UoM — система мовчки записує "1" у поле і робить перерахунок. Користувач втрачає свій intent (порожнє поле = "ще не введено").
+
+**Очікувана поведінка:** Якщо currentQty не валідне (NaN, ≤0), пропустити перерахунок quantity, лише оновити UoM-метадані (unitId, unitShortName, coefficient).
+
+**Фактична поведінка:** Перерахунок ставить qty='1.000' (або іншу залежно від coeff) → клобер intent.
+
+**Підхід до фіксу:** Guard `hasValidQty = Number.isFinite(rawQty) && rawQty > 0`; тільки якщо true — оновити quantity.
+
+**Статус:** [x] виправлено — у PO/SD UoM Select onChange додано guard hasValidQty. Якщо qty порожнє/NaN/≤0 — не змінюємо quantity, тільки UoM-метадані.
+
+---
+
+## Bug #235 — LOW frontend / race condition
+
+**Файл:** `apps/web/src/app/purchase-orders/page.tsx:1054-1085` (onSelect Good UoM-fetch)
+**Файл:** `apps/web/src/app/stock-documents/page.tsx:955-985`
+**Severity:** LOW
+**Категорія:** race condition / stale closure
+
+**Опис:** Race-guard у async UoM-fetch перевіряє `idx === i && x.goodId === selectedGoodId`. `i` — закаптурений index рядка, `selectedGoodId` — закаптурений Good ID. Якщо користувач видаляє рядок 0 (`removeLine`) під час pending UoM-fetch для рядка з оригінальним index=1: lines масив shift-иться, рядок-1 стає рядком-0. Response для оригінального index=1 з goodId=A приходить, race-guard: `idx === 1 && x.goodId === A`. Але тепер у lines[1] інший товар (або немає), а товар A знаходиться у lines[0]. Guard не співпадає → UoM-data тихо втрачено для існуючого товару A в новому індексі 0.
+
+**Очікувана поведінка:** Шукати рядок за goodId замість index. Або зберігати stable line-key при додаванні line.
+
+**Фактична поведінка:** Stale index закаптурений у closure → UoM не довантажується.
+
+**Підхід до фіксу:** Race-guard за goodId-only (без index): `x.goodId === selectedGoodId && x.goodUoMs.length === 0`. Гарантія `goodUoMs.length === 0` запобігає повторному apply.
+
+**Статус:** [x] виправлено — race-guard змінено з `idx === i && x.goodId === selectedGoodId` на `x.goodId === selectedGoodId && x.goodUoMs.length === 0`. Видалено залежність від index. Виправлено для PO + SD.
+
+---

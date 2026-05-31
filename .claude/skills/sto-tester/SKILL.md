@@ -468,6 +468,8 @@ done
 - [ ] **React Query cross-resource invalidation audit (Bug #210-#212):** для КОЖНОГО `await apiFetch(/X/:id/Y, { method: 'POST'|'PATCH'|'DELETE' })` у migrated page → прочитати **серверний** controller+service цього endpoint і знайти всі side-effect updates на ІНШИХ resource-ах: (1) `inventory.createMovement(...)` → invalidate `inventoryKeys.all`; (2) `workOrders.transition(...)` → invalidate `workOrdersKeys.all`; (3) `settlements.createTransaction(...)` → invalidate `counterpartiesKeys.all` (якщо list показує balance); (4) `priceHistory.create(...)` + `good.update({ salePrice })` → invalidate `inventoryKeys.all` / `goodsKeys.all`. Same-resource invalidation (own-keys.all) — звичайна; cross-resource — невидимий gap бо клієнт не знає що endpoint мутує сторонній resource. Не покладатись на `staleTime=30s` — користувач може мати другий tab з відповідним list-view або переходити швидше за staleTime. Grep: `grep -B2 -A5 "method: 'POST'\|method: 'PATCH'\|method: 'DELETE'" apps/web/src/app/<migrated-page>` → кожен endpoint pair-check проти `apps/api/src/modules/<resource>/<resource>.service.ts`. Severity: MEDIUM коли впливає на бізнес-метрику (залишки/ціни/балансу); LOW коли лише UX (new row не з'являється у list до router.back)
 - [ ] **React Query migration completeness: mutation hooks експортовані але не використовуються (Bug #213):** після `feat(rq): migrate X` commits — grep usage `useXMutation`/`useDeleteX`/`useUpdateX` у `apps/web/src/app` (поза tests). Якщо count === 0 → migration зробила лише READ-path, WRITE-path лишається raw `apiFetch` + manual invalidate. Це **не runtime-bug**, але: (1) bundle bloat; (2) misleading commit-message; (3) maintenance burden (invalidation у двох місцях). Severity LOW; фікс: задокументувати у MemoryManual як known-state АБО видалити hooks; full migration = окремий sprint
 - [ ] **React Query custom hook без `*.test.tsx` (Bug #214):** новий `apps/web/src/hooks/api/use*.ts` з `useQuery`/`useMutation` потребує парний `*.test.tsx`. Тести покривають: (1) queryKey factory ізоляція (різні фільтри → різні ключі); (2) enabled-gate (`employee=null` → no fetch); (3) URLSearchParams build (кожне опціональне поле → відповідний URL param АБО відсутній якщо false-y); (4) signal abort (apiFetch отримує signal). Шаблон: `useWorkOrders.test.tsx`. Mock `apiFetch` + `useAuth`. Не використовувати реальний `QueryClientProvider` — створити свіжий `QueryClient` per-test з `retry: false`. Без цих тестів — silent URL param drift (як 3d5136d repairCategory regression) пройде CI зеленим
+- [ ] **UoM display-vs-base mismatch на submit (Bug #231):** будь-який `<Select>` що дозволяє перемикати UoM з recalc display quantity (Krok 5 patten: `coefficient` + `unitId` + `unitShortName` у local lines state) ОБОВ'ЯЗКОВО має у submit-функції конвертувати display→base: `quantity: parseFloat(l.quantity) * (l.coefficient || 1)` і `price: parseFloat(l.price) / (l.coefficient || 1)`. Display-transition formula `newDisplay = oldDisplay * oldCoeff / newCoeff` зберігає інваріант між двома UoMs, АЛЕ submit потребує **окремої** конверсії до base. Якщо submit шле `parseFloat(l.quantity)` як-є → backend (що очікує base units) отримує display value → silent data corruption у stock movement / payable / applyPricing. Видно ЛИШЕ коли coefficient != 1; happy-path з default UoM (coeff=1) — без регресії. Grep: `grep -rnE "quantity:\s*parseFloat\(l\.quantity\)[^*]" apps/web/src/app --include="*.tsx" -B5 | grep -B5 "coefficient"` — кожен match без `* coeff`/`* (l.coefficient` = CRITICAL bug. Backend пара: `inventory.createMovement(quantity: l.quantity)` без UoM-conversion — підтвердження що quantity ОЧІКУЄТЬСЯ у base units. Severity: CRITICAL (release-blocker)
+- [ ] **Mass DTO field migration completeness — include audit (Bug #232):** додавання нового поля (`unitShortName`/`coefficient`) у `*.dto.ts` `LineResponseDto` + `toLineDto`-mapping без оновлення Prisma `include` queries → поле завжди undefined у API response. Розробник додав `select: { unitOfMeasure: { select: { shortName, coefficient } } }` у service X, забув у service Y. Grep: для кожного `unitShortName`/`coefficient`/інше нове DTO-поле — для кожного `prisma.X.findFirst/findMany/findFirstOrThrow/create/update` що повертається через `toLineDto`/`toDto` → перевірити що relevant `include` присутній. Pair-check: `grep -n "good?.unitOfMeasure" apps/api/src/modules/**/*.service.ts` (consumer) vs `grep -n "unitOfMeasure:" apps/api/src/modules/**/*.service.ts | grep -v ".dto.ts"` (producer/include). Якщо consumer-count > producer-count за модулем — bug. Severity: MEDIUM (data display, не runtime crash; але feature що додано саме для UX — мертвий)
 - [ ] **Sub-resource default-flag mutation → parent-list staleness (Bug #226-#227):** для будь-якого sub-resource CRUD у modal-табі (`addX`/`setDefaultX`/`removeX` що викликають `/<parent>/:id/<sub>` ендпоінти) — pair-check проти backend service: чи endpoint виконує `prisma.<Parent>.update/updateMany({...})` (наприклад `Good.unitId` оновлюється коли default UoM змінюється)? Якщо так, success-handler frontend ОБОВ'ЯЗКОВО викликає `load()` для parent-table АБО invalidate `<parentKeys>.all`. Conditional: `addX` тільки коли `isFirst === true` (зчитати з backend → у response `created.isDefault`); `setDefaultX` завжди; `removeX` тільки якщо видаляли default (capture `wasDefault` перед DELETE). **Auto-promote next-default:** коли backend `removeX` логіка пише `findFirst({orderBy:createdAt asc}) + update({isDefault:true})` (наприклад `removeUoM` у `goods.service.ts`), оптимістичний `setModalXs(prev => prev.filter(...))` у клієнті НЕВІРНИЙ — replace optimistic filter на `refreshXs(parentId)` (race-guarded через існуючий reqRef). Grep: `grep -rn "apiFetch.*method:.*'POST\|PATCH\|DELETE'" apps/web/src/app --include="*.tsx" | grep -E "/uoms|/barcodes|/categories|/tax-rates|/warranties|/contacts|/services"` — pair-check проти backend. Severity: MEDIUM коли стале значення впливає на бізнес-сприйняття; HIGH коли стале значення гейтить наступну дію
 
 ---
@@ -813,6 +815,59 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-05-31 — UoM/coefficient conversion missing на submit (Bug #231) — frontend, business-logic, data-corruption
+
+**Сигнал:** фронт-формула `newQty = currentQty * (oldCoeff / newCoeff)` при переключенні Select UoM (Krok 5 patten) **зберігає інваріант** `qty_base = display × coeff` у локальному state, але `handleCreate` / submit-функція шле `parseFloat(l.quantity)` як-є — БЕЗ множення на `coefficient`. Backend очікує quantity у **базових одиницях** Good (`Good.unit`), а отримує display-value у обраній UoM → silent data corruption: stock movement, payable, applyPricing — все спотворюється на множник coefficient. Видно ЛИШЕ коли користувач реально перемикає UoM (coeff != 1); coeff = 1 (default UoM, або відсутні UoMs) — happy-path працює, регресія приходить у прод коли власник СТО заводить реальні UoMs. tsc green, unit tests green, ручне QA з default UoM green.
+
+**Причина виникнення:** Krok 5 спека описує лише **display-transition formula** ("newQty = currentQty * oldCoeff/newCoeff"). Розробник реалізує саме її і додає коментар `// Перерахована кількість з урахуванням коефіцієнта` думаючи що formula виконує **і** display-перехід **і** display→base конверсію. Але формула — це маса-балансна формула між двома UoMs (qty1*coeff1 = qty2*coeff2 при коефіцієнтах base_units_per_uom), вона **не зводить до base unit** — вона зберігає інваріант. Submit потребує **окремої** конверсії `qty_base = display * coeff` АБО backend має зберігати UoM ID разом з quantity і конвертувати на stock-movement. Спека "Backend отримує тільки перераховану quantity, без unitId" → frontend MUST конвертувати.
+
+**Підхід до виявлення:** на Кроці 1 §1.1 / §1.3 — для будь-якого UoM/unit-conversion patten (Select з coefficient, custom unit picker) перевірити **обидва кінця**:
+
+1. **Display transition** (Select onChange): formula `newDisplay = oldDisplay * oldCoeff / newCoeff` — invariant preservation. ✓
+2. **Submit conversion** (handleCreate/save): чи `parseFloat(displayQty) * coefficient` подається у API (база units)? Якщо submit шле raw display value БЕЗ множення — **data corruption**.
+
+Grep-сигнатура: для UoM-aware Select-fields знайти submit-функцію та перевірити чи `quantity * coefficient` обчислюється:
+
+```bash
+# 1. Знайти всі local state з UoM-fields (coefficient + display quantity у одному рядку)
+grep -rn "coefficient:\s*number\|coefficient:\s*1\b" apps/web/src/app --include="*.tsx" -l
+
+# 2. Для кожного — знайти submit-функцію (handleCreate/handleSave/handleSubmit) і перевірити mapping
+grep -rn "handleCreate\|handleSave\|handleSubmit" apps/web/src/app --include="*.tsx" -l | xargs grep -l "coefficient"
+
+# 3. Червоний прапор: parseFloat(l.quantity) у submit БЕЗ * coefficient — баг
+grep -rn "quantity:\s*parseFloat" apps/web/src/app --include="*.tsx" -B5 | grep -B5 "coefficient" | grep -v "coefficient ||\|\* coeff\|\* (l\.coefficient"
+```
+
+Property-test invariant: для будь-якої комбінації (qty, coeff) ∈ [0.001, 10000] × [0.001, 1000] — `submit_quantity = display_quantity * coefficient` повинен зберігати інваріант з backend's expected base-unit value. Перевіряти і `price`: backend's expected price-per-base-unit = display_price / coefficient.
+
+**Підхід до фіксу:** у submit-функції додати explicit конверсію:
+
+```ts
+const coeff = l.coefficient || 1;
+const displayQty = parseFloat(l.quantity);
+const displayPrice = parseFloat(l.price);
+return {
+  goodId: l.goodId,
+  quantity: displayQty * coeff, // base units
+  price: displayPrice / coeff, // per base unit
+};
+```
+
+`totalAmount` зберігається (qty_base × price_base = qty_display × price_display). Backward-compat: coeff=1 → ідентична поведінка. Якщо backend має RECEIVE-form чи інші surface-ди що приймають qty без UoM — узгодити їх теж на base unit.
+
+**Severity:** CRITICAL (data corruption у stock-движенні, неможлива partial fulfillment-tracking, applyPricing з невірним cost-per-unit) — release-blocker.
+
+**Де шукати ще:** будь-який form/modal у `apps/web/src/app/` що:
+
+1. Має `coefficient: number` + `unitId: string` + `unitShortName: string` поля у local lines state;
+2. Має `<Select>` що дозволяє перемикати UoM з recalc display quantity;
+3. Має submit-функцію що мапить `validLines` → API payload.
+
+Конкретно: `purchase-orders/page.tsx`, `stock-documents/page.tsx`, потенційно `work-orders/page.tsx` (parts-tab), `invoices/page.tsx` (якщо колись додасться UoM Select у line-form), POS / Кас mobile/web — будь-який surface що бере display-qty і шле у API.
+
+---
 
 ### 2026-05-31 — Prisma schema mutation без парного migration (Bug #220) — database, release-blocker, schema-migration
 

@@ -188,6 +188,7 @@ export default function StockDocumentsPage() {
       goodName: string;
       quantity: string;
       price: string;
+      unit: string; // Bug #233: базова одиниця Good — fallback коли UoMs порожні
       unitId: string;
       unitShortName: string;
       coefficient: number;
@@ -369,11 +370,21 @@ export default function StockDocumentsPage() {
           warehouseId: form.warehouseId,
           targetWarehouseId: form.targetWarehouseId || undefined,
           notes: form.notes || undefined,
-          lines: validLines.map(l => ({
-            goodId: l.goodId,
-            quantity: parseFloat(l.quantity), // Перерахована кількість з урахуванням коефіцієнта
-            price: l.price ? parseFloat(l.price) : undefined,
-          })),
+          // Bug #231: конвертуємо display → base unit перед submit.
+          // l.quantity у обраній UoM; l.coefficient = base_units_per_uom.
+          // qty_base = qty_display * coeff; price_base = price_display / coeff.
+          // Stock movement на CONFIRM використовує цей quantity напряму як base-unit.
+          // Backward-compat: coeff=1 (default UoM або без UoMs) → нічого не змінюється.
+          lines: validLines.map(l => {
+            const coeff = l.coefficient || 1;
+            const displayQty = parseFloat(l.quantity);
+            const displayPrice = l.price ? parseFloat(l.price) : null;
+            return {
+              goodId: l.goodId,
+              quantity: displayQty * coeff,
+              price: displayPrice !== null ? displayPrice / coeff : undefined,
+            };
+          }),
         }),
       });
       dirty.resetDirty();
@@ -427,6 +438,7 @@ export default function StockDocumentsPage() {
         goodName: '',
         quantity: '1',
         price: '',
+        unit: '',
         unitId: '',
         unitShortName: '',
         coefficient: 1,
@@ -941,6 +953,7 @@ export default function StockDocumentsPage() {
                                   ...x,
                                   goodId: g.id,
                                   goodName: g.name,
+                                  unit: g.unit, // Bug #233: fallback одиниця коли UoMs порожні
                                   unitId: '',
                                   unitShortName: '',
                                   coefficient: 1,
@@ -953,11 +966,11 @@ export default function StockDocumentsPage() {
                         // Завантажити UoM для цього товару
                         try {
                           const uoms = await apiFetch<GoodUoM[]>(`/goods/${g.id}/uoms`);
-                          // Race-guard: якщо користувач встиг обрати інший товар у цьому рядку,
-                          // не застосовувати застарілу відповідь
+                          // Bug #235: race-guard за goodId-only (без stale index).
+                          // Видалення/reorder рядків зсуває index → закаптурений `i` стає невірним.
                           setLines(ls =>
-                            ls.map((x, idx) => {
-                              if (idx !== i || x.goodId !== selectedGoodId) return x;
+                            ls.map(x => {
+                              if (x.goodId !== selectedGoodId || x.goodUoMs.length > 0) return x;
                               const defaultUom = uoms.find(u => u.isDefault) ?? uoms[0];
                               return {
                                 ...x,
@@ -992,6 +1005,7 @@ export default function StockDocumentsPage() {
                                   ...x,
                                   goodId: '',
                                   goodName: '',
+                                  unit: '',
                                   unitId: '',
                                   unitShortName: '',
                                   coefficient: 1,
@@ -1026,7 +1040,7 @@ export default function StockDocumentsPage() {
                     step="0.001"
                     className="w-20 text-xs"
                   />
-                  {l.goodUoMs.length > 0 && (
+                  {l.goodUoMs.length > 0 ? (
                     <Select
                       value={l.unitId}
                       onChange={e => {
@@ -1034,8 +1048,12 @@ export default function StockDocumentsPage() {
                         if (selectedUom) {
                           const oldCoeff = l.coefficient || 1;
                           const newCoeff = selectedUom.coefficient || 1;
-                          const currentQty = parseFloat(l.quantity) || 1;
-                          const newQty = (currentQty * oldCoeff) / newCoeff;
+                          // Bug #234: не клобер user intent коли qty порожнє/NaN/≤0.
+                          const rawQty = parseFloat(l.quantity);
+                          const hasValidQty = Number.isFinite(rawQty) && rawQty > 0;
+                          const newQty = hasValidQty
+                            ? ((rawQty * oldCoeff) / newCoeff).toFixed(3)
+                            : null;
                           setLines(ls =>
                             ls.map((x, idx) =>
                               idx === i
@@ -1044,7 +1062,7 @@ export default function StockDocumentsPage() {
                                     unitId: selectedUom.id,
                                     unitShortName: selectedUom.unitShortName,
                                     coefficient: newCoeff,
-                                    quantity: newQty.toFixed(3),
+                                    ...(newQty !== null ? { quantity: newQty } : {}),
                                   }
                                 : x,
                             ),
@@ -1060,7 +1078,12 @@ export default function StockDocumentsPage() {
                         </option>
                       ))}
                     </Select>
-                  )}
+                  ) : l.unit ? (
+                    /* Bug #233: коли UoMs порожні — показати unit як text fallback */
+                    <span className="w-20 text-xs text-muted-foreground self-center px-2 truncate">
+                      {l.unit}
+                    </span>
+                  ) : null}
                   <Input
                     type="number"
                     value={l.price}

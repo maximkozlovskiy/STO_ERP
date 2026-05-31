@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+(pending) fix(tester): Bugs #231-#235 — Krok 5 UoM submit display→base conversion + invoices include + UX fallback
+5ba1504 docs(skills): add per-item-onSelect-race + as-any-for-new-dto-field patterns to sto-review
+6b5e2b4 docs(memory): record sto-review session 96c1a67 → f8a8396 — krok 5 UoM fixes
 f8a8396 fix(review): krok 5 UoM — type-safe POLine/DocLine + race-token + toast guards
 96c1a67 feat(uom): krok 5 — Select одиниці виміру у рядках PO/SD/Invoice з перерахунком кількості
 72cbc13 feat(uom): krok 3 — unitShortName + coefficient у відповідях PO/SD/Invoice lines
