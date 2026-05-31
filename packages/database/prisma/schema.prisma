@@ -818,8 +818,12 @@ model UnitOfMeasure {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  goods       Good[]
-  goodUoms    GoodUoM[]
+  goods               Good[]
+  goodUoms            GoodUoM[]
+  stockBatches        StockBatch[]        @relation("StockBatchUoM")
+  purchaseOrderLines  PurchaseOrderLine[] @relation("POLineUoM")
+  stockDocumentLines  StockDocumentLine[] @relation("SDLineUoM")
+  stockMovements      StockMovement[]     @relation("StockMovementUoM")
 
   @@unique([orgId, shortName])
   @@index([orgId, deletedAt])
@@ -1011,24 +1015,26 @@ model StockItem {
 
 // Append-only — ніколи не редагується
 model StockMovement {
-  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId        String            @db.Uuid
-  goodId       String            @db.Uuid
-  warehouseId  String            @db.Uuid
-  type         StockMovementType
-  quantity     Float
-  price        Decimal?          @db.Decimal(12, 2)
-  documentType String?
-  documentId   String?           @db.Uuid
-  batchId      String?           @db.Uuid
-  notes        String?
-  createdAt    DateTime          @default(now())
-  createdBy    String?           @db.Uuid
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String            @db.Uuid
+  goodId          String            @db.Uuid
+  warehouseId     String            @db.Uuid
+  type            StockMovementType
+  quantity        Float
+  price           Decimal?          @db.Decimal(12, 2)
+  documentType    String?
+  documentId      String?           @db.Uuid
+  batchId         String?           @db.Uuid
+  notes           String?
+  createdAt       DateTime          @default(now())
+  createdBy       String?           @db.Uuid
+  unitOfMeasureId String?           @db.Uuid
 
-  good         Good        @relation(fields: [goodId], references: [id])
-  warehouse    Warehouse   @relation(fields: [warehouseId], references: [id])
-  batch        StockBatch? @relation("BatchMovements", fields: [batchId], references: [id])
-  sourceBatch  StockBatch? @relation("BatchSource")
+  good          Good           @relation(fields: [goodId], references: [id])
+  warehouse     Warehouse      @relation(fields: [warehouseId], references: [id])
+  batch         StockBatch?    @relation("BatchMovements", fields: [batchId], references: [id])
+  sourceBatch   StockBatch?    @relation("BatchSource")
+  unitOfMeasure UnitOfMeasure? @relation("StockMovementUoM", fields: [unitOfMeasureId], references: [id])
 
   @@index([orgId, goodId, warehouseId])
   @@index([orgId, warehouseId, createdAt])
@@ -1052,6 +1058,7 @@ model StockBatch {
   costPrice           Decimal   @db.Decimal(12, 2)
   salePrice           Decimal   @db.Decimal(12, 2)
   isActive            Boolean   @default(true)
+  unitOfMeasureId     String?   @db.Uuid
   syncVersion         BigInt    @default(0)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -1060,6 +1067,7 @@ model StockBatch {
   warehouse         Warehouse          @relation(fields: [warehouseId], references: [id])
   purchaseOrderLine PurchaseOrderLine? @relation(fields: [purchaseOrderLineId], references: [id])
   sourceMovement    StockMovement      @relation("BatchSource", fields: [stockMovementId], references: [id])
+  unitOfMeasure     UnitOfMeasure?     @relation("StockBatchUoM", fields: [unitOfMeasureId], references: [id])
   consumptions      BatchConsumption[]
   workOrderParts    WorkOrderPart[]
   movements         StockMovement[]    @relation("BatchMovements")
@@ -1189,13 +1197,15 @@ model PurchaseOrderLine {
   quantity        Float
   price           Decimal   @db.Decimal(12, 2)
   receivedQty     Float     @default(0)
+  unitOfMeasureId String?   @db.Uuid
   syncVersion     BigInt    @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
-  good          Good          @relation(fields: [goodId], references: [id])
+  purchaseOrder PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id])
+  good          Good           @relation(fields: [goodId], references: [id])
+  unitOfMeasure UnitOfMeasure? @relation("POLineUoM", fields: [unitOfMeasureId], references: [id])
   stockBatches  StockBatch[]
 
   @@index([purchaseOrderId, deletedAt])
@@ -1238,13 +1248,15 @@ model StockDocumentLine {
   goodId          String    @db.Uuid
   quantity        Float
   price           Decimal?  @db.Decimal(12, 2)
+  unitOfMeasureId String?   @db.Uuid
   syncVersion     BigInt    @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  stockDocument StockDocument @relation(fields: [stockDocumentId], references: [id])
-  good          Good          @relation(fields: [goodId], references: [id])
+  stockDocument StockDocument  @relation(fields: [stockDocumentId], references: [id])
+  good          Good           @relation(fields: [goodId], references: [id])
+  unitOfMeasure UnitOfMeasure? @relation("SDLineUoM", fields: [unitOfMeasureId], references: [id])
 
   @@index([orgId, stockDocumentId, deletedAt])
   @@index([orgId, syncVersion])
