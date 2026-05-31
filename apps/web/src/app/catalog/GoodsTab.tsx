@@ -247,6 +247,7 @@ export default function GoodsTab() {
   const [addingUoM, setAddingUoM] = useState(false);
   const [deletingUoMId, setDeletingUoMId] = useState<string | null>(null);
   const modalUoMReqRef = useRef(0);
+  const uomRefDefault = useRef(0);
 
   const GOODS_COLUMNS = useMemo(
     () => [
@@ -588,28 +589,37 @@ export default function GoodsTab() {
       setModalUoMs(prev => [...prev, created]);
       setAddUoMForm({ unitOfMeasureId: '' });
       setShowAddUoM(false);
-      toast.success('Одиницю виміру додано');
+      if (features.toastEnabled) toast.success('Одиницю виміру додано');
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка додавання одиниці');
+      if (features.toastEnabled) {
+        toast.error(e instanceof Error ? e.message : 'Помилка додавання одиниці');
+      }
     } finally {
       setAddingUoM(false);
     }
   };
 
   const setDefaultUoM = async (goodId: string, uomId: string) => {
+    const reqId = ++uomRefDefault.current;
     try {
-      const updated = await apiFetch<GoodUoM>(`/goods/${goodId}/uoms/${uomId}/default`, {
+      await apiFetch<GoodUoM>(`/goods/${goodId}/uoms/${uomId}/default`, {
         method: 'PATCH',
       });
-      setModalUoMs(prev =>
-        prev.map(u => ({
-          ...u,
-          isDefault: u.id === uomId,
-        })),
-      );
-      toast.success('Основну одиницю змінено');
+      if (uomRefDefault.current === reqId) {
+        setModalUoMs(prev =>
+          prev.map(u => ({
+            ...u,
+            isDefault: u.id === uomId,
+          })),
+        );
+        if (features.toastEnabled) toast.success('Основну одиницю змінено');
+      }
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка встановлення основної одиниці');
+      if (uomRefDefault.current === reqId) {
+        if (features.toastEnabled) {
+          toast.error(e instanceof Error ? e.message : 'Помилка встановлення основної одиниці');
+        }
+      }
     }
   };
 
@@ -619,9 +629,11 @@ export default function GoodsTab() {
     try {
       await apiFetch<void>(`/goods/${goodId}/uoms/${uomId}`, { method: 'DELETE' });
       setModalUoMs(prev => prev.filter(u => u.id !== uomId));
-      toast.success('Одиницю видалено');
+      if (features.toastEnabled) toast.success('Одиницю видалено');
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      if (features.toastEnabled) {
+        toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      }
     } finally {
       setDeletingUoMId(null);
     }
