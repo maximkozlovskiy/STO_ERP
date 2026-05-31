@@ -1045,9 +1045,31 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 **Сигнал:** `openEdit(item)` / `openCard` / `onSelect` (обробник події, НЕ useEffect) робить `apiFetch(...).then(setState)`; при повторному відкритті для іншого id попередній in-flight fetch резолвиться пізніше й перезаписує стан. Додатково: похідний стан (`modalGarageId`, обраний рядок) не скидається на старті handler → на fetch-failure лишається id попередньої сутності
 **Причина виникнення:** `cancelled`-flag патерн (§3.1) застосовний лише у useEffect (cleanup на unmount/dep-change); у event-handler немає cleanup-hook → розробник копіює fetch без жодного guard. Stale похідний id особливо небезпечний: наступна мутація (`addVehicle`) POST-ить у гараж ПОПЕРЕДНЬОГО контрагента
 **Підхід до виявлення:** grep `const (open|load|select)[A-Z]\w* = (async )?\(` + наявність apiFetch у тілі → перевірити token-ref guard перед кожним setState + reset похідного стану на першому рядку handler
-**Підхід до фіксу:** `const reqId = ++ref.current;` на старті; `if (ref.current !== reqId) return` перед кожним `.then(setState)`/`.finally`; скинути всі похідні id (`setModalGarageId(null)`) до fetch
+**Підхід до фіксу:** `const reqId = ++ref.current;` на старті; `if (ref.current !== reqId) return` перед кожним `.then(setState)`/`.finally`; скинути всі похідні id (`setModalGarageId(null)`) до фetch
 **Критичність:** IMPORTANT — stale-data race + крос-сутнісна мутація на fetch-failure (degradation/data corruption без TS/runtime помилки)
 **Де шукати ще:** будь-яка edit/detail модалка що довантажує під-ресурси по кліку; picker що fetch-ить деталі обраного; master-detail з ledзінню child-колекцій
+
+---
+
+### 2026-05-31 — Per-item line.id-keyed onSelect sub-resource race — §8.2 UI Стани
+
+**Сигнал:** `lines.map((l, i) => ... onSelect={async g => { setLines(...); const subResource = await apiFetch(\`/x/${g.id}/Y\`); setLines(ls => ls.map((x, idx) => idx === i ? {...x, subResource} : x)) }}` — index-keyed update після async fetch у row-array form (PO/SD/Invoice line, dynamic-form тощо). Користувач швидко змінює good у тому ж row → друга відповідь може прийти раніше першої → застосовується под-ресурс від goodId₂ до goodId₁ (silent UI inconsistency: показаний товар X, але UoM-list для товару Y)
+**Причина виникнення:** lines зберігаються у локальному state з position-based identity (`idx === i`); після async fetch idx все ще валідний — але вміст рядка може бути іншим. `cancelled`-flag з §3.1 не годиться (це event-handler, не useEffect); ref-token з 2026-05-29 patten — overkill для row-array (потребує `useRef<Record<index, number>>`); найпростіший фікс — захопити identity entity-id на початку handler (`const selectedGoodId = g.id`) і всередині setLines callback перевірити `x.goodId === selectedGoodId`перед мерджем
+**Підхід до виявлення:** grep`onSelect={async\|onSelect={\s*(async )?\s*(\w+) =>`у *.tsx + всередині handler`setLines(ls => ls.map((x, idx) => idx === i ?`→ перевірити чи після`await`є identity-check на entity-id (не лише index). Кандидати: будь-який line-array з SearchCombobox/Select+async-load-sub-resource
+**Підхід до фіксу:**`onSelect={async g => { const selectedGoodId = g.id; setLines(ls => ls.map((x, idx) => idx === i ? {...x, goodId: g.id, subResource: emptyDefault} : x)); try { const subResource = await apiFetch(...); setLines(ls => ls.map((x, idx) => { if (idx !== i || x.goodId !== selectedGoodId) return x; return {...x, subResource}; })); } catch(err) { /_ toast _/ } }}`. Empty default — щоб старі sub-resource зникли одразу (UX) + race-guard — щоб stale response не перезаписав свіжий стан
+**Критичність:** IMPORTANT — silent UI inconsistency: користувач бачить товар X, але UoM-список товару Y → невірний коефіцієнт → перерахунок quantity дає неправильне число → отриманий товар має невірну кіль. Не runtime error, але potential data corruption
+**Де шукати ще:** PO/SD/Invoice line forms; будь-який bulk-form з row-array де onSelect-у-рядку довантажує під-ресурс (variants, batches, UoMs, price tiers); dynamic line-builder UI (work-orders parts, invoices items)
+
+---
+
+### 2026-05-31 — `(line as any).X` cast для нового optional поля — §1 TypeScript / §13 API Contract
+
+**Сигнал:** свіжий feat-коміт додає optional поле у backend DTO (`@ApiPropertyOptional() unitShortName?: string`), сервіс мапить `toResponseDto()` коректно, але frontend interface (`POLine`/`DocLine` у hooks/api/_.ts або interface всередині page.tsx) НЕ оновлений. Розробник, не чіпаючи interface, використовує `(line as any).unitShortName` у JSX щоб обійти TS error. tsc зелений, але type contract розірваний — наступний consumer interface не бачить поля у IDE/auto-complete; refactor у IDE не знаходить usages.
+**Причина виникнення:** скоупований feat-коміт додає поле у одному модулі (backend), а consumer-side (frontend interface) "не входить у scope коміту" → розробник вирішує "потім додам" і ставить `as any`. Через тиждень код мерджиться, "потім" не настає, наступний reviewer не помічає cast у середині JSX.
+**Підхід до виявлення:** після кожного коміту що додає поле у backend ResponseDto — `grep -rn "@ApiPropertyOptional() <field>?" apps/api/src` → знайти interface що typing-ує endpoint на frontend → перевірити що поле є. Окремий grep на cast: `grep -rn "(line as any)\|(l as any)" apps/web/src/app --include="_.tsx"`→ BLOCK на review.
+**Підхід до фіксу:** додати поле у frontend interface (single source of truth —`hooks/api/use<Module>.ts`або centralized type у`@sto/shared`); прибрати всі `as any`casts. Якщо поле використовується у багатьох сторінках — створити shared interface у`@sto/shared/src/types.ts`.
+**Критичність:** IMPORTANT — TS type contract розірваний; IDE refactor + auto-complete не працюють; майбутні consumer-сторінки не знають про поле; легко регресує при перейменуванні поля у бекенді (cast мовчить)
+**Де шукати ще:** будь-який feat-коміт що додає поле у `\*.dto.ts` ResponseDto; особливо у sub-resource endpoints (sync, list/detail tabs); після backend-only changes що проходять до frontend без review
 
 ---
 
