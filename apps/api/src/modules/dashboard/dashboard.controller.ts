@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { DashboardService } from './dashboard.service';
@@ -54,7 +54,10 @@ export class DashboardController {
    */
   @Get('stream')
   @Sse()
-  @SkipThrottle()
+  // SSE: дозволяємо лише 5 нових з'єднань на хвилину з однієї IP.
+  // Це не обмежує вже відкриті long-lived з'єднання — тільки нові підключення,
+  // що захищає від reconnect-storm (browser tab spawn, broken proxies).
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @ApiOperation({ summary: 'SSE stream дашборду (JWT через query param)' })
   @ApiQuery({ name: 'token', description: 'JWT access token' })
   stream(@Query('token') token: string): Observable<MessageEvent> {

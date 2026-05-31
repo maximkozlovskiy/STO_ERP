@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { Prisma, WorkOrderStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName } from '@sto/shared';
 
@@ -51,40 +51,48 @@ export class ReportsService {
       if (!branch) throw new NotFoundException('Філію не знайдено');
     }
 
-    const where: Prisma.WorkOrderWhereInput = {
-      orgId,
-      deletedAt: null,
-      status: { in: ['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED'] as WorkOrderStatus[] },
-      completedAt: { gte: fromDate, lte: toDate },
+    // DB-side aggregation via DATE_TRUNC at Europe/Kyiv — раніше findMany(take:10000)
+    // тягнув повний набір рядків і робив JS reduce у циклі. Тепер Postgres віддає
+    // ~30 рядків (по одному на день) безпосередньо у потрібному форматі.
+    type RevenueRow = {
+      date: Date;
+      revenue: number;
+      labor: number;
+      parts: number;
+      count: number;
     };
-    if (branchId) where.branchId = branchId;
+    const rows = await this.prisma.$queryRaw<RevenueRow[]>`
+      SELECT
+        DATE_TRUNC('day', "completedAt" AT TIME ZONE 'Europe/Kyiv') AS date,
+        COALESCE(SUM("totalAmount"), 0)::float AS revenue,
+        COALESCE(SUM("totalLabor"),  0)::float AS labor,
+        COALESCE(SUM("totalParts"),  0)::float AS parts,
+        COUNT(*)::int                          AS count
+      FROM work_orders
+      WHERE "orgId"       = ${orgId}::uuid
+        AND "deletedAt"   IS NULL
+        AND "status"      = ANY(ARRAY['COMPLETED','INVOICED','PAID','ARCHIVED']::"WorkOrderStatus"[])
+        AND "completedAt" >= ${fromDate}
+        AND "completedAt" <= ${toDate}
+        ${branchId ? Prisma.sql`AND "branchId" = ${branchId}::uuid` : Prisma.empty}
+      GROUP BY 1
+      ORDER BY 1
+    `;
 
-    const orders = await this.prisma.workOrder.findMany({
-      where,
-      select: { completedAt: true, totalAmount: true, totalLabor: true, totalParts: true },
-      orderBy: { completedAt: 'asc' },
-      take: 10000,
-    });
+    // Convert raw rows to API shape; формат `YYYY-MM-DD` через Kyiv-формaтер
+    // зберігається ідентичний до попередньої версії.
+    const result = rows.map(r => ({
+      date: KYIV_DATE_FMT.format(r.date),
+      revenue: Number(r.revenue),
+      labor: Number(r.labor),
+      parts: Number(r.parts),
+      count: Number(r.count),
+    }));
 
-    // Group by date — використовуємо KYIV_DATE_FMT (module-level singleton).
-    const byDate: Record<
-      string,
-      { date: string; revenue: number; labor: number; parts: number; count: number }
-    > = {};
-    for (const wo of orders) {
-      const date = KYIV_DATE_FMT.format(wo.completedAt!);
-      if (!byDate[date]) byDate[date] = { date, revenue: 0, labor: 0, parts: 0, count: 0 };
-      byDate[date].revenue += Number(wo.totalAmount);
-      byDate[date].labor += Number(wo.totalLabor);
-      byDate[date].parts += Number(wo.totalParts);
-      byDate[date].count++;
-    }
+    const totalRevenue = result.reduce((s, r) => s + r.revenue, 0);
+    const totalOrders = result.reduce((s, r) => s + r.count, 0);
 
-    const rows = Object.values(byDate);
-    const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
-    const totalOrders = rows.reduce((s, r) => s + r.count, 0);
-
-    return { rows, totalRevenue, totalOrders, from, to };
+    return { rows: result, totalRevenue, totalOrders, from, to };
   }
 
   async workOrders(orgId: string, from: string, to: string, employeeId?: string) {

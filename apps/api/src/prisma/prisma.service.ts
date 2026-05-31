@@ -102,8 +102,34 @@ function withSyncVersion(client: PrismaClient): PrismaClient {
   }) as unknown as PrismaClient;
 }
 
+/**
+ * Augment DATABASE_URL with Prisma connection pool parameters when not already set
+ * by the operator. Defaults: connection_limit=25 (Prisma docs recommend ~10 per cpu;
+ * 25 покриває API під навантаженням з reports + dashboard + SSE), pool_timeout=20s
+ * (запит чекає до 20s на вільне з'єднання перед throw — захист від тривалого hang).
+ * Operator може перевизначити через .env (?connection_limit=...&pool_timeout=...).
+ */
+function withConnectionPool(url: string | undefined): string | undefined {
+  if (!url) return url;
+  const params = new URL(url);
+  if (!params.searchParams.has('connection_limit')) {
+    params.searchParams.set('connection_limit', '25');
+  }
+  if (!params.searchParams.has('pool_timeout')) {
+    params.searchParams.set('pool_timeout', '20');
+  }
+  return params.toString();
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  constructor() {
+    super({
+      datasourceUrl: withConnectionPool(process.env.DATABASE_URL),
+      log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+    });
+  }
+
   async onModuleInit() {
     await this.$connect();
     // Apply syncVersion middleware via $extends (Prisma 5 — $use was removed)

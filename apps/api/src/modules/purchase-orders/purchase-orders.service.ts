@@ -375,8 +375,8 @@ export class PurchaseOrdersService {
             : po.status;
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
       },
-      { timeout: 15_000 },
-    ); // Bug #132: explicit timeout — N lines × createMovement (батч-tracking)
+      { timeout: 30_000 },
+    ); // Bug #132: explicit timeout — велике PO (сотні рядків) × createMovement з batch-tracking
     return this.findOne(orgId, id);
   }
 
