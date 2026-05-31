@@ -76,6 +76,7 @@ export class StockDocumentLineResponseDto {
   @ApiPropertyOptional() coefficient?: number;
   @ApiProperty() quantity!: number;
   @ApiPropertyOptional() price?: number | null;
+  @ApiPropertyOptional() unitOfMeasureId?: string | null;
 }
 
 export class StockDocumentResponseDto {

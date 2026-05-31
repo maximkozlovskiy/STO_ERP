@@ -258,7 +258,13 @@ export class StockDocumentsService {
   ): Promise<StockDocumentResponseDto> {
     const doc = await this.prisma.stockDocument.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { lines: { where: { deletedAt: null }, take: 1000 } },
+      include: {
+        lines: {
+          where: { deletedAt: null },
+          take: 1000,
+          include: { good: { select: { unitId: true } } },
+        },
+      },
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');
 
@@ -279,6 +285,9 @@ export class StockDocumentsService {
           const movType = MOVEMENT_TYPES[doc.type as StockDocumentType];
 
           for (const line of doc.lines) {
+            const lineUnitId =
+              (line as typeof line & { good?: { unitId: string | null } | null }).good?.unitId ??
+              null;
             if (doc.type === 'TRANSFER') {
               // Write off from source
               await this.inventory.createMovement(
@@ -292,6 +301,7 @@ export class StockDocumentsService {
                   documentType: 'StockDocument',
                   documentId: id,
                   createdBy: userId,
+                  unitOfMeasureId: lineUnitId,
                 },
                 tx,
               );
@@ -307,6 +317,7 @@ export class StockDocumentsService {
                   documentType: 'StockDocument',
                   documentId: id,
                   createdBy: userId,
+                  unitOfMeasureId: lineUnitId,
                 },
                 tx,
               );
@@ -325,6 +336,7 @@ export class StockDocumentsService {
                   documentType: 'StockDocument',
                   documentId: id,
                   createdBy: userId,
+                  unitOfMeasureId: lineUnitId,
                 },
                 tx,
               );
