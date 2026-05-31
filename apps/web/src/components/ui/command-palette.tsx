@@ -220,7 +220,7 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      className="fixed inset-0 z-[300] flex items-start justify-center pt-[10vh] px-4"
+      className="fixed inset-0 z-300 flex items-start justify-center pt-[10vh] px-4"
     >
       <h2 id={titleId} className="sr-only">
         Командна палітра
@@ -268,7 +268,7 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
           id={listboxId}
           role="listbox"
           aria-label="Результати пошуку"
-          className="max-h-[360px] overflow-y-auto py-1"
+          className="max-h-90 overflow-y-auto py-1"
         >
           {dataLoading && query.length >= 2 && (
             <p className="px-4 py-2 text-[12px] text-muted-foreground animate-pulse">

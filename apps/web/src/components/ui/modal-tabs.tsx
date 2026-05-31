@@ -67,7 +67,7 @@ export function ModalTabs({ tabs, defaultTab, className }: ModalTabsProps) {
             {tab.count !== undefined && (
               <span
                 className={cn(
-                  'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-semibold',
+                  'inline-flex items-center justify-center min-w-4.5 h-4.5 px-1 rounded-full text-[11px] font-semibold',
                   active === tab.key
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-secondary text-muted-foreground',
