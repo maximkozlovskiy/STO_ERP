@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { parse as parseCSV } from 'csv-parse/sync';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../inventory/pricing.service';
 
@@ -394,6 +394,9 @@ export class XlsxService {
       ? await this.prisma.purchaseOrderLine.findMany({
           where: { purchaseOrderId: poId, goodId: { in: goodIds }, orgId, deletedAt: null },
           select: { id: true, goodId: true },
+          // Safety cap — bounded by goodIds (xlsx rows) but cap prevents OOM
+          // if a single PO ever has >1000 line items.
+          take: MAX_QUERY_LIMIT,
         })
       : [];
     const existingByGoodId = new Map(existingLines.map(l => [l.goodId, l.id]));
@@ -458,6 +461,8 @@ export class XlsxService {
       ? await this.prisma.stockDocumentLine.findMany({
           where: { stockDocumentId: docId, goodId: { in: goodIds }, orgId, deletedAt: null },
           select: { id: true, goodId: true },
+          // Safety cap — bounded by goodIds (xlsx rows); see importPOLines.
+          take: MAX_QUERY_LIMIT,
         })
       : [];
     const existingByGoodId = new Map(existingLines.map(l => [l.goodId, l.id]));
@@ -519,6 +524,9 @@ export class XlsxService {
       this.prisma.workOrderPart.findMany({
         where: { workOrderId: woId, orgId, deletedAt: null },
         select: { id: true, goodId: true },
+        // Safety cap — work-order rarely has >100 parts; cap protects against
+        // OOM if xlsx import targets a corrupted/test WO with many lines.
+        take: MAX_QUERY_LIMIT,
       }),
       this.prisma.warehouse.findFirst({
         where: { orgId, deletedAt: null },

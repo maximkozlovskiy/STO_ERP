@@ -50,6 +50,9 @@ export class ZonesController {
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Отримати зону' })
+  @ApiResponse({ status: 200, type: ZoneResponseDto })
+  @ApiResponse({ status: 404, description: 'Зону не знайдено' })
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOneZone(orgId, id);
   }
@@ -64,6 +67,9 @@ export class ZonesController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Оновити зону' })
+  @ApiResponse({ status: 200, type: ZoneResponseDto })
+  @ApiResponse({ status: 404, description: 'Зону не знайдено' })
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -75,6 +81,9 @@ export class ZonesController {
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Видалити зону (soft delete)' })
+  @ApiResponse({ status: 204, description: 'Зону видалено' })
+  @ApiResponse({ status: 404, description: 'Зону не знайдено' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.removeZone(orgId, id);
   }
@@ -101,6 +110,9 @@ export class LiftsController {
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Отримати підйомник' })
+  @ApiResponse({ status: 200, type: LiftResponseDto })
+  @ApiResponse({ status: 404, description: 'Підйомник не знайдено' })
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOneLift(orgId, id);
   }
@@ -115,6 +127,9 @@ export class LiftsController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Оновити підйомник' })
+  @ApiResponse({ status: 200, type: LiftResponseDto })
+  @ApiResponse({ status: 404, description: 'Підйомник не знайдено' })
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -126,6 +141,9 @@ export class LiftsController {
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Видалити підйомник (soft delete)' })
+  @ApiResponse({ status: 204, description: 'Підйомник видалено' })
+  @ApiResponse({ status: 404, description: 'Підйомник не знайдено' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.removeLift(orgId, id);
   }

@@ -315,6 +315,10 @@ export default function EmployeesPage() {
     if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
   }, [bulkSelect.someSelected]);
 
+  // `load` is intentionally omitted from deps — it's recreated each render
+  // but its effective input (filters from page state) is captured at click time
+  // via closure. Including it would invalidate `bulkActions` on every keystroke
+  // and re-render BulkBar.
   const bulkActions = useMemo<BulkAction[]>(
     () => [
       {
@@ -362,8 +366,9 @@ export default function EmployeesPage() {
         },
       },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [confirm, bulkSelect],
-  ); // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   // ─── Unsaved guard — create modal ────────────────────
   const createDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });

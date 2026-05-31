@@ -46,6 +46,9 @@ export class WarehousesController {
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Отримати склад' })
+  @ApiResponse({ status: 200, type: WarehouseResponseDto })
+  @ApiResponse({ status: 404, description: 'Склад не знайдено' })
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
@@ -60,6 +63,9 @@ export class WarehousesController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Оновити склад' })
+  @ApiResponse({ status: 200, type: WarehouseResponseDto })
+  @ApiResponse({ status: 404, description: 'Склад не знайдено' })
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -71,6 +77,9 @@ export class WarehousesController {
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Видалити склад (soft delete)' })
+  @ApiResponse({ status: 204, description: 'Склад видалено' })
+  @ApiResponse({ status: 404, description: 'Склад не знайдено' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }

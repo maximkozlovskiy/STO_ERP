@@ -162,6 +162,10 @@ export default function VehicleCardPage() {
   };
   useEffect(() => {
     load();
+    // `load` recreated each render but only depends on stable `id` for its
+    // network calls. Including `load` would cause infinite re-fetch loop;
+    // omitting it satisfies the actual data-dependency (the vehicle id).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const openEdit = () => {

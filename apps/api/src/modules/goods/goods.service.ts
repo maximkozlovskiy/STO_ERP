@@ -243,6 +243,9 @@ export class GoodsService {
           unitOfMeasure: { select: { name: true, shortName: true, coefficient: true } },
         },
         orderBy: { isDefault: 'desc' },
+        // Safety cap — typical good has 1-5 UoMs; this prevents OOM if a
+        // bulk-import migration ever wires the same good to hundreds of UoMs.
+        take: 50,
       }),
     ]);
     if (!good) throw new NotFoundException('Товар не знайдено');

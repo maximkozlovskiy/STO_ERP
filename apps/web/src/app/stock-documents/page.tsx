@@ -230,6 +230,9 @@ export default function StockDocumentsPage() {
     if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
   }, [bulkSelect.someSelected]);
 
+  // `load` is intentionally omitted from deps — it's recreated each render
+  // but its input (filters from page state) is captured at click time via
+  // closure. Including it would invalidate the callback on every keystroke.
   const handleBulkDelete = useCallback(
     async (ids: string[]) => {
       if (
@@ -258,8 +261,8 @@ export default function StockDocumentsPage() {
       } else if (failed > 0) {
         setError(`${succeeded} з ${results.length} документів видалено, ${failed} не вдалось`);
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [bulkSelect, confirm, features.toastEnabled],
   );
 

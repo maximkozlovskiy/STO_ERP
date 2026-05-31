@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -288,6 +288,9 @@ export class PurchaseOrdersService {
       const allowed = await this.prisma.unitOfMeasure.findMany({
         where: { orgId, id: { in: overrideUomIds }, deletedAt: null },
         select: { id: true },
+        // Safety cap — bounded by overrideUomIds (PO lines) but cap protects
+        // against OOM if a PO ever has >1000 lines with override UoMs.
+        take: MAX_QUERY_LIMIT,
       });
       allowedUomIds = new Set(allowed.map(u => u.id));
       const missing = overrideUomIds.filter(id => !allowedUomIds.has(id));
