@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEmployees, employeesKeys } from '@/hooks/api/useEmployees';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -219,12 +221,10 @@ export default function EmployeesPage() {
   } = useTableColumns('employees', COLUMNS);
   const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
 
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [workCategories, setWorkCategories] = useState<WorkCategory[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [loading, setLoading] = useState(true);
 
   const [modal, setModal] = useState<'create' | 'card' | 'edit' | null>(null);
   const [editEmp, setEditEmp] = useState<Employee | null>(null);
@@ -255,6 +255,13 @@ export default function EmployeesPage() {
   const debouncedSearch = useDebounce(search);
   const [roleFilter, setRoleFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
+
+  const { data: employees = [], isLoading: loading } = useEmployees({
+    q: debouncedSearch || undefined,
+    role: roleFilter || undefined,
+    showDeleted,
+  });
+  const qc = useQueryClient();
 
   const [form, setForm] = useState({
     firstName: '',
@@ -377,24 +384,7 @@ export default function EmployeesPage() {
   const editDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   // Only the employee list depends on filters — reference data (zones, lifts,
-  // work-categories, branches) is loaded once and does NOT re-fetch on filter
-  // change. Previously every keystroke in the search box re-fetched all five
-  // lists in parallel; now only /employees is re-queried.
-  const load = (opts?: { search?: string; role?: string; showDeleted?: boolean }) => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    const q = opts?.search ?? search;
-    const role = opts?.role ?? roleFilter;
-    const deleted = opts?.showDeleted ?? showDeleted;
-    if (q) params.set('q', q);
-    if (role) params.set('role', role);
-    if (deleted) params.set('showDeleted', 'true');
-    const qs = params.toString();
-    apiFetch<Employee[]>(`/employees${qs ? `?${qs}` : ''}`)
-      .then(setEmployees)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
-      .finally(() => setLoading(false));
-  };
+  const load = () => qc.invalidateQueries({ queryKey: employeesKeys.all });
 
   // Reference data — paint instantly from sessionStorage, then refresh in
   // parallel. Runs once on mount, independent of list filters.
@@ -435,11 +425,6 @@ export default function EmployeesPage() {
   useEffect(() => {
     loadReference();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Re-load employee list when filters change (reference data untouched).
-  useEffect(() => {
-    load({ search: debouncedSearch, role: roleFilter, showDeleted });
-  }, [debouncedSearch, roleFilter, showDeleted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openCard = (emp: Employee) => {
     setSelected(emp);

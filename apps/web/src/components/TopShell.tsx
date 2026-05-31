@@ -36,6 +36,7 @@ import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
 import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
 import { invoicesKeys } from '@/hooks/api/useInvoices';
 import { purchaseOrdersKeys } from '@/hooks/api/usePurchaseOrders';
+import { employeesKeys } from '@/hooks/api/useEmployees';
 import { ToastContainer } from '@/components/ui/toast';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -196,6 +197,18 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
     void qc.prefetchQuery({
       queryKey: purchaseOrdersKeys.list({}),
       queryFn: ({ signal }) => apiFetch('/purchase-orders?limit=50', { signal }),
+      staleTime: 30_000,
+    }),
+  '/employees': qc =>
+    void qc.prefetchQuery({
+      queryKey: employeesKeys.list({}),
+      queryFn: ({ signal }) => apiFetch('/employees', { signal }),
+      staleTime: 30_000,
+    }),
+  '/settlements': qc =>
+    void qc.prefetchQuery({
+      queryKey: counterpartiesKeys.list({ limit: 200 }),
+      queryFn: ({ signal }) => apiFetch('/counterparties?limit=200', { signal }),
       staleTime: 30_000,
     }),
 };
@@ -370,7 +383,7 @@ export function TopShell({ children }: { children: ReactNode }) {
         key={item.href}
         href={item.href}
         prefetch={true}
-        onMouseEnter={() => PREFETCH_MAP[item.href]?.(queryClient)}
+        onMouseEnter={() => employee && PREFETCH_MAP[item.href]?.(queryClient)}
         title={collapsed ? item.label : undefined}
         className={cn(
           'group relative flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',

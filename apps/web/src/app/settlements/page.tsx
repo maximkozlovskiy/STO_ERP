@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
+import { useCounterparties } from '@/hooks/api/useCounterparties';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
@@ -61,14 +63,19 @@ function fmt(n: number) {
 export default function SettlementsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
 
-  const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [selected, setSelected] = useState<Counterparty | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [txTotal, setTxTotal] = useState(0);
   const [acts, setActs] = useState<RecAct[]>([]);
   const [q, setQ] = useState('');
-  const [cpLoading, setCpLoading] = useState(true);
+  const debouncedQ = useDebounce(q);
+
+  const { data: cpData, isLoading: cpLoading } = useCounterparties({
+    limit: 200,
+    q: debouncedQ || undefined,
+  });
+  const counterparties = useMemo(() => (cpData?.items ?? []) as Counterparty[], [cpData]);
   const [loading, setLoading] = useState(false);
   const [showActModal, setShowActModal] = useState(false);
   const [actForm, setActForm] = useState({ periodFrom: '', periodTo: '' });
@@ -78,16 +85,6 @@ export default function SettlementsPage() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [downloadingActId, setDownloadingActId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setCpLoading(true);
-    apiFetch<{ items: Counterparty[] } | Counterparty[]>('/counterparties?limit=200')
-      .then(d => setCounterparties(Array.isArray(d) ? d : d.items))
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : 'Помилка завантаження контрагентів'),
-      )
-      .finally(() => setCpLoading(false));
-  }, []);
 
   const loadCounterparty = useCallback(async (cp: Counterparty) => {
     setSelected(cp);
