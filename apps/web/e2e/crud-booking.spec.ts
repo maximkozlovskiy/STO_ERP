@@ -4,6 +4,34 @@ test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Онлайн-запис (Bookings)', () => {
+  // Cleanup старих E2E заявок перед тестами щоб не накопичувалось 40+ рядків
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+    const page = await ctx.newPage();
+    await page.goto('/bookings');
+    await page.waitForTimeout(1000);
+    const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
+    await page.evaluate(async tok => {
+      const r = await fetch('http://localhost:3000/api/booking', {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      const data = await r.json().catch(() => ({ items: [] }));
+      const items = Array.isArray(data) ? data : (data.items ?? []);
+      // Видалити всі E2E тестові заявки (clientName містить 'E2E')
+      await Promise.all(
+        items
+          .filter((i: { clientName: string }) => i.clientName?.includes('E2E'))
+          .map((i: { id: string }) =>
+            fetch(`http://localhost:3000/api/booking/${i.id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${tok}` },
+            }).catch(() => {}),
+          ),
+      );
+    }, token);
+    await ctx.close();
+  });
+
   test('сторінка завантажується', async ({ page }) => {
     await page.goto('/bookings');
     await expect(page.locator('h1:has-text("Онлайн-запис"), h1:has-text("Заявки")')).toBeVisible({
