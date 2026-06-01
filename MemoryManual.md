@@ -9,9 +9,9 @@
 ## Останній commit
 
 ```
+d2dabaa perf(web): lazy tab routing via URL search params
 86cd676 docs(skills): add createMany-in-tx + collect-then-fanout patterns to sto-optimize
 b44a9ac perf(optimize): inspection createMany + followup parallel fan-out
-d92fe0d docs(memory): update MemoryManual — review HEAD 9481444 (E2E apiCall Content-Type fix)
 9481444 fix(review): mirror api-client Content-Type fix in E2E apiCall helpers
 87df4af fix(api-client+e2e): fix PATCH without body 500 + PO receive tests
 cc37091 fix(e2e): crud-booking — beforeAll cleanup + unique phone per run
@@ -19,6 +19,17 @@ cc37091 fix(e2e): crud-booking — beforeAll cleanup + unique phone per run
 e731da5 feat(seed): expand seed data + fix E2E tests for previously-skipped specs
 bc4728e test(e2e): add WO detail + stock-doc types + PO receive specs
 Дата: 2026-06-01
+
+Latest perf: 2026-06-01 (HEAD d2dabaa) — **lazy tab routing via URL search params, 160 E2E passed**
+
+**Lazy tab routing (perf(web)):**
+- Всі таб-сторінки: `useState<Tab>` → `useSearchParams` + `router.replace(?tab=x, {scroll:false})`
+- Паттерн: `page.tsx` = Suspense server wrapper, `*Client` = client component з useSearchParams
+- Settings: фінансові таби (currencies/exchange-rates/bank-accounts/cash-registers/org-info) lazy — `isFinancialTab` guard у useEffect → -5 API calls на startup
+- URL persistence: `/catalog?tab=goods` bookmark + back/forward зберігає вкладку
+- Файли: catalog/page.tsx, settings/page.tsx, infrastructure/page.tsx, reports/page.tsx, crm/[id]/page.tsx + PageClient.tsx
+
+**E2E після змін: 160 passed, 2 flaky (pre-existing), 5 skipped — exit code 0**
 
 Latest optimize: 2026-06-01 (sto-optimize-agent, HEAD 86cd676 ← audit від 9481444) — **2 backend perf fixes + 2 нові SKILL accumulated patterns**
 
