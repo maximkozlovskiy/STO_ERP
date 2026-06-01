@@ -59,14 +59,46 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const EMPLOYEE_CACHE_KEY = 'sto_employee_cache';
+
+function readCachedEmployee(): AuthEmployee | null {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(EMPLOYEE_CACHE_KEY) : null;
+    return raw ? (JSON.parse(raw) as AuthEmployee) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedEmployee(employee: AuthEmployee | null) {
+  try {
+    if (employee) {
+      localStorage.setItem(EMPLOYEE_CACHE_KEY, JSON.stringify(employee));
+    } else {
+      localStorage.removeItem(EMPLOYEE_CACHE_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 // ─── Provider ────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, {
-    employee: null,
-    accessToken: null,
-    isLoading: true,
-  });
+  // Optimistic init: if employee is cached in localStorage + token in sessionStorage,
+  // start with isLoading=false so TopShell renders immediately.
+  // Refresh still runs in the background to validate the session.
+  const [state, dispatch] = useReducer(
+    reducer,
+    (() => {
+      const stored = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
+      const cached = readCachedEmployee();
+      if (stored && cached) {
+        return { employee: cached, accessToken: stored, isLoading: false };
+      }
+      return { employee: null, accessToken: null, isLoading: true };
+    })(),
+  );
 
   const refreshToken = useCallback(async (): Promise<boolean> => {
     try {
@@ -82,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!employee) return false;
 
       sessionStorage.setItem(TOKEN_KEY, data.accessToken);
+      writeCachedEmployee(employee);
       dispatch({ type: 'REFRESH_TOKEN', accessToken: data.accessToken, employee });
       return true;
     } catch {
@@ -113,6 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         if (!ok) {
           sessionStorage.removeItem(TOKEN_KEY);
+          writeCachedEmployee(null);
           dispatch({ type: 'LOGOUT' });
           if (typeof window !== 'undefined') window.dispatchEvent(new Event('sto:logout'));
         }
@@ -151,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const data = (await res.json()) as { accessToken: string; employee: AuthEmployee };
     sessionStorage.setItem(TOKEN_KEY, data.accessToken);
+    writeCachedEmployee(data.employee);
     dispatch({ type: 'LOGIN', employee: data.employee, accessToken: data.accessToken });
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('sto:login'));
   }, []);
@@ -166,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } finally {
       sessionStorage.removeItem(TOKEN_KEY);
+      writeCachedEmployee(null);
       dispatch({ type: 'LOGOUT' });
       // Notify per-tenant client-side caches (UI features, etc.) to invalidate.
       // Prevents leak of previous user's settings into next session on shared kiosk.
