@@ -9,9 +9,14 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
   const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
   return page.evaluate(
     async ({ token, method, path, body }) => {
+      // Only set Content-Type: application/json when there's actually a body.
+      // Sending Content-Type: application/json with empty body → Fastify SyntaxError → 500
+      // (mirrors fix in apps/web/src/lib/api-client.ts).
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      if (body) headers['Content-Type'] = 'application/json';
       const r = await fetch(`http://localhost:3000/api${path}`, {
         method,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers,
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       if (!r.ok) return null;
