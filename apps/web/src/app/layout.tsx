@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Geist, Geist_Mono } from 'next/font/google';
-import { AuthProvider } from '@/lib/auth';
-import { TopShell } from '@/components/TopShell';
 import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import { ColorModeProvider } from '@/components/ColorModeProvider';
 import { QueryProvider } from '@/components/QueryProvider';
@@ -42,11 +40,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ServiceWorkerRegistrar />
         <QueryProvider>
-          <ColorModeProvider>
-            <AuthProvider>
-              <TopShell>{children}</TopShell>
-            </AuthProvider>
-          </ColorModeProvider>
+          <ColorModeProvider>{children}</ColorModeProvider>
         </QueryProvider>
       </body>
     </html>
