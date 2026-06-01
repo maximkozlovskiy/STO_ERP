@@ -36,7 +36,6 @@ import {
 
 // ─── TimeSelect — hour + minute selects, 15-min step, bounded range ──────────
 
-const PICK_HOURS = HOURS;
 const PICK_MINUTES = [0, 15, 30, 45];
 
 interface TimeSelectProps {
@@ -65,7 +64,7 @@ function TimeSelect({
         disabled={disabled}
         onChange={e => onChange(buildHHMM(Number(e.target.value), m))}
       >
-        {PICK_HOURS.map(hh => (
+        {HOURS.map(hh => (
           <option key={hh} value={hh} disabled={hh < minHour}>
             {pad(hh)}
           </option>
