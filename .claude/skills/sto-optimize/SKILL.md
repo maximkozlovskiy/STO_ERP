@@ -1165,6 +1165,28 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-06-01 — Sequential `tx.X.create` у $transaction callback — runtime hot-path (не bootstrap)
+
+**Сигнал:** `for (const x of list) { await tx.X.create({...}) }` всередині `$transaction(async tx => {...})` де: (a) кожен create незалежний (немає read-залежностей від попередніх iterations), (b) не bootstrap/setup-метод (вже покрито попереднім патерном про createMany), а runtime feature (auto-create lines з огляду, batch-imports). Сценарій типовий для post-mutation hooks і "smart create" логіки (inspection → auto-create critical lines, batch-receive → multiple line writes)
+**Причина виникнення:** виглядає лінійно і відповідає mental-model "одна сутність — один create". Розробник не помічає що Prisma `$transaction` примусово serializes запити на одному з'єднанні; тому навіть Promise.all не допоміг би (єдина перемога — switch на createMany). Runtime context маскує проблему — у bootstrap кожен помітить for-await createMany switch, але у runtime feature `tx.X.create` всередині прихований у "smart logic"
+**Підхід до виявлення:** grep `for \(const \w+ of \w+\) \{[\s\S]{0,200}tx\.\w+\.create\(` у `*.service.ts`. Для кожного збігу перевірити: (1) чи це bootstrap/setup (відомий патерн) чи runtime hot-path; (2) чи кожен create незалежний (немає side-effects що читаються наступним create). Якщо runtime + незалежний — кандидат
+**Підхід до фіксу:** build `linesData: Prisma.XCreateManyInput[]` array у циклі замість `tx.X.create()`, потім `await tx.X.createMany({ data: linesData })`. createMany робить **один** INSERT з N рядками — найшвидший варіант у tx, де паралелізм неможливий через single-connection. Side-effects (accumulators типу `addedLabor` для recalc) лишити inline у циклі — вони беруть значення з input не з create response. Перевірити що unit-тест мокає `createMany` (а не лише `create`) — типова регресія
+**Реальний impact:** для inspection.create з 50+ critical points: 50 sequential tx.workOrderLine.create → 1 createMany — 49 RTT саксис всередині tx. Транзакції стають коротшими → менше lock contention на work_order_lines, нижчий ризик timeout
+**Де шукати ще:** runtime "smart create" функції що auto-generate child rows з batch input — inspection auto-lines, batch creation з parsed data, "createFromTemplate" methods, bulk import що йде через $transaction. Перевіряти кожен новий feature що пише N child rows в одному tx
+
+---
+
+### 2026-06-01 — Multi-loop sequential fan-out з shared dedup state — notification/email/sms dispatcher методи
+
+**Сигнал:** processor/scheduler метод має 2+ окремих `for (const x of source) { ... if (!shared.has(key)) shared.add(key); await dispatcher.send(...) }` циклів. Між циклами шарується `Set<string>` для дедуплікації (phones, emails, userIds). Кожен цикл — sequential send, але цикли йдуть один за одним, не паралельно. Виглядає лінійно бо логіка "збери з джерела А → відправ → збери з джерела Б → відправ"
+**Причина виникнення:** дедуплікація між джерелами через shared `Set` створює відчуття що паралелізм неможливий — "я ж не можу send'ити Б, поки не закінчу А, бо А може записати у sentTo". Насправді: дедуплікація потрібна для `recipients` (КОГО), а не для `sends` (ЧИ ВЖЕ ВІДПРАВЛЕНО) — sentTo вже спрацював перед send'ом. Тому: collect+dedupe sync → parallel send. Розробник не виокремлює ці дві фази
+**Підхід до виявлення:** grep `for \(const .* of .*\) \{[\s\S]{0,200}await this\.\w+\.send\(` у backend (нотифікації/email/sms processors). Для кожного збігу перевірити: (1) чи sentTo (або інший dedup state) шерітся між кількома циклами; (2) чи send'и self-contained (немає state з попереднього send що впливає на наступний); (3) чи це fan-out (independent recipients) а не sequence (order-dependent дзвінки)
+**Підхід до фіксу:** 1-й pass: collect+dedupe → `recipients: Recipient[]` (sync, fast). 2-й pass: `await Promise.allSettled(recipients.map(r => dispatcher.send(...)))`. 3-й pass: iterate `results[]` для error tracking + success count. Семантика збереглася — dedup в `recipients`, send concurrent. Failure-mode "all failed throw, partial OK" зберігається через лічильники + lastError
+**Реальний impact:** для followup.processor щоденного tick з 100+ active orgs × 50+ recipients per org: sequential 50 × SMS RTT (~300ms ea) = 15s wall-clock → паралельний ~max(send_time) = ~300-500ms (limited by SMS provider concurrency). Кумулятивно: економія годин на batch jobs
+**Де шукати ще:** будь-який processor/scheduler з 2+ `for-await ... send` циклами. Особливо: followup notifications, marketing campaigns dispatchers, payment receipt mailers, dunning letter senders, webhook fan-out (вже оптимізовано), bulk export delivery
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -1251,6 +1273,8 @@ TypeScript: ✅ 0 errors
 - ✅ currencies.update: tier-merger — existing(select code) + speculative duplicate-code check у Promise.all з post-filter NOT id (2 RTT → 1 RTT)
 - ✅ exchange-rates.update: tier-merger — existing + speculative duplicate-date check у Promise.all (без currencyId у duplicate where — post-filter currencyId match) (2 RTT → 1 RTT)
 - ✅ maintenance-schedules.remove: findFirst + soft-delete update → updateMany з orgId guard (2 RTT → 1)
+- ✅ inspection.create auto-lines: sequential `tx.workOrderLine.create` у циклі criticalPoints → `tx.workOrderLine.createMany` (N INSERTs → 1 у $transaction; 50+ critical points типовий заряд)
+- ✅ followup.processor: 2 sequential findMany (upcomingMaintenance + inactiveVehicles) → Promise.all (-1 RTT per daily tick); 2 sequential SMS send loops → collect-then-Promise.allSettled fan-out (sequential N × RTT → parallel max RTT, обмежено SMS provider concurrency)
 
 **Frontend:**
 
