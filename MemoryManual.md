@@ -9,48 +9,41 @@
 ## Останній commit
 
 ```
+e731da5 feat(seed): expand seed data + fix E2E tests for previously-skipped specs
+bc4728e test(e2e): add WO detail + stock-doc types + PO receive specs
+29082da docs(memory): update MemoryManual after QA full cycle iter3 FINAL — 0 bugs, 138 E2E passed
 34f22cb docs(memory): update MemoryManual after QA full cycle iter2 — 2 E2E bugs fixed
 5d6ce06 fix(e2e): iter2 — add test.setTimeout(45s) for CRUD catalog tests under parallel load
-55e4ee5 fix(e2e): iter2 — remove networkidle wait + increase table timeout in crud-catalog
-8f4ee7b docs(memory): update MemoryManual after QA full cycle iter1 — 3 E2E bugs fixed
-647603f fix(e2e): iter1 — work-orders row nav + stock-doc modal guard + calendar networkidle
-8e08c88 docs(memory): update MemoryManual after QA cycle 1 — sync clean, 511 tests pass, E2E #291 fixed
-1817dd6 fix(e2e): dashboard nav test — use sidebar text filter + waitForURL instead of ambiguous .first()
-ddd09b3 fix(review): cycle 6 — defense/quality audit — fake-green FSM specs
-8e0b750 fix(tester): cycle 7 — Bugs #283-#290 — Lift maxWeightKg validation gap + E2E spec cleanup
-3730db8 perf(calendar): skip day-view fetch in stats/month view + module-level EMPTY_FORM
-942f90b fix(sync): hide Slot button in stats view to prevent phantom showAdd state
 Дата: 2026-06-01
 
-Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter3 ФІНАЛЬНА від HEAD 34f22cb — sync+tester+optimize+E2E) — **0 sync mismatches, 0 backend bugs, 0 optimize issues, 0 E2E failures — чисто**
+Latest E2E run: 2026-06-01 (HEAD e731da5) — **153 passed, 10 skipped, 2 failed (pre-existing)**
+- +15 vs попередній QA (138→153 passed)
+- 2 pre-existing failures: `crud-booking` FSM (існував раніше) + `crud-purchase-order` FSM Detail Panel кнопка
+- 1 flaky: `work-orders-detail` ESTIMATE→APPROVED (mode:serial woId між retries)
 
-**Sync (Direction 1-3): 0 розбіжностей** — підтверджено фінально.
-- Direction 1 (API→UI): всі 47 backend модулів мають UI покриття — перевірено повністю.
-- Direction 2 (URL): 0 mismatch — жодного неправильного endpoint у apiFetch викликах.
-- Direction 3 (Types): 0 невідповідностей interface ↔ toResponseDto.
+**Seed (packages/database/prisma/seed.ts) — ОНОВЛЕНО:**
+- Всі UUID v4-compatible (`a1000000-0000-4000-8000-...`) — nil UUID fails @IsUUID() class-validator
+- BRANCH2 `a1000000-...-000000000003` — для WO E2E тестів (main branch nil UUID)
+- SUPPLIER `a1000000-...-000000000050` (CounterpartyType.SUPPLIER)
+- CLIENT `a1000000-...-000000000051` + GARAGE `...052` + VEHICLE `...053` (Toyota Camry)
+- WORK1 `...060` (Заміна мастила, 0.5 н/г) + WORK2 `...061` (Заміна амортизатора)
+- GOOD1 `...070` (Олива 5W-40) + GOOD2 `...071` (Фільтр масляний)
+- WAREHOUSE2 `...031` (Цех/майстерня, WORKSHOP) — для TRANSFER тестів
+- `requireClientApproval: false` — блокував COMPLETED→INVOICED FSM
 
-**Backend тести: 511/511 pass** (47 test files, 12s)
+**Migration: 20260601100206_add_followup_active_setting** — поле існувало в schema але не в БД
 
-**Property-based: 26/26 pass** (inventory/settlements/work-orders FSM invariants)
+**E2E патерни (Gotcha):**
+- Nil UUID (00000000-...) відхиляється `@IsUUID()` class-validator — використовувати v4 UUID у seed
+- `apiCall` з DELETE/void endpoints: `r.ok ? await r.json() : null` крашить на 204 No Content → `text = await r.text(); return text ? JSON.parse(text) : null`
+- WO creation потребує: CLIENT counterparty + vehicleId (через garage) + v4 branchId
+- `POST /work-orders/:id/lines` потребує `employeeId` (обов'язкове) — без нього 400
+- `POST /purchase-orders` лінії передаються при створенні (немає окремого endpoint `/lines`)
+- WO lines/parts рендеряться як `div` (не `table`) на картці наряду
+- Redis кешує `/branches` 5 хвилин — після seed треба почекати або інвалідувати
 
-**Static analysis: 0 нових багів**
-- Soft delete: 0 прямих `prisma.X.delete()` у service files.
-- Tenant isolation: всі findFirst/findMany фільтруються по orgId.
-- Stock mutations: тільки через InventoryService (0 прямих stockItem.update).
-- Settlements: єдиний прямий settlementAccount.create — у counterparties.create (ініціалізація balance=0, відомий виняток).
-- Optional numeric DTOs: всі `?: number` поля мають `@IsInt()/@IsNumber()/@Min()/@Max()/@Type()` — 0 незахищених (Bug #283 pattern перевірено).
-- Fake-green assertions: `toBeGreaterThanOrEqual(0)` — 0 залишилось, `test.only` — 0.
-- N+1: 0 нових `for...await` / `forEach...await` паттернів у service files.
-- `new Date()` у render path: 0 (тільки в event handlers/effects — OK).
-
-**Optimize: 0 нових проблем** — всі хуки мають staleTime, no N+1, no sequential awaits ✓
-
-**E2E: 138 passed, 9 skipped, 0 failed** (5.1 хв, exit code 0)
-- +4 тести від iter2 (134→138) — тести стали більш надійними після попередніх фіксів.
-- 9 skipped — відомі (немає seed даних: bookings/calendar-slots/stock-docs/work-order-seed/purchase-order-FSM).
-- 0 нових флакових тестів виявлено.
-
-**TypeScript:** web + api `tsc --noEmit --incremental false` — **0 errors**.
+**Backend тести: 511/511 pass** (47 test files) — без змін
+**TypeScript:** 0 errors (api + web)
 
 ---
 
