@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, type ReactNode, type MouseEvent } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -48,12 +49,26 @@ import { reportsKeys } from '@/hooks/api/useReports';
 import { ToastContainer } from '@/components/ui/toast';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
-import { CommandPalette } from '@/components/ui/command-palette';
-import { SyncIndicator } from '@/components/ui/sync-indicator';
-import { NotificationCenter } from '@/components/ui/notification-center';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
+
+// Lazy-loaded shell widgets — рендеряться умовно через uiFeatures flags + потребують
+// auth (employee) для будь-якого корисного контенту. Виносимо у окремий chunk щоб
+// initial layout.js не тягнув ~700+ рядків JSX/логіки які видно лише після логіну.
+// ssr:false бо ці компоненти обходять SSR-render (мають client-only stores і timers).
+const CommandPalette = dynamic(
+  () => import('@/components/ui/command-palette').then(m => m.CommandPalette),
+  { ssr: false },
+);
+const SyncIndicator = dynamic(
+  () => import('@/components/ui/sync-indicator').then(m => m.SyncIndicator),
+  { ssr: false },
+);
+const NotificationCenter = dynamic(
+  () => import('@/components/ui/notification-center').then(m => m.NotificationCenter),
+  { ssr: false },
+);
 
 interface NavItem {
   href: string;
@@ -412,6 +427,7 @@ export function TopShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
+  const [mounted, setMounted] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [navMode, setNavMode] = useState<NavMode>('sections');
@@ -438,6 +454,7 @@ export function TopShell({ children }: { children: ReactNode }) {
   useGlobalShortcuts(!!employee && uiFeatures.keyboardShortcutsEnabled && !paletteOpen);
 
   useEffect(() => {
+    setMounted(true);
     try {
       const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
       if (saved !== null) setCollapsed(saved === 'true');
@@ -506,6 +523,9 @@ export function TopShell({ children }: { children: ReactNode }) {
   // Public routes (login, setup, /) always render without shell,
   // even if employee is present (e.g. cached session on /login → redirect handled by login page itself)
   if (isPublic) return <>{children}</>;
+
+  // Before mount: return null so SSR and first client render match (no hydration mismatch)
+  if (!mounted) return null;
 
   if (isLoading || !employee) {
     return (
