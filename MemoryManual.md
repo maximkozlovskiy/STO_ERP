@@ -9,12 +9,16 @@
 ## Останній commit
 
 ```
+9481444 fix(review): mirror api-client Content-Type fix in E2E apiCall helpers
 87df4af fix(api-client+e2e): fix PATCH without body 500 + PO receive tests
 cc37091 fix(e2e): crud-booking — beforeAll cleanup + unique phone per run
 0bcb382 fix(e2e): fix skipped/failed tests — detail panel, booking locators, PO receive
 e731da5 feat(seed): expand seed data + fix E2E tests for previously-skipped specs
 bc4728e test(e2e): add WO detail + stock-doc types + PO receive specs
 Дата: 2026-06-01
+
+Latest review: 2026-06-01 (Auto, HEAD 9481444) — code review e731da5..87df4af, 1 фікс
+(Content-Type без body anti-pattern продубльовано з api-client у E2E apiCall helpers)
 
 Latest E2E run: 2026-06-01 (HEAD 87df4af) — **162 passed, 5 skipped, 0 failed — exit code 0**
 - +24 тести vs попередній QA (138→162)
