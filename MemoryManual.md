@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+34f22cb docs(memory): update MemoryManual after QA full cycle iter2 — 2 E2E bugs fixed
 5d6ce06 fix(e2e): iter2 — add test.setTimeout(45s) for CRUD catalog tests under parallel load
 55e4ee5 fix(e2e): iter2 — remove networkidle wait + increase table timeout in crud-catalog
 8f4ee7b docs(memory): update MemoryManual after QA full cycle iter1 — 3 E2E bugs fixed
@@ -19,19 +20,39 @@ ddd09b3 fix(review): cycle 6 — defense/quality audit — fake-green FSM specs
 8e0b750 fix(tester): cycle 7 — Bugs #283-#290 — Lift maxWeightKg validation gap + E2E spec cleanup
 3730db8 perf(calendar): skip day-view fetch in stats/month view + module-level EMPTY_FORM
 942f90b fix(sync): hide Slot button in stats view to prevent phantom showAdd state
-e8ff2f8 test(e2e): expand E2E coverage — 10 new spec files for invoices, PO, stock docs, settlements, catalog settings, pricing rules, calendar, bookings, dashboard, reports
-6376b90 test(e2e): add CRUD tests for counterparty, employee, catalog, infrastructure, work-orders
-f56ae6d fix(tester): cycle 6 — Bugs #277-#282 — nav prefetch shape mismatch + sync error state + dead imports
-3367da8 perf(nav): reports prefetch + complete dashboard prefetch + reports keepPreviousData
-b5766eb fix(topshell): move useQueryClient above conditional returns — Rules of Hooks
-a24b975 docs(skills): add nav-prefetch + useQuery migration patterns to sto-optimize + sto-web
-9c92b3b perf(nav): calendar prefetch + profile/booking useQuery + GoodsTab memo
-4c3d18e perf(nav): migrate reports/sync/dashboard/catalog to useQuery + prefetch 16/17
-30280bd perf(nav): migrate bookings/pricing-rules/stock-docs/infrastructure to useQuery
-f017721 perf(nav): migrate employees+settlements to useQuery + extend prefetch
-e20fcc5 perf(nav): prefetch on hover + keepPreviousData + loading skeletons
-8efc01c perf(optimize): cycle 5 (FINAL) — tier-merger в reference-CRUD + sync.getStatus parallel + covering indexes
 Дата: 2026-06-01
+
+Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter3 ФІНАЛЬНА від HEAD 34f22cb — sync+tester+optimize+E2E) — **0 sync mismatches, 0 backend bugs, 0 optimize issues, 0 E2E failures — чисто**
+
+**Sync (Direction 1-3): 0 розбіжностей** — підтверджено фінально.
+- Direction 1 (API→UI): всі 47 backend модулів мають UI покриття — перевірено повністю.
+- Direction 2 (URL): 0 mismatch — жодного неправильного endpoint у apiFetch викликах.
+- Direction 3 (Types): 0 невідповідностей interface ↔ toResponseDto.
+
+**Backend тести: 511/511 pass** (47 test files, 12s)
+
+**Property-based: 26/26 pass** (inventory/settlements/work-orders FSM invariants)
+
+**Static analysis: 0 нових багів**
+- Soft delete: 0 прямих `prisma.X.delete()` у service files.
+- Tenant isolation: всі findFirst/findMany фільтруються по orgId.
+- Stock mutations: тільки через InventoryService (0 прямих stockItem.update).
+- Settlements: єдиний прямий settlementAccount.create — у counterparties.create (ініціалізація balance=0, відомий виняток).
+- Optional numeric DTOs: всі `?: number` поля мають `@IsInt()/@IsNumber()/@Min()/@Max()/@Type()` — 0 незахищених (Bug #283 pattern перевірено).
+- Fake-green assertions: `toBeGreaterThanOrEqual(0)` — 0 залишилось, `test.only` — 0.
+- N+1: 0 нових `for...await` / `forEach...await` паттернів у service files.
+- `new Date()` у render path: 0 (тільки в event handlers/effects — OK).
+
+**Optimize: 0 нових проблем** — всі хуки мають staleTime, no N+1, no sequential awaits ✓
+
+**E2E: 138 passed, 9 skipped, 0 failed** (5.1 хв, exit code 0)
+- +4 тести від iter2 (134→138) — тести стали більш надійними після попередніх фіксів.
+- 9 skipped — відомі (немає seed даних: bookings/calendar-slots/stock-docs/work-order-seed/purchase-order-FSM).
+- 0 нових флакових тестів виявлено.
+
+**TypeScript:** web + api `tsc --noEmit --incremental false` — **0 errors**.
+
+---
 
 Latest review: 2026-06-01 (sto-review-agent **ЦИКЛ 6**, HEAD ddd09b3 → audit of e8ff2f8…8e0b750) — **6 проблем знайдено + 6 виправлено** у нових E2E spec файлах. TypeScript 0 errors, API tests 28/28 pass.
 
