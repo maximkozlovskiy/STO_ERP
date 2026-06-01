@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+1817dd6 fix(e2e): dashboard nav test — use sidebar text filter + waitForURL instead of ambiguous .first()
 ddd09b3 fix(review): cycle 6 — defense/quality audit — fake-green FSM specs
 8e0b750 fix(tester): cycle 7 — Bugs #283-#290 — Lift maxWeightKg validation gap + E2E spec cleanup
 59b1290 docs(skills): add view-state-gated-fetch + EMPTY_FORM module-level patterns to sto-optimize
@@ -52,6 +53,34 @@ Latest review: 2026-06-01 (sto-review-agent **ЦИКЛ 6**, HEAD ddd09b3 → aud
 
 **Накопичено новий патерн (sto-review §1.6 + sto-tester):**
 *"DTO field-name mismatch у E2E spec body"* — якщо integration test POST-ить через `fetch` без типізації, неправильне ім'я поля → 400 → silent skip (fake-green). Сигнал: JSON.stringify body у `page.evaluate` + `r.ok ? json : null` + `test.skip`. Захист: контракт spec на DTO для критичних endpoints (як `lifts.contract.spec.ts`) + strict `expect.toBe(true)` на `r.ok` у E2E POST helpers, не `?? null`.
+
+Latest QA cycle: 2026-06-01 (QA cycle 1 від HEAD 8e0b750, sto-sync-agent + manual tester + E2E) — **0 sync mismatches, 0 backend bugs, 1 E2E fix**
+
+**Sync (Direction 1-3): 0 розбіжностей**
+- Direction 1 (API→UI): всі backend модулі мають UI покриття (inspection/audit/completion-acts/comments/loyalty/settlements/warranties/maintenance-schedules — embedded у parent pages ✓)
+- Direction 2 (URL): жодних URL mismatch (booking/settlements/inspection/loyalty — всі правильні ✓)
+- Direction 3 (Types): interfaces відповідають toDto (employees.rateScheme? optional ✓, Transaction DTO ✓, Counterparty balance=Number(Decimal) ✓)
+
+**Backend тести: 511/511 pass** (47 test files, 9.3s)
+
+**Static analysis: 0 нових багів**
+- FSM нарядів: жодних hardcoded status checks ✓
+- InventoryService: жодних прямих stock_item.update поза InventoryService ✓
+- SettlementsService: єдиний прямий settlementAccount.create — у counterparties.create (init balance=0 в $transaction) ✓
+- Tenant isolation: findAll/findFirst усі фільтруються по orgId ✓
+- Calendar conflicts: conflict check у $transaction з BadRequestException ✓
+- DTO validation: numeric optional fields — перевірено всі основні DTOs ✓
+
+**E2E: 1 flaky test знайдено + виправлено**
+
+**Bug #291 (LOW, test-flakiness):** `dashboard.spec.ts:57` "навігація з дашборду на наряди" — `a[href*="/work-orders"].first()` вибирав KPI-картку у main content (перший DOM елемент), а не sidebar nav link. Клік проходив але Next.js навігація не завершувалась за 10s (hydration lag на CI, .first() не детермінований коли DOM має 5+ таких links). Retry #1 також падав. **Фікс:** замінено на `page.locator('nav a, aside a').filter({ hasText: 'Наряди' }).first()` + `Promise.all([waitForURL, click])`. Всі 5 dashboard tests pass.
+
+**TypeScript:** ✅ 0 errors (api + web, `--incremental false`). **Unit:** API **511/511**. **E2E:** 140 passed, 1 flaky fixed, 6 skipped.
+
+**Нові SKILL patterns (1 entry):**
+- "Flaky E2E nav test: `locator.first()` у DOM з багатьма однаковими href" — коли sidebar + content обидва мають `a[href="/x"]`, `.first()` вибирає перший у DOM порядку (часто content element, не sidebar). Завжди використовувати `nav a, aside a` scope + `.filter({ hasText: 'Label' })` для sidebar nav clicks + `Promise.all([waitForURL, click])` для надійної навігації.
+
+---
 
 Latest tester: 2026-06-01 (sto-tester-agent **ЦИКЛ 7** — E2E spec quality + Lift validation, HEAD 942f90b → cycle 7) — **8 багів знайдено + 8 виправлено + 10 нових regression-guard тестів** (lifts.contract.spec.ts) + **2 нові SKILL patterns** (Optional numeric DTO + Fake-green assertion).
 
