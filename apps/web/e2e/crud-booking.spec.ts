@@ -55,7 +55,9 @@ test.describe('Онлайн-запис (Bookings)', () => {
             notes: 'E2E test booking',
           }),
         });
-        return r.ok ? await r.json() : null;
+        if (!r.ok) return null;
+        const text = await r.text();
+        return text ? JSON.parse(text) : null;
       },
       { branchId: data.branchId },
     );
@@ -124,7 +126,9 @@ test.describe('Онлайн-запис (Bookings)', () => {
             requestedDate: tomorrow,
           }),
         });
-        return r.ok ? await r.json() : null;
+        if (!r.ok) return null;
+        const text = await r.text();
+        return text ? JSON.parse(text) : null;
       },
       { branchId },
     );

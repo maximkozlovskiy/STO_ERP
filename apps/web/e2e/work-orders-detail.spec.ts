@@ -14,19 +14,46 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      return r.ok ? await r.json() : null;
+      if (!r.ok) return null;
+      const text = await r.text();
+      return text ? JSON.parse(text) : null;
     },
     { token, method, path, body: body ?? null },
   );
 }
 
+// UUID v4 version nibble is '4' at position 14 (0-indexed in hex without dashes)
+function isV4Uuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
 async function createWo(page: Page, description: string) {
-  const cp = await apiCall(page, 'GET', '/counterparties?limit=1');
-  const cpId = cp?.items?.[0]?.id;
+  // Потрібен CLIENT (не SUPPLIER) щоб мати vehicleId
+  const cp = await apiCall(page, 'GET', '/counterparties?type=CLIENT&limit=1');
+  const cpId = cp?.items?.[0]?.id ?? (Array.isArray(cp) ? cp[0]?.id : null);
   if (!cpId) return null;
+
+  // Беремо перший branch з v4 UUID — nil UUID не пройде @IsUUID() у WO DTO
   const branches = await apiCall(page, 'GET', '/branches');
-  const branchId = Array.isArray(branches) ? branches[0]?.id : branches?.items?.[0]?.id;
-  return apiCall(page, 'POST', '/work-orders', { counterpartyId: cpId, branchId, description });
+  const branchList: { id: string }[] = Array.isArray(branches) ? branches : (branches?.items ?? []);
+  const branchId = branchList.find(b => isV4Uuid(b.id))?.id ?? branchList[0]?.id;
+  if (!branchId) return null;
+
+  // Знайти авто цього клієнта через його гараж
+  const garages = await apiCall(page, 'GET', `/counterparties/${cpId}/garages`);
+  const garageId = Array.isArray(garages) ? garages[0]?.id : garages?.items?.[0]?.id;
+  if (!garageId) return null;
+
+  const vehicles = await apiCall(page, 'GET', `/vehicles?customerGarageId=${garageId}&limit=1`);
+  const vehicleId = Array.isArray(vehicles) ? vehicles[0]?.id : vehicles?.items?.[0]?.id;
+  if (!vehicleId) return null;
+
+  return apiCall(page, 'POST', '/work-orders', {
+    counterpartyId: cpId,
+    branchId,
+    vehicleId,
+    description,
+  });
 }
 
 async function transition(page: Page, woId: string, status: string) {
@@ -98,8 +125,13 @@ test.describe('Наряд — додавання роботи', () => {
     await saveBtn.click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
-    // Рядок роботи з'явився в секції "Роботи"
-    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 15_000 });
+    // Рядок роботи з'явився в секції "Роботи" (lines рендеряться як div, не table)
+    await expect(
+      page
+        .locator('h2:has-text("Роботи") ~ div div.flex')
+        .first()
+        .or(page.locator('[class*="divide-y"] > div').first()),
+    ).toBeVisible({ timeout: 15_000 });
 
     await apiCall(page, 'DELETE', `/work-orders/${wo.id}`);
   });
@@ -172,7 +204,13 @@ test.describe('Наряд — додавання запчастини', () => {
     await saveBtn.click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
-    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 15_000 });
+    // Запчастини рендеряться як div, не table
+    await expect(
+      page
+        .locator('h2:has-text("Запчастини") ~ div div.flex')
+        .first()
+        .or(page.locator('[class*="divide-y"] > div').first()),
+    ).toBeVisible({ timeout: 15_000 });
 
     await apiCall(page, 'DELETE', `/work-orders/${wo.id}`);
   });
@@ -192,6 +230,23 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
       return;
     }
     woId = wo.id;
+
+    // Додати роботу через API щоб totalAmount > 0 (інакше COMPLETED заблокований)
+    // employeeId — обов'язкове поле для лінії наряду
+    const [works, emps] = await Promise.all([
+      apiCall(page, 'GET', '/works?limit=1'),
+      apiCall(page, 'GET', '/employees?limit=1'),
+    ]);
+    const workId = works?.items?.[0]?.id ?? (Array.isArray(works) ? works[0]?.id : null);
+    const employeeId = emps?.items?.[0]?.id ?? (Array.isArray(emps) ? emps[0]?.id : null);
+    if (workId && employeeId) {
+      await apiCall(page, 'POST', `/work-orders/${woId}/lines`, {
+        workId,
+        employeeId,
+        normoHours: 1,
+        price: 100,
+      });
+    }
 
     await page.goto(`/work-orders/${woId}`);
     await expect(page.locator('text=Чернетка').first()).toBeVisible({ timeout: 20_000 });

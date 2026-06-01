@@ -122,7 +122,9 @@ test.describe('Документи складу — CRUD', () => {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ type: 'WRITEOFF', warehouseId }),
         });
-        return r.ok ? await r.json() : null;
+        if (!r.ok) return null;
+        const text = await r.text();
+        return text ? JSON.parse(text) : null;
       },
       { token, warehouseId },
     );

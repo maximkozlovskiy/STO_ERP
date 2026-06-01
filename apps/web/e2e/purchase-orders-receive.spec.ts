@@ -14,7 +14,9 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      return r.ok ? await r.json() : null;
+      if (!r.ok) return null;
+      const text = await r.text();
+      return text ? JSON.parse(text) : null;
     },
     { token, method, path, body: body ?? null },
   );
@@ -34,18 +36,10 @@ async function createPO(page: Page) {
 
   if (!supplierId || !warehouseId) return null;
 
-  // Створити PO
-  const po = await apiCall(page, 'POST', '/purchase-orders', { supplierId, warehouseId });
+  // Створити PO одразу з позицією (лінії передаються при створенні, окремого endpoint немає)
+  const lines = goodId ? [{ goodId, quantity: 5, price: 100 }] : [];
+  const po = await apiCall(page, 'POST', '/purchase-orders', { supplierId, warehouseId, lines });
   if (!po) return null;
-
-  // Додати позицію якщо є товар
-  if (goodId) {
-    await apiCall(page, 'POST', `/purchase-orders/${po.id}/lines`, {
-      goodId,
-      quantity: 5,
-      price: 100,
-    });
-  }
 
   // Перевести в ORDERED щоб можна було прийняти
   const ordered = await apiCall(page, 'POST', `/purchase-orders/${po.id}/transition`, {

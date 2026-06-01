@@ -68,7 +68,9 @@ test.describe('Календар — слоти', () => {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ liftId, counterpartyId, startAt, endAt }),
         });
-        return r.ok ? await r.json() : null;
+        if (!r.ok) return null;
+        const text = await r.text();
+        return text ? JSON.parse(text) : null;
       },
       { token, ...data, startAt, endAt },
     );

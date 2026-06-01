@@ -14,7 +14,9 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      return r.ok ? await r.json() : null;
+      if (!r.ok) return null;
+      const text = await r.text();
+      return text ? JSON.parse(text) : null;
     },
     { token, method, path, body: body ?? null },
   );

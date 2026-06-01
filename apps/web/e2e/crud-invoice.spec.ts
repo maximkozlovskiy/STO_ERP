@@ -128,7 +128,9 @@ test.describe('Рахунки — CRUD', () => {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ counterpartyId: cpId, amount: 50 }),
         });
-        return r.ok ? await r.json() : null;
+        if (!r.ok) return null;
+        const text = await r.text();
+        return text ? JSON.parse(text) : null;
       },
       { token, cpId: cpRes },
     );
