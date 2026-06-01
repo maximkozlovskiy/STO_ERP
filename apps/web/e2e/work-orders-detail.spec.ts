@@ -187,8 +187,9 @@ test.describe('Наряд — додавання запчастини', () => {
       )
       .first();
     await expect(goodInput).toBeVisible({ timeout: 5_000 });
-    await goodInput.fill('');
-    await page.waitForTimeout(600);
+    // Вводимо частину SKU seed-товару (API пошук по назві+sku+barcode)
+    await goodInput.fill('OIL');
+    await page.waitForTimeout(800);
 
     const opt = page.locator('[role="option"]').first();
     if (!(await opt.isVisible({ timeout: 4_000 }).catch(() => false))) {
@@ -199,17 +200,24 @@ test.describe('Наряд — додавання запчастини', () => {
     }
     await opt.click();
 
+    // Вибрати склад (required для запчастини)
+    const warehouseSelect = modal.locator('select').first();
+    if (await warehouseSelect.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      const whCount = await warehouseSelect.locator('option').count();
+      if (whCount >= 2) await warehouseSelect.selectOption({ index: 1 });
+    }
+
     const saveBtn = modal.locator('button:has-text("Додати"), button:has-text("Зберегти")').last();
     await expect(saveBtn).toBeEnabled({ timeout: 5_000 });
     await saveBtn.click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
-    // Запчастини рендеряться як div, не table
+    // Запчастини рендеряться як div з назвою товару
     await expect(
       page
-        .locator('h2:has-text("Запчастини") ~ div div.flex')
-        .first()
-        .or(page.locator('[class*="divide-y"] > div').first()),
+        .locator('div.flex.items-center.justify-between')
+        .filter({ hasText: /250,00|OIL|олива|Фільтр/i })
+        .first(),
     ).toBeVisible({ timeout: 15_000 });
 
     await apiCall(page, 'DELETE', `/work-orders/${wo.id}`);

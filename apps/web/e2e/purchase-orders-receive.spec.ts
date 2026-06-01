@@ -42,14 +42,23 @@ async function createPO(page: Page) {
   if (!po) return null;
 
   // Перевести в ORDERED щоб можна було прийняти
-  const ordered = await apiCall(page, 'POST', `/purchase-orders/${po.id}/transition`, {
-    status: 'ORDERED',
-  });
+  await apiCall(page, 'POST', `/purchase-orders/${po.id}/transition`, { status: 'ORDERED' });
 
-  return ordered ?? po;
+  // Отримати актуальний стан з lines (transition відповідь може не мати lines)
+  const fresh = await apiCall(page, 'GET', `/purchase-orders/${po.id}`);
+  return fresh ?? po;
+}
+
+// Увімкнути Detail Panel для purchase-orders (зберігається в localStorage)
+async function enableDetailPanel(page: Page) {
+  await page.evaluate(() => localStorage.setItem('sto_detail_panel_purchase-orders', 'true'));
 }
 
 async function readyPage(page: Page) {
+  // addInitScript гарантує що localStorage встановлено до React hydration
+  await page.addInitScript(() => {
+    localStorage.setItem('sto_detail_panel_purchase-orders', 'true');
+  });
   await page.goto('/purchase-orders');
   await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
 }
@@ -65,11 +74,13 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    await page.reload();
-    await readyPage(page);
+    // Скинути фільтр статусів (може стояти "Чернетка" і ORDERED не видно)
+    const allBtn = page.locator('button:has-text("Всі")').first();
+    if (await allBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await allBtn.click();
+    await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
-    if (!(await row.isVisible({ timeout: 10_000 }))) {
+    if (!(await row.isVisible({ timeout: 12_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
       test.skip(true, 'Рядок PO не знайдено у таблиці');
       return;
@@ -95,8 +106,10 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    await page.reload();
-    await readyPage(page);
+    // Скинути фільтр статусів щоб ORDERED рядок був видимий
+    const allBtn = page.locator('button:has-text("Всі")').first();
+    if (await allBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await allBtn.click();
+    await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
     if (!(await row.isVisible({ timeout: 10_000 }))) {
@@ -147,8 +160,10 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    await page.reload();
-    await readyPage(page);
+    // Скинути фільтр статусів щоб ORDERED рядок був видимий
+    const allBtn = page.locator('button:has-text("Всі")').first();
+    if (await allBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await allBtn.click();
+    await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
     if (!(await row.isVisible({ timeout: 10_000 }))) {
@@ -212,8 +227,10 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    await page.reload();
-    await readyPage(page);
+    // Скинути фільтр статусів щоб ORDERED рядок був видимий
+    const allBtn = page.locator('button:has-text("Всі")').first();
+    if (await allBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await allBtn.click();
+    await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
     if (!(await row.isVisible({ timeout: 10_000 }))) {

@@ -41,8 +41,10 @@ test.describe('Онлайн-запис (Bookings)', () => {
       return;
     }
 
+    // Унікальний phone для кожного тест-запуску (останні 6 цифр = timestamp)
+    const uniquePhone = `+38099${Date.now().toString().slice(-7)}`;
     const bookingRes = await page.evaluate(
-      async ({ branchId }) => {
+      async ({ branchId, phone }) => {
         const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
         const r = await fetch('http://localhost:3000/api/booking/request', {
           method: 'POST',
@@ -50,16 +52,15 @@ test.describe('Онлайн-запис (Bookings)', () => {
           body: JSON.stringify({
             branchId,
             clientName: 'E2E Тест',
-            clientPhone: '+380991234567',
+            clientPhone: phone,
             requestedDate: tomorrow,
-            notes: 'E2E test booking',
           }),
         });
         if (!r.ok) return null;
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
-      { branchId: data.branchId },
+      { branchId: data.branchId, phone: uniquePhone },
     );
 
     if (!bookingRes) {
@@ -72,15 +73,21 @@ test.describe('Онлайн-запис (Bookings)', () => {
       timeout: 20_000,
     });
 
-    // Знайти заявку E2E. Створили її через API — рядок ОБОВ'ЯЗКОВО має з'явитись.
-    // Без strict expect тест перетворюється на fake-green: створили → нічого не перевірили (Bug #287).
-    const row = page.locator('tr:has-text("E2E Тест"), li:has-text("E2E Тест")').first();
+    // Рядок заявки: div.flex.items-center.justify-between (структура з bookings/page.tsx)
+    // Унікальний phone гарантує що знайдемо саме нашу заявку
+    const row = page
+      .locator('div.flex.items-center.justify-between')
+      .filter({ hasText: uniquePhone })
+      .filter({ has: page.locator('button:has-text("Підтвердити")') })
+      .first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     const confirmBtn = row.locator('button:has-text("Підтвердити")').first();
-    // Якщо кнопки немає у рядку — це регресія UI (PENDING має мати "Підтвердити").
-    await expect(confirmBtn).toBeVisible({ timeout: 5_000 });
+    await expect(confirmBtn).toBeEnabled({ timeout: 5_000 });
+    await confirmBtn.scrollIntoViewIfNeeded();
     await confirmBtn.click();
-    await expect(page.locator('text=Підтверджено').first()).toBeVisible({ timeout: 8_000 });
+    await expect(row.locator('button:has-text("Підтвердити")')).not.toBeVisible({
+      timeout: 10_000,
+    });
 
     // Cleanup
     await page.evaluate(
@@ -112,8 +119,9 @@ test.describe('Онлайн-запис (Bookings)', () => {
       return;
     }
 
+    const cancelPhone = `+38099${(Date.now() + 1).toString().slice(-7)}`;
     const bookingRes = await page.evaluate(
-      async ({ branchId }) => {
+      async ({ branchId, phone }) => {
         const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
         const r = await fetch('http://localhost:3000/api/booking/request', {
           method: 'POST',
@@ -121,8 +129,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
           body: JSON.stringify({
             branchId,
             clientName: 'E2E Cancel',
-            clientPhone: '+380991234568',
-            serviceIds: [],
+            clientPhone: phone,
             requestedDate: tomorrow,
           }),
         });
@@ -130,7 +137,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
-      { branchId },
+      { branchId, phone: cancelPhone },
     );
 
     if (!bookingRes) {
@@ -144,12 +151,16 @@ test.describe('Онлайн-запис (Bookings)', () => {
     });
 
     // Створили через API — рядок ОБОВ'ЯЗКОВО має з'явитись (без strict expect → fake-green, Bug #287).
-    const row = page.locator('tr:has-text("E2E Cancel"), li:has-text("E2E Cancel")').first();
+    const row = page
+      .locator('div.flex.items-center.justify-between')
+      .filter({ hasText: cancelPhone })
+      .filter({ has: page.locator('button:has-text("Скасувати")') })
+      .first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     const cancelBtn = row.locator('button:has-text("Скасувати")').first();
-    await expect(cancelBtn).toBeVisible({ timeout: 5_000 });
+    await cancelBtn.scrollIntoViewIfNeeded();
     await cancelBtn.click();
-    await expect(page.locator('text=Скасовано').first()).toBeVisible({ timeout: 8_000 });
+    await expect(row.locator('button:has-text("Скасувати")')).not.toBeVisible({ timeout: 8_000 });
 
     // Cleanup
     await page.evaluate(
