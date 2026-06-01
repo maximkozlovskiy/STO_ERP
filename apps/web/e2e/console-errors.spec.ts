@@ -17,8 +17,9 @@ const IGNORE_PATTERNS = [
 ];
 
 // /dashboard відкриває SSE EventSource → networkidle ніколи не настає.
+// /calendar має багато паралельних API-запитів і pollingInterval → networkidle теж не настає.
 // Для таких сторінок використовуємо `load` замість `networkidle`.
-const LONG_LIVED_CONNECTIONS = ['/dashboard'];
+const LONG_LIVED_CONNECTIONS = ['/dashboard', '/calendar'];
 
 function waitStrategy(route: string): 'load' | 'networkidle' {
   return LONG_LIVED_CONNECTIONS.includes(route) ? 'load' : 'networkidle';

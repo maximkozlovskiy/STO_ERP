@@ -106,11 +106,21 @@ test.describe('Наряди — картка', () => {
     await page.goto('/work-orders');
     await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
     const firstRow = page.locator('table tbody tr').first();
-    if (!(await firstRow.isVisible({ timeout: 10_000 }))) return; // немає нарядів у БД — skip
+    if (!(await firstRow.isVisible({ timeout: 10_000 }))) {
+      test.skip(true, 'Немає нарядів у БД');
+      return;
+    }
 
+    // Work-orders list uses a sidebar-preview pattern: row click selects (opens sidebar),
+    // "Відкрити →" button navigates to the detail page.
     await firstRow.click();
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page).toHaveURL(/\/work-orders\/[a-z0-9-]+/, { timeout: 10_000 });
+    // Wait for sidebar preview to appear — the "Відкрити →" button is inside it
+    const openBtn = page.locator('button:has-text("Відкрити")').first();
+    await expect(openBtn).toBeVisible({ timeout: 8_000 });
+    await Promise.all([
+      page.waitForURL(/\/work-orders\/[a-z0-9-]+/, { timeout: 15_000 }),
+      openBtn.click(),
+    ]);
 
     // Картка завжди показує або статус-badge, або FSM кнопки (або обидва)
     // Статус-badge є завжди — це мінімальна перевірка що картка відрендерилась
