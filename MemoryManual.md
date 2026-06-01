@@ -9,16 +9,43 @@
 ## Останній commit
 
 ```
+c236c21 perf(web): lazy dynamic imports — reduce bundle size
+6729fa1 perf(dashboard): replace SSE with React Query polling
+19ced3c perf(auth): optimistic auth init — eliminate 300-800ms loading spinner
+2d951f6 fix(reports): crash on tab switch with keepPreviousData
+f8257b3 perf(web): calendar URL-persistent view and date
 d2dabaa perf(web): lazy tab routing via URL search params
 86cd676 docs(skills): add createMany-in-tx + collect-then-fanout patterns to sto-optimize
 b44a9ac perf(optimize): inspection createMany + followup parallel fan-out
 9481444 fix(review): mirror api-client Content-Type fix in E2E apiCall helpers
 87df4af fix(api-client+e2e): fix PATCH without body 500 + PO receive tests
-cc37091 fix(e2e): crud-booking — beforeAll cleanup + unique phone per run
-0bcb382 fix(e2e): fix skipped/failed tests — detail panel, booking locators, PO receive
-e731da5 feat(seed): expand seed data + fix E2E tests for previously-skipped specs
-bc4728e test(e2e): add WO detail + stock-doc types + PO receive specs
 Дата: 2026-06-01
+
+Latest perf: 2026-06-01 (HEAD c236c21) — **lazy dynamic imports — 3 chunks розщеплено + tsc 0 errors**
+
+**Bundle size win (sto-optimize-agent, HEAD c236c21):**
+- **QueryProvider**: `ReactQueryDevtools` static import → `next/dynamic` за умовою `process.env.NODE_ENV === 'development'`. Без зміни runtime check бандл ~1.2 MB лежав у production. Тепер DCE працює — production build взагалі не містить DevTools chunk.
+- **TopShell**: `CommandPalette` / `SyncIndicator` / `NotificationCenter` → `dynamic(... { ssr: false })`. Раніше всі 3 (~700 LOC + transitive deps) лежали у layout.js (звіт показував 2124 kB). Тепер вони підвантажуються окремими chunks при першому рендері, після auth + uiFeatures flags.
+- **pricing-rules**: `RuleFormModal` (357 LOC) винесено у `./RuleFormModal.tsx` + dynamic. Спільні типи (PricingRule, RuleForm, EMPTY_FORM, TYPE_LABELS, GOOD_TYPE_OPTIONS) у `./types.ts` щоб уникнути дублювання. PricingRulesClient.tsx 1025→593 LOC. Модалка не потрібна поки користувач переглядає таблицю правил.
+
+**Build size перед/після (Route First Load JS):**
+```
+
+/crm 145 kB
+/pricing-rules 132 kB
+/calendar 177 kB (unchanged — dnd-kit inlined у calendar chunk)
+/work-orders 173 kB
+/employees 173 kB
+/invoices 172 kB
+/reports 157 kB
+/settlements 156 kB
+shared 102 kB (раніше layout.js самотній 2124 kB)
+
+```
+
+**TypeScript:** ✅ 0 errors (api + web)
+
+---
 
 Latest perf: 2026-06-01 (HEAD d2dabaa) — **lazy tab routing via URL search params, 160 E2E passed**
 

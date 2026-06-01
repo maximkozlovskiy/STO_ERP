@@ -1176,6 +1176,78 @@ TypeScript: ✅ 0 errors
 
 ---
 
+### 2026-06-01 — Dev-only npm package у production bundle — static import гарантує bundle inclusion навіть за runtime гілку
+
+**Сигнал:** компонент-провайдер (QueryProvider, ThemeProvider, FeatureFlagsProvider) робить **статичний** `import { DevTool } from 'some-devtool'` нагорі файлу, потім умовно рендерить `{process.env.NODE_ENV === 'development' && <DevTool />}` у JSX. Bundle analyzer показує chunk із цим модулем у production build розміром 1+ MB. Розробник вважає що `process.env.NODE_ENV` runtime check виключить bundle — насправді webpack/Next.js робить dead code elimination ЛИШЕ для самої гілки JSX (виклику `<DevTool/>` як no-op), але **statically-imported модуль ВЖЕ потрапив у chunk**. Tree-shake імпорту неможливе бо JSX-гілка згадує binding `DevTool` (хоч і за `false` умовою), тому ES-модуль збережений у bundle.
+
+**Причина виникнення:** dev-only widgets (React Query DevTools, Redux DevTools, Apollo DevTools, Storybook addon-runtime, jest-axe) природно імпортуються як обʼєкти. Conditional render _на рівні JSX_ виглядає правильно — `if (NODE_ENV === dev)` здається достатнім для exclusion. Але import statement створює статичну ESM залежність — у webpack module graph модуль присутній, його sub-imports тягнуться по транзитивній (DevTool часто є React app у мініатюрі — formik/lodash/react/CSS-in-JS). DCE може видалити **виклик** функції що завжди повертає null, але не може видалити **імпорт** з top-level бо це side-effect.
+
+**Підхід до виявлення:** для кожного провайдера/wrapper компонента в `apps/web/src/components/`, `apps/web/src/app/layout.tsx` пошук: `import.*from '.*devtools.*'` / `from '.*-dev.*'` / `from '.*dev-tools.*'`. Перевірити чи import використовується ТІЛЬКИ за `process.env.NODE_ENV === 'development'` JSX гілкою. Бенчмарк через `ANALYZE=true pnpm build` — chunks > 500 kB що зникають у dev — це лакмус. Або просто: `grep -rn "process.env.NODE_ENV.*development" apps/web/src/components/` — кожен збіг з top-level import у тому ж файлі — кандидат.
+
+**Підхід до фіксу:** замінити static import на conditional `next/dynamic`:
+
+```ts
+const DevTool =
+  process.env.NODE_ENV === 'development'
+    ? dynamic(() => import('some-devtools').then(m => m.DevTool), { ssr: false })
+    : null;
+```
+
+Тепер: (1) production build має `null` константу — dynamic() взагалі не викликається, DCE eliminate; (2) dev build має lazy chunk що завантажиться при першому рендері. Wrap render у `{DevTool && <DevTool />}` щоб TypeScript був happy.
+
+**Реальний impact:** production bundle економить розмір самого dev-tool + всі transitive deps. Для React Query DevTools зі звіту — ~1.2 MB JS prefer 0. На SPA з code-splitting це додатково прискорює initial parse (~50-200ms на повільних пристроях). Не плутати з runtime-only window check (`typeof window !== 'undefined'`) — той теж не вирізає bundle, лише skipping render на SSR.
+
+**Де шукати ще:** будь-який `*Provider.tsx`, `*Wrapper.tsx`, root `layout.tsx` що імпортує dev-only addon. Тестові утиліти (`@testing-library/react`, `jest-axe`, `mock-service-worker`) — теж у production bundle якщо їх імпортувати з runtime коду. CMS preview мод, analytics debug overlays — той самий патерн.
+
+---
+
+### 2026-06-01 — Auth-gated UI widgets у root layout — render-blocked для unauthenticated, але код у layout chunk
+
+**Сигнал:** `TopShell`/`AppShell`/`AuthenticatedLayout` (компонент що рендериться у root `layout.tsx` через `app/layout.tsx` → `<TopShell>{children}</TopShell>`) робить статичний `import { CommandPalette, NotificationCenter, SyncIndicator } from '@/components/ui/...'`. Кожен widget — 200+ LOC з власними hooks, timers, stores. Виклики JSX обгорнуті у `{employee && uiFeatures.commandPaletteEnabled && <CommandPalette ... />}` — рендеряться лише після auth. Але код модулів вже у layout.js (yieldserved через `app/layout.tsx` що завжди вантажиться). Bundle analyzer показує layout.js > 2 MB.
+
+**Причина виникнення:** TopShell — частина layout, він обовʼязковий на кожній сторінці. Виглядає природно тримати всі його sub-widgets у тому самому файлі чи прямо імпортувати. Render-blocking через auth helper (`!employee && return null`) виглядає достатнім — якщо UI не показано, користувач його не бачить. Не помічається що **код модулів** все одно у chunk: парсинг, оцінювання top-level expressions, всі їх transitive imports. Особливо болить для widgets що мають свій store/zustand/event listeners при ініціалізації top-level.
+
+**Підхід до виявлення:** у `TopShell`/головному shell компоненті порахувати `import {...} from '@/components/ui/...'` — кожен ui-widget що рендериться **conditionally** (за `employee`, `uiFeatures.X`, `featureFlag.Y`) — кандидат на dynamic. Особливо якщо widget має 200+ LOC або імпортує свою sub-tree (timers, stores, lazy data fetch). Розрізняти від **завжди-рендериться** (ToastContainer, ConfirmDialog) — ті залишити static.
+
+**Підхід до фіксу:** замінити статичні імпорти на `next/dynamic` для conditional widgets:
+
+```ts
+const CommandPalette = dynamic(
+  () => import('@/components/ui/command-palette').then(m => m.CommandPalette),
+  { ssr: false },
+);
+```
+
+`ssr: false` обовʼязковий бо: (1) widget потребує client-only stores; (2) shell сам рендериться через `mounted` guard. Тип CommandPalette зберігається через named export `.then(m => m.CommandPalette)`. JSX залишається тим самим — `{employee && uiFeatures.X && <CommandPalette ... />}` — тепер `<CommandPalette/>` lazy-завантажується при умові true. Чотири JSX call sites залишаються без змін — TypeScript сам приймає `next/dynamic` ComponentType.
+
+**Реальний impact:** layout.js chunk зменшується на сумарний код всіх лазі-розщеплених widgets + їх transitive deps. Для звіту 2124 kB → ~100 kB shared chunk (всі transitive deps теж не потрапили у layout). Перший рендер сторінки коротший: менше JS до parse + execute перед першим paint. Widgets завантажуються після auth, що зазвичай == network idle — без помітного UI delay.
+
+**Де шукати ще:** root `layout.tsx`, `RootShell`, `AppShell`, будь-який компонент що обгортає всі сторінки. Особливо: command palettes, notification centers, search overlays, feature-flagged experimental UI, role-gated admin panels. Перевіряти при кожному додаванні нового conditional widget у global shell.
+
+---
+
+### 2026-06-01 — Heavy modal у page chunk блокує table view — `Modal` із 300+ LOC форми у тому самому файлі що list view
+
+**Сигнал:** сторінка-список (`PricingRulesClient.tsx`, `EmployeesClient.tsx`, `CrmPage.tsx`) має `function XFormModal({...}) { ... 300+ LOC ... }` у тому самому файлі що render таблиці. Modal використовує Input/Select/Tier rows/file uploaders/tabbed forms — все в одному JSX дереві. Modal рендериться conditionally за `modal` state — `false` за замовчуванням. Bundle analyzer: chunk сторінки 1+ MB, але користувач 80% часу проводить переглядаючи таблицю — модалку відкриває рідко.
+
+**Причина виникнення:** code locality — модалка пов'язана з логікою сторінки (`createRule`/`updateRule` handlers, shared types, EMPTY_FORM init). Виглядає природно тримати разом. Винесення modal у окремий файл вимагає shared types — додаткова прокладка. Розробник свідомо вибирає DRY over chunk size. Не помічається що table view взагалі **не потребує** Modal коду до першого кліку "Створити" чи "Редагувати".
+
+**Підхід до виявлення:** для кожної сторінки-списку `> 500 LOC` — знайти всередині `function .*Modal\({` declaration. Виміряти його LOC через grep + line count. Якщо modal > 200 LOC і використовує тяжкі sub-компоненти (Input/Select × 5+, tabbed sections, sortable tier rows, file uploaders) — кандидат на extraction. Особливо якщо modal обгортає окремий компонент `Modal` зі своїм state (`useState`, `useEffect` для form init).
+
+**Підхід до фіксу:** трикомпонентний refactor:
+
+1. Створити `./XFormModal.tsx` з extracted function as default export. Імпорти оновити (`Input`, `Select`, `Modal` тощо переїжджають туди).
+2. Створити `./types.ts` з shared types (`X`, `XForm`, `EMPTY_FORM`, label/option constants). І client, і modal імпортують з `./types`.
+3. У client замінити inline declaration на `const XFormModal = dynamic(() => import('./XFormModal'), { ssr: false });`. Видалити невикористовувані тепер імпорти (`Input`, `Select`, `Modal` якщо не вживаються поза модалкою).
+
+ssr:false бо modal часто має `<Suspense>` boundary і form state — client-only. `dynamic()` без named-export `.then()` бо default export — простіший imp.
+
+**Реальний impact:** chunk сторінки зменшується на розмір модалки + її transitive (Modal сам по собі тягне Headless UI Dialog ~30 kB). Для зразка `pricing-rules`: 1093 kB chunk reported → 132 kB First Load JS. Реальна перемога — менше JS до parse при first paint таблиці. Модалка lazy-завантажується при першому "Створити" клац — typically 50-100ms на швидкій мережі, користувач не помічає бо клац відкриває модалку з власною animation delay.
+
+**Де шукати ще:** будь-яка сторінка-список з inline `function XFormModal/XEditModal/XCreateModal` декларацією. Найчастіше: CRM page, Pricing Rules, Employees, Invoices form, Purchase Order form, Work Order Line Editor. Перевіряти при додаванні нової CRUD сторінки — модалка завжди має жити у власному файлі + dynamic.
+
+---
+
 ### 2026-06-01 — Multi-loop sequential fan-out з shared dedup state — notification/email/sms dispatcher методи
 
 **Сигнал:** processor/scheduler метод має 2+ окремих `for (const x of source) { ... if (!shared.has(key)) shared.add(key); await dispatcher.send(...) }` циклів. Між циклами шарується `Set<string>` для дедуплікації (phones, emails, userIds). Кожен цикл — sequential send, але цикли йдуть один за одним, не паралельно. Виглядає лінійно бо логіка "збери з джерела А → відправ → збери з джерела Б → відправ"
@@ -1328,6 +1400,9 @@ TypeScript: ✅ 0 errors
 - ✅ booking/page.tsx public widget: useEffect('/booking/branches') → useQuery(staleTime:5m) через publicFetch
 - ✅ catalog/GoodsTab.tsx: selectGood → useCallback([loadBarcodes]); TableRow onClick conditional на detailPanel.enabled
 - ✅ vehicles/[id]/loading.tsx: новий skeleton для деталі авто
+- ✅ QueryProvider: ReactQueryDevtools static import → next/dynamic за `process.env.NODE_ENV==='development'` — dev-only chunk виключений з production bundle (~1.2 MB DevTools зникли)
+- ✅ TopShell: CommandPalette / SyncIndicator / NotificationCenter → dynamic(ssr:false) — conditional auth-gated widgets більше не у layout.js chunk (звіт 2124 kB → shared 102 kB)
+- ✅ pricing-rules: RuleFormModal (357 LOC + tier management) винесено у ./RuleFormModal.tsx + dynamic; shared types у ./types.ts — chunk сторінки 1093 kB → 132 kB First Load JS
 
 **DB:**
 
