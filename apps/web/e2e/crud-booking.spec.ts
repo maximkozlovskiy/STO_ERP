@@ -24,35 +24,40 @@ test.describe('Онлайн-запис (Bookings)', () => {
     });
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
 
-    // Створити заявку через публічний API
-    const data = await page.evaluate(
-      async ({ token }) => {
-        const servicesRes = await fetch('http://localhost:3000/api/works?limit=1', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const services = await servicesRes.json();
-        return { serviceId: services.items?.[0]?.id };
-      },
-      { token },
-    );
+    // Створити заявку через публічний API.
+    // CreateBookingRequestDto вимагає: branchId (UUID), clientName, clientPhone (+380XXXXXXXXX),
+    // requestedDate (НЕ preferredDate). Раніше тут було неправильне поле і відсутній branchId —
+    // /booking/request віддавав 400, r.ok=false → test.skip → fake-green silent skip (Bug #287).
+    const data = await page.evaluate(async () => {
+      const branchesRes = await fetch('http://localhost:3000/api/booking/branches');
+      const branches = await branchesRes.json().catch(() => []);
+      return {
+        branchId: Array.isArray(branches) ? branches[0]?.id : null,
+      };
+    });
+
+    if (!data.branchId) {
+      test.skip(true, 'Немає публічної філії для онлайн-запису');
+      return;
+    }
 
     const bookingRes = await page.evaluate(
-      async ({ serviceId }) => {
+      async ({ branchId }) => {
         const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
         const r = await fetch('http://localhost:3000/api/booking/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            branchId,
             clientName: 'E2E Тест',
             clientPhone: '+380991234567',
-            serviceIds: serviceId ? [serviceId] : [],
-            preferredDate: tomorrow,
+            requestedDate: tomorrow,
             notes: 'E2E test booking',
           }),
         });
         return r.ok ? await r.json() : null;
       },
-      { serviceId: data.serviceId },
+      { branchId: data.branchId },
     );
 
     if (!bookingRes) {
@@ -65,15 +70,15 @@ test.describe('Онлайн-запис (Bookings)', () => {
       timeout: 20_000,
     });
 
-    // Знайти заявку E2E і підтвердити
+    // Знайти заявку E2E. Створили її через API — рядок ОБОВ'ЯЗКОВО має з'явитись.
+    // Без strict expect тест перетворюється на fake-green: створили → нічого не перевірили (Bug #287).
     const row = page.locator('tr:has-text("E2E Тест"), li:has-text("E2E Тест")').first();
-    if (await row.isVisible({ timeout: 10_000 })) {
-      const confirmBtn = row.locator('button:has-text("Підтвердити")').first();
-      if (await confirmBtn.isVisible({ timeout: 3_000 })) {
-        await confirmBtn.click();
-        await expect(page.locator('text=Підтверджено').first()).toBeVisible({ timeout: 8_000 });
-      }
-    }
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    const confirmBtn = row.locator('button:has-text("Підтвердити")').first();
+    // Якщо кнопки немає у рядку — це регресія UI (PENDING має мати "Підтвердити").
+    await expect(confirmBtn).toBeVisible({ timeout: 5_000 });
+    await confirmBtn.click();
+    await expect(page.locator('text=Підтверджено').first()).toBeVisible({ timeout: 8_000 });
 
     // Cleanup
     await page.evaluate(
@@ -94,20 +99,35 @@ test.describe('Онлайн-запис (Bookings)', () => {
     });
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
 
-    const bookingRes = await page.evaluate(async () => {
-      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-      const r = await fetch('http://localhost:3000/api/booking/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientName: 'E2E Cancel',
-          clientPhone: '+380991234568',
-          serviceIds: [],
-          preferredDate: tomorrow,
-        }),
-      });
-      return r.ok ? await r.json() : null;
+    // DTO вимагає branchId + requestedDate (НЕ preferredDate). Див. коментар у попередньому тесті.
+    const branchId = await page.evaluate(async () => {
+      const r = await fetch('http://localhost:3000/api/booking/branches');
+      const list = await r.json().catch(() => []);
+      return Array.isArray(list) ? list[0]?.id : null;
     });
+    if (!branchId) {
+      test.skip(true, 'Немає публічної філії для онлайн-запису');
+      return;
+    }
+
+    const bookingRes = await page.evaluate(
+      async ({ branchId }) => {
+        const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+        const r = await fetch('http://localhost:3000/api/booking/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            branchId,
+            clientName: 'E2E Cancel',
+            clientPhone: '+380991234568',
+            serviceIds: [],
+            requestedDate: tomorrow,
+          }),
+        });
+        return r.ok ? await r.json() : null;
+      },
+      { branchId },
+    );
 
     if (!bookingRes) {
       test.skip(true, 'Не вдалось створити заявку');
@@ -119,14 +139,13 @@ test.describe('Онлайн-запис (Bookings)', () => {
       timeout: 20_000,
     });
 
+    // Створили через API — рядок ОБОВ'ЯЗКОВО має з'явитись (без strict expect → fake-green, Bug #287).
     const row = page.locator('tr:has-text("E2E Cancel"), li:has-text("E2E Cancel")').first();
-    if (await row.isVisible({ timeout: 10_000 })) {
-      const cancelBtn = row.locator('button:has-text("Скасувати")').first();
-      if (await cancelBtn.isVisible({ timeout: 3_000 })) {
-        await cancelBtn.click();
-        await expect(page.locator('text=Скасовано').first()).toBeVisible({ timeout: 8_000 });
-      }
-    }
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    const cancelBtn = row.locator('button:has-text("Скасувати")').first();
+    await expect(cancelBtn).toBeVisible({ timeout: 5_000 });
+    await cancelBtn.click();
+    await expect(page.locator('text=Скасовано').first()).toBeVisible({ timeout: 8_000 });
 
     // Cleanup
     await page.evaluate(

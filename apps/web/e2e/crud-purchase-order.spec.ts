@@ -139,18 +139,17 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       return;
     }
 
-    // Знайти і клікнути "Підтвердити замовлення"
+    // PO створено через API — рядок ОБОВ'ЯЗКОВО має з'явитись.
+    // Без strict expect — fake-green (Bug #287).
     await page.reload();
     await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
-    if (await row.isVisible({ timeout: 10_000 })) {
-      await row.click();
-      const confirmBtn = page.locator('button:has-text("Підтвердити замовлення")').first();
-      if (await confirmBtn.isVisible({ timeout: 5_000 })) {
-        await confirmBtn.click();
-        await expect(page.locator('text=Замовлено').first()).toBeVisible({ timeout: 8_000 });
-      }
-    }
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.click();
+    const confirmBtn = page.locator('button:has-text("Підтвердити замовлення")').first();
+    await expect(confirmBtn).toBeVisible({ timeout: 8_000 });
+    await confirmBtn.click();
+    await expect(page.locator('text=Замовлено').first()).toBeVisible({ timeout: 8_000 });
 
     // Cleanup
     await page.evaluate(

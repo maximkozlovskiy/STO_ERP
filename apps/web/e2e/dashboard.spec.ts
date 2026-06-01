@@ -58,11 +58,11 @@ test.describe('Дашборд', () => {
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
 
-    // Клік на посилання Наряди
+    // Клік на посилання Наряди. Посилання має бути в sidebar (іншими тестами вже перевірено),
+    // тому strict expect без if-guard — інакше fake-green (Bug #287).
     const woLink = page.locator('a[href*="/work-orders"]').first();
-    if (await woLink.isVisible({ timeout: 8_000 })) {
-      await woLink.click();
-      await expect(page).toHaveURL(/\/work-orders/, { timeout: 10_000 });
-    }
+    await expect(woLink).toBeVisible({ timeout: 10_000 });
+    await woLink.click();
+    await expect(page).toHaveURL(/\/work-orders/, { timeout: 10_000 });
   });
 });

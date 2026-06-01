@@ -78,16 +78,17 @@ test.describe('Календар — слоти', () => {
       return;
     }
 
-    // Перезавантажити і перевірити що слот є на timeline
+    // Перезавантажити і перевірити що слот є на timeline.
+    // Точна перевірка наявності слоту: data-calendar-slot з відповідним часом.
+    // Раніше використовували розмиту перевірку `.min-h` що матчить будь-який layout —
+    // фактично fake-green (Bug #287).
     await page.reload();
     await expect(page.locator('h1:has-text("Календар")')).toBeVisible({ timeout: 20_000 });
     await page.locator('button:has-text("День")').first().click();
     await page.waitForLoadState('networkidle');
 
-    // Timeline має бути видимий (ліфти завантажились)
-    await expect(page.locator('[class*="timeline"], [class*="grid"], .min-h').first()).toBeVisible({
-      timeout: 15_000,
-    });
+    // Сам слот має відрендеритись (DraggableSlot ставить data-calendar-slot атрибут)
+    await expect(page.locator('[data-calendar-slot]').first()).toBeVisible({ timeout: 15_000 });
 
     // Cleanup
     await page.evaluate(

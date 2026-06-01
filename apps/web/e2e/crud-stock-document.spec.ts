@@ -126,22 +126,19 @@ test.describe('Документи складу — CRUD', () => {
       timeout: 20_000,
     });
 
-    // Знайти рядок і відкрити Detail Panel
+    // Документ створено через API — рядок ОБОВ'ЯЗКОВО має з'явитись.
+    // Без strict expect — fake-green (Bug #287).
     const row = page.locator(`table tbody tr:has-text("${doc.number}")`).first();
-    if (await row.isVisible({ timeout: 10_000 })) {
-      await row.click();
-      // Кнопка "Провести" у Detail Panel
-      const confirmDocBtn = page.locator('button:has-text("Провести")').first();
-      if (await confirmDocBtn.isVisible({ timeout: 5_000 })) {
-        await confirmDocBtn.click();
-        // Підтвердити якщо є confirm dialog
-        const yesBtn = page
-          .locator('button:has-text("Підтвердити"), button:has-text("Так")')
-          .first();
-        if (await yesBtn.isVisible({ timeout: 3_000 })) await yesBtn.click();
-        await expect(page.locator('text=Підтверджено').first()).toBeVisible({ timeout: 8_000 });
-      }
-    }
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.click();
+    // Кнопка "Провести" у Detail Panel
+    const confirmDocBtn = page.locator('button:has-text("Провести")').first();
+    await expect(confirmDocBtn).toBeVisible({ timeout: 8_000 });
+    await confirmDocBtn.click();
+    // Підтвердити якщо є confirm dialog (опціонально — не всі типи документів мають)
+    const yesBtn = page.locator('button:has-text("Підтвердити"), button:has-text("Так")').first();
+    if (await yesBtn.isVisible({ timeout: 3_000 }).catch(() => false)) await yesBtn.click();
+    await expect(page.locator('text=Підтверджено').first()).toBeVisible({ timeout: 8_000 });
 
     // Cleanup
     await page.evaluate(

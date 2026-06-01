@@ -138,18 +138,17 @@ test.describe('Рахунки — CRUD', () => {
       return;
     }
 
-    // Знайти кнопку "Надіслати" у Detail Panel
+    // Знайти рахунок створений через API — рядок ОБОВ'ЯЗКОВО має з'явитись.
+    // Без strict expect — fake-green (Bug #287).
     await page.reload();
     await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
     const row = page.locator(`table tbody tr:has-text("${inv.number}")`).first();
-    if (await row.isVisible({ timeout: 10_000 })) {
-      await row.click();
-      const sendBtn = page.locator('button:has-text("Надіслати")').first();
-      if (await sendBtn.isVisible({ timeout: 5_000 })) {
-        await sendBtn.click();
-        await expect(page.locator('text=Надіслано').first()).toBeVisible({ timeout: 8_000 });
-      }
-    }
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.click();
+    const sendBtn = page.locator('button:has-text("Надіслати")').first();
+    await expect(sendBtn).toBeVisible({ timeout: 8_000 });
+    await sendBtn.click();
+    await expect(page.locator('text=Надіслано').first()).toBeVisible({ timeout: 8_000 });
 
     // Cleanup
     await page.evaluate(
