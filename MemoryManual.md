@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+86cd676 docs(skills): add createMany-in-tx + collect-then-fanout patterns to sto-optimize
+b44a9ac perf(optimize): inspection createMany + followup parallel fan-out
+d92fe0d docs(memory): update MemoryManual — review HEAD 9481444 (E2E apiCall Content-Type fix)
 9481444 fix(review): mirror api-client Content-Type fix in E2E apiCall helpers
 87df4af fix(api-client+e2e): fix PATCH without body 500 + PO receive tests
 cc37091 fix(e2e): crud-booking — beforeAll cleanup + unique phone per run
@@ -16,6 +19,30 @@ cc37091 fix(e2e): crud-booking — beforeAll cleanup + unique phone per run
 e731da5 feat(seed): expand seed data + fix E2E tests for previously-skipped specs
 bc4728e test(e2e): add WO detail + stock-doc types + PO receive specs
 Дата: 2026-06-01
+
+Latest optimize: 2026-06-01 (sto-optimize-agent, HEAD 86cd676 ← audit від 9481444) — **2 backend perf fixes + 2 нові SKILL accumulated patterns**
+
+**Fix #1 (inspection.service.ts):** для auto-create critical lines у $transaction — sequential `tx.workOrderLine.create()` у циклі criticalPoints замінено на `tx.workOrderLine.createMany({data: linesData[]})`. У Prisma $transaction Promise.all марний (single connection serializes), єдиний win — createMany 1 INSERT vs N. Для 50+ critical points (DEFAULT_INSPECTION_POINTS + custom) це ~50× менше RTT всередині tx → коротші lock-hold на work_order_lines.
+
+**Fix #2 (followup.processor.ts):** дві окремі оптимізації у щоденному follow-up tick:
+  * `prisma.maintenanceSchedule.findMany + prisma.vehicle.findMany` — sequential → `Promise.all` (-1 RTT)
+  * 2 sequential `for-await notifications.send` цикли (upcomingMaintenance + inactiveVehicles) → collect-recipients-first sync pass + `Promise.allSettled(recipients.map(send))` паралельний fan-out. Дедуплікація phone через sentTo Set збережена. Failure-mode "all-failed throw" зберігається через лічильники + lastError. Раніше: N × SMS-RTT (~300ms кожна) wall-clock. Тепер: max(send_time), обмежено concurrency SMS-провайдера.
+
+**Перевірено (НЕ виправлено, по принципу "Pre-mature optimization rejection"):**
+- api-client.ts (Content-Type fix): dedup logic коректний — `hasBody` per-request, GET dedup key = `path` only, без body. Нульова взаємодія з fix.
+- xlsx.service.ts importPOLines/importSDLines/importWOParts: per-row sequential create/update. Low-frequency (bulk import), refactor на createMany+Promise.allSettled має багато edge-case'ів (error per-row, type imports) → ризик > виграш для рідкісного hot-path.
+- work-orders.service.ts reserveParts/releasePartReservations/writeOffPartsAndCharge: sequential inventory.createMovement у $transaction. КОРЕКТНІСТЬ: read-write stock balance, паралель створить data race. ЗАЛИШИТИ.
+- purchase-orders.service.ts receive() та pricing.service.ts applyRuleToGoods: sequential `tx.X.update` всередині chunked $transaction. Prisma serializes — Promise.all не допоможе. Можна $executeRaw з CASE, але складність висока.
+- sync.service.ts push(): sequential applyRecord(rec). КОРЕКТНІСТЬ: ordering для conflict detection через syncVersion. ЗАЛИШИТИ.
+- inventory/batch.service.ts consumeBatches: FIFO/LIFO traversal — кожен batch.update впливає на доступну qty наступного. ЗАЛИШИТИ.
+- Frontend hooks (useDashboardData/useWorkOrders/etc): всі мають staleTime + placeholderData. Жодних missing-staleTime знайдено.
+- Frontend useEffect+apiFetch: лише small pages (vehicles/new, setup, page.tsx root) і calendar (відомий не-мігрований). Решта список-сторінок мігрована.
+
+**Накопичено 2 нові SKILL patterns** (86cd676):
+- "Sequential `tx.X.create` у $transaction callback — runtime hot-path (не bootstrap)"
+- "Multi-loop sequential fan-out з shared dedup state — notification/email/sms dispatcher методи"
+
+**TypeScript:** ✅ 0 errors (api + web). **Unit tests:** ✅ 511/511 passed (47 test files).
 
 Latest review: 2026-06-01 (Auto, HEAD 9481444) — code review e731da5..87df4af, 1 фікс
 (Content-Type без body anti-pattern продубльовано з api-client у E2E apiCall helpers)
