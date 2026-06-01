@@ -75,8 +75,8 @@ test.describe('Замовлення постачальнику — прийом 
     }
 
     // Скинути фільтр статусів (може стояти "Чернетка" і ORDERED не видно)
-    const allBtn = page.locator('button:has-text("Всі")').first();
-    if (await allBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await allBtn.click();
+    const orderedBtn = page.locator('button:has-text("Замовлено")').first();
+    if (await orderedBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await orderedBtn.click();
     await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
@@ -86,9 +86,8 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    // Відкрити Detail Panel
-    await row.click();
-    // Кнопка "Позначити отриманим" або "Часткове отримання"
+    // Відкрити деталі через кнопку "Деталі" (клік на рядок відкриває Detail Panel без FSM кнопок)
+    await row.locator('button:has-text("Деталі")').first().click();
     await expect(
       page
         .locator('button:has-text("Позначити отриманим"), button:has-text("Часткове отримання")')
@@ -107,8 +106,8 @@ test.describe('Замовлення постачальнику — прийом 
     }
 
     // Скинути фільтр статусів щоб ORDERED рядок був видимий
-    const allBtn = page.locator('button:has-text("Всі")').first();
-    if (await allBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await allBtn.click();
+    const orderedBtn = page.locator('button:has-text("Замовлено")').first();
+    if (await orderedBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await orderedBtn.click();
     await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
@@ -118,7 +117,7 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    await row.click();
+    await row.locator('button:has-text("Деталі")').first().click();
     const receiveBtn = page.locator('button:has-text("Позначити отриманим")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
@@ -127,14 +126,15 @@ test.describe('Замовлення постачальнику — прийом 
     }
 
     await receiveBtn.click();
-    const modal = page.locator('[role="dialog"]').first();
-    await expect(modal).toBeVisible({ timeout: 8_000 });
-
-    // Заголовок містить номер замовлення
-    await expect(modal.locator(`text=/Прийом по замовленню/i`)).toBeVisible();
+    // Модалка прийому — шукаємо по заголовку (може бути другий dialog якщо деталі вже відкриті)
+    const receiveModal = page
+      .locator('[role="dialog"]')
+      .filter({ hasText: /Прийом по замовленню/i })
+      .first();
+    await expect(receiveModal).toBeVisible({ timeout: 8_000 });
 
     // Є кнопка "Підтвердити прийом"
-    await expect(modal.locator('button:has-text("Підтвердити прийом")')).toBeVisible();
+    await expect(receiveModal.locator('button:has-text("Підтвердити прийом")')).toBeVisible();
 
     // Закрити без збереження
     await page.keyboard.press('Escape');
@@ -161,8 +161,8 @@ test.describe('Замовлення постачальнику — прийом 
     }
 
     // Скинути фільтр статусів щоб ORDERED рядок був видимий
-    const allBtn = page.locator('button:has-text("Всі")').first();
-    if (await allBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await allBtn.click();
+    const orderedBtn = page.locator('button:has-text("Замовлено")').first();
+    if (await orderedBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await orderedBtn.click();
     await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
@@ -172,7 +172,7 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    await row.click();
+    await row.locator('button:has-text("Деталі")').first().click();
     const receiveBtn = page.locator('button:has-text("Позначити отриманим")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
@@ -181,7 +181,10 @@ test.describe('Замовлення постачальнику — прийом 
     }
 
     await receiveBtn.click();
-    const modal = page.locator('[role="dialog"]').first();
+    const modal = page
+      .locator('[role="dialog"]')
+      .filter({ hasText: /Прийом по замовленню/i })
+      .first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
     // Заповнити кількість для першої позиції (повний прийом)
@@ -197,15 +200,17 @@ test.describe('Замовлення постачальнику — прийом 
     await modal.locator('button:has-text("Підтвердити прийом")').click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
-    // Статус змінився на RECEIVED або PARTIAL
-    await expect(
-      page
-        .locator('text=Отримано, text=Частково')
-        .first()
-        .or(
-          page.locator(`table tbody tr:has-text("${po.number}") text=/Отримано|Частково/`).first(),
-        ),
-    ).toBeVisible({ timeout: 10_000 });
+    // Закрити модалку деталей PO (залишилась відкритою)
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+
+    // Перемкнути фільтр на "Отримано" — рядок має з'явитись
+    const receivedFilter = page.locator('button:has-text("Отримано")').first();
+    if (await receivedFilter.isVisible({ timeout: 2_000 }).catch(() => false))
+      await receivedFilter.click();
+    await expect(page.locator(`table tbody tr:has-text("${po.number}")`).first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
   });
@@ -228,8 +233,8 @@ test.describe('Замовлення постачальнику — прийом 
     }
 
     // Скинути фільтр статусів щоб ORDERED рядок був видимий
-    const allBtn = page.locator('button:has-text("Всі")').first();
-    if (await allBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await allBtn.click();
+    const orderedBtn = page.locator('button:has-text("Замовлено")').first();
+    if (await orderedBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await orderedBtn.click();
     await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
@@ -239,7 +244,7 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    await row.click();
+    await row.locator('button:has-text("Деталі")').first().click();
     const receiveBtn = page.locator('button:has-text("Позначити отриманим")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
@@ -248,7 +253,10 @@ test.describe('Замовлення постачальнику — прийом 
     }
 
     await receiveBtn.click();
-    const modal = page.locator('[role="dialog"]').first();
+    const modal = page
+      .locator('[role="dialog"]')
+      .filter({ hasText: /Прийом по замовленню/i })
+      .first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
     // Прийняти менше ніж замовлено (1 з 5)
@@ -259,13 +267,17 @@ test.describe('Замовлення постачальнику — прийом 
     await modal.locator('button:has-text("Підтвердити прийом")').click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
-    // Статус PARTIAL
-    await expect(
-      page
-        .locator('text=Частково')
-        .first()
-        .or(page.locator(`table tbody tr:has-text("${po.number}") text=Частково`).first()),
-    ).toBeVisible({ timeout: 10_000 });
+    // Закрити модалку деталей PO
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+
+    // Статус PARTIAL — перемикаємо фільтр "Частково"
+    const partialFilter = page.locator('button:has-text("Частково")').first();
+    if (await partialFilter.isVisible({ timeout: 2_000 }).catch(() => false))
+      await partialFilter.click();
+    await expect(page.locator(`table tbody tr:has-text("${po.number}")`).first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
   });

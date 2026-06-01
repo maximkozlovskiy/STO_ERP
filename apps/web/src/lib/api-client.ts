@@ -56,12 +56,16 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
 
+  // Only add Content-Type: application/json when there is a body to send.
+  // Sending Content-Type: application/json with an empty body causes Fastify to
+  // attempt JSON parsing → SyntaxError → 500 (e.g. PATCH /booking/:id/confirm).
+  const hasBody = init?.body != null;
   const makeRequest = (accessToken: string | null) =>
     fetch(`${API_URL}/api${path}`, {
       credentials: 'include',
       ...init,
       headers: {
-        'Content-Type': 'application/json',
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...init?.headers,
       },
