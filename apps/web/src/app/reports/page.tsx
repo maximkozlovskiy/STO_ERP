@@ -130,8 +130,14 @@ function ReportsPageClient() {
   });
   const [to, setTo] = useState(() => KYIV_DATE_FMT.format(now));
 
-  const { data: rawData, isLoading: loading, error: queryError } = useReport(tab, from, to);
-  const data = rawData ? ({ ...rawData, _tab: tab } as ReportData) : null;
+  const reportQuery = useReport(tab, from, to);
+  const { data: rawData, isLoading: loading, error: queryError } = reportQuery;
+  // keepPreviousData повертає старі дані при зміні tab — треба використовувати _tab
+  // з реального queryKey (не поточний tab), щоб не рендерити stock-поля для revenue-даних.
+  // reportQuery.queryKey = ['reports', tab, from, to] але це поточний tab, не той що в даних.
+  // Безпечний варіант: _tab = tab тільки якщо дані свіжі (не placeholder).
+  const resolvedTab = !reportQuery.isPlaceholderData ? tab : null;
+  const data = rawData && resolvedTab ? ({ ...rawData, _tab: resolvedTab } as ReportData) : null;
   const error = queryError instanceof Error ? queryError.message : '';
 
   const tabs: { id: Tab; label: string }[] = [
