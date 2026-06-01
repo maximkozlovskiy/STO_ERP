@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api-client';
+// Bug #292: `/setup` — публічна сторінка; `apiFetch` шле stale Authorization з sessionStorage
+// і при 401 робить `window.location.replace('/login')` — ламає setup wizard. Використовуємо
+// `publicFetch` (без auth header, без auto-redirect).
+import { publicFetch } from '@/lib/api-client';
 
 type Step = 'checking' | 'org' | 'branch' | 'warehouse' | 'fiscal' | 'sms' | 'done';
 
@@ -49,7 +52,7 @@ export default function SetupPage() {
   // Check if already initialized — redirect if so
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ initialized: boolean }>('/setup/status')
+    publicFetch<{ initialized: boolean }>('/setup/status')
       .then(d => {
         if (cancelled) return;
         if (d.initialized) {
@@ -81,7 +84,7 @@ export default function SetupPage() {
     setLoading(true);
     setError('');
     try {
-      const result = await apiFetch<{ accessToken: string }>('/setup/init', {
+      const result = await publicFetch<{ accessToken: string }>('/setup/init', {
         method: 'POST',
         body: JSON.stringify({
           orgName: data.orgName,

@@ -8603,3 +8603,95 @@ async function selectType(modal: import('@playwright/test').Locator, value: stri
 
 1. **«Optional numeric DTO field з тільки @IsOptional()»** (Bug #283) — class-validator без type-decorator пропускає string/Infinity/негативні/floats. Парне з §1.2 checklist item + `lifts.contract.spec.ts` як зразок regression-guard.
 2. **«Fake-green assertion toBeGreaterThanOrEqual(0)»** (Bug #287) — `.count()`/`.length` завжди ≥0 → assertion завжди true → fake coverage. Парне з §1.6 checklist item.
+
+---
+
+## Session 2026-06-01 — Route groups refactor + bundle optimization + deps/dead-code cleanup
+
+**Scope:**
+
+- Route groups: 19 сторінок переміщено в `apps/web/src/app/(app)/` з власним layout (`AuthProvider + TopShell`). Root layout містить тільки `QueryProvider + ColorModeProvider`. `(auth)/login` має свій layout.
+- Bundle: `ReactQueryDevtools` lazy dev-only через `next/dynamic`. `CommandPalette`, `SyncIndicator`, `NotificationCenter` — lazy через `dynamic({ ssr: false })`.
+- Deps: видалено `react-hook-form`, `zod`, `@sto/ui` з `apps/web/package.json`; `passport-local`, `@types/passport-local`, `@types/express-fileupload`, `@nestjs/schematics`, `ts-loader` з `apps/api/package.json`.
+- Dead code: `apps/web/src/hooks/useOptimisticMutation.ts`, `apps/web/src/hooks/api/index.ts`, дублікати `PICK_HOURS`/`PICK_MINUTES` в `calendar.utils.ts` + `CalendarSlotModal.tsx`.
+
+---
+
+## Bug #291 — [CRITICAL] Stale `.next/` cache після route group рефакторингу — webpack chunks 500 → SSR/CSR ламаються повністю
+
+**Файл:** `apps/web/.next/` (build cache), не вихідний код
+**Severity:** CRITICAL (dev workflow + E2E auth-guard regression test 100% fail)
+**Категорія:** infra / build-cache / route-groups-migration
+
+**Опис:** Після переміщення 19 сторінок з `app/X/` у `app/(app)/X/` `.next/` dev-cache містить старі webpack chunk-id (наприклад `./726.js`) які більше не існують. Будь-який запит до `/work-orders/`, `/login/`, `/dashboard/` повертає HTML але всі асоційовані JS chunks повертають 500:
+
+```
+Cannot find module './726.js'
+Require stack:
+- apps/web/.next/server/webpack-runtime.js
+- apps/web/.next/server/app/(auth)/login/page.js
+```
+
+Це CRITICAL для dev workflow і E2E тестів:
+
+- `(app)/layout.js` → 500
+- `(app)/work-orders/page.js` → 500
+- `main-app.js` → 500
+- `layout.css` → 500
+
+React не гідрується → AuthProvider не запускається → TopShell auth-guard НЕ редиректить → користувач залишається на захищеному URL без auth. **Smoke test `захищена /work-orders без auth — врешті redirect на /login` падає з 33× retry в межах 15s.** Без хидрації клієнтський redirect неможливий.
+
+**Очікувана поведінка:** `(app)/layout.js` і `(app)/work-orders/page.js` повертають валідний bundle; React гідрується; AuthProvider при отриманні 401 від `/auth/refresh` → dispatch LOGOUT → TopShell useEffect → `router.replace('/login')` за < 2s.
+**Фактична поведінка:** chunks 500, hydration fail, redirect не виконується, користувач застряг на `/work-orders/` назавжди.
+**Як знайдено:** static analysis НЕ ловить (TS зелений, unit тести зелені — не торкаються .next/); E2E `smoke.spec.ts:41` валиться → MCP Playwright інспекція `console.error` показала 500 на `(app)/layout.js` → ручний `curl` JSON-error stack вказав на `Cannot find module './726.js'`.
+**Підхід до фіксу:** видалити `apps/web/.next/` та `apps/web/tsconfig.tsbuildinfo`, перезапустити dev server.
+**Статус:** [x] виправлено — `.next/` очищено, dev server перезапущено, всі 8 smoke тестів пройшли. Webpack chunks тепер відповідають новій структурі route groups.
+
+**Запобігання у майбутньому:** Після route group рефакторингу (`app/X` → `app/(group)/X`) обов'язково очистити `apps/web/.next/` ПЕРЕД першим dev-run. Це частина sto-tester §0 preparation тепер: якщо diff містить `app/{ => (X)}/Y` rename pattern → автоматично `rm -rf apps/web/.next` перед TS/test/E2E запусками.
+
+---
+
+## Bug #292 — [CRITICAL] `/setup/page.tsx` використовує `apiFetch` замість `publicFetch` — setup wizard ламається при stale token
+
+**Файл:** `apps/web/src/app/setup/page.tsx:52, 84`
+**Severity:** CRITICAL (release-blocker: setup wizard не може ініціалізувати fresh систему при наявному stale token)
+**Категорія:** frontend / public-route / api-client
+
+**Опис:** `/setup` — публічна сторінка (PUBLIC_ROUTES в `apps/web/src/lib/auth/context.tsx:19`). Endpoint `/setup/status` і `/setup/init` — публічні API (без `JwtAuthGuard`). Але сторінка використовує `apiFetch`, який:
+
+1. Додає `Authorization: Bearer ${sessionStorage.getItem('sto_access_token')}` якщо токен існує.
+2. При 401 від сервера → викликає `tryRefresh()` → при failure → `clearToken()` + `window.location.replace('/login')`.
+
+**Сценарій багу:** користувач має stale `sto_access_token` у sessionStorage (наприклад залишився після попередньої install/dev сесії). Заходить на `/setup`. `apiFetch('/setup/status')` шле Authorization header → backend ігнорує (public endpoint), але якщо у проміжку refresh cookie expired → `apiFetch` отримає 401 → редирект на `/login` → setup wizard ніколи не запуститься.
+
+Аналогічна проблема в `/booking/page.tsx` уже виправлена через `publicFetch` (Bug #111) — для `/setup` забули.
+
+**Очікувана поведінка:** `/setup/page.tsx` використовує локальний `publicFetch` (без Authorization, без 401-redirect) як і `/booking`.
+**Фактична поведінка:** `apiFetch` ламає setup wizard у edge case з stale токеном.
+**Статус:** [x] виправлено — додано централізований `publicFetch` в `apps/web/src/lib/api-client.ts`; `/setup/page.tsx` тепер імпортує `publicFetch` замість `apiFetch`.
+
+---
+
+## Bug #293 — [HIGH] `app/page.tsx` (root `/`) використовує `apiFetch` замість `publicFetch` — той самий патерн що Bug #292
+
+**Файл:** `apps/web/src/app/page.tsx:11`
+**Severity:** HIGH (release-blocker для unauthenticated landing)
+
+**Опис:** `app/page.tsx` (root маршрут `/`) — публічна сторінка (`/` в PUBLIC_ROUTES). Робить `apiFetch('/setup/status')` для визначення redirect на `/setup` vs `/login` vs `/dashboard`. Той самий патерн що Bug #292 — `apiFetch` ламає flow якщо stale токен → 401 → редирект на `/login`. Setup wizard не отримує сигналу `setup.initialized=false` → невірний редирект.
+
+**Очікувана поведінка:** використати `publicFetch` (без Authorization header, без auto-redirect).
+**Фактична поведінка:** `apiFetch` ризик.
+**Статус:** [x] виправлено — `app/page.tsx` тепер використовує `publicFetch` з `@/lib/api-client`.
+
+---
+
+## Bug #294 — [LOW] `reports/page.tsx:126` — `const now = new Date()` у render path
+
+**Файл:** `apps/web/src/app/(app)/reports/page.tsx:126`
+**Severity:** LOW (closure capture мінімізує impact, але це порушує SKILL §1.3 правило)
+
+**Опис:** `const now = new Date()` створюється на КОЖНОМУ render компонента, навіть якщо використовується тільки у `useState(() => ...)` initializer (рядки 127, 131). Initializer запускається тільки на першому render, але `now` як змінна рекалкулюється на кожному render — додаткова робота + ризик SSR/CSR hydration mismatch якщо колись захочеться вживати `now` у render-output.
+
+**Очікувана поведінка:** обчислити `now` всередині `useState` lazy initializer без зовнішньої змінної.
+**Фактична поведінка:** змінна на render path створюється завжди.
+**Статус:** [x] виправлено — `new Date()` переміщено всередину `useState(() => ...)` initializer-ів для `from` і `to`. Виконується тільки на першому mount.

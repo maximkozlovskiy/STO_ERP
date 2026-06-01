@@ -123,12 +123,14 @@ function ReportsPageClient() {
   const searchParams = useSearchParams();
   const tab = (searchParams.get('tab') ?? 'revenue') as Tab;
   const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
-  const now = new Date();
+  // Bug #294: `new Date()` тримати ВСЕРЕДИНІ useState initializer — він викликається
+  // тільки на першому render; винесена в render path змінна перевиконується на кожний
+  // ререндер + ризик SSR/CSR hydration mismatch.
   const [from, setFrom] = useState(() => {
-    const kyivNow = KYIV_YMD_FMT.format(now);
+    const kyivNow = KYIV_YMD_FMT.format(new Date());
     return `${kyivNow.slice(0, 4)}-01-01`;
   });
-  const [to, setTo] = useState(() => KYIV_DATE_FMT.format(now));
+  const [to, setTo] = useState(() => KYIV_DATE_FMT.format(new Date()));
 
   const reportQuery = useReport(tab, from, to);
   const { data: rawData, isLoading: loading, error: queryError } = reportQuery;

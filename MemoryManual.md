@@ -18,11 +18,15 @@ c236c21 perf(web): lazy dynamic imports — reduce bundle size
 6729fa1 perf(dashboard): replace SSE with React Query polling
 19ced3c perf(auth): optimistic auth init — eliminate 300-800ms loading spinner
 ```
+
 Дата: 2026-06-01
 
 Latest review: 2026-06-01 (sto-review-agent, HEAD 4ed3372) — **route groups + bundle opt + deps cleanup review: 1 issue знайдено (duplicate PICK_MINUTES + dead PICK_HOURS export у calendar), виправлено, tsc 0 errors**
 
+Latest tester: 2026-06-01 (sto-tester-agent FULL, HEAD 539871c → +4 bugs) — **route groups regression: 1 CRITICAL stale `.next/` cache (webpack chunks 500 → auth-guard E2E fail), 2 CRITICAL/HIGH `apiFetch` у публічних сторінках (`/setup`, `/`) — додано централізований `publicFetch` у `api-client.ts`, замінено виклики; 1 LOW `new Date()` у render path у reports. Всі 4 виправлено. E2E smoke 8/8 пройшли, full E2E 160 passed / 2 flaky / 5 skipped.**
+
 **Route groups архітектура (після HEAD 722eafd):**
+
 - `app/layout.tsx` — base layout (no AuthProvider, no TopShell) → `<html>`, `<head>` color-mode script, `QueryProvider`, `ColorModeProvider`, `ServiceWorkerRegistrar`
 - `app/(app)/layout.tsx` — wraps protected pages with `<AuthProvider><TopShell>{children}</TopShell></AuthProvider>` (19 pages: dashboard, work-orders, crm, calendar, inventory, invoices, purchase-orders, stock-documents, settlements, reports, catalog, pricing-rules, employees, infrastructure, settings, bookings, vehicles, profile, 403)
 - `app/(auth)/layout.tsx` — wraps `/login` with `<AuthProvider>` only (no TopShell)
@@ -31,16 +35,19 @@ Latest review: 2026-06-01 (sto-review-agent, HEAD 4ed3372) — **route groups + 
 - `app/page.tsx` — root redirect (`/setup` / `/login` / `/dashboard` via sessionStorage probe)
 
 **Bundle optimization (HEAD c236c21 + a3a8c62):**
+
 - `QueryProvider`: `ReactQueryDevtools` only loaded in `NODE_ENV === 'development'` via `next/dynamic` — DCE strips devtools chunk from production
 - `TopShell`: `CommandPalette`, `SyncIndicator`, `NotificationCenter` → `dynamic(... { ssr: false })` (no `loading` fallback OK — components render conditionally inside shell behind uiFeatures flag; no visible skeleton needed)
 - Route groups split: `(app)` group chunk separated from `(auth)`/`setup`/`booking` — public pages no longer pay for TopShell + nav prefetch maps
 
 **Bundle size win (sto-optimize-agent, HEAD c236c21):**
+
 - **QueryProvider**: `ReactQueryDevtools` static import → `next/dynamic` за умовою `process.env.NODE_ENV === 'development'`. Без зміни runtime check бандл ~1.2 MB лежав у production. Тепер DCE працює — production build взагалі не містить DevTools chunk.
 - **TopShell**: `CommandPalette` / `SyncIndicator` / `NotificationCenter` → `dynamic(... { ssr: false })`. Раніше всі 3 (~700 LOC + transitive deps) лежали у layout.js (звіт показував 2124 kB). Тепер вони підвантажуються окремими chunks при першому рендері, після auth + uiFeatures flags.
 - **pricing-rules**: `RuleFormModal` (357 LOC) винесено у `./RuleFormModal.tsx` + dynamic. Спільні типи (PricingRule, RuleForm, EMPTY_FORM, TYPE_LABELS, GOOD_TYPE_OPTIONS) у `./types.ts` щоб уникнути дублювання. PricingRulesClient.tsx 1025→593 LOC. Модалка не потрібна поки користувач переглядає таблицю правил.
 
 **Build size перед/після (Route First Load JS):**
+
 ```
 
 /crm 145 kB
@@ -62,6 +69,7 @@ shared 102 kB (раніше layout.js самотній 2124 kB)
 Latest perf: 2026-06-01 (HEAD d2dabaa) — **lazy tab routing via URL search params, 160 E2E passed**
 
 **Lazy tab routing (perf(web)):**
+
 - Всі таб-сторінки: `useState<Tab>` → `useSearchParams` + `router.replace(?tab=x, {scroll:false})`
 - Паттерн: `page.tsx` = Suspense server wrapper, `*Client` = client component з useSearchParams
 - Settings: фінансові таби (currencies/exchange-rates/bank-accounts/cash-registers/org-info) lazy — `isFinancialTab` guard у useEffect → -5 API calls на startup
@@ -75,10 +83,12 @@ Latest optimize: 2026-06-01 (sto-optimize-agent, HEAD 86cd676 ← audit від 9
 **Fix #1 (inspection.service.ts):** для auto-create critical lines у $transaction — sequential `tx.workOrderLine.create()` у циклі criticalPoints замінено на `tx.workOrderLine.createMany({data: linesData[]})`. У Prisma $transaction Promise.all марний (single connection serializes), єдиний win — createMany 1 INSERT vs N. Для 50+ critical points (DEFAULT_INSPECTION_POINTS + custom) це ~50× менше RTT всередині tx → коротші lock-hold на work_order_lines.
 
 **Fix #2 (followup.processor.ts):** дві окремі оптимізації у щоденному follow-up tick:
-  * `prisma.maintenanceSchedule.findMany + prisma.vehicle.findMany` — sequential → `Promise.all` (-1 RTT)
-  * 2 sequential `for-await notifications.send` цикли (upcomingMaintenance + inactiveVehicles) → collect-recipients-first sync pass + `Promise.allSettled(recipients.map(send))` паралельний fan-out. Дедуплікація phone через sentTo Set збережена. Failure-mode "all-failed throw" зберігається через лічильники + lastError. Раніше: N × SMS-RTT (~300ms кожна) wall-clock. Тепер: max(send_time), обмежено concurrency SMS-провайдера.
+
+- `prisma.maintenanceSchedule.findMany + prisma.vehicle.findMany` — sequential → `Promise.all` (-1 RTT)
+- 2 sequential `for-await notifications.send` цикли (upcomingMaintenance + inactiveVehicles) → collect-recipients-first sync pass + `Promise.allSettled(recipients.map(send))` паралельний fan-out. Дедуплікація phone через sentTo Set збережена. Failure-mode "all-failed throw" зберігається через лічильники + lastError. Раніше: N × SMS-RTT (~300ms кожна) wall-clock. Тепер: max(send_time), обмежено concurrency SMS-провайдера.
 
 **Перевірено (НЕ виправлено, по принципу "Pre-mature optimization rejection"):**
+
 - api-client.ts (Content-Type fix): dedup logic коректний — `hasBody` per-request, GET dedup key = `path` only, без body. Нульова взаємодія з fix.
 - xlsx.service.ts importPOLines/importSDLines/importWOParts: per-row sequential create/update. Low-frequency (bulk import), refactor на createMany+Promise.allSettled має багато edge-case'ів (error per-row, type imports) → ризик > виграш для рідкісного hot-path.
 - work-orders.service.ts reserveParts/releasePartReservations/writeOffPartsAndCharge: sequential inventory.createMovement у $transaction. КОРЕКТНІСТЬ: read-write stock balance, паралель створить data race. ЗАЛИШИТИ.
@@ -89,6 +99,7 @@ Latest optimize: 2026-06-01 (sto-optimize-agent, HEAD 86cd676 ← audit від 9
 - Frontend useEffect+apiFetch: лише small pages (vehicles/new, setup, page.tsx root) і calendar (відомий не-мігрований). Решта список-сторінок мігрована.
 
 **Накопичено 2 нові SKILL patterns** (86cd676):
+
 - "Sequential `tx.X.create` у $transaction callback — runtime hot-path (не bootstrap)"
 - "Multi-loop sequential fan-out з shared dedup state — notification/email/sms dispatcher методи"
 
@@ -98,6 +109,7 @@ Latest review: 2026-06-01 (Auto, HEAD 9481444) — code review e731da5..87df4af,
 (Content-Type без body anti-pattern продубльовано з api-client у E2E apiCall helpers)
 
 Latest E2E run: 2026-06-01 (HEAD 87df4af) — **162 passed, 5 skipped, 0 failed — exit code 0**
+
 - +24 тести vs попередній QA (138→162)
 - 5 skipped — відомі (немає seed даних: calendar-slots)
 - +15 vs попередній QA (138→153 passed)
@@ -105,6 +117,7 @@ Latest E2E run: 2026-06-01 (HEAD 87df4af) — **162 passed, 5 skipped, 0 failed 
 - 1 flaky: `work-orders-detail` ESTIMATE→APPROVED (mode:serial woId між retries)
 
 **Seed (packages/database/prisma/seed.ts) — ОНОВЛЕНО:**
+
 - Всі UUID v4-compatible (`a1000000-0000-4000-8000-...`) — nil UUID fails @IsUUID() class-validator
 - BRANCH2 `a1000000-...-000000000003` — для WO E2E тестів (main branch nil UUID)
 - SUPPLIER `a1000000-...-000000000050` (CounterpartyType.SUPPLIER)
@@ -117,17 +130,20 @@ Latest E2E run: 2026-06-01 (HEAD 87df4af) — **162 passed, 5 skipped, 0 failed 
 **Migration: 20260601100206_add_followup_active_setting** — поле існувало в schema але не в БД
 
 **Критичний баг виправлено (api-client.ts):**
+
 - `apiFetch` завжди додавав `Content-Type: application/json` навіть без body
 - `PATCH /booking/:id/confirm` (і інші PATCH без body) → Fastify парсив порожній JSON → 500
 - Фікс: `hasBody = init?.body != null` → Content-Type тільки при наявності body
 
 **PO receive UI структура:**
+
 - Клік на рядок таблиці → відкриває **Detail Panel** (без FSM кнопок, таби Основне/Позиції)
 - Клік на кнопку **"Деталі"** в рядку → відкриває **showDetail модалку** (з FSM кнопками "Позначити отриманим")
 - Після прийому: модалка прийому + модалка деталей залишаються → треба Escape перед кліком фільтрів
 - Фільтр "Замовлено" показує ORDERED, "Отримано" — RECEIVED, "Частково" — PARTIAL
 
 **E2E патерни (Gotcha):**
+
 - Nil UUID (00000000-...) відхиляється `@IsUUID()` class-validator — використовувати v4 UUID у seed
 - `apiCall` з DELETE/void endpoints: `r.ok ? await r.json() : null` крашить на 204 No Content → `text = await r.text(); return text ? JSON.parse(text) : null`
 - WO creation потребує: CLIENT counterparty + vehicleId (через garage) + v4 branchId
@@ -148,14 +164,16 @@ Latest review: 2026-06-01 (sto-review-agent **ЦИКЛ 6**, HEAD ddd09b3 → aud
 **Critical #R6-1 (broken booking spec):** `crud-booking.spec.ts` — два FSM тести надсилали невалідний body у `POST /booking/request`: `preferredDate` замість `requestedDate` + відсутній required `branchId`. `r.ok=false` → `test.skip` → тест проходив без жодних assertions. Це SAMUR Bug #287 sibling (fake-green silent skip). **Фікс:** додав попередній fetch `/booking/branches`, правильні DTO поля, видалив зайвий `serviceIds` (optional).
 
 **Important #R6-2…R6-5 (fake-green FSM patterns):**
+
 - `crud-invoice.spec.ts` (Bug #287 sibling): FSM Надіслати → SENT — `if (row.isVisible) { if (btn.isVisible) { click; expect; } }` → no assertion коли row never appears (silent pass).
 - `crud-purchase-order.spec.ts`: ту ж pattern для FSM Підтвердити → ORDERED.
 - `crud-stock-document.spec.ts`: ту ж pattern для FSM Провести → CONFIRMED.
 - `crud-calendar-slot.spec.ts`: locator `[class*="timeline"], [class*="grid"], .min-h` матчить ANY layout element → fake-green. Замінено на strict `[data-calendar-slot]` (DraggableSlot реально ставить цей атрибут).
 - `dashboard.spec.ts` (навігація): `if (woLink.isVisible) { click + URL assert }` → silent pass без link.
-**Фікс:** усі обгортки `if (await x.isVisible)` навколо assertions замінено на strict `await expect(x).toBeVisible(...)` — рядок ОБОВ'ЯЗКОВО має з'явитись після створення сутності через API.
+  **Фікс:** усі обгортки `if (await x.isVisible)` навколо assertions замінено на strict `await expect(x).toBeVisible(...)` — рядок ОБОВ'ЯЗКОВО має з'явитись після створення сутності через API.
 
 **Перевірено (не знайдено проблем):**
+
 - **TypeScript:** ✅ web + api `tsc --noEmit --incremental false` — 0 errors.
 - **API tests:** 28/28 pass (zones contract + warehouses contract + warehouses service).
 - **Lift validation (#283):** контракт-spec має 10 tests, всі зелені — fix solid.
@@ -164,7 +182,7 @@ Latest review: 2026-06-01 (sto-review-agent **ЦИКЛ 6**, HEAD ddd09b3 → aud
 - **Backend DTO cleanup (#284-#286):** dead `IsUUID` imports видалено правильно, `const UUID_RE` переміщено нижче імпортів — формат консистентний.
 
 **Накопичено новий патерн (sto-review §1.6 + sto-tester):**
-*"DTO field-name mismatch у E2E spec body"* — якщо integration test POST-ить через `fetch` без типізації, неправильне ім'я поля → 400 → silent skip (fake-green). Сигнал: JSON.stringify body у `page.evaluate` + `r.ok ? json : null` + `test.skip`. Захист: контракт spec на DTO для критичних endpoints (як `lifts.contract.spec.ts`) + strict `expect.toBe(true)` на `r.ok` у E2E POST helpers, не `?? null`.
+_"DTO field-name mismatch у E2E spec body"_ — якщо integration test POST-ить через `fetch` без типізації, неправильне ім'я поля → 400 → silent skip (fake-green). Сигнал: JSON.stringify body у `page.evaluate` + `r.ok ? json : null` + `test.skip`. Захист: контракт spec на DTO для критичних endpoints (як `lifts.contract.spec.ts`) + strict `expect.toBe(true)` на `r.ok` у E2E POST helpers, не `?? null`.
 
 Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter2 від HEAD 8f4ee7b, sync+tester+optimize+E2E) — **0 sync mismatches, 0 backend bugs, 0 optimize issues, 2 E2E fixes (commits 55e4ee5 + 5d6ce06)**
 
@@ -173,6 +191,7 @@ Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter2 від HEAD 8f4ee7b, sync+teste
 **Backend тести: 511/511 pass** (47 test files)
 
 **Static analysis: 0 нових багів**
+
 - FSM нарядів, InventoryService, SettlementsService, tenant isolation — всі ✓
 - completion-acts sign/cancel FSM — коректний (SIGNED-only cancel, DRAFT-only sign, CANCELLED excluded від findAll) ✓
 - loyalty NaN guard — Number.isFinite(paymentAmount) та paymentAmount<=0 ✓
@@ -187,6 +206,7 @@ Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter2 від HEAD 8f4ee7b, sync+teste
 **TypeScript:** ✅ 0 errors (api + web, `--incremental false`). **Unit:** API **511/511**. **E2E full suite:** 134 passed, 9 flaky (auth-redirect timing — pass on retry), 9 skipped (no test data: bookings/calendar-slot/work-order-seed/purchase-order-FSM).
 
 **Нові SKILL patterns (1 entry):**
+
 - "CRUD E2E test timeout under parallel load" — для тестів що навігують + заповнюють форму + чекають на оновлення таблиці, `test.setTimeout(45_000)` обов'язковий (default 30s вичерпується). `waitForLoadState('networkidle')` в parallel suite НІКОЛИ не використовувати (polling від інших воркерів тримає connection open).
 
 ---
@@ -194,6 +214,7 @@ Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter2 від HEAD 8f4ee7b, sync+teste
 Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter1 від HEAD 8e08c88, sync+tester+optimize+E2E) — **0 sync mismatches, 0 backend bugs, 0 optimize issues, 3 E2E fixes (commit 647603f)**
 
 **Sync (Direction 1-3): 0 розбіжностей**
+
 - Direction 1 (API→UI): всі backend модулі мають UI покриття (inspection/audit/completion-acts/comments/loyalty/settlements/warranties/maintenance-schedules — embedded у parent pages ✓)
 - Direction 2 (URL): жодних URL mismatch (booking/settlements/inspection/loyalty — всі правильні ✓)
 - Direction 3 (Types): interfaces відповідають toDto (employees.rateScheme? optional ✓, Transaction DTO ✓, Counterparty balance=Number(Decimal) ✓)
@@ -201,6 +222,7 @@ Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter1 від HEAD 8e08c88, sync+teste
 **Backend тести: 511/511 pass** (47 test files, 9.3s)
 
 **Static analysis: 0 нових багів**
+
 - FSM нарядів: жодних hardcoded status checks ✓
 - InventoryService: жодних прямих stock_item.update поза InventoryService ✓
 - SettlementsService: єдиний прямий settlementAccount.create — у counterparties.create (init balance=0 в $transaction) ✓
@@ -221,9 +243,11 @@ Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter1 від HEAD 8e08c88, sync+teste
 **TypeScript:** ✅ 0 errors (api + web, `--incremental false`). **Unit:** API **511/511**. **E2E:** 121 passed prev run, 3 test bugs fixed.
 
 **Нові SKILL patterns (1 entry):**
+
 - "Sidebar-preview UX pattern у list pages" — деякі list pages (work-orders, invoices) мають row click → sidebar preview + "Відкрити →" button для навігації до детальної сторінки. E2E test що очікує `waitForURL` одразу після row click падатиме. Правильний підхід: click row → wait for "Відкрити" button → click + waitForURL.
 
 **Нові SKILL patterns (1 entry):**
+
 - "Flaky E2E nav test: `locator.first()` у DOM з багатьма однаковими href" — коли sidebar + content обидва мають `a[href="/x"]`, `.first()` вибирає перший у DOM порядку (часто content element, не sidebar). Завжди використовувати `nav a, aside a` scope + `.filter({ hasText: 'Label' })` для sidebar nav clicks + `Promise.all([waitForURL, click])` для надійної навігації.
 
 ---
@@ -243,7 +267,8 @@ Latest tester: 2026-06-01 (sto-tester-agent **ЦИКЛ 7** — E2E spec quality 
 **Bug #289-#290 (LOW, dead-code):** `crud-invoice.spec.ts:6` і `crud-purchase-order.spec.ts:6` — `const uid = () => …` оголошено але ніколи не викликається (всі ID беруть з API response). `crud-counterparty.spec.ts:10-13` — helper `selectType()` оголошений але inline-варіант використовується. **Фікс:** видалено всі три dead-helpers.
 
 **Перевірено (не знайдено проблем):**
-- Bug #283 patterns у інших DTO: ``@IsOptional()`` без типу для numeric полів у `apps/api/src/modules/` — `maxWeightKg` єдиний exposure-point у цьому циклі; інші numeric optional поля (limit/page/offset) мають правильні `@IsInt() @Min(1) @Max(200)`.
+
+- Bug #283 patterns у інших DTO: `@IsOptional()` без типу для numeric полів у `apps/api/src/modules/` — `maxWeightKg` єдиний exposure-point у цьому циклі; інші numeric optional поля (limit/page/offset) мають правильні `@IsInt() @Min(1) @Max(200)`.
 - §1.1 calendar FSM з #942f90b: `setCalView('stats')` коректно reset'ить `showAdd`, `editingSlotId`; pendingSlot НЕ ресетиться але рендериться тільки у `calView === 'day'` — побічних ефектів немає.
 - §1.3 frontend prefetch shape (Bug #281 follow-up): TopShell PREFETCH_MAP для work-orders/crm/invoices/purchase-orders/catalog/stock-documents співпадає з consumer page first-mount state; різниці немає.
 - Контракт tests і property-based invariants всі зелені.
@@ -254,6 +279,7 @@ Latest tester: 2026-06-01 (sto-tester-agent **ЦИКЛ 7** — E2E spec quality 
 **TypeScript:** ✅ 0 errors (api + web + shared, `--incremental false`). **Unit:** API **511/511** (501 + 10 new lifts.contract). **Property-based:** ✅ 26 tests passed.
 
 **Нові SKILL patterns (2 entries):**
+
 - "Optional numeric DTO field з тільки @IsOptional()" — будь-яке `?: number` у `*.dto.ts` без `@IsInt()/@IsNumber()/@Min()/@Max()/@Type()` пропускає string/Infinity/негативні значення. Severity HIGH (runtime crash + data corruption). Regression-guard contract spec — обов'язковий для нового numeric optional поля.
 - "Fake-green assertion `toBeGreaterThanOrEqual(0)`" — `.count()`/`.length` завжди ≥0 → assertion завжди true → fake coverage. Грeп `toBeGreaterThanOrEqual(0)` + `toBeTruthy()`/`toBeDefined()` на literal — кандидати на bug.
 
@@ -276,6 +302,7 @@ Latest tester: 2026-05-31 (sto-tester-agent **ЦИКЛ 6** — nav prefetch audi
 **Bug #282 (LOW, DRY violation):** `PUBLIC_ROUTES` константа і `isPublicRoute` функція дублювались у `TopShell.tsx:364` і `lib/auth/context.tsx:18`. Drift risk при додаванні нового public route. **Фікс:** `PUBLIC_ROUTES` + `isPublicRoute` експортовані з `lib/auth/context.tsx` як SSOT через barrel `lib/auth/index.ts`; TopShell імпортує замість локального оголошення.
 
 **Перевірено (не знайдено проблем):**
+
 - §1.1 backend: жодних прямих `stockItem.update` / `settlementAccount.update` поза InventoryService/SettlementsService.
 - §1.1 FSM нарядів: hard-coded status checks 0 (всі через WORK_ORDER_TRANSITIONS map).
 - §1.1 tenant isolation: findFirst/findMany у sync.service/booking.service усі мають orgId+deletedAt: null.
@@ -290,6 +317,7 @@ Latest tester: 2026-05-31 (sto-tester-agent **ЦИКЛ 6** — nav prefetch audi
 **TypeScript:** ✅ 0 errors (api + web + shared, `--incremental false`). **Unit:** API **501/501**. **Property-based:** ✅ 26 tests passed.
 
 **Нові SKILL patterns (2 entries):**
+
 - "Prefetch queryKey ↔ page queryKey shape mismatch" — для будь-якого `qc.prefetchQuery({ queryKey: Xkeys.list({}) })` поза hook — звірити shape з consumer page first-mount state. Default filters об'єкт з `useState('')` derived empty-string values НЕ дорівнює `{}`.
 - "useState(initializer) з React Query error як initializer" — `useState(error?.message ?? '')` запускає initializer тільки на 1-му render, коли queryError ще undefined. Refetch errors ховаються. Замінити на derived value.
 
@@ -303,12 +331,14 @@ Latest optimize: 2026-05-31 (sto-optimize-agent **ЦИКЛ 6** — nav prefetch 
 (3) useReports: додано placeholderData: keepPreviousData — при зміні from/to/tab попередній графік лишається видимим поки новий завантажується.
 
 **Перевірено (не знайдено проблем):**
+
 - useBookingRequests / useDashboardData / useInfrastructure / usePricingRules / useStockDocuments / useSyncStatus / useWorks — всі мають коректні staleTime, employee guard (де треба), keepPreviousData (де є фільтри).
 - TopShell PREFETCH_MAP: 16 з 17 NAV items покрито (відсутній /settings — без useQuery migration prefetch не дав би виграшу, settings/page.tsx робить apiFetch напряму).
 - GoodsTab.tsx: brands/units/suppliers seed з ref-cache + Promise.all parallel fetch — оптимальний паттерн.
 - Backend: 0 нових endpoint-ів у цьому циклі.
 
 **Нові SKILL patterns (2 entries):**
+
 - "Частковий prefetch — сторінка має N hooks, у PREFETCH_MAP покрито лише M<N" — типова регресія коли додаєш новий hook у сторінку але забуваєш оновити PREFETCH_MAP. Сигнал: маршрут вже у PREFETCH_MAP, але не всі його useQuery hooks.
 - "keepPreviousData у hooks з form-control параметрами — не лише filter pills, а й from/to/tab dropdowns" — розширює патерн keepPreviousData з paginated lists на analytics/reports hooks. Будь-який useQuery з аргументами — кандидат.
 
@@ -319,6 +349,7 @@ Latest optimize: 2026-05-31 (sto-optimize-agent **ЦИКЛ 6** — nav prefetch 
 Latest optimize: 2026-05-31 (sto-optimize-agent **ЦИКЛ 5 з 5 — ФІНАЛ**, HEAD 4549eb2 → 8efc01c) — **11 файлів виправлено**: 6 backend + 2 frontend + 1 schema (3 нових covering indexes). Фокус циклу: tier-merger у reference-CRUD update методах (currencies/exchange-rates/bank-accounts/cash-registers); sync.getStatus parallel lastJob fetch; maintenance-schedules.remove 1-RTT pattern; covering indexes для invoices/purchase_orders/stock_documents list endpoints.
 
 Попередні commits (з cycle 5 ФІНАЛ):
+
 ```
 
 8efc01c perf(optimize): cycle 5 (FINAL) — tier-merger в reference-CRUD + sync.getStatus parallel + covering indexes
@@ -350,6 +381,7 @@ Latest optimize: 2026-05-31 (sto-optimize-agent **ЦИКЛ 5 з 5 — ФІНАЛ
 (11) invoices: `(orgId, deletedAt, createdAt)` — findAll без status filter eliminates Sort node.
 
 **Перевірено (не знайдено проблем):**
+
 - completion-acts: вже cycle 4 покрив (lines/parts select narrow, parallel org+wo, $transaction timeout).
 - booking/page.tsx (public widget): SLOT_TIME_FMT module-level singleton + minDate в useState. Чисто.
 - settings/sync/page.tsx: fmtDateTime з lib/format singleton. Чисто.
@@ -359,12 +391,14 @@ Latest optimize: 2026-05-31 (sto-optimize-agent **ЦИКЛ 5 з 5 — ФІНАЛ
 - sync.push: for-await applyRecord потрібен (записи можуть мати dependencies same-id), не паралель.
 
 **Підсумок 5 циклів optimize:**
+
 - **Backend:** 80+ fixes — від parallel FK validation, tier-merger, 1-RTT updateMany, до Intl singletons, bulk import optimization, PDF select narrowing, GIN trgm search.
 - **Frontend:** 50+ fixes — lib/format singletons, ref-cache seeds (consumer + source + detail pages), Promise.all batches, React.memo, useMemo для 3rd-party UI props.
 - **DB:** 11+ covering indexes (WHERE+ORDER BY), 6+ GIN trgm trigrams для search, 3 connection pool sizing improvements.
 - **Net impact:** dev-mode dashboard load: ~1.5s → ~600ms (typical). WO addLine/addPart: 3 RTT → 1. List endpoints (work-orders/invoices/PO): Sort node eliminated. ref-cache hit rate ~80% для типового сесії з 3+ модулями.
 
 **Нові SKILL patterns у цьому циклі (1 entry):**
+
 - "Speculative duplicate-check у tier-merger update" — пара з вже існуючим "Tiered parallelization stops at first Promise.all". Дозволяє паралелити навіть умовно-залежний duplicate-check, з post-await фільтрацією.
 
 **TypeScript:** ✅ 0 errors (api + web + shared, `--incremental false`). **Unit:** API **501/501**.
@@ -375,13 +409,14 @@ Latest tester: 2026-05-31 (sto-tester-agent **ЦИКЛ 5 з 5 — ФІНАЛ**, 
 
 **Bug #273 (CRITICAL, security/ssrf):** checkbox.processor — fetch БЕЗ `redirect: 'manual'`. Cycle 5 review додав validatePublicUrl(apiUrl) у delivery time, АЛЕ не додав redirect-block. Атакувальник з OWNER правом ставить `checkboxApiUrl = "https://attacker.com"` (legit external, проходить URL guard), attacker сервер відповідає 302 Location: http://169.254.169.254/... → fetch (default redirect: 'follow') слідує redirect у AWS cloud metadata / RFC1918 LAN з Authorization header. SSRF redirect-bypass. **Фікс**: `redirect: 'manual'` + 3xx-rejection guard (парне з webhooks.processor.ts:82). Додано **checkbox.processor.spec.ts** з 8 regression-тестами: 200 OK happy path / 301/302 → throw + payment.update НЕ викликається / loopback + cloud-metadata pre-flight URL guard / skip paths (fiscalEnabled=false, checkboxLicenseKey=null).
 
-**Bug #274 (MEDIUM, ux/data-display):** invoices/page.tsx detail panel показував "Разом з ПДВ: 0,00 ₴" коли totalWithVat=0. Header-only invoice (через `create()` або `createFromWorkOrder` без addLine) має amount=N, але totalWith*=0 (Prisma defaults — лише `recalcTotals` після addLine оновлює). Display condition `!== inv.amount` для (0 !== 100) було true → оманливий нуль рендеруся. **Фікс**: `> 0` guard для totalWithoutVat і totalWithVat.
+**Bug #274 (MEDIUM, ux/data-display):** invoices/page.tsx detail panel показував "Разом з ПДВ: 0,00 ₴" коли totalWithVat=0. Header-only invoice (через `create()` або `createFromWorkOrder` без addLine) має amount=N, але totalWith\*=0 (Prisma defaults — лише `recalcTotals` після addLine оновлює). Display condition `!== inv.amount` для (0 !== 100) було true → оманливий нуль рендеруся. **Фікс**: `> 0` guard для totalWithoutVat і totalWithVat.
 
 **Bug #275 (HIGH, business-logic):** completion-acts.service findAll НЕ виключав CANCELLED. cancel() лише змінює status; deletedAt лишається null. Після cancel, page reload → `items[0]` = cancelled act → `setCompletionAct(...)` → UI рендерить cancelled act, але хіде Cancel/Sign кнопки, і "Сформувати акт" теж недоступна бо `completionAct !== null`. Користувач у inconsistent state. **Фікс**: `status: { not: CompletionActStatus.CANCELLED }` у where findAll (парне з createFromWorkOrder line 120).
 
 **Bug #276 (LOW, contract):** booking.confirm post-update fetch без `include: { branch }`. findFirstOrThrow повертав `r.branch=undefined` → toDto shipped `branchName: null` навіть для філій з name. Контракт-розходження: list має branchName, individual confirm response — null. Поточно masked бо frontend reloads після confirm. **Фікс**: додано include.
 
 **Auto-перевірено (не знайдено проблем):**
+
 - Cycle 5 review 14 fixes — `updateMany`/`deleteMany` patterns правильні; tsc green, all tests pass.
 - loyalty.queueEarn інтеграція з payments (Bug #267 cycle 4 fix): payments.service.create line 201 викликає `this.loyalty.queueEarn(orgId, dto.counterpartyId, dto.amount, payment.id).catch(...)` — pipeline правильний (payments→queueEarn→BullMQ→LoyaltyProcessor.handleEarn→service.earn з NaN guard Bug #271).
 - SSRF #1: validatePublicUrl у checkbox.processor — додано у cycle 5 review, працює.
@@ -394,9 +429,8 @@ Latest tester: 2026-05-31 (sto-tester-agent **ЦИКЛ 5 з 5 — ФІНАЛ**, 
 **TypeScript:** ✅ 0 errors (api + web + shared, `--incremental false`). **Unit:** API **501/501** (493 + 8 new checkbox specs). **Property-based:** ✅ 26 tests passed.
 
 **Нові SKILL patterns:** 1 entry (Bug #273) — see §"Накопичені підходи" sto-tester:
+
 - "Defense-in-depth SSRF: validatePublicUrl pre-flight + redirect: 'manual' + 3xx-rejection" — обидва шари обов'язкові. Cycle 5 review додав #1 у Checkbox, забув #2; повторюється у будь-якому новому outbound fetch з user-supplied URL.
-
-
 
 Latest review: 2026-05-31 (sto-review-agent цикл 5 з 5 ФІНАЛ, HEAD 03f7bf4 → 649a5db) — **14 файлів виправлено** (12 backend + 2 spec). Фокус циклу: (1) consistency audit — defense-in-depth updateMany+orgId pattern застосований у всіх endpoint який раніше робив findFirst+update-by-id, (2) hard-delete захист через deleteMany+compound where, (3) SSRF defense у Checkbox processor для user-supplied API URL, (4) path-traversal sanitize у /files upload, (5) перевірка не покритих раніше модулів (audit, dashboard SSE, BullMQ processors, maintenance-schedules, warranties, inspection, webhooks).
 
@@ -416,6 +450,7 @@ Latest review: 2026-05-31 (sto-review-agent цикл 5 з 5 ФІНАЛ, HEAD 03f
 (14) exchange-rates.service.spec — update очікує `updateMany`+`findFirstOrThrow` замість update.
 
 **Перевірено (не знайдено проблем):**
+
 - §1 TypeScript: api+web+shared — 0 errors (strict: true everywhere).
 - §2.1 RolesGuard без @Roles: booking/dashboard public endpoints — навмисно без guards, OK.
 - §2.2 Tenant isolation: повний audit findFirst/findMany/update/delete по модулях — `webhooks`, `warranties`, `inspection`, `maintenance-schedules` вже використовують updateMany+orgId pattern.
@@ -447,6 +482,7 @@ Latest optimize: 2026-05-31 (sto-optimize-agent цикл 4 з 5, HEAD af41192 �
 
 **TypeScript:** ✅ 0 errors (api + web). **Unit:** API 493/493 passed.
 **Нові SKILL patterns:** 4 entries —
+
 - "PDF/export endpoints over-fetch via include" — generatePdf методи з повним include для render data що використовує лише 10% колонок.
 - "Clone/duplicate операції з ID-only create патерном" — include тягне labels що НЕ використовуються у create.
 - "similarity() кілька разів per row у $queryRaw search" — pg_trgm `%` оператор vs `similarity() > threshold` (seq scan vs index scan).
@@ -467,6 +503,7 @@ Latest tester: 2026-05-31 (sto-tester-agent цикл 4 з 5, FULL HEAD cf60952) 
 **TypeScript:** ✅ 0 errors (api + web + shared). **Unit:** API **493/493** (+7 нових), Web 218/218. **Property-based:** 26/26. **Build:** ✅ webpack 7.8s.
 
 **Known limitation (feat-debt):**
+
 - BatchService.consumeBatch decoupled від real WO write-off flow (Bug #268). Cost-method-based batch tracking працює тільки для PO receive (через `createFromReceipt`), не для WO write-off. FIFO/FEFO/LIFO/AVG_COST settings — не застосовується. Потребує окремого refactor sprint.
 - WorkOrderTemplate auto-apply lines/parts при create (Bug #266). Schema-extension needed: `TemplateLine.defaultEmployeeId`, `TemplatePart.defaultWarehouseId` АБО UI-step «pick employee/warehouse for template» before create.
 - Loyalty earn integration працює, але `loyaltyEnabled=false` → бали не нараховуються (тестовано unit specs). UI tab loyalty показує balance=0 поки не enable у settings.
@@ -483,6 +520,7 @@ Latest review: 2026-05-31 (sto-review-agent цикл 4 з 5, HEAD 8197d60 → cf
 (8) purchase-orders.service.ts:288 — `unitOfMeasure.findMany` validation для override UoMs без take → `take: MAX_QUERY_LIMIT`.
 
 **Перевірено (не знайдено проблем):**
+
 - 5 focus checks: useEffect deps (3 warnings → 0), findMany take (5 знайдено + виправлено), @ApiResponse coverage (2 контролери знайдено + виправлено), form disabled state (22 файли з saving — всі мають правильний `loading={saving}` на submit), catch блоки (13 `.catch(() => {})` — всі для background sub-resource load або inline-edit з власною обробкою; не критично).
 - §2.1 RolesGuard без @Roles — перевірено ZonesController/WarehousesController — кожен метод має @Roles. ОК.
 - §13 API Contract — всі ResponseDto узгоджені (від cycle 4 sync).
@@ -501,6 +539,7 @@ Latest optimize: 2026-05-31 (sto-optimize-agent цикл 3 з 5, HEAD 1cf7098 �
 
 **TypeScript:** ✅ 0 errors (api + web). **Unit:** inventory 88/88, ui components 139/139.
 **Нові SKILL patterns:** 3 entries —
+
 - "Async wrapper-method блокує parallelism" (extension of pure-compute extraction, Bug #14 spec batch).
 - "3rd-party UI lib props rebuilt each render" (DayPicker classNames/disabled — internal memoization loss).
 - "List item component без React.memo + inline callback — toggle expansion/selection у списку" (BatchRow).
@@ -521,53 +560,55 @@ Latest tester: 2026-05-31 (sto-tester-agent цикл 3 з 5, FULL HEAD 61720e3) 
 **Sync types verify (9 interfaces):** перевірені 4 hooks (useWorkOrders, useInvoices, usePurchaseOrders, useCounterparties) + 5 PageClient interfaces — усі правильно відповідають backend Response DTO. Дрібні subtle відмінності (`paidAmount?: number | null` у frontend vs `paidAmount?: number` у backend) — не критичні, дозволяють opt-in null.
 **Нові SKILL patterns:** 1 новий entry — "Mass DTO migration variant audit: inline 1-рядкові форми + різні validator-типи (@IsEnum vs @IsISO8601 vs @IsDateString)" (Bug #257-#264). Розширення Bug #215 patten — у тому ж sprint потрібно перевіряти ВСІ варіантні форми validator-ів того ж класу (`@IsEnum`, `@IsDateString`, `@IsISO8601`, `@IsEmail`), не лише той що знайдений у simple grep. Sprint cycle 3 покрив тільки `@IsEmail`, `@IsEnum` (через окремий перегляд) + `@IsDateString`, але `@IsISO8601` залишив непокритим, бо grep-шаблон шукав тільки `@IsDateString`.
 
-
 Latest review: 2026-05-31 (sto-review-agent цикл 3 з 5, HEAD 39d2667 → 61720e3) — **22 файли** виправлено (7 DTO + 15 services).
 **§2.3 Input Validation (7 DTO):** додано `@Transform(emptyToUndefined)` для `@IsOptional` + `@IsEnum`/`@IsDateString`/`@IsEmail`:
-  - counterparties: email + legalForm (Create+Update)
-  - employees: role/status/dateOfHire/dateOfFire (Create+Update)
-  - exchange-rates: date (Update)
-  - maintenance-schedules: lastMaintenanceDate (Create+Update)
-  - vehicles: insuranceExpiry/inspectionExpiry (Create+Update)
-  - warehouses: type enum (Create+Update)
-  - zones: ZoneType, LiftType/LiftStatus + purchaseDate/warrantyUntil/lastMaintenanceDate
-**Why:** frontend cleared selects/date-inputs шлють `""` → `@IsEnum`/`@IsDateString` 400 Bad Request попри `@IsOptional`. emptyToUndefined конвертує до validator.
-**§5/§7.1 Transaction timeout consistency (15 services, ~25 callsites):** заміна літералу `timeout: 5_000` → `timeout: TRANSACTION_TIMEOUT_MS` (з `@sto/shared`):
-  - calendar (×2), completion-acts, counterparties, document-number, employees (×4), goods (×2), inventory/batch, loyalty (×2), payments, purchase-orders (×3), services (×2), settlements, stock-documents (×2), warehouses (×2), work-orders (×6)
-  - Larger explicit timeouts (10_000/15_000/30_000) для важких bulk-операцій (xlsx import, PO apply, stock-document confirm) залишено як explicit literals — інтенційно довші за стандарт
-**§2.5 BullMQ retry verified (no fixes needed):** SMS=10/exp60s, Checkbox PRRO=288/exp300s (24h), Webhook=10/exp60s, Loyalty=10/exp30s, FollowUp=10/exp60s — всі compliant
-**§8 Next.js `use client` verified:** всі `page.tsx`/`layout.tsx` з hooks мають директиву або делегують у PageClient. `components/ui/table.tsx` — pure presentational pass-through (без хуків), безпечно як server component
-**TypeScript:** ✅ 0 errors (api + web --incremental false + shared)
-**Unit tests:** API 482/482 pass
-**Нові SKILL patterns:** жодного — всі виправлені пункти вже покриті §1.6 `emptyToUndefined` (2026-05-31 entry) та §5 transaction timeout (Bug #132 pattern). Самовдосконалення SKILL цього циклу — не потрібне, чекліст спрацював.
+
+- counterparties: email + legalForm (Create+Update)
+- employees: role/status/dateOfHire/dateOfFire (Create+Update)
+- exchange-rates: date (Update)
+- maintenance-schedules: lastMaintenanceDate (Create+Update)
+- vehicles: insuranceExpiry/inspectionExpiry (Create+Update)
+- warehouses: type enum (Create+Update)
+- zones: ZoneType, LiftType/LiftStatus + purchaseDate/warrantyUntil/lastMaintenanceDate
+  **Why:** frontend cleared selects/date-inputs шлють `""` → `@IsEnum`/`@IsDateString` 400 Bad Request попри `@IsOptional`. emptyToUndefined конвертує до validator.
+  **§5/§7.1 Transaction timeout consistency (15 services, ~25 callsites):** заміна літералу `timeout: 5_000` → `timeout: TRANSACTION_TIMEOUT_MS` (з `@sto/shared`):
+- calendar (×2), completion-acts, counterparties, document-number, employees (×4), goods (×2), inventory/batch, loyalty (×2), payments, purchase-orders (×3), services (×2), settlements, stock-documents (×2), warehouses (×2), work-orders (×6)
+- Larger explicit timeouts (10_000/15_000/30_000) для важких bulk-операцій (xlsx import, PO apply, stock-document confirm) залишено як explicit literals — інтенційно довші за стандарт
+  **§2.5 BullMQ retry verified (no fixes needed):** SMS=10/exp60s, Checkbox PRRO=288/exp300s (24h), Webhook=10/exp60s, Loyalty=10/exp30s, FollowUp=10/exp60s — всі compliant
+  **§8 Next.js `use client` verified:** всі `page.tsx`/`layout.tsx` з hooks мають директиву або делегують у PageClient. `components/ui/table.tsx` — pure presentational pass-through (без хуків), безпечно як server component
+  **TypeScript:** ✅ 0 errors (api + web --incremental false + shared)
+  **Unit tests:** API 482/482 pass
+  **Нові SKILL patterns:** жодного — всі виправлені пункти вже покриті §1.6 `emptyToUndefined` (2026-05-31 entry) та §5 transaction timeout (Bug #132 pattern). Самовдосконалення SKILL цього циклу — не потрібне, чекліст спрацював.
 
 Latest sync: 2026-05-31 (sto-sync-agent цикл 5 з 5 ФІНАЛЬНИЙ, HEAD 39d2667 → 0305852) — **3 виправлення**.
 Direction 1 (API→UI): 1 fixed — CompletionAct DELETE (cancel) action додано в work-orders detail page (раніше DRAFT акт неможливо було скасувати через UI).
 Direction 2 (URL): 0 wrong — всі apiFetch URL підтверджено коректними.
 Direction 3 (Types): 3 fixed:
-  - CompletionActSummary: +clientPhone, +notes (поля з CompletionActResponseDto)
-  - InvoiceLine detail panel: додано рендер vatRate/priceWithoutVat/vatAmount для рядків з ПДВ
-  - Invoice info panel: додано totalWithoutVat/totalVat/totalWithVat summary поля
-  - BookingRequest: +branchName (backend тепер include branch relation у findAll → повертає branchName)
-  - Bookings list: відображає branchName поряд з телефоном/датою
-TypeScript: ✅ 0 errors (api + web)
-Коміт: 0305852
+
+- CompletionActSummary: +clientPhone, +notes (поля з CompletionActResponseDto)
+- InvoiceLine detail panel: додано рендер vatRate/priceWithoutVat/vatAmount для рядків з ПДВ
+- Invoice info panel: додано totalWithoutVat/totalVat/totalWithVat summary поля
+- BookingRequest: +branchName (backend тепер include branch relation у findAll → повертає branchName)
+- Bookings list: відображає branchName поряд з телефоном/датою
+  TypeScript: ✅ 0 errors (api + web)
+  Коміт: 0305852
 
 Previous: 2026-05-31 (sto-sync-agent цикл 3 з 5, HEAD 0c37fd1 → 39d2667) — **9 interface оновлень** (Direction 3: типи).
 Direction 1 (API→UI): 0 missing — всі backend модулі мають UI (або у known exceptions).
 Direction 2 (URL): 0 wrong — всі apiFetch URL відповідають реальним контролерам.
 Direction 3 (Types): 9 interface файлів — додані optional поля що backend DTO повертає але frontend interfaces не оголошували:
-  - WorkOrder hook: +hasActiveWarranty, +slotStartAt/End/LiftName, +orgId
-  - WorkOrderDetail page: +hasActiveWarranty, +slotStartAt/End/LiftName, +orgId, +updatedAt
-  - WorkOrderLine/Part: +workOrderId, +createdAt
-  - Invoice hook: +orgId, +totalWithoutVat, +totalVat, +invoiceType, +workOrderNumber, +paidAmount
-  - InvoiceWithOptionals: прибрано дубльовані поля (тепер у базовому Invoice)
-  - PurchaseOrder hook: +orgId
-  - Counterparty hook: +orgId, +notes, +legal/bank/contact optional fields
-  - Counterparty CRM detail: +orgId, +createdAt, +updatedAt, +deletedAt
-  - OrgInfo settings: +orgId, +updatedAt
-  - MaintenanceSchedule dashboard: +intervalMileage, +notes
-TypeScript: ✅ 0 errors (web). API — не перевірявся (змін не було).
+
+- WorkOrder hook: +hasActiveWarranty, +slotStartAt/End/LiftName, +orgId
+- WorkOrderDetail page: +hasActiveWarranty, +slotStartAt/End/LiftName, +orgId, +updatedAt
+- WorkOrderLine/Part: +workOrderId, +createdAt
+- Invoice hook: +orgId, +totalWithoutVat, +totalVat, +invoiceType, +workOrderNumber, +paidAmount
+- InvoiceWithOptionals: прибрано дубльовані поля (тепер у базовому Invoice)
+- PurchaseOrder hook: +orgId
+- Counterparty hook: +orgId, +notes, +legal/bank/contact optional fields
+- Counterparty CRM detail: +orgId, +createdAt, +updatedAt, +deletedAt
+- OrgInfo settings: +orgId, +updatedAt
+- MaintenanceSchedule dashboard: +intervalMileage, +notes
+  TypeScript: ✅ 0 errors (web). API — не перевірявся (змін не було).
 
 Latest optimize: 2026-05-31 (sto-optimize-agent цикл 2 з 5, HEAD 5b77bad → 0c37fd1) — **8 точкових perf фіксів** (4 backend + 1 frontend + 3 DB indexes + 2 нові SKILL patterns) фокус на Phase 21+22 модулях (B1-B12).
 **Backend (4 fixes):**
@@ -578,17 +619,16 @@ Latest optimize: 2026-05-31 (sto-optimize-agent цикл 2 з 5, HEAD 5b77bad �
 **Frontend (1 fix, 4 inline Intl removed):**
 (5) dashboard/page.tsx — 4 inline `new Intl.DateTimeFormat(...)` у useEffect loadData callback + setTodayStr + greeting hour → 4 module-level singletons (KYIV_YMD_FMT, KYIV_YEAR_MONTH_DAY_FMT, KYIV_FULL_DATE_FMT, KYIV_HOUR_FMT). Dashboard mount × ~20/session × 4 formatters = 80 unnecessary alloc/day → 0.
 **DB (+1 migration, 3 covering index swaps):**
+
 - `warranties`: DROP `(orgId, counterpartyId, deletedAt)` → CREATE `(orgId, counterpartyId, deletedAt, createdAt)` covering. findByCounterparty/findByWorkOrder sort by createdAt DESC.
 - `webhook_endpoints`: DROP `(orgId, deletedAt)` → CREATE `(orgId, deletedAt, createdAt)` covering. findAll sort by createdAt DESC.
 - `booking_requests`: DROP `(orgId, createdAt)` → CREATE `(orgId, deletedAt, createdAt)` covering. findAll filter deletedAt + sort by createdAt DESC.
 - Migration `20260531150000_add_phase21_covering_indexes` applied to dev DB.
-**Impact:** FollowUp daily tick: -1 RTT settings/branch + per-schedule SMS Intl alloc → 0. Cloud bootstrap with 1000 orgs: ~30s startup → 1-2s. Phase 21 list endpoints (warranties timeline, webhooks management, booking management): Sort node 50-200ms → 0 on large data sets. Dashboard mount: 4 Intl allocs/mount → 0.
-**TypeScript:** ✅ 0 errors (api + web). **Unit:** API 482/482 pass, Web 218/218 pass.
-**Нові SKILL patterns:** 2 нових entries у "Накопичені підходи":
+  **Impact:** FollowUp daily tick: -1 RTT settings/branch + per-schedule SMS Intl alloc → 0. Cloud bootstrap with 1000 orgs: ~30s startup → 1-2s. Phase 21 list endpoints (warranties timeline, webhooks management, booking management): Sort node 50-200ms → 0 on large data sets. Dashboard mount: 4 Intl allocs/mount → 0.
+  **TypeScript:** ✅ 0 errors (api + web). **Unit:** API 482/482 pass, Web 218/218 pass.
+  **Нові SKILL patterns:** 2 нових entries у "Накопичені підходи":
   (a) Inline Intl у useEffect loadData callback — page-mount setup-функції з 2-4 форматерами підряд.
   (b) Sequential cron-/scheduler queue.add у onModuleInit — N-orgs scheduler enqueue блокує application bootstrap.
-
-
 
 Latest tester: 2026-05-31 (sto-tester-agent цикл 2 з 5, HEAD c5d04bc → af5f4f8) — **6 багів виправлено** (2 HIGH + 3 MEDIUM + 1 LOW; фокус — Phase 21+22 модулі: booking/comments/warranties/loyalty/inspection).
 **Знайдено через статичний аналіз — 0 runtime регресій:**
@@ -636,12 +676,13 @@ Latest optimize: 2026-05-31 (sto-optimize-agent цикл 1 з 5, HEAD 757ee3b �
 (15) calendar/page.tsx + CalendarStatsTab.tsx — 2× inline `new Date(...).toLocaleDateString({month: 'long', year: 'numeric', timeZone: KYIV_TZ})` → `fmtKyivMonthYear(date)`. Month-view headers перерендеряться при кожній зміні стану — Intl per render → 1 module-level.
 (16) CalendarStatsTab.tsx — видалено unused `KYIV_TZ` import.
 **DB (+1 migration, 2 new indexes, 2 dropped):**
+
 - payments: DROP `(orgId, counterpartyId)` → CREATE `(orgId, counterpartyId, createdAt)` covering — list endpoint sorts by createdAt DESC + filters by counterpartyId; new index eliminates Sort node. Plus CREATE `(orgId, createdAt)` for unfiltered list.
 - completion_acts: DROP `(orgId, workOrderId, deletedAt)` → CREATE `(orgId, workOrderId, deletedAt, createdAt)` covering — findAll sorts by createdAt DESC LIMIT 100.
 - Migration `20260531130000_add_payment_completion_act_indexes` applied to dev DB.
-**Impact:** Setup bootstrap: 13 sequential creates → 2 batch — 50-100ms faster on cold disk. Employee assignment save: -4 RTT (WAN 30-50ms × 4 = 120-200ms). Document-number generation hot-path: 1 Intl alloc → 0 (called on every doc creation). TopShell widgets (notifications, sync indicator): per-render Intl construction across every page → 0.
-**TypeScript:** ✅ 0 errors (api + web + shared). **Unit:** API 464/464, Web 218/218 pass.
-**Нові SKILL patterns:** 2 нових entries — (a) Assignment/bulk-replace methods з findOne+FK guard sequential — assignX де findOne блокує FK перевірку; (b) Sequential `tx.X.create` loop у bootstrap/seed/init transaction — `createMany` пропущено для defaults.
+  **Impact:** Setup bootstrap: 13 sequential creates → 2 batch — 50-100ms faster on cold disk. Employee assignment save: -4 RTT (WAN 30-50ms × 4 = 120-200ms). Document-number generation hot-path: 1 Intl alloc → 0 (called on every doc creation). TopShell widgets (notifications, sync indicator): per-render Intl construction across every page → 0.
+  **TypeScript:** ✅ 0 errors (api + web + shared). **Unit:** API 464/464, Web 218/218 pass.
+  **Нові SKILL patterns:** 2 нових entries — (a) Assignment/bulk-replace methods з findOne+FK guard sequential — assignX де findOne блокує FK перевірку; (b) Sequential `tx.X.create` loop у bootstrap/seed/init transaction — `createMany` пропущено для defaults.
 
 Previous tester: 2026-05-31 (sto-tester-agent цикл 1 з 5, FULL HEAD b8c8e4b → 757ee3b) — **6 багів виправлено** (1 HIGH + 4 MEDIUM + 2 LOW; повний static-аналіз §1.1–§1.7).
 **Знайдено через статичний аналіз — 0 runtime регресій:**
@@ -667,9 +708,9 @@ Latest sync: 2026-05-31 (sto-sync-agent цикл 2 з 5, HEAD ae03163 → 29ba09
 **Direction 1 (API→UI):** `booking` module — GET/PATCH/DELETE staff endpoints мали 0 UI. Створено `/bookings/page.tsx` (список заявок на запис, підтвердження/скасування). Додано nav link "Онлайн-запис" у TopShell (OWNER/ADMIN/RECEPTIONIST). Фокус-модулі: warranties, completion-acts, work-order-templates, booking, comments, search, audit, work-order-media — усі перевірено.
 **Direction 2 (URL):** усі apiFetch URL для фокус-модулів перевірені — 0 розбіжностей. booking public widget використовує raw fetch (правильно — Bug #111). search: command-palette → `/search` (правильно). work-order-media: `/work-orders/${id}/media` (правильно, matching @Controller).
 **Direction 3 (Types):** 3 interface mismatches виправлено:
-  (1) `Warranty` (crm/[id]/PageClient.tsx) — missing `orgId, counterpartyId, workOrderLineId, workOrderPartId, counterpartyName` fields vs `WarrantyResponseDto`.
-  (2) `Comment` (work-orders/[id]/PageClient.tsx) — `authorName?` → `authorName: string` (backend toDto завжди повертає); missing `orgId, entityType, entityId` fields.
-  (3) `WOTemplate.lines` (work-orders/page.tsx) — missing `note?: string` field vs `TemplateLineDto`.
+(1) `Warranty` (crm/[id]/PageClient.tsx) — missing `orgId, counterpartyId, workOrderLineId, workOrderPartId, counterpartyName` fields vs `WarrantyResponseDto`.
+(2) `Comment` (work-orders/[id]/PageClient.tsx) — `authorName?` → `authorName: string` (backend toDto завжди повертає); missing `orgId, entityType, entityId` fields.
+(3) `WOTemplate.lines` (work-orders/page.tsx) — missing `note?: string` field vs `TemplateLineDto`.
 **TypeScript:** ✅ 0 errors (api + web).
 
 Previous sync: 2026-05-31 (sto-sync-agent цикл 1) — **1 Direction-3 мismatch виправлено**.
@@ -691,12 +732,12 @@ Previous optimize: 2026-05-31 (sto-optimize-agent ітерація-2, HEAD 659aa
 **Frontend (1 fix):** `infrastructure/page.tsx` — local formatDate (inline new Date().toLocaleDateString) → fmtDate proxy з @/lib/format. LiftRow рендерить lastMaintenance + nextMaintenance, тобто 2× Intl-конструкцій на рядок списку.
 **Impact:** WO line/part editing — daily hot-path (10+ edits на наряд). На WAN/VPN з RTT 30-50ms кожен edit швидший на 1-2 RTT, recalcTotals тепер не тягне 2000 рядків × N edits. Loyalty redeem менш hot, але -1 RTT тривіально. infrastructure list ререндери — 0 Intl-конструкцій замість 2N.
 **TypeScript:** ✅ 0 errors (api + web). work-orders tests 23/23 pass.
-**Нові SKILL patterns:** 2 нових entries у "Накопичені підходи" — (a) private parent-guard helper що блокує tier merger; (b) JS aggregation у post-mutation recalc helpers (findMany + reduce → aggregate _sum).
+**Нові SKILL patterns:** 2 нових entries у "Накопичені підходи" — (a) private parent-guard helper що блокує tier merger; (b) JS aggregation у post-mutation recalc helpers (findMany + reduce → aggregate \_sum).
 **DB:** 0 нових індексів — existing `(orgId, workOrderId, deletedAt)` на WorkOrderLine/WorkOrderPart покриває aggregate.
 
 Previous optimize: 2026-05-31 (sto-optimize-agent ітерація-1, HEAD a334f99 → 2c8d5b9) — **15 точкових perf фіксів** в untouched-by-previous-sweeps областях (goods UoM/barcode endpoints, work-categories/works/vehicles/counterparties update+remove paths, dashboard/reports/vehicles[id]/RevenueChart/ReportsCharts intl singletons).
 **Backend (8 сервісів):** `goods.service.ts` getUoMs/addUoM/setDefaultUoM/removeUoM/getBarcodes/createBarcode — same-aggregate parent+child + count/dup collapsed у Promise.all (-1..-2 RTT each); UoM include: { unitOfMeasure: true } → select { name, shortName, coefficient } drop unused metadata. `exchange-rates.create` — currency + duplicate-check parallel (-1 RTT). `works.update` + `work-categories.update` — tenant guard + optional FK check у Promise.all. `counterparties.findGarages` + `removeGarage` — parent+child parallel. `vehicles.findNodes` + `removeNode` — same. `inspection.create` — WO guard + @@unique check у Promise.all (-1 RTT).
-**Frontend Intl singletons sweep (7 файлів):** `dashboard/page.tsx` — local fmt → fmtInt proxy + 2× toLocaleString у upcomingTO.map() → fmtInt/fmtDate. `vehicles/[id]/PageClient.tsx` — 6× inline .toLocale*  → fmtInt/fmtDate (nodes.map + schedules.map + 2 expiry blocks + mileage). `reports/page.tsx` — local fmt → fmtMoney proxy + fmtNum → module-level NUM_FMT_1 + kyivDate inline → module-level singletons. `reports/ReportsCharts.tsx` — local fmt → fmtMoney proxy. `dashboard/RevenueChart.tsx` — local fmt → fmtMoney proxy + tickFormatter inline → TICK_DATE_FMT module-level + labelFormatter → fmtDate. `settings/page.tsx` — webhook delivery log timestamp → fmtShortDateTime. `calendar/CalendarSlotModal.tsx` — select-list item date → new fmtKyivDate helper у calendar.utils (Kyiv-TZ DD.MM.YYYY singleton).
+**Frontend Intl singletons sweep (7 файлів):** `dashboard/page.tsx` — local fmt → fmtInt proxy + 2× toLocaleString у upcomingTO.map() → fmtInt/fmtDate. `vehicles/[id]/PageClient.tsx` — 6× inline .toLocale\* → fmtInt/fmtDate (nodes.map + schedules.map + 2 expiry blocks + mileage). `reports/page.tsx` — local fmt → fmtMoney proxy + fmtNum → module-level NUM_FMT_1 + kyivDate inline → module-level singletons. `reports/ReportsCharts.tsx` — local fmt → fmtMoney proxy. `dashboard/RevenueChart.tsx` — local fmt → fmtMoney proxy + tickFormatter inline → TICK_DATE_FMT module-level + labelFormatter → fmtDate. `settings/page.tsx` — webhook delivery log timestamp → fmtShortDateTime. `calendar/CalendarSlotModal.tsx` — select-list item date → new fmtKyivDate helper у calendar.utils (Kyiv-TZ DD.MM.YYYY singleton).
 **TypeScript:** ✅ 0 errors (api + web).
 **DB:** 0 нових індексів — GoodUoM `@@index([orgId, goodId])`, InspectionReport `@@unique([workOrderId])` вже покривають всі нові parallel queries.
 
@@ -715,11 +756,11 @@ Previous review: 2026-05-31 (sto-tester-agent FULL, HEAD 767bc67) — full sweep
 **Нові SKILL patterns:** додано 2 entries у "Накопичені підходи" sto-tester — (a) shared helper без spec → cross-DTO regression; (b) sprint-wide refactor без regression-guard саме на нову поведінку (не original strict-валідації).
 
 Previous review: 2026-05-31 (sto-review-agent AUTO, HEAD 7f052d5 → 00d5f34) — review після батча @Transform-фіксів (commits 7f052d5 + c551dd5 + a1aa8e6 + 4f7b726 + 29e988b + 15b66a4 + d21b941 + aef1067 + fb94244). **3 IMPORTANT виправлено + DRY рефактор.**
-(1) IMPORTANT §1 + §8 — `apps/web/src/app/setup/page.tsx` Field component не підтримував `required` prop, але попередній коміт 4f7b726 видалив manual `*` з labels під припущенням «Input/Select додають * через required». Field — окремий inline компонент wizard-у (НЕ Input з components/ui), тож setup-візард тихо втратив усі required-індикатори (5 полів на org-step, 2 на branch, 1 на warehouse). Фікс: додано `required?: boolean` у Field props + render `<span className="ml-0.5 text-destructive">*</span>` + `required`/`aria-required` на `<input>`; позначено всі реально-обов'язкові поля візарду.
-(2) IMPORTANT §8 (a11y) — Lightbox у `settings/page.tsx` (логотип, новий компонент з 29e988b) не мав Escape-handler, `role="dialog"`, `aria-modal`, `aria-label`, та `aria-label` на close button. Додатково preview-box використовував `group-hover:opacity-100` без `group` класу на батьку → zoom-hint icon назавжди прихований. Фікс: useEffect з `window.addEventListener('keydown', Escape→close)` + cleanup; `role="dialog" aria-modal="true" aria-label`; `type="button" aria-label="Закрити перегляд"`; додано `group` клас.
-(3) IMPORTANT §1 (Tailwind 4) — settings/page.tsx 2× `text-[12px]` замість Tailwind scale → `text-xs`.
-(4) DRY/cleanup — попередній коміт 7f052d5 розкидав inline `@Transform(({ value }) => (value === '' ? undefined : value))` 42 рази по 16 DTO. Створено shared `apps/api/src/common/transforms/empty-to-undefined.ts` + замінено всі inline lambdas на `@Transform(emptyToUndefined)`. Calendar.dto мав свій local hel-per — приведено до канону. Видалено 8 dead `Transform` imports з DTO які не використовували helper (employees, exchange-rates, maintenance-schedules, purchase-orders, services, vehicles, warehouses, zones). Об'єднано 11 duplicate `class-transformer` імпортів у single statements.
-**§1 TypeScript:** ✅ 0 errors (api + web + shared). **§2.3 Validation:** `emptyToUndefined` патерн правильний — `@IsOptional` пропускає `null`/`undefined`, тож `null`-для-unset FK ще працює. **§5 Business rules + §6 DB + §13 API contract:** без змін у цьому циклі.
+(1) IMPORTANT §1 + §8 — `apps/web/src/app/setup/page.tsx` Field component не підтримував `required` prop, але попередній коміт 4f7b726 видалив manual `*` з labels під припущенням «Input/Select додають _ через required». Field — окремий inline компонент wizard-у (НЕ Input з components/ui), тож setup-візард тихо втратив усі required-індикатори (5 полів на org-step, 2 на branch, 1 на warehouse). Фікс: додано `required?: boolean` у Field props + render `<span className="ml-0.5 text-destructive">_</span>`+`required`/`aria-required`на`<input>`; позначено всі реально-обов'язкові поля візарду.
+(2) IMPORTANT §8 (a11y) — Lightbox у `settings/page.tsx`(логотип, новий компонент з 29e988b) не мав Escape-handler,`role="dialog"`, `aria-modal`, `aria-label`, та `aria-label`на close button. Додатково preview-box використовував`group-hover:opacity-100`без`group`класу на батьку → zoom-hint icon назавжди прихований. Фікс: useEffect з`window.addEventListener('keydown', Escape→close)`+ cleanup;`role="dialog" aria-modal="true" aria-label`; `type="button" aria-label="Закрити перегляд"`; додано `group`клас.
+(3) IMPORTANT §1 (Tailwind 4) — settings/page.tsx 2×`text-[12px]`замість Tailwind scale →`text-xs`.
+(4) DRY/cleanup — попередній коміт 7f052d5 розкидав inline `@Transform(({ value }) => (value === '' ? undefined : value))`42 рази по 16 DTO. Створено shared`apps/api/src/common/transforms/empty-to-undefined.ts`+ замінено всі inline lambdas на`@Transform(emptyToUndefined)`. Calendar.dto мав свій local hel-per — приведено до канону. Видалено 8 dead `Transform`imports з DTO які не використовували helper (employees, exchange-rates, maintenance-schedules, purchase-orders, services, vehicles, warehouses, zones). Об'єднано 11 duplicate`class-transformer`імпортів у single statements.
+**§1 TypeScript:** ✅ 0 errors (api + web + shared). **§2.3 Validation:**`emptyToUndefined`патерн правильний —`@IsOptional`пропускає`null`/`undefined`, тож `null`-для-unset FK ще працює. **§5 Business rules + §6 DB + §13 API contract:** без змін у цьому циклі.
 
 Previous review: 2026-05-31 (sto-optimize-agent, HEAD a5a390d → 3b7a394) — 7 точкових perf фіксів. Backend: reports.revenue DB-aggregation, dashboard withTimeout, SSE @Throttle, PO receive 30s tx, PrismaService connection_limit=25. DB: +2 індекси.
 3b7a394 perf(api): load bottlenecks — indexes + queryRaw + timeouts + connection pool
@@ -902,7 +943,8 @@ f040cde perf(db): 5 composite indexes
 945e264 perf(web+api): lazy-load reports charts + slim employee includes
 9a9efeb perf(purchase-orders): lazy-load lines — remove from list, fetch on detail open
 923aea5 perf(api): Redis cache for reference data (5 min TTL)
-```
+
+````
 
 Дата: 2026-05-30
 
@@ -928,7 +970,7 @@ apiFetch<Branch[]>('/branches').then(d => {
   setBranches(d);
   setCache('cache:branches', d);
 });
-```
+````
 
 Без seed dropdown показує `[]` під час cold-fetch. Безпечно якщо сторінка НЕ редагує цей довідник (settings не CRUD-ить branches — це окрема сторінка infrastructure).
 

@@ -232,3 +232,36 @@ export async function apiMultipartFetch<T>(
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
+
+/**
+ * Bug #292/#293: публічні сторінки (`/`, `/setup`, `/booking`, `/login`, `/403`) НЕ повинні
+ * використовувати `apiFetch` — той надсилає Authorization header зі stale токена і при 401
+ * робить `window.location.replace('/login')`. Це ламає setup wizard / root redirect logic.
+ *
+ * `publicFetch` шле raw `fetch` БЕЗ Authorization, БЕЗ refresh, БЕЗ auto-redirect.
+ * Використовувати тільки для публічних endpoint-ів (`/setup/status`, `/setup/init`, `/booking/*`).
+ */
+export async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const hasBody = init?.body != null;
+  const res = await fetch(`${API_URL}/api${path}`, {
+    ...init,
+    headers: {
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+      ...init?.headers,
+    },
+  });
+
+  if (!res.ok) {
+    // NestJS class-validator повертає `message: string[]` при 400 — join '; '.
+    const body = (await res.json().catch(() => ({ message: res.statusText }))) as {
+      message?: string | string[];
+    };
+    const msg = Array.isArray(body.message)
+      ? body.message.join('; ')
+      : (body.message ?? `HTTP ${res.status}`);
+    throw new Error(msg);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
