@@ -14,9 +14,9 @@ test.describe('Каталог — CRUD роботи', () => {
 
     await page.goto('/catalog');
     // Чекати повного завантаження: заголовок + кнопка (не таб "Роботи")
+    // networkidle не використовується бо під паралельним навантаженням інші воркери
+    // тримають postMessage/polling-connections відкритими → ніколи не настає.
     await expect(page.locator('h1:has-text("Каталог")')).toBeVisible({ timeout: 20_000 });
-    // Пауза щоб уникнути HMR race при паралельному запуску
-    await page.waitForLoadState('networkidle');
     await expect(page.getByRole('button', { name: 'Робота', exact: true })).toBeVisible({
       timeout: 20_000,
     });
@@ -36,9 +36,9 @@ test.describe('Каталог — CRUD роботи', () => {
     await saveBtn.click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
-    // Перевірити в таблиці
+    // Перевірити в таблиці (20s — під паралельним навантаженням invalidateQueries може чекати)
     await expect(page.locator(`table tbody tr:has-text("${workName}")`).first()).toBeVisible({
-      timeout: 15_000,
+      timeout: 20_000,
     });
 
     // Видалити
@@ -103,9 +103,9 @@ test.describe('Каталог — CRUD товару', () => {
     await saveBtn.click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
-    // Перевірити в таблиці
+    // Перевірити в таблиці (20s — під паралельним навантаженням invalidateQueries може чекати)
     await expect(page.locator(`table tbody tr:has-text("${goodName}")`).first()).toBeVisible({
-      timeout: 15_000,
+      timeout: 20_000,
     });
 
     // Перевірити що SKU теж відображається
