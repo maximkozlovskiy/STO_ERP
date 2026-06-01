@@ -1,0 +1,1186 @@
+'use client';
+
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { X, UserPlus, FilePlus, Search } from 'lucide-react';
+import { apiFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
+import { toast } from '@/lib/toast';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
+import { useConfirm } from '@/hooks/useConfirm';
+import type {
+  CalendarSlot,
+  Lift,
+  CounterpartyOption,
+  WorkOrderOption,
+  VehicleOption,
+  PendingSlot,
+  SlotForm,
+} from './calendar.types';
+import {
+  HOURS,
+  UUID_RE,
+  KYIV_TZ,
+  decimalHoursToHHMM,
+  parseHHMM,
+  buildHHMM,
+  pad,
+  displayCounterparty,
+  fmtTime,
+  fmtKyivDate,
+} from './calendar.utils';
+
+// ─── TimeSelect — hour + minute selects, 15-min step, bounded range ──────────
+
+const PICK_HOURS = HOURS;
+const PICK_MINUTES = [0, 15, 30, 45];
+
+interface TimeSelectProps {
+  value: string;
+  onChange: (v: string) => void;
+  minHour?: number;
+  minMinute?: number;
+  disabled?: boolean;
+}
+
+function TimeSelect({
+  value,
+  onChange,
+  minHour = 0,
+  minMinute = 0,
+  disabled = false,
+}: TimeSelectProps) {
+  const { h, m } = value ? parseHHMM(value) : { h: HOURS[0]!, m: 0 };
+  const cls =
+    'w-1/2 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed';
+  return (
+    <div className="flex gap-1">
+      <select
+        className={cls}
+        value={h}
+        disabled={disabled}
+        onChange={e => onChange(buildHHMM(Number(e.target.value), m))}
+      >
+        {PICK_HOURS.map(hh => (
+          <option key={hh} value={hh} disabled={hh < minHour}>
+            {pad(hh)}
+          </option>
+        ))}
+      </select>
+      <select
+        className={cls}
+        value={m}
+        disabled={disabled}
+        onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}
+      >
+        {PICK_MINUTES.map(mm => (
+          <option key={mm} value={mm} disabled={h === minHour && mm < minMinute}>
+            {pad(mm)}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface CalendarSlotModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+
+  date: string;
+  lifts: Lift[];
+  form: SlotForm;
+  setForm: React.Dispatch<React.SetStateAction<SlotForm>>;
+
+  editingSlotId: string | null;
+  isEditingPast: boolean;
+  pendingSlot: PendingSlot | null;
+  setPendingSlot: React.Dispatch<React.SetStateAction<PendingSlot | null>>;
+
+  /** Controls the height-animated collapse wrapper */
+  formMounted: boolean;
+  formVisible: boolean;
+  formCollapseRef: React.RefObject<HTMLDivElement | null>;
+  formInnerRef: React.RefObject<HTMLDivElement | null>;
+
+  minHour: number;
+  nowMs: number;
+
+  error: string;
+  setError: (e: string) => void;
+  saving: boolean;
+  setSaving: (s: boolean) => void;
+
+  cpDisplay: string;
+  setCpDisplay: (v: string) => void;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export function CalendarSlotModal({
+  open,
+  onClose,
+  onSaved,
+  date,
+  lifts,
+  form,
+  setForm,
+  editingSlotId,
+  isEditingPast,
+  pendingSlot,
+  setPendingSlot,
+  formMounted,
+  formVisible,
+  formCollapseRef,
+  formInnerRef,
+  minHour,
+  nowMs,
+  error,
+  setError,
+  saving,
+  setSaving,
+  cpDisplay,
+  setCpDisplay,
+}: CalendarSlotModalProps) {
+  const { confirm, dialogProps } = useConfirm();
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // ── Counterparty search state ─────────────────────────────────────────────
+
+  const [cpPhone, setCpPhone] = useState<string | null>(null);
+  const [cpOptions, setCpOptions] = useState<CounterpartyOption[]>([]);
+  const [cpLoading, setCpLoading] = useState(false);
+  const [showCpDropdown, setShowCpDropdown] = useState(false);
+  const cpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // New counterparty wizard modal
+  const [newCpOpen, setNewCpOpen] = useState(false);
+  const [newCpStep, setNewCpStep] = useState<1 | 2>(1);
+  const [newCp, setNewCp] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    companyName: '',
+    email: '',
+  });
+  const [newVehicle, setNewVehicle] = useState({
+    make: '',
+    model: '',
+    year: '',
+    licensePlate: '',
+    vin: '',
+  });
+  const [savingCp, setSavingCp] = useState(false);
+  const [cpWizardError, setCpWizardError] = useState('');
+  const [createdCpId, setCreatedCpId] = useState('');
+  const [createdGarageId, setCreatedGarageId] = useState('');
+
+  const openNewCpWizard = () => {
+    setNewCp({ firstName: '', lastName: '', phone: '', companyName: '', email: '' });
+    setNewVehicle({ make: '', model: '', year: '', licensePlate: '', vin: '' });
+    setCreatedCpId('');
+    setCreatedGarageId('');
+    setCpWizardError('');
+    setNewCpStep(1);
+    setNewCpOpen(true);
+  };
+
+  const saveWizardStep1 = async () => {
+    if (!newCp.firstName && !newCp.lastName && !newCp.companyName) {
+      setCpWizardError("Вкажіть ім'я або назву компанії");
+      return;
+    }
+    setSavingCp(true);
+    setCpWizardError('');
+    try {
+      const created = await apiFetch<CounterpartyOption>('/counterparties', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'CLIENT',
+          firstName: newCp.firstName || undefined,
+          lastName: newCp.lastName || undefined,
+          phone: newCp.phone || undefined,
+          companyName: newCp.companyName || undefined,
+          email: newCp.email || undefined,
+        }),
+      });
+      setCreatedCpId(created.id);
+      const garages = await apiFetch<{ id: string; isDefault: boolean }[]>(
+        `/counterparties/${created.id}/garages`,
+      ).catch(() => [] as { id: string; isDefault: boolean }[]);
+      const defaultGarage = garages.find(g => g.isDefault) ?? garages[0];
+      if (defaultGarage) setCreatedGarageId(defaultGarage.id);
+      setNewCpStep(2);
+    } catch (e: unknown) {
+      setCpWizardError(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setSavingCp(false);
+    }
+  };
+
+  const saveWizardStep2 = async (skip = false) => {
+    if (!skip) {
+      if (!newVehicle.make.trim() || !newVehicle.model.trim()) {
+        setCpWizardError('Вкажіть марку та модель авто');
+        return;
+      }
+      setSavingCp(true);
+      setCpWizardError('');
+      try {
+        await apiFetch('/vehicles', {
+          method: 'POST',
+          body: JSON.stringify({
+            customerGarageId: createdGarageId,
+            make: newVehicle.make,
+            model: newVehicle.model,
+            year: newVehicle.year ? Number(newVehicle.year) : undefined,
+            licensePlate: newVehicle.licensePlate || undefined,
+            vin: newVehicle.vin || undefined,
+          }),
+        });
+      } catch (e: unknown) {
+        setCpWizardError(e instanceof Error ? e.message : 'Помилка');
+        setSavingCp(false);
+        return;
+      } finally {
+        setSavingCp(false);
+      }
+    }
+    const display =
+      newCp.companyName ||
+      [newCp.lastName, newCp.firstName].filter(Boolean).join(' ') ||
+      '(без імені)';
+    setCpDisplay(display);
+    setForm(f => ({ ...f, counterpartyId: createdCpId, counterpartyDisplay: display }));
+    setNewCpOpen(false);
+  };
+
+  useEffect(() => {
+    if (!open) {
+      setCpOptions([]);
+      setCpDisplay('');
+      setCpPhone(null);
+      setNewCpOpen(false);
+    }
+  }, [open, setCpDisplay]);
+
+  const searchCounterparties = useCallback((q: string) => {
+    if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current);
+    if (!q.trim()) {
+      setCpOptions([]);
+      setShowCpDropdown(false);
+      return;
+    }
+    cpTimeoutRef.current = setTimeout(async () => {
+      setCpLoading(true);
+      try {
+        const data = await apiFetch<{ items: CounterpartyOption[] }>(
+          `/counterparties?q=${encodeURIComponent(q)}&limit=10`,
+        );
+        if (mountedRef.current) {
+          setCpOptions(data.items);
+          setShowCpDropdown(true);
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        if (mountedRef.current) setCpLoading(false);
+      }
+    }, 300);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current);
+    };
+  }, []);
+
+  // ── New work-order mini-form ──────────────────────────────────────────────
+
+  const [showNewWo, setShowNewWo] = useState(false);
+  const [newWo, setNewWo] = useState({
+    counterpartyId: '',
+    counterpartyDisplay: '',
+    vehicleId: '',
+    branchId: '',
+    description: '',
+  });
+  const [newWoVehicles, setNewWoVehicles] = useState<VehicleOption[]>([]);
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+  const [branchesError, setBranchesError] = useState('');
+  const [savingWo, setSavingWo] = useState(false);
+
+  useEffect(() => {
+    if (!open) setShowNewWo(false);
+  }, [open]);
+
+  const openNewWo = useCallback(async () => {
+    setShowNewWo(v => !v);
+    if (!form.counterpartyId) return;
+    setNewWo(v => ({
+      ...v,
+      counterpartyId: form.counterpartyId,
+      counterpartyDisplay: form.counterpartyDisplay,
+    }));
+    const garages = await apiFetch<{ id: string }[]>(
+      `/counterparties/${form.counterpartyId}/garages`,
+    ).catch(() => [] as { id: string }[]);
+    const all = (
+      await Promise.all(
+        garages.map(g =>
+          apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(
+            () => [] as VehicleOption[],
+          ),
+        ),
+      )
+    ).flat();
+    setNewWoVehicles(all);
+    if (all.length === 1) setNewWo(v => ({ ...v, vehicleId: all[0]!.id }));
+  }, [form.counterpartyId, form.counterpartyDisplay]);
+
+  useEffect(() => {
+    // Seed branches from sessionStorage so the modal's "new WO" form renders
+    // without dropdown flash; consumer-page ref-cache pattern (see SKILL).
+    const cached = getCached<{ id: string; name: string }[]>('cache:branches');
+    if (cached && cached.length > 0) {
+      setBranches(cached);
+      setBranchesError('');
+    }
+    apiFetch<{ id: string; name: string }[] | { items: { id: string; name: string }[] }>(
+      '/branches',
+    )
+      .then(d => {
+        if (!mountedRef.current) return;
+        const arr = Array.isArray(d) ? d : d.items;
+        setBranches(arr);
+        setCache('cache:branches', arr);
+        setBranchesError('');
+      })
+      .catch((e: unknown) => {
+        if (mountedRef.current && !cached)
+          setBranchesError(e instanceof Error ? e.message : 'Не вдалося завантажити список філій');
+      });
+  }, []);
+
+  const loadWoVehicles = useCallback(async (counterpartyId: string) => {
+    if (!counterpartyId) {
+      setNewWoVehicles([]);
+      return;
+    }
+    try {
+      const garages = await apiFetch<{ id: string }[]>(`/counterparties/${counterpartyId}/garages`);
+      const vehicles = await Promise.all(
+        garages.map(g =>
+          apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(
+            () => [] as VehicleOption[],
+          ),
+        ),
+      );
+      setNewWoVehicles(vehicles.flat());
+    } catch {
+      setNewWoVehicles([]);
+    }
+  }, []);
+
+  const saveNewWorkOrder = async () => {
+    if (!newWo.counterpartyId || !newWo.vehicleId || !newWo.branchId) return;
+    setSavingWo(true);
+    try {
+      const created = await apiFetch<WorkOrderOption>('/work-orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          counterpartyId: newWo.counterpartyId,
+          vehicleId: newWo.vehicleId,
+          branchId: newWo.branchId,
+          description: newWo.description || undefined,
+        }),
+      });
+      const display = `${created.number}${newWo.counterpartyDisplay ? ` · ${newWo.counterpartyDisplay}` : ''}`;
+      setForm(f => ({ ...f, workOrderId: created.id, workOrderDisplay: display }));
+      toast.success('Наряд створено');
+      setShowNewWo(false);
+      setNewWo({
+        counterpartyId: '',
+        counterpartyDisplay: '',
+        vehicleId: '',
+        branchId: '',
+        description: '',
+      });
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка створення наряду');
+    } finally {
+      setSavingWo(false);
+    }
+  };
+
+  // ── Picker modals ─────────────────────────────────────────────────────────
+
+  const [cpPickerOpen, setCpPickerOpen] = useState(false);
+  const [woPickerOpen, setWoPickerOpen] = useState(false);
+  const [newWoCpPickerOpen, setNewWoCpPickerOpen] = useState(false);
+
+  type CpItem = SearchPickerItem & { phone?: string | null };
+  type WoItem = SearchPickerItem & {
+    counterpartyId?: string | null;
+    counterpartyName?: string;
+    slotStartAt?: string | null;
+    slotEndAt?: string | null;
+    slotLiftName?: string | null;
+  };
+
+  const fetchCpItems = useCallback(async (q: string): Promise<CpItem[]> => {
+    let url = '/counterparties?limit=50';
+    if (q.trim()) url += `&q=${encodeURIComponent(q.trim())}`;
+    const data = await apiFetch<{ items: CounterpartyOption[] }>(url);
+    return data.items
+      .filter(cp => cp.firstName || cp.lastName || cp.companyName)
+      .map(cp => ({
+        id: cp.id,
+        primary: displayCounterparty(cp),
+        secondary: cp.phone ?? undefined,
+        phone: cp.phone,
+      }));
+  }, []);
+
+  const fetchWoItems = useCallback(
+    async (q: string): Promise<WoItem[]> => {
+      const cpParam = form.counterpartyId ? `&counterpartyId=${form.counterpartyId}` : '';
+      const url = q.trim()
+        ? `/work-orders?q=${encodeURIComponent(q)}&limit=30${cpParam}`
+        : `/work-orders?limit=30${cpParam}`;
+      const data = await apiFetch<{ items: WorkOrderOption[] }>(url);
+      return data.items.map(wo => ({
+        id: wo.id,
+        primary: wo.number,
+        secondary: wo.counterpartyName ?? undefined,
+        counterpartyId: wo.counterpartyId,
+        counterpartyName: wo.counterpartyName,
+        slotStartAt: wo.slotStartAt ?? null,
+        slotEndAt: wo.slotEndAt ?? null,
+        slotLiftName: wo.slotLiftName ?? null,
+      }));
+    },
+    [form.counterpartyId],
+  );
+
+  // ── Add / update slot ─────────────────────────────────────────────────────
+
+  const addSlot = async () => {
+    if (!form.startAt || !form.endAt) {
+      setError('Вкажіть час початку та завершення');
+      return;
+    }
+    if (form.endAt <= form.startAt) {
+      setError('Час завершення повинен бути після часу початку');
+      return;
+    }
+    if (!form.counterpartyId && !form.workOrderId) {
+      setError('Оберіть клієнта');
+      return;
+    }
+    if (form.liftId && !UUID_RE.test(form.liftId)) {
+      setError('Некоректний підйомник — оберіть зі списку');
+      return;
+    }
+    if (form.employeeId && !UUID_RE.test(form.employeeId)) {
+      setError('Некоректний співробітник — оберіть зі списку');
+      return;
+    }
+    if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
+      setError('Оберіть наряд зі списку');
+      return;
+    }
+    if (!editingSlotId && nowMs) {
+      const todayKyiv = new Date(nowMs).toLocaleDateString('sv-SE', { timeZone: KYIV_TZ });
+      if (date < todayKyiv) {
+        setError('Не можна створити запис у минулому');
+        return;
+      }
+      if (date === todayKyiv) {
+        const slotHour = parseInt(form.startAt.split(':')[0] ?? '0', 10);
+        if (slotHour < minHour) {
+          setError('Не можна створити запис у минулому');
+          return;
+        }
+      }
+    }
+    const startDate = new Date(`${date}T${form.startAt}:00`);
+    const endDate = new Date(`${date}T${form.endAt}:00`);
+    if (
+      !date ||
+      !form.startAt ||
+      !form.endAt ||
+      isNaN(startDate.getTime()) ||
+      isNaN(endDate.getTime())
+    ) {
+      setError('Вкажіть коректні дату та час');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    const body = {
+      liftId: form.liftId || undefined,
+      employeeId: form.employeeId || undefined,
+      workOrderId: form.workOrderId || undefined,
+      counterpartyId: form.counterpartyId || undefined,
+      startAt: startDate.toISOString(),
+      endAt: endDate.toISOString(),
+      notes: form.notes || undefined,
+    };
+    try {
+      if (editingSlotId) {
+        await apiFetch(`/calendar/slots/${editingSlotId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+        toast.success('Слот оновлено');
+      } else {
+        await apiFetch<CalendarSlot>('/calendar/slots', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        toast.success('Слот створено');
+      }
+      onSaved();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка збереження';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (!formMounted) return null;
+
+  return (
+    <>
+      <div
+        ref={formCollapseRef}
+        className="overflow-hidden"
+        style={{
+          height: formVisible ? undefined : '0px',
+          marginBottom: formVisible ? '1.5rem' : '0px',
+          transition: formVisible
+            ? 'height 480ms cubic-bezier(0.22,1,0.36,1), margin-bottom 480ms cubic-bezier(0.22,1,0.36,1)'
+            : undefined,
+        }}
+      >
+        <div
+          ref={formInnerRef}
+          className="bg-surface border border-border rounded-xl p-5 space-y-3"
+          style={{
+            opacity: formVisible ? 1 : 0,
+            transform: formVisible ? 'translateY(0)' : 'translateY(-8px)',
+            transition: formVisible
+              ? 'opacity 350ms 60ms cubic-bezier(0.22,1,0.36,1), transform 350ms 60ms cubic-bezier(0.22,1,0.36,1)'
+              : 'opacity 200ms cubic-bezier(0.4,0,1,1), transform 200ms cubic-bezier(0.4,0,1,1)',
+          }}
+        >
+          <h3 className="font-semibold text-foreground text-sm">
+            {editingSlotId
+              ? isEditingPast
+                ? 'Перегляд слоту'
+                : 'Редагування слоту'
+              : pendingSlot
+                ? `Новий слот ${decimalHoursToHHMM(pendingSlot.startH)}–${decimalHoursToHHMM(pendingSlot.endH)} на ${date}`
+                : `Новий слот на ${date}`}
+          </h3>
+          {error && <p className="text-[13px] text-destructive-text">{error}</p>}
+
+          {isEditingPast && (
+            <div className="flex items-center gap-2 text-[13px] text-warning-text bg-warning-subtle border border-warning/20 rounded-lg px-3 py-2">
+              <span>🔒</span>
+              <span>Слот у закритому періоді — редагування недоступне</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Підйомник
+              </label>
+              <Select
+                value={form.liftId}
+                disabled={isEditingPast}
+                onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+              >
+                <option value="">— будь-який —</option>
+                {lifts.map(l => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Початок
+              </label>
+              <TimeSelect
+                value={form.startAt}
+                minHour={editingSlotId ? HOURS[0] : minHour}
+                minMinute={0}
+                disabled={isEditingPast}
+                onChange={start => {
+                  setForm(f => {
+                    let next = { ...f, startAt: start };
+                    if (start && f.normoHours && Number(f.normoHours) > 0) {
+                      const [h, m] = start.split(':').map(Number);
+                      const totalMin = Math.min(
+                        (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(f.normoHours) * 60),
+                        23 * 60 + 59,
+                      );
+                      const em = Math.round((totalMin % 60) / 15) * 15;
+                      next = {
+                        ...next,
+                        endAt: `${pad(Math.floor(totalMin / 60))}:${pad(em >= 60 ? 0 : em)}`,
+                      };
+                    }
+                    if (pendingSlot) {
+                      const { h: sh, m: sm } = parseHHMM(start);
+                      const { h: eh, m: em } = parseHHMM(next.endAt || start);
+                      setPendingSlot(p =>
+                        p ? { ...p, startH: sh + sm / 60, endH: eh + em / 60 } : p,
+                      );
+                    }
+                    return next;
+                  });
+                }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Норм-год <span className="font-normal text-muted-foreground/70">(авто кінець)</span>
+              </label>
+              <Input
+                type="number"
+                step="0.5"
+                min="0.5"
+                value={form.normoHours}
+                disabled={isEditingPast}
+                onChange={e => {
+                  const nh = e.target.value;
+                  setForm(f => {
+                    if (f.startAt && nh && Number(nh) > 0) {
+                      const [h, m] = f.startAt.split(':').map(Number);
+                      const totalMin = Math.min(
+                        (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(nh) * 60),
+                        23 * 60 + 59,
+                      );
+                      const em = Math.round((totalMin % 60) / 15) * 15;
+                      const endAt = `${pad(Math.floor(totalMin / 60))}:${pad(em >= 60 ? 0 : em)}`;
+                      if (pendingSlot) {
+                        const { h: eh, m: em2 } = parseHHMM(endAt);
+                        setPendingSlot(p => (p ? { ...p, endH: eh + em2 / 60 } : p));
+                      }
+                      return { ...f, normoHours: nh, endAt };
+                    }
+                    return { ...f, normoHours: nh };
+                  });
+                }}
+                placeholder="1.5"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Кінець</label>
+              <TimeSelect
+                value={form.endAt}
+                minHour={editingSlotId ? HOURS[0] : minHour}
+                minMinute={0}
+                disabled={isEditingPast}
+                onChange={endAt => {
+                  setForm(f => ({ ...f, endAt }));
+                  if (pendingSlot) {
+                    const { h, m } = parseHHMM(endAt);
+                    setPendingSlot(p => (p ? { ...p, endH: h + m / 60 } : p));
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Client + Work-order row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Клієнт <span className="text-destructive-text">*</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={isEditingPast}
+                  onClick={() => !isEditingPast && setCpPickerOpen(true)}
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <span
+                    className={
+                      form.counterpartyDisplay
+                        ? 'text-foreground truncate'
+                        : 'text-muted-foreground'
+                    }
+                  >
+                    {form.counterpartyDisplay || 'Обрати клієнта…'}
+                  </span>
+                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </button>
+                {form.counterpartyDisplay && !isEditingPast && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCpDisplay('');
+                      setCpPhone(null);
+                      setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' }));
+                    }}
+                    className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                    aria-label="Очистити"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+                {!isEditingPast && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openNewCpWizard}
+                    title="Новий клієнт"
+                    className="h-9 w-9 p-0 shrink-0"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              {cpPhone && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  📞{' '}
+                  <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
+                    {cpPhone}
+                  </a>
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Наряд</label>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={isEditingPast}
+                  onClick={() => !isEditingPast && setWoPickerOpen(true)}
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <span
+                    className={
+                      form.workOrderDisplay ? 'text-foreground truncate' : 'text-muted-foreground'
+                    }
+                  >
+                    {form.workOrderDisplay || 'Обрати наряд…'}
+                  </span>
+                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </button>
+                {form.workOrderDisplay && !isEditingPast && (
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
+                    className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                    aria-label="Очистити"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+                {!isEditingPast && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openNewWo}
+                    title="Новий наряд"
+                    className="h-9 w-9 p-0 shrink-0"
+                  >
+                    <FilePlus className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* New client wizard modal */}
+          <Modal
+            open={newCpOpen}
+            onClose={() => setNewCpOpen(false)}
+            title={newCpStep === 1 ? 'Новий клієнт' : 'Автомобіль клієнта'}
+            size="md"
+          >
+            <div className="flex items-center gap-2 mb-5">
+              {([1, 2] as const).map(s => (
+                <div key={s} className="flex items-center gap-2">
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${s === newCpStep ? 'bg-primary text-primary-foreground' : s < newCpStep ? 'bg-success-text text-white' : 'bg-secondary text-muted-foreground border border-border'}`}
+                  >
+                    {s < newCpStep ? '✓' : s}
+                  </div>
+                  <span
+                    className={`text-xs ${s === newCpStep ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
+                  >
+                    {s === 1 ? 'Клієнт' : 'Авто'}
+                  </span>
+                  {s < 2 && <div className="w-8 h-px bg-border mx-1" />}
+                </div>
+              ))}
+            </div>
+
+            {cpWizardError && (
+              <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2 mb-4">
+                {cpWizardError}
+              </p>
+            )}
+
+            {newCpStep === 1 && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Ім'я"
+                    placeholder="Іван"
+                    value={newCp.firstName}
+                    onChange={e => setNewCp(v => ({ ...v, firstName: e.target.value }))}
+                  />
+                  <Input
+                    label="Прізвище"
+                    placeholder="Коваль"
+                    value={newCp.lastName}
+                    onChange={e => setNewCp(v => ({ ...v, lastName: e.target.value }))}
+                  />
+                </div>
+                <Input
+                  label="Назва компанії"
+                  placeholder="ТОВ «Авто»"
+                  value={newCp.companyName}
+                  onChange={e => setNewCp(v => ({ ...v, companyName: e.target.value }))}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Телефон"
+                    placeholder="+38 (067) 123-45-67"
+                    value={newCp.phone}
+                    onChange={e => setNewCp(v => ({ ...v, phone: e.target.value }))}
+                  />
+                  <Input
+                    label="Email"
+                    type="email"
+                    placeholder="ivan@example.com"
+                    value={newCp.email}
+                    onChange={e => setNewCp(v => ({ ...v, email: e.target.value }))}
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    onClick={saveWizardStep1}
+                    loading={savingCp}
+                    disabled={!newCp.firstName && !newCp.lastName && !newCp.companyName}
+                  >
+                    Далі →
+                  </Button>
+                  <Button variant="outline" onClick={() => setNewCpOpen(false)}>
+                    Скасувати
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {newCpStep === 2 && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Марка"
+                    placeholder="Toyota"
+                    value={newVehicle.make}
+                    onChange={e => setNewVehicle(v => ({ ...v, make: e.target.value }))}
+                  />
+                  <Input
+                    label="Модель"
+                    placeholder="Camry"
+                    value={newVehicle.model}
+                    onChange={e => setNewVehicle(v => ({ ...v, model: e.target.value }))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Рік"
+                    placeholder="2021"
+                    value={newVehicle.year}
+                    onChange={e => setNewVehicle(v => ({ ...v, year: e.target.value }))}
+                  />
+                  <Input
+                    label="Держ. номер"
+                    placeholder="АА 1234 ВВ"
+                    value={newVehicle.licensePlate}
+                    onChange={e => setNewVehicle(v => ({ ...v, licensePlate: e.target.value }))}
+                  />
+                </div>
+                <Input
+                  label="VIN (необов'язково)"
+                  placeholder="1HGBH41JXMN109186"
+                  value={newVehicle.vin}
+                  onChange={e => setNewVehicle(v => ({ ...v, vin: e.target.value }))}
+                />
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    onClick={() => saveWizardStep2(false)}
+                    loading={savingCp}
+                    disabled={!newVehicle.make.trim() || !newVehicle.model.trim()}
+                  >
+                    Зберегти
+                  </Button>
+                  <Button variant="outline" onClick={() => saveWizardStep2(true)}>
+                    Пропустити
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Modal>
+
+          {/* New work-order mini-form */}
+          {showNewWo && (
+            <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
+              <p className="text-xs font-medium text-foreground">Новий наряд</p>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setNewWoCpPickerOpen(true)}
+                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors"
+                >
+                  <span
+                    className={
+                      newWo.counterpartyDisplay
+                        ? 'text-foreground truncate'
+                        : 'text-muted-foreground'
+                    }
+                  >
+                    {newWo.counterpartyDisplay || 'Обрати клієнта…'}
+                  </span>
+                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Select
+                  value={newWo.vehicleId}
+                  onChange={e => setNewWo(v => ({ ...v, vehicleId: e.target.value }))}
+                  disabled={!newWo.counterpartyId}
+                >
+                  <option value="">— Автомобіль —</option>
+                  {newWoVehicles.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.make} {v.model} ({v.licensePlate})
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  value={newWo.branchId}
+                  onChange={e => setNewWo(v => ({ ...v, branchId: e.target.value }))}
+                >
+                  <option value="">— Філія —</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              {branchesError && <p className="text-xs text-destructive-text">{branchesError}</p>}
+              <Input
+                placeholder="Опис (необов'язково)"
+                value={newWo.description}
+                onChange={e => setNewWo(v => ({ ...v, description: e.target.value }))}
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={saveNewWorkOrder}
+                  loading={savingWo}
+                  disabled={!newWo.counterpartyId || !newWo.vehicleId || !newWo.branchId}
+                >
+                  Зберегти наряд
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowNewWo(false)}>
+                  Скасувати
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Нотатки</label>
+            <Input
+              value={form.notes}
+              disabled={isEditingPast}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            />
+          </div>
+
+          {/* Picker modals */}
+          <SearchPickerModal<CpItem>
+            open={cpPickerOpen}
+            onClose={() => setCpPickerOpen(false)}
+            title="Оберіть клієнта"
+            selectedId={form.counterpartyId}
+            fetchItems={fetchCpItems}
+            searchPlaceholder="Ім'я, телефон, компанія..."
+            emptyText="Клієнтів не знайдено"
+            onSelect={async item => {
+              if (form.workOrderId && form.counterpartyId && item.id !== form.counterpartyId) {
+                const ok = await confirm({
+                  title: "Зміна клієнта очистить прив'язаний наряд?",
+                  message: `Прив'язаний наряд «${form.workOrderDisplay}» буде відкріплено.`,
+                  variant: 'destructive',
+                });
+                if (!ok) return;
+                setCpDisplay(item.primary);
+                setCpPhone(item.phone ?? null);
+                setForm(f => ({
+                  ...f,
+                  counterpartyId: item.id,
+                  counterpartyDisplay: item.primary,
+                  workOrderId: '',
+                  workOrderDisplay: '',
+                }));
+                return;
+              }
+              setCpDisplay(item.primary);
+              setCpPhone(item.phone ?? null);
+              setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary }));
+            }}
+          />
+          <SearchPickerModal<WoItem>
+            open={woPickerOpen}
+            onClose={() => setWoPickerOpen(false)}
+            title={form.counterpartyId ? 'Наряди клієнта' : 'Оберіть наряд'}
+            selectedId={form.workOrderId}
+            fetchItems={fetchWoItems}
+            searchPlaceholder="Номер наряду..."
+            emptyText="Нарядів не знайдено"
+            renderItem={(item, selected) => (
+              <div>
+                <div
+                  className={`text-sm font-medium ${selected ? 'text-primary' : 'text-foreground'}`}
+                >
+                  {item.primary}
+                </div>
+                {item.secondary && (
+                  <div className="text-xs text-muted-foreground mt-0.5">{item.secondary}</div>
+                )}
+                {item.slotStartAt ? (
+                  <div className="flex items-center gap-1.5 text-xs text-primary mt-0.5">
+                    <span>📅</span>
+                    <span>
+                      {fmtKyivDate(item.slotStartAt)} {fmtTime(item.slotStartAt)}–
+                      {item.slotEndAt ? fmtTime(item.slotEndAt) : ''}
+                      {item.slotLiftName ? ` · ${item.slotLiftName}` : ''}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground/60 mt-0.5">не заплановано</div>
+                )}
+              </div>
+            )}
+            onSelect={async item => {
+              const display = item.counterpartyName
+                ? `${item.primary} · ${item.counterpartyName}`
+                : item.primary;
+
+              if (
+                item.counterpartyId &&
+                form.counterpartyId &&
+                item.counterpartyId !== form.counterpartyId
+              ) {
+                const replace = await confirm({
+                  title: 'Замінити поточного клієнта?',
+                  message: `Наряд належить іншому клієнту (${item.counterpartyName ?? item.counterpartyId}).`,
+                });
+                if (replace) {
+                  const cpDisp = item.counterpartyName ?? '';
+                  setCpDisplay(cpDisp);
+                  setForm(f => ({
+                    ...f,
+                    workOrderId: item.id,
+                    workOrderDisplay: display,
+                    counterpartyId: item.counterpartyId!,
+                    counterpartyDisplay: cpDisp,
+                  }));
+                } else {
+                  setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                }
+                return;
+              }
+
+              if (item.counterpartyId && !form.counterpartyId) {
+                const cpDisp = item.counterpartyName ?? '';
+                setCpDisplay(cpDisp);
+                setForm(f => ({
+                  ...f,
+                  workOrderId: item.id,
+                  workOrderDisplay: display,
+                  counterpartyId: item.counterpartyId!,
+                  counterpartyDisplay: cpDisp,
+                }));
+                return;
+              }
+
+              setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+            }}
+          />
+          <SearchPickerModal<CpItem>
+            open={newWoCpPickerOpen}
+            onClose={() => setNewWoCpPickerOpen(false)}
+            title="Клієнт для наряду"
+            selectedId={newWo.counterpartyId}
+            fetchItems={fetchCpItems}
+            searchPlaceholder="Ім'я, телефон..."
+            emptyText="Клієнтів не знайдено"
+            onSelect={async item => {
+              setNewWo(v => ({
+                ...v,
+                counterpartyId: item.id,
+                counterpartyDisplay: item.primary,
+                vehicleId: '',
+              }));
+              await loadWoVehicles(item.id);
+            }}
+          />
+
+          <div className="flex gap-2">
+            {!isEditingPast && (
+              <Button
+                onClick={addSlot}
+                loading={saving}
+                disabled={
+                  !form.startAt || !form.endAt || (!form.counterpartyId && !form.workOrderId)
+                }
+              >
+                {editingSlotId ? 'Оновити' : 'Зберегти'}
+              </Button>
+            )}
+            <Button variant="outline" onClick={onClose}>
+              {isEditingPast ? 'Закрити' : 'Скасувати'}
+            </Button>
+          </div>
+        </div>
+      </div>
+      <ConfirmDialog {...dialogProps} />
+    </>
+  );
+}
