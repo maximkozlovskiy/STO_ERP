@@ -1287,6 +1287,7 @@ function SettingsPageClient() {
             'org',
             'org-info',
             'currencies',
+
             'exchange-rates',
             'bank-accounts',
             'cash-registers',
@@ -1304,6 +1305,19 @@ function SettingsPageClient() {
           <button
             key={t}
             onClick={() => setTab(t)}
+            onMouseEnter={() => {
+              // Prefetch financial tab data on hover so the tab feels instant
+              if (t === 'currencies' && !getCached('cache:currencies')) {
+                void apiFetch<{ items: Currency[] }>('/currencies').then(d =>
+                  setCache('cache:currencies', d),
+                );
+              }
+              if (t === 'bank-accounts' && !getCached('cache:bank-accounts')) {
+                void apiFetch<{ items: BankAccount[] }>('/bank-accounts').then(d =>
+                  setCache('cache:bank-accounts', d),
+                );
+              }
+            }}
             className={cn(
               'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
               tab === t

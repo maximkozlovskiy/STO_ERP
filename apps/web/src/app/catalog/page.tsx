@@ -22,6 +22,22 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'brands', label: 'Бренди' },
 ];
 
+// Preload JS bundle + first API request for heavy tabs on hover
+const PRELOAD_MAP: Partial<Record<Tab, () => void>> = {
+  goods: () => {
+    void import('./GoodsTab');
+  },
+  services: () => {
+    void import('./ServicesTab');
+  },
+  units: () => {
+    void import('./UnitsTab');
+  },
+  brands: () => {
+    void import('./BrandsTab');
+  },
+};
+
 function CatalogPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER']);
   const router = useRouter();
@@ -38,6 +54,7 @@ function CatalogPageClient() {
         {TABS.map(t => (
           <button
             key={t.key}
+            onMouseEnter={() => PRELOAD_MAP[t.key]?.()}
             onClick={() => setTab(t.key)}
             className={`px-4 py-2 rounded-md text-[13px] font-medium transition-colors ${tab === t.key ? 'bg-surface text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
           >
