@@ -9,19 +9,31 @@
 ## Останній commit
 
 ```
+4ed3372 fix(review): dedupe PICK_MINUTES, drop dead PICK_HOURS export
+9a3b54b perf(web): remove unused deps + dead code (depcheck/knip cleanup)
+722eafd fix(web): remove duplicate pages after route groups refactor
+a3a8c62 perf(web): route groups — isolate TopShell/AuthProvider from auth pages
+286c3fd docs(skills): add bundle-size patterns to sto-optimize
 c236c21 perf(web): lazy dynamic imports — reduce bundle size
 6729fa1 perf(dashboard): replace SSE with React Query polling
 19ced3c perf(auth): optimistic auth init — eliminate 300-800ms loading spinner
-2d951f6 fix(reports): crash on tab switch with keepPreviousData
-f8257b3 perf(web): calendar URL-persistent view and date
-d2dabaa perf(web): lazy tab routing via URL search params
-86cd676 docs(skills): add createMany-in-tx + collect-then-fanout patterns to sto-optimize
-b44a9ac perf(optimize): inspection createMany + followup parallel fan-out
-9481444 fix(review): mirror api-client Content-Type fix in E2E apiCall helpers
-87df4af fix(api-client+e2e): fix PATCH without body 500 + PO receive tests
+```
 Дата: 2026-06-01
 
-Latest perf: 2026-06-01 (HEAD c236c21) — **lazy dynamic imports — 3 chunks розщеплено + tsc 0 errors**
+Latest review: 2026-06-01 (sto-review-agent, HEAD 4ed3372) — **route groups + bundle opt + deps cleanup review: 1 issue знайдено (duplicate PICK_MINUTES + dead PICK_HOURS export у calendar), виправлено, tsc 0 errors**
+
+**Route groups архітектура (після HEAD 722eafd):**
+- `app/layout.tsx` — base layout (no AuthProvider, no TopShell) → `<html>`, `<head>` color-mode script, `QueryProvider`, `ColorModeProvider`, `ServiceWorkerRegistrar`
+- `app/(app)/layout.tsx` — wraps protected pages with `<AuthProvider><TopShell>{children}</TopShell></AuthProvider>` (19 pages: dashboard, work-orders, crm, calendar, inventory, invoices, purchase-orders, stock-documents, settlements, reports, catalog, pricing-rules, employees, infrastructure, settings, bookings, vehicles, profile, 403)
+- `app/(auth)/layout.tsx` — wraps `/login` with `<AuthProvider>` only (no TopShell)
+- `app/setup/layout.tsx` — `<>{children}</>` (no auth, no TopShell, no QueryProvider above)
+- `app/booking/` — public client widget, uses `publicFetch` (no auth context needed)
+- `app/page.tsx` — root redirect (`/setup` / `/login` / `/dashboard` via sessionStorage probe)
+
+**Bundle optimization (HEAD c236c21 + a3a8c62):**
+- `QueryProvider`: `ReactQueryDevtools` only loaded in `NODE_ENV === 'development'` via `next/dynamic` — DCE strips devtools chunk from production
+- `TopShell`: `CommandPalette`, `SyncIndicator`, `NotificationCenter` → `dynamic(... { ssr: false })` (no `loading` fallback OK — components render conditionally inside shell behind uiFeatures flag; no visible skeleton needed)
+- Route groups split: `(app)` group chunk separated from `(auth)`/`setup`/`booking` — public pages no longer pay for TopShell + nav prefetch maps
 
 **Bundle size win (sto-optimize-agent, HEAD c236c21):**
 - **QueryProvider**: `ReactQueryDevtools` static import → `next/dynamic` за умовою `process.env.NODE_ENV === 'development'`. Без зміни runtime check бандл ~1.2 MB лежав у production. Тепер DCE працює — production build взагалі не містить DevTools chunk.
