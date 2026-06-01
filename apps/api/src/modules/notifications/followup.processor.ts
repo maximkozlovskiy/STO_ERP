@@ -61,8 +61,10 @@ export class FollowUpProcessor {
 
     // Maintenance schedules due within forecast window — exclude already-overdue ones
     // (Bug #102: previously sent SMS daily for missed maintenance months in the past).
-    const upcomingMaintenance = (
-      await this.prisma.maintenanceSchedule.findMany({
+    // Parallel: upcomingMaintenance + inactiveVehicles — independent reads on різні таблиці
+    // (maintenanceSchedule vs vehicle), без cross-deps. -1 RTT на кожен daily tick.
+    const [upcomingMaintenanceRaw, inactiveVehiclesRaw] = await Promise.all([
+      this.prisma.maintenanceSchedule.findMany({
         where: {
           orgId,
           deletedAt: null,
@@ -79,25 +81,11 @@ export class FollowUpProcessor {
           },
         },
         take: MAX_SCHEDULES_PER_RUN,
-      })
-    ).filter(
-      s =>
-        !s.vehicle.deletedAt &&
-        !s.vehicle.customerGarage.deletedAt &&
-        !s.vehicle.customerGarage.counterparty.deletedAt,
-    );
-
-    if (upcomingMaintenance.length >= MAX_SCHEDULES_PER_RUN) {
-      this.logger.warn(
-        `FollowUp org=${orgId}: maintenance schedules ліміт ${MAX_SCHEDULES_PER_RUN} досягнуто — потрібна пагінація`,
-      );
-    }
-
-    // "Inactive" vehicles — had a completed WO before cutoff but none after (Bug #101).
-    // Vehicles that NEVER had a completed WO are excluded — they were never our customers
-    // for that vehicle, so a "we miss you" SMS would be misleading.
-    const inactiveVehicles = (
-      await this.prisma.vehicle.findMany({
+      }),
+      // "Inactive" vehicles — had a completed WO before cutoff but none after (Bug #101).
+      // Vehicles that NEVER had a completed WO are excluded — they were never our customers
+      // for that vehicle, so a "we miss you" SMS would be misleading.
+      this.prisma.vehicle.findMany({
         where: {
           orgId,
           deletedAt: null,
@@ -123,8 +111,25 @@ export class FollowUpProcessor {
           },
         },
         take: MAX_VEHICLES_PER_RUN,
-      })
-    ).filter(v => !v.customerGarage.deletedAt && !v.customerGarage.counterparty.deletedAt);
+      }),
+    ]);
+
+    const upcomingMaintenance = upcomingMaintenanceRaw.filter(
+      s =>
+        !s.vehicle.deletedAt &&
+        !s.vehicle.customerGarage.deletedAt &&
+        !s.vehicle.customerGarage.counterparty.deletedAt,
+    );
+
+    if (upcomingMaintenance.length >= MAX_SCHEDULES_PER_RUN) {
+      this.logger.warn(
+        `FollowUp org=${orgId}: maintenance schedules ліміт ${MAX_SCHEDULES_PER_RUN} досягнуто — потрібна пагінація`,
+      );
+    }
+
+    const inactiveVehicles = inactiveVehiclesRaw.filter(
+      v => !v.customerGarage.deletedAt && !v.customerGarage.counterparty.deletedAt,
+    );
 
     if (inactiveVehicles.length >= MAX_VEHICLES_PER_RUN) {
       this.logger.warn(
@@ -132,64 +137,82 @@ export class FollowUpProcessor {
       );
     }
 
-    const sentTo = new Set<string>();
-    let sendErrors = 0;
-    let sendSuccess = 0;
-    let lastError: Error | undefined;
-
-    const handleSendError = (phone: string, e: Error) => {
-      sendErrors++;
-      lastError = e;
-      this.logger.warn(`Помилка відправки нагадування для ${phone}: ${e.message}`);
+    // Build deduplicated recipient list first (sync), THEN fan-out sends in parallel.
+    // Previously: 2 sequential for-await loops × N sends × ~SMS RTT = N × RTT wall-clock.
+    // Now: collectee → Promise.allSettled — limited by SMS provider connection count,
+    // not by sequential RTT. Дедуплікація phone збережена через sentTo Set.
+    type Recipient = {
+      phone: string;
+      clientName: string;
+      vehicleMake: string;
+      vehicleModel: string;
+      licensePlate: string;
+      nextMaintenanceDate: string;
     };
+    const sentTo = new Set<string>();
+    const recipients: Recipient[] = [];
 
     for (const schedule of upcomingMaintenance) {
       const phone = schedule.vehicle.customerGarage.counterparty.phone;
-      const clientName = this.formatName(schedule.vehicle.customerGarage.counterparty);
       if (!phone || sentTo.has(phone)) continue;
       sentTo.add(phone);
-
-      try {
-        await this.notifications.send(orgId, 'FOLLOWUP_REMINDER', {
-          branchId: branch.id,
-          phone,
-          clientName,
-          vehicleMake: schedule.vehicle.make,
-          vehicleModel: schedule.vehicle.model,
-          licensePlate: schedule.vehicle.licensePlate ?? '',
-          nextMaintenanceDate: schedule.nextMaintenanceDate
-            ? ` ${UA_DATE_FMT.format(schedule.nextMaintenanceDate)}`
-            : '',
-        });
-        sendSuccess++;
-      } catch (e) {
-        handleSendError(phone, e instanceof Error ? e : new Error(String(e)));
-      }
+      recipients.push({
+        phone,
+        clientName: this.formatName(schedule.vehicle.customerGarage.counterparty),
+        vehicleMake: schedule.vehicle.make,
+        vehicleModel: schedule.vehicle.model,
+        licensePlate: schedule.vehicle.licensePlate ?? '',
+        nextMaintenanceDate: schedule.nextMaintenanceDate
+          ? ` ${UA_DATE_FMT.format(schedule.nextMaintenanceDate)}`
+          : '',
+      });
     }
 
     for (const vehicle of inactiveVehicles) {
       const phone = vehicle.customerGarage.counterparty.phone;
-      const clientName = this.formatName(vehicle.customerGarage.counterparty);
       if (!phone || sentTo.has(phone)) continue;
       // Defensive: only proceed if last completed WO is actually before cutoff (DB filter guarantees this,
       // but we double-check in case workOrders include was overridden).
       const lastWO = vehicle.workOrders[0];
       if (!lastWO?.completedAt || lastWO.completedAt >= cutoffDate) continue;
       sentTo.add(phone);
+      recipients.push({
+        phone,
+        clientName: this.formatName(vehicle.customerGarage.counterparty),
+        vehicleMake: vehicle.make,
+        vehicleModel: vehicle.model,
+        licensePlate: vehicle.licensePlate ?? '',
+        nextMaintenanceDate: '',
+      });
+    }
 
-      try {
-        await this.notifications.send(orgId, 'FOLLOWUP_REMINDER', {
+    let sendErrors = 0;
+    let sendSuccess = 0;
+    let lastError: Error | undefined;
+
+    const results = await Promise.allSettled(
+      recipients.map(r =>
+        this.notifications.send(orgId, 'FOLLOWUP_REMINDER', {
           branchId: branch.id,
-          phone,
-          clientName,
-          vehicleMake: vehicle.make,
-          vehicleModel: vehicle.model,
-          licensePlate: vehicle.licensePlate ?? '',
-          nextMaintenanceDate: '',
-        });
+          phone: r.phone,
+          clientName: r.clientName,
+          vehicleMake: r.vehicleMake,
+          vehicleModel: r.vehicleModel,
+          licensePlate: r.licensePlate,
+          nextMaintenanceDate: r.nextMaintenanceDate,
+        }),
+      ),
+    );
+
+    for (let i = 0; i < results.length; i++) {
+      const res = results[i];
+      if (res.status === 'fulfilled') {
         sendSuccess++;
-      } catch (e) {
-        handleSendError(phone, e instanceof Error ? e : new Error(String(e)));
+      } else {
+        sendErrors++;
+        const e = res.reason instanceof Error ? res.reason : new Error(String(res.reason));
+        lastError = e;
+        this.logger.warn(`Помилка відправки нагадування для ${recipients[i].phone}: ${e.message}`);
       }
     }
 

@@ -115,9 +115,11 @@ export class InspectionService {
           },
         });
 
-        let createdLines = 0;
+        // Build line data array up front — replaces N sequential tx.workOrderLine.create
+        // with one tx.workOrderLine.createMany (1 INSERT vs N). criticalPoints can be
+        // 50+ items (DEFAULT_INSPECTION_POINTS + custom) → noticeable speedup inside tx.
         let addedLabor = 0;
-
+        const linesData: Prisma.WorkOrderLineCreateManyInput[] = [];
         for (const point of criticalPoints) {
           const work = pickWork(point.name);
           if (!work) continue;
@@ -127,20 +129,22 @@ export class InspectionService {
           // Bug pattern §5.1: labour amount = normoHours * price, NOT just price.
           const amount = normoHours * price;
 
-          await tx.workOrderLine.create({
-            data: {
-              orgId,
-              workOrderId,
-              workId: work.id,
-              employeeId: userId,
-              price: work.price,
-              normoHours: work.normoHours,
-              amount,
-              notes: `Авто з огляду: ${point.name} — ${point.value}${point.unit ? ' ' + point.unit : ''}`,
-            },
+          linesData.push({
+            orgId,
+            workOrderId,
+            workId: work.id,
+            employeeId: userId,
+            price: work.price,
+            normoHours: work.normoHours,
+            amount,
+            notes: `Авто з огляду: ${point.name} — ${point.value}${point.unit ? ' ' + point.unit : ''}`,
           });
-          createdLines += 1;
           addedLabor += amount;
+        }
+
+        const createdLines = linesData.length;
+        if (createdLines > 0) {
+          await tx.workOrderLine.createMany({ data: linesData });
         }
 
         // Recalc WO totals so they match the freshly-inserted labour lines.

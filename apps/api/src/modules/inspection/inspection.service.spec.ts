@@ -36,7 +36,7 @@ describe('InspectionService.create', () => {
         create: vi.fn(),
       },
       work: { findMany: vi.fn() },
-      workOrderLine: { create: vi.fn() },
+      workOrderLine: { create: vi.fn(), createMany: vi.fn() },
       $transaction: vi.fn(async (cb: (tx: typeof prisma) => Promise<unknown>) => await cb(prisma)),
     };
     const module = await Test.createTestingModule({
@@ -123,6 +123,7 @@ describe('InspectionService.create', () => {
     // Critical regression guard — захист від інверсії EDITABLE_STATUSES.
     expect(prisma.inspectionReport.create).not.toHaveBeenCalled();
     expect(prisma.workOrderLine.create).not.toHaveBeenCalled();
+    expect(prisma.workOrderLine.createMany).not.toHaveBeenCalled();
   });
 
   it('CRITICAL points + editable WO: створює line з amount = normoHours * price', async () => {
@@ -151,16 +152,18 @@ describe('InspectionService.create', () => {
       createdBy: userId,
       createdAt: new Date(),
     });
-    prisma.workOrderLine.create.mockResolvedValueOnce({ id: 'line-1' });
+    prisma.workOrderLine.createMany.mockResolvedValueOnce({ count: 1 });
     prisma.workOrder.update.mockResolvedValueOnce({});
 
     const result = await service.create(orgId, workOrderId, dtoWithCritical, userId);
 
-    expect(prisma.workOrderLine.create).toHaveBeenCalledTimes(1);
-    const lineArgs = prisma.workOrderLine.create.mock.calls[0][0];
+    // Сервіс batch-INSERT-ить рядки через createMany (1 INSERT vs N окремих create).
+    expect(prisma.workOrderLine.createMany).toHaveBeenCalledTimes(1);
+    const createManyArgs = prisma.workOrderLine.createMany.mock.calls[0][0];
+    expect(createManyArgs.data).toHaveLength(1);
     // Bug pattern §5.1: amount = normoHours * price = 1.5 * 100 = 150
-    expect(lineArgs.data.amount).toBe(150);
-    expect(lineArgs.data.workId).toBe('work-1');
+    expect(createManyArgs.data[0].amount).toBe(150);
+    expect(createManyArgs.data[0].workId).toBe('work-1');
 
     // WO totals incremented by labour
     expect(prisma.workOrder.update).toHaveBeenCalledTimes(1);
