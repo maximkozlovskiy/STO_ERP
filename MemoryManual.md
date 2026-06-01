@@ -9,14 +9,16 @@
 ## Останній commit
 
 ```
+87df4af fix(api-client+e2e): fix PATCH without body 500 + PO receive tests
+cc37091 fix(e2e): crud-booking — beforeAll cleanup + unique phone per run
+0bcb382 fix(e2e): fix skipped/failed tests — detail panel, booking locators, PO receive
 e731da5 feat(seed): expand seed data + fix E2E tests for previously-skipped specs
 bc4728e test(e2e): add WO detail + stock-doc types + PO receive specs
-29082da docs(memory): update MemoryManual after QA full cycle iter3 FINAL — 0 bugs, 138 E2E passed
-34f22cb docs(memory): update MemoryManual after QA full cycle iter2 — 2 E2E bugs fixed
-5d6ce06 fix(e2e): iter2 — add test.setTimeout(45s) for CRUD catalog tests under parallel load
 Дата: 2026-06-01
 
-Latest E2E run: 2026-06-01 (HEAD e731da5) — **153 passed, 10 skipped, 2 failed (pre-existing)**
+Latest E2E run: 2026-06-01 (HEAD 87df4af) — **162 passed, 5 skipped, 0 failed — exit code 0**
+- +24 тести vs попередній QA (138→162)
+- 5 skipped — відомі (немає seed даних: calendar-slots)
 - +15 vs попередній QA (138→153 passed)
 - 2 pre-existing failures: `crud-booking` FSM (існував раніше) + `crud-purchase-order` FSM Detail Panel кнопка
 - 1 flaky: `work-orders-detail` ESTIMATE→APPROVED (mode:serial woId між retries)
@@ -32,6 +34,17 @@ Latest E2E run: 2026-06-01 (HEAD e731da5) — **153 passed, 10 skipped, 2 failed
 - `requireClientApproval: false` — блокував COMPLETED→INVOICED FSM
 
 **Migration: 20260601100206_add_followup_active_setting** — поле існувало в schema але не в БД
+
+**Критичний баг виправлено (api-client.ts):**
+- `apiFetch` завжди додавав `Content-Type: application/json` навіть без body
+- `PATCH /booking/:id/confirm` (і інші PATCH без body) → Fastify парсив порожній JSON → 500
+- Фікс: `hasBody = init?.body != null` → Content-Type тільки при наявності body
+
+**PO receive UI структура:**
+- Клік на рядок таблиці → відкриває **Detail Panel** (без FSM кнопок, таби Основне/Позиції)
+- Клік на кнопку **"Деталі"** в рядку → відкриває **showDetail модалку** (з FSM кнопками "Позначити отриманим")
+- Після прийому: модалка прийому + модалка деталей залишаються → треба Escape перед кліком фільтрів
+- Фільтр "Замовлено" показує ORDERED, "Отримано" — RECEIVED, "Частково" — PARTIAL
 
 **E2E патерни (Gotcha):**
 - Nil UUID (00000000-...) відхиляється `@IsUUID()` class-validator — використовувати v4 UUID у seed
