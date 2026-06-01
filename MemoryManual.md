@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+5d6ce06 fix(e2e): iter2 — add test.setTimeout(45s) for CRUD catalog tests under parallel load
+55e4ee5 fix(e2e): iter2 — remove networkidle wait + increase table timeout in crud-catalog
+8f4ee7b docs(memory): update MemoryManual after QA full cycle iter1 — 3 E2E bugs fixed
 647603f fix(e2e): iter1 — work-orders row nav + stock-doc modal guard + calendar networkidle
 8e08c88 docs(memory): update MemoryManual after QA cycle 1 — sync clean, 511 tests pass, E2E #291 fixed
 1817dd6 fix(e2e): dashboard nav test — use sidebar text filter + waitForURL instead of ambiguous .first()
@@ -54,6 +57,31 @@ Latest review: 2026-06-01 (sto-review-agent **ЦИКЛ 6**, HEAD ddd09b3 → aud
 
 **Накопичено новий патерн (sto-review §1.6 + sto-tester):**
 *"DTO field-name mismatch у E2E spec body"* — якщо integration test POST-ить через `fetch` без типізації, неправильне ім'я поля → 400 → silent skip (fake-green). Сигнал: JSON.stringify body у `page.evaluate` + `r.ok ? json : null` + `test.skip`. Захист: контракт spec на DTO для критичних endpoints (як `lifts.contract.spec.ts`) + strict `expect.toBe(true)` на `r.ok` у E2E POST helpers, не `?? null`.
+
+Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter2 від HEAD 8f4ee7b, sync+tester+optimize+E2E) — **0 sync mismatches, 0 backend bugs, 0 optimize issues, 2 E2E fixes (commits 55e4ee5 + 5d6ce06)**
+
+**Sync (Direction 1-3): 0 розбіжностей** — підтверджено, без змін з iter1.
+
+**Backend тести: 511/511 pass** (47 test files)
+
+**Static analysis: 0 нових багів**
+- FSM нарядів, InventoryService, SettlementsService, tenant isolation — всі ✓
+- completion-acts sign/cancel FSM — коректний (SIGNED-only cancel, DRAFT-only sign, CANCELLED excluded від findAll) ✓
+- loyalty NaN guard — Number.isFinite(paymentAmount) та paymentAmount<=0 ✓
+- search module — покритий через CommandPalette (useDetailPanelConfig + /search endpoint) ✓
+
+**Optimize: 0 нових проблем** — всі хуки мають staleTime, no N+1, no sequential awaits в нових модулях ✓
+
+**E2E: 2 test fixes (55e4ee5, 5d6ce06)**
+
+**Bug #295 (LOW, test-flakiness):** `crud-catalog.spec.ts` — два CRUD тести ("створити роботу" і "створити товар") флакаво падали під 4-воркерним паралельним запуском через 30s test timeout. `waitForLoadState('networkidle')` споживав більшість часу (polling-connections від інших воркерів не закриваються). `test.describe.configure({ mode: 'serial' })` каскадував перший failure на всі наступні тести у файлі → 3-4 test.skip на кожен retry. **Фікс:** прибрано redundant `networkidle` wait, table check 15s→20s, `test.setTimeout(45_000)` для CRUD тестів.
+
+**TypeScript:** ✅ 0 errors (api + web, `--incremental false`). **Unit:** API **511/511**. **E2E full suite:** 134 passed, 9 flaky (auth-redirect timing — pass on retry), 9 skipped (no test data: bookings/calendar-slot/work-order-seed/purchase-order-FSM).
+
+**Нові SKILL patterns (1 entry):**
+- "CRUD E2E test timeout under parallel load" — для тестів що навігують + заповнюють форму + чекають на оновлення таблиці, `test.setTimeout(45_000)` обов'язковий (default 30s вичерпується). `waitForLoadState('networkidle')` в parallel suite НІКОЛИ не використовувати (polling від інших воркерів тримає connection open).
+
+---
 
 Latest QA cycle: 2026-06-01 (QA FULL CYCLE iter1 від HEAD 8e08c88, sync+tester+optimize+E2E) — **0 sync mismatches, 0 backend bugs, 0 optimize issues, 3 E2E fixes (commit 647603f)**
 
