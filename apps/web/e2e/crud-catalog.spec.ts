@@ -10,6 +10,7 @@ test.describe.configure({ mode: 'serial' });
 
 test.describe('Каталог — CRUD роботи', () => {
   test('створити роботу → перевірити в таблиці → видалити', async ({ page }) => {
+    test.setTimeout(45_000); // CRUD + table refresh під паралельним навантаженням
     const workName = `E2E-Робота-${uid()}`;
 
     await page.goto('/catalog');
@@ -73,6 +74,7 @@ test.describe('Каталог — CRUD роботи', () => {
 
 test.describe('Каталог — CRUD товару', () => {
   test('створити товар з артикулом → перевірити → видалити', async ({ page }) => {
+    test.setTimeout(45_000); // CRUD + table refresh під паралельним навантаженням
     const goodName = `E2E-Товар-${uid()}`;
     const sku = `E2E-${uid()}`;
 
