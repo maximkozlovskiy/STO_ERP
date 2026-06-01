@@ -23,6 +23,7 @@ import type {
 } from './calendar.types';
 import {
   HOURS,
+  PICK_MINUTES,
   UUID_RE,
   KYIV_TZ,
   decimalHoursToHHMM,
@@ -35,8 +36,6 @@ import {
 } from './calendar.utils';
 
 // ─── TimeSelect — hour + minute selects, 15-min step, bounded range ──────────
-
-const PICK_MINUTES = [0, 15, 30, 45];
 
 interface TimeSelectProps {
   value: string;

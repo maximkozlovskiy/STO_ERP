@@ -10,8 +10,7 @@ export const SIDEBAR_W = 160;
 export const WINDOW_START = HOURS[0]!;
 export const WINDOW_END = HOURS[HOURS.length - 1]! + 1;
 
-// Time picker: exactly the working hours window (08–19)
-export const PICK_HOURS = HOURS; // [8, 9, ..., 19]
+// Time picker: 15-min step within working hours window. Hours = `HOURS`.
 export const PICK_MINUTES = [0, 15, 30, 45];
 
 // Max days a custom stats range may span
