@@ -71,6 +71,28 @@ grep -n "Статус.*\[x\]" BUG_REPORT.md | tail -10   # звірити кож
 
 Якщо `[x]`-баг не виправлений у коді → переклас на відкритий, виправити РЕАЛЬНО, додати meta-bug про хибний маркер.
 
+**ОБОВ'ЯЗКОВО після route group / app router рефакторингу — очистити `.next/` cache (Bug #291)**
+
+Будь-який commit що рухає сторінки між route-group folders у Next.js App Router (`app/X/page.tsx` → `app/(group)/X/page.tsx`) інвалідує `apps/web/.next/` dev-cache: webpack chunk-id-и зберігаються у `webpack-runtime.js` як числа (`./726.js`), а нова структура має інші chunk-id-и → старий `webpack-runtime.js` шукає файл якого нема → CRITICAL 500 на ВСІХ chunks → React не гідрується → ніяких client-side guards (TopShell auth redirect, AuthProvider, useRequireAuth) не виконуються. TS green, unit tests green, але живий dev server повертає `<html>` без JS — користувач застряг на захищеному URL без auth.
+
+```bash
+# Detect route group rename pattern у diff:
+git diff HEAD~5 HEAD --name-status | grep -E "^R.*app/.*[/(].*/.*page\.tsx"
+
+# Або просто перевірити чи були переміщення з/в route-group folders:
+git log -1 --stat HEAD~5..HEAD | grep -E "app/\{ =>|app/.* => app/\("
+
+# Якщо знайдено rename pattern — ОБОВ'ЯЗКОВО:
+test -d apps/web/.next && rm -rf apps/web/.next apps/web/tsconfig.tsbuildinfo
+
+# Перезапустити web dev server (порт 3001) перед запуском E2E
+# Перевірити що chunks повертають 200:
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/_next/static/chunks/main-app.js
+# Якщо 500 — cache не очистився, retry rm + restart
+```
+
+- [ ] Route group rename detected у `git diff HEAD~N HEAD --name-status` → `rm -rf apps/web/.next` ПЕРЕД будь-якими TS/unit/E2E запусками. Інакше E2E падатиме з помилковим повідомленням (`expected /\/(login|setup)/, got /work-orders/`) яке маскує справжню проблему (webpack chunk 500). Перевірка часта і дешева.
+
 **AUTO: матриця що перевіряти за типом зміни**
 
 | Тип зміни                      | Секції Кроку 1                                                            |
@@ -2089,5 +2111,79 @@ grep -rn "toBeDefined()" apps/web/e2e --include="*.ts" | head -10   # для pri
 - Будь-який `// TODO: tighten this assertion` коментар поряд з assertion
 
 **Профілактика:** lint-rule (custom ESLint plugin) що детектує `toBeGreaterThanOrEqual(0)` на `.count()` / `.length` return → попередження. Аналогічно `toBeTruthy()` на literal.
+
+---
+
+### 2026-06-01 — Stale Next.js `.next/` cache після route group рефакторингу (Bug #291) — infra, build-cache, route-groups
+
+**Сигнал:** будь-який commit що містить rename pattern `app/X/page.tsx → app/(group)/X/page.tsx` (або зворотній) у Next.js App Router проєкті. `git diff` показує:
+
+```
+rename from apps/web/src/app/X/page.tsx
+rename to apps/web/src/app/(app)/X/page.tsx
+```
+
+АБО `git log --stat`:
+
+```
+apps/web/src/app/{ => (app)}/work-orders/page.tsx
+```
+
+Симптом у dev: TS green, unit tests green, але живий dev server повертає 500 на КОЖНОМУ chunk:
+
+- `(app)/layout.js` → 500 `Cannot find module './726.js'`
+- `(app)/work-orders/page.js` → 500
+- `main-app.js` → 500
+- `layout.css` → 500
+
+Browser HTML завантажується, але всі JS chunks 500 → React не гідрується → ніяких client-side React effects не запускається → AuthProvider не dispatch LOGOUT → TopShell auth-guard `useEffect` ніколи не виконується → користувач застряг на захищеному URL **без auth redirect**.
+
+E2E smoke test «захищена /work-orders без auth — врешті redirect на /login» падає з 33+ retry без redirect.
+
+**Причина виникнення:** Next.js dev server тримає `.next/server/webpack-runtime.js` з фіксованими chunk-id числами. Route group rename змінює структуру chunks і chunk-id числа. Старий `webpack-runtime.js` посилається на `./726.js` (старе chunk-id), але новий build згенерував інші числа → ENOENT з вершини стеку, 500 на всіх запитах. HMR (hot module replacement) НЕ ловить структурні зміни — тільки content зміни. `next dev` потрібно повного перезапуску ПІСЛЯ повного видалення `.next/`.
+
+**Підхід до виявлення:** на Кроці 0 — детектити route group rename у diff і **примусово** очищати `.next/` перед TS/unit/E2E:
+
+```bash
+# Детект rename pattern (R = rename у --name-status)
+renames=$(git diff HEAD~5 HEAD --name-status | grep -E "^R.*app/.*\((app|auth|admin)\)")
+# Або людський діалект:
+group_moves=$(git log -1 --stat HEAD~5..HEAD | grep -E "app/\{ =>|app/.* => app/\(")
+
+if [ -n "$renames" ] || [ -n "$group_moves" ]; then
+  echo "Route group rename detected — clearing .next/ cache"
+  rm -rf apps/web/.next apps/web/tsconfig.tsbuildinfo
+  # перезапустити web dev server
+fi
+
+# Healthcheck після restart — критично:
+sleep 20
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/_next/static/chunks/main-app.js
+# 200 — OK; 500 — cache не очищено, retry
+```
+
+**Підхід до фіксу:**
+
+1. `rm -rf apps/web/.next apps/web/tsconfig.tsbuildinfo`
+2. Перезапустити dev server (port 3001) — нова webpack-runtime згенерована з нової структури
+3. Перевірити що chunks повертають 200
+4. Перезапустити E2E
+
+**Severity:** CRITICAL. Не тому що production build зачеплено (production `next build` чистий), а тому що (а) dev workflow повністю заблокований до очищення; (б) E2E auth-guard regression test 100% fail з вводячим в оману повідомленням; (в) ловиться ТІЛЬКИ runtime-перевіркою — static analysis (TS, lint, unit) сліпий до webpack chunk runtime.
+
+**Де шукати ще:**
+
+- Будь-який `app/` рефакторинг у Next.js: route group rename (`(group)`), parallel route (`@slot`), intercepting route (`(.)foo`), private folder rename (`_private`). Усі вони змінюють webpack chunk структуру.
+- Перейменування layout файлів (`app/layout.tsx` ↔ `app/(group)/layout.tsx`).
+- Перенесення client/server boundary (`'use client'` директива додана/видалена у file що рендериться у нову chunk).
+- Зміни у `next.config.js/ts` що чіпають `experimental.optimizePackageImports` або `serverComponentsExternalPackages` — теж змінюють chunk структуру.
+- Аналогічна проблема з `tsconfig.tsbuildinfo` — TS incremental build cache може зберегти посилання на старі модулі. Видаляти разом з `.next/`.
+
+**Профілактика:**
+
+1. `.husky/post-rewrite` hook що видаляє `apps/web/.next` після `git rebase`/`git checkout` що чіпає route structure (`git diff --name-status @{1} HEAD | grep -E "^R.*app/"`).
+2. У CI: `next build` ЗАВЖДИ запускається з чистого `.next/` (зазвичай так), а dev — ні. Тому regression `.next/` cache проявляється тільки локально → можна не помітити при PR review.
+3. sto-tester §0 тепер обов'язково перевіряє rename pattern.
+4. Документація: pre-flight у sto-feature/sto-web SKILL — після route group рефакторингу нагадування «clear .next».
 
 ---
