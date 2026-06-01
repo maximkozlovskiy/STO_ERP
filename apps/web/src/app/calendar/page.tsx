@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import {
   useEffect,
   useState,
@@ -10,6 +11,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Plus,
   ChevronLeft,
@@ -380,11 +382,38 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
 
 // ─── CalendarPage ─────────────────────────────────────────────────────────────
 
-export default function CalendarPage() {
+function CalendarPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // URL-persistent view and date — back/forward and bookmarks work correctly
+  const calView = (searchParams.get('view') ?? 'day') as CalView;
+  const setCalView = useCallback(
+    (v: CalView) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('view', v);
+      router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
   const { confirm, dialogProps } = useConfirm();
-  const [date, setDate] = useState('');
+
+  // URL-persistent date — ?date=2026-06-01; defaults to today on first visit
+  const urlDate = searchParams.get('date') ?? '';
+  const [date, setDateState] = useState(urlDate);
+  const setDate = useCallback(
+    (d: string) => {
+      setDateState(d);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('date', d);
+      router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
   const [slots, setSlots] = useState<CalendarSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
@@ -395,8 +424,6 @@ export default function CalendarPage() {
   const formCollapseRef = useRef<HTMLDivElement>(null);
   const formInnerRef = useRef<HTMLDivElement>(null);
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
-
-  const [calView, setCalView] = useState<CalView>('day');
 
   const [monthSlots, setMonthSlots] = useState<MonthSlots>({});
   const [monthLoading, setMonthLoading] = useState(false);
@@ -520,8 +547,8 @@ export default function CalendarPage() {
   }, [formMounted, formVisible]);
 
   useEffect(() => {
-    setDate(toDateString(new Date()));
-  }, []);
+    if (!date) setDate(toDateString(new Date()));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const cached = getCached<Lift[]>('cache:lifts');
@@ -1468,5 +1495,13 @@ export default function CalendarPage() {
       )}
       <ConfirmDialog {...dialogProps} />
     </div>
+  );
+}
+
+export default function CalendarPage() {
+  return (
+    <Suspense fallback={null}>
+      <CalendarPageClient />
+    </Suspense>
   );
 }
