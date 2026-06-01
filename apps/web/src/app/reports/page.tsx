@@ -1,6 +1,8 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useRequireAuth } from '@/lib/auth';
 import { useReport, type ReportTab } from '@/hooks/api/useReports';
 import { Button } from '@/components/ui/button';
@@ -115,10 +117,12 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
-export default function ReportsPage() {
+function ReportsPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
-
-  const [tab, setTab] = useState<Tab>('revenue');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = (searchParams.get('tab') ?? 'revenue') as Tab;
+  const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
   const now = new Date();
   const [from, setFrom] = useState(() => {
     const kyivNow = KYIV_YMD_FMT.format(now);
@@ -494,6 +498,14 @@ export default function ReportsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ReportsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReportsPageClient />
+    </Suspense>
   );
 }
 

@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useRequireAuth } from '@/lib/auth';
+import { Spinner } from '@/components/ui/spinner';
 
 const WorksTab = dynamic(() => import('./WorksTab'), { ssr: false });
 const GoodsTab = dynamic(() => import('./GoodsTab'), { ssr: false });
@@ -20,9 +22,13 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'brands', label: 'Бренди' },
 ];
 
-export default function CatalogPage() {
+function CatalogPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER']);
-  const [tab, setTab] = useState<Tab>('works');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = (searchParams.get('tab') ?? 'works') as Tab;
+
+  const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
 
   return (
     <div className="page-container">
@@ -46,5 +52,19 @@ export default function CatalogPage() {
       {tab === 'units' && <UnitsTab />}
       {tab === 'brands' && <BrandsTab />}
     </div>
+  );
+}
+
+export default function CatalogPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <Spinner size="lg" />
+        </div>
+      }
+    >
+      <CatalogPageClient />
+    </Suspense>
   );
 }

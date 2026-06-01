@@ -1,6 +1,8 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Sun,
   Moon,
@@ -216,10 +218,14 @@ const VAT_LABELS: Record<string, string> = {
   INCLUSIVE: 'ПДВ включено',
 };
 
-export default function SettingsPage() {
+function SettingsPageClient() {
   useRequireAuth(['OWNER', 'ADMIN']);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = (searchParams.get('tab') ?? 'org') as Tab;
+  const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
+
   const { confirm, dialogProps } = useConfirm();
-  const [tab, setTab] = useState<Tab>('org');
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
   const [payments, setPayments] = useState<PaymentMethod[]>([]);
   const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
@@ -431,9 +437,17 @@ export default function SettingsPage() {
       .catch(() => {});
   }, []);
 
-  // New financial directories — parallel Promise.all з loading/error станами та cancelled-flag.
+  // Фінансові довідники — завантажуються лише коли активна відповідна таба.
   // currencies та bank-accounts кешуються в sessionStorage (Bug #145).
+  const isFinancialTab = [
+    'currencies',
+    'exchange-rates',
+    'bank-accounts',
+    'cash-registers',
+    'org-info',
+  ].includes(tab);
   useEffect(() => {
+    if (!isFinancialTab) return;
     let cancelled = false;
     setLoadingCurrencies(true);
     setLoadingRates(true);
@@ -496,7 +510,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isFinancialTab]);
 
   const saveTemplate = async () => {
     if (!editingTemplate) return;
@@ -3052,6 +3066,14 @@ export default function SettingsPage() {
       </Modal>
       <ConfirmDialog {...dialogProps} />
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsPageClient />
+    </Suspense>
   );
 }
 

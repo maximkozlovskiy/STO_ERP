@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Plus, Pencil, Check, X } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -166,9 +166,11 @@ export default function CounterpartyCardPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT']);
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [cp, setCp] = useState<Counterparty | null>(null);
-  const [tab, setTab] = useState<CrmTab>('info');
+  const tab = (searchParams.get('tab') ?? 'info') as CrmTab;
+  const setTab = (t: CrmTab) => router.replace(`?tab=${t}`, { scroll: false });
   const [loadError, setLoadError] = useState('');
   const [todayMs, setTodayMs] = useState(0);
 

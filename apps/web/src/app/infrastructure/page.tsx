@@ -1,6 +1,8 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useEffect, useState, type ReactNode } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
 import { infraKeys } from '@/hooks/api/useInfrastructure';
@@ -103,12 +105,16 @@ const WAREHOUSE_TYPE_LABELS: Record<string, string> = {
   MOBILE: 'Мобільний',
 };
 
-// ─── Main Page ──────────���────────────────────────────────
+// ─── Main Page ───────────────────────────────────────────
 
-export default function InfrastructurePage() {
+function InfrastructurePageClient() {
   useRequireAuth(['OWNER', 'ADMIN']);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = (searchParams.get('tab') ?? 'branches') as Tab;
+  const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
+
   const { confirm, dialogProps } = useConfirm();
-  const [tab, setTab] = useState<Tab>('branches');
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: infraKeys.all });
   const opts = { staleTime: 5 * 60_000, placeholderData: keepPreviousData } as const;
@@ -844,6 +850,14 @@ export default function InfrastructurePage() {
       </Modal>
       <ConfirmDialog {...dialogProps} />
     </div>
+  );
+}
+
+export default function InfrastructurePage() {
+  return (
+    <Suspense fallback={null}>
+      <InfrastructurePageClient />
+    </Suspense>
   );
 }
 
