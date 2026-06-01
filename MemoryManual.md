@@ -9,11 +9,14 @@
 ## Останній commit
 
 ```
-fix(tester): cycle 7 — Bugs #283-#290 — Lift maxWeightKg validation gap + E2E spec cleanup
+ddd09b3 fix(review): cycle 6 — defense/quality audit — fake-green FSM specs
+8e0b750 fix(tester): cycle 7 — Bugs #283-#290 — Lift maxWeightKg validation gap + E2E spec cleanup
 59b1290 docs(skills): add view-state-gated-fetch + EMPTY_FORM module-level patterns to sto-optimize
 3730db8 perf(calendar): skip day-view fetch in stats/month view + module-level EMPTY_FORM
 942f90b fix(sync): hide Slot button in stats view to prevent phantom showAdd state
-fix(tester): cycle 6 — Bugs #277-#282 — nav prefetch shape mismatch + sync error state + dead imports
+e8ff2f8 test(e2e): expand E2E coverage — 10 new spec files for invoices, PO, stock docs, settlements, catalog settings, pricing rules, calendar, bookings, dashboard, reports
+6376b90 test(e2e): add CRUD tests for counterparty, employee, catalog, infrastructure, work-orders
+f56ae6d fix(tester): cycle 6 — Bugs #277-#282 — nav prefetch shape mismatch + sync error state + dead imports
 3367da8 perf(nav): reports prefetch + complete dashboard prefetch + reports keepPreviousData
 b5766eb fix(topshell): move useQueryClient above conditional returns — Rules of Hooks
 a24b975 docs(skills): add nav-prefetch + useQuery migration patterns to sto-optimize + sto-web
@@ -24,6 +27,31 @@ f017721 perf(nav): migrate employees+settlements to useQuery + extend prefetch
 e20fcc5 perf(nav): prefetch on hover + keepPreviousData + loading skeletons
 8efc01c perf(optimize): cycle 5 (FINAL) — tier-merger в reference-CRUD + sync.getStatus parallel + covering indexes
 Дата: 2026-06-01
+
+Latest review: 2026-06-01 (sto-review-agent **ЦИКЛ 6**, HEAD ddd09b3 → audit of e8ff2f8…8e0b750) — **6 проблем знайдено + 6 виправлено** у нових E2E spec файлах. TypeScript 0 errors, API tests 28/28 pass.
+
+**Знайдено через статичний аналіз E2E specs (commits e8ff2f8…8e0b750):**
+
+**Critical #R6-1 (broken booking spec):** `crud-booking.spec.ts` — два FSM тести надсилали невалідний body у `POST /booking/request`: `preferredDate` замість `requestedDate` + відсутній required `branchId`. `r.ok=false` → `test.skip` → тест проходив без жодних assertions. Це SAMUR Bug #287 sibling (fake-green silent skip). **Фікс:** додав попередній fetch `/booking/branches`, правильні DTO поля, видалив зайвий `serviceIds` (optional).
+
+**Important #R6-2…R6-5 (fake-green FSM patterns):**
+- `crud-invoice.spec.ts` (Bug #287 sibling): FSM Надіслати → SENT — `if (row.isVisible) { if (btn.isVisible) { click; expect; } }` → no assertion коли row never appears (silent pass).
+- `crud-purchase-order.spec.ts`: ту ж pattern для FSM Підтвердити → ORDERED.
+- `crud-stock-document.spec.ts`: ту ж pattern для FSM Провести → CONFIRMED.
+- `crud-calendar-slot.spec.ts`: locator `[class*="timeline"], [class*="grid"], .min-h` матчить ANY layout element → fake-green. Замінено на strict `[data-calendar-slot]` (DraggableSlot реально ставить цей атрибут).
+- `dashboard.spec.ts` (навігація): `if (woLink.isVisible) { click + URL assert }` → silent pass без link.
+**Фікс:** усі обгортки `if (await x.isVisible)` навколо assertions замінено на strict `await expect(x).toBeVisible(...)` — рядок ОБОВ'ЯЗКОВО має з'явитись після створення сутності через API.
+
+**Перевірено (не знайдено проблем):**
+- **TypeScript:** ✅ web + api `tsc --noEmit --incremental false` — 0 errors.
+- **API tests:** 28/28 pass (zones contract + warehouses contract + warehouses service).
+- **Lift validation (#283):** контракт-spec має 10 tests, всі зелені — fix solid.
+- **Calendar perf changes (#3730db8):** EMPTY_FORM module-level стабілізує `setForm` references; view-state gating `if (calView === 'day') load()` коректний — Stats/Month мають свої dedicated fetchers (`loadMonth`, `loadStats`) з AbortController.
+- **Sync fix (#942f90b):** `{calView !== 'stats' && <Button>}` коректно ховає phantom showAdd trigger.
+- **Backend DTO cleanup (#284-#286):** dead `IsUUID` imports видалено правильно, `const UUID_RE` переміщено нижче імпортів — формат консистентний.
+
+**Накопичено новий патерн (sto-review §1.6 + sto-tester):**
+*"DTO field-name mismatch у E2E spec body"* — якщо integration test POST-ить через `fetch` без типізації, неправильне ім'я поля → 400 → silent skip (fake-green). Сигнал: JSON.stringify body у `page.evaluate` + `r.ok ? json : null` + `test.skip`. Захист: контракт spec на DTO для критичних endpoints (як `lifts.contract.spec.ts`) + strict `expect.toBe(true)` на `r.ok` у E2E POST helpers, не `?? null`.
 
 Latest tester: 2026-06-01 (sto-tester-agent **ЦИКЛ 7** — E2E spec quality + Lift validation, HEAD 942f90b → cycle 7) — **8 багів знайдено + 8 виправлено + 10 нових regression-guard тестів** (lifts.contract.spec.ts) + **2 нові SKILL patterns** (Optional numeric DTO + Fake-green assertion).
 
