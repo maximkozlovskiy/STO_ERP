@@ -1,6 +1,6 @@
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { useAuth } from '@/lib/auth';
+import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
 export interface Counterparty {
   id: string;
@@ -27,7 +27,7 @@ export interface Counterparty {
   deletedAt: string | null;
 }
 
-export interface CounterpartiesFilter {
+export interface CounterpartiesFilter extends Record<string, unknown> {
   page?: number;
   limit?: number;
   type?: string;
@@ -36,12 +36,8 @@ export interface CounterpartiesFilter {
   showDeleted?: boolean;
 }
 
-export interface PaginatedCounterparties {
-  items: Counterparty[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** @deprecated Use PaginatedResponse<Counterparty> from usePaginatedList */
+export type PaginatedCounterparties = PaginatedResponse<Counterparty>;
 
 export const counterpartiesKeys = {
   all: ['counterparties'] as const,
@@ -51,22 +47,8 @@ export const counterpartiesKeys = {
 };
 
 export function useCounterparties(filters: CounterpartiesFilter = {}) {
-  const { employee } = useAuth();
-  const params = new URLSearchParams();
-  if (filters.page) params.set('page', String(filters.page));
-  if (filters.limit) params.set('limit', String(filters.limit));
-  if (filters.type) params.set('type', filters.type);
-  if (filters.types) params.set('types', filters.types);
-  if (filters.q) params.set('q', filters.q);
-  if (filters.showDeleted) params.set('showDeleted', 'true');
-  const qs = params.toString();
-
-  return useQuery<PaginatedCounterparties>({
-    queryKey: counterpartiesKeys.list(filters),
-    queryFn: ({ signal }) => apiFetch(`/counterparties${qs ? `?${qs}` : ''}`, { signal }),
-    enabled: !!employee,
-    staleTime: 30_000,
-    placeholderData: keepPreviousData,
+  return usePaginatedList<Counterparty>('/counterparties', filters, {
+    queryKey: 'counterparties',
   });
 }
 

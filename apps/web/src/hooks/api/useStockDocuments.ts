@@ -1,6 +1,5 @@
-import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/api-client';
-import { useAuth } from '@/lib/auth';
+import { useQueryClient } from '@tanstack/react-query';
+import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
 export interface StockDocLine {
   id?: string;
@@ -33,7 +32,7 @@ export interface StockDoc {
   deletedAt?: string | null;
 }
 
-export interface StockDocsFilter {
+export interface StockDocsFilter extends Record<string, unknown> {
   page?: number;
   limit?: number;
   type?: string;
@@ -41,12 +40,8 @@ export interface StockDocsFilter {
   showDeleted?: boolean;
 }
 
-export interface PaginatedStockDocs {
-  items: StockDoc[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** @deprecated Use PaginatedResponse<StockDoc> from usePaginatedList */
+export type PaginatedStockDocs = PaginatedResponse<StockDoc>;
 
 export const stockDocsKeys = {
   all: ['stock-documents'] as const,
@@ -55,21 +50,14 @@ export const stockDocsKeys = {
 };
 
 export function useStockDocuments(filters: StockDocsFilter = {}) {
-  const { employee } = useAuth();
-  const params = new URLSearchParams({
-    page: String(filters.page ?? 1),
-    limit: String(filters.limit ?? 20),
-  });
-  if (filters.type) params.set('type', filters.type);
-  if (filters.status) params.set('status', filters.status);
-  if (filters.showDeleted) params.set('showDeleted', 'true');
-
-  return useQuery<PaginatedStockDocs>({
-    queryKey: stockDocsKeys.list(filters),
-    queryFn: ({ signal }) => apiFetch(`/stock-documents?${params}`, { signal }),
-    enabled: !!employee,
-    staleTime: 30_000,
-    placeholderData: keepPreviousData,
+  // Provide defaults for page/limit so the URL always includes them
+  const effectiveFilters: StockDocsFilter = {
+    page: filters.page ?? 1,
+    limit: filters.limit ?? 20,
+    ...filters,
+  };
+  return usePaginatedList<StockDoc>('/stock-documents', effectiveFilters, {
+    queryKey: 'stock-documents',
   });
 }
 

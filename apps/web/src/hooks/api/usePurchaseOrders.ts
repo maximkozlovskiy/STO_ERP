@@ -1,6 +1,6 @@
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { useAuth } from '@/lib/auth';
+import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
 export interface POLine {
   id?: string;
@@ -34,7 +34,7 @@ export interface PurchaseOrder {
   deletedAt?: string | null;
 }
 
-export interface PurchaseOrdersFilter {
+export interface PurchaseOrdersFilter extends Record<string, unknown> {
   page?: number;
   limit?: number;
   status?: string;
@@ -42,12 +42,8 @@ export interface PurchaseOrdersFilter {
   showDeleted?: boolean;
 }
 
-export interface PaginatedPurchaseOrders {
-  items: PurchaseOrder[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** @deprecated Use PaginatedResponse<PurchaseOrder> from usePaginatedList */
+export type PaginatedPurchaseOrders = PaginatedResponse<PurchaseOrder>;
 
 export const purchaseOrdersKeys = {
   all: ['purchase-orders'] as const,
@@ -57,21 +53,8 @@ export const purchaseOrdersKeys = {
 };
 
 export function usePurchaseOrders(filters: PurchaseOrdersFilter = {}) {
-  const { employee } = useAuth();
-  const params = new URLSearchParams();
-  if (filters.page) params.set('page', String(filters.page));
-  if (filters.limit) params.set('limit', String(filters.limit));
-  if (filters.status) params.set('status', filters.status);
-  if (filters.q) params.set('q', filters.q);
-  if (filters.showDeleted) params.set('showDeleted', 'true');
-  const qs = params.toString();
-
-  return useQuery<PaginatedPurchaseOrders>({
-    queryKey: purchaseOrdersKeys.list(filters),
-    queryFn: ({ signal }) => apiFetch(`/purchase-orders${qs ? `?${qs}` : ''}`, { signal }),
-    enabled: !!employee,
-    staleTime: 30_000,
-    placeholderData: keepPreviousData,
+  return usePaginatedList<PurchaseOrder>('/purchase-orders', filters, {
+    queryKey: 'purchase-orders',
   });
 }
 

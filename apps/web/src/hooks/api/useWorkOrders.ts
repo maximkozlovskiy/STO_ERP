@@ -1,6 +1,6 @@
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { useAuth } from '@/lib/auth';
+import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
 export interface WorkOrder {
   id: string;
@@ -35,7 +35,7 @@ export interface WorkOrder {
   deletedAt?: string | null;
 }
 
-export interface WorkOrdersFilter {
+export interface WorkOrdersFilter extends Record<string, unknown> {
   page?: number;
   limit?: number;
   status?: string;
@@ -50,12 +50,8 @@ export interface WorkOrdersFilter {
   include?: string;
 }
 
-export interface PaginatedWorkOrders {
-  items: WorkOrder[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** @deprecated Use PaginatedResponse<WorkOrder> from usePaginatedList */
+export type PaginatedWorkOrders = PaginatedResponse<WorkOrder>;
 
 export const workOrdersKeys = {
   all: ['work-orders'] as const,
@@ -65,28 +61,8 @@ export const workOrdersKeys = {
 };
 
 export function useWorkOrders(filters: WorkOrdersFilter = {}) {
-  const { employee } = useAuth();
-  const params = new URLSearchParams();
-  if (filters.page) params.set('page', String(filters.page));
-  if (filters.limit) params.set('limit', String(filters.limit));
-  if (filters.status) params.set('status', filters.status);
-  if (filters.priority) params.set('priority', filters.priority);
-  if (filters.branchId) params.set('branchId', filters.branchId);
-  if (filters.counterpartyId) params.set('counterpartyId', filters.counterpartyId);
-  if (filters.vehicleId) params.set('vehicleId', filters.vehicleId);
-  if (filters.employeeId) params.set('employeeId', filters.employeeId);
-  if (filters.repairCategory) params.set('repairCategory', filters.repairCategory);
-  if (filters.q) params.set('q', filters.q);
-  if (filters.showDeleted) params.set('showDeleted', 'true');
-  if (filters.include) params.set('include', filters.include);
-  const qs = params.toString();
-
-  return useQuery<PaginatedWorkOrders>({
-    queryKey: workOrdersKeys.list(filters),
-    queryFn: ({ signal }) => apiFetch(`/work-orders${qs ? `?${qs}` : ''}`, { signal }),
-    enabled: !!employee,
-    staleTime: 30_000,
-    placeholderData: keepPreviousData,
+  return usePaginatedList<WorkOrder>('/work-orders', filters, {
+    queryKey: 'work-orders',
   });
 }
 

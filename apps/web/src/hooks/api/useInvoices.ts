@@ -1,7 +1,7 @@
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { useAuth } from '@/lib/auth';
 import { counterpartiesKeys } from './useCounterparties';
+import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
 export interface Invoice {
   id: string;
@@ -25,7 +25,7 @@ export interface Invoice {
   deletedAt?: string | null;
 }
 
-export interface InvoicesFilter {
+export interface InvoicesFilter extends Record<string, unknown> {
   page?: number;
   limit?: number;
   status?: string;
@@ -35,12 +35,8 @@ export interface InvoicesFilter {
   showDeleted?: boolean;
 }
 
-export interface PaginatedInvoices {
-  items: Invoice[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** @deprecated Use PaginatedResponse<Invoice> from usePaginatedList */
+export type PaginatedInvoices = PaginatedResponse<Invoice>;
 
 export const invoicesKeys = {
   all: ['invoices'] as const,
@@ -50,23 +46,8 @@ export const invoicesKeys = {
 };
 
 export function useInvoices(filters: InvoicesFilter = {}) {
-  const { employee } = useAuth();
-  const params = new URLSearchParams();
-  if (filters.page) params.set('page', String(filters.page));
-  if (filters.limit) params.set('limit', String(filters.limit));
-  if (filters.status) params.set('status', filters.status);
-  if (filters.counterpartyId) params.set('counterpartyId', filters.counterpartyId);
-  if (filters.workOrderId) params.set('workOrderId', filters.workOrderId);
-  if (filters.q) params.set('q', filters.q);
-  if (filters.showDeleted) params.set('showDeleted', 'true');
-  const qs = params.toString();
-
-  return useQuery<PaginatedInvoices>({
-    queryKey: invoicesKeys.list(filters),
-    queryFn: ({ signal }) => apiFetch(`/invoices${qs ? `?${qs}` : ''}`, { signal }),
-    enabled: !!employee,
-    staleTime: 30_000,
-    placeholderData: keepPreviousData,
+  return usePaginatedList<Invoice>('/invoices', filters, {
+    queryKey: 'invoices',
   });
 }
 
