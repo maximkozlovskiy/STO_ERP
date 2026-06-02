@@ -9,20 +9,19 @@
 ## Останній commit
 
 ```
+b27aa8e feat(catalog): WorkCategory + GoodCategory trees with management UI
+27d31b4 docs(memory): update MemoryManual after invoices+stock-documents E2E + Bug #319-#320
 50fb2d8 test(e2e): add stock-documents spec (23 tests) + fix showDeleted + bulk locator
 17e5e36 test(e2e): add invoices spec (23 tests) + fix invoices search/showDeleted
 2d3eabd fix(tester): Bugs #316-#317 — safeCoeff for DB zero division, button type=button calendar
-2c7c563 docs(memory): record sto-optimize cycle of 2026-06-02 (HEAD a838718 + 5ad9f1b)
-5ad9f1b docs(skills): add soft-delete updateMany with isSystem guard + speculative duplicate-check patterns
-a838718 perf(optimize): updateMany soft-delete + speculative duplicate-check + AbortController in WorksTab
-fbf04a1 fix(tester): Bugs #312-#315 — coefficient=0 guards, useConfirm bulk-actions, type=button, AbortController
-a45c04f fix(review): add focus-visible:opacity-100 to remaining hover-only buttons
-12d6681 fix(review): add focus-visible:opacity-100 to hover-only edit/delete buttons
+50fb2d8 test(e2e): add stock-documents spec (23 tests) + fix showDeleted + bulk locator
 ```
 
 Дата: 2026-06-02
 
 TypeScript: ✅ 0 errors (api, web)
+
+**⚠ ПОТРІБЕН РЕСТАРТ API СЕРВЕРА** — GoodCategoriesModule зареєстровано в app.module.ts але hot reload не підхопив новий модуль. `GET /api/good-categories` → 404 до рестарту.
 
 Latest E2E: 2026-06-02 (sto-e2e-agent, HEAD 2c7c563 → 17 failed + 3 flaky → 162 passed / 5 skipped / 0 failed) — **add-button rename regression in test suite: 11 specs still expected old button labels (`Новий наряд`/`Нове замовлення`/`Новий рахунок`/`Новий документ`/`Додати`/`Деталі`) that were renamed in commits `3785721` ("rename add-button to '+ [Object]'") і `c3cd333` ("drop + prefix") і `a5cf804` (table row "Деталі" → hover icon Pencil with `title="Відкрити деталі"`). Updated locators to new single-noun convention (`Наряд`/`Замовлення`/`Рахунок`/`Документ`/`Контрагент`/`Співробітник`) with `getByRole('button', { name: /^X$/ })` to avoid matching page header `Наряди`/`Контрагенти`. Updated `purchase-orders-receive.spec.ts` to use `row.hover() → button[title="Відкрити деталі"]`. Fixed catalog goods CRUD test: `create()` intentionally reopens modal in EDIT mode after save (calls `openEditGood(newGood)` to allow immediate barcode/UoM editing) — test now expects title transition `Новий товар → Редагування товару` and presses Escape with dirty-guard handling. Fixed `crud-infrastructure` flaky modal title check: wait for `h2:has-text(tabName)` before clicking `Додати` (guarantees Section mount). **NEW root-cause fix:** TanStack Query Devtools FAB at bottom-left was intercepting pointer events for hover-only icon buttons (`Trash2`, `Pencil`) in the last column of tables when Playwright scrolls a row into view at the bottom of the viewport — QueryProvider now reads `localStorage.sto_e2e_disable_devtools` to skip rendering devtools entirely; `setup-auth.ts` writes this flag into storageState so all auth'd specs inherit it.**
 
