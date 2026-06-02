@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+<NEW>  fix(tester): Bugs #316-#317 — coefficient defense-in-depth + calendar type=button
 5ad9f1b docs(skills): add soft-delete updateMany with isSystem guard + speculative duplicate-check patterns to sto-optimize
 a838718 perf(optimize): updateMany soft-delete + speculative duplicate-check + AbortController in WorksTab
 fbf04a1 fix(tester): Bugs #312-#315 — coefficient=0 guards, useConfirm bulk-actions, type=button, AbortController
@@ -24,6 +25,8 @@ c3cd333 fix(ui): remove flex gap-3 from table+panel containers; drop + prefix fr
 Дата: 2026-06-02
 
 TypeScript: ✅ 0 errors (api, web)
+
+Latest tester: 2026-06-02 (sto-tester-agent FULL, HEAD fbf04a1 → +2 bugs Bugs #316-#317) — **post-coefficient-guard defense-in-depth audit: 1 MEDIUM (#316 — `fetchPartCoefficients`/`toPartDto`/`toInvoiceLineDto` використовували `coefficient ?? 1` де nullish coalescing НЕ ловить 0 з legacy DB → `quantity / 0 = Infinity` у RESERVATION/WRITEOFF/RESERVATION_RELEASE; додано `safeCoeff(v)` helper у `work-orders.service.ts` + `invoices.service.ts` що повертає 1 для null/0/NaN/негативних; defense-in-depth до DTO `@Min(0.000001)` бо migration/CSV-import можуть оминути валідацію), 1 LOW (#317 — DraggableSlot/PendingSlotBlock/calView buttons у calendar/page.tsx без `type="button"` → drift із Bug #314 fix). API 525/525, web 218/218, tsc 0 errors api+web. Bug #318 — non-bug (memo deps на confirm правильно покриті через `useCallback` у useConfirm).**
 
 Latest optimize: 2026-06-02 (sto-optimize-agent AUTO, HEAD a838718 → +5 perf fixes + 2 нові SKILL accumulated patterns) — **backend N+1 → 1-RTT pattern для CRUD soft-delete з business-rule guard: goods.remove/brands.remove/units.remove переписано на updateMany з compound where {id, orgId, deletedAt: null}; units.remove має `isSystem: false` у WHERE з cheap fallback findFirst для конкретного UA message (404 vs 400 isSystem); units.update — speculative duplicate-check у Promise.all з tenant guard (queries у Postgres швидкі бо @@unique index hit; -1 RTT у 95% happy path); maintenance-schedules.update — narrow select на existing (drop syncVersion/vehicle/orgId/etc over-fetch). Frontend: WorksTab work-categories useEffect отримав AbortController (Bug #315 pattern) — попереджає setState після unmount. Накопичено 2 нові SKILL патерни (soft-delete з isSystem guard, speculative duplicate-check з business-rule).**
 

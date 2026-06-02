@@ -151,6 +151,7 @@ const DraggableSlot = memo(function DraggableSlot({
       </div>
 
       <button
+        type="button"
         onPointerDown={e => e.stopPropagation()}
         onClick={() => onRemove(slot.id)}
         className="mr-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-white/80 hover:text-white shrink-0"
@@ -249,6 +250,7 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
       </span>
 
       <button
+        type="button"
         onPointerDown={e => e.stopPropagation()}
         onClick={e => {
           e.stopPropagation();
@@ -1203,6 +1205,7 @@ function CalendarPageClient() {
             ).map(([v, label, Icon]) => (
               <button
                 key={v}
+                type="button"
                 onClick={() => {
                   setCalView(v);
                   if (v === 'stats') {

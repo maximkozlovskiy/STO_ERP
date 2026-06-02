@@ -9268,3 +9268,74 @@ useEffect(() => {
 **Статус:** [x] виправлено — додано AbortController; setState guards `signal.aborted`.
 
 ---
+
+## Session 2026-06-02 — Defense-in-depth для coefficient + calendar a11y
+
+## Bug #316 — [MEDIUM] `fetchPartCoefficients` + `toPartDto/toInvoiceLineDto` використовують `?? 1` для coefficient → 0 з БД проходить як 0 → divide-by-zero у runtime
+
+**Файли:**
+
+- `apps/api/src/modules/work-orders/work-orders.service.ts:627,658,689,1243,1278`
+- `apps/api/src/modules/invoices/invoices.service.ts:645`
+
+**Severity:** MEDIUM (DTO `@Min(0.000001)` блокує **новий** coefficient=0 на write-path — але legacy/seed/migration data може містити 0; `coeffMap[part.id] ?? 1` НЕ ловить 0 бо nullish coalescing спрацьовує лише на null/undefined → `quantity / 0 = Infinity` → silent NaN у `stockMovement.quantity`)
+
+**Категорія:** backend / business logic / defense-in-depth
+
+**Опис:** Bug #302 і Bug #312 виправили **DTO-level guard** на запис: `@Min(0.000001)` блокує `coefficient: 0` у `POST /units`, `POST /goods/:id/uoms`, `PATCH /goods/:id/uoms/:uomId`. Це закриває forward-проблему.
+
+Але **на read/use-path** залишається уразливість:
+
+1. **Schema-level** — `Float @default(1)` без `@check coefficient > 0` (Postgres CHECK constraint). DB приймає 0.
+2. **Legacy data** — рядки створені до Bug #302/#312 guards могли мати 0 (рідко, бо seed містить тільки > 0; але якщо адмін колись поміняв через Prisma Studio або direct SQL, value пройде).
+3. **Runtime fallback** — `fetchPartCoefficients` повертає `uomCoeffById[part.unitOfMeasureId] ?? 1` (рядок 1243). Якщо value = `0`, nullish coalescing НЕ спрацьовує (0 ≠ null/undefined). Результат: `coeff = 0` → `part.quantity / coeff = Infinity`.
+
+Аналогічно `toPartDto` рядок 1278 і `toInvoiceLineDto` рядок 645 повертають `selectedUoM?.coefficient ?? baseUoM?.coefficient ?? 1` — якщо `goodUoM.coefficient === 0` у DB → фронт отримує `coefficient: 0`. На фронті `purchase-orders/page.tsx:351` і `stock-documents/page.tsx:372` використовують `l.coefficient || 1` — там 0 коректно замінюється на 1, бо `||` semantics. Але `work-orders.service.ts:634,665,690` робить `part.quantity / coeff` — там `?? 1` НЕ спрацює на 0.
+
+```ts
+const coeff = coeffMap[part.id] ?? 1; // 0 проходить
+quantity: part.quantity / coeff; // → Infinity → stockMovement.quantity = Infinity
+```
+
+**Прецедент:** Bug #198 (calculateSalePrice для cost=0) — те саме поняття: nullable/zero у дільнику + nullish coalescing не лікує 0.
+
+**Очікувана поведінка:** замінити всі `coefficient ?? 1` на helper `coeff > 0 ? coeff : 1` (або utility `safeCoeff(value)`), щоб 0/NaN/від'ємні значення з БД безпечно fallback до 1. Defense-in-depth — не покладатись на DTO-level guard, бо migration/legacy/CSV-import можуть оминути валідацію.
+
+**Статус:** [x] виправлено — додано helper-функції `safeCoeff()` у `work-orders.service.ts` і `invoices.service.ts`, замінено всі 6 місць.
+
+---
+
+## Bug #317 — [LOW] DraggableSlot/PendingSlotBlock/calView buttons у `calendar/page.tsx` без `type="button"` → drift із Bug #314 fix
+
+**Файл:** `apps/web/src/app/(app)/calendar/page.tsx:153,251,1204`
+**Severity:** LOW (наразі calendar page не має `<form>`, тому submit risk нульовий — але це той самий drift class що Bug #314 у `saved-filters-bar`; майбутній рефактор що вбудує calendar fragment у form-context → silent submit)
+**Категорія:** frontend / form semantics / defensive
+
+**Опис:** Bug #314 додав `type="button"` до всіх 5 `<button>` у `SavedFiltersBar`. Той самий клас drift існує у `calendar/page.tsx`:
+
+- Рядок 153: `<button onClick={() => onRemove(slot.id)}` — Trash2 у DraggableSlot
+- Рядок 251: `<button onClick={...onCancel...}` — Plus rotated у PendingSlotBlock
+- Рядок 1204: `<button onClick={() => setCalView(v)}` — view tabs
+
+Всі три без `type="button"` → дефолт `type="submit"`. Calendar поки не у `<form>`, тому реального submit немає, але defensive consistency з рештою кодбази порушена.
+
+**Очікувана поведінка:** додати `type="button"` на всі три (defensive pattern для всіх low-level `<button>` що не submit-ять).
+
+**Статус:** [x] виправлено — `type="button"` додано на всі три.
+
+---
+
+## Bug #318 — [LOW] `ServicesTab/WorksTab/GoodsTab` bulk-delete `confirm` залежність відсутня у memo deps → ESLint react-hooks/exhaustive-deps попередить + stale closure ризик
+
+**Файли:** перевірено для Bug #313 fix — додано `confirm` у deps array, але важливо що це **runtime-stable** через `useCallback` всередині `useConfirm`. Якщо `useConfirm` поверне НЕ-стабільний `confirm` (на майбутнє) → re-create memo щоразу → bulkActions array re-renders → BulkActionsBar re-mount → втрата UX-стану.
+
+**Severity:** LOW (захист на майбутнє; зараз `useConfirm` повертає stable callback через useCallback)
+**Категорія:** frontend / hooks / future-proofing
+
+**Опис:** При перегляді Bug #313 fix у `WorksTab.tsx:227`, `ServicesTab.tsx:211`, `GoodsTab.tsx:403` deps масиви містять `confirm`. Це правильно для ESLint. Захист залежить від того що `useConfirm` повертає stable callback.
+
+**Перевірено:** `useConfirm` повертає `confirm: useCallback(... [])` → stable. OK. Жодних дій не потрібно — це **не bug**, але fix #313 правильний на майбутнє.
+
+**Статус:** не bug, інформативна нотатка про захищеність.
+
+---

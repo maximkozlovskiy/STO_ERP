@@ -24,6 +24,17 @@ const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
   CANCELLED: [],
 };
 
+/**
+ * Bug #316: defense-in-depth для coefficient як дільника.
+ * DTO `@Min(0.000001)` блокує coefficient=0 на write-path, але legacy/seed/CSV-import дані
+ * можуть мати 0. `?? 1` НЕ ловить 0 (nullish coalescing спрацьовує лише на null/undefined).
+ * `safeCoeff` повертає 1 для null/undefined/0/NaN/негативних значень.
+ */
+function safeCoeff(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value) || value <= 0) return 1;
+  return value;
+}
+
 @Injectable()
 export class InvoicesService {
   constructor(
@@ -642,7 +653,8 @@ export class InvoicesService {
       description: l.description,
       unitOfMeasureId: l.unitOfMeasureId ?? null,
       unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? l.good?.unit,
-      coefficient: selectedUoM?.coefficient ?? baseUoM?.coefficient ?? 1,
+      // Bug #316: safeCoeff() для legacy/seed 0 — фронт використовує coefficient як дільник для display↔base conversion.
+      coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
       quantity: l.quantity,
       unitPrice: Number(l.unitPrice),
       vatRate: Number(l.vatRate),

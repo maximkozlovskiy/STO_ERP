@@ -2614,3 +2614,70 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/_next/static/chun
 4. Документація: pre-flight у sto-feature/sto-web SKILL — після route group рефакторингу нагадування «clear .next».
 
 ---
+
+### 2026-06-02 — Nullish coalescing `?? 1` НЕ ловить 0 від БД-дільника без CHECK constraint (Bug #316) — backend, defense-in-depth, divider
+
+**Сигнал:** `coefficient ?? 1` / `divider ?? 1` патерн у read-path/DTO коли value читається з БД-колонки без `@check value > 0` CHECK constraint. DTO `@Min(0.000001)` блокує **новий** 0 на write-path, але:
+
+```bash
+grep -rn "\.coefficient\s*\?\?\s*1\|divider\s*\?\?\s*[0-9]" apps/api/src/modules --include="*.service.ts"
+grep -rn "/\s*[a-z]*coeff\|/\s*[a-z]*divider" apps/api/src/modules --include="*.service.ts"
+# для кожного match — перевірити схему: чи колонка має `@db.Decimal.*` БЕЗ CHECK constraint
+grep -n "coefficient.*Float\|coefficient.*Decimal" packages/database/prisma/schema.prisma
+```
+
+Якщо `coefficient` у схемі — `Float @default(1)` без `@check coefficient > 0` → DB приймає 0. Якщо runtime робить `?? 1` де очікує fallback для 0 — silent data corruption.
+
+**Причина виникнення:**
+
+1. Bug #302/#312 fix додав DTO-level `@Min(0.000001)` — закриває forward-проблему для нових записів через API.
+2. Але історичні дані (seed, прямий SQL, Prisma Studio edit, CSV import) або direct-DB операції оминають DTO.
+3. Розробник пише defensive `?? 1` припускаючи що це покриває «відсутнє значення». Але nullish coalescing спрацьовує **лише** на `null`/`undefined`, не на `0`.
+4. `0` як **дільник** → `Infinity` (для `x / 0` де `x > 0`) або `NaN` (для `0 / 0`).
+5. Prisma не падає при `quantity: Infinity` — Float колонка приймає Infinity → DB має `inf` → подальші запити повертають Infinity → toFixed/JSON.stringify ламається у frontend.
+
+**Підхід до виявлення:**
+
+1. Знайти **кожен дільник** (`a / b` де `b` приходить з БД): `grep -rn "/\s*[a-z]*[Cc]oeff\|/\s*[a-z]*[Dd]ivider\|/\s*[a-z]*[Rr]ate\|/\s*[a-z]*[Mm]ultiplier"`.
+2. Перевірити чи `b` обернений у `?? 1` (nullish, НЕ catch 0) чи `|| 1` (truthy, catches 0).
+3. Перевірити schema чи колонка має `@check` constraint що блокує 0.
+4. Якщо schema приймає 0 + код використовує `??` → bug.
+5. Аналогічно перевірити read-path DTOs: `coefficient: x ?? defaultValue` де `x` приходить з findFirst include — той самий клас.
+
+**Підхід до фіксу:**
+
+Додати helper-функцію у service-файл (або shared utility):
+
+```ts
+function safeCoeff(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value) || value <= 0) return 1;
+  return value;
+}
+```
+
+Замінити всі `value ?? 1` де value — потенційний дільник на `safeCoeff(value)`. Покриває: null, undefined, 0, NaN, негативні, Infinity-у-input.
+
+Альтернатива (менш гнучка): `value || 1` (truthy fallback) — ловить 0/NaN/'', АЛЕ також ловить «правильні» 0-подібні значення (наприклад `0.5` пройде, а легітимний 0 нема де у дільнику). Для `coefficient` `0` ніколи не легітимний → `||` працює, але helper-функція explicit і testable.
+
+**Defense-in-depth:** DTO `@Min(0.000001)` (захищає forward) + `safeCoeff` runtime (захищає legacy/migration/CSV).
+
+**Severity:** MEDIUM. Forward-bug закритий DTO guard → нові запити OK. Але legacy-rows можуть існувати → unpredictable. Не CRITICAL бо seed/UI рідко дозволяють 0 — тільки rare adversarial path. Severity HIGH якщо схема нова + CSV import відомий шлях вводу.
+
+**Де шукати ще:**
+
+- `exchange-rates.service.ts` — `rate` і `coefficient` Decimal без CHECK constraint, використовуються у конвертаціях `amount / rate`
+- `pricing.service.ts` — `markup`, `tier_multiplier` поля у PricingRule
+- `payments.service.ts` — `discount_rate`, `commission_rate` поля
+- Будь-яка `vatRate / 100` — `vatRate` валідація DTO, але runtime defense?
+- Експорт/імпорт (XLSX/CSV) — найчастіший вектор «погані» 0 потрапляють у БД оминаючи DTO
+- Прямі SQL-міграції що бекфілять колонку — забуваються CHECK constraints
+- Sync (mobile WatermelonDB → API) — клієнт відсилає payload, якщо валідація на клієнтській стороні відрізняється від DTO
+
+**Профілактика:**
+
+1. Додати Postgres CHECK constraint у міграцію для кожної колонки що використовується як дільник: `ALTER TABLE "GoodUoM" ADD CONSTRAINT "coefficient_positive" CHECK ("coefficient" > 0);`
+2. У `@sto/shared` додати утиліту `safeNumberRatio(numerator, denominator, fallback = 1)` з default Math.max guard.
+3. ESLint custom rule: `?? 1` на змінній що використовується у `/ X` контексті — warn.
+4. Type-level guard через branded type: `type SafeCoefficient = number & { __brand: 'positive' }` — функція converter validate + brand → запобігає прямому `divide(x, y)` коли `y` не branded.
+
+---

@@ -34,6 +34,17 @@ import {
   WorkOrderPartResponseDto,
 } from './work-orders.dto';
 
+/**
+ * Bug #316: defense-in-depth для coefficient як дільника.
+ * DTO `@Min(0.000001)` блокує coefficient=0 на write-path, але legacy/seed/CSV-import дані
+ * можуть мати 0. `?? 1` НЕ ловить 0 (nullish coalescing спрацьовує лише на null/undefined).
+ * `safeCoeff` повертає 1 для null/undefined/0/NaN/негативних значень — безпечно для `qty / coeff`.
+ */
+function safeCoeff(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value) || value <= 0) return 1;
+  return value;
+}
+
 @Injectable()
 export class WorkOrdersService {
   private readonly logger = new Logger(WorkOrdersService.name);
@@ -1240,7 +1251,10 @@ export class WorkOrdersService {
     const result: Record<string, number> = {};
     for (const part of parts) {
       if (part.unitOfMeasureId) {
-        result[part.id] = uomCoeffById[part.unitOfMeasureId] ?? 1;
+        // Bug #316: defense-in-depth. DTO `@Min(0.000001)` блокує coefficient=0 на write-path,
+        // але legacy/seed/direct-SQL дані можуть мати 0. `?? 1` НЕ ловить 0
+        // (nullish coalescing спрацьовує лише на null/undefined). safeCoeff() ловить 0/NaN/негативні.
+        result[part.id] = safeCoeff(uomCoeffById[part.unitOfMeasureId]);
       }
     }
     return result;
@@ -1275,7 +1289,8 @@ export class WorkOrdersService {
       goodName: part.good?.name,
       unitOfMeasureId: part.unitOfMeasureId ?? null,
       unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? part.good?.unit,
-      coefficient: selectedUoM?.coefficient ?? baseUoM?.coefficient ?? 1,
+      // Bug #316: safeCoeff() для legacy/seed 0 — фронт використовує coefficient як дільник для display↔base conversion.
+      coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
       warehouseId: part.warehouseId,
       quantity: part.quantity,
       price: Number(part.price),
