@@ -11,14 +11,15 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
-function buildParams(filters: Record<string, unknown>): URLSearchParams {
+function buildParams(filters: Record<string, unknown>): string {
   const p = new URLSearchParams();
   for (const [key, val] of Object.entries(filters)) {
-    if (val === null || val === undefined || val === '') continue;
+    if (val === null || val === undefined || val === '' || val === false) continue;
     if (Array.isArray(val)) val.forEach(v => p.append(key, String(v)));
     else p.set(key, String(val));
   }
-  return p;
+  const qs = p.toString();
+  return qs ? `?${qs}` : '';
 }
 
 export function usePaginatedList<T>(
@@ -27,11 +28,11 @@ export function usePaginatedList<T>(
   options?: { staleTime?: number; queryKey?: string },
 ) {
   const { employee } = useAuth();
-  const params = buildParams(filters);
+  const qs = buildParams(filters);
   const key = options?.queryKey ?? endpoint;
   return useQuery<PaginatedResponse<T>>({
     queryKey: [key, filters],
-    queryFn: ({ signal }) => apiFetch(`${endpoint}?${params}`, { signal }),
+    queryFn: ({ signal }) => apiFetch(`${endpoint}${qs}`, { signal }),
     enabled: !!employee,
     staleTime: options?.staleTime ?? 30_000,
     placeholderData: keepPreviousData,
