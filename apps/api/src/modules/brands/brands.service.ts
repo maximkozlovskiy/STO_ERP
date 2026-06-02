@@ -28,7 +28,10 @@ export class BrandsService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.brand.findMany({
         where,
-        orderBy: [{ deletedAt: 'asc' }, { name: 'asc' }],
+        // Bug #306: explicit `nulls: 'first'` для deletedAt — Postgres за замовчуванням
+        // ставить NULL у кінець ASC → активні (deletedAt=NULL) йшли б ПОСЛЕ видалених
+        // у списку showDeleted=true. Парний паттерн до units.service.ts (Bug #296).
+        orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         take: 1000,
       }),
       this.prisma.brand.count({ where }),

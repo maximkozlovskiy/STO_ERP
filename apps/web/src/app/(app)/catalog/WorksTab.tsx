@@ -130,6 +130,8 @@ export default function WorksTab() {
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
+  // Bug #309: in-flight set для restore — блокує дублюючі POST.
+  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   const WORKS_COLUMNS = useMemo(
     () => [
@@ -322,12 +324,22 @@ export default function WorksTab() {
   };
 
   const restore = async (id: string) => {
+    // Bug #309: in-flight guard + clear stale error.
+    if (restoringIds.has(id)) return;
+    setError('');
+    setRestoringIds(prev => new Set(prev).add(id));
     try {
       await apiFetch<Work>(`/works/${id}/restore`, { method: 'POST' });
       load();
       if (features.toastEnabled) toast.success('Роботу відновлено');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка відновлення');
+    } finally {
+      setRestoringIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -627,6 +639,8 @@ export default function WorksTab() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              loading={restoringIds.has(w.id)}
+                              disabled={restoringIds.has(w.id)}
                               onClick={e => {
                                 e.stopPropagation();
                                 void restore(w.id);

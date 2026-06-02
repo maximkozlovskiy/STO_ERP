@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, Pencil, Trash2, Tag, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -43,7 +43,10 @@ export default function BrandsTab() {
   const [form, setForm] = useState({ name: '' });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
+  // Bug #307: race-guard для swiftest showDeleted toggles — outdated response відкидається.
+  const loadReqRef = useRef(0);
 
   const load = useCallback(
     (opts?: { fromCache?: boolean; withDeleted?: boolean }) => {
@@ -55,15 +58,20 @@ export default function BrandsTab() {
         setLoading(false);
       } else setLoading(true);
       const url = withDeleted ? '/brands?limit=200&showDeleted=true' : '/brands?limit=200';
+      const reqId = ++loadReqRef.current;
       apiFetch<{ items: Brand[]; total: number }>(url)
         .then(r => {
+          if (loadReqRef.current !== reqId) return; // stale — newer fetch in flight
           setBrands(r.items);
           if (!withDeleted) setCache('cache:brands', r.items);
         })
         .catch((e: unknown) => {
+          if (loadReqRef.current !== reqId) return;
           if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження');
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (loadReqRef.current === reqId) setLoading(false);
+        });
     },
     [showDeleted],
   );
@@ -134,12 +142,24 @@ export default function BrandsTab() {
   };
 
   const restore = async (id: string) => {
+    // Bug #308: in-flight guard — повторні кліки на restore призводили б до 2..N паралельних
+    // POST; перший update встановлює deletedAt=null, наступні updateMany повертають count=0 →
+    // NotFoundException → false-error у UI. Також ловимо stale error перед action.
+    if (restoringIds.has(id)) return;
+    setError('');
+    setRestoringIds(prev => new Set(prev).add(id));
     try {
       await apiFetch<Brand>(`/brands/${id}/restore`, { method: 'POST' });
       load();
       toast.success('Бренд відновлено');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка відновлення');
+    } finally {
+      setRestoringIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -234,6 +254,8 @@ export default function BrandsTab() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            loading={restoringIds.has(b.id)}
+                            disabled={restoringIds.has(b.id)}
                             onClick={() => void restore(b.id)}
                             className="text-success/70 hover:text-success hover:bg-success/10"
                             title="Відновити"

@@ -121,6 +121,8 @@ export default function ServicesTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+  // Bug #309: in-flight set для restore — блокує дублюючі POST.
+  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   const SERVICES_COLUMNS = useMemo(
     () => [
@@ -209,15 +211,26 @@ export default function ServicesTab() {
   // ── Unsaved guard ────────────────────────────────────────────────────────────
   const servicesFormDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
+  // Bug #307: race-guard для swift showDeleted/q/page toggles — outdated response відкидається.
+  const loadReqRef = useRef(0);
   const load = useCallback(() => {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (debouncedQ) p.set('q', debouncedQ);
     if (showDeleted) p.set('showDeleted', 'true');
+    const reqId = ++loadReqRef.current;
     apiFetch<PaginatedServices>(`/services?${p}`)
-      .then(setServices)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
-      .finally(() => setLoading(false));
+      .then(r => {
+        if (loadReqRef.current !== reqId) return;
+        setServices(r);
+      })
+      .catch((e: unknown) => {
+        if (loadReqRef.current !== reqId) return;
+        setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      })
+      .finally(() => {
+        if (loadReqRef.current === reqId) setLoading(false);
+      });
   }, [page, debouncedQ, showDeleted]);
 
   // Keep ref in sync so servicesActions can call load() without depending on it
@@ -302,12 +315,22 @@ export default function ServicesTab() {
   };
 
   const restore = async (id: string) => {
+    // Bug #309: in-flight guard + clear stale error.
+    if (restoringIds.has(id)) return;
+    setError('');
+    setRestoringIds(prev => new Set(prev).add(id));
     try {
       await apiFetch<Service>(`/services/${id}/restore`, { method: 'POST' });
       load();
       if (features.toastEnabled) toast.success('Послугу відновлено');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка відновлення');
+    } finally {
+      setRestoringIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -510,6 +533,8 @@ export default function ServicesTab() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
+                              loading={restoringIds.has(s.id)}
+                              disabled={restoringIds.has(s.id)}
                               onClick={() => void restore(s.id)}
                               className="text-success/70 hover:text-success hover:bg-success/10"
                               title="Відновити"

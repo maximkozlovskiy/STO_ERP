@@ -26,7 +26,10 @@ export class WorksService {
       this.prisma.work.findMany({
         where,
         include: { category: { select: { name: true } } },
-        orderBy: { name: 'asc' },
+        // Bug #306: при showDeleted=true сортуємо активних (deletedAt=NULL) зверху, видалених — нижче;
+        // в межах кожної групи — за назвою. Postgres дефолтно ставить NULL у кінець ASC → ховаємо
+        // явним `nulls: 'first'`.
+        orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         skip,
         take: query.limit,
       }),

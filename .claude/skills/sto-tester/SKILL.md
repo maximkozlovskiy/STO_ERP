@@ -906,6 +906,57 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-02 — Multi-module soft-delete sprint: pattern dilution (Bug #306) — backend, sprint-replicated bug, code-copy
+
+**Сигнал:** один commit реалізує однакову фічу (наприклад «soft-delete + restore») у N модулях (`brands`, `works`, `goods`, `services`). У ОДНОМУ з них (зазвичай першому або останньому) застосовано WORKAROUND для відомої pitfall (наприклад explicit `nulls: 'first'` для orderBy), у решті N-1 — **скопійовано шаблонний код** з підрядника без цієї поправки. Перший review ловить bug у «новому» (units) модулі, але міграція fix-у у «копії» (brands) пропущена.
+
+**Причина виникнення:** коли feature replicates across modules, перший review + tester цикл захоплюється «новим» модулем що drove pattern (тут — `units` зі своєю partial-unique-index складністю Bug #297). Решта 3 модулі трактуються як «trivial copy» і отримують shallow review — без перевірки чи вже відомі pitfalls (Bug #296 orderBy nulls) застосовані.
+
+**Підхід до виявлення:**
+
+1. Для кожного **multi-module commit** (`git show --stat | grep ".service.ts" | wc -l > 1`) сканувати ВСІ modified service.ts на ВСІ patterns зі SKILL §1.1:
+
+   ```bash
+   # Знайти всі service.ts змінені у останньому feature commit:
+   git diff HEAD~3 HEAD --name-only | grep "modules/.*\.service\.ts$" | while read f; do
+     echo "=== $f ==="
+     grep -nE "orderBy.*deletedAt.*['\"]asc['\"]" "$f" | grep -v "nulls" && \
+       echo "  ⚠ orderBy deletedAt asc без nulls"
+     grep -nE "findFirst|findMany" "$f" | grep -v "deletedAt\|spec\|StockMovement\|SettlementTransaction\|Payment" | \
+       head -5 && echo "  ⚠ можливо без deletedAt: null guard"
+   done
+   ```
+
+2. Не довіряти «pattern matches units» — кожен модуль перевіряти НА ТУ Ж ЛІНІЮ checklist.
+
+3. Парний паттерн на frontend: 4 Tab-component файли одночасно отримали `Eye/EyeOff` toggle + `restore` handler. Кожен має ту саму race+in-flight pitfall (Bug #301, #303). Якщо UnitsTab fix-ed → ОБОВ'ЯЗКОВО replicate у BrandsTab/GoodsTab/ServicesTab/WorksTab.
+
+**Підхід до фіксу:**
+
+1. Запустити сам grep що ловить pattern на ВСІХ файлах одночасно (не один-за-один). Швидше і повніше:
+   ```bash
+   grep -rn "orderBy.*deletedAt.*['\"]asc['\"]" apps/api/src/modules --include="*.service.ts" | grep -v "nulls"
+   ```
+2. Для frontend — grep `apiFetch.*restore.*POST` у `.tsx` + перевірка наявності `restoringIds` state.
+3. Скласти **multi-module checklist** перед review: «Якщо feature додано у >1 модулі — чи кожен має той самий захист?»
+
+**Severity:** HIGH — sprint-bug в одному з модулів пропускається review і потрапляє в production. UX broken тільки для конкретної entity (тут — brands), решта виглядає нормально.
+
+**Де шукати ще:**
+
+- Sprint що додає `audit log` chrono → всі модулі що пишуть → перевірити кожен викликає `auditLog.create`.
+- Sprint що додає `?fields=` projection → кожен toDto має `.pick(fields)`.
+- Sprint що додає `syncVersion` increment → кожен `update`/`create` має `syncVersion: { increment: 1 }`.
+- Sprint що додає `branchId` scope → кожен `findFirst`/`findMany` має `branchId` у where.
+
+**Профілактика:**
+
+1. У `/sto-review` checklist: «Якщо modified service.ts > 1 — повторити grep section §1.1 для КОЖНОГО».
+2. У `/sto-feature` плануванні: для multi-module фіч писати **explicit per-module checklist**, не «zaстосувати ті самі зміни до всіх».
+3. У `/sto-sync` agent: коли і backend і frontend змінюються у N модулях — sync-перевірка має ходити по кожному N.
+
+---
+
 ### 2026-06-02 — Soft-delete filter pill chicken-and-egg (Bug #295) — frontend, UX state, soft-delete
 
 **Сигнал:** `Toggle/FilterPill` що дає доступ до **єдиного режиму перегляду** прихованих даних (`Архів`/`Видалені`/`Корзина`) має умовний рендер `{derivedCount > 0 || isToggled ? <Btn/> : null}`, де `derivedCount` обчислюється з `items.filter(predicate).length`. Якщо у default-режимі (`isToggled=false`) API повертає ЛИШЕ items де predicate=false → `derivedCount=0` завжди → кнопка ніколи не рендериться → користувач не має способу побачити приховане.

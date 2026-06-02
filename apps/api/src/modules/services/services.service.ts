@@ -230,7 +230,9 @@ export class ServicesService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.service.findMany({
         where,
-        orderBy: { name: 'asc' },
+        // Bug #306: показуємо активні (deletedAt=NULL) перед видаленими у showDeleted=true списках.
+        // Postgres дефолтно ставить NULL у кінець ASC → ховаємо явним `nulls: 'first'`.
+        orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         skip,
         take: limit,
         include: {

@@ -8915,3 +8915,132 @@ const restore = async (id: string) => {
 **Статус:** [x] виправлено — guard додано у `restore()`.
 
 ---
+
+## Session 2026-06-02 — Soft delete + restore audit for Brand/Work/Good/Service (HEAD a32bddd)
+
+Auto run after `feat(catalog): unified soft-delete across all catalog entities` (13007b4) +
+`fix(review): harden catalog restore endpoints` (280f576) + `docs(skills)` (a32bddd).
+
+**Scope:**
+
+- backend: brands, works, goods, services modules (showDeleted findAll, restore endpoint, deletedAt in DTO)
+- frontend: BrandsTab, WorksTab, GoodsTab, ServicesTab (Eye/EyeOff toggle, opacity-60 + badge, RotateCcw button)
+
+**Baseline:** TS green (api + web), unit tests 525/525 passed.
+
+---
+
+## Bug #306 — [HIGH] `brands.service.findAll` orderBy без explicit `nulls: 'first'` → видалені бренди показуються ПЕРШИМИ у списку showDeleted
+
+**Файл:** `apps/api/src/modules/brands/brands.service.ts:31`
+**Severity:** HIGH (UX broken silently; TS green, unit tests green бо mocks повертають вже відсортований масив; runtime — порядок інвертовано)
+**Категорія:** backend / orderBy / NULL semantics / soft-delete
+
+**Опис:** `findAll` сортує по `[{ deletedAt: 'asc' }, { name: 'asc' }]` без explicit `nulls: 'first'`:
+
+```ts
+this.prisma.brand.findMany({
+  where,
+  orderBy: [{ deletedAt: 'asc' }, { name: 'asc' }],
+  take: 1000,
+}),
+```
+
+Postgres за замовчуванням ставить `NULL` **у кінець** для ASC. Активні бренди мають `deletedAt = NULL`, видалені — timestamp. Тому при `showDeleted=true`:
+
+- soft-deleted brands (з timestamp) йдуть **ПЕРШИМИ**
+- active brands (NULL) йдуть **ОСТАННІМИ**
+
+Це прямо протилежно до очікуваної UX: користувач відкриває «архів» щоб **знайти** видалене, але бачить активні зверху + видалені знизу. У BrandsTab кнопка обведена primary при showDeleted=true, але список виглядає однаково з активним → плутає.
+
+**Прецедент:** Bug #296 для UnitsTab (units.service.ts вже фіксовано — використовує `{ sort: 'asc', nulls: 'first' }`). Bug #306 — identical паттерн пропущений у brands при sprint copy.
+
+**Очікувана поведінка:** `orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }]` — активні (NULL) зверху, видалені — нижче, в межах кожної групи за назвою.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #307 — [MEDIUM] `BrandsTab` / `GoodsTab` / `ServicesTab` — `load()` без AbortController + race condition при швидкому toggle `showDeleted`
+
+**Файли:**
+
+- `apps/web/src/app/(app)/catalog/BrandsTab.tsx:48-69`
+- `apps/web/src/app/(app)/catalog/GoodsTab.tsx:431-440`
+- `apps/web/src/app/(app)/catalog/ServicesTab.tsx:212-221`
+
+**Severity:** MEDIUM (race condition: stale state after rapid toggle; WorksTab НЕ зачеплено — використовує TanStack Query з вбудованим AbortController через `signal`)
+**Категорія:** frontend / race condition / no abort / stale state
+
+**Опис:** При швидкому переключенні `showDeleted` true/false (наприклад подвійний клік на toggle) запускаються 2 paralel `apiFetch` без AbortSignal. Якщо перший fetch повільніший — він **перезаписує** state від другого:
+
+```ts
+const load = useCallback(() => {
+  setLoading(true);
+  const p = new URLSearchParams({ page: String(page), limit: '30' });
+  if (debouncedQ) p.set('q', debouncedQ);
+  if (showDeleted) p.set('showDeleted', 'true');
+  apiFetch<PaginatedGoods>(`/goods?${p}`)
+    .then(setGoods)   // ← stale response can win the race
+    .catch(...)
+    .finally(...);
+}, [page, debouncedQ, showDeleted]);
+```
+
+Аналогічно у BrandsTab/ServicesTab. У результаті екран показує дані з **попереднього** filter value — користувач натиснув «Сховати видалені», але бачить ще архів.
+
+**Прецедент:** Bug #301 у UnitsTab — fixed.
+
+**Очікувана поведінка:** lastReqRef + abort попереднього inflight; або переходити на TanStack Query (як у WorksTab).
+
+**Статус:** [x] виправлено — додано `loadReqRef` lock-pattern у всі три таб-компоненти; кожен outdated response відкидається.
+
+---
+
+## Bug #308 — [LOW] `BrandsTab.restore()` не очищує попередню помилку + немає in-flight guard → дублюючі POST при швидких кліках
+
+**Файл:** `apps/web/src/app/(app)/catalog/BrandsTab.tsx:136-144`
+**Severity:** LOW (UX: flash false error при дублюючих POST; backend coalesce через updateMany — все коректно, але UI плутає)
+**Категорія:** frontend / state management / no in-flight guard
+
+**Опис:** Той самий патерн що Bug #303 для UnitsTab:
+
+```ts
+const restore = async (id: string) => {
+  try {
+    await apiFetch<Brand>(`/brands/${id}/restore`, { method: 'POST' });
+    load();
+    toast.success('Бренд відновлено');
+  } catch (e: unknown) {
+    setError(e instanceof Error ? e.message : 'Помилка відновлення');
+  }
+};
+```
+
+1. Немає `setError('')` на старті → попередня помилка лишається.
+2. Немає `restoringIds` state → 5 кліків = 5 паралельних POST → перший update (`deletedAt=null`), наступні 4 `updateMany count=0` → NotFoundException 404 → setError.
+
+**Очікувана поведінка:** `setError('')` на старті + `restoringIds: Set<string>` для блокування повторних кліків + disabled кнопка.
+
+**Статус:** [x] виправлено — додано `restoringIds` state + `setError('')`.
+
+---
+
+## Bug #309 — [LOW] `GoodsTab.restoreGood` / `ServicesTab.restore` / `WorksTab.restore` без in-flight guard → дублюючі POST
+
+**Файли:**
+
+- `apps/web/src/app/(app)/catalog/GoodsTab.tsx:562-570`
+- `apps/web/src/app/(app)/catalog/WorksTab.tsx:324-332`
+- `apps/web/src/app/(app)/catalog/ServicesTab.tsx:304-312`
+
+**Severity:** LOW (Bug #303 паттерн повторюється для всіх 3 таб-компонентів)
+**Категорія:** frontend / state management / no in-flight guard
+
+**Опис:** Той самий паттерн що Bug #303 і #308 — restore без `setError('')` + без блокування повторних кліків.
+
+**Очікувана поведінка:** додати `restoringIds: Set<string>` + disabled кнопка + `setError('')`.
+
+**Статус:** [x] виправлено
+
+---

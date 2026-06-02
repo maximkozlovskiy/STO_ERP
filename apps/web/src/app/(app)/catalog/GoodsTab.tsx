@@ -241,6 +241,8 @@ export default function GoodsTab() {
   const [editGoodError, setEditGoodError] = useState('');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [batchViewerGoodId, setBatchViewerGoodId] = useState<string | null>(null);
+  // Bug #309: in-flight set для restore — блокує дублюючі POST.
+  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   // ── Edit modal: barcodes tab ─────────────────────────────────────────────────
   const [modalBarcodes, setModalBarcodes] = useState<GoodBarcode[]>([]);
@@ -428,15 +430,26 @@ export default function GoodsTab() {
     });
   }, []);
 
+  // Bug #307: race-guard для swift showDeleted/q/page toggles — outdated response відкидається.
+  const loadReqRef = useRef(0);
   const load = useCallback(() => {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (debouncedQ) p.set('q', debouncedQ);
     if (showDeleted) p.set('showDeleted', 'true');
+    const reqId = ++loadReqRef.current;
     apiFetch<PaginatedGoods>(`/goods?${p}`)
-      .then(setGoods)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
-      .finally(() => setLoading(false));
+      .then(r => {
+        if (loadReqRef.current !== reqId) return;
+        setGoods(r);
+      })
+      .catch((e: unknown) => {
+        if (loadReqRef.current !== reqId) return;
+        setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      })
+      .finally(() => {
+        if (loadReqRef.current === reqId) setLoading(false);
+      });
   }, [page, debouncedQ, showDeleted]);
 
   // Keep ref in sync so goodsActions can call load() without depending on it
@@ -560,12 +573,22 @@ export default function GoodsTab() {
   };
 
   const restoreGood = async (id: string) => {
+    // Bug #309: in-flight guard + clear stale error.
+    if (restoringIds.has(id)) return;
+    setError('');
+    setRestoringIds(prev => new Set(prev).add(id));
     try {
       await apiFetch<Good>(`/goods/${id}/restore`, { method: 'POST' });
       load();
       if (features.toastEnabled) toast.success('Товар відновлено');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка відновлення');
+    } finally {
+      setRestoringIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -1060,6 +1083,8 @@ export default function GoodsTab() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              loading={restoringIds.has(g.id)}
+                              disabled={restoringIds.has(g.id)}
                               onClick={e => {
                                 e.stopPropagation();
                                 void restoreGood(g.id);
