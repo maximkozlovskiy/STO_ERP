@@ -684,7 +684,7 @@ export default function WorksTab() {
                                   e.stopPropagation();
                                   openEditWork(w);
                                 }}
-                                className="opacity-0 group-hover:opacity-100"
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
@@ -697,7 +697,7 @@ export default function WorksTab() {
                                 }}
                                 disabled={deletingId === w.id}
                                 loading={deletingId === w.id}
-                                className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                                 title="Помітити на видалення"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />

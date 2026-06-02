@@ -69,7 +69,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
           </button>
           <button
             onClick={() => onRemove(preset.id)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-muted-foreground hover:text-destructive"
+            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity p-0.5 rounded text-muted-foreground hover:text-destructive"
             aria-label={`Видалити фільтр "${preset.name}"`}
           >
             <X className="h-3 w-3" />

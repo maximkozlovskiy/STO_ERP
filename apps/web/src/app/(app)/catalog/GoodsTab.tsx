@@ -1101,7 +1101,7 @@ export default function GoodsTab() {
                                   e.stopPropagation();
                                   openEditGood(g);
                                 }}
-                                className="opacity-0 group-hover:opacity-100"
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
@@ -1112,7 +1112,7 @@ export default function GoodsTab() {
                                   e.stopPropagation();
                                   setConfirmDeleteId(g.id);
                                 }}
-                                className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                                 title="Помітити на видалення"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -2120,7 +2120,7 @@ export default function GoodsTab() {
                                           e.stopPropagation();
                                           editGood && void deleteUoM(editGood.id, u.id);
                                         }}
-                                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                                         title="Видалити"
                                       >
                                         <X className="h-3.5 w-3.5" />

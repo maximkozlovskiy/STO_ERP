@@ -547,14 +547,14 @@ export default function ServicesTab() {
                                 size="icon-sm"
                                 title="Редагувати"
                                 onClick={() => openEdit(s)}
-                                className="opacity-0 group-hover:opacity-100"
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
-                                className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                                 title="Помітити на видалення"
                                 onClick={() => void remove(s.id)}
                                 disabled={deletingId === s.id}

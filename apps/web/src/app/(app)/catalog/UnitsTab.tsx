@@ -501,7 +501,7 @@ export default function UnitsTab() {
                                 setEditError('');
                                 setEditingId(u.id);
                               }}
-                              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground"
                               title="Редагувати"
                             >
                               <Pencil className="h-3.5 w-3.5" />
@@ -513,7 +513,7 @@ export default function UnitsTab() {
                                 e.stopPropagation();
                                 void remove(u.id);
                               }}
-                              className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                               title="Позначити на видалення"
                             >
                               <Trash2 className="h-3.5 w-3.5" />

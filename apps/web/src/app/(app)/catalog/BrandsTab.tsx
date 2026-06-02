@@ -268,7 +268,7 @@ export default function BrandsTab() {
                               variant="ghost"
                               size="sm"
                               onClick={() => openEdit(b)}
-                              className="opacity-0 group-hover:opacity-100"
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -277,7 +277,7 @@ export default function BrandsTab() {
                               size="sm"
                               loading={deletingId === b.id}
                               onClick={() => void remove(b.id)}
-                              className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                               title="Помітити на видалення"
                             >
                               <Trash2 className="h-3.5 w-3.5" />

@@ -153,7 +153,7 @@ const DraggableSlot = memo(function DraggableSlot({
       <button
         onPointerDown={e => e.stopPropagation()}
         onClick={() => onRemove(slot.id)}
-        className="mr-1 opacity-0 group-hover:opacity-100 text-white/80 hover:text-white shrink-0"
+        className="mr-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-white/80 hover:text-white shrink-0"
         aria-label="Видалити слот"
       >
         <Trash2 className="h-3 w-3" />
@@ -254,7 +254,7 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
           e.stopPropagation();
           onCancel();
         }}
-        className="mr-1 opacity-0 group-hover:opacity-100 text-primary/70 hover:text-primary shrink-0"
+        className="mr-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-primary/70 hover:text-primary shrink-0"
         aria-label="Скасувати"
       >
         <Plus className="h-3 w-3 rotate-45" />

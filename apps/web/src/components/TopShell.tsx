@@ -587,7 +587,7 @@ export function TopShell({ children }: { children: ReactNode }) {
               'h-5 w-5 flex items-center justify-center rounded transition-opacity shrink-0',
               isBookmarked
                 ? 'opacity-100 text-amber-400'
-                : 'opacity-0 group-hover:opacity-100 text-sidebar-muted hover:text-amber-400',
+                : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-sidebar-muted hover:text-amber-400',
             )}
             title={isBookmarked ? 'Видалити закладку' : 'Додати закладку'}
           >
