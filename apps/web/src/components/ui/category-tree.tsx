@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import type { MouseEvent } from 'react';
 import { ChevronRight, ChevronDown, Settings2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -56,7 +57,7 @@ function TreeNode({
     onSelect(isSelected ? null : node.id);
   }, [isInactive, isSelected, node.id, onSelect]);
 
-  const handleToggle = useCallback((e: React.MouseEvent) => {
+  const handleToggle = useCallback((e: MouseEvent) => {
     e.stopPropagation();
     setExpanded(p => !p);
   }, []);
@@ -75,9 +76,11 @@ function TreeNode({
             handleClick();
           }
         }}
+        // Inline style замість динамічного `ml-${n}` — Tailwind JIT не сканує
+        // інтерпольовані рядки, тож відступ не застосовувався б у production build.
+        style={depth > 0 ? { marginLeft: `${Math.min(depth * 12, 36)}px` } : undefined}
         className={cn(
           'flex items-center gap-1 rounded-md px-2 py-1 text-[13px] cursor-pointer select-none transition-colors',
-          depth > 0 && `ml-${Math.min(depth * 3, 9)}`,
           isSelected && 'bg-primary text-primary-foreground',
           !isSelected && isHighlighted && 'bg-primary/10 text-primary',
           !isSelected && !isHighlighted && !isInactive && 'hover:bg-secondary text-foreground',

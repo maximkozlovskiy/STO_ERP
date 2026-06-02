@@ -111,7 +111,11 @@ export class WorkCategoriesService {
       select: { id: true },
     });
     if (!item) throw new NotFoundException('Категорію не знайдено');
-    const updated = await this.prisma.workCategory.update({ where: { id }, data: { isActive } });
+    // Defense-in-depth: compound where ({ id, orgId }) — tenant guard на write-level.
+    const updated = await this.prisma.workCategory.update({
+      where: { id, orgId },
+      data: { isActive },
+    });
     await this.cache.del(cacheKey(orgId));
     return { ...this.toDto(updated), children: [] };
   }
@@ -120,6 +124,8 @@ export class WorkCategoriesService {
     const links = await this.prisma.workGoodCategoryLink.findMany({
       where: { orgId, workCategoryId: id },
       select: { goodCategoryId: true },
+      // OOM guard — links per work category typovo 5-50; cap високий щоб покрити "Універсал".
+      take: 500,
     });
     return links.map(l => l.goodCategoryId);
   }

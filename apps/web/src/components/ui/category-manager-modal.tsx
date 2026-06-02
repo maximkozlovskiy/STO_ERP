@@ -1,15 +1,23 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Plus, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { ChevronRight, ChevronDown, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import type { CategoryNode } from '@/components/ui/category-tree';
+
+type ConfirmFn = (opts: {
+  title: string;
+  message?: string;
+  variant?: 'default' | 'destructive';
+}) => Promise<boolean>;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +41,7 @@ function ManagerNode({
   onToggleActive,
   saving,
   setSaving,
+  confirm,
 }: {
   node: CategoryNode;
   depth: number;
@@ -41,6 +50,7 @@ function ManagerNode({
   onToggleActive: (id: string, isActive: boolean) => Promise<void>;
   saving: string | null;
   setSaving: (id: string | null) => void;
+  confirm: ConfirmFn;
 }) {
   const features = useUiFeatures();
   const [expanded, setExpanded] = useState(depth < 1);
@@ -97,7 +107,15 @@ function ManagerNode({
   }, [newName, node.id, endpoint, features.toastEnabled, onChanged, setSaving]);
 
   const handleDelete = useCallback(async () => {
-    if (!window.confirm(`Видалити "${node.name}"? Товари/роботи стануть без категорії.`)) return;
+    // Bug #313 pattern: useConfirm замість window.confirm — узгоджений UX.
+    if (
+      !(await confirm({
+        title: `Видалити "${node.name}"?`,
+        message: 'Товари/роботи стануть без категорії.',
+        variant: 'destructive',
+      }))
+    )
+      return;
     setSaving(node.id + '-del');
     try {
       await apiFetch(`${endpoint}/${node.id}`, { method: 'DELETE' });
@@ -107,7 +125,7 @@ function ManagerNode({
       if (features.toastEnabled) toast.error(e instanceof Error ? e.message : 'Помилка');
       setSaving(null);
     }
-  }, [node.id, node.name, endpoint, features.toastEnabled, onChanged, setSaving]);
+  }, [node.id, node.name, endpoint, features.toastEnabled, onChanged, setSaving, confirm]);
 
   const isSavingThis =
     saving === node.id || saving === node.id + '-add' || saving === node.id + '-del';
@@ -261,6 +279,7 @@ function ManagerNode({
               onToggleActive={onToggleActive}
               saving={saving}
               setSaving={setSaving}
+              confirm={confirm}
             />
           ))}
         </ul>
@@ -279,6 +298,7 @@ export function CategoryManagerModal({
   onChanged,
 }: CategoryManagerModalProps) {
   const features = useUiFeatures();
+  const { confirm, dialogProps } = useConfirm();
   const [newRootName, setNewRootName] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
   const endpoint = type === 'work' ? '/work-categories' : '/good-categories';
@@ -368,12 +388,14 @@ export function CategoryManagerModal({
                   onToggleActive={handleToggleActive}
                   saving={saving}
                   setSaving={setSaving}
+                  confirm={confirm}
                 />
               ))}
             </ul>
           )}
         </div>
       </div>
+      <ConfirmDialog {...dialogProps} />
     </Modal>
   );
 }

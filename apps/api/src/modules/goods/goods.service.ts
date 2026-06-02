@@ -163,9 +163,14 @@ export class GoodsService {
    */
   private async validateFkReferences(
     orgId: string,
-    dto: { brandId?: string | null; unitId?: string | null; preferredSupplierId?: string | null },
+    dto: {
+      brandId?: string | null;
+      unitId?: string | null;
+      preferredSupplierId?: string | null;
+      goodCategoryId?: string | null;
+    },
   ): Promise<void> {
-    const [brand, unit, supplier] = await Promise.all([
+    const [brand, unit, supplier, goodCategory] = await Promise.all([
       dto.brandId
         ? this.prisma.brand.findFirst({
             where: { id: dto.brandId, orgId, deletedAt: null },
@@ -184,11 +189,21 @@ export class GoodsService {
             select: { id: true },
           })
         : Promise.resolve(null),
+      // sto-review: goodCategoryId — повторюємо patter Bug #161 для нового FK.
+      // Без перевірки cross-tenant ID пройде сирий DB FK constraint (он-prem deploy).
+      dto.goodCategoryId
+        ? this.prisma.goodCategory.findFirst({
+            where: { id: dto.goodCategoryId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (dto.brandId && !brand) throw new BadRequestException('Бренд не знайдено');
     if (dto.unitId && !unit) throw new BadRequestException('Одиницю виміру не знайдено');
     if (dto.preferredSupplierId && !supplier)
       throw new BadRequestException('Постачальника не знайдено');
+    if (dto.goodCategoryId && !goodCategory)
+      throw new BadRequestException('Категорію товарів не знайдено');
   }
 
   // ─── Barcodes ────────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import {
@@ -73,8 +74,10 @@ export class GoodCategoriesService {
     if (!existing) throw new NotFoundException('Категорію товарів не знайдено');
     if (dto.parentId && !parent) throw new NotFoundException('Батьківську категорію не знайдено');
 
+    // Defense-in-depth: compound where ({ id, orgId }) — Prisma 5 пропускає
+    // tenant-фільтр у WhereUniqueInput; парує з work-categories.service.ts:89.
     const item = await this.prisma.goodCategory.update({
-      where: { id },
+      where: { id, orgId },
       data: dto,
     });
     await this.cache.del(cacheKey(orgId));
@@ -92,16 +95,21 @@ export class GoodCategoriesService {
     const allIds = [id, ...descendants];
 
     // Перенести товари цих категорій в null (без категорії)
-    await this.prisma.$transaction([
-      this.prisma.good.updateMany({
-        where: { orgId, goodCategoryId: { in: allIds }, deletedAt: null },
-        data: { goodCategoryId: null },
-      }),
-      this.prisma.goodCategory.updateMany({
-        where: { id: { in: allIds }, orgId },
-        data: { deletedAt: new Date() },
-      }),
-    ]);
+    // sto-review: interactive $transaction із явним timeout — для категорій з великою
+    // кількістю товарів (універсал, мастила). Array form не підтримує timeout option.
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.good.updateMany({
+          where: { orgId, goodCategoryId: { in: allIds }, deletedAt: null },
+          data: { goodCategoryId: null },
+        });
+        await tx.goodCategory.updateMany({
+          where: { id: { in: allIds }, orgId },
+          data: { deletedAt: new Date() },
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     await this.cache.del(cacheKey(orgId));
   }
@@ -117,8 +125,9 @@ export class GoodCategoriesService {
     });
     if (!item) throw new NotFoundException('Категорію товарів не знайдено');
 
+    // Defense-in-depth: compound where ({ id, orgId }) — tenant guard на write-level.
     const updated = await this.prisma.goodCategory.update({
-      where: { id },
+      where: { id, orgId },
       data: { isActive },
     });
     await this.cache.del(cacheKey(orgId));
@@ -129,6 +138,8 @@ export class GoodCategoriesService {
     const links = await this.prisma.workGoodCategoryLink.findMany({
       where: { orgId, goodCategoryId: id },
       select: { workCategoryId: true },
+      // OOM guard — links per category typovo 5-50; cap високий щоб покрити "Універсал".
+      take: 500,
     });
     return links.map(l => l.workCategoryId);
   }
