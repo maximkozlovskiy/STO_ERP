@@ -493,7 +493,7 @@ export default function WorksTab() {
               setModal(true);
             }}
           >
-            + Робота
+            Робота
           </Button>
         </div>
       </div>
@@ -508,7 +508,7 @@ export default function WorksTab() {
         />
       )}
 
-      <div className="flex gap-3">
+      <div className="flex">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
           <Table>
             <TableHeader>

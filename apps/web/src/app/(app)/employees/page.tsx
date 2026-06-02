@@ -862,7 +862,7 @@ export default function EmployeesPage() {
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           <Button onClick={openCreate} leftIcon={<Plus className="h-4 w-4" />}>
-            + Співробітник
+            Співробітник
           </Button>
         </div>
       </div>
@@ -879,7 +879,7 @@ export default function EmployeesPage() {
       )}
 
       {/* Table + DetailPanel */}
-      <div className="flex gap-3 flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0">
         <div className="flex-1 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
           <Table>
             <TableHeader>

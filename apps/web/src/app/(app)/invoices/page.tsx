@@ -634,7 +634,7 @@ export default function InvoicesPage() {
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            + Рахунок
+            Рахунок
           </Button>
         </div>
       </div>
@@ -651,7 +651,7 @@ export default function InvoicesPage() {
       )}
 
       {/* Table + DetailPanel */}
-      <div className="flex gap-3">
+      <div className="flex">
         <div className="flex-1 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
           <Table>
             <TableHeader>

@@ -937,7 +937,7 @@ export default function GoodsTab() {
               setModal(true);
             }}
           >
-            + Товар
+            Товар
           </Button>
         </div>
       </div>

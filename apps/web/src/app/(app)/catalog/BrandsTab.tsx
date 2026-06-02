@@ -186,7 +186,7 @@ export default function BrandsTab() {
             {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
           <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-            + Бренд
+            Бренд
           </Button>
         </div>
       </div>

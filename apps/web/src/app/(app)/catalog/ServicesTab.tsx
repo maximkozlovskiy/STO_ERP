@@ -398,7 +398,7 @@ export default function ServicesTab() {
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-            + Послуга
+            Послуга
           </Button>
         </div>
       </div>
@@ -413,7 +413,7 @@ export default function ServicesTab() {
         />
       )}
 
-      <div className="flex gap-3">
+      <div className="flex">
         <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
           <Table>
             <TableHeader>

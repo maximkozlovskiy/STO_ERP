@@ -621,7 +621,7 @@ export default function StockDocumentsPage() {
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            + Документ
+            Документ
           </Button>
         </div>
       </div>
@@ -638,7 +638,7 @@ export default function StockDocumentsPage() {
       )}
 
       {/* Table + DetailPanel */}
-      <div className="flex gap-3">
+      <div className="flex">
         <div className="flex-1 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
           <Table>
             <TableHeader>
