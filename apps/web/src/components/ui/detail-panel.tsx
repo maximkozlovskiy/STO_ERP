@@ -71,12 +71,12 @@ export function DetailPanel({
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
-        <div className="min-w-0">
-          <h2 className="text-[14px] font-semibold text-foreground truncate leading-tight">
+        <div className="min-w-0 flex items-baseline gap-1.5 overflow-hidden">
+          <h2 className="text-[13px] font-semibold text-foreground truncate leading-tight shrink-0 max-w-[60%]">
             {title}
           </h2>
           {subtitle && (
-            <p className="text-[12px] text-muted-foreground mt-0.5 truncate">{subtitle}</p>
+            <span className="text-[11px] text-muted-foreground truncate">{subtitle}</span>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-2">
