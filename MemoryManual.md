@@ -9,12 +9,11 @@
 ## Останній commit
 
 ```
+72d0158 fix(sync): align GoodsTab with GoodCategoryId API contract
 b27aa8e feat(catalog): WorkCategory + GoodCategory trees with management UI
 27d31b4 docs(memory): update MemoryManual after invoices+stock-documents E2E + Bug #319-#320
 50fb2d8 test(e2e): add stock-documents spec (23 tests) + fix showDeleted + bulk locator
 17e5e36 test(e2e): add invoices spec (23 tests) + fix invoices search/showDeleted
-2d3eabd fix(tester): Bugs #316-#317 — safeCoeff for DB zero division, button type=button calendar
-50fb2d8 test(e2e): add stock-documents spec (23 tests) + fix showDeleted + bulk locator
 ```
 
 Дата: 2026-06-02
