@@ -541,7 +541,7 @@ export default function StockDocumentsPage() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-3">
         {/* Type filters */}
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">

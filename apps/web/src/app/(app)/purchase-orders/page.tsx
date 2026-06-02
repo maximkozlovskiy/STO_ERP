@@ -627,7 +627,7 @@ export default function PurchaseOrdersPage() {
       )}
 
       {/* Filters row */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-3">
         {/* Search */}
         <div className="relative w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -678,7 +678,7 @@ export default function PurchaseOrdersPage() {
       </div>
 
       {/* Status filters */}
-      <div className="flex flex-wrap gap-1.5 mb-5">
+      <div className="flex flex-wrap gap-1.5 mb-3">
         {statuses.map(s => (
           <button
             key={s}

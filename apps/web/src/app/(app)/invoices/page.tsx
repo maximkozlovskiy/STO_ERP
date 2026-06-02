@@ -582,7 +582,7 @@ export default function InvoicesPage() {
       )}
 
       {/* Status filters */}
-      <div className="flex flex-wrap gap-1.5 mb-4">
+      <div className="flex flex-wrap gap-1.5 mb-3">
         {statuses.map(s => (
           <button
             key={s}
@@ -604,7 +604,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Search + Columns */}
-      <div className="mb-5 flex items-center gap-3">
+      <div className="mb-3 flex items-center gap-3">
         <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input

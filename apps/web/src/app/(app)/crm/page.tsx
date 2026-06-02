@@ -657,7 +657,7 @@ export default function CrmPage() {
       )}
 
       {/* Filters */}
-      <div className="flex gap-3 mb-5 flex-wrap">
+      <div className="flex gap-3 mb-3 flex-wrap">
         <Input
           value={search}
           onChange={e => {
