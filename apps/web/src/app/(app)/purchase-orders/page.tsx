@@ -626,6 +626,28 @@ export default function PurchaseOrdersPage() {
         />
       )}
 
+      {/* Status filters */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {statuses.map(s => (
+          <button
+            key={s}
+            onClick={() => {
+              setStatus(s);
+              setPage(1);
+              setActiveSavedFilterId(null);
+            }}
+            className={cn(
+              'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
+              status === s
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
+            )}
+          >
+            {s ? STATUS_LABELS[s] : 'Всі'}
+          </button>
+        ))}
+      </div>
+
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-3 mb-3">
         {/* Search */}
@@ -675,28 +697,6 @@ export default function PurchaseOrdersPage() {
             Замовлення
           </Button>
         </div>
-      </div>
-
-      {/* Status filters */}
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        {statuses.map(s => (
-          <button
-            key={s}
-            onClick={() => {
-              setStatus(s);
-              setPage(1);
-              setActiveSavedFilterId(null);
-            }}
-            className={cn(
-              'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-              status === s
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
-            )}
-          >
-            {s ? STATUS_LABELS[s] : 'Всі'}
-          </button>
-        ))}
       </div>
 
       {/* Bulk actions */}
