@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+a45c04f fix(review): add focus-visible:opacity-100 to remaining hover-only buttons
 12d6681 fix(review): add focus-visible:opacity-100 to hover-only edit/delete buttons
 203786d fix(crm,employees): hover-only edit/delete buttons + fix notes/contactPerson init in edit form
 7cab569 fix(review): gate employees DetailPanel on toggle + cleanup unused imports
@@ -18,14 +19,13 @@ c3cd333 fix(ui): remove flex gap-3 from table+panel containers; drop + prefix fr
 10aa96e feat(work-orders): add DetailPanelToggle to toolbar
 0c781ce fix(ui): unify right toolbar button order across all list pages
 804c6e3 fix(catalog): icon-only Eye/EyeOff button, unified right toolbar order
-db8b301 fix(catalog): replace units filter pills with Eye/EyeOff toggle
 ```
 
 Дата: 2026-06-02
 
 TypeScript: ✅ 0 errors (api, web)
 
-Latest review: 2026-06-02 (sto-review-agent, HEAD 12d6681 ← 203786d, scope: hover-only action buttons in CRM + Employees) — **a11y fix: existing `opacity-0 group-hover:opacity-100` pattern hid action buttons (Edit, Delete) from keyboard navigation — Tab focus did not reveal the button. Added `focus-visible:opacity-100` to both buttons in crm/page.tsx and employees/page.tsx per skill rule §8.5. The notes/contactPerson openEdit init fix in 203786d is correct — Counterparty interface has these fields (optional `string | null`), form state defaults are `''`, both create (line 347-348) and update (line 499-500) already send them. No regressions, tsc 0 errors web. Note: rest of codebase (BrandsTab, WorksTab, GoodsTab, UnitsTab, ServicesTab, calendar, settings, saved-filters-bar, TopShell) still uses bare `group-hover:opacity-100` without focus-visible — out of scope for this review (separate sweep needed).**
+Latest review: 2026-06-02 (sto-review-agent, HEAD a45c04f ← 12d6681, scope: focus-visible a11y sweep across remaining hover-only buttons) — **completes the focus-visible:opacity-100 sweep started in 12d6681. Fixed 10 sites across 8 files: catalog/BrandsTab.tsx (delete), catalog/WorksTab.tsx (delete), catalog/ServicesTab.tsx (delete), catalog/GoodsTab.tsx (table delete + UoM delete), catalog/UnitsTab.tsx (edit + delete), calendar/page.tsx (slot remove + cancel), components/TopShell.tsx (sidebar bookmark star), components/ui/saved-filters-bar.tsx (remove preset). Без focus-visible — клавіатурна навігація через Tab не показує кнопку, фічі недоступні з клавіатури (WCAG 2.1.1 fail). notification-center.tsx уже використовує `focus:opacity-100` (валідно за §8.5), settings/page.tsx zoom hint має `pointer-events-none` → не інтерактивний. Cross-cutting checks: 0 `React.X` namespace, 0 `any`, 0 `console.log` у змінених файлах. tsc 0 errors api+web.**
 
 Latest review: 2026-06-02 (sto-review-agent, HEAD 7cab569 ← 54217fd, scope: list-page UI toolbar refactor) — **uniform right-toolbar order `[Eye][SaveFilter][Columns][Panel][AddButton]` across 11 list pages (work-orders, crm, employees, invoices, purchase-orders, stock-documents, catalog Brands/Goods/Services/Units/Works): 1 IMPORTANT bug — `employees/page.tsx` DetailPanel `open={!!selectedEmp}` ignored toggle state → panel stayed visible after user disabled it via DetailPanelToggle. Fixed by adding `&& detailPanel.enabled`. 3 SUGGESTIONS — removed unused `PanelSection` import in crm/page.tsx, unused `activeCount/deletedCount` locals in catalog/UnitsTab.tsx (leftover from filter-pills era), redundant `flex gap-0` → `flex` in GoodsTab table+panel container. Bonus: work-orders/page.tsx add-button label was still `+ Наряд` (missed by c3cd333) → fixed to `Наряд`. tsc 0 errors web.**
 
