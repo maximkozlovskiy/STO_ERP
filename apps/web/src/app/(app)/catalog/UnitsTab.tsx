@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
+import { TemplatePickerModal, type SystemTemplate } from '@/components/ui/template-picker-modal';
 import {
   Table,
   TableHeader,
@@ -157,6 +158,7 @@ export default function UnitsTab() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [templatePicker, setTemplatePicker] = useState(false);
 
   // inline edit state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -350,6 +352,9 @@ export default function UnitsTab() {
           >
             {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
+          <Button variant="outline" onClick={() => setTemplatePicker(true)}>
+            З шаблону
+          </Button>
           <Button
             leftIcon={<Plus className="h-4 w-4" />}
             onClick={() => {
@@ -361,6 +366,23 @@ export default function UnitsTab() {
           </Button>
         </div>
       </div>
+
+      <TemplatePickerModal
+        open={templatePicker}
+        onClose={() => setTemplatePicker(false)}
+        entityType="unit_of_measure"
+        title="Додати одиниці виміру з шаблону"
+        existingKeys={units.filter(u => !u.deletedAt).map(u => u.shortName)}
+        onImport={async (templates: SystemTemplate[]) => {
+          for (const t of templates) {
+            await apiFetch<Unit>('/units', {
+              method: 'POST',
+              body: JSON.stringify(t.data),
+            });
+          }
+          load();
+        }}
+      />
 
       <div className="border border-border rounded-xl bg-surface overflow-auto">
         <Table>

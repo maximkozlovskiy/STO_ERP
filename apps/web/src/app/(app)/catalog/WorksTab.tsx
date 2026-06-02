@@ -7,6 +7,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, BookOpen, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
+import { TemplatePickerModal, type SystemTemplate } from '@/components/ui/template-picker-modal';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -94,6 +95,7 @@ export default function WorksTab() {
   const qc = useQueryClient();
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCat, setSelectedCat] = useState('');
+  const [categoryTemplatePicker, setCategoryTemplatePicker] = useState(false);
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
@@ -475,6 +477,9 @@ export default function WorksTab() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button variant="outline" onClick={() => setCategoryTemplatePicker(true)}>
+            Категорії
+          </Button>
           <Button
             leftIcon={<Plus className="h-4 w-4" />}
             onClick={() => {
@@ -495,6 +500,27 @@ export default function WorksTab() {
           </Button>
         </div>
       </div>
+
+      <TemplatePickerModal
+        open={categoryTemplatePicker}
+        onClose={() => setCategoryTemplatePicker(false)}
+        entityType="work_category"
+        title="Додати категорії робіт з шаблону"
+        existingKeys={flat.map(c => c.name)}
+        onImport={async (templates: SystemTemplate[]) => {
+          for (const t of templates) {
+            await apiFetch<Category>('/work-categories', {
+              method: 'POST',
+              body: JSON.stringify(t.data),
+            });
+          }
+          // reload categories
+          apiFetch<Category[]>('/work-categories').then(d => {
+            setCategories(d);
+            setCache('cache:work-categories', d);
+          });
+        }}
+      />
 
       {features.bulkActionsEnabled && (
         <BulkActionsBar

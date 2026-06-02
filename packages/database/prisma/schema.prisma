@@ -1993,3 +1993,21 @@ model UserPreference {
   @@index([orgId, employeeId])
   @@map("user_preferences")
 }
+
+// ─── SYSTEM TEMPLATES ────────────────────────────────────
+
+// Глобальні шаблони довідників — не per-org, заповнюються через seed.
+// Використовуються як джерело для масового заповнення:
+// валюти, одиниці виміру, методи оплати, категорії робіт.
+model SystemTemplate {
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType String // 'currency' | 'unit_of_measure' | 'payment_method' | 'work_category'
+  key        String // унікальний ключ: 'USD', 'шт', 'cash', 'MAINTENANCE'
+  name       String // відображувана назва для UI
+  data       Json   // повний набір полів для створення запису
+  sortOrder  Int    @default(0)
+
+  @@unique([entityType, key])
+  @@index([entityType, sortOrder])
+  @@map("system_templates")
+}

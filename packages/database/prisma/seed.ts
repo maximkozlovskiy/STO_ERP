@@ -485,6 +485,400 @@ async function main() {
   });
   console.warn('  Goods: 2');
 
+  // ─── SystemTemplates ─────────────────────────────────────────────────────────
+  const systemTemplates = [
+    // Currencies
+    {
+      entityType: 'currency',
+      key: 'UAH',
+      name: 'Гривня',
+      sortOrder: 1,
+      data: {
+        code: 'UAH',
+        name: 'Гривня',
+        symbol: '₴',
+        fullName: 'Гривня',
+        internationalName: 'Ukrainian Hryvnia',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'USD',
+      name: 'Долар США',
+      sortOrder: 2,
+      data: {
+        code: 'USD',
+        name: 'Долар США',
+        symbol: '$',
+        fullName: 'Долар',
+        internationalName: 'US Dollar',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'EUR',
+      name: 'Євро',
+      sortOrder: 3,
+      data: { code: 'EUR', name: 'Євро', symbol: '€', fullName: 'Євро', internationalName: 'Euro' },
+    },
+    {
+      entityType: 'currency',
+      key: 'GBP',
+      name: 'Фунт стерлінгів',
+      sortOrder: 4,
+      data: {
+        code: 'GBP',
+        name: 'Фунт стерлінгів',
+        symbol: '£',
+        fullName: 'Фунт',
+        internationalName: 'Pound Sterling',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'PLN',
+      name: 'Польський злотий',
+      sortOrder: 5,
+      data: {
+        code: 'PLN',
+        name: 'Польський злотий',
+        symbol: 'zł',
+        fullName: 'Злотий',
+        internationalName: 'Polish Zloty',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'CZK',
+      name: 'Чеська крона',
+      sortOrder: 6,
+      data: {
+        code: 'CZK',
+        name: 'Чеська крона',
+        symbol: 'Kč',
+        fullName: 'Крона',
+        internationalName: 'Czech Koruna',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'CHF',
+      name: 'Швейцарський франк',
+      sortOrder: 7,
+      data: {
+        code: 'CHF',
+        name: 'Швейцарський франк',
+        symbol: 'Fr',
+        fullName: 'Франк',
+        internationalName: 'Swiss Franc',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'NOK',
+      name: 'Норвезька крона',
+      sortOrder: 8,
+      data: {
+        code: 'NOK',
+        name: 'Норвезька крона',
+        symbol: 'kr',
+        fullName: 'Крона',
+        internationalName: 'Norwegian Krone',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'SEK',
+      name: 'Шведська крона',
+      sortOrder: 9,
+      data: {
+        code: 'SEK',
+        name: 'Шведська крона',
+        symbol: 'kr',
+        fullName: 'Крона',
+        internationalName: 'Swedish Krona',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'DKK',
+      name: 'Данська крона',
+      sortOrder: 10,
+      data: {
+        code: 'DKK',
+        name: 'Данська крона',
+        symbol: 'kr',
+        fullName: 'Крона',
+        internationalName: 'Danish Krone',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'HUF',
+      name: 'Угорський форинт',
+      sortOrder: 11,
+      data: {
+        code: 'HUF',
+        name: 'Угорський форинт',
+        symbol: 'Ft',
+        fullName: 'Форинт',
+        internationalName: 'Hungarian Forint',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'RON',
+      name: 'Румунський лей',
+      sortOrder: 12,
+      data: {
+        code: 'RON',
+        name: 'Румунський лей',
+        symbol: 'lei',
+        fullName: 'Лей',
+        internationalName: 'Romanian Leu',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'BGN',
+      name: 'Болгарський лев',
+      sortOrder: 13,
+      data: {
+        code: 'BGN',
+        name: 'Болгарський лев',
+        symbol: 'лв',
+        fullName: 'Лев',
+        internationalName: 'Bulgarian Lev',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'TRY',
+      name: 'Турецька ліра',
+      sortOrder: 14,
+      data: {
+        code: 'TRY',
+        name: 'Турецька ліра',
+        symbol: '₺',
+        fullName: 'Ліра',
+        internationalName: 'Turkish Lira',
+      },
+    },
+    {
+      entityType: 'currency',
+      key: 'CNY',
+      name: 'Китайський юань',
+      sortOrder: 15,
+      data: {
+        code: 'CNY',
+        name: 'Китайський юань',
+        symbol: '¥',
+        fullName: 'Юань',
+        internationalName: 'Chinese Yuan',
+      },
+    },
+
+    // Units of measure
+    {
+      entityType: 'unit_of_measure',
+      key: 'шт',
+      name: 'штука',
+      sortOrder: 1,
+      data: { name: 'штука', shortName: 'шт', coefficient: 1 },
+    },
+    {
+      entityType: 'unit_of_measure',
+      key: 'кг',
+      name: 'кілограм',
+      sortOrder: 2,
+      data: { name: 'кілограм', shortName: 'кг', coefficient: 1 },
+    },
+    {
+      entityType: 'unit_of_measure',
+      key: 'г',
+      name: 'грам',
+      sortOrder: 3,
+      data: { name: 'грам', shortName: 'г', coefficient: 0.001 },
+    },
+    {
+      entityType: 'unit_of_measure',
+      key: 'л',
+      name: 'літр',
+      sortOrder: 4,
+      data: { name: 'літр', shortName: 'л', coefficient: 1 },
+    },
+    {
+      entityType: 'unit_of_measure',
+      key: 'мл',
+      name: 'мілілітр',
+      sortOrder: 5,
+      data: { name: 'мілілітр', shortName: 'мл', coefficient: 0.001 },
+    },
+    {
+      entityType: 'unit_of_measure',
+      key: 'м',
+      name: 'метр',
+      sortOrder: 6,
+      data: { name: 'метр', shortName: 'м', coefficient: 1 },
+    },
+    {
+      entityType: 'unit_of_measure',
+      key: 'см',
+      name: 'сантиметр',
+      sortOrder: 7,
+      data: { name: 'сантиметр', shortName: 'см', coefficient: 0.01 },
+    },
+    {
+      entityType: 'unit_of_measure',
+      key: 'компл',
+      name: 'комплект',
+      sortOrder: 8,
+      data: { name: 'комплект', shortName: 'компл', coefficient: 1 },
+    },
+    {
+      entityType: 'unit_of_measure',
+      key: 'пара',
+      name: 'пара',
+      sortOrder: 9,
+      data: { name: 'пара', shortName: 'пара', coefficient: 1 },
+    },
+    {
+      entityType: 'unit_of_measure',
+      key: 'год',
+      name: 'година',
+      sortOrder: 10,
+      data: { name: 'година', shortName: 'год', coefficient: 1 },
+    },
+
+    // Payment methods
+    {
+      entityType: 'payment_method',
+      key: 'cash',
+      name: 'Готівка',
+      sortOrder: 1,
+      data: { code: 'cash', name: 'Готівка', sortOrder: 1, requiresFiscal: true, isActive: true },
+    },
+    {
+      entityType: 'payment_method',
+      key: 'card_terminal',
+      name: 'Картка (термінал)',
+      sortOrder: 2,
+      data: {
+        code: 'card_terminal',
+        name: 'Картка (термінал)',
+        sortOrder: 2,
+        requiresFiscal: true,
+        isActive: true,
+      },
+    },
+    {
+      entityType: 'payment_method',
+      key: 'bank_transfer',
+      name: 'Банківський переказ',
+      sortOrder: 3,
+      data: {
+        code: 'bank_transfer',
+        name: 'Банківський переказ',
+        sortOrder: 3,
+        requiresFiscal: false,
+        isActive: true,
+      },
+    },
+    {
+      entityType: 'payment_method',
+      key: 'privat24_qr',
+      name: 'PrivatBank QR',
+      sortOrder: 4,
+      data: {
+        code: 'privat24_qr',
+        name: 'PrivatBank QR',
+        sortOrder: 4,
+        requiresFiscal: false,
+        isActive: true,
+      },
+    },
+    {
+      entityType: 'payment_method',
+      key: 'monobank_qr',
+      name: 'Monobank QR',
+      sortOrder: 5,
+      data: {
+        code: 'monobank_qr',
+        name: 'Monobank QR',
+        sortOrder: 5,
+        requiresFiscal: false,
+        isActive: true,
+      },
+    },
+
+    // Work categories
+    {
+      entityType: 'work_category',
+      key: 'MAINTENANCE',
+      name: 'Технічне обслуговування',
+      sortOrder: 1,
+      data: { name: 'Технічне обслуговування', icon: 'wrench' },
+    },
+    {
+      entityType: 'work_category',
+      key: 'ENGINE',
+      name: 'Ремонт двигуна та трансмісії',
+      sortOrder: 2,
+      data: { name: 'Ремонт двигуна та трансмісії', icon: 'cog' },
+    },
+    {
+      entityType: 'work_category',
+      key: 'BODY',
+      name: 'Кузовні роботи',
+      sortOrder: 3,
+      data: { name: 'Кузовні роботи', icon: 'car' },
+    },
+    {
+      entityType: 'work_category',
+      key: 'ELECTRICAL',
+      name: 'Електрика та електроніка',
+      sortOrder: 4,
+      data: { name: 'Електрика та електроніка', icon: 'zap' },
+    },
+    {
+      entityType: 'work_category',
+      key: 'TIRE',
+      name: 'Шиномонтаж',
+      sortOrder: 5,
+      data: { name: 'Шиномонтаж', icon: 'circle' },
+    },
+    {
+      entityType: 'work_category',
+      key: 'DIAGNOSTICS',
+      name: 'Діагностика',
+      sortOrder: 6,
+      data: { name: 'Діагностика', icon: 'search' },
+    },
+    {
+      entityType: 'work_category',
+      key: 'WASH',
+      name: 'Мийка та хімчистка',
+      sortOrder: 7,
+      data: { name: 'Мийка та хімчистка', icon: 'droplet' },
+    },
+    {
+      entityType: 'work_category',
+      key: 'OIL_CHANGE',
+      name: 'Заміна масла та фільтрів',
+      sortOrder: 8,
+      data: { name: 'Заміна масла та фільтрів', icon: 'refresh-cw' },
+    },
+  ];
+
+  for (const t of systemTemplates) {
+    await prisma.systemTemplate.upsert({
+      where: { entityType_key: { entityType: t.entityType, key: t.key } },
+      update: { name: t.name, data: t.data, sortOrder: t.sortOrder },
+      create: t,
+    });
+  }
+  console.warn(`  SystemTemplates: ${systemTemplates.length} шаблонів`);
+
   console.warn('Seed: завершено успішно.');
 }
 

@@ -60,6 +60,7 @@ import { ExchangeRatesModule } from './modules/exchange-rates/exchange-rates.mod
 import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
 import { CashRegistersModule } from './modules/cash-registers/cash-registers.module';
 import { UserPreferencesModule } from './modules/user-preferences/user-preferences.module';
+import { SystemTemplatesModule } from './modules/system-templates/system-templates.module';
 
 @Module({
   imports: [
@@ -171,6 +172,7 @@ import { UserPreferencesModule } from './modules/user-preferences/user-preferenc
     BankAccountsModule,
     CashRegistersModule,
     UserPreferencesModule,
+    SystemTemplatesModule,
   ],
   providers: [
     // Apply ThrottlerGuard globally — routes can override with @Throttle() or @SkipThrottle()

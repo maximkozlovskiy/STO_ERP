@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
 import { PickerModal } from '@/components/ui/picker-modal';
+import { TemplatePickerModal, type SystemTemplate } from '@/components/ui/template-picker-modal';
 import { cn } from '@/lib/utils';
 import { fmtShortDateTime } from '@/lib/format';
 import { toast } from '@/lib/toast';
@@ -256,6 +257,7 @@ function SettingsPageClient() {
   const [editPayment, setEditPayment] = useState<PaymentMethod | null>(null);
   const [editPaymentForm, setEditPaymentForm] = useState({ name: '', requiresFiscal: false });
   const [paymentModal, setPaymentModal] = useState(false);
+  const [paymentTemplatePicker, setPaymentTemplatePicker] = useState(false);
   const [newPaymentForm, setNewPaymentForm] = useState({
     code: '',
     name: '',
@@ -286,6 +288,7 @@ function SettingsPageClient() {
   const [currencyErrors, setCurrencyErrors] = useState<{ name?: string; code?: string }>({});
   const [savingCurrency, setSavingCurrency] = useState(false);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
+  const [currencyTemplatePicker, setCurrencyTemplatePicker] = useState(false);
 
   // Exchange rates state
   const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
@@ -763,6 +766,16 @@ function SettingsPageClient() {
     }
   };
 
+  const importPaymentsFromTemplates = async (templates: SystemTemplate[]) => {
+    for (const t of templates) {
+      const created = await apiFetch<PaymentMethod>('/payment-methods', {
+        method: 'POST',
+        body: JSON.stringify(t.data),
+      });
+      setPayments(prev => [...prev, created]);
+    }
+  };
+
   const deletePaymentMethod = async (id: string) => {
     if (!(await confirm({ title: 'Видалити метод оплати?', variant: 'destructive' }))) return;
     try {
@@ -961,6 +974,20 @@ function SettingsPageClient() {
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
+    }
+  };
+
+  const importCurrenciesFromTemplates = async (templates: SystemTemplate[]) => {
+    for (const t of templates) {
+      const created = await apiFetch<Currency>('/currencies', {
+        method: 'POST',
+        body: JSON.stringify(t.data),
+      });
+      setCurrencies(prev => {
+        const next = [...prev, created];
+        setCache('cache:currencies', { items: next });
+        return next;
+      });
     }
   };
 
@@ -1644,12 +1671,23 @@ function SettingsPageClient() {
       {/* ─── Currencies ─────────────────────────────────────────────────────── */}
       {tab === 'currencies' && (
         <div className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setCurrencyTemplatePicker(true)}>
+              З шаблону
+            </Button>
             <Button onClick={() => openCurrencyModal()}>
               <Plus className="w-4 h-4 mr-1" />
-              Додати валюту
+              Валюта
             </Button>
           </div>
+          <TemplatePickerModal
+            open={currencyTemplatePicker}
+            onClose={() => setCurrencyTemplatePicker(false)}
+            entityType="currency"
+            title="Додати валюти з шаблону"
+            existingKeys={currencies.map(c => c.code)}
+            onImport={importCurrenciesFromTemplates}
+          />
           {loadingCurrencies && <p className="text-muted-foreground text-sm">Завантаження...</p>}
           {!loadingCurrencies && currencies.length === 0 && (
             <p className="text-muted-foreground text-sm">Валюти не додано</p>
@@ -2195,7 +2233,10 @@ function SettingsPageClient() {
       {/* Payment methods */}
       {tab === 'payments' && (
         <div className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setPaymentTemplatePicker(true)}>
+              З шаблону
+            </Button>
             <Button
               leftIcon={<Plus className="h-4 w-4" />}
               onClick={() => {
@@ -2206,6 +2247,14 @@ function SettingsPageClient() {
               Метод оплати
             </Button>
           </div>
+          <TemplatePickerModal
+            open={paymentTemplatePicker}
+            onClose={() => setPaymentTemplatePicker(false)}
+            entityType="payment_method"
+            title="Додати методи оплати з шаблону"
+            existingKeys={payments.map(p => p.code)}
+            onImport={importPaymentsFromTemplates}
+          />
           <div className="bg-surface rounded-xl border border-border divide-y divide-border">
             {payments.length === 0 && (
               <p className="p-6 text-sm text-muted-foreground">Методи оплати не знайдено</p>
