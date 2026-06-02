@@ -122,8 +122,14 @@ export class GoodsService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
-    await this.prisma.good.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    // sto-optimize (2026-05-31 pattern): `findOne + update` 2-RTT → atomic `updateMany`
+    // with full compound where (id+orgId+NOT deletedAt) — eliminates the race window
+    // between guard and write, and saves one round-trip per delete.
+    const result = await this.prisma.good.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (result.count === 0) throw new NotFoundException('Товар не знайдено');
   }
 
   async restore(orgId: string, id: string): Promise<GoodResponseDto> {

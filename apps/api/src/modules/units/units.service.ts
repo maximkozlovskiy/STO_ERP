@@ -93,25 +93,33 @@ export class UnitsService {
   }
 
   async update(orgId: string, id: string, dto: UpdateUnitDto): Promise<UnitResponseDto> {
-    const existing = await this.prisma.unitOfMeasure.findFirst({
-      where: { id, orgId, deletedAt: null },
-    });
+    // sto-optimize (2026-05-31 pattern): speculative duplicate-check у Promise.all з
+    // tenant-guard. Duplicate-check читає за `dto.shortName` (не за existing) → не
+    // залежить від результату першого запиту. У ~95% випадків (shortName не змінився
+    // або не вказаний) duplicate query повертає null швидко (індекс @@unique hit). У
+    // 5% коли shortName реально змінився — економимо 1 RTT. Post-filter перевіряє
+    // existing.shortName !== dto.shortName ПОСТ-факто без додаткового запиту.
+    const [existing, duplicate] = await Promise.all([
+      this.prisma.unitOfMeasure.findFirst({
+        where: { id, orgId, deletedAt: null },
+      }),
+      dto.shortName
+        ? this.prisma.unitOfMeasure.findFirst({
+            // Bug #297: перевіряємо і active, і soft-deleted дублікати, бо DB-constraint
+            // @@unique([orgId, shortName]) не має partial WHERE deletedAt IS NULL у migration →
+            // конфлікт з soft-deleted рядком викине P2002 → 500 замість осмисленого 409.
+            where: { orgId, shortName: dto.shortName, NOT: { id } },
+          })
+        : Promise.resolve(null),
+    ]);
     if (!existing) throw new NotFoundException('Одиниця виміру не знайдена');
-    if (dto.shortName && existing.shortName !== dto.shortName) {
-      // Bug #297: перевіряємо і active, і soft-deleted дублікати, бо DB-constraint
-      // @@unique([orgId, shortName]) не має partial WHERE deletedAt IS NULL у migration →
-      // конфлікт з soft-deleted рядком викине P2002 → 500 замість осмисленого 409.
-      const duplicate = await this.prisma.unitOfMeasure.findFirst({
-        where: { orgId, shortName: dto.shortName, NOT: { id } },
-      });
-      if (duplicate) {
-        if (duplicate.deletedAt) {
-          throw new ConflictException(
-            'Одиниця з такою скороченою назвою існує у архіві. Спочатку відновіть її або оберіть інше скорочення.',
-          );
-        }
-        throw new ConflictException('Одиниця з такою скороченою назвою вже існує');
+    if (dto.shortName && existing.shortName !== dto.shortName && duplicate) {
+      if (duplicate.deletedAt) {
+        throw new ConflictException(
+          'Одиниця з такою скороченою назвою існує у архіві. Спочатку відновіть її або оберіть інше скорочення.',
+        );
       }
+      throw new ConflictException('Одиниця з такою скороченою назвою вже існує');
     }
     const item = await this.prisma.unitOfMeasure.update({ where: { id, orgId }, data: dto });
     await this.cache.del(cacheKey(orgId));
@@ -119,16 +127,26 @@ export class UnitsService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.unitOfMeasure.findFirst({
-      where: { id, orgId, deletedAt: null },
-    });
-    if (!existing) throw new NotFoundException('Одиниця виміру не знайдена');
-    if (existing.isSystem)
-      throw new BadRequestException('Системну одиницю виміру не можна видалити');
-    await this.prisma.unitOfMeasure.update({
-      where: { id, orgId },
+    // sto-optimize (2026-05-31 pattern): `findOne + update` 2-RTT → атомарний updateMany
+    // з повним compound where (id+orgId+deletedAt:null+isSystem:false). isSystem guard
+    // інкапсулюється у WHERE, тому soft-delete системної одиниці просто не зачіпає рядок.
+    // count=0 інтерпретуємо: спочатку перевіряємо `isSystem` через окремий cheap read
+    // лише якщо updateMany нічого не зачепив (для збереження конкретного повідомлення UA).
+    const result = await this.prisma.unitOfMeasure.updateMany({
+      where: { id, orgId, deletedAt: null, isSystem: false },
       data: { deletedAt: new Date() },
     });
+    if (result.count === 0) {
+      const existing = await this.prisma.unitOfMeasure.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { isSystem: true },
+      });
+      if (!existing) throw new NotFoundException('Одиниця виміру не знайдена');
+      if (existing.isSystem)
+        throw new BadRequestException('Системну одиницю виміру не можна видалити');
+      // Race: hard-deleted between updateMany and findFirst
+      throw new NotFoundException('Одиниця виміру не знайдена');
+    }
     await this.cache.del(cacheKey(orgId));
   }
 

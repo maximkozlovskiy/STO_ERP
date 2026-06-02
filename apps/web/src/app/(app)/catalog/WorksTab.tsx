@@ -238,14 +238,20 @@ export default function WorksTab() {
     // Reference data — paint instantly from sessionStorage, refresh in background.
     const cached = getCached<Category[]>('cache:work-categories');
     if (cached) setCategories(cached);
-    apiFetch<Category[]>('/work-categories')
+
+    // sto-optimize (Bug #315 pattern): AbortController щоб setState не виконувався після
+    // unmount (React DEV warning + memory churn). Парний підхід з GoodsTab.tsx.
+    const ac = new AbortController();
+    apiFetch<Category[]>('/work-categories', { signal: ac.signal })
       .then(d => {
         setCategories(d);
         setCache('cache:work-categories', d);
       })
       .catch((e: unknown) => {
+        if (e instanceof DOMException && e.name === 'AbortError') return;
         if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження категорій');
       });
+    return () => ac.abort();
   }, []);
 
   // Sync categoryId when categories load after modal is already open (race condition fix)

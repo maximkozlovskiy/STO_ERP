@@ -88,8 +88,18 @@ export class MaintenanceSchedulesService {
     id: string,
     dto: UpdateMaintenanceScheduleDto,
   ): Promise<MaintenanceScheduleResponseDto> {
+    // Narrow select — read лише поля що потрібні для recalc/fallback. existing toDto
+    // не використовується (фінальний DTO будується з результату update().vehicle).
     const existing = await this.prisma.maintenanceSchedule.findFirst({
       where: { id, orgId, deletedAt: null },
+      select: {
+        lastMaintenanceDate: true,
+        lastMaintenanceMileage: true,
+        intervalDays: true,
+        intervalMileage: true,
+        nextMaintenanceDate: true,
+        nextMaintenanceMileage: true,
+      },
     });
     if (!existing) throw new NotFoundException('Графік ТО не знайдено');
 

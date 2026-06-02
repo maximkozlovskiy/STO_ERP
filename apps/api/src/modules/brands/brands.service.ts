@@ -94,9 +94,14 @@ export class BrandsService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.brand.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!existing) throw new NotFoundException('Бренд не знайдено');
-    await this.prisma.brand.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    // sto-optimize (2026-05-31 pattern): `findOne + update` 2-RTT → atomic `updateMany`
+    // with full compound where (id+orgId+deletedAt:null). One statement, no race window,
+    // -1 RTT per delete. Тенант-ізоляція збережена через orgId у WHERE.
+    const result = await this.prisma.brand.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (result.count === 0) throw new NotFoundException('Бренд не знайдено');
     await this.cache.del(cacheKey(orgId));
   }
 
