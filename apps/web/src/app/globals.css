@@ -105,8 +105,8 @@
 
   /* ─── Spacing ─── */
   --spacing-page-x: 1.5rem;   /* 24px — page horizontal padding */
-  --spacing-page-y: 1.5rem;   /* 24px — page vertical padding */
-  --spacing-section: 1.5rem;  /* gap between sections */
+  --spacing-page-y: 1rem;     /* 16px — page vertical padding */
+  --spacing-section: 1rem;    /* gap between sections */
   --spacing-card: 1.25rem;    /* card inner padding */
 
   /* ─── Border radius ─── */
