@@ -2,8 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import type { MouseEvent } from 'react';
-import { ChevronRight, ChevronDown, Settings2, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ChevronRight, ChevronDown, Settings2, X, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -46,6 +45,7 @@ function TreeNode({
   depth: number;
   defaultExpanded: boolean;
 }) {
+  // defaultExpanded змінюється ззовні при collapse/expand all → useState скидається
   const [expanded, setExpanded] = useState(defaultExpanded);
   const hasChildren = node.children.length > 0;
   const isSelected = selectedId === node.id;
@@ -156,6 +156,16 @@ export function CategoryTree({
   highlightedIds,
   className,
 }: CategoryTreeProps) {
+  // allExpanded: true = всі розгорнуті, false = всі згорнуті, null = початковий стан
+  const [allExpanded, setAllExpanded] = useState<boolean | null>(null);
+
+  const toggleAll = useCallback(() => {
+    setAllExpanded(p => (p === false ? true : false));
+  }, []);
+
+  // defaultExpanded для кожного TreeNode — визначається глобальним станом або авто-логікою
+  const nodeDefault = allExpanded !== null ? allExpanded : tree.length <= 20;
+
   return (
     <aside
       className={cn(
@@ -168,16 +178,26 @@ export function CategoryTree({
         <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted truncate">
           {label}
         </span>
-        {onManage && (
+        <div className="flex items-center gap-0.5 shrink-0 -mr-1">
           <button
             type="button"
-            title="Управління категоріями"
-            onClick={onManage}
-            className="shrink-0 -mr-1 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            title={allExpanded === false ? 'Розгорнути всі' : 'Згорнути всі'}
+            onClick={toggleAll}
+            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
-            <Settings2 className="h-3.5 w-3.5" />
+            <ChevronsUpDown className="h-3.5 w-3.5" />
           </button>
-        )}
+          {onManage && (
+            <button
+              type="button"
+              title="Управління категоріями"
+              onClick={onManage}
+              className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* "Всі" row */}
@@ -214,14 +234,14 @@ export function CategoryTree({
         </div>
       </div>
 
-      {/* Tree */}
+      {/* Tree — key на ul форсує remount TreeNode при зміні allExpanded */}
       <nav className="flex-1 overflow-y-auto px-2 pb-2 pt-1">
         {tree.length === 0 ? (
           <p className="px-2 py-3 text-[12px] text-muted-foreground text-center">
             Категорій не знайдено
           </p>
         ) : (
-          <ul>
+          <ul key={String(allExpanded)}>
             {tree.map(node => (
               <TreeNode
                 key={node.id}
@@ -230,7 +250,7 @@ export function CategoryTree({
                 onSelect={onSelect}
                 highlightedIds={highlightedIds}
                 depth={0}
-                defaultExpanded={tree.length <= 20}
+                defaultExpanded={nodeDefault}
               />
             ))}
           </ul>
