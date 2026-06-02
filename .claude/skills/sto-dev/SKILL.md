@@ -1693,6 +1693,242 @@ const MY_PANEL_FIELDS = [
 
 ---
 
+## §16 SharedStatusConstants — єдине місце для статусів, лейблів, badge-варіантів
+
+> **Правило:** `STATUS_LABELS`, `STATUS_BADGE`, `PRIORITY_LABELS` і будь-які enum→string мапи **ніколи не оголошуються** inline у page.tsx. Єдине місце — `packages/shared/src/constants/statuses.ts`.
+
+### Чому це важливо
+
+`Record<WorkOrderStatus, string>` — TypeScript гарантує що при додаванні нового статусу в enum **compile-error** виникне одразу, а не при runtime. Inline-оголошення у 8 файлах → розсинхронізація при рефакторингу.
+
+### ❌ Заборонено
+
+```typescript
+// ❌ У page.tsx — оголошення STATUS_LABELS
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Чернетка',
+  IN_PROGRESS: 'В роботі',
+  // легко пропустити новий статус
+};
+```
+
+### ✅ Правильно
+
+```typescript
+// packages/shared/src/constants/statuses.ts
+import { WorkOrderStatus, InvoiceStatus } from '@prisma/client';
+export const WO_STATUS_LABELS: Record<WorkOrderStatus, string> = {
+  DRAFT: 'Чернетка',
+  ESTIMATE: 'Кошторис',
+  APPROVED: 'Затверджено',
+  IN_PROGRESS: 'В роботі',
+  ON_HOLD: 'Призупинено',
+  COMPLETED: 'Виконано',
+  INVOICED: 'Виставлено',
+  PAID: 'Оплачено',
+  ARCHIVED: 'Архів',
+  CANCELLED: 'Скасовано',
+}; // ← compile-error якщо пропущено статус
+
+// У page.tsx:
+import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared';
+```
+
+**Файл-джерело правди:** `packages/shared/src/constants/statuses.ts`  
+**Re-export через:** `packages/shared/src/index.ts`
+
+---
+
+## §17 usePaginatedList — generic API hook factory
+
+> **Правило:** Новий list-хук не пишеться з нуля. Використовується `usePaginatedList<T, F>()` factory.
+
+### ❌ Заборонено
+
+```typescript
+// ❌ Повторення URLSearchParams boilerplate
+export function useMyEntities(filters: MyFilter) {
+  const params = new URLSearchParams({ page: String(filters.page ?? 1), ... });
+  if (filters.status) params.set('status', filters.status);
+  if (filters.q) params.set('q', filters.q);
+  // ... 20 рядків одного й того самого
+  return useQuery({ queryKey: ['my-entities', filters], queryFn: () => apiFetch(...) });
+}
+```
+
+### ✅ Правильно
+
+```typescript
+// apps/web/src/hooks/api/usePaginatedList.ts
+export function usePaginatedList<T, F extends Record<string, unknown>>(
+  endpoint: string,
+  filters: F,
+  options?: { staleTime?: number; enabled?: boolean }
+) { ... }
+
+// Використання:
+export function useWorkOrders(filters: WorkOrdersFilter) {
+  return usePaginatedList<WorkOrder, WorkOrdersFilter>('/work-orders', filters);
+}
+```
+
+**Файл:** `apps/web/src/hooks/api/usePaginatedList.ts`
+
+---
+
+## §18 useListPage — composable hook для list-сторінок
+
+> **Правило:** Нова list-сторінка не підключає хуки вручну. Використовується `useListPage()`.
+
+### Що композує
+
+`useBulkSelect` + `useTableColumns` + `useDetailPanel` + `useDetailPanelConfig` + `useSavedFilters` + pagination state → ~200 рядків boilerplate → 5 рядків.
+
+### ✅ Правильно
+
+```typescript
+// apps/web/src/hooks/useListPage.ts
+const list = useListPage('work-orders', WO_COLUMNS, { defaultLimit: 20 });
+
+// Доступно:
+list.pagination; // { page, setPage, limit }
+list.bulkSelect; // useBulkSelect result
+list.detailPanel; // useDetailPanel result
+list.panelConfig; // useDetailPanelConfig result
+list.savedFilters; // useSavedFilters result
+list.columns; // useTableColumns result
+```
+
+**Файл:** `apps/web/src/hooks/useListPage.ts`
+
+---
+
+## §19 FSMButtons — shared компонент FSM-переходів
+
+> **Правило:** Кнопки FSM-переходів не рендеряться inline у page.tsx. Використовується `<FSMButtons>`.
+
+### ❌ Заборонено
+
+```typescript
+// ❌ Дублювання логіки у кожній сторінці
+{STATUS_TRANSITIONS[item.status]?.map(s => (
+  <Button key={s} variant={s === 'CANCELLED' ? 'destructive' : 'outline'} onClick={() => handleTransition(s)}>
+    {TRANSITION_LABELS[s]}
+  </Button>
+))}
+```
+
+### ✅ Правильно
+
+```tsx
+// apps/web/src/components/ui/fsm-buttons.tsx
+<FSMButtons
+  status={wo.status}
+  transitions={WO_FSM_TRANSITIONS}
+  labels={WO_TRANSITION_LABELS}
+  onTransition={handleTransition}
+  loading={saving}
+/>
+```
+
+**Файл:** `apps/web/src/components/ui/fsm-buttons.tsx`
+
+---
+
+## §20 useApiMutation — wrapper для мутацій
+
+> **Правило:** Нова форма або дія не пише `saving/error` стан вручну. Використовується `useApiMutation()`.
+
+### ❌ Заборонено
+
+```typescript
+// ❌ 20 рядків boilerplate per-action
+const [saving, setSaving] = useState(false);
+const [error, setError] = useState('');
+const handleCreate = async () => {
+  setSaving(true);
+  setError('');
+  try {
+    await apiFetch('/items', { method: 'POST', body: JSON.stringify(dto) });
+    toast.success('Збережено');
+    load();
+  } catch (e) {
+    setError(e instanceof Error ? e.message : 'Помилка');
+  } finally {
+    setSaving(false);
+  }
+};
+```
+
+### ✅ Правильно
+
+```typescript
+// apps/web/src/hooks/useApiMutation.ts
+const {
+  mutate: createItem,
+  saving,
+  error,
+} = useApiMutation(
+  (dto: CreateDto) => apiFetch('/items', { method: 'POST', body: JSON.stringify(dto) }),
+  { onSuccess: load, successMsg: 'Збережено' },
+);
+```
+
+**Файл:** `apps/web/src/hooks/useApiMutation.ts`
+
+---
+
+## §21 Shared Zod validators
+
+> **Правило:** Валідаційні правила (email, телефон, IBAN) не пишуться regex inline. Є `@sto/shared` validators.
+
+### ✅ Правильно
+
+```typescript
+// packages/shared/src/schemas/validators.ts
+export const phoneUaSchema = z.string().regex(/^\+380\d{9}$/, 'Невірний формат телефону');
+export const emailSchema = z.string().email('Невірний email');
+export const ibanUaSchema = z.string().regex(/^UA\d{27}$/, 'Невірний IBAN');
+
+// У фронт-формі:
+import { phoneUaSchema } from '@sto/shared';
+const schema = z.object({ phone: phoneUaSchema });
+
+// На бекенді (DTO):
+import { PHONE_UA_REGEX } from '@sto/shared';
+@Matches(PHONE_UA_REGEX, { message: 'Невірний формат телефону' })
+phone: string;
+```
+
+**Файл-джерело правди:** `packages/shared/src/schemas/validators.ts`
+
+---
+
+## §22 useApiError — централізований handler помилок
+
+> **Правило:** `const [error, setError] = useState('')` не пишеться вручну. Є `useApiError()`.
+
+### ❌ Заборонено
+
+```typescript
+// ❌ Розкид логіки помилок
+const [error, setError] = useState('');
+} catch (e) { setError(e instanceof Error ? e.message : 'Помилка'); }
+// + 5 місць де потрібно clearError вручну
+```
+
+### ✅ Правильно
+
+```typescript
+// apps/web/src/hooks/useApiError.ts
+const { error, handleError, clearError } = useApiError();
+} catch (e) { handleError(e); } // → auto-локалізація + setError
+```
+
+**Файл:** `apps/web/src/hooks/useApiError.ts`
+
+---
+
 ## Інтеграція у флоу
 
 ```
