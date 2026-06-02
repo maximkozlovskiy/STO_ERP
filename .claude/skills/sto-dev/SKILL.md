@@ -13,21 +13,21 @@ bypassPermissions: true
 
 ## Зміст
 
-| § | Секція | Для кого |
-|---|--------|---------|
-| §1 | [TypeScript](#typescript) | Всі файли `.ts`/`.tsx` |
-| §2 | [NestJS / API](#nestjs--api) | `*.controller.ts`, `*.service.ts`, `*.dto.ts` |
-| §3 | [Next.js 15 / Web](#nextjs-15--web) | `apps/web/src/**` |
-| §4 | [UX/UI Features System](#uxui-features-system-phase-20) | Хуки та компоненти UI |
-| §5 | [Tailwind 4 — Canonical Syntax](#tailwind-4--canonical-syntax) | Будь-який `.tsx` з className |
-| §6 | [Prisma 5](#prisma-5) | `schema.prisma`, `*.service.ts` з Prisma |
-| §7 | [SSE — Real-time](#sse-server-sent-events--real-time-дані-без-websocket) | Streaming endpoints, EventSource |
-| §8 | [Optimistic UI](#optimistic-ui--миттєвий-відгук-без-очікування-api) | FSM кнопки, форми з негайним відгуком |
-| §9 | [Polymorphic entities](#polymorphic-entities--comments-auditlog-media) | Comments, AuditLog, Media |
-| §10 | [Webhook pattern](#webhook-pattern--вихідні-нотифікації) | Outbound webhooks |
-| §11 | [Offline-first / BullMQ](#offline-first--bullmq) | Зовнішні API, SMS, ПРРО |
-| §12 | [Безпека](#безпека) | Auth guards, tenant isolation |
-| §13 | [Checklist перед здачею](#checklist-перед-здачею-коду) | Всі зміни перед комітом |
+| §   | Секція                                                                   | Для кого                                      |
+| --- | ------------------------------------------------------------------------ | --------------------------------------------- |
+| §1  | [TypeScript](#typescript)                                                | Всі файли `.ts`/`.tsx`                        |
+| §2  | [NestJS / API](#nestjs--api)                                             | `*.controller.ts`, `*.service.ts`, `*.dto.ts` |
+| §3  | [Next.js 15 / Web](#nextjs-15--web)                                      | `apps/web/src/**`                             |
+| §4  | [UX/UI Features System](#uxui-features-system-phase-20)                  | Хуки та компоненти UI                         |
+| §5  | [Tailwind 4 — Canonical Syntax](#tailwind-4--canonical-syntax)           | Будь-який `.tsx` з className                  |
+| §6  | [Prisma 5](#prisma-5)                                                    | `schema.prisma`, `*.service.ts` з Prisma      |
+| §7  | [SSE — Real-time](#sse-server-sent-events--real-time-дані-без-websocket) | Streaming endpoints, EventSource              |
+| §8  | [Optimistic UI](#optimistic-ui--миттєвий-відгук-без-очікування-api)      | FSM кнопки, форми з негайним відгуком         |
+| §9  | [Polymorphic entities](#polymorphic-entities--comments-auditlog-media)   | Comments, AuditLog, Media                     |
+| §10 | [Webhook pattern](#webhook-pattern--вихідні-нотифікації)                 | Outbound webhooks                             |
+| §11 | [Offline-first / BullMQ](#offline-first--bullmq)                         | Зовнішні API, SMS, ПРРО                       |
+| §12 | [Безпека](#безпека)                                                      | Auth guards, tenant isolation                 |
+| §13 | [Checklist перед здачею](#checklist-перед-здачею-коду)                   | Всі зміни перед комітом                       |
 
 > **Швидкий старт:** для нового контролера → §1 + §2 + §12. Для нової сторінки → §1 + §3 + §5. Для Prisma моделі → §1 + §6.
 
@@ -44,9 +44,9 @@ bypassPermissions: true
 
 // ✅ TS 5.x
 {
-  "ignoreDeprecations": "5.0",  // тільки "5.0" валідне до TS 6.0
-  "moduleResolution": "node",   // для NestJS (commonjs)
-  "module": "commonjs",         // NestJS не сумісний з node16 module
+  "ignoreDeprecations": "5.0", // тільки "5.0" валідне до TS 6.0
+  "moduleResolution": "node", // для NestJS (commonjs)
+  "module": "commonjs", // NestJS не сумісний з node16 module
   // НЕМАЄ baseUrl — paths відносні до tsconfig.json
   "paths": { "@sto/shared": ["../../packages/shared/src"] }
 }
@@ -91,18 +91,20 @@ type LoadState =
 // ✅ Exhaustive switch
 function getLabel(status: WorkOrderStatus): string {
   switch (status) {
-    case 'DRAFT':       return 'Чернетка';
-    case 'ESTIMATE':    return 'Кошторис';
+    case 'DRAFT':
+      return 'Чернетка';
+    case 'ESTIMATE':
+      return 'Кошторис';
     // ... всі варіанти
     default: {
-      const _: never = status;  // compile-time exhaustiveness check
+      const _: never = status; // compile-time exhaustiveness check
       return status;
     }
   }
 }
 
 // ✅ Zod для runtime validation на boundary
-const dto = CreateWorkOrderSchema.parse(body);  // не cast, а parse
+const dto = CreateWorkOrderSchema.parse(body); // не cast, а parse
 ```
 
 ---
@@ -337,18 +339,20 @@ const data = await apiFetch<WorkOrder[]>('/work-orders');
 ```typescript
 // apps/api/src/modules/settings/settings.dto.ts
 interface UiFeatures {
-  toastEnabled: boolean;              // Toast-сповіщення після мутацій
-  unsavedGuardEnabled: boolean;       // Попередження при закритті брудної форми
-  stockIndicatorEnabled: boolean;     // "Доступно: N шт." при виборі запчастини
-  commandPaletteEnabled: boolean;     // Ctrl+K → Command Palette
-  keyboardShortcutsEnabled: boolean;  // Alt+W/D/C/I/N та інші глобальні шорткати
-  savedFiltersEnabled: boolean;       // Збережені пресети фільтрів (localStorage)
-  inlineEditEnabled: boolean;         // Редагування прямо у рядку таблиці
-  syncIndicatorEnabled: boolean;      // Індикатор online/offline у sidebar
+  toastEnabled: boolean; // Toast-сповіщення після мутацій
+  unsavedGuardEnabled: boolean; // Попередження при закритті брудної форми
+  stockIndicatorEnabled: boolean; // "Доступно: N шт." при виборі запчастини
+  commandPaletteEnabled: boolean; // Ctrl+K → Command Palette
+  keyboardShortcutsEnabled: boolean; // Alt+W/D/C/I/N та інші глобальні шорткати
+  savedFiltersEnabled: boolean; // Збережені пресети фільтрів (localStorage)
+  inlineEditEnabled: boolean; // Редагування прямо у рядку таблиці
+  syncIndicatorEnabled: boolean; // Індикатор online/offline у sidebar
   notificationCenterEnabled: boolean; // Дзвоник з лічильником непрочитаних
-  bulkActionsEnabled: boolean;        // Чекбокси + BulkActionsBar у таблицях
+  bulkActionsEnabled: boolean; // Чекбокси + BulkActionsBar у таблицях
 }
-const UI_FEATURES_DEFAULTS: UiFeatures = { /* всі true */ };
+const UI_FEATURES_DEFAULTS: UiFeatures = {
+  /* всі true */
+};
 ```
 
 ### useUiFeatures — отримання прапорців
@@ -366,6 +370,7 @@ if (features.toastEnabled) toast.success('Збережено');
 ```
 
 **Правила useUiFeatures:**
+
 - Module-level cache з TTL: один fetch на всю сесію, не на кожен mount
 - Endpoint: `GET /settings/ui-features` — доступний ВСІМ ролям (не тільки OWNER/ADMIN)
 - При помилці — кешує `DEFAULTS` на 60 сек щоб не спамити backend
@@ -424,6 +429,7 @@ onSave: async () => {
 ```
 
 **Правила useDirtyForm:**
+
 - `isDirtyRef` (useRef) — для синхронного `beforeunload` обробника
 - `isDirty` (useState) — для React рендерингу (кнопка Скасувати показує "Є зміни")
 - `confirmClose()` — повертає `Promise<boolean>`: `true` якщо можна закривати
@@ -480,6 +486,7 @@ const inlineEdit = useInlineEdit({
 ```
 
 **Правила useInlineEdit:**
+
 - `savingRef` всередині хука запобігає подвійному коміту (blur + click обидва фаєряться)
 - `commitEdit` re-throws після показу toast → call-сайт ЗАВЖДИ `.catch(() => {})`
 - `defaultValue` (uncontrolled) для `<select>` — контрольований `value` "відскакує" візуально при in-flight save
@@ -536,6 +543,7 @@ const bulkActions = useMemo<BulkAction[]>(() => [
 ```
 
 **Правила useBulkSelect + BulkActionsBar:**
+
 - `Promise.allSettled` — ніколи `Promise.all` для bulk-мутацій (один 400 не зупиняє решту)
 - `bulkSelect.clear()` + `load()` — ЗАВЖДИ, незалежно від кількості помилок
 - colSpan у loading/empty rows: `features.bulkActionsEnabled ? cols + 1 : cols`
@@ -566,9 +574,75 @@ const applyFilter = useCallback((preset: { id: string; filters: MyFilters }) => 
 ```
 
 **Правила useSavedFilters:**
+
 - SSR-safe: `useState([])` → гідратація у `useEffect` з localStorage
 - `Array.isArray` guard при читанні — захист від corruption localStorage (стара версія додатку)
 - `pageKey` — унікальний per-page рядок (`'work-orders'`, `'inventory'`, `'employees'`)
+
+### Hover-actions у рядках таблиці — канонічний патерн
+
+Єдиний стандарт для кнопок дій (редагувати / видалити / відкрити) у рядках усіх списків.
+
+```tsx
+// ✅ ПРАВИЛЬНО — TableRow отримує group, кнопки opacity-0 → group-hover
+<TableRow
+  className={cn(
+    'group transition-colors',
+    isDeleted && 'opacity-60',
+    detailPanel.enabled && 'cursor-pointer',
+    isSelected && 'bg-primary/5',
+  )}
+>
+  {/* ... колонки ... */}
+  <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+    <div className="flex items-center justify-end gap-1">
+      {/* Основна дія (відкрити деталі / edit modal) */}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="Редагувати"
+        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+        onClick={() => openEdit(item)}
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
+      {/* Видалення — тільки для не-видалених */}
+      {!isDeleted && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title="Позначити на видалення"
+          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+          onClick={() => void markDeleted(item)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      )}
+    </div>
+  </TableCell>
+</TableRow>
+```
+
+**Правила hover-actions:**
+
+- `group` обов'язково на `<TableRow>` — без нього `group-hover` не працює
+- `opacity-0 group-hover:opacity-100 focus-visible:opacity-100` — обидва стани (hover + keyboard nav)
+- `onClick={e => e.stopPropagation()}` на `<TableCell>` — щоб не тригерило row-click (detail panel)
+- `size="icon-sm"` — стандарт для icon-only кнопок у таблиці
+- Trash2 завжди у умові `{!isDeleted && ...}` — видалений рядок не можна видалити повторно
+- `markDeleted` завжди через `confirm({ variant: 'destructive' })` перед DELETE-запитом
+- Для навігації до сторінки деталей — `ExternalLink` іконка замість `Pencil`
+- Для додаткових специфічних дій (напр. "Розцінити") — окрема іконка `Zap` зліва від Pencil
+
+**Де застосовується (всі списки-документи):**
+
+- `work-orders/page.tsx` — ExternalLink (→ /work-orders/:id) + Trash2
+- `invoices/page.tsx` — Pencil (відкрити detail panel) + Trash2
+- `purchase-orders/page.tsx` — Zap (розцінити, умовно) + Pencil + Trash2
+- `stock-documents/page.tsx` — Pencil (setShowDetail) + Trash2
+- `crm/page.tsx` — Pencil (edit modal) + Trash2
+- `employees/page.tsx` — Pencil (edit modal) + Trash2
+- Усі catalog tabs (BrandsTab, GoodsTab, WorksTab, ServicesTab, UnitsTab) — Pencil + Trash2/RotateCcw
 
 ### NotificationCenter — сповіщення у sidebar
 
@@ -584,6 +658,7 @@ add('warning', 'Низький залишок', `${good.name}: залишило�
 ```
 
 **Правила NotificationCenter:**
+
 - `group` клас на батьківській картці + `opacity-0 group-hover:opacity-100` на кнопці delete
 - `focus:opacity-100` на кнопці — для клавіатурних користувачів
 - `onKeyDown` на `role="button"` рядку — guard `if (e.target !== e.currentTarget) return`
@@ -592,9 +667,11 @@ add('warning', 'Низький залишок', `${good.name}: залишило�
 
 ```typescript
 // Диспетч статусу синхронізації з будь-якого місця:
-window.dispatchEvent(new CustomEvent('sto:sync-status', {
-  detail: { status: 'syncing' }  // 'idle' | 'syncing' | 'offline' | 'error'
-}));
+window.dispatchEvent(
+  new CustomEvent('sto:sync-status', {
+    detail: { status: 'syncing' }, // 'idle' | 'syncing' | 'offline' | 'error'
+  }),
+);
 
 // Після завершення:
 window.dispatchEvent(new CustomEvent('sto:sync-status', { detail: { status: 'idle' } }));
@@ -619,31 +696,32 @@ bg-[var(--kpi-bg)]             → bg-(--kpi-bg)             ← залишит�
 ```
 
 ### Tailwind токени (є в globals.css `@theme`)
-| CSS var | Canonical |
-|---|---|
-| `--color-background` | `bg-background` |
-| `--color-foreground` | `text-foreground` |
-| `--color-muted-foreground` | `text-muted-foreground` |
-| `--color-foreground-muted` | `text-foreground-muted` |
-| `--color-border` | `border-border` |
-| `--color-border-hover` | `border-border-hover` (hover:) |
-| `--color-primary` | `bg-primary` / `text-primary` |
-| `--color-secondary` | `bg-secondary` |
-| `--color-destructive` | `text-destructive` / `border-destructive` |
-| `--color-success` | `text-success` |
-| `--color-muted` | `bg-muted` |
-| `--color-sidebar-bg` | `bg-sidebar-bg` |
-| `--color-sidebar-fg` | `text-sidebar-fg` |
-| `--color-sidebar-muted` | `text-sidebar-muted` |
-| `--color-sidebar-active` | `bg-sidebar-active` |
-| `--color-sidebar-hover` | `bg-sidebar-hover` (hover:) |
-| `--color-sidebar-border` | `border-sidebar-border` |
-| `--color-brand-100` | `ring-brand-100` / `bg-brand-100` |
-| `--radius` | `rounded` |
-| `--radius-sm` | `rounded-sm` |
-| `--radius-md` | `rounded-md` |
-| `--radius-lg` | `rounded-lg` |
-| `--radius-xl` | `rounded-xl` |
+
+| CSS var                    | Canonical                                 |
+| -------------------------- | ----------------------------------------- |
+| `--color-background`       | `bg-background`                           |
+| `--color-foreground`       | `text-foreground`                         |
+| `--color-muted-foreground` | `text-muted-foreground`                   |
+| `--color-foreground-muted` | `text-foreground-muted`                   |
+| `--color-border`           | `border-border`                           |
+| `--color-border-hover`     | `border-border-hover` (hover:)            |
+| `--color-primary`          | `bg-primary` / `text-primary`             |
+| `--color-secondary`        | `bg-secondary`                            |
+| `--color-destructive`      | `text-destructive` / `border-destructive` |
+| `--color-success`          | `text-success`                            |
+| `--color-muted`            | `bg-muted`                                |
+| `--color-sidebar-bg`       | `bg-sidebar-bg`                           |
+| `--color-sidebar-fg`       | `text-sidebar-fg`                         |
+| `--color-sidebar-muted`    | `text-sidebar-muted`                      |
+| `--color-sidebar-active`   | `bg-sidebar-active`                       |
+| `--color-sidebar-hover`    | `bg-sidebar-hover` (hover:)               |
+| `--color-sidebar-border`   | `border-sidebar-border`                   |
+| `--color-brand-100`        | `ring-brand-100` / `bg-brand-100`         |
+| `--radius`                 | `rounded`                                 |
+| `--radius-sm`              | `rounded-sm`                              |
+| `--radius-md`              | `rounded-md`                              |
+| `--radius-lg`              | `rounded-lg`                              |
+| `--radius-xl`              | `rounded-xl`                              |
 
 ### Pixel → Tailwind scale
 
@@ -679,6 +757,7 @@ hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)]',
 ```
 
 При ручному кодуванні arbitrary values:
+
 1. Завжди подвійно перевір парність `[` і `]` усередині рядка з класами
 2. Якщо клас довгий — винеси в змінну: `const ringErr = 'focus:ring-[hsl(0_86%_93%)]'`
 3. `/sto-review` має grep на незакриті дужки
@@ -690,12 +769,16 @@ hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)]',
 ```tsx
 // ❌ Зриває .xlsx завантаження в Chromium
 const url = URL.createObjectURL(blob);
-a.href = url; a.download = 'file.xlsx'; a.click();
+a.href = url;
+a.download = 'file.xlsx';
+a.click();
 URL.revokeObjectURL(url);
 
 // ✅ Дай браузеру час почати fetch
 const url = URL.createObjectURL(blob);
-a.href = url; a.download = 'file.xlsx'; a.click();
+a.href = url;
+a.download = 'file.xlsx';
+a.click();
 setTimeout(() => URL.revokeObjectURL(url), 100);
 ```
 
@@ -736,21 +819,21 @@ ALTER TYPE "LiftType" ADD VALUE IF NOT EXISTS 'RAMP';
 
 ```typescript
 // ❌ Hard delete
-prisma.workOrder.delete({ where: { id } })
+prisma.workOrder.delete({ where: { id } });
 
 // ❌ Пряме оновлення StockItem
-prisma.stockItem.update({ data: { quantity: { decrement: qty } } })
+prisma.stockItem.update({ data: { quantity: { decrement: qty } } });
 
 // ❌ Пряме оновлення SettlementAccount
-prisma.settlementAccount.update({ data: { balance: { decrement: amount } } })
+prisma.settlementAccount.update({ data: { balance: { decrement: amount } } });
 
 // ❌ Запит без orgId
-prisma.workOrder.findUnique({ where: { id } })
+prisma.workOrder.findUnique({ where: { id } });
 
 // ❌ findMany без take (необмежена вибірка)
-prisma.stockMovement.findMany({ where: { orgId } })  // може повернути мільйони рядків
+prisma.stockMovement.findMany({ where: { orgId } }); // може повернути мільйони рядків
 // ✅
-prisma.stockMovement.findMany({ where: { orgId }, take: limit, skip: offset })
+prisma.stockMovement.findMany({ where: { orgId }, take: limit, skip: offset });
 ```
 
 ---
@@ -796,6 +879,7 @@ async stream(@Req() req: FastifyRequest, @Res() reply: FastifyReply) {
 ```
 
 **Правила SSE:**
+
 - Endpoint захищений JWT (НЕ `@Public()`) — token у query param або Authorization header
 - Завжди `req.raw.on('close', cleanup)` — прибирати interval/subscription при відключенні клієнта
 - Fallback у frontend: `if (!window.EventSource) { /* polling fallback */ }`
@@ -809,7 +893,10 @@ async stream(@Req() req: FastifyRequest, @Res() reply: FastifyReply) {
 // ❌ Блокуючий UX — кнопка disabled, чекаємо відповіді
 const handleTransition = async (id: string, status: string) => {
   setSaving(id);
-  await apiFetch(`/work-orders/${id}/transition`, { method: 'POST', body: JSON.stringify({ status }) });
+  await apiFetch(`/work-orders/${id}/transition`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
   await load();
   setSaving(null);
 };
@@ -818,20 +905,25 @@ const handleTransition = async (id: string, status: string) => {
 const handleTransition = async (id: string, newStatus: string) => {
   const prev = items.find(i => i.id === id);
   // 1. Одразу оновлюємо UI
-  setItems(items => items.map(i => i.id === id ? { ...i, status: newStatus } : i));
+  setItems(items => items.map(i => (i.id === id ? { ...i, status: newStatus } : i)));
   try {
-    await apiFetch(`/work-orders/${id}/transition`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
+    await apiFetch(`/work-orders/${id}/transition`, {
+      method: 'POST',
+      body: JSON.stringify({ status: newStatus }),
+    });
     // 2. Refetch для консистентності (side-effects на сервері)
     await load();
   } catch (e) {
     // 3. Rollback при помилці
-    setItems(items => items.map(i => i.id === id ? { ...i, status: prev!.status } : i));
-    if (features.toastEnabled) toast.error(`Помилка: ${e instanceof Error ? e.message : 'Невідома помилка'}`);
+    setItems(items => items.map(i => (i.id === id ? { ...i, status: prev!.status } : i)));
+    if (features.toastEnabled)
+      toast.error(`Помилка: ${e instanceof Error ? e.message : 'Невідома помилка'}`);
   }
 };
 ```
 
 **Правила Optimistic UI:**
+
 - Зберігати `prev` state ПЕРЕД мутацією для rollback
 - `setItems` з functional updater (не closure value) — щоб не затерти паралельні зміни
 - Завжди робити `load()` після успіху — side-effects на сервері можуть змінити інші поля
@@ -864,6 +956,7 @@ model Comment {
 ```
 
 **Правила polymorphic:**
+
 - Завжди composite index `[orgId, entityType, entityId, createdAt]` — без нього повний scan
 - `entityType` — константи в `@sto/shared/constants` (не magic strings у сервісах)
 - Tenant isolation: завжди фільтрувати по `orgId` (entityId може випадково збігтись між org-ами)
@@ -879,10 +972,14 @@ model Comment {
 await this.webhookService.deliver('WO_STATUS_CHANGED', payload); // може timeout 5s
 
 // ✅
-await this.webhookQueue.add('deliver', { event: 'WO_STATUS_CHANGED', orgId, payload }, {
-  attempts: 5,
-  backoff: { type: 'exponential', delay: 60_000 },
-});
+await this.webhookQueue.add(
+  'deliver',
+  { event: 'WO_STATUS_CHANGED', orgId, payload },
+  {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 60_000 },
+  },
+);
 
 // Processor — HMAC-підпис для безпеки:
 const signature = crypto
@@ -903,6 +1000,7 @@ await fetch(endpoint.url, {
 ```
 
 **Правила Webhook:**
+
 - HMAC-підпис (`X-STO-Signature`) — клієнт верифікує через той самий secret
 - `AbortSignal.timeout(10_000)` — без цього зависаємо на повільному клієнті
 - Зберігати `WebhookDelivery` з response code і body (max 1KB) — для debug UI
@@ -915,13 +1013,17 @@ await fetch(endpoint.url, {
 
 ```typescript
 // ❌ Прямий виклик зовнішнього API
-await this.smsService.send(phone, message);  // впаде без інтернету
+await this.smsService.send(phone, message); // впаде без інтернету
 
 // ✅ Через BullMQ чергу — retry при відновленні
-await this.smsQueue.add('send', { phone, message }, {
-  attempts: 10,
-  backoff: { type: 'exponential', delay: 60_000 },
-});
+await this.smsQueue.add(
+  'send',
+  { phone, message },
+  {
+    attempts: 10,
+    backoff: { type: 'exponential', delay: 60_000 },
+  },
+);
 ```
 
 Зовнішні API що завжди через чергу: **TurboSMS**, **Checkbox (ПРРО)**, **постачальники прайсів**, **Cloud Sync**.
@@ -948,7 +1050,7 @@ await this.prisma.$queryRaw`SELECT * FROM users WHERE name = ${name}`;
 await this.prisma.$queryRaw`
   SELECT * FROM stock_items
   WHERE org_id = ${orgId}::uuid AND deleted_at IS NULL
-`;  // ← throws: column "org_id" does not exist
+`; // ← throws: column "org_id" does not exist
 
 // ✅ Raw SQL з camelCase у подвійних лапках
 await this.prisma.$queryRaw`
@@ -958,7 +1060,7 @@ await this.prisma.$queryRaw`
 `;
 
 // ❌ Чутливі поля в response DTO
-return { id, phone, edrpou, rateScheme, passwordHash };  // ← ніколи!
+return { id, phone, edrpou, rateScheme, passwordHash }; // ← ніколи!
 
 // ✅ Тільки потрібні поля
 return { id, firstName, lastName, phone };
@@ -1053,13 +1155,13 @@ Prisma
 
 ### Коли виносити в компонент
 
-| Патерн | Ознаки для винесення | Куди |
-|---|---|---|
-| Picker зі списком + пошуком | `items[]` + `onSelect` + пошукове поле | `<PickerModal<T>>` |
-| Форма створення/редагування | 3+ поля + збереження + валідація | `<XxxForm>` окремий файл |
-| Список з CRUD | таблиця + кнопки edit/delete | `<XxxList>` або `<DataTable>` |
-| Підтвердження дії | "Видалити?", "Скасувати?" | `<ConfirmDialog>` (вже є) |
-| Бейдж статусу | кольоровий статус + лейбл | `<StatusBadge>` |
+| Патерн                            | Ознаки для винесення                      | Куди                            |
+| --------------------------------- | ----------------------------------------- | ------------------------------- |
+| Picker зі списком + пошуком       | `items[]` + `onSelect` + пошукове поле    | `<PickerModal<T>>`              |
+| Форма створення/редагування       | 3+ поля + збереження + валідація          | `<XxxForm>` окремий файл        |
+| Список з CRUD                     | таблиця + кнопки edit/delete              | `<XxxList>` або `<DataTable>`   |
+| Підтвердження дії                 | "Видалити?", "Скасувати?"                 | `<ConfirmDialog>` (вже є)       |
+| Бейдж статусу                     | кольоровий статус + лейбл                 | `<StatusBadge>`                 |
 | Бейдж терміну (прострочено/скоро) | дата + поріг днів + червоний/жовтий badge | `<ExpiryBadge>` + `daysUntil()` |
 
 ### ExpiryBadge — канонічний бейдж "прострочено / скоро"
@@ -1124,6 +1226,7 @@ import { PickerModal } from '@/components/ui/picker-modal';
 ```
 
 **Тригер кнопка (стандартний вигляд):**
+
 ```tsx
 // ✅ Кнопка-тригер для picker-модалу
 const selected = items.find(i => i.id === form.entityId);
@@ -1133,32 +1236,39 @@ const selected = items.find(i => i.id === form.entityId);
     onClick={() => setPickerOpen(true)}
     className="flex-1 text-left px-3 py-2 rounded-lg border border-border bg-surface hover:border-primary transition-colors text-sm"
   >
-    {selected
-      ? <span className="text-foreground">{selected.name}</span>
-      : <span className="text-muted-foreground">Оберіть...</span>
-    }
+    {selected ? (
+      <span className="text-foreground">{selected.name}</span>
+    ) : (
+      <span className="text-muted-foreground">Оберіть...</span>
+    )}
   </button>
   {form.entityId && (
-    <button aria-label="Очистити" type="button" onClick={() => setForm(f => ({ ...f, entityId: '' }))}
-      className="text-muted-foreground hover:text-destructive-text transition-colors">
+    <button
+      aria-label="Очистити"
+      type="button"
+      onClick={() => setForm(f => ({ ...f, entityId: '' }))}
+      className="text-muted-foreground hover:text-destructive-text transition-colors"
+    >
       <Trash2 className="w-4 h-4" />
     </button>
   )}
-</div>
+</div>;
 ```
 
 ### Заборонені inline-патерни
 
 ```tsx
 // ❌ Пошук реалізований через IIFE в JSX
-{(() => {
-  const q = query.trim().toLowerCase();
-  const filtered = items.filter(i => i.name.toLowerCase().includes(q));
-  return filtered.map(i => <button key={i.id}>...</button>);
-})()}
+{
+  (() => {
+    const q = query.trim().toLowerCase();
+    const filtered = items.filter(i => i.name.toLowerCase().includes(q));
+    return filtered.map(i => <button key={i.id}>...</button>);
+  })();
+}
 
 // ❌ Стан picker-модалу дублюється для кожного поля (pickerQuery1, pickerQuery2...)
-const [pickerQuery, setPickerQuery] = useState('');  // не потрібен — PickerModal керує сам
+const [pickerQuery, setPickerQuery] = useState(''); // не потрібен — PickerModal керує сам
 
 // ❌ Логіка форми живе у page.tsx якщо форма > 5 полів
 // → виносити в src/components/{domain}/{Domain}Form.tsx
@@ -1221,18 +1331,20 @@ const [pickerQuery, setPickerQuery] = useState('');  // не потрібен �
 ```
 
 **State для дочірньої колекції:**
+
 ```ts
 // По одному блоку на кожну дочірню колекцію:
 const [modalChildren, setModalChildren] = useState<Child[]>([]);
 const [modalChildrenLoading, setModalChildrenLoading] = useState(false);
 const [childError, setChildError] = useState('');
-const modalChildReqRef = useRef(0);  // race guard (обов'язковий!)
+const modalChildReqRef = useRef(0); // race guard (обов'язковий!)
 ```
 
 **PATCH + оновлення списку після мутації:**
+
 ```ts
 // Після успішного PATCH основних даних:
-setItems(prev => prev.map(i => i.id === editingItem.id ? { ...i, ...updated } : i));
+setItems(prev => prev.map(i => (i.id === editingItem.id ? { ...i, ...updated } : i)));
 // Після POST нового дочірнього елемента:
 setModalChildren(prev => [...prev, created]);
 // Після DELETE дочірнього елемента:
@@ -1276,11 +1388,13 @@ content: (
 ```
 
 **count у вкладці** — обчислюється з поточного state (не від API):
+
 ```tsx
 count: modalChildren.length,  // оновлюється в реальному часі при add/delete
 ```
 
 **Умовні вкладки** (показуємо лише якщо дані завантажені):
+
 ```tsx
 tabs={[
   mainTab,
@@ -1311,7 +1425,7 @@ const openEdit = (item: Item) => {
   setModalChildrenLoading(true);
   apiFetch<Child[]>(`/items/${item.id}/children`)
     .then(data => {
-      if (modalChildReqRef.current !== reqId) return;  // стара відповідь — ігнорувати
+      if (modalChildReqRef.current !== reqId) return; // стара відповідь — ігнорувати
       setModalChildren(data);
     })
     .catch(err => {
@@ -1326,6 +1440,7 @@ const openEdit = (item: Item) => {
 ```
 
 **Якщо декілька дочірніх колекцій** — окремий reqRef для кожної:
+
 ```ts
 const vehiclesReqRef = useRef(0);
 const workOrdersReqRef = useRef(0);
@@ -1342,6 +1457,7 @@ Promise.all([
 ```
 
 **❌ Типові помилки:**
+
 ```ts
 // ❌ Немає race guard — stale fetch перезаписує поточний CP
 apiFetch<Child[]>(`/items/${item.id}/children`)
@@ -1363,6 +1479,7 @@ const openEdit = (cp) => {
 `AnimatedBody` вбудований у `<Modal>` — **всі `<Modal>` компоненти анімують висоту автоматично**, нічого окремо робити не потрібно.
 
 Застосовуй `AnimatedBody` безпосередньо (імпорт з `@/components/ui/modal`) коли:
+
 - Accordion / collapse-секція поза Modal
 - Панель що розгортається при кліку (show/hide форми на сторінці)
 - Будь-який контейнер де висота змінюється динамічно і `transition-all max-h-[Npx]` дає стрибок або потребує магічного числа
@@ -1371,16 +1488,19 @@ const openEdit = (cp) => {
 import { AnimatedBody } from '@/components/ui/modal';
 
 // ✅ Accordion / collapsible section
-{isOpen && (
-  <AnimatedBody className="px-4 py-3">
-    {/* вміст довільної висоти — анімується автоматично */}
-    <p>Рядок 1</p>
-    <p>Рядок 2</p>
-  </AnimatedBody>
-)}
+{
+  isOpen && (
+    <AnimatedBody className="px-4 py-3">
+      {/* вміст довільної висоти — анімується автоматично */}
+      <p>Рядок 1</p>
+      <p>Рядок 2</p>
+    </AnimatedBody>
+  );
+}
 ```
 
 ❌ НЕ використовувати:
+
 - `maxHeight: '900px'` як magic number для collapse — стрибає при контенті більшому/меншому за число
 - `transition: 'max-height ...'` без ResizeObserver — потребує підбору константи, ламається при зміні вмісту
 - `transition-all` на контейнері з `overflow:hidden` — анімує всі CSS-властивості, важко передбачити
@@ -1422,17 +1542,22 @@ const closePanel = () => {
 };
 
 // JSX
-{mounted && (
-  <div
-    ref={outerRef}
-    style={{ overflow: 'hidden', height: isVisible ? undefined : '0px',
-      transition: isVisible ? 'height 480ms cubic-bezier(0.22,1,0.36,1)' : undefined }}
-  >
-    <div ref={innerRef} className="px-4 py-3">
-      {children}
+{
+  mounted && (
+    <div
+      ref={outerRef}
+      style={{
+        overflow: 'hidden',
+        height: isVisible ? undefined : '0px',
+        transition: isVisible ? 'height 480ms cubic-bezier(0.22,1,0.36,1)' : undefined,
+      }}
+    >
+      <div ref={innerRef} className="px-4 py-3">
+        {children}
+      </div>
     </div>
-  </div>
-)}
+  );
+}
 ```
 
 > Реальний приклад: `apps/web/src/app/calendar/page.tsx` — форма слоту (showAdd → formMounted/formVisible).
