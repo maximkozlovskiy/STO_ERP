@@ -2879,11 +2879,6 @@ function SettingsPageClient() {
             value={currencyForm.fullName}
             onChange={e => setCurrencyForm({ ...currencyForm, fullName: e.target.value })}
           />
-          <Input
-            label="Міжнародна назва"
-            value={currencyForm.internationalName}
-            onChange={e => setCurrencyForm({ ...currencyForm, internationalName: e.target.value })}
-          />
         </div>
       </Modal>
 
