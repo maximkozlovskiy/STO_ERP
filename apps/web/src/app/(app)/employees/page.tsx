@@ -38,6 +38,11 @@ import {
   PanelSection,
   type DetailPanelTab,
 } from '@/components/ui/detail-panel';
+import {
+  EMPLOYEE_PANEL_SCHEMA,
+  buildPanelFields,
+  schemaToPanelConfigFields,
+} from '@/lib/panel-schema';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
@@ -667,19 +672,10 @@ export default function EmployeesPage() {
 
   const flatCats = flattenTree(workCategories);
 
-  const EMP_CONFIG_FIELD_DEFS = [
-    { key: 'status', label: 'Статус' },
-    { key: 'role', label: 'Посада' },
-    { key: 'phone', label: 'Телефон' },
-    { key: 'email', label: 'Email' },
-    { key: 'rateScheme', label: 'Схема нарахування' },
-    { key: 'dateOfHire', label: 'Дата прийняття' },
-  ] as const;
-
-  const employeesPanelConfigFields = EMP_CONFIG_FIELD_DEFS.map(f => ({
-    ...f,
-    hidden: panelConfig.isFieldHidden(f.key),
-  }));
+  const employeesPanelConfigFields = schemaToPanelConfigFields(
+    EMPLOYEE_PANEL_SCHEMA,
+    panelConfig.config,
+  );
 
   const buildEmployeeTabs = (emp: Employee): DetailPanelTab[] => [
     {
@@ -687,45 +683,30 @@ export default function EmployeesPage() {
       label: 'Основне',
       content: (
         <div className="space-y-3">
-          <PanelField
-            label="Статус"
-            fieldKey="status"
-            hidden={panelConfig.isFieldHidden('status')}
-            value={<Badge variant={STATUS_BADGE[emp.status]}>{STATUS_LABELS[emp.status]}</Badge>}
-          />
-          <PanelField
-            label="Посада"
-            fieldKey="role"
-            hidden={panelConfig.isFieldHidden('role')}
-            value={ROLE_LABELS[emp.role]}
-          />
-          <PanelField
-            label="Телефон"
-            fieldKey="phone"
-            hidden={panelConfig.isFieldHidden('phone')}
-            value={emp.phone}
-          />
-          <PanelField
-            label="Email"
-            fieldKey="email"
-            hidden={panelConfig.isFieldHidden('email')}
-            value={emp.email}
-          />
+          {buildPanelFields(emp, EMPLOYEE_PANEL_SCHEMA, panelConfig.config, {
+            status: v => (
+              <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'}>
+                {STATUS_LABELS[String(v)] ?? String(v)}
+              </Badge>
+            ),
+            role: v => ROLE_LABELS[String(v)] ?? String(v),
+            dateOfHire: v => (v ? fmtDate(String(v)) : undefined),
+            dateOfFire: v => (emp.status === 'FIRED' && v ? fmtDate(String(v)) : undefined),
+          }).map(f => (
+            <PanelField
+              key={f.key}
+              fieldKey={f.key}
+              label={f.label}
+              value={f.value}
+              hidden={f.hidden}
+            />
+          ))}
           <PanelField
             label="Схема нарахування"
             fieldKey="rateScheme"
             hidden={panelConfig.isFieldHidden('rateScheme')}
             value={emp.rateScheme ? RATE_LABELS[emp.rateScheme.type] : undefined}
           />
-          <PanelField
-            label="Дата прийняття"
-            fieldKey="dateOfHire"
-            hidden={panelConfig.isFieldHidden('dateOfHire')}
-            value={emp.dateOfHire ? fmtDate(emp.dateOfHire) : undefined}
-          />
-          {emp.status === 'FIRED' && emp.dateOfFire && (
-            <PanelField label="Дата звільнення" value={fmtDate(emp.dateOfFire)} />
-          )}
         </div>
       ),
     },

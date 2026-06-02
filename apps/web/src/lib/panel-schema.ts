@@ -19,6 +19,7 @@ import type { Work } from '@/hooks/api/useWorks';
 import type { PurchaseOrder } from '@/hooks/api/usePurchaseOrders';
 import type { StockDoc } from '@/hooks/api/useStockDocuments';
 import type { StockItem } from '@/hooks/api/useInventory';
+import type { Counterparty } from '@/hooks/api/useCounterparties';
 import { fmtMoney, fmtDate, fmtDateTime } from '@/lib/format';
 
 // ─── Core types ───────────────────────────────────────────────────────────────
@@ -207,3 +208,33 @@ export const SERVICE_PANEL_SCHEMA = [
   { key: 'price', label: 'Ціна', type: 'money' },
   { key: 'description', label: 'Опис' },
 ] as const satisfies readonly PanelFieldDef<ServiceForSchema>[];
+
+// CRM (Counterparty) panel — basic info tab fields.
+// type/balance rendered via renderOverrides in crm/page.tsx.
+export const COUNTERPARTY_PANEL_SCHEMA = [
+  { key: 'type', label: 'Тип контрагента', always: true },
+  { key: 'phone', label: 'Телефон' },
+  { key: 'email', label: 'Email' },
+  { key: 'edrpou', label: 'ЄДРПОУ' },
+  { key: 'balance', label: 'Баланс', type: 'money' },
+  { key: 'contactPerson', label: 'Контактна особа' },
+] as const satisfies readonly PanelFieldDef<Counterparty>[];
+
+// Employee panel — info tab fields.
+// status/role/rateScheme rendered via renderOverrides in employees/page.tsx.
+interface EmployeeForSchema {
+  status: string;
+  role: string;
+  phone: string | null;
+  email?: string | null;
+  dateOfHire?: string | null;
+  dateOfFire?: string | null;
+}
+export const EMPLOYEE_PANEL_SCHEMA = [
+  { key: 'status', label: 'Статус', always: true },
+  { key: 'role', label: 'Посада' },
+  { key: 'phone', label: 'Телефон' },
+  { key: 'email', label: 'Email' },
+  { key: 'dateOfHire', label: 'Дата прийняття', type: 'date' },
+  { key: 'dateOfFire', label: 'Дата звільнення', type: 'date' },
+] as const satisfies readonly PanelFieldDef<EmployeeForSchema>[];

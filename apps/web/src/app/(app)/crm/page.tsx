@@ -10,6 +10,10 @@ import { apiFetch } from '@/lib/api-client';
 import { useCounterparties, counterpartiesKeys, Counterparty } from '@/hooks/api/useCounterparties';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import {
+  WO_STATUS_LABELS as SHARED_WO_STATUS_LABELS,
+  WO_STATUS_BADGE as SHARED_WO_STATUS_BADGE,
+} from '@sto/shared';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -24,6 +28,11 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
+import {
+  COUNTERPARTY_PANEL_SCHEMA,
+  buildPanelFields,
+  schemaToPanelConfigFields,
+} from '@/lib/panel-schema';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
@@ -63,30 +72,9 @@ type ModalWorkOrder = {
   createdAt: string;
   vehicleSummary?: string | null;
 };
-const WO_STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка',
-  ESTIMATE: 'Кошторис',
-  APPROVED: 'Затверджено',
-  IN_PROGRESS: 'В роботі',
-  ON_HOLD: 'Призупинено',
-  COMPLETED: 'Виконано',
-  INVOICED: 'Виставлено',
-  PAID: 'Оплачено',
-  ARCHIVED: 'Архів',
-  CANCELLED: 'Скасовано',
-};
-const WO_STATUS_BADGE: Record<string, BadgeVariant> = {
-  DRAFT: 'secondary',
-  ESTIMATE: 'info',
-  APPROVED: 'info',
-  IN_PROGRESS: 'warning',
-  ON_HOLD: 'secondary',
-  COMPLETED: 'success',
-  INVOICED: 'default',
-  PAID: 'success',
-  ARCHIVED: 'secondary',
-  CANCELLED: 'destructive',
-};
+// WO status constants imported from @sto/shared
+const WO_STATUS_LABELS = SHARED_WO_STATUS_LABELS;
+const WO_STATUS_BADGE = SHARED_WO_STATUS_BADGE;
 const TYPE_BADGE: Record<string, BadgeVariant> = {
   CLIENT: 'default',
   SUPPLIER: 'secondary',
@@ -531,19 +519,10 @@ export default function CrmPage() {
 
   const totalPages = Math.ceil(total / limit);
 
-  const CRM_CONFIG_FIELD_DEFS = [
-    { key: 'phone', label: 'Телефон' },
-    { key: 'email', label: 'Email' },
-    { key: 'edrpou', label: 'ЄДРПОУ' },
-    { key: 'balance', label: 'Баланс' },
-    { key: 'contactPerson', label: 'Контактна особа' },
-    { key: 'type', label: 'Тип контрагента' },
-  ] as const;
-
-  const crmPanelConfigFields = CRM_CONFIG_FIELD_DEFS.map(f => ({
-    ...f,
-    hidden: panelConfig.isFieldHidden(f.key),
-  }));
+  const crmPanelConfigFields = schemaToPanelConfigFields(
+    COUNTERPARTY_PANEL_SCHEMA,
+    panelConfig.config,
+  );
 
   const buildCpTabs = (cp: Counterparty): DetailPanelTab[] => [
     {
@@ -551,50 +530,39 @@ export default function CrmPage() {
       label: 'Основне',
       content: (
         <div className="space-y-3">
-          {!panelConfig.isFieldHidden('type') && (
-            <div className="flex flex-wrap gap-1.5">
-              <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>{TYPE_LABELS[cp.type]}</Badge>
-              {cp.vatPayer && <Badge variant="warning">ПДВ</Badge>}
-              {cp.deletedAt && <Badge variant="secondary">видалено</Badge>}
-            </div>
-          )}
-          <PanelField
-            label="Телефон"
-            value={cp.phone}
-            fieldKey="phone"
-            hidden={panelConfig.isFieldHidden('phone')}
-          />
-          <PanelField
-            label="Email"
-            value={cp.email}
-            fieldKey="email"
-            hidden={panelConfig.isFieldHidden('email')}
-          />
-          <PanelField
-            label="ЄДРПОУ"
-            value={cp.edrpou}
-            fieldKey="edrpou"
-            hidden={panelConfig.isFieldHidden('edrpou')}
-          />
-          <PanelField
-            label="Баланс"
-            fieldKey="balance"
-            hidden={panelConfig.isFieldHidden('balance')}
-            value={
+          {buildPanelFields(cp, COUNTERPARTY_PANEL_SCHEMA, panelConfig.config, {
+            type: v => (
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant={TYPE_BADGE[String(v)] ?? 'secondary'}>
+                  {TYPE_LABELS[String(v)]}
+                </Badge>
+                {cp.vatPayer && <Badge variant="warning">ПДВ</Badge>}
+                {cp.deletedAt && <Badge variant="secondary">видалено</Badge>}
+              </div>
+            ),
+            balance: v => (
               <span
                 className={cn(
                   'font-semibold',
-                  cp.balance < 0
+                  Number(v) < 0
                     ? 'text-destructive-text'
-                    : cp.balance > 0
+                    : Number(v) > 0
                       ? 'text-success-text'
                       : 'text-muted-foreground',
                 )}
               >
-                {fmtMoney(cp.balance)} ₴
+                {fmtMoney(Number(v))} ₴
               </span>
-            }
-          />
+            ),
+          }).map(f => (
+            <PanelField
+              key={f.key}
+              fieldKey={f.key}
+              label={f.label}
+              value={f.value}
+              hidden={f.hidden}
+            />
+          ))}
         </div>
       ),
     },
