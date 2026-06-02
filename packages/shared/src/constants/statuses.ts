@@ -1,0 +1,213 @@
+/**
+ * Shared status/badge/transition constants for all domain entities.
+ * Uses string literals (not Prisma enums) — safe for browser bundles.
+ * Single source of truth: import from '@sto/shared' everywhere.
+ */
+
+export type BadgeVariant =
+  | 'default'
+  | 'secondary'
+  | 'outline'
+  | 'success'
+  | 'warning'
+  | 'destructive'
+  | 'info'
+  | 'purple';
+
+// ─── Work Orders ─────────────────────────────────────────────────────────────
+
+export const WO_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Чернетка',
+  ESTIMATE: 'Кошторис',
+  APPROVED: 'Затверджено',
+  IN_PROGRESS: 'В роботі',
+  ON_HOLD: 'Призупинено',
+  COMPLETED: 'Виконано',
+  INVOICED: 'Виставлено',
+  PAID: 'Оплачено',
+  ARCHIVED: 'Архів',
+  CANCELLED: 'Скасовано',
+};
+
+export const WO_STATUS_BADGE: Record<string, BadgeVariant> = {
+  DRAFT: 'secondary',
+  ESTIMATE: 'warning',
+  APPROVED: 'default',
+  IN_PROGRESS: 'default',
+  ON_HOLD: 'warning',
+  COMPLETED: 'success',
+  INVOICED: 'default',
+  PAID: 'success',
+  ARCHIVED: 'secondary',
+  CANCELLED: 'destructive',
+};
+
+export const WO_STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['ESTIMATE', 'CANCELLED'],
+  ESTIMATE: ['APPROVED', 'CANCELLED'],
+  APPROVED: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['ON_HOLD', 'COMPLETED'],
+  ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
+  COMPLETED: ['INVOICED', 'ARCHIVED'],
+  INVOICED: ['PAID'],
+  PAID: ['ARCHIVED'],
+  ARCHIVED: [],
+  CANCELLED: [],
+};
+
+export const WO_PRIORITY_LABELS: Record<string, string> = {
+  LOW: 'Низький',
+  NORMAL: 'Звичайний',
+  HIGH: 'Високий',
+  URGENT: 'Терміново',
+};
+
+export const WO_PRIORITY_BADGE: Record<string, BadgeVariant> = {
+  LOW: 'secondary',
+  NORMAL: 'default',
+  HIGH: 'warning',
+  URGENT: 'destructive',
+};
+
+export const WO_CATEGORY_LABELS: Record<string, string> = {
+  MAINTENANCE: 'ТО',
+  CURRENT_REPAIR: 'Поточний ремонт',
+  MAJOR_REPAIR: 'Кап. ремонт',
+  BODY_REPAIR: 'Кузовний',
+  DIAGNOSTICS: 'Діагностика',
+  WARRANTY: 'Гарантійний',
+  SEASONAL: 'Сезонне',
+};
+
+// ─── Invoices ─────────────────────────────────────────────────────────────────
+
+export const INVOICE_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Чернетка',
+  SENT: 'Надіслано',
+  PAID: 'Оплачено',
+  OVERDUE: 'Прострочено',
+  CANCELLED: 'Скасовано',
+};
+
+export const INVOICE_STATUS_BADGE: Record<string, BadgeVariant> = {
+  DRAFT: 'secondary',
+  SENT: 'default',
+  PAID: 'success',
+  OVERDUE: 'warning',
+  CANCELLED: 'destructive',
+};
+
+export const INVOICE_STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['SENT', 'CANCELLED'],
+  SENT: ['PAID', 'CANCELLED'],
+  OVERDUE: ['PAID', 'CANCELLED'],
+  PAID: [],
+  CANCELLED: [],
+};
+
+export const INVOICE_TYPE_LABELS: Record<string, string> = {
+  STANDARD: 'Стандартний',
+  PREPAYMENT: 'Аванс',
+  CREDIT_NOTE: 'Кредит-нота',
+};
+
+// ─── Purchase Orders ──────────────────────────────────────────────────────────
+
+export const PO_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Чернетка',
+  ORDERED: 'Замовлено',
+  PARTIAL: 'Частково',
+  RECEIVED: 'Отримано',
+  CANCELLED: 'Скасовано',
+};
+
+export const PO_STATUS_BADGE: Record<string, BadgeVariant> = {
+  DRAFT: 'secondary',
+  ORDERED: 'default',
+  PARTIAL: 'warning',
+  RECEIVED: 'success',
+  CANCELLED: 'destructive',
+};
+
+export const PO_STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['ORDERED', 'CANCELLED'],
+  ORDERED: ['RECEIVED', 'CANCELLED'],
+  PARTIAL: ['RECEIVED', 'CANCELLED'],
+  RECEIVED: [],
+  CANCELLED: [],
+};
+
+export const PO_STATUS_ACTION_LABELS: Record<string, string> = {
+  ORDERED: 'Підтвердити замовлення',
+  RECEIVED: 'Позначити отриманим',
+  CANCELLED: 'Скасувати',
+  PARTIAL: 'Часткове отримання',
+};
+
+// ─── Stock Documents ──────────────────────────────────────────────────────────
+
+export const STOCK_DOC_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Чернетка',
+  CONFIRMED: 'Підтверджено',
+  CANCELLED: 'Скасовано',
+};
+
+export const STOCK_DOC_STATUS_BADGE: Record<string, BadgeVariant> = {
+  DRAFT: 'secondary',
+  CONFIRMED: 'success',
+  CANCELLED: 'destructive',
+};
+
+export const STOCK_DOC_STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED: [],
+  CANCELLED: [],
+};
+
+export const STOCK_DOC_TYPE_LABELS: Record<string, string> = {
+  WRITEOFF: 'Списання',
+  TRANSFER: 'Переміщення',
+  OPENING_BALANCE: 'Поч. залишки',
+};
+
+export const STOCK_DOC_TYPE_BADGE: Record<string, BadgeVariant> = {
+  WRITEOFF: 'destructive',
+  TRANSFER: 'default',
+  OPENING_BALANCE: 'secondary',
+};
+
+// ─── Employees ────────────────────────────────────────────────────────────────
+
+export const EMPLOYEE_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Активний',
+  ON_LEAVE: 'У відпустці',
+  FIRED: 'Звільнений',
+};
+
+export const EMPLOYEE_STATUS_BADGE: Record<string, BadgeVariant> = {
+  ACTIVE: 'success',
+  ON_LEAVE: 'warning',
+  FIRED: 'secondary',
+};
+
+export const EMPLOYEE_ROLE_LABELS: Record<string, string> = {
+  OWNER: 'Власник',
+  ADMIN: 'Адміністратор',
+  RECEPTIONIST: 'Приймальник',
+  MECHANIC: 'Механік',
+  STOREKEEPER: 'Комірник',
+  ACCOUNTANT: 'Бухгалтер',
+  CLIENT: 'Клієнт',
+  XLSX_MANAGER: 'Менеджер імпорту',
+};
+
+export const EMPLOYEE_ROLE_BADGE: Record<string, BadgeVariant> = {
+  OWNER: 'destructive',
+  ADMIN: 'default',
+  RECEPTIONIST: 'secondary',
+  MECHANIC: 'warning',
+  STOREKEEPER: 'secondary',
+  ACCOUNTANT: 'secondary',
+  CLIENT: 'secondary',
+  XLSX_MANAGER: 'secondary',
+};

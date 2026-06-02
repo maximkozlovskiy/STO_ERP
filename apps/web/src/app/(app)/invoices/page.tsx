@@ -9,7 +9,13 @@ import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { useInvoices, invoicesKeys, Invoice } from '@/hooks/api/useInvoices';
 import { Button } from '@/components/ui/button';
-import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
+import {
+  INVOICE_STATUS_LABELS,
+  INVOICE_STATUS_BADGE,
+  INVOICE_STATUS_TRANSITIONS,
+  INVOICE_TYPE_LABELS,
+} from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -88,33 +94,10 @@ interface InvoiceWithOptionals extends Invoice {
   lines?: InvoiceLine[];
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка',
-  SENT: 'Надіслано',
-  PAID: 'Оплачено',
-  OVERDUE: 'Прострочено',
-  CANCELLED: 'Скасовано',
-};
-const STATUS_BADGE: Record<string, BadgeVariant> = {
-  DRAFT: 'secondary',
-  SENT: 'default',
-  PAID: 'success',
-  OVERDUE: 'warning',
-  CANCELLED: 'destructive',
-};
-const STATUS_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ['SENT', 'CANCELLED'],
-  SENT: ['PAID', 'CANCELLED'],
-  OVERDUE: ['PAID', 'CANCELLED'],
-  PAID: [],
-  CANCELLED: [],
-};
-
-const INVOICE_TYPE_LABELS: Record<string, string> = {
-  STANDARD: 'Стандартний',
-  PREPAYMENT: 'Аванс',
-  CREDIT_NOTE: 'Кредит-нота',
-};
+// Status/badge/transition/type constants imported from @sto/shared
+const STATUS_LABELS = INVOICE_STATUS_LABELS;
+const STATUS_BADGE = INVOICE_STATUS_BADGE;
+const STATUS_TRANSITIONS = INVOICE_STATUS_TRANSITIONS;
 
 function fmt(n: number) {
   return fmtMoney(n) + ' ₴';

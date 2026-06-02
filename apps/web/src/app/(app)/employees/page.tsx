@@ -9,7 +9,13 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
-import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
+import {
+  EMPLOYEE_STATUS_LABELS,
+  EMPLOYEE_STATUS_BADGE,
+  EMPLOYEE_ROLE_LABELS,
+  EMPLOYEE_ROLE_BADGE,
+} from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -98,40 +104,15 @@ interface EmployeeFilters extends Record<string, unknown> {
   showDeleted: boolean;
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  OWNER: 'Власник',
-  ADMIN: 'Адміністратор',
-  RECEPTIONIST: 'Приймальник',
-  MECHANIC: 'Механік',
-  STOREKEEPER: 'Комірник',
-  ACCOUNTANT: 'Бухгалтер',
-  CLIENT: 'Клієнт',
-  XLSX_MANAGER: 'Менеджер імпорту',
-};
-const ROLE_BADGE: Record<string, BadgeVariant> = {
-  OWNER: 'destructive',
-  ADMIN: 'default',
-  RECEPTIONIST: 'secondary',
-  MECHANIC: 'warning',
-  STOREKEEPER: 'secondary',
-  ACCOUNTANT: 'secondary',
-  CLIENT: 'secondary',
-  XLSX_MANAGER: 'secondary',
-};
+// Role/status/badge constants imported from @sto/shared
+const ROLE_LABELS = EMPLOYEE_ROLE_LABELS;
+const ROLE_BADGE = EMPLOYEE_ROLE_BADGE;
 const RATE_LABELS: Record<string, string> = {
   percent_normo: '% від норма-год',
   fixed_plus_bonus: 'Ставка + бонус',
 };
-const STATUS_LABELS: Record<string, string> = {
-  ACTIVE: 'Активний',
-  ON_LEAVE: 'У відпустці',
-  FIRED: 'Звільнений',
-};
-const STATUS_BADGE: Record<string, BadgeVariant> = {
-  ACTIVE: 'success',
-  ON_LEAVE: 'warning',
-  FIRED: 'secondary',
-};
+const STATUS_LABELS = EMPLOYEE_STATUS_LABELS;
+const STATUS_BADGE = EMPLOYEE_STATUS_BADGE;
 
 const ROLE_FILTER_OPTIONS: [string, string][] = [
   ['', 'Всі посади'],

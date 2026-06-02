@@ -8,7 +8,13 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
-import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
+import {
+  STOCK_DOC_TYPE_LABELS,
+  STOCK_DOC_TYPE_BADGE,
+  STOCK_DOC_STATUS_LABELS,
+  STOCK_DOC_STATUS_BADGE,
+} from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
@@ -114,26 +120,11 @@ interface StockDocFilters extends Record<string, unknown> {
   showDeleted: boolean;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  WRITEOFF: 'Списання',
-  TRANSFER: 'Переміщення',
-  OPENING_BALANCE: 'Поч. залишки',
-};
-const TYPE_BADGE: Record<string, BadgeVariant> = {
-  WRITEOFF: 'destructive',
-  TRANSFER: 'default',
-  OPENING_BALANCE: 'secondary',
-};
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка',
-  CONFIRMED: 'Підтверджено',
-  CANCELLED: 'Скасовано',
-};
-const STATUS_BADGE: Record<string, BadgeVariant> = {
-  DRAFT: 'secondary',
-  CONFIRMED: 'success',
-  CANCELLED: 'destructive',
-};
+// Type/status/badge constants imported from @sto/shared
+const TYPE_LABELS = STOCK_DOC_TYPE_LABELS;
+const TYPE_BADGE = STOCK_DOC_TYPE_BADGE;
+const STATUS_LABELS = STOCK_DOC_STATUS_LABELS;
+const STATUS_BADGE = STOCK_DOC_STATUS_BADGE;
 
 export default function StockDocumentsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);

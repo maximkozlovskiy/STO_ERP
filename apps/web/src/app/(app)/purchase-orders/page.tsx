@@ -14,7 +14,13 @@ import {
 } from '@/hooks/api/usePurchaseOrders';
 import { inventoryKeys } from '@/hooks/api/useInventory';
 import { Button } from '@/components/ui/button';
-import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
+import {
+  PO_STATUS_LABELS,
+  PO_STATUS_BADGE,
+  PO_STATUS_TRANSITIONS,
+  PO_STATUS_ACTION_LABELS,
+} from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
@@ -88,33 +94,11 @@ interface PoFilters extends Record<string, unknown> {
   showDeleted: boolean;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка',
-  ORDERED: 'Замовлено',
-  PARTIAL: 'Частково',
-  RECEIVED: 'Отримано',
-  CANCELLED: 'Скасовано',
-};
-const STATUS_BADGE: Record<string, BadgeVariant> = {
-  DRAFT: 'secondary',
-  ORDERED: 'default',
-  PARTIAL: 'warning',
-  RECEIVED: 'success',
-  CANCELLED: 'destructive',
-};
-const STATUS_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ['ORDERED', 'CANCELLED'],
-  ORDERED: ['RECEIVED', 'CANCELLED'],
-  PARTIAL: ['RECEIVED', 'CANCELLED'],
-  RECEIVED: [],
-  CANCELLED: [],
-};
-const STATUS_ACTION_LABELS: Record<string, string> = {
-  ORDERED: 'Підтвердити замовлення',
-  RECEIVED: 'Позначити отриманим',
-  CANCELLED: 'Скасувати',
-  PARTIAL: 'Часткове отримання',
-};
+// Status/badge/transition/action constants imported from @sto/shared
+const STATUS_LABELS = PO_STATUS_LABELS;
+const STATUS_BADGE = PO_STATUS_BADGE;
+const STATUS_TRANSITIONS = PO_STATUS_TRANSITIONS;
+const STATUS_ACTION_LABELS = PO_STATUS_ACTION_LABELS;
 
 function fmt(n: number) {
   return fmtMoney(n) + ' ₴';

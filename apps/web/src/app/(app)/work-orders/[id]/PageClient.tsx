@@ -22,6 +22,7 @@ import { fmtMoney, fmtInt, fmtDate, fmtDateTime, fmtShortDateTime } from '@/lib/
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
+import { WO_STATUS_LABELS } from '@sto/shared';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -167,18 +168,8 @@ interface InspectionReport {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка',
-  ESTIMATE: 'Кошторис',
-  APPROVED: 'Затверджено',
-  IN_PROGRESS: 'В роботі',
-  ON_HOLD: 'Призупинено',
-  COMPLETED: 'Виконано',
-  INVOICED: 'Виставлено',
-  PAID: 'Оплачено',
-  ARCHIVED: 'Архів',
-  CANCELLED: 'Скасовано',
-};
+// Status labels imported from @sto/shared
+const STATUS_LABELS = WO_STATUS_LABELS;
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-secondary text-muted-foreground',
   ESTIMATE: 'bg-warning-subtle text-warning',

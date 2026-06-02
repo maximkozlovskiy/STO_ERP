@@ -10,7 +10,14 @@ import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { useWorkOrders, workOrdersKeys, WorkOrder } from '@/hooks/api/useWorkOrders';
 import { Button } from '@/components/ui/button';
-import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
+import {
+  WO_STATUS_LABELS,
+  WO_STATUS_BADGE,
+  WO_PRIORITY_LABELS,
+  WO_PRIORITY_BADGE,
+  WO_CATEGORY_LABELS,
+} from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -82,55 +89,12 @@ interface WOFilters extends Record<string, unknown> {
   myOrders: boolean;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка',
-  ESTIMATE: 'Кошторис',
-  APPROVED: 'Затверджено',
-  IN_PROGRESS: 'В роботі',
-  ON_HOLD: 'Призупинено',
-  COMPLETED: 'Виконано',
-  INVOICED: 'Виставлено',
-  PAID: 'Оплачено',
-  ARCHIVED: 'Архів',
-  CANCELLED: 'Скасовано',
-};
-
-const STATUS_BADGE: Record<string, BadgeVariant> = {
-  DRAFT: 'secondary',
-  ESTIMATE: 'warning',
-  APPROVED: 'default',
-  IN_PROGRESS: 'default',
-  ON_HOLD: 'warning',
-  COMPLETED: 'success',
-  INVOICED: 'default',
-  PAID: 'success',
-  ARCHIVED: 'secondary',
-  CANCELLED: 'destructive',
-};
-
-const PRIORITY_LABELS: Record<string, string> = {
-  LOW: 'Низький',
-  NORMAL: 'Звичайний',
-  HIGH: 'Високий',
-  URGENT: 'Терміново',
-};
-
-const PRIORITY_BADGE: Record<string, BadgeVariant> = {
-  LOW: 'secondary',
-  NORMAL: 'default',
-  HIGH: 'warning',
-  URGENT: 'destructive',
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  MAINTENANCE: 'ТО',
-  CURRENT_REPAIR: 'Поточний ремонт',
-  MAJOR_REPAIR: 'Кап. ремонт',
-  BODY_REPAIR: 'Кузовний',
-  DIAGNOSTICS: 'Діагностика',
-  WARRANTY: 'Гарантійний',
-  SEASONAL: 'Сезонне',
-};
+// Status/badge/priority/category constants imported from @sto/shared
+const STATUS_LABELS = WO_STATUS_LABELS;
+const STATUS_BADGE = WO_STATUS_BADGE;
+const PRIORITY_LABELS = WO_PRIORITY_LABELS;
+const PRIORITY_BADGE = WO_PRIORITY_BADGE;
+const CATEGORY_LABELS = WO_CATEGORY_LABELS;
 
 const STATUS_TABS: Array<[string, string]> = [
   ['', 'Всі'],
