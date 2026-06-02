@@ -178,12 +178,12 @@ export default function BrandsTab() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            size="md"
-            leftIcon={showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            size="icon-sm"
+            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
             onClick={() => setShowDeleted(d => !d)}
             className={cn(showDeleted && 'border-primary text-primary')}
           >
-            {showDeleted ? `Сховати видалені (${deletedCount})` : 'Показати видалені'}
+            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
           <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
             Бренд

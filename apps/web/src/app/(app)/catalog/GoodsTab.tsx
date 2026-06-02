@@ -902,6 +902,19 @@ export default function GoodsTab() {
           onImportComplete={load}
         />
         <div className="flex items-center gap-2 ml-auto">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            onClick={() => {
+              setShowDeleted(d => !d);
+              setPage(1);
+              bulkSelect.clear();
+            }}
+            className={showDeleted ? 'border-primary text-primary' : ''}
+          >
+            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </Button>
           {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
             columns={goodsOrderedColumns}
@@ -917,19 +930,6 @@ export default function GoodsTab() {
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
-        <Button
-          variant="outline"
-          size="md"
-          leftIcon={showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          onClick={() => {
-            setShowDeleted(d => !d);
-            setPage(1);
-            bulkSelect.clear();
-          }}
-          className={showDeleted ? 'border-primary text-primary' : ''}
-        >
-          {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
-        </Button>
         <Button
           leftIcon={<Plus className="h-4 w-4" />}
           onClick={() => {
