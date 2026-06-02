@@ -41,17 +41,29 @@ export class GoodCategoriesController {
     return this.service.findAll(orgId);
   }
 
-  @Get(':id')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
-  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(orgId, id);
-  }
-
+  // Специфічні sub-resource роути ПЕРЕД :id — інакше Fastify матчить :id жадібно
   @Get(':id/linked-work-categories')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({ summary: "Пов'язані категорії робіт для категорії товарів" })
   getLinkedWorkCategories(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getLinkedWorkCategories(orgId, id);
+  }
+
+  @Patch(':id/toggle-active')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Увімкнути/вимкнути категорію' })
+  toggleActive(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ToggleActiveDto,
+  ) {
+    return this.service.toggleActive(orgId, id, dto.isActive);
+  }
+
+  @Get(':id')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
+  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.findOne(orgId, id);
   }
 
   @Post()
@@ -70,17 +82,6 @@ export class GoodCategoriesController {
     @Body() dto: UpdateGoodCategoryDto,
   ) {
     return this.service.update(orgId, id, dto);
-  }
-
-  @Patch(':id/toggle-active')
-  @Roles('OWNER', 'ADMIN')
-  @ApiOperation({ summary: 'Увімкнути/вимкнути категорію' })
-  toggleActive(
-    @OrgContext() orgId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: ToggleActiveDto,
-  ) {
-    return this.service.toggleActive(orgId, id, dto.isActive);
   }
 
   @Delete(':id')

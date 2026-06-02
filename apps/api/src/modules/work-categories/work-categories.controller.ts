@@ -41,6 +41,25 @@ export class WorkCategoriesController {
     return this.service.findAll(orgId);
   }
 
+  // Специфічні sub-resource роути ПЕРЕД :id — інакше Fastify матчить :id жадібно
+  @Patch(':id/toggle-active')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Увімкнути/вимкнути категорію робіт' })
+  toggleActive(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ToggleActiveCategoryDto,
+  ) {
+    return this.service.toggleActive(orgId, id, dto.isActive);
+  }
+
+  @Get(':id/linked-good-categories')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
+  @ApiOperation({ summary: "Пов'язані категорії товарів для категорії робіт" })
+  getLinkedGoodCategories(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getLinkedGoodCategories(orgId, id);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
@@ -63,24 +82,6 @@ export class WorkCategoriesController {
     @Body() dto: UpdateWorkCategoryDto,
   ) {
     return this.service.update(orgId, id, dto);
-  }
-
-  @Patch(':id/toggle-active')
-  @Roles('OWNER', 'ADMIN')
-  @ApiOperation({ summary: 'Увімкнути/вимкнути категорію робіт' })
-  toggleActive(
-    @OrgContext() orgId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: ToggleActiveCategoryDto,
-  ) {
-    return this.service.toggleActive(orgId, id, dto.isActive);
-  }
-
-  @Get(':id/linked-good-categories')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
-  @ApiOperation({ summary: "Пов'язані категорії товарів для категорії робіт" })
-  getLinkedGoodCategories(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getLinkedGoodCategories(orgId, id);
   }
 
   @Delete(':id')
