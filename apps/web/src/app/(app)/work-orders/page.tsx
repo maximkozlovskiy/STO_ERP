@@ -636,7 +636,7 @@ export default function WorkOrdersPage() {
             }}
             leftIcon={<Plus className="h-4 w-4" />}
           >
-            + Наряд
+            Наряд
           </Button>
         </div>
       </div>

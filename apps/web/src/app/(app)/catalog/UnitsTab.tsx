@@ -323,9 +323,6 @@ export default function UnitsTab() {
     }
   };
 
-  const activeCount = units.filter(u => !u.deletedAt).length;
-  const deletedCount = units.filter(u => !!u.deletedAt).length;
-
   return (
     <div>
       {!modal && error && (

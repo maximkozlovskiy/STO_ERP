@@ -1063,7 +1063,7 @@ export default function EmployeesPage() {
         </div>
 
         <DetailPanel
-          open={!!selectedEmp}
+          open={!!selectedEmp && detailPanel.enabled}
           onClose={() => setSelectedEmp(null)}
           title={selectedEmp ? `${selectedEmp.firstName} ${selectedEmp.lastName}` : ''}
           subtitle={selectedEmp ? ROLE_LABELS[selectedEmp.role] : ''}
