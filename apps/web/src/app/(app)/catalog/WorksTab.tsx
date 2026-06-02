@@ -231,6 +231,26 @@ export default function WorksTab() {
   const worksFormDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const editWorkDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
+  // Bug #323: race-guard для CategoryManagerModal refetch — швидкі CRUD у
+  // модалі (rename → add child → toggle) запускали 3 послідовні fetch-и; resolve
+  // order не гарантовано → останній resolve wins → stale tree. Reuse того ж
+  // patterна що modalUoMReqRef у GoodsTab.
+  const catReqRef = useRef(0);
+  const reloadCategories = useCallback(() => {
+    const reqId = ++catReqRef.current;
+    apiFetch<Category[]>('/work-categories')
+      .then(d => {
+        if (catReqRef.current !== reqId) return;
+        setCategories(d);
+        setCache('cache:work-categories', d);
+      })
+      .catch((e: unknown) => {
+        if (catReqRef.current !== reqId) return;
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        // Не перетираємо помилку від основного списку робіт
+      });
+  }, []);
+
   useEffect(() => {
     // Reference data — paint instantly from sessionStorage, refresh in background.
     const cached = getCached<Category[]>('cache:work-categories');
@@ -239,12 +259,15 @@ export default function WorksTab() {
     // sto-optimize (Bug #315 pattern): AbortController щоб setState не виконувався після
     // unmount (React DEV warning + memory churn). Парний підхід з GoodsTab.tsx.
     const ac = new AbortController();
+    const reqId = ++catReqRef.current;
     apiFetch<Category[]>('/work-categories', { signal: ac.signal })
       .then(d => {
+        if (catReqRef.current !== reqId) return;
         setCategories(d);
         setCache('cache:work-categories', d);
       })
       .catch((e: unknown) => {
+        if (catReqRef.current !== reqId) return;
         if (e instanceof DOMException && e.name === 'AbortError') return;
         if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження категорій');
       });
@@ -497,14 +520,7 @@ export default function WorksTab() {
         onClose={() => setCategoryManagerOpen(false)}
         type="work"
         tree={categories}
-        onChanged={() => {
-          apiFetch<Category[]>('/work-categories')
-            .then(d => {
-              setCategories(d);
-              setCache('cache:work-categories', d);
-            })
-            .catch(() => {});
-        }}
+        onChanged={reloadCategories}
       />
 
       {features.bulkActionsEnabled && (

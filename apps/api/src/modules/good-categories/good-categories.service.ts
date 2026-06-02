@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
@@ -74,22 +74,36 @@ export class GoodCategoriesService {
     if (!existing) throw new NotFoundException('Категорію товарів не знайдено');
     if (dto.parentId && !parent) throw new NotFoundException('Батьківську категорію не знайдено');
 
-    // Defense-in-depth: compound where ({ id, orgId }) — Prisma 5 пропускає
-    // tenant-фільтр у WhereUniqueInput; парує з work-categories.service.ts:89.
-    const item = await this.prisma.goodCategory.update({
-      where: { id, orgId },
+    // Bug #319: системні категорії не можна перейменовувати або переносити.
+    // Косметичні поля (sortOrder) дозволяються.
+    if (existing.isSystem && (dto.name !== undefined || dto.parentId !== undefined)) {
+      throw new BadRequestException('Системну категорію не можна перейменовувати або переносити');
+    }
+
+    // Bug #321: defense-in-depth — updateMany з deletedAt: null у where.
+    const result = await this.prisma.goodCategory.updateMany({
+      where: { id, orgId, deletedAt: null },
       data: dto,
+    });
+    if (result.count === 0) throw new NotFoundException('Категорію товарів не знайдено');
+    const item = await this.prisma.goodCategory.findFirstOrThrow({
+      where: { id, orgId, deletedAt: null },
     });
     await this.cache.del(cacheKey(orgId));
     return { ...this.toDto(item), children: [] };
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    // Bug #320: блокувати soft-delete системних категорій (UI ховає кнопку,
+    // але backend — авторитет).
     const item = await this.prisma.goodCategory.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, isSystem: true },
     });
     if (!item) throw new NotFoundException('Категорію товарів не знайдено');
+    if (item.isSystem) {
+      throw new BadRequestException('Системну категорію не можна видалити');
+    }
 
     const descendants = await this.getDescendantIds(orgId, id);
     const allIds = [id, ...descendants];
@@ -104,7 +118,7 @@ export class GoodCategoriesService {
           data: { goodCategoryId: null },
         });
         await tx.goodCategory.updateMany({
-          where: { id: { in: allIds }, orgId },
+          where: { id: { in: allIds }, orgId, deletedAt: null },
           data: { deletedAt: new Date() },
         });
       },
@@ -119,16 +133,14 @@ export class GoodCategoriesService {
     id: string,
     isActive: boolean,
   ): Promise<GoodCategoryResponseDto> {
-    const item = await this.prisma.goodCategory.findFirst({
+    // Bug #321: defense-in-depth — атомарний updateMany з повним where.
+    const result = await this.prisma.goodCategory.updateMany({
       where: { id, orgId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!item) throw new NotFoundException('Категорію товарів не знайдено');
-
-    // Defense-in-depth: compound where ({ id, orgId }) — tenant guard на write-level.
-    const updated = await this.prisma.goodCategory.update({
-      where: { id, orgId },
       data: { isActive },
+    });
+    if (result.count === 0) throw new NotFoundException('Категорію товарів не знайдено');
+    const updated = await this.prisma.goodCategory.findFirstOrThrow({
+      where: { id, orgId, deletedAt: null },
     });
     await this.cache.del(cacheKey(orgId));
     return { ...this.toDto(updated), children: [] };

@@ -236,7 +236,23 @@ grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "W
 **restore() prep-checks (Bug #298, #305)**
 
 - [ ] `restore(orgId, id)` робить prep-check на active duplicate: `findFirst({ orgId, <uniqueField>, deletedAt: null, NOT: { id } })` → якщо знайшов → `ConflictException` (інакше P2002 при `update deletedAt=null`).
-- [ ] `restore()` defensive guard: якщо `existing.isSystem` → `BadRequestException` (системні не повинні бути soft-deleted взагалі — це сигнал inconsistency).
+- [ ] `restore()` defensive guard: якщо `existing.isSystem` → `BadRequestException` (системні не повинні бути soft-деleted взагалі — це сигнал inconsistency).
+
+**isSystem guard для seed-керованих сутностей у update/remove (Bug #319, #320)**
+
+```bash
+# Для кожної моделі що має `isSystem Boolean @default(false)` (catalog seed: WorkCategory,
+# GoodCategory, UnitOfMeasure, NotificationTemplate, PaymentMethodConfig...) — service.update()
+# і service.remove() повинні блокувати mutation коли `existing.isSystem === true`.
+grep -rn "isSystem\s*Boolean" packages/database/prisma/schema.prisma | head -10
+# Для кожного знайденого models → перевірити service.update/remove:
+grep -rn "isSystem" apps/api/src/modules/<module>/<module>.service.ts | grep -v "spec\|toDto\|select"
+# Має бути: BadRequestException у update (для name/parentId/code/unique-field) АБО у remove.
+```
+
+- [ ] **Backend isSystem guard у `update()`** (Bug #319): сутність з `isSystem Boolean` у schema (seed-керована: WorkCategory, GoodCategory, UnitOfMeasure, NotificationTemplate) → `update()` СЕЛЕКТУЄ `isSystem: true` І перевіряє `if (existing.isSystem && (dto.name !== undefined || dto.parentId !== undefined || dto.code !== undefined)) throw BadRequestException(...)`. Косметичні per-org поля (sortOrder, icon, isActive) дозволяються. UI ховає кнопку «Перейменувати» для системних — це **косметичний guard**; backend — авторитет. Будь-який ADMIN з валідним JWT може зробити `curl -X PATCH /<resource>/<system-id>` і змінити назву кореневої системної категорії → next `seed-catalog.ts` повторний запуск відновить назву, але `parentId`/`sortOrder`/inactive-флаги затреться. Severity HIGH (data corruption через API без UI).
+- [ ] **Backend isSystem guard у `remove()`** (Bug #320): аналогічно — soft-delete системних категорій = catastrophic. `DELETE /good-categories/<system-root-id>` cascade-soft-deletes 365 системних GoodCategory + nulls 1000+ Good.goodCategoryId. UI ховає кнопку видалення, але backend має блокувати: `if (existing.isSystem) throw new BadRequestException('Системну категорію не можна видалити')`. Recovery: `seed-catalog.ts` ідемпотентний — відновить, але всі custom `sortOrder/isActive` загубляться. Severity HIGH.
+- [ ] **Contract spec для isSystem guard (Bug #319-#320 regression-guard):** новий `*.contract.spec.ts` для seed-керованого ресурсу має містити мінімум 4 кейси: (а) `PATCH /<resource>/<system-id>` з `{ name: 'X' }` → 400 + service.update не викликаний; (б) `PATCH /<resource>/<system-id>` з `{ parentId: <other> }` → 400; (в) `PATCH /<resource>/<system-id>` з `{ sortOrder: 5 }` → 200 (косметика дозволена); (г) `DELETE /<resource>/<system-id>` → 400 + service.remove не викликаний. Без contract spec — регресія (видалення guard у refactor) пройде CI зеленою.
 
 **`orderBy` нульового поля + NULL semantics (Bug #296)**
 
@@ -2679,5 +2695,133 @@ function safeCoeff(value: number | null | undefined): number {
 2. У `@sto/shared` додати утиліту `safeNumberRatio(numerator, denominator, fallback = 1)` з default Math.max guard.
 3. ESLint custom rule: `?? 1` на змінній що використовується у `/ X` контексті — warn.
 4. Type-level guard через branded type: `type SafeCoefficient = number & { __brand: 'positive' }` — функція converter validate + brand → запобігає прямому `divide(x, y)` коли `y` не branded.
+
+---
+
+### 2026-06-02 — isSystem-guard відсутній у update()/remove() для seed-керованих сутностей (Bug #319-#320) — backend, business-rule enforcement
+
+**Сигнал:** Сутність у schema.prisma має `isSystem Boolean @default(false)` (catalog seed-керовані: `WorkCategory`, `GoodCategory`, `UnitOfMeasure`, `NotificationTemplate`, `PaymentMethodConfig`, `TaxRate`, system roles тощо). Сервіс `update()` робить `findFirst({id, orgId})` (іноді з `select: { isSystem: true }`), але НЕ перевіряє `existing.isSystem` перед mutation. Сервіс `remove()` так само не блокує системні рядки. UI (CategoryManagerModal, UnitsTab tabs тощо) ховає кнопки «Перейменувати»/«Видалити» для системних — але це **косметичний UI guard**, backend — авторитет.
+
+Атакувальний вектор: будь-який ADMIN/OWNER з валідним JWT робить `curl -X PATCH /<resource>/<system-id> -d '{"name":"X"}'` або `curl -X DELETE` → бекенд приймає, виконує. Системний catalog (71 WorkCategory + 365 GoodCategory + 30+ UnitOfMeasure) тимчасово ламається до повторного запуску `seed-catalog.ts`. Custom per-org налаштування (sortOrder, isActive, parentId переноси між гілками) загубляться.
+
+**Причина виникнення:** Розробник пише `update(orgId, id, dto)` як standard CRUD, фокусується на tenant isolation (`orgId` у where) і zod/DTO валідацію. `isSystem` flag сприймається як **read-only метаданими** для frontend (приховати кнопку), а не як backend invariant. Помилка особливо ймовірна коли:
+
+1. Спочатку реалізовано через UI-фічу (manager modal ховає action), backend pure CRUD.
+2. Сесія fix-у Bug #305 «restore() без isSystem guard» додає guard у restore, але не у update/remove.
+3. Mass-DTO refactor (Bug #215 pattern) переписує `@IsUUID('4')` без перегляду business-rule.
+
+Відсутність парного contract spec для `PATCH system → 400` робить регресію невидимою у CI.
+
+**Підхід до виявлення:**
+
+1. Grep усіх моделей з `isSystem` у schema:
+   ```bash
+   grep -B1 -A3 "isSystem\s*Boolean" packages/database/prisma/schema.prisma | grep "^model"
+   ```
+2. Для кожного знайденого `model X` → відкрити відповідний `apps/api/src/modules/<x>/<x>.service.ts` → перевірити:
+   - `update()`: чи `select` містить `isSystem: true`? Чи є `if (existing.isSystem && ...) throw ...`?
+   - `remove()`: чи є `if (existing.isSystem) throw BadRequestException(...)`?
+   - `restore()`: уже покрито Bug #305.
+3. Парне з contract spec: `grep "isSystem.*true" apps/api/src/modules/<x>/<x>.contract.spec.ts` — має бути мінімум 2 кейси (PATCH system blocked, DELETE system blocked).
+4. Не достатньо лише `select: { isSystem: true }` — це не блокує. Перевіряти actual throw.
+
+**Підхід до фіксу:**
+
+1. `update()`: додати після `findFirst` (з `select: { id: true, isSystem: true }`):
+   ```ts
+   if (
+     existing.isSystem &&
+     (dto.name !== undefined || dto.parentId !== undefined || dto.code !== undefined)
+   ) {
+     throw new BadRequestException('Системну категорію не можна перейменовувати або переносити');
+   }
+   ```
+   Косметичні поля (`sortOrder`, `icon`, `isActive`) дозволяються — це per-org налаштування.
+2. `remove()`: додати після `findFirst`:
+   ```ts
+   if (existing.isSystem) throw new BadRequestException('Системну категорію не можна видалити');
+   ```
+3. Якщо UI має checkbox/switch для toggle ACTIVE — це OK (per-org налаштування видимості системної категорії), guard має бути ТІЛЬКИ для name/parentId/code/delete.
+4. Contract spec — 4 regression-guard кейси:
+   - `PATCH /<resource>/<system-id>` з `{ name }` → 400
+   - `PATCH /<resource>/<system-id>` з `{ parentId }` → 400
+   - `PATCH /<resource>/<system-id>` з `{ sortOrder }` → 200 (косметика дозволена)
+   - `DELETE /<resource>/<system-id>` → 400
+
+**Severity:** HIGH (data corruption via API bypassing UI; recovery вимагає повторного seed-у з втратою custom налаштувань).
+
+**Де шукати ще:**
+
+- `UnitOfMeasure` (isSystem=true для базових `шт`, `кг`, `л`) — `units.service.ts` `remove()` уже має `isSystem: false` у WHERE через 2026-06-02 sto-optimize patterm. Перевірити `update()`.
+- `NotificationTemplate` — системні templates (welcome, invoice-paid).
+- `PaymentMethodConfig` — системні методи (готівка, картка, переказ).
+- `TaxRate` — системні ставки (20% ПДВ).
+- Майбутні seed-керовані catalog-сутності (`Currency`, `BankBranch`, predefined roles/permissions).
+
+**Профілактика:**
+
+1. У `/sto-dev` SKILL.md: «Будь-яка модель з `isSystem Boolean` → service.update і service.remove МАЮТЬ guard `if (existing.isSystem) throw BadRequestException(...)`».
+2. У `/sto-review` checklist: «Чи кожен service-метод що mutates seed-керовану сутність перевіряє `isSystem`?»
+3. У `/sto-backend` шаблоні сервісу: додати TODO-плейсхолдер `// isSystem guard?` для кожного update/remove на seed-керованій моделі.
+4. Тіло шаблону contract spec в `/sto-backend`: 4 obligatory кейси для системних рядків.
+
+---
+
+### 2026-06-02 — refetch-callback (onChanged) без race-guard у CategoryManagerModal / SettingsModal / sub-resource модалках (Bug #323) — frontend, race-condition
+
+**Сигнал:** Модальне вікно з CRUD по sub-resource (категорії, UoM, tax rates, payment methods) приймає `onChanged: () => void` callback від parent компонента. Реалізація onChanged — інлайнова `apiFetch<X[]>(/endpoint).then(setState).catch(() => {})` без AbortController/reqRef. Користувач робить швидку послідовність дій у модалі (rename → add child → toggle active за ~200ms) → 3 fetch-и запускаються паралельно → resolve order не гарантовано → setState останнього resolved wins. Stale tree відображається після фінальної мутації.
+
+Парне: `.catch(() => {})` (swallow-error) теж ховає 401/500.
+
+**Причина виникнення:** Розробник пише модалку як «autonomous CRUD widget», callbacks-driven. Parent компонент має складніший load() з ref-counter (loadReqRef для goods list, race-guarded для tabs), а sub-resource refetch виглядає простим — «just refetch the tree». В sprint поспіх просто інлайнить fetch. Шаблон закріплюється через copy-paste.
+
+Виявити цей баг важко локально бо потрібна swift inter-modal-action послідовність — у дев-режимі з повільним API майже завжди порядок послідовний (synchronous-feeling). У проді з cache hit-and-miss порядок reorder-ed.
+
+**Підхід до виявлення:**
+
+1. Grep усіх місць де callback prop викликає raw apiFetch:
+   ```bash
+   grep -B3 "apiFetch.*then.*set" apps/web/src/app --include="*.tsx" -r | grep -E "onChanged|onSaved|onSuccess|onUpdate"
+   ```
+2. Для кожного match — перевірити чи є ref-counter (`reqRef`/`reqId`) АБО AbortController у scope.
+3. Парне з: чи `.catch(() => {})` — swallow без feedback?
+4. Особлива увага до Modal components з internal CRUD: CategoryManagerModal, UoMTab у GoodsEditModal, SettingsModal, BarcodeManagerModal.
+
+**Підхід до фіксу:**
+
+1. Винести refetch у іменовану `useCallback` з ref-counter:
+   ```ts
+   const catReqRef = useRef(0);
+   const reloadCategories = useCallback(() => {
+     const reqId = ++catReqRef.current;
+     apiFetch<Category[]>('/categories')
+       .then(d => {
+         if (catReqRef.current !== reqId) return;
+         setCategories(d);
+       })
+       .catch(() => {
+         /* swallow OK, errors handled by parent */
+       });
+   }, []);
+   ```
+2. Передавати `reloadCategories` у `onChanged={reloadCategories}`.
+3. Якщо існує `useEffect` що теж робить початковий fetch — uniform ref-counter (`++catReqRef.current`) у обох місцях, щоб mount fetch не race-нув manager-CRUD fetch.
+4. Альтернатива (cleaner): мігрувати на TanStack Query з `useQuery({queryKey, queryFn})` + `qc.invalidateQueries({queryKey})` у onChanged. TanStack обробляє race автоматично через `requestId` internal.
+
+**Severity:** MEDIUM (UX confusion — stale data після CRUD, потрібен manual reload; не data-corruption).
+
+**Де шукати ще:**
+
+- Settings tabs з sub-resources (UoM, brands, suppliers) → кожен має refetch після add/remove.
+- Vehicle modal з warranty/contact list → refetch після додавання.
+- Counterparty modal з garages → refetch.
+- Будь-який «autonomous CRUD widget» що повідомляє parent через callback.
+
+**Профілактика:**
+
+1. У `/sto-web` SKILL.md: «Кожен callback prop `onChanged`/`onSaved` що тригерить refetch — повинен використовувати ref-counter АБО TanStack Query invalidation; raw `apiFetch().then(setState)` без guard = bug».
+2. У `/sto-review` checklist: «Modal-компонент з CRUD: чи `onChanged` callback parent-я race-guarded?»
+3. ESLint custom rule: `apiFetch.*then.*set[A-Z]` всередині handler/callback без сусіднього `Ref.current` warning.
+4. Документувати у JSDoc Modal-компонента: «onChanged: refetch має бути race-guarded».
 
 ---

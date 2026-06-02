@@ -9,16 +9,21 @@
 ## Останній commit
 
 ```
+<TBD> fix(tester): catalog categories isSystem guard + race-guard + contract specs (Bugs #319-#327)
+41bd14d docs(memory): record sto-review-agent fixes for catalog categories
 3cf2824 fix(review): catalog categories — tenant FK + React/Tailwind hygiene
 0269ffc docs(memory): update MemoryManual after sync fix for GoodCategoryId
 72d0158 fix(sync): align GoodsTab with GoodCategoryId API contract
 b27aa8e feat(catalog): WorkCategory + GoodCategory trees with management UI
-27d31b4 docs(memory): update MemoryManual after invoices+stock-documents E2E + Bug #319-#320
 ```
 
 Дата: 2026-06-02
 
 TypeScript: ✅ 0 errors (api, web)
+Unit+Contract: ✅ 562/562 passed (baseline 525 → 562, +37 нових: good-categories.contract.spec×15 + good-categories.service.spec×12 + work-categories.contract.spec×10)
+Web components: ✅ 218/218 passed
+
+Latest tester: 2026-06-02 (sto-tester-agent FULL, HEAD 41bd14d → +9 bugs Bugs #319-#327) — **catalog categories trees audit після плану «Категорії робіт та товарів у каталозі» + sto-review-agent fixes: 2 HIGH (#319 `WorkCategoriesService.update`/`GoodCategoriesService.update` не перевіряли `existing.isSystem` → PATCH name/parentId системних 71 work + 365 good категорій через curl з ADMIN JWT; UI ховала кнопку «Перейменувати» але backend — авторитет; #320 `remove()` обох сервісів так само дозволяли soft-delete системних → весь catalog зникав до `seed-catalog.ts` повторного запуску), 1 MEDIUM business-logic (#321 `update`/`toggleActive` робили `findFirst` + `update({where:{id,orgId}})` без `deletedAt: null` у write-where → race-вікно для soft-deleted рядка → переписано на atomic updateMany з повним compound where), 1 MEDIUM frontend (#323 `WorksTab.onChanged` і `GoodsTab.loadGoodCategories` робили raw apiFetch без race-guard → швидкі CRUD у CategoryManagerModal показували stale tree; додано `catReqRef`/`goodCatReqRef` ref-counter), 1 MEDIUM dev-debt (#322 schema без `@@unique([orgId, code])` для WorkCategory/GoodCategory → відкладено бо потребує DB migration), 2 MEDIUM test-coverage (#326 GoodCategoriesModule без contract spec → 15 нових тестів; #327 WorkCategoriesController нові endpoints без покриття → 10 нових тестів), 1 LOW code-hygiene (#325 `ImportBranchDto` dead export видалено), 1 LOW UX (#324 CategoryTree `defaultExpanded` — задокументовано, не bug). Всі crit/high/med (крім #322 відкладено) виправлено. API tests 525→562, web 218 unchanged, tsc 0 errors api+web.**
 
 Latest review: 2026-06-02 (sto-review-agent AUTO, HEAD 3cf2824 ← 0269ffc, scope: catalog categories trees feature) — **1 CRITICAL (goods.service.ts `validateFkReferences` НЕ перевіряв новий `goodCategoryId` → cross-tenant FK risk, Bug #161 pattern) + 3 IMPORTANT (good-categories `update`/`toggleActive` без compound-where defense; `remove()` `$transaction(array)` без timeout option — переписано на interactive tx; `getLinked*Categories` без `take:` — OOM ризик) + 4 SUGGESTION (category-tree `ml-${depth*3}` динамічний клас не сканується Tailwind JIT → inline style; `React.MouseEvent` → named import; category-manager-modal `window.confirm` → useConfirm+ConfirmDialog; видалено unused useRef/useEffect/RotateCcw imports). Всі 8 виправлено. tsc 0 errors api+web.**
 

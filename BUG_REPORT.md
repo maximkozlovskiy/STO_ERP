@@ -9339,3 +9339,161 @@ quantity: part.quantity / coeff; // → Infinity → stockMovement.quantity = In
 **Статус:** не bug, інформативна нотатка про захищеність.
 
 ---
+
+## Session 2026-06-02 — Категорії робіт та товарів у каталозі (HEAD 41bd14d)
+
+Sweep після реалізації плану "Категорії робіт та товарів у каталозі" + sto-review-agent fixes. Скоуп: `GoodCategoriesModule` (новий), `WorkCategoriesModule` (нові endpoints), `GoodsModule.findAll` (filter + DTO mapping), `category-tree.tsx`, `category-manager-modal.tsx`, `WorksTab.tsx`, `GoodsTab.tsx`, `seed-catalog.ts`.
+
+Baseline:
+
+- TypeScript ✅ (`@sto/api`, `@sto/web` обидва green)
+- API unit ✅ 525/525
+- Web component ✅ 218/218
+
+---
+
+## Bug #319 — [HIGH] `WorkCategoriesService.update()` дозволяє PATCH назви/parentId системних категорій (isSystem guard відсутній)
+
+**Файл:** `apps/api/src/modules/work-categories/work-categories.service.ts:68-92`
+**Severity:** HIGH
+**Категорія:** business-logic
+
+**Опис:** Бізнес-правило: «isSystem категорія не змінює назву/parentId через PATCH». Сервіс `update()` робить `findFirst({ id, orgId, deletedAt: null })` АЛЕ не читає `isSystem` і не блокує PATCH. UI у `category-manager-modal.tsx` сховує іконку "Перейменувати" для `node.isSystem` — але це лише фронт. Будь-який curl з валідним JWT може передати `PATCH /work-categories/<system-id>` з `{ name: "..." }` і змінити назву кореневої системної категорії (`Двигун` → `xxx`), або підмінити `parentId` ламаючи hierarchy.
+
+`good-categories.service.ts:57-85` — той самий клас бага: `select: { id: true, isSystem: true }` (рядок 65) але `isSystem` фактично не перевіряється; `update()` проходить незалежно від значення.
+
+**Очікувана поведінка:** Якщо `existing.isSystem === true` І `dto.name !== undefined || dto.parentId !== undefined` → `BadRequestException('Системну категорію не можна перейменовувати або переносити')`. Інші поля (`sortOrder`, `icon`) можна PATCH-ити — це косметика per-org.
+
+**Фактична поведінка:** Будь-який OWNER/ADMIN може PATCH-ити будь-яке поле системної категорії, включно з `parentId: null` (зробити системну категорію кореневою) або `name: "abc"`. Після `seed-catalog.ts` повторного запуску назва відновиться (upsert по `code`), але `sortOrder/parentId` затреться.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #320 — [HIGH] `WorkCategoriesService.remove()` / `GoodCategoriesService.remove()` дозволяють soft-delete системних категорій
+
+**Файл:** `apps/api/src/modules/work-categories/work-categories.service.ts:94-102` та `apps/api/src/modules/good-categories/good-categories.service.ts:87-115`
+**Severity:** HIGH
+**Категорія:** business-logic
+
+**Опис:** Аналогічно до #319 — `remove()` робить тільки `findOne(orgId, id)` / `findFirst({ id, orgId, deletedAt: null })` без `isSystem` check. UI ховає кнопку видалення для системних, але curl з JWT пройде. Після `DELETE /work-categories/<system-root-id>` — soft-delete всіх 71 системної категорії + усіх її нащадків через `getDescendantIds` → `Work.categoryId` лишається валідним FK, але `WorkCategoriesService.findAll()` фільтрує по `deletedAt: null` → весь tree caching deck невидимий для UI. Catalog ламається до запуску `seed-catalog.ts` повторно або manual SQL.
+
+**Очікувана поведінка:** Якщо `existing.isSystem === true` → `BadRequestException('Системну категорію не можна видалити')`. Не-системні (`isSystem: false` — створені користувачем через CategoryManagerModal) — видаляються як зараз.
+
+**Фактична поведінка:** `DELETE /good-categories/<system-root-id>` → 200 + всі 365 системних GoodCategory зникають з UI. Recovery: знову запустити `seed-catalog.ts` (ідемпотентний), але всі custom-сортування / inactive-флаги загубляться.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #321 — [MEDIUM] WorkCategory/GoodCategory `findFirst.update`-у `toggleActive`: deletedAt-guard відсутній у `update(where)`
+
+**Файл:** `apps/api/src/modules/work-categories/work-categories.service.ts:115` та `apps/api/src/modules/good-categories/good-categories.service.ts:129`
+**Severity:** MEDIUM
+**Категорія:** business-logic / tenant isolation
+
+**Опис:** `toggleActive()` робить guard через `findFirst({ id, orgId, deletedAt: null })`, потім `update({ where: { id, orgId } })` — БЕЗ `deletedAt: null` у write-where. Race-window: між findFirst і update сесія B soft-видаляє цю категорію (`DELETE /work-categories/:id`). Сесія A потім робить `update({ where: { id, orgId } })` — match-ить deleted row, ставить `isActive`. Soft-deleted категорія залишається з оновленим `isActive` — невидно у UI, але дані змінено. Не критично (категорія однаково невидима), але ламає принцип «no writes to deleted rows». Same pattern застосовується для `update()` line 79/89.
+
+**Очікувана поведінка:** `updateMany({ where: { id, orgId, deletedAt: null }, data: {...} })` + якщо count===0 → `NotFoundException` (sto-optimize pattern).
+
+**Фактична поведінка:** Soft-deleted row може бути «оновлений» race-вікно. Hard-to-reproduce у проді, але формально нечисто.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #322 — [MEDIUM] `WorkCategory`/`GoodCategory` без `@@unique([orgId, code])` — `seed-catalog.ts` ідемпотентність ламається при дубліковому code
+
+**Файл:** `packages/database/prisma/schema.prisma:665-690` (WorkCategory), `:691-714` (GoodCategory) + `packages/database/prisma/seed-catalog.ts:78,185`
+**Severity:** MEDIUM
+**Категорія:** db / data integrity
+
+**Опис:** Seed читає `existingWorkCatByCode = new Map(existingWorkCats.map(c => [c.code!, c.id]))`. Якщо у БД є ДВА системних `WorkCategory` з однаковим `code` (наприклад, через manual SQL insert або зломаний попередній run-up), `Map` залишить ОСТАННЮ → одна з двох ніколи не оновиться через seed, друга оновиться, links створяться лише до однієї. Без `@@unique([orgId, code], where: deletedAt IS NULL)` БД не блокує дублікати — фіча мовчки розсипається.
+
+**Очікувана поведінка:** Додати `@@unique([orgId, code])` (системні категорії не soft-delete-яться, тому partial filter не обов'язковий — Bug #320 fix підтверджує). Парний `CREATE UNIQUE INDEX` у migration.
+
+**Фактична поведінка:** Дублікати мовчки створюються при ручному втручанні; seed працює стохастично.
+
+**Статус:** [ ] відкладено — потребує DB migration; задокументовано і відкласти на наступний sprint (release-blocker якщо seed повторно проганяється у середовищі з ручним інcert-ом, що зараз не сценарій). Для production-сценарію seed запускається 1 раз; ризик низький до повторного запуску після ручних правок.
+
+---
+
+## Bug #323 — [MEDIUM] `WorksTab.onChanged` (CategoryManagerModal) — refetch без AbortController/race-guard
+
+**Файл:** `apps/web/src/app/(app)/catalog/WorksTab.tsx:500-507`
+**Severity:** MEDIUM
+**Категорія:** frontend / race condition
+
+**Опис:** Після успішного CRUD у `CategoryManagerModal`, `onChanged={() => apiFetch<Category[]>('/work-categories').then(setCategories).catch(() => {})}`. Підряд натискання rename → add child → toggle-active за 200ms запускає 3 послідовні fetch-и; resolve-порядок може бути ≠ виклику-порядку, останній resolve wins → можна побачити stale tree (без щойно доданої категорії). Парний баг у `GoodsTab.loadGoodCategories` (рядок 419-428): теж без AbortController + `.catch(() => {})` ховає помилки.
+
+**Очікувана поведінка:** Reuse pattern AbortController як у `WorksTab.useEffect` (рядки 234-252) — race-guard через `reqRef`.
+
+**Фактична поведінка:** Stale tree після швидких операцій; ховаються 401/500 помилки.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #324 — [LOW] CategoryTree `defaultExpanded={tree.length <= 20}` — stale при swap дерева
+
+**Файл:** `apps/web/src/components/ui/category-tree.tsx:49,211`
+**Severity:** LOW
+**Категорія:** frontend / UX
+
+**Опис:** `useState(defaultExpanded)` в `TreeNode` встановлюється при першому mount. Якщо дерево перерендериться зі зміною shape (додано/видалено категорію), існуючі вузли не змінять стан expanded, але defaultExpanded prop змінився. Не критичний — лише новостворені вузли отримують новий default. Користувач, який згорнув кореневу категорію, після CategoryManagerModal CRUD побачить попередній згорнутий стан. OK behaviour, але можна задокументувати.
+
+**Очікувана поведінка:** Залишити як є. Документувати у JSDoc що `defaultExpanded` керує лише initial state.
+
+**Фактична поведінка:** Initial state логіка — це по контракту.
+
+**Статус:** не bug — задокументовано
+
+---
+
+## Bug #325 — [LOW] `ImportBranchDto` у `good-categories.dto.ts:51-56` — dead code (немає endpoint)
+
+**Файл:** `apps/api/src/modules/good-categories/good-categories.dto.ts:51-56`
+**Severity:** LOW
+**Категорія:** code hygiene
+
+**Опис:** Експортовано `ImportBranchDto` з полем `branchCode`, але жоден `@Body() dto: ImportBranchDto` у controller-ах не використовує його. Dead export після рефактору ймовірно. `grep -rn "ImportBranchDto" apps/api/src` → один файл (декларація). Не runtime-баг, але плутає реcурс.
+
+**Очікувана поведінка:** Видалити dead export.
+
+**Фактична поведінка:** Залишений у файлі.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #326 — [MEDIUM] Відсутній `*.contract.spec.ts` для `GoodCategoriesModule` (нового модуля)
+
+**Файл:** `apps/api/src/modules/good-categories/good-categories.contract.spec.ts` (відсутній)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Чекліст §1.5 SKILL.md: новий `@Controller` → парний `*.contract.spec.ts`. `GoodCategoriesModule` створено без contract-spec. Потенційні регресії tenant isolation, soft-delete, isSystem-guard (#319-#320) пройдуть CI зеленими.
+
+**Очікувана поведінка:** `good-categories.contract.spec.ts` з тестами: GET/POST/PATCH/DELETE auth-guard, `Bug #319` (system PATCH→400), `Bug #320` (system DELETE→400), cascade (товари → goodCategoryId: null), `toggle-active`, `linked-work-categories`, tenant FK (cross-org parentId).
+
+**Фактична поведінка:** Modul реалізований без покриття.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #327 — [MEDIUM] Відсутні contract-тести для нових `WorkCategoriesController` endpoints (toggle-active, linked-good-categories)
+
+**Файл:** `apps/api/src/modules/work-categories/work-categories.contract.spec.ts` (потенційно існує, але без покриття нових endpoint-ів)
+**Severity:** MEDIUM
+**Категорія:** test-coverage
+
+**Опис:** Чекліст §1.5: «нові endpoints у WorkCategoriesController (toggle-active, linked-good-categories) → contract-тести». Якщо тести нема — regress-guard відсутній.
+
+**Очікувана поведінка:** Якщо `work-categories.contract.spec.ts` існує — додати тести для нових endpoint-ів; інакше створити мінімальний spec.
+
+**Фактична поведінка:** Перевірити і додати.
+
+**Статус:** [x] виправлено
+
+---

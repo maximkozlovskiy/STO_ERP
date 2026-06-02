@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import {
@@ -74,7 +74,7 @@ export class WorkCategoriesService {
     const [existing, parent] = await Promise.all([
       this.prisma.workCategory.findFirst({
         where: { id, orgId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, isSystem: true },
       }),
       dto.parentId
         ? this.prisma.workCategory.findFirst({
@@ -86,16 +86,42 @@ export class WorkCategoriesService {
     if (!existing) throw new NotFoundException('Категорію не знайдено');
     if (dto.parentId && !parent) throw new NotFoundException('Батьківську категорію не знайдено');
 
-    const item = await this.prisma.workCategory.update({ where: { id, orgId }, data: dto });
+    // Bug #319: системні категорії не можна перейменовувати або переносити (зміна назви/parentId).
+    // Косметичні поля (sortOrder, icon) дозволяються — це per-org налаштування.
+    if (existing.isSystem && (dto.name !== undefined || dto.parentId !== undefined)) {
+      throw new BadRequestException('Системну категорію не можна перейменовувати або переносити');
+    }
+
+    // Bug #321: defense-in-depth — updateMany з deletedAt: null у where, щоб race
+    // між findFirst і update не оновив soft-deleted рядок.
+    const result = await this.prisma.workCategory.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: dto,
+    });
+    if (result.count === 0) throw new NotFoundException('Категорію не знайдено');
+    const item = await this.prisma.workCategory.findFirstOrThrow({
+      where: { id, orgId, deletedAt: null },
+    });
     await this.cache.del(cacheKey(orgId));
     return { ...this.toDto(item), children: [] };
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
+    // Bug #320: блокувати soft-delete системних категорій (UI ховає кнопку, але
+    // backend — авторитет). Без guard curl з валідним JWT може видалити весь
+    // системний catalog (71 категорія робіт + 365 категорій товарів).
+    const existing = await this.prisma.workCategory.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true, isSystem: true },
+    });
+    if (!existing) throw new NotFoundException('Категорію не знайдено');
+    if (existing.isSystem) {
+      throw new BadRequestException('Системну категорію не можна видалити');
+    }
+
     const descendants = await this.getDescendantIds(orgId, id);
     await this.prisma.workCategory.updateMany({
-      where: { id: { in: [id, ...descendants] }, orgId },
+      where: { id: { in: [id, ...descendants] }, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
     await this.cache.del(cacheKey(orgId));
@@ -106,15 +132,15 @@ export class WorkCategoriesService {
     id: string,
     isActive: boolean,
   ): Promise<WorkCategoryResponseDto> {
-    const item = await this.prisma.workCategory.findFirst({
+    // Bug #321: defense-in-depth — атомарний updateMany з повним where (id, orgId,
+    // deletedAt: null) замість findFirst+update — без race-вікна для soft-deleted рядка.
+    const result = await this.prisma.workCategory.updateMany({
       where: { id, orgId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!item) throw new NotFoundException('Категорію не знайдено');
-    // Defense-in-depth: compound where ({ id, orgId }) — tenant guard на write-level.
-    const updated = await this.prisma.workCategory.update({
-      where: { id, orgId },
       data: { isActive },
+    });
+    if (result.count === 0) throw new NotFoundException('Категорію не знайдено');
+    const updated = await this.prisma.workCategory.findFirstOrThrow({
+      where: { id, orgId, deletedAt: null },
     });
     await this.cache.del(cacheKey(orgId));
     return { ...this.toDto(updated), children: [] };

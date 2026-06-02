@@ -416,11 +416,17 @@ export default function GoodsTab() {
   const goodsFormDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const editGoodDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
+  // Bug #323: race-guard для CategoryManagerModal refetch — без нього швидкі CRUD
+  // (rename → add → toggle) запускали кілька fetch-ів, resolve order не гарантовано →
+  // stale tree (без щойно доданої категорії).
+  const goodCatReqRef = useRef(0);
   const loadGoodCategories = useCallback(() => {
     const cached = getCached<CategoryNode[]>('cache:good-categories');
     if (cached) setGoodCatTree(cached);
+    const reqId = ++goodCatReqRef.current;
     apiFetch<CategoryNode[]>('/good-categories')
       .then(d => {
+        if (goodCatReqRef.current !== reqId) return;
         setGoodCatTree(d);
         setCache('cache:good-categories', d);
       })

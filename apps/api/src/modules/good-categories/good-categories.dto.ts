@@ -48,13 +48,6 @@ export class ToggleActiveDto {
   isActive!: boolean;
 }
 
-export class ImportBranchDto {
-  @ApiProperty({ example: 'ENG', description: 'Code кореневої системної WorkCategory' })
-  @IsString()
-  @IsNotEmpty()
-  branchCode!: string;
-}
-
 export class GoodCategoryResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orgId!: string;
