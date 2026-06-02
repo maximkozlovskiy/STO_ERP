@@ -907,6 +907,165 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-02 — Coefficient-zero у нових Goods UoM endpoints (Bug #312) — повторення Bug #302 у різній моделі — backend+frontend, sprint-replicated bug
+
+**Сигнал:** Раніше виправлений баг (`coefficient=0` → divide-by-zero у `qty_base = qty / coefficient`) **знову з'являється** у НОВОМУ модулі тому що backend-DTO для нової nested-моделі (`GoodUoM`) і frontend-форма для додавання UoM до конкретного товару створювались окремо від `UnitsTab`/`UnitOfMeasure`. Patch на `Unit.coefficient` (`@Min(0.000001)` + frontend `> 0` guard) не реплікувався у `CreateGoodUoMDto` / `UpdateGoodUoMDto` + `GoodsTab.addUoM` / `GoodsTab.saveUoMEdit`. TS green, unit-tests green (mocks приймають будь-яке число), runtime — silent NaN propagation у totalCost/totalParts при першому використанні товару у наряді.
+
+**Причина виникнення:** Кожен новий "per-X" UoM relation (Good→GoodUoM, Service→ServiceUoM, Recipe→RecipeUoM…) додає **новий DTO** і **нову форму**. Розробник копіює форму з `UnitsTab` як reference, але **сирий @Min(0)** без `0.000001` приходить з PrimaryUnit-DTO який сам по собі ще НЕ був виправлений на момент створення Good-UoM-фічі. Або фіча додана ПІСЛЯ Bug #302 patch, але розробник дивився на старий код як приклад.
+
+**Підхід до виявлення:**
+
+1. Grep усіх DTO з `coefficient` полем у бек:
+   ```bash
+   grep -rn "coefficient" apps/api/src/modules --include="*.dto.ts"
+   ```
+   Кожен має `@Min(0.000001)` (або позитивний epsilon). `@Min(0)` = bug.
+2. Grep усіх frontend-форм які парсять рядок у coefficient:
+   ```bash
+   grep -rn "coefficient.*Number\|Number(.*coefficient" apps/web/src --include="*.tsx"
+   ```
+   Кожен callsite що POST/PATCH-ить `coefficient` має guard `> 0` ПЕРЕД apiFetch.
+3. Перевіряти при кожному code-review що додає Mass/Volume/qty relation у нову модель — це автоматично передбачає UoM-relation з coefficient.
+
+**Підхід до фіксу:**
+
+1. Бек: `@IsNumber() @Min(0.000001)` (consistent epsilon у всіх DTO-полях `coefficient`).
+2. Фронт: перед `apiFetch(...)` у POST/PATCH витягувати `const coeff = Number(form.coefficient)` → `if (!Number.isFinite(coeff) || coeff <= 0) { setError('Коефіцієнт має бути більший 0'); return; }`.
+3. Якщо є кілька форм для тієї ж моделі (`addUoM`, `saveUoMEdit`, `bulkImport`) — фіксити **усі одночасно** (sprint-replicated bug розповзається у sub-pattern).
+
+**Severity:** HIGH (data corruption у downstream calc; Bug #302 уже доведено реальним).
+
+**Де шукати ще:**
+
+- ServiceUoM / RecipeUoM / ProductVariantUoM — будь-який новий relation з `coefficient`.
+- `step` / `multiplier` / `divisor` поля у DTO — той самий клас бага (0 = divide-by-zero).
+- `quantityPerUnit` / `pricePerUnit` / `taxRate` — будь-яке поле що використовується як divisor / multiplier.
+- Розширення pricing (`COMPETITOR_PLUS`, `COST_TIER`) додають нові numeric DTO поля — кожне має explicit `@Min(positive)`.
+
+**Профілактика:**
+
+1. У `/sto-dev` SKILL.md: «Будь-який numeric DTO field що використовується як divisor — `@Min(0.000001)`, не `@Min(0)`».
+2. У `/sto-review` checklist: «Чи кожне coefficient/divisor/multiplier поле має explicit positive min?»
+3. У grep-команді з §1.1: додати `coefficient.*@Min(0)\\b` → авто-flag для review.
+
+---
+
+### 2026-06-02 — `window.confirm` у новій bulk-action функціональності замість `useConfirm` (Bug #313) — frontend, UX consistency
+
+**Сигнал:** Сторінка вже імпортує і використовує `useConfirm` хука для single-delete (рядки 1-2 файла), але **нова** bulk-action (BulkActionsBar onClick) використовує browser-native `window.confirm(...)`. Native dialog: не стилізований у проєктній темі, блокує main thread (нема async-loading-spinner), на iOS Safari може бути дозволено «Block additional dialogs» → permanent skip. TS green, тести green (browser confirm mockється глобально у vitest setup), UX broken у DEV/QA.
+
+**Причина виникнення:** Bulk-actions як паттерн з'являється пізніше за single-actions у sprint. Розробник пише його swiftly як «just confirm and delete», тип `BulkAction.onClick: async (ids) => void` не примушує до конкретного confirm-механізму. `window.confirm` — дефолтний JS-API, працює без імпорту, найшвидше написати. Inconsistency не помічається до code-review.
+
+**Підхід до виявлення:**
+
+1. `grep -rn "window\.confirm" apps/web/src --include="*.tsx"` — кожен результат потенційний.
+2. Класифікувати: якщо файл уже імпортує `useConfirm` — це **завжди bug** (mixed-style). Якщо `useConfirm` не імпортовано — додати імпорт + рефактор.
+3. Особлива увага до `BulkActionsBar onClick`, `bulk*Actions = useMemo([...])` — це місця де patterm reused.
+
+**Підхід до фіксу:**
+
+1. Замінити `if (!window.confirm(msg)) return;` на `if (!(await confirm({ title: msg, variant: 'destructive' }))) return;`.
+2. Додати `confirm` у `useMemo` dependency array (інакше stale closure).
+3. Verify TS — `BulkAction.onClick` повертає `void | Promise<void>`, тому `async` work без change.
+
+**Severity:** MEDIUM (UX inconsistency + блокуюча native modal; не data-correctness).
+
+**Де шукати ще:**
+
+- Кожна нова integration з `BulkActionsBar` / `ContextMenu` / `RightClick` — confirm pattern.
+- Imports / exports / migrations actions у `xlsx-import-button.tsx`, `audit-import-modal.tsx` тощо.
+- Logout actions, account deletion modals — будь-де де destructive action.
+
+**Профілактика:**
+
+1. У `/sto-web` SKILL.md: «Якщо файл уже використовує `useConfirm` — НІКОЛИ не змішувати з `window.confirm`».
+2. ESLint custom rule або `/sto-review` grep: «`window.confirm` у файлі що імпортує `useConfirm` = error».
+3. Документувати у `BulkActionsBar` JSDoc: «onClick: confirm pattern має бути той самий що у решти page actions».
+
+---
+
+### 2026-06-02 — Reusable UI компонент без `type="button"` → ризик form-submission при майбутній вбудові (Bug #314) — frontend, defensive a11y / form semantics
+
+**Сигнал:** Файл `apps/web/src/components/ui/*.tsx` (shared компонент який потенційно вбудовується у форму) має `<button>` БЕЗ `type="button"`. За HTML5 default — `type="submit"`. Якщо компонент вбудовується у `<form>` (search-bar, settings panel, modal form), клік на не-submit button (apply filter, toggle expand, remove tag) спричинить непотрібний form-submit. Парний компонент у тому самому файлі вже має `type="button"` — drift очевидний.
+
+**Причина виникнення:** Розробник пише `<button>` бо HTML дозволяє опускати type. У standalone-context (поза формою) це працює бо submit nothing happens. Code-review бачить shared компонент і не перевіряє чи він може опинитись у формі — це залежить від callsite. Не з'являється у тестах бо тести не вбудовують компонент у form.
+
+**Підхід до виявлення:**
+
+1. Для кожного reusable компонента у `components/ui/`:
+   ```bash
+   grep -nE "<button(?!\s+type=)" apps/web/src/components/ui/<file>.tsx
+   ```
+   Кожен `<button>` без `type=` атрибута — потенційний bug.
+2. Перевірити callsites: чи компонент колись використовується у `<form>` контексті:
+   ```bash
+   grep -rn "<ComponentName" apps/web/src/app --include="*.tsx"
+   # для кожного — перевірити чи він всередині <form>
+   ```
+3. Перевірити **внутрішню парність**: якщо у файлі є хоч ОДИН `type="button"`, всі інші теж мають мати (consistency).
+
+**Підхід до фіксу:**
+
+1. Додати `type="button"` до кожного `<button>` у shared компоненті, окрім справжніх submit buttons.
+2. Для submit buttons — явно `type="submit"` (документуй намір).
+3. Не використовувати `<Button>` (custom) як reset-альтернатива — `<Button>` має `type="button"` за замовчуванням, але raw `<button>` ні.
+
+**Severity:** LOW (defensive; буде проблемою при майбутній вбудові у form, не зараз).
+
+**Де шукати ще:**
+
+- Усі `components/ui/*.tsx` файли — масовий grep.
+- Custom dropdowns, comboboxes, tag-pickers — вбудовуються у форму як часткове управління.
+- Toolbar / FilterBar компоненти — потенційно у `<form role="search">`.
+
+**Профілактика:**
+
+1. `/sto-dev` SKILL.md: «Будь-який raw `<button>` у shared компоненті — `type="button"` обов'язково».
+2. ESLint plugin `react/button-has-type` enable — auto-catch.
+3. У `/sto-review` додати grep команду на shared `<button>` без type.
+
+---
+
+### 2026-06-02 — Promise.all для reference data без AbortController (Bug #315) — frontend, cleanup, memory hygiene
+
+**Сигнал:** Component initial useEffect завантажує 2+ reference fetch паралельно через `Promise.all([apiFetch(...), apiFetch(...)])` БЕЗ AbortController. `then` callback викликає `setState` для всіх трьох. Якщо component unmounts (швидка навігація між табами) до завершення `Promise.all` → `setState` на unmounted → React 18 warning «Can't perform a React state update on an unmounted component». UX не зламано, але DEV console flooded, регресії тестів що ловлять console.error, memory churn якщо state large.
+
+**Причина виникнення:** Reference data fetch — ranges одиничних викликів. Single `apiFetch` зазвичай уже має cleanup (AbortController у `useFetch` хука, mountedRef у calendar). `Promise.all` копіюється як «pattern для паралельності», але cleanup забувається бо `Promise.all` повертає один result, а не три окремих. Робота guard'у вимагає **єдиного** signal'у на всі fetch'и + check у then.
+
+**Підхід до виявлення:**
+
+1. Grep `Promise.all` всередині `useEffect`:
+   ```bash
+   grep -rnE "useEffect\(\(\) =>" apps/web/src/app --include="*.tsx" -A 30 | grep -B5 "Promise.all"
+   ```
+   Кожен match без AbortController = bug.
+2. Перевірити чи `useEffect` має cleanup function (`return () => ac.abort()`).
+3. Перевірити чи `setState` всередині `then` має guard `if (ac.signal.aborted) return`.
+
+**Підхід до фіксу:**
+
+1. На початку useEffect: `const ac = new AbortController();`.
+2. Кожен `apiFetch(...)` отримує `{ signal: ac.signal }` як 2-й аргумент.
+3. У `then`: guard `if (ac.signal.aborted) return` ПЕРЕД setState.
+4. Cleanup: `return () => ac.abort();` в кінці useEffect.
+
+**Severity:** LOW (DEV warnings + потенційне засмічення; не data-correctness). MEDIUM якщо component часто перемонтується (tabs/modals).
+
+**Де шукати ще:**
+
+- Catalog tabs (Brands/Works/Services/Goods/Units/Categories) — reference fetch на mount.
+- CRM page reference data (categories, tags) — single useEffect with multiple fetches.
+- Settings page initial load — typically 3-5 paralel reads (org, branch, user, settings).
+- Будь-який Modal що завантажує reference на open — race з закриттям.
+
+**Профілактика:**
+
+1. `/sto-web` SKILL.md: «Будь-який `Promise.all` всередині `useEffect` — обов'язковий AbortController».
+2. Краще: винести reference fetch у TanStack Query (`useQuery` має вбудований AbortController через `signal`).
+3. ESLint rule custom: detect `Promise.all` у useEffect без cleanup function.
+
+---
+
 ### 2026-06-02 — Toggle-state UI desync: highlight/cursor not gated on enabled flag (Bugs #310, #311) — frontend, UI consistency, toggle-state
 
 **Сигнал:** Додається новий toggle-component (`DetailPanelToggle`, `FilterToggle`, `CompactModeToggle`) що керує boolean state через окремий hook (`useDetailPanel`, `useFilterMode`). Ефекти toggle (highlight рядка, cursor, hover, badge-count) застосовуються до DOM на основі іншої state-змінної (`selectedX?.id === item.id`, `expandedRows.has(id)`) яка **НЕ синхронізується** з toggle-state. Після `toggle()` → `enabled=false`, але `selectedX` залишається — клас типу `bg-secondary` / `cursor-pointer` рендериться, хоча action більше не доступна. Користувач бачить «вибрано» але панель прихована.

@@ -128,7 +128,8 @@ export class CreateGoodUoMDto {
   })
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  // Bug #312: coefficient=0 → divide-by-zero у qty_base. Той самий guard що Bug #302 для UnitOfMeasure DTO.
+  @Min(0.000001)
   coefficient?: number;
 
   @ApiPropertyOptional({ description: 'Ширина (м)' })
@@ -166,7 +167,8 @@ export class UpdateGoodUoMDto {
   @ApiPropertyOptional({ example: 1, description: 'Коефіцієнт перерахунку до базової одиниці' })
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  // Bug #312: coefficient=0 → divide-by-zero. Той самий guard що у CreateGoodUoMDto.
+  @Min(0.000001)
   coefficient?: number;
 
   @ApiPropertyOptional({ description: 'Ширина (м)' })

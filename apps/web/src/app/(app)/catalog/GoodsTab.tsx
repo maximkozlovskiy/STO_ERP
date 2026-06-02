@@ -376,8 +376,14 @@ export default function GoodsTab() {
         id: 'delete',
         label: 'Видалити вибрані',
         variant: 'destructive',
+        // Bug #313: useConfirm замість window.confirm.
         onClick: async ids => {
-          if (!window.confirm(`Видалити ${ids.length} ${ids.length === 1 ? 'товар' : 'товарів'}?`))
+          if (
+            !(await confirm({
+              title: `Видалити ${ids.length} ${ids.length === 1 ? 'товар' : 'товарів'}?`,
+              variant: 'destructive',
+            }))
+          )
             return;
           const results = await Promise.allSettled(
             ids.map(id => apiFetch(`/goods/${id}`, { method: 'DELETE' })),
@@ -394,7 +400,7 @@ export default function GoodsTab() {
         },
       },
     ],
-    [bulkSelect, features.toastEnabled],
+    [bulkSelect, features.toastEnabled, confirm],
   );
 
   // ── Unsaved guard ────────────────────────────────────────────────────────────
@@ -411,16 +417,22 @@ export default function GoodsTab() {
     if (cUnits) setUnits(cUnits);
     if (cSuppliers) setSuppliers(cSuppliers);
 
+    // Bug #315: AbortController щоб setState не виконувався після unmount
+    // (React warning у DEV + memory churn).
+    const ac = new AbortController();
     Promise.all([
-      apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200').catch(() => ({
-        items: [],
-        total: 0,
-      })),
-      apiFetch<Unit[]>('/units').catch(() => [] as Unit[]),
-      apiFetch<{ items: Supplier[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200').catch(
-        () => ({ items: [] as Supplier[] }),
+      apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200', { signal: ac.signal }).catch(
+        () => ({
+          items: [],
+          total: 0,
+        }),
       ),
+      apiFetch<Unit[]>('/units', { signal: ac.signal }).catch(() => [] as Unit[]),
+      apiFetch<{ items: Supplier[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200', {
+        signal: ac.signal,
+      }).catch(() => ({ items: [] as Supplier[] })),
     ]).then(([brandsRes, unitsRes, suppliersRes]) => {
+      if (ac.signal.aborted) return;
       setBrands(brandsRes.items);
       setCache('cache:brands', brandsRes.items);
       setUnits(unitsRes);
@@ -428,6 +440,7 @@ export default function GoodsTab() {
       setSuppliers(suppliersRes.items);
       setCache('cache:suppliers', suppliersRes.items);
     });
+    return () => ac.abort();
   }, []);
 
   // Bug #307: race-guard для swift showDeleted/q/page toggles — outdated response відкидається.
@@ -694,13 +707,21 @@ export default function GoodsTab() {
 
   const addUoM = async (goodId: string) => {
     if (!addUoMForm.unitOfMeasureId) return;
+    // Bug #312: coefficient=0 → divide-by-zero у qty_base (work-orders.service.ts:623).
+    // Той самий клас бага що Bug #302 для UnitsTab — фронт повинен блокувати ще до POST.
+    const coeff = addUoMForm.coefficient ? Number(addUoMForm.coefficient) : 1;
+    if (!Number.isFinite(coeff) || coeff <= 0) {
+      setUomError('Коефіцієнт має бути більший 0');
+      return;
+    }
+    setUomError('');
     setAddingUoM(true);
     try {
       const created = await apiFetch<GoodUoM>(`/goods/${goodId}/uoms`, {
         method: 'POST',
         body: JSON.stringify({
           unitOfMeasureId: addUoMForm.unitOfMeasureId,
-          coefficient: addUoMForm.coefficient ? Number(addUoMForm.coefficient) : 1,
+          coefficient: coeff,
           width: addUoMForm.width ? Number(addUoMForm.width) : undefined,
           height: addUoMForm.height ? Number(addUoMForm.height) : undefined,
           depth: addUoMForm.depth ? Number(addUoMForm.depth) : undefined,
@@ -797,13 +818,19 @@ export default function GoodsTab() {
       setUomError('Коефіцієнт є обовʼязковим');
       return;
     }
+    // Bug #312: coefficient=0 → divide-by-zero у qty_base. Той самий guard що у addUoM.
+    const coeff = Number(editUoMForm.coefficient);
+    if (!Number.isFinite(coeff) || coeff <= 0) {
+      setUomError('Коефіцієнт має бути більший 0');
+      return;
+    }
     setSavingUoMId(uomId);
     setUomError('');
     try {
       await apiFetch<GoodUoM>(`/goods/${goodId}/uoms/${uomId}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          coefficient: Number(editUoMForm.coefficient),
+          coefficient: coeff,
           width: editUoMForm.width ? Number(editUoMForm.width) : undefined,
           height: editUoMForm.height ? Number(editUoMForm.height) : undefined,
           depth: editUoMForm.depth ? Number(editUoMForm.depth) : undefined,

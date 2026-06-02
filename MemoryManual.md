@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+<tester +#312-#315>
+6417cf9 docs(skills): add grep for hover-only buttons missing focus-visible to sto-review
+c606952 docs(memory): record review of commit a45c04f (focus-visible sweep)
 a45c04f fix(review): add focus-visible:opacity-100 to remaining hover-only buttons
 12d6681 fix(review): add focus-visible:opacity-100 to hover-only edit/delete buttons
 203786d fix(crm,employees): hover-only edit/delete buttons + fix notes/contactPerson init in edit form
@@ -17,13 +20,13 @@ c3cd333 fix(ui): remove flex gap-3 from table+panel containers; drop + prefix fr
 3785721 fix(ui): move add-button to toolbar end, rename to '+ [Object]'
 3008d7c fix(work-orders): remove gap from table+panel container
 10aa96e feat(work-orders): add DetailPanelToggle to toolbar
-0c781ce fix(ui): unify right toolbar button order across all list pages
-804c6e3 fix(catalog): icon-only Eye/EyeOff button, unified right toolbar order
 ```
 
 Дата: 2026-06-02
 
 TypeScript: ✅ 0 errors (api, web)
+
+Latest tester: 2026-06-02 (sto-tester-agent AUTO, HEAD 6417cf9 → +4 bugs Bugs #312-#315) — **catalog tabs + saved-filters-bar + bulk-actions audit after a45c04f focus-visible sweep: 1 HIGH (#312 `GoodsTab.addUoM`/`saveUoMEdit` приймає coefficient=0 → divide-by-zero у `qty_base = qty / coefficient` — повторення Bug #302 для нової моделі GoodUoM: backend DTO `CreateGoodUoMDto`/`UpdateGoodUoMDto` мав `@Min(0)` замість `@Min(0.000001)`; додано frontend guard `Number > 0` + backend `@Min(0.000001)`), 1 MEDIUM (#313 bulk-delete у WorksTab/ServicesTab/GoodsTab використовував `window.confirm` замість `useConfirm` хука — нативний блокуючий діалог без проєктних кольорів; замінено на async `confirm({ title, variant: 'destructive' })`), 2 LOW (#314 `SavedFiltersBar` 5 кнопок без `type="button"` → ризик form submission при майбутній вбудові у `<form>`, парний `SaveFilterButton` уже мав; #315 `GoodsTab` reference data `Promise.all` без AbortController → setState після unmount → React DEV warning). Всі 4 виправлено. API 525/525, web 218/218, tsc 0 errors api+web. SKILL.md: додано 4 нових підходи (coefficient-zero replicated bug, window.confirm vs useConfirm consistency, type="button" defensive a11y, Promise.all + AbortController у useEffect).**
 
 Latest review: 2026-06-02 (sto-review-agent, HEAD a45c04f ← 12d6681, scope: focus-visible a11y sweep across remaining hover-only buttons) — **completes the focus-visible:opacity-100 sweep started in 12d6681. Fixed 10 sites across 8 files: catalog/BrandsTab.tsx (delete), catalog/WorksTab.tsx (delete), catalog/ServicesTab.tsx (delete), catalog/GoodsTab.tsx (table delete + UoM delete), catalog/UnitsTab.tsx (edit + delete), calendar/page.tsx (slot remove + cancel), components/TopShell.tsx (sidebar bookmark star), components/ui/saved-filters-bar.tsx (remove preset). Без focus-visible — клавіатурна навігація через Tab не показує кнопку, фічі недоступні з клавіатури (WCAG 2.1.1 fail). notification-center.tsx уже використовує `focus:opacity-100` (валідно за §8.5), settings/page.tsx zoom hint має `pointer-events-none` → не інтерактивний. Cross-cutting checks: 0 `React.X` namespace, 0 `any`, 0 `console.log` у змінених файлах. tsc 0 errors api+web.**
 

@@ -202,8 +202,15 @@ export default function WorksTab() {
         id: 'delete',
         label: 'Видалити вибрані',
         variant: 'destructive',
+        // Bug #313: використовуємо useConfirm (стилізований діалог) замість window.confirm
+        // (нативний блокуючий діалог). Парність з work-orders/crm/employees.
         onClick: async ids => {
-          if (!window.confirm(`Видалити ${ids.length} ${ids.length === 1 ? 'роботу' : 'робіт'}?`))
+          if (
+            !(await confirm({
+              title: `Видалити ${ids.length} ${ids.length === 1 ? 'роботу' : 'робіт'}?`,
+              variant: 'destructive',
+            }))
+          )
             return;
           const results = await Promise.allSettled(
             ids.map(id => apiFetch(`/works/${id}`, { method: 'DELETE' })),
@@ -220,7 +227,7 @@ export default function WorksTab() {
         },
       },
     ],
-    [bulkSelect, features.toastEnabled],
+    [bulkSelect, features.toastEnabled, confirm],
   );
 
   // ── Unsaved guard ────────────────────────────────────────────────────────────

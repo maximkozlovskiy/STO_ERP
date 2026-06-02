@@ -9141,3 +9141,130 @@ detailPanel.enabled && 'cursor-pointer',  // ← gated by toggle
 **Статус:** [x] виправлено — `cursor-pointer` тепер conditional від `detailPanel.enabled` (і `!isDeleted` де доречно).
 
 ---
+
+## Session 2026-06-02 (вечір) — AUTO tester: catalog tabs + saved-filters-bar bulk-actions audit (HEAD a45c04f → 6417cf9)
+
+Scope: повторний sweep по catalog tabs (Brands/Works/Services/Goods/Units), TopShell, calendar, saved-filters-bar — після Bug #295-#311 і focus-visible:opacity-100 a11y sweep (a45c04f). Перевірка: TS, unit/component tests, behavior parity з list-сторінками що використовують `useConfirm` для bulk delete.
+
+**Baseline:** TS 0 errors (api+web), API 525/525 tests passed, web 218/218 tests passed.
+
+---
+
+## Bug #312 — [HIGH] `GoodsTab.addUoM` приймає coefficient=0 → divide-by-zero у qty_base (Bug #302 паттерн повторюється)
+
+**Файл:** `apps/web/src/app/(app)/catalog/GoodsTab.tsx:695-710`
+**Severity:** HIGH (data corruption: GoodUoM.coefficient=0 → у `work-orders.service.ts:623` `qty_base = qty / coefficient` → Infinity → silent NaN propagation у totalCost/totalParts; той самий клас бага що Bug #302 для UnitsTab)
+**Категорія:** frontend validation / DTO parity
+
+**Опис:** `addUoM` коли користувач додає одиницю виміру для товару у вкладці "Одиниці виміру":
+
+```tsx
+const created = await apiFetch<GoodUoM>(`/goods/${goodId}/uoms`, {
+  method: 'POST',
+  body: JSON.stringify({
+    unitOfMeasureId: addUoMForm.unitOfMeasureId,
+    coefficient: addUoMForm.coefficient ? Number(addUoMForm.coefficient) : 1,
+    // ...
+  }),
+});
+```
+
+Якщо користувач вводить `'0'` у поле «Коефіцієнт» (input `type="number" min="0"`), отримуємо truthy рядок `'0'` → `Number('0') = 0` → `coefficient: 0` йде у backend. Backend DTO `CreateGoodUoMDto.coefficient` має `@IsNumber() @Min(0)` (як було у `Bug #302` до фіксу) → 0 проходить → DB має coefficient=0.
+
+Аналогічно для `saveUoMEdit` (рядок 795-815) — patch без перевірки coefficient > 0.
+
+Так само як Bug #302 для UnitsTab — баг **знову створений** для GoodUoM моделі.
+
+**Очікувана поведінка:** ту саму валідацію `Number(coefficient) > 0` з message «Коефіцієнт має бути більший 0» застосувати у `addUoM` і `saveUoMEdit`. Бажано також `@Min(0.000001)` у backend DTO.
+
+**Статус:** [x] виправлено — додано frontend guard у `addUoM` і `saveUoMEdit`; перевірка backend DTO (`CreateGoodUoMDto`) — `@Min(0.000001)` де потрібно.
+
+---
+
+## Bug #313 — [MEDIUM] Bulk-delete у WorksTab/ServicesTab/GoodsTab використовує `window.confirm()` замість `useConfirm` хука → невідповідність UX і потенційна блокова поведінка
+
+**Файли:**
+
+- `apps/web/src/app/(app)/catalog/WorksTab.tsx:205-209`
+- `apps/web/src/app/(app)/catalog/ServicesTab.tsx:190-194`
+- `apps/web/src/app/(app)/catalog/GoodsTab.tsx:379-383`
+
+**Severity:** MEDIUM (UX inconsistency: bulk actions використовують native browser confirm який має нестилізований діалог, не локалізується, блокує main thread; інші delete actions у тих же файлах використовують `useConfirm` стилізований у проєктній темі)
+**Категорія:** frontend / UX consistency
+
+**Опис:** Кожна сторінка вже імпортує `useConfirm` і викликає `const { confirm, dialogProps } = useConfirm()` для одиничного видалення. Для bulk-delete переключаються на `window.confirm`:
+
+```ts
+// WorksTab.tsx:206
+onClick: async ids => {
+  if (!window.confirm(`Видалити ${ids.length} ${ids.length === 1 ? 'роботу' : 'робіт'}?`))
+    return;
+  // ...
+},
+```
+
+**Проблеми:**
+
+1. `window.confirm` блокує всю JS-таску — поки модалка відкрита, нічого інше не працює (анімації, спінери).
+2. Виглядає як native OS dialog без проєктних кольорів — debounce-experience між сторінками.
+3. У Safari/Firefox може бути перевизначений як "повідомляти кожен раз" модалкою «Заблокувати додаткові діалоги».
+
+**Прецедент:** work-orders/page.tsx, crm/page.tsx використовують `confirm({ title, variant: 'destructive' })` async-flow.
+
+**Очікувана поведінка:** замінити `window.confirm(...)` на `await confirm({ title, variant: 'destructive' })` з useConfirm хука (вже існує в усіх трьох tab-компонентах).
+
+**Статус:** [x] виправлено — `window.confirm` замінено на `confirm()` async-flow з useConfirm у всіх трьох файлах.
+
+---
+
+## Bug #314 — [LOW] `SavedFiltersBar` внутрішні `<button>` без `type="button"` → ризик form submission при вбудові у форму
+
+**Файл:** `apps/web/src/components/ui/saved-filters-bar.tsx:60,71,94,102,113`
+**Severity:** LOW (наразі компонент використовується поза формами, але SaveFilterButton сусідній компонент уже має `type="button"` — невідповідність очевидна, defensive fix)
+**Категорія:** frontend / a11y / form semantics
+
+**Опис:** `<button>` за замовчуванням має `type="submit"`. Якщо `SavedFiltersBar` колись вбудовується у `<form>` (а компонент має чисто-presentational форму бо filter є частиною list page яка може мати search-form), клік на «застосувати фільтр» / «видалити фільтр» / «зберегти» / «скасувати» викличе непотрібний form submit.
+
+`SaveFilterButton` (той же файл, рядки 167-185) уже має `type="button"`, тому drift одного компонента очевидний.
+
+**Очікувана поведінка:** усі 5 `<button>` всередині `SavedFiltersBar` отримують явний `type="button"`.
+
+**Статус:** [x] виправлено — `type="button"` додано до всіх 5 кнопок.
+
+---
+
+## Bug #315 — [LOW] `GoodsTab` reference data fetch без AbortController/mountedRef → "setState on unmounted" warning при швидкій навігації
+
+**Файл:** `apps/web/src/app/(app)/catalog/GoodsTab.tsx:404-431`
+**Severity:** LOW (React warning у dev-mode; не впливає на user-facing UX але засмічує console; перешкоджає тестам що ловлять console.error)
+**Категорія:** frontend / cleanup / memory hygiene
+
+**Опис:** Початковий ефект завантажує brands/units/suppliers через `Promise.all`:
+
+```ts
+useEffect(() => {
+  // cache hydration ...
+  Promise.all([
+    apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200').catch(...),
+    apiFetch<Unit[]>('/units').catch(...),
+    apiFetch<{ items: Supplier[] }>('/counterparties?...').catch(...),
+  ]).then(([brandsRes, unitsRes, suppliersRes]) => {
+    setBrands(brandsRes.items);   // ← can fire after unmount
+    setCache(...);
+    setUnits(unitsRes);
+    setCache(...);
+    setSuppliers(suppliersRes.items);
+    setCache(...);
+  });
+}, []);
+```
+
+Немає AbortController/mountedRef. Якщо користувач навігує на інший таб каталогу або кудись ще під час 3 паралельних requests, після їх завершення `setBrands/setUnits/setSuppliers` викличуть state update на unmounted component → React 18 warning у DEV.
+
+Аналогічна проблема у UnitsTab вже виправлена (Bug #301 — AbortController), а у `calendar/page.tsx` використовується `mountedRef`. У GoodsTab — повна відсутність guard.
+
+**Очікувана поведінка:** додати `AbortController` (передати `{ signal }` у `apiFetch`) і скасовувати у cleanup.
+
+**Статус:** [x] виправлено — додано AbortController; setState guards `signal.aborted`.
+
+---

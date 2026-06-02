@@ -187,8 +187,14 @@ export default function ServicesTab() {
         id: 'delete',
         label: 'Видалити вибрані',
         variant: 'destructive',
+        // Bug #313: useConfirm замість window.confirm.
         onClick: async ids => {
-          if (!window.confirm(`Видалити ${ids.length} ${ids.length === 1 ? 'послугу' : 'послуг'}?`))
+          if (
+            !(await confirm({
+              title: `Видалити ${ids.length} ${ids.length === 1 ? 'послугу' : 'послуг'}?`,
+              variant: 'destructive',
+            }))
+          )
             return;
           const results = await Promise.allSettled(
             ids.map(id => apiFetch(`/services/${id}`, { method: 'DELETE' })),
@@ -205,7 +211,7 @@ export default function ServicesTab() {
         },
       },
     ],
-    [bulkSelect, features.toastEnabled],
+    [bulkSelect, features.toastEnabled, confirm],
   );
 
   // ── Unsaved guard ────────────────────────────────────────────────────────────

@@ -56,7 +56,9 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
 
       {saved.map(preset => (
         <div key={preset.id} className="group flex items-center gap-0.5">
+          {/* Bug #314: type="button" щоб клік не submit-ив батьківську форму. */}
           <button
+            type="button"
             onClick={() => onApply(preset)}
             className={cn(
               'flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors border',
@@ -68,6 +70,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
             {preset.name}
           </button>
           <button
+            type="button"
             onClick={() => onRemove(preset.id)}
             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity p-0.5 rounded text-muted-foreground hover:text-destructive"
             aria-label={`Видалити фільтр "${preset.name}"`}
@@ -92,6 +95,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
               className="h-7 px-2 rounded-md border border-primary text-[12px] bg-surface text-foreground outline-none w-36"
             />
             <button
+              type="button"
               onClick={handleSave}
               disabled={!saveName.trim()}
               className="h-7 px-2.5 rounded-md bg-primary text-white text-[12px] font-medium hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -99,6 +103,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
               Зберегти
             </button>
             <button
+              type="button"
               onClick={() => {
                 setSaveOpen(false);
                 setSaveName('');
@@ -110,6 +115,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
           </div>
         ) : (
           <button
+            type="button"
             onClick={() => setSaveOpen(true)}
             className="flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border text-[12px] text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
           >
