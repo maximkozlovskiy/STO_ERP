@@ -107,10 +107,47 @@ export class PaginatedGoodsDto {
 
 export class CreateGoodUoMDto {
   @ApiProperty({ description: 'ID одиниці виміру' })
-  // Bug #229: sprint-C convention — use @IsUUID('4') for stricter v4 validation
-  // matching the rest of the DTO catalogue migrated in commit 6d48e9a.
   @IsUUID('4')
   unitOfMeasureId!: string;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'Коефіцієнт перерахунку (default: з UnitOfMeasure)',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  coefficient?: number;
+
+  @ApiPropertyOptional({ description: 'Ширина (м)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  width?: number;
+
+  @ApiPropertyOptional({ description: 'Висота (м)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  height?: number;
+
+  @ApiPropertyOptional({ description: 'Глибина/довжина (м)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  depth?: number;
+
+  @ApiPropertyOptional({ description: "Об'єм (м³)" })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  volume?: number;
+
+  @ApiPropertyOptional({ description: 'Вага (кг)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  weight?: number;
 }
 
 export class UpdateGoodUoMDto {

@@ -289,14 +289,15 @@ export class GoodsService {
               goodId,
               unitOfMeasureId: dto.unitOfMeasureId,
               isDefault: isFirst,
-              // Pre-populate from UnitOfMeasure template values so the per-good
-              // coefficient starts with a sensible default (editable afterwards).
-              coefficient: unit.coefficient,
-              width: unit.width,
-              height: unit.height,
-              depth: unit.depth,
-              volume: unit.volume,
-              weight: unit.weight,
+              // If caller provided explicit values — use them; otherwise fall back
+              // to UnitOfMeasure template so the per-good coefficient starts with
+              // a sensible default (editable afterwards).
+              coefficient: dto.coefficient ?? unit.coefficient,
+              width: dto.width ?? unit.width,
+              height: dto.height ?? unit.height,
+              depth: dto.depth ?? unit.depth,
+              volume: dto.volume ?? unit.volume,
+              weight: dto.weight ?? unit.weight,
             },
             select: {
               id: true,

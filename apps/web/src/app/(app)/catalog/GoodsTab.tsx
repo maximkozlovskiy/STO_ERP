@@ -172,6 +172,16 @@ function Pagination({
 
 // ─── Goods Tab ────────────────────────────────────────────────────────────────
 
+const EMPTY_ADD_UOM_FORM = {
+  unitOfMeasureId: '',
+  coefficient: '1',
+  width: '',
+  height: '',
+  depth: '',
+  volume: '',
+  weight: '',
+};
+
 export default function GoodsTab() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
@@ -269,7 +279,15 @@ export default function GoodsTab() {
   const [modalUoMsLoading, setModalUoMsLoading] = useState(false);
   const [uomError, setUomError] = useState('');
   const [showAddUoM, setShowAddUoM] = useState(false);
-  const [addUoMForm, setAddUoMForm] = useState({ unitOfMeasureId: '' });
+  const [addUoMForm, setAddUoMForm] = useState({
+    unitOfMeasureId: '',
+    coefficient: '1',
+    width: '',
+    height: '',
+    depth: '',
+    volume: '',
+    weight: '',
+  });
   const [addingUoM, setAddingUoM] = useState(false);
   const [deletingUoMId, setDeletingUoMId] = useState<string | null>(null);
   const [editingUoMId, setEditingUoMId] = useState<string | null>(null);
@@ -599,7 +617,7 @@ export default function GoodsTab() {
     setModalUoMs([]);
     setUomError('');
     setShowAddUoM(false);
-    setAddUoMForm({ unitOfMeasureId: '' });
+    setAddUoMForm(EMPTY_ADD_UOM_FORM);
 
     // Race-guarded fetch for UoMs
     const uomReqId = ++modalUoMReqRef.current;
@@ -637,10 +655,18 @@ export default function GoodsTab() {
     try {
       const created = await apiFetch<GoodUoM>(`/goods/${goodId}/uoms`, {
         method: 'POST',
-        body: JSON.stringify({ unitOfMeasureId: addUoMForm.unitOfMeasureId }),
+        body: JSON.stringify({
+          unitOfMeasureId: addUoMForm.unitOfMeasureId,
+          coefficient: addUoMForm.coefficient ? Number(addUoMForm.coefficient) : 1,
+          width: addUoMForm.width ? Number(addUoMForm.width) : undefined,
+          height: addUoMForm.height ? Number(addUoMForm.height) : undefined,
+          depth: addUoMForm.depth ? Number(addUoMForm.depth) : undefined,
+          volume: addUoMForm.volume ? Number(addUoMForm.volume) : undefined,
+          weight: addUoMForm.weight ? Number(addUoMForm.weight) : undefined,
+        }),
       });
       setModalUoMs(prev => [...prev, created]);
-      setAddUoMForm({ unitOfMeasureId: '' });
+      setAddUoMForm(EMPTY_ADD_UOM_FORM);
       setShowAddUoM(false);
       // Bug #227: if this was the first UoM (server sets isDefault=true and
       // updates Good.unit/unitId), refresh the parent goods table to avoid
@@ -1757,13 +1783,73 @@ export default function GoodsTab() {
                               </option>
                             ))}
                           </Select>
+                          <Input
+                            label="Коефіцієнт"
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={addUoMForm.coefficient}
+                            onChange={e =>
+                              setAddUoMForm(f => ({ ...f, coefficient: e.target.value }))
+                            }
+                            hint="Скільки базових одиниць в одній цій"
+                          />
+                          <div className="grid grid-cols-3 gap-2">
+                            <Input
+                              label="Ширина, м"
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={addUoMForm.width}
+                              onChange={e => setAddUoMForm(f => ({ ...f, width: e.target.value }))}
+                              placeholder="—"
+                            />
+                            <Input
+                              label="Висота, м"
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={addUoMForm.height}
+                              onChange={e => setAddUoMForm(f => ({ ...f, height: e.target.value }))}
+                              placeholder="—"
+                            />
+                            <Input
+                              label="Глибина, м"
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={addUoMForm.depth}
+                              onChange={e => setAddUoMForm(f => ({ ...f, depth: e.target.value }))}
+                              placeholder="—"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              label="Об'єм, м³"
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={addUoMForm.volume}
+                              onChange={e => setAddUoMForm(f => ({ ...f, volume: e.target.value }))}
+                              placeholder="—"
+                            />
+                            <Input
+                              label="Вага, кг"
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={addUoMForm.weight}
+                              onChange={e => setAddUoMForm(f => ({ ...f, weight: e.target.value }))}
+                              placeholder="—"
+                            />
+                          </div>
                           <div className="flex gap-2 justify-end">
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => {
                                 setShowAddUoM(false);
-                                setAddUoMForm({ unitOfMeasureId: '' });
+                                setAddUoMForm(EMPTY_ADD_UOM_FORM);
                               }}
                             >
                               Скасувати
@@ -1772,7 +1858,7 @@ export default function GoodsTab() {
                               size="sm"
                               loading={addingUoM}
                               disabled={!addUoMForm.unitOfMeasureId}
-                              onClick={() => editGood && addUoM(editGood.id)}
+                              onClick={() => editGood && void addUoM(editGood.id)}
                             >
                               Додати
                             </Button>
