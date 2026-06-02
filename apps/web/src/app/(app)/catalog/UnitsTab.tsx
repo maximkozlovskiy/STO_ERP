@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Trash2, Ruler, Pencil, Check, X, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, Ruler, Pencil, Check, X, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
@@ -340,53 +340,29 @@ export default function UnitsTab() {
       )}
 
       <div className="flex items-center justify-between gap-3 mb-4">
+        <p className="text-[13px] text-muted-foreground">
+          Одиниці виміру, що використовуються в каталозі товарів
+        </p>
         <div className="flex items-center gap-2">
-          <p className="text-[13px] text-muted-foreground">
-            Одиниці виміру, що використовуються в каталозі товарів
-          </p>
-          {/* Filter pills */}
-          <div className="flex gap-1" role="group" aria-label="Фільтр одиниць">
-            <button
-              type="button"
-              onClick={() => setShowDeleted(false)}
-              aria-pressed={!showDeleted}
-              className={cn(
-                'px-2.5 py-0.5 rounded-full text-[12px] font-medium border transition-colors',
-                !showDeleted
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'border-border text-muted-foreground hover:bg-secondary',
-              )}
-            >
-              Активні{activeCount > 0 && ` (${activeCount})`}
-            </button>
-            {/* Bug #295: кнопка "Всі" завжди видима, інакше soft-delete feature недосяжна
-                (initial state showDeleted=false → API повертає тільки активні → deletedCount=0
-                → кнопка не рендерилась → користувач не міг переключитися у режим перегляду
-                видалених і відновити одиницю). */}
-            <button
-              type="button"
-              onClick={() => setShowDeleted(true)}
-              aria-pressed={showDeleted}
-              className={cn(
-                'px-2.5 py-0.5 rounded-full text-[12px] font-medium border transition-colors',
-                showDeleted
-                  ? 'bg-destructive/10 text-destructive border-destructive/30'
-                  : 'border-border text-muted-foreground hover:bg-secondary',
-              )}
-            >
-              Архів{showDeleted && deletedCount > 0 && ` (${deletedCount})`}
-            </button>
-          </div>
+          <Button
+            variant="outline"
+            size="md"
+            leftIcon={showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            onClick={() => setShowDeleted(d => !d)}
+            className={cn(showDeleted && 'border-primary text-primary')}
+          >
+            {showDeleted ? `Сховати видалені (${deletedCount})` : 'Показати видалені'}
+          </Button>
+          <Button
+            leftIcon={<Plus className="h-4 w-4" />}
+            onClick={() => {
+              setError('');
+              setModal(true);
+            }}
+          >
+            Одиниця
+          </Button>
         </div>
-        <Button
-          leftIcon={<Plus className="h-4 w-4" />}
-          onClick={() => {
-            setError('');
-            setModal(true);
-          }}
-        >
-          Одиниця
-        </Button>
       </div>
 
       <div className="border border-border rounded-xl bg-surface overflow-auto">
