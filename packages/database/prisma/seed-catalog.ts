@@ -24,6 +24,7 @@ interface ServiceNode {
   id: number;
   parent_id: number | null;
   type: 'category' | 'service';
+  level?: number;
   code: string;
   name: string;
   norm_hours: number | null;
@@ -35,6 +36,7 @@ interface PartsCategoryNode {
   id: number;
   parent_id: number | null;
   type: 'category';
+  level: number;
   code: string;
   name: string;
   is_leaf: boolean;
@@ -77,12 +79,10 @@ async function main() {
   });
   const existingWorkCatByCode = new Map(existingWorkCats.map(c => [c.code!, c.id]));
 
-  // Сортуємо за рівнем (спочатку кореневі, потім дочірні) для правильного порядку upsert
-  const sortedCategoryNodes = [...categoryNodes].sort((a, b) => {
-    const aDepth = a.parent_id === null ? 0 : 1;
-    const bDepth = b.parent_id === null ? 0 : 1;
-    return aDepth - bDepth || a.sort_order - b.sort_order;
-  });
+  // Сортуємо за level (1 → 2 → 3) щоб батько завжди оброблявся до дитини
+  const sortedCategoryNodes = [...categoryNodes].sort(
+    (a, b) => (a.level ?? 1) - (b.level ?? 1) || a.sort_order - b.sort_order,
+  );
 
   for (const node of sortedCategoryNodes) {
     const parentDbId = node.parent_id ? (workCatIdMap.get(node.parent_id) ?? null) : null;
@@ -184,11 +184,9 @@ async function main() {
   });
   const existingGoodCatByCode = new Map(existingGoodCats.map(c => [c.code!, c.id]));
 
-  // Сортуємо за рівнем (level 1 → 2 → 3)
+  // Сортуємо за level (1 → 2 → 3) щоб батько завжди оброблявся до дитини
   const sortedPartNodes = [...partsData.nodes].sort(
-    (a, b) =>
-      (a.parent_id === null ? 0 : 1) - (b.parent_id === null ? 0 : 1) ||
-      a.sort_order - b.sort_order,
+    (a, b) => (a.level ?? 1) - (b.level ?? 1) || a.sort_order - b.sort_order,
   );
 
   for (const node of sortedPartNodes) {
