@@ -24,7 +24,10 @@ export class GoodsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(orgId: string, query: GoodQueryDto): Promise<PaginatedGoodsDto> {
-    const where: Prisma.GoodWhereInput = { orgId, deletedAt: null };
+    const where: Prisma.GoodWhereInput = {
+      orgId,
+      ...(query.showDeleted ? {} : { deletedAt: null }),
+    };
     if (query.barcode) {
       where.barcode = query.barcode;
     } else if (query.q) {
@@ -84,7 +87,7 @@ export class GoodsService {
     if (dto.sku && existing)
       throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     const item = await this.prisma.good.create({
-      data: { ...dto, orgId, unit: dto.unit ?? 'шт' },
+      data: { ...dto, orgId, unit: dto.unit ?? 'шт', salePrice: dto.salePrice ?? 0 },
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
       },
@@ -119,6 +122,24 @@ export class GoodsService {
   async remove(orgId: string, id: string): Promise<void> {
     await this.findOne(orgId, id);
     await this.prisma.good.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+  }
+
+  async restore(orgId: string, id: string): Promise<GoodResponseDto> {
+    const existing = await this.prisma.good.findFirst({
+      where: { id, orgId, NOT: { deletedAt: null } },
+      include: {
+        preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+      },
+    });
+    if (!existing) throw new NotFoundException('Видалений товар не знайдено');
+    const item = await this.prisma.good.update({
+      where: { id, orgId },
+      data: { deletedAt: null },
+      include: {
+        preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+      },
+    });
+    return this.toDto(item);
   }
 
   /**
@@ -534,6 +555,7 @@ export class GoodsService {
       lastName: string | null;
       companyName: string | null;
     } | null;
+    deletedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
   }): GoodResponseDto {
@@ -557,6 +579,7 @@ export class GoodsService {
           (`${item.preferredSupplier.lastName ?? ''} ${item.preferredSupplier.firstName ?? ''}`.trim() ||
             null))
         : null,
+      deletedAt: item.deletedAt ?? null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

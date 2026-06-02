@@ -13,34 +13,6 @@ import {
 export class ServicesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(orgId: string, page = 1, limit = 50, q?: string): Promise<PaginatedServicesDto> {
-    const where: Prisma.ServiceWhereInput = { orgId, deletedAt: null };
-    if (q) where.name = { contains: q, mode: 'insensitive' };
-
-    const skip = (page - 1) * limit;
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.service.findMany({
-        where,
-        orderBy: { name: 'asc' },
-        skip,
-        take: limit,
-        include: {
-          serviceWorks: {
-            include: { work: { select: { name: true, normoHours: true, price: true } } },
-            take: 1000,
-          },
-          serviceGoods: {
-            include: { good: { select: { name: true, unit: true, salePrice: true } } },
-            take: 1000,
-          },
-        },
-      }),
-      this.prisma.service.count({ where }),
-    ]);
-
-    return { items: items.map(item => this.toDto(item)), total, page, limit };
-  }
-
   async findOne(orgId: string, id: string): Promise<ServiceResponseDto> {
     const item = await this.prisma.service.findFirst({
       where: { id, orgId, deletedAt: null },
@@ -215,12 +187,69 @@ export class ServicesService {
     await this.prisma.service.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
+  async restore(orgId: string, id: string): Promise<ServiceResponseDto> {
+    const existing = await this.prisma.service.findFirst({
+      where: { id, orgId, NOT: { deletedAt: null } },
+    });
+    if (!existing) throw new NotFoundException('Видалену послугу не знайдено');
+    const item = await this.prisma.service.findFirst({
+      where: { id, orgId },
+      include: {
+        serviceWorks: {
+          include: { work: { select: { name: true, normoHours: true, price: true } } },
+          take: 1000,
+        },
+        serviceGoods: {
+          include: { good: { select: { name: true, unit: true, salePrice: true } } },
+          take: 1000,
+        },
+      },
+    });
+    await this.prisma.service.update({ where: { id, orgId }, data: { deletedAt: null } });
+    return this.toDto({ ...item!, deletedAt: null });
+  }
+
+  async findAll(
+    orgId: string,
+    page = 1,
+    limit = 50,
+    q?: string,
+    showDeleted = false,
+  ): Promise<PaginatedServicesDto> {
+    const where: Prisma.ServiceWhereInput = { orgId, ...(showDeleted ? {} : { deletedAt: null }) };
+    if (q) where.name = { contains: q, mode: 'insensitive' };
+
+    const skip = (page - 1) * limit;
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.service.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        skip,
+        take: limit,
+        include: {
+          serviceWorks: {
+            include: { work: { select: { name: true, normoHours: true, price: true } } },
+            take: 1000,
+          },
+          serviceGoods: {
+            include: { good: { select: { name: true, unit: true, salePrice: true } } },
+            take: 1000,
+          },
+        },
+      }),
+      this.prisma.service.count({ where }),
+    ]);
+
+    return { items: items.map(item => this.toDto(item)), total, page, limit };
+  }
+
   private toDto(item: {
     id: string;
     orgId: string;
     name: string;
     description: string | null;
     price: import('@prisma/client').Prisma.Decimal | null;
+    deletedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
     serviceWorks: Array<{
@@ -240,6 +269,7 @@ export class ServicesService {
       name: item.name,
       description: item.description ?? null,
       price: item.price != null ? Number(item.price) : null,
+      deletedAt: item.deletedAt ?? null,
       works: item.serviceWorks.map(sw => ({
         workId: sw.workId,
         workName: sw.work.name,

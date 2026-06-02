@@ -14,7 +14,10 @@ export class WorksService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(orgId: string, query: WorkQueryDto): Promise<PaginatedWorksDto> {
-    const where: Prisma.WorkWhereInput = { orgId, deletedAt: null };
+    const where: Prisma.WorkWhereInput = {
+      orgId,
+      ...(query.showDeleted ? {} : { deletedAt: null }),
+    };
     if (query.categoryId) where.categoryId = query.categoryId;
     if (query.q) where.name = { contains: query.q, mode: 'insensitive' };
 
@@ -97,6 +100,20 @@ export class WorksService {
     await this.prisma.work.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
   }
 
+  async restore(orgId: string, id: string): Promise<WorkResponseDto> {
+    const existing = await this.prisma.work.findFirst({
+      where: { id, orgId, NOT: { deletedAt: null } },
+      include: { category: { select: { name: true } } },
+    });
+    if (!existing) throw new NotFoundException('Видалену роботу не знайдено');
+    const item = await this.prisma.work.update({
+      where: { id, orgId },
+      data: { deletedAt: null },
+      include: { category: { select: { name: true } } },
+    });
+    return this.toDto(item);
+  }
+
   private toDto(item: {
     id: string;
     orgId: string;
@@ -106,6 +123,7 @@ export class WorksService {
     price: import('@prisma/client').Prisma.Decimal;
     description: string | null;
     isWarranty: boolean;
+    deletedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
     category: { name: string };
@@ -120,6 +138,7 @@ export class WorksService {
       price: Number(item.price),
       description: item.description ?? null,
       isWarranty: item.isWarranty,
+      deletedAt: item.deletedAt ?? null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

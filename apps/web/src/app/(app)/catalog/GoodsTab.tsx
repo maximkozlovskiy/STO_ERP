@@ -13,6 +13,9 @@ import {
   Barcode,
   X,
   Check,
+  Eye,
+  EyeOff,
+  RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -85,6 +88,7 @@ interface Good {
   goodType?: string | null;
   preferredSupplierId?: string | null;
   preferredSupplierName?: string | null;
+  deletedAt?: string | null;
 }
 interface Supplier {
   id: string;
@@ -190,6 +194,7 @@ export default function GoodsTab() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
@@ -427,11 +432,12 @@ export default function GoodsTab() {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (debouncedQ) p.set('q', debouncedQ);
+    if (showDeleted) p.set('showDeleted', 'true');
     apiFetch<PaginatedGoods>(`/goods?${p}`)
       .then(setGoods)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
       .finally(() => setLoading(false));
-  }, [page, debouncedQ]);
+  }, [page, debouncedQ, showDeleted]);
 
   // Keep ref in sync so goodsActions can call load() without depending on it
   useEffect(() => {
@@ -443,11 +449,6 @@ export default function GoodsTab() {
   }, [load]);
 
   const create = async () => {
-    const salePrice = Number(form.salePrice);
-    if (!Number.isFinite(salePrice) || salePrice < 0) {
-      setError("Ціна продажу повинна бути невід'ємним числом");
-      return;
-    }
     if (form.purchasePrice) {
       const pp = Number(form.purchasePrice);
       if (!Number.isFinite(pp) || pp < 0) {
@@ -455,10 +456,17 @@ export default function GoodsTab() {
         return;
       }
     }
+    if (form.salePrice) {
+      const sp = Number(form.salePrice);
+      if (!Number.isFinite(sp) || sp < 0) {
+        setError("Ціна продажу повинна бути невід'ємним числом");
+        return;
+      }
+    }
     setSaving(true);
     setError('');
     try {
-      await apiFetch<Good>('/goods', {
+      const newGood = await apiFetch<Good>('/goods', {
         method: 'POST',
         body: JSON.stringify({
           sku: form.sku || undefined,
@@ -466,7 +474,7 @@ export default function GoodsTab() {
           unit: form.unit || 'шт',
           unitId: form.unitId || undefined,
           purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : undefined,
-          salePrice,
+          salePrice: form.salePrice ? Number(form.salePrice) : undefined,
           category: form.category || undefined,
           brandId: form.brandId || undefined,
           barcode: form.barcode || undefined,
@@ -492,6 +500,8 @@ export default function GoodsTab() {
       });
       goodsFormDirty.resetDirty();
       load();
+      // Відкриваємо форму редагування щоб одразу можна було додати штрихкоди та одиниці виміру
+      openEditGood(newGood);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
     } finally {
@@ -546,6 +556,16 @@ export default function GoodsTab() {
       setError(e instanceof Error ? e.message : 'Помилка видалення');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const restoreGood = async (id: string) => {
+    try {
+      await apiFetch<Good>(`/goods/${id}/restore`, { method: 'POST' });
+      load();
+      if (features.toastEnabled) toast.success('Товар відновлено');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка відновлення');
     }
   };
 
@@ -780,10 +800,12 @@ export default function GoodsTab() {
 
   const saveEditGood = async () => {
     if (!editGood) return;
-    const salePrice = Number(editGoodForm.salePrice);
-    if (!Number.isFinite(salePrice) || salePrice < 0) {
-      setEditGoodError("Ціна продажу повинна бути невід'ємним числом");
-      return;
+    if (editGoodForm.salePrice) {
+      const salePrice = Number(editGoodForm.salePrice);
+      if (!Number.isFinite(salePrice) || salePrice < 0) {
+        setEditGoodError("Ціна продажу повинна бути невід'ємним числом");
+        return;
+      }
     }
     setEditGoodSaving(true);
     setEditGoodError('');
@@ -798,7 +820,7 @@ export default function GoodsTab() {
           purchasePrice: editGoodForm.purchasePrice
             ? Number(editGoodForm.purchasePrice)
             : undefined,
-          salePrice,
+          salePrice: editGoodForm.salePrice ? Number(editGoodForm.salePrice) : undefined,
           category: editGoodForm.category || undefined,
           brandId: editGoodForm.brandId || undefined,
           notes: editGoodForm.notes || undefined,
@@ -873,6 +895,19 @@ export default function GoodsTab() {
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
         <Button
+          variant="outline"
+          size="md"
+          leftIcon={showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          onClick={() => {
+            setShowDeleted(d => !d);
+            setPage(1);
+            bulkSelect.clear();
+          }}
+          className={showDeleted ? 'border-primary text-primary' : ''}
+        >
+          {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+        </Button>
+        <Button
           leftIcon={<Plus className="h-4 w-4" />}
           onClick={() => {
             goodsFormDirty.resetDirty();
@@ -944,98 +979,128 @@ export default function GoodsTab() {
                 </TableRow>
               )}
               {!loading &&
-                goods?.items.map(g => (
-                  <TableRow
-                    key={g.id}
-                    className={`cursor-pointer ${selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
-                    onClick={
-                      detailPanel.enabled
-                        ? () => selectGood(selectedGood?.id === g.id ? null : g)
-                        : undefined
-                    }
-                  >
-                    {features.bulkActionsEnabled && (
-                      <TableCell onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={bulkSelect.isSelected(g.id)}
-                          onChange={() => bulkSelect.toggle(g.id)}
-                          className="h-4 w-4 accent-primary"
-                          aria-label={`Обрати ${g.name}`}
-                        />
-                      </TableCell>
-                    )}
-                    {goodsVisibleColumns.map(col => {
-                      if (col.key === 'name')
-                        return (
-                          <TableCell key="name">
-                            <p className="font-medium">{g.name}</p>
-                            {g.sku && <p className="text-muted-foreground text-[12px]">{g.sku}</p>}
-                          </TableCell>
-                        );
-                      if (col.key === 'category')
-                        return (
-                          <TableCell key="category" className="text-[13px] text-muted-foreground">
-                            {g.category ?? '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'unit')
-                        return (
-                          <TableCell key="unit" className="text-[13px] text-muted-foreground">
-                            {g.unit}
-                          </TableCell>
-                        );
-                      if (col.key === 'purchase')
-                        return (
-                          <TableCell key="purchase" className="text-[13px]">
-                            {g.purchasePrice != null ? `${fmtMoney(g.purchasePrice)} ₴` : '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'sale')
-                        return (
-                          <TableCell key="sale" className="font-medium text-[13px]">
-                            {fmtMoney(g.salePrice)} ₴
-                          </TableCell>
-                        );
-                      return null;
-                    })}
-                    <TableCell>
-                      {g.goodType ? (
-                        <Badge variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}>
-                          {GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
+                goods?.items.map(g => {
+                  const isDeleted = !!g.deletedAt;
+                  return (
+                    <TableRow
+                      key={g.id}
+                      className={`group cursor-pointer ${isDeleted ? 'opacity-60 bg-secondary/30' : selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
+                      onClick={
+                        detailPanel.enabled && !isDeleted
+                          ? () => selectGood(selectedGood?.id === g.id ? null : g)
+                          : undefined
+                      }
+                    >
+                      {features.bulkActionsEnabled && (
+                        <TableCell onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={bulkSelect.isSelected(g.id)}
+                            onChange={() => bulkSelect.toggle(g.id)}
+                            className="h-4 w-4 accent-primary"
+                            aria-label={`Обрати ${g.name}`}
+                          />
+                        </TableCell>
                       )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={e => {
-                            e.stopPropagation();
-                            openEditGood(g);
-                          }}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={e => {
-                            e.stopPropagation();
-                            setConfirmDeleteId(g.id);
-                          }}
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                          title="Помітити на видалення"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      {goodsVisibleColumns.map(col => {
+                        if (col.key === 'name')
+                          return (
+                            <TableCell key="name">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p
+                                  className={`font-medium ${isDeleted ? 'line-through text-muted-foreground' : ''}`}
+                                >
+                                  {g.name}
+                                </p>
+                                {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                              </div>
+                              {g.sku && (
+                                <p className="text-muted-foreground text-[12px]">{g.sku}</p>
+                              )}
+                            </TableCell>
+                          );
+                        if (col.key === 'category')
+                          return (
+                            <TableCell key="category" className="text-[13px] text-muted-foreground">
+                              {g.category ?? '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'unit')
+                          return (
+                            <TableCell key="unit" className="text-[13px] text-muted-foreground">
+                              {g.unit}
+                            </TableCell>
+                          );
+                        if (col.key === 'purchase')
+                          return (
+                            <TableCell key="purchase" className="text-[13px]">
+                              {g.purchasePrice != null ? `${fmtMoney(g.purchasePrice)} ₴` : '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'sale')
+                          return (
+                            <TableCell key="sale" className="font-medium text-[13px]">
+                              {fmtMoney(g.salePrice)} ₴
+                            </TableCell>
+                          );
+                        return null;
+                      })}
+                      <TableCell>
+                        {g.goodType ? (
+                          <Badge variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}>
+                            {GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {isDeleted ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={e => {
+                                e.stopPropagation();
+                                void restoreGood(g.id);
+                              }}
+                              className="text-success/70 hover:text-success hover:bg-success/10"
+                              title="Відновити"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  openEditGood(g);
+                                }}
+                                className="opacity-0 group-hover:opacity-100"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteId(g.id);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                title="Помітити на видалення"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
         </div>
@@ -1279,11 +1344,7 @@ export default function GoodsTab() {
         title="Редагування товару"
         footer={
           <>
-            <Button
-              onClick={saveEditGood}
-              loading={editGoodSaving}
-              disabled={!editGoodForm.name || !editGoodForm.salePrice}
-            >
+            <Button onClick={saveEditGood} loading={editGoodSaving} disabled={!editGoodForm.name}>
               Зберегти
             </Button>
             <Button
@@ -1378,7 +1439,6 @@ export default function GoodsTab() {
             />
             <Input
               label="Ціна продажу, ₴"
-              required
               type="number"
               value={editGoodForm.salePrice}
               onChange={e => {
@@ -2071,13 +2131,8 @@ export default function GoodsTab() {
         title="Новий товар / запчастина"
         size="xl"
         footer={
-          <Button
-            onClick={create}
-            loading={saving}
-            disabled={!form.name || !form.salePrice}
-            className="w-full"
-          >
-            Зберегти
+          <Button onClick={create} loading={saving} disabled={!form.name} className="w-full">
+            Зберегти та продовжити
           </Button>
         }
       >
@@ -2160,7 +2215,6 @@ export default function GoodsTab() {
             />
             <Input
               label="Ціна продажу, ₴"
-              required
               type="number"
               value={form.salePrice}
               onChange={e => {

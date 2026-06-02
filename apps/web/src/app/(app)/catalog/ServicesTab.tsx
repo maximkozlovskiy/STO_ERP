@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Plus, Pencil, Search, Trash2, Layers } from 'lucide-react';
+import { Plus, Pencil, Search, Trash2, Layers, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -34,6 +34,8 @@ import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { fmtMoney } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +58,7 @@ interface Service {
   name: string;
   description: string | null;
   price: number | null;
+  deletedAt?: string | null;
   works: ServiceWork[];
   goods: ServiceGood[];
 }
@@ -107,6 +110,7 @@ export default function ServicesTab() {
   const detailPanel = useDetailPanel('catalog-services');
   const [services, setServices] = useState<PaginatedServices | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
@@ -209,11 +213,12 @@ export default function ServicesTab() {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (debouncedQ) p.set('q', debouncedQ);
+    if (showDeleted) p.set('showDeleted', 'true');
     apiFetch<PaginatedServices>(`/services?${p}`)
       .then(setServices)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
       .finally(() => setLoading(false));
-  }, [page, debouncedQ]);
+  }, [page, debouncedQ, showDeleted]);
 
   // Keep ref in sync so servicesActions can call load() without depending on it
   useEffect(() => {
@@ -275,7 +280,14 @@ export default function ServicesTab() {
   };
 
   const remove = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити послугу?', variant: 'destructive' }))) return;
+    if (
+      !(await confirm({
+        title: 'Помітити послугу на видалення?',
+        message: 'Можна відновити пізніше.',
+        variant: 'destructive',
+      }))
+    )
+      return;
     setDeletingId(id);
     setError('');
     try {
@@ -286,6 +298,16 @@ export default function ServicesTab() {
       setError(e instanceof Error ? e.message : 'Помилка видалення');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const restore = async (id: string) => {
+    try {
+      await apiFetch<Service>(`/services/${id}/restore`, { method: 'POST' });
+      load();
+      if (features.toastEnabled) toast.success('Послугу відновлено');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка відновлення');
     }
   };
 
@@ -341,6 +363,18 @@ export default function ServicesTab() {
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
+        <Button
+          variant="outline"
+          size="md"
+          leftIcon={showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          onClick={() => {
+            setShowDeleted(d => !d);
+            setPage(1);
+          }}
+          className={cn(showDeleted && 'border-primary text-primary')}
+        >
+          {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+        </Button>
         <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
           Послуга
         </Button>
@@ -407,75 +441,110 @@ export default function ServicesTab() {
                 </TableRow>
               )}
               {!loading &&
-                services?.items.map(s => (
-                  <TableRow
-                    key={s.id}
-                    className={`cursor-pointer ${selectedService?.id === s.id ? 'bg-secondary' : ''}`}
-                    onClick={() => {
-                      if (detailPanel.enabled)
-                        setSelectedService(prev => (prev?.id === s.id ? null : s));
-                    }}
-                  >
-                    {features.bulkActionsEnabled && (
-                      <TableCell onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={bulkSelect.isSelected(s.id)}
-                          onChange={() => bulkSelect.toggle(s.id)}
-                          className="h-4 w-4 accent-primary"
-                          aria-label={`Обрати ${s.name}`}
-                        />
+                services?.items.map(s => {
+                  const isDeleted = !!s.deletedAt;
+                  return (
+                    <TableRow
+                      key={s.id}
+                      className={cn(
+                        'group cursor-pointer',
+                        isDeleted
+                          ? 'opacity-60 bg-secondary/30'
+                          : selectedService?.id === s.id
+                            ? 'bg-secondary'
+                            : '',
+                      )}
+                      onClick={() => {
+                        if (detailPanel.enabled && !isDeleted)
+                          setSelectedService(prev => (prev?.id === s.id ? null : s));
+                      }}
+                    >
+                      {features.bulkActionsEnabled && (
+                        <TableCell onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={bulkSelect.isSelected(s.id)}
+                            onChange={() => bulkSelect.toggle(s.id)}
+                            className="h-4 w-4 accent-primary"
+                            aria-label={`Обрати ${s.name}`}
+                          />
+                        </TableCell>
+                      )}
+                      {servicesVisibleColumns.map(col => {
+                        if (col.key === 'name')
+                          return (
+                            <TableCell key="name">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p
+                                  className={cn(
+                                    'text-[13px] font-medium',
+                                    isDeleted ? 'line-through text-muted-foreground' : '',
+                                  )}
+                                >
+                                  {s.name}
+                                </p>
+                                {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                              </div>
+                              {!isDeleted && s.description && (
+                                <p className="text-[12px] text-muted-foreground">{s.description}</p>
+                              )}
+                            </TableCell>
+                          );
+                        if (col.key === 'price')
+                          return (
+                            <TableCell key="price" className="font-medium text-foreground">
+                              {s.price != null ? `${fmtMoney(s.price)} ₴` : 'авто'}
+                            </TableCell>
+                          );
+                        return null;
+                      })}
+                      <TableCell className="text-muted-foreground">
+                        {s.works.length > 0 ? s.works.map(w => w.workName).join(', ') : '—'}
                       </TableCell>
-                    )}
-                    {servicesVisibleColumns.map(col => {
-                      if (col.key === 'name')
-                        return (
-                          <TableCell key="name">
-                            <p className="text-[13px] font-medium">{s.name}</p>
-                            {s.description && (
-                              <p className="text-[12px] text-muted-foreground">{s.description}</p>
-                            )}
-                          </TableCell>
-                        );
-                      if (col.key === 'price')
-                        return (
-                          <TableCell key="price" className="font-medium text-foreground">
-                            {s.price != null ? `${fmtMoney(s.price)} ₴` : 'авто'}
-                          </TableCell>
-                        );
-                      return null;
-                    })}
-                    <TableCell className="text-muted-foreground">
-                      {s.works.length > 0 ? s.works.map(w => w.workName).join(', ') : '—'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {s.goods.length > 0 ? s.goods.map(g => g.goodName).join(', ') : '—'}
-                    </TableCell>
-                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          title="Редагувати"
-                          onClick={() => openEdit(s)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                          title="Видалити"
-                          onClick={() => remove(s.id)}
-                          disabled={deletingId === s.id}
-                          loading={deletingId === s.id}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      <TableCell className="text-muted-foreground">
+                        {s.goods.length > 0 ? s.goods.map(g => g.goodName).join(', ') : '—'}
+                      </TableCell>
+                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          {isDeleted ? (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => void restore(s.id)}
+                              className="text-success/70 hover:text-success hover:bg-success/10"
+                              title="Відновити"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                title="Редагувати"
+                                onClick={() => openEdit(s)}
+                                className="opacity-0 group-hover:opacity-100"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                title="Помітити на видалення"
+                                onClick={() => void remove(s.id)}
+                                disabled={deletingId === s.id}
+                                loading={deletingId === s.id}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
         </div>

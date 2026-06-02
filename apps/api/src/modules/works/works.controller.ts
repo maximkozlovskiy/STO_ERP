@@ -18,7 +18,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { WorksService } from './works.service';
-import { CreateWorkDto, UpdateWorkDto, WorkQueryDto } from './works.dto';
+import { CreateWorkDto, UpdateWorkDto, WorkQueryDto, WorkResponseDto } from './works.dto';
 
 @ApiTags('Works')
 @Controller('works')
@@ -62,8 +62,18 @@ export class WorksController {
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Видалити роботу' })
+  @ApiOperation({ summary: 'Видалити роботу (soft delete)' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
+  }
+
+  @Post(':id/restore')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Відновити видалену роботу' })
+  restore(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<WorkResponseDto> {
+    return this.service.restore(orgId, id);
   }
 }

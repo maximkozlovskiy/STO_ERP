@@ -6,6 +6,7 @@ import {
   Max,
   IsOptional,
   IsPositive,
+  IsBoolean,
   IsEnum,
   IsUUID,
 } from 'class-validator';
@@ -35,7 +36,11 @@ export class CreateGoodDto {
   @Min(0)
   purchasePrice?: number;
 
-  @ApiProperty() @IsNumber() @Min(0) salePrice!: number;
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  salePrice?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsString() category?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
@@ -74,6 +79,12 @@ export class GoodQueryDto {
   @IsPositive()
   @Max(200)
   limit: number = 50;
+
+  @ApiPropertyOptional({ description: 'Показати видалені' })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  showDeleted?: boolean;
 }
 
 export class GoodResponseDto {
@@ -92,6 +103,7 @@ export class GoodResponseDto {
   @ApiPropertyOptional({ enum: GoodType }) goodType?: GoodType | null;
   @ApiPropertyOptional() preferredSupplierId?: string | null;
   @ApiPropertyOptional() preferredSupplierName?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: Date | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }

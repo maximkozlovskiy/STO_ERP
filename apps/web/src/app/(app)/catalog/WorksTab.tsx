@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWorks, worksKeys } from '@/hooks/api/useWorks';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Plus, Pencil, Search, Trash2, BookOpen } from 'lucide-react';
+import { Plus, Pencil, Search, Trash2, BookOpen, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
@@ -39,6 +39,8 @@ import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { fmtMoney } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,12 +97,14 @@ export default function WorksTab() {
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const { data: works, isLoading: loading } = useWorks({
     page,
     limit: 30,
     categoryId: selectedCat || undefined,
     q: debouncedQ || undefined,
+    showDeleted,
   });
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({
@@ -297,7 +301,14 @@ export default function WorksTab() {
   };
 
   const remove = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити роботу?', variant: 'destructive' }))) return;
+    if (
+      !(await confirm({
+        title: 'Помітити роботу на видалення?',
+        message: 'Можна відновити пізніше.',
+        variant: 'destructive',
+      }))
+    )
+      return;
     setDeletingId(id);
     setError('');
     try {
@@ -307,6 +318,16 @@ export default function WorksTab() {
       setError(e instanceof Error ? e.message : 'Помилка видалення');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const restore = async (id: string) => {
+    try {
+      await apiFetch<Work>(`/works/${id}/restore`, { method: 'POST' });
+      load();
+      if (features.toastEnabled) toast.success('Роботу відновлено');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка відновлення');
     }
   };
 
@@ -434,6 +455,18 @@ export default function WorksTab() {
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
         <Button
+          variant="outline"
+          size="md"
+          leftIcon={showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          onClick={() => {
+            setShowDeleted(d => !d);
+            setPage(1);
+          }}
+          className={cn(showDeleted && 'border-primary text-primary')}
+        >
+          {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+        </Button>
+        <Button
           leftIcon={<Plus className="h-4 w-4" />}
           onClick={() => {
             setForm({
@@ -512,90 +545,131 @@ export default function WorksTab() {
                 </TableRow>
               )}
               {!loading &&
-                works?.items.map(w => (
-                  <TableRow
-                    key={w.id}
-                    className={`cursor-pointer ${selectedWork?.id === w.id ? 'bg-secondary' : ''}`}
-                    onClick={() => {
-                      if (detailPanel.enabled)
-                        setSelectedWork(prev => (prev?.id === w.id ? null : w));
-                    }}
-                  >
-                    {features.bulkActionsEnabled && (
-                      <TableCell onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={bulkSelect.isSelected(w.id)}
-                          onChange={() => bulkSelect.toggle(w.id)}
-                          className="h-4 w-4 accent-primary"
-                          aria-label={`Обрати ${w.name}`}
-                        />
+                works?.items.map(w => {
+                  const isDeleted = !!w.deletedAt;
+                  return (
+                    <TableRow
+                      key={w.id}
+                      className={cn(
+                        'group cursor-pointer',
+                        isDeleted
+                          ? 'opacity-60 bg-secondary/30'
+                          : selectedWork?.id === w.id
+                            ? 'bg-secondary'
+                            : '',
+                      )}
+                      onClick={() => {
+                        if (detailPanel.enabled && !isDeleted)
+                          setSelectedWork(prev => (prev?.id === w.id ? null : w));
+                      }}
+                    >
+                      {features.bulkActionsEnabled && (
+                        <TableCell onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={bulkSelect.isSelected(w.id)}
+                            onChange={() => bulkSelect.toggle(w.id)}
+                            className="h-4 w-4 accent-primary"
+                            aria-label={`Обрати ${w.name}`}
+                          />
+                        </TableCell>
+                      )}
+                      {worksVisibleColumns.map(col => {
+                        if (col.key === 'name')
+                          return (
+                            <TableCell key="name">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p
+                                  className={cn(
+                                    'text-[13px] font-medium',
+                                    isDeleted
+                                      ? 'line-through text-muted-foreground'
+                                      : 'text-foreground',
+                                  )}
+                                >
+                                  {w.name}
+                                </p>
+                                {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                              </div>
+                              {!isDeleted && w.isWarranty && (
+                                <span className="text-[11px] text-success">Гарантійна</span>
+                              )}
+                              {!isDeleted && w.description && (
+                                <p className="text-[12px] text-muted-foreground mt-0.5">
+                                  {w.description}
+                                </p>
+                              )}
+                            </TableCell>
+                          );
+                        if (col.key === 'category')
+                          return (
+                            <TableCell key="category" className="text-[13px] text-muted-foreground">
+                              {w.categoryName}
+                            </TableCell>
+                          );
+                        if (col.key === 'normo')
+                          return (
+                            <TableCell key="normo" className="text-[13px]">
+                              {w.normoHours}
+                            </TableCell>
+                          );
+                        if (col.key === 'price')
+                          return (
+                            <TableCell key="price" className="font-medium text-[13px]">
+                              {fmtMoney(w.price)}
+                            </TableCell>
+                          );
+                        return null;
+                      })}
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {isDeleted ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={e => {
+                                e.stopPropagation();
+                                void restore(w.id);
+                              }}
+                              className="text-success/70 hover:text-success hover:bg-success/10"
+                              title="Відновити"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  openEditWork(w);
+                                }}
+                                className="opacity-0 group-hover:opacity-100"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  void remove(w.id);
+                                }}
+                                disabled={deletingId === w.id}
+                                loading={deletingId === w.id}
+                                className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                title="Помітити на видалення"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
-                    )}
-                    {worksVisibleColumns.map(col => {
-                      if (col.key === 'name')
-                        return (
-                          <TableCell key="name">
-                            <p className="text-[13px] font-medium text-foreground">{w.name}</p>
-                            {w.isWarranty && (
-                              <span className="text-[11px] text-success">Гарантійна</span>
-                            )}
-                            {w.description && (
-                              <p className="text-[12px] text-muted-foreground mt-0.5">
-                                {w.description}
-                              </p>
-                            )}
-                          </TableCell>
-                        );
-                      if (col.key === 'category')
-                        return (
-                          <TableCell key="category" className="text-[13px] text-muted-foreground">
-                            {w.categoryName}
-                          </TableCell>
-                        );
-                      if (col.key === 'normo')
-                        return (
-                          <TableCell key="normo" className="text-[13px]">
-                            {w.normoHours}
-                          </TableCell>
-                        );
-                      if (col.key === 'price')
-                        return (
-                          <TableCell key="price" className="font-medium text-[13px]">
-                            {fmtMoney(w.price)}
-                          </TableCell>
-                        );
-                      return null;
-                    })}
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={e => {
-                            e.stopPropagation();
-                            openEditWork(w);
-                          }}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={e => {
-                            e.stopPropagation();
-                            remove(w.id);
-                          }}
-                          disabled={deletingId === w.id}
-                          loading={deletingId === w.id}
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
         </div>

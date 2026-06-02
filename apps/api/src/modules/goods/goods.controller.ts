@@ -23,6 +23,7 @@ import {
   CreateGoodDto,
   UpdateGoodDto,
   GoodQueryDto,
+  GoodResponseDto,
   CreateGoodUoMDto,
   UpdateGoodUoMDto,
   GoodUoMResponseDto,
@@ -77,9 +78,19 @@ export class GoodsController {
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Видалити товар' })
+  @ApiOperation({ summary: 'Видалити товар (soft delete)' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
+  }
+
+  @Post(':id/restore')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Відновити видалений товар' })
+  restore(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<GoodResponseDto> {
+    return this.service.restore(orgId, id);
   }
 
   // ─── UoM Sub-resource ────────────────────────────────────────────────────────

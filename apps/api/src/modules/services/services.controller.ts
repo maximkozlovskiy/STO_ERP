@@ -18,7 +18,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { ServicesService } from './services.service';
-import { CreateServiceDto, UpdateServiceDto } from './services.dto';
+import { CreateServiceDto, UpdateServiceDto, ServiceResponseDto } from './services.dto';
 
 @ApiTags('Services')
 @Controller('services')
@@ -33,13 +33,15 @@ export class ServicesController {
   @ApiQuery({ name: 'q', required: false })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'showDeleted', required: false, type: Boolean })
   findAll(
     @OrgContext() orgId: string,
     @Query('q') q?: string,
     @Query('page') page = '1',
     @Query('limit') limit = '50',
+    @Query('showDeleted') showDeleted?: string,
   ) {
-    return this.service.findAll(orgId, Number(page), Number(limit), q);
+    return this.service.findAll(orgId, Number(page), Number(limit), q, showDeleted === 'true');
   }
 
   @Get(':id')
@@ -70,8 +72,18 @@ export class ServicesController {
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Видалити послугу' })
+  @ApiOperation({ summary: 'Видалити послугу (soft delete)' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
+  }
+
+  @Post(':id/restore')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Відновити видалену послугу' })
+  restore(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ServiceResponseDto> {
+    return this.service.restore(orgId, id);
   }
 }

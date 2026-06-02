@@ -64,6 +64,12 @@ export class WorkQueryDto {
   @IsPositive()
   @Max(200)
   limit: number = 50;
+
+  @ApiPropertyOptional({ description: 'Показати видалені' })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  showDeleted?: boolean;
 }
 
 export class WorkResponseDto {
@@ -76,6 +82,7 @@ export class WorkResponseDto {
   @ApiProperty() price!: number;
   @ApiPropertyOptional() description!: string | null;
   @ApiProperty() isWarranty!: boolean;
+  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: Date | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }

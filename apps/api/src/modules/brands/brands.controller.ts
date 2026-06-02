@@ -9,10 +9,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
   Header,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -31,9 +32,18 @@ export class BrandsController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список брендів' })
+  @ApiQuery({ name: 'showDeleted', required: false, type: Boolean })
   @ApiResponse({ status: 200, type: [BrandResponseDto] })
-  findAll(@OrgContext() orgId: string) {
-    return this.service.findAll(orgId);
+  findAll(@OrgContext() orgId: string, @Query('showDeleted') showDeleted?: string) {
+    return this.service.findAll(orgId, showDeleted === 'true');
+  }
+
+  @Post(':id/restore')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Відновити видалений бренд' })
+  @ApiResponse({ status: 200, type: BrandResponseDto })
+  restore(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.restore(orgId, id);
   }
 
   @Get(':id')

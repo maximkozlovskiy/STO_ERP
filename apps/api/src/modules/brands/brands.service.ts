@@ -13,23 +13,42 @@ export class BrandsService {
     private readonly cache: CacheService,
   ) {}
 
-  async findAll(orgId: string): Promise<{ items: BrandResponseDto[]; total: number }> {
-    const cached = await this.cache.get<{ items: BrandResponseDto[]; total: number }>(
-      cacheKey(orgId),
-    );
-    if (cached) return cached;
+  async findAll(
+    orgId: string,
+    showDeleted = false,
+  ): Promise<{ items: BrandResponseDto[]; total: number }> {
+    if (!showDeleted) {
+      const cached = await this.cache.get<{ items: BrandResponseDto[]; total: number }>(
+        cacheKey(orgId),
+      );
+      if (cached) return cached;
+    }
 
+    const where = { orgId, ...(showDeleted ? {} : { deletedAt: null }) };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.brand.findMany({
-        where: { orgId, deletedAt: null },
-        orderBy: { name: 'asc' },
+        where,
+        orderBy: [{ deletedAt: 'asc' }, { name: 'asc' }],
         take: 1000,
       }),
-      this.prisma.brand.count({ where: { orgId, deletedAt: null } }),
+      this.prisma.brand.count({ where }),
     ]);
     const result = { items: items.map(item => this.toDto(item)), total };
-    await this.cache.set(cacheKey(orgId), result, TTL);
+    if (!showDeleted) await this.cache.set(cacheKey(orgId), result, TTL);
     return result;
+  }
+
+  async restore(orgId: string, id: string): Promise<BrandResponseDto> {
+    const existing = await this.prisma.brand.findFirst({
+      where: { id, orgId, NOT: { deletedAt: null } },
+    });
+    if (!existing) throw new NotFoundException('Видалений бренд не знайдено');
+    const item = await this.prisma.brand.update({
+      where: { id, orgId },
+      data: { deletedAt: null },
+    });
+    await this.cache.del(cacheKey(orgId));
+    return this.toDto(item);
   }
 
   async findOne(orgId: string, id: string): Promise<BrandResponseDto> {
@@ -81,6 +100,7 @@ export class BrandsService {
     id: string;
     orgId: string;
     name: string;
+    deletedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
   }): BrandResponseDto {
@@ -88,6 +108,7 @@ export class BrandsService {
       id: item.id,
       orgId: item.orgId,
       name: item.name,
+      deletedAt: item.deletedAt ?? null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

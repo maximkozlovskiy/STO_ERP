@@ -73,6 +73,7 @@ export class ServiceResponseDto {
   @ApiProperty() name!: string;
   @ApiPropertyOptional() description!: string | null;
   @ApiPropertyOptional() price!: number | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: Date | null;
   @ApiProperty() works!: Array<{
     workId: string;
     workName: string;

@@ -1,16 +1,19 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Pencil, Trash2, Tag } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Badge } from '@/components/ui/badge';
+import { useConfirm } from '@/hooks/useConfirm';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { toast } from '@/lib/toast';
+import { cn } from '@/lib/utils';
 import {
   Table,
   TableHeader,
@@ -25,6 +28,7 @@ import {
 interface Brand {
   id: string;
   name: string;
+  deletedAt?: string | null;
 }
 
 // ─── Brands Tab ───────────────────────────────────────────────────────────────
@@ -33,6 +37,7 @@ export default function BrandsTab() {
   const { confirm, dialogProps } = useConfirm();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [modal, setModal] = useState(false);
   const [editBrand, setEditBrand] = useState<Brand | null>(null);
   const [form, setForm] = useState({ name: '' });
@@ -40,29 +45,32 @@ export default function BrandsTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  const load = useCallback((opts?: { fromCache?: boolean }) => {
-    // Seed from cache for instant first-paint; пропускати кеш після mutations щоб
-    // не показати STALE список між POST/DELETE та фінальним fetch.
-    const fromCache = opts?.fromCache ?? false;
-    const cached = fromCache ? getCached<Brand[]>('cache:brands') : null;
-    if (cached) {
-      setBrands(cached);
-      setLoading(false);
-    } else setLoading(true);
-    apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200')
-      .then(r => {
-        setBrands(r.items);
-        setCache('cache:brands', r.items);
-      })
-      .catch((e: unknown) => {
-        if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження');
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const load = useCallback(
+    (opts?: { fromCache?: boolean; withDeleted?: boolean }) => {
+      const fromCache = opts?.fromCache ?? false;
+      const withDeleted = opts?.withDeleted ?? showDeleted;
+      const cached = fromCache && !withDeleted ? getCached<Brand[]>('cache:brands') : null;
+      if (cached) {
+        setBrands(cached);
+        setLoading(false);
+      } else setLoading(true);
+      const url = withDeleted ? '/brands?limit=200&showDeleted=true' : '/brands?limit=200';
+      apiFetch<{ items: Brand[]; total: number }>(url)
+        .then(r => {
+          setBrands(r.items);
+          if (!withDeleted) setCache('cache:brands', r.items);
+        })
+        .catch((e: unknown) => {
+          if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        })
+        .finally(() => setLoading(false));
+    },
+    [showDeleted],
+  );
 
   useEffect(() => {
-    load({ fromCache: true });
-  }, [load]);
+    load({ fromCache: !showDeleted });
+  }, [load, showDeleted]);
 
   const openCreate = () => {
     setEditBrand(null);
@@ -108,8 +116,8 @@ export default function BrandsTab() {
   const remove = async (id: string) => {
     if (
       !(await confirm({
-        title: 'Видалити бренд?',
-        message: 'Товари з цим брендом не будуть видалені.',
+        title: 'Помітити бренд на видалення?',
+        message: 'Товари з цим брендом не будуть видалені. Можна відновити.',
         variant: 'destructive',
       }))
     )
@@ -125,6 +133,19 @@ export default function BrandsTab() {
     }
   };
 
+  const restore = async (id: string) => {
+    try {
+      await apiFetch<Brand>(`/brands/${id}/restore`, { method: 'POST' });
+      load();
+      toast.success('Бренд відновлено');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка відновлення');
+    }
+  };
+
+  const activeCount = brands.filter(b => !b.deletedAt).length;
+  const deletedCount = brands.filter(b => !!b.deletedAt).length;
+
   return (
     <div>
       {!modal && error && (
@@ -134,9 +155,20 @@ export default function BrandsTab() {
       )}
       <div className="flex items-center justify-between gap-3 mb-4">
         <p className="text-[13px] text-muted-foreground">Бренди та виробники запчастин і товарів</p>
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-          Бренд
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="md"
+            leftIcon={showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            onClick={() => setShowDeleted(d => !d)}
+            className={cn(showDeleted && 'border-primary text-primary')}
+          >
+            {showDeleted ? `Сховати видалені (${deletedCount})` : 'Показати видалені'}
+          </Button>
+          <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
+            Бренд
+          </Button>
+        </div>
       </div>
 
       <div className="border border-border rounded-xl bg-surface overflow-auto">
@@ -144,7 +176,14 @@ export default function BrandsTab() {
           <TableHeader>
             <TableRow>
               <TableHead>Назва бренду</TableHead>
-              <TableHead className="text-right">Дії</TableHead>
+              <TableHead className="text-right">
+                {activeCount > 0 && (
+                  <span className="text-[12px] text-muted-foreground font-normal">
+                    {activeCount} активних
+                    {deletedCount > 0 && !showDeleted && ` · ${deletedCount} архів`}
+                  </span>
+                )}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -169,27 +208,65 @@ export default function BrandsTab() {
               </TableRow>
             )}
             {!loading &&
-              brands.map(b => (
-                <TableRow key={b.id}>
-                  <TableCell className="font-medium text-foreground">{b.name}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(b)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        loading={deletingId === b.id}
-                        onClick={() => remove(b.id)}
-                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              brands.map(b => {
+                const isDeleted = !!b.deletedAt;
+                return (
+                  <TableRow
+                    key={b.id}
+                    className={cn('group', isDeleted && 'opacity-60 bg-secondary/30')}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            'font-medium',
+                            isDeleted ? 'line-through text-muted-foreground' : 'text-foreground',
+                          )}
+                        >
+                          {b.name}
+                        </span>
+                        {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {isDeleted ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void restore(b.id)}
+                            className="text-success/70 hover:text-success hover:bg-success/10"
+                            title="Відновити"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(b)}
+                              className="opacity-0 group-hover:opacity-100"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              loading={deletingId === b.id}
+                              onClick={() => void remove(b.id)}
+                              className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                              title="Помітити на видалення"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
           </TableBody>
         </Table>
       </div>
