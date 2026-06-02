@@ -15,10 +15,11 @@ test.describe('Рахунки — CRUD', () => {
     ).toBeVisible({ timeout: 20_000 });
   });
 
-  test('кнопка "Новий рахунок" присутня', async ({ page }) => {
+  test('кнопка "Рахунок" (додати) присутня', async ({ page }) => {
+    // Add-button renamed from "Новий рахунок" to "Рахунок" (commit 3785721/c3cd333).
     await page.goto('/invoices');
     await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('button:has-text("Новий рахунок")').first()).toBeVisible({
+    await expect(page.getByRole('button', { name: /^Рахунок$/ }).first()).toBeVisible({
       timeout: 15_000,
     });
   });
@@ -26,7 +27,11 @@ test.describe('Рахунки — CRUD', () => {
   test('створити рахунок → DRAFT badge → видалити', async ({ page }) => {
     await page.goto('/invoices');
     await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
-    await page.locator('button:has-text("Новий рахунок")').first().click();
+    // Add-button renamed: "Новий рахунок" → "Рахунок".
+    await page
+      .getByRole('button', { name: /^Рахунок$/ })
+      .first()
+      .click();
 
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });

@@ -15,10 +15,11 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     ).toBeVisible({ timeout: 20_000 });
   });
 
-  test('кнопка "Нове замовлення" присутня', async ({ page }) => {
+  test('кнопка "Замовлення" (додати) присутня', async ({ page }) => {
+    // Add-button renamed from "Нове замовлення" to "Замовлення" (commit 3785721/c3cd333).
     await page.goto('/purchase-orders');
     await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('button:has-text("Нове замовлення")').first()).toBeVisible({
+    await expect(page.getByRole('button', { name: /^Замовлення$/ }).first()).toBeVisible({
       timeout: 15_000,
     });
   });
@@ -26,7 +27,11 @@ test.describe('Замовлення постачальнику — CRUD', () => 
   test('створити замовлення DRAFT → перевірити → видалити', async ({ page }) => {
     await page.goto('/purchase-orders');
     await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
-    await page.locator('button:has-text("Нове замовлення")').first().click();
+    // Add-button renamed to single noun "Замовлення".
+    await page
+      .getByRole('button', { name: /^Замовлення$/ })
+      .first()
+      .click();
 
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });

@@ -210,7 +210,8 @@
       "Bash(sed -i 's/className=\"text-muted-foreground hover:text-destructive-text transition-colors\"/className=\"text-destructive\\\\/70 hover:text-destructive transition-colors\"/g' \"e:/Git/STO ERP/apps/web/src/app/settings/page.tsx\")",
       "Bash(sed -i 's/className=\"mt-1 text-muted-foreground hover:text-destructive-text transition-colors disabled:opacity-40\"/className=\"mt-1 text-destructive\\\\/70 hover:text-destructive transition-colors disabled:opacity-40\"/g' \"e:/Git/STO ERP/apps/web/src/app/settings/page.tsx\")",
       "Bash(sed -i 's/ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} \\\\/>/ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} pageKey=\"purchase-orders\" \\\\/>/' \"e:/Git/STO ERP/apps/web/src/app/purchase-orders/page.tsx\")",
-      "Bash(sed -i 's/ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} \\\\/>/ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} pageKey=\"stock-documents\" \\\\/>/' \"e:/Git/STO ERP/apps/web/src/app/stock-documents/page.tsx\")"
+      "Bash(sed -i 's/ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} \\\\/>/ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} pageKey=\"stock-documents\" \\\\/>/' \"e:/Git/STO ERP/apps/web/src/app/stock-documents/page.tsx\")",
+      "mcp__playwright__browser_navigate"
     ],
     "additionalDirectories": [
       "e:\\Git\\STO ERP\\.claude",

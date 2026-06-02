@@ -103,7 +103,17 @@ test.describe('Каталог — CRUD товару', () => {
     const saveBtn = modal.locator('button:has-text("Зберегти")');
     await expect(saveBtn).toBeEnabled({ timeout: 5_000 });
     await saveBtn.click();
-    await expect(modal).not.toBeVisible({ timeout: 10_000 });
+    // After successful save GoodsTab intentionally reopens the modal in EDIT mode
+    // (to allow adding barcodes/UoMs immediately — see openEditGood(newGood) in create()).
+    // We expect the title to switch from "Новий товар" to "Редагування товару".
+    await expect(page.locator('h2:has-text("Редагування товару")').first()).toBeVisible({
+      timeout: 10_000,
+    });
+    // Close the edit modal so we can verify the row in the table.
+    await page.keyboard.press('Escape');
+    const leaveBtn = page.locator('button:has-text("Покинути")').first();
+    if (await leaveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await leaveBtn.click();
+    await expect(modal).not.toBeVisible({ timeout: 5_000 });
 
     // Перевірити в таблиці (20s — під паралельним навантаженням invalidateQueries може чекати)
     await expect(page.locator(`table tbody tr:has-text("${goodName}")`).first()).toBeVisible({

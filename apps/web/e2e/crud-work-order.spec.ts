@@ -11,12 +11,16 @@ const uid = () => Date.now().toString().slice(-6);
 test.describe('Наряди — CRUD', () => {
   test('створити наряд → DRAFT статус → відкрити картку → видалити', async ({ page }) => {
     await page.goto('/work-orders');
-    await expect(page.locator('button:has-text("Новий наряд")').first()).toBeVisible({
+    // Add-button renamed from "Новий наряд" to "Наряд" (commit 3785721/c3cd333).
+    await expect(page.getByRole('button', { name: /^Наряд$/ }).first()).toBeVisible({
       timeout: 20_000,
     });
 
     // Відкрити форму
-    await page.locator('button:has-text("Новий наряд")').first().click();
+    await page
+      .getByRole('button', { name: /^Наряд$/ })
+      .first()
+      .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(modal.locator('h2:has-text("Новий наряд")')).toBeVisible();
@@ -103,11 +107,14 @@ test.describe('Наряди — CRUD', () => {
 
   test('форма — Створити disabled без клієнта', async ({ page }) => {
     await page.goto('/work-orders');
-    await expect(page.locator('button:has-text("Новий наряд")').first()).toBeVisible({
+    await expect(page.getByRole('button', { name: /^Наряд$/ }).first()).toBeVisible({
       timeout: 20_000,
     });
 
-    await page.locator('button:has-text("Новий наряд")').first().click();
+    await page
+      .getByRole('button', { name: /^Наряд$/ })
+      .first()
+      .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 

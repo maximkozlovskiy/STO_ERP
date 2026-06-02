@@ -17,12 +17,13 @@ test.describe('Документи складу — CRUD', () => {
     ).toBeVisible({ timeout: 20_000 });
   });
 
-  test('кнопка "Новий документ" присутня', async ({ page }) => {
+  test('кнопка "Документ" (додати) присутня', async ({ page }) => {
+    // Add-button renamed from "Новий документ" to "Документ" (commit 3785721/c3cd333).
     await page.goto('/stock-documents');
     await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.locator('button:has-text("Новий документ")').first()).toBeVisible({
+    await expect(page.getByRole('button', { name: /^Документ$/ }).first()).toBeVisible({
       timeout: 15_000,
     });
   });
@@ -32,7 +33,11 @@ test.describe('Документи складу — CRUD', () => {
     await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
       timeout: 20_000,
     });
-    await page.locator('button:has-text("Новий документ")').first().click();
+    // Add-button renamed to single noun "Документ".
+    await page
+      .getByRole('button', { name: /^Документ$/ })
+      .first()
+      .click();
 
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });

@@ -92,7 +92,11 @@ test.describe('Замовлення постачальнику — прийом 
     }
 
     // Відкрити деталі через кнопку "Деталі" (клік на рядок відкриває Detail Panel без FSM кнопок)
-    await row.locator('button:has-text("Деталі")').first().click();
+    // Row-action button "Деталі" was replaced with a hover-only Pencil icon
+    // (title="Відкрити деталі") in commit a5cf804. Use the hover icon directly —
+    // hover on the row makes the opacity-0 button focusable & clickable.
+    await row.hover();
+    await row.locator('button[title="Відкрити деталі"]').first().click();
     await expect(
       page
         .locator('button:has-text("Позначити отриманим"), button:has-text("Часткове отримання")')
@@ -122,7 +126,11 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    await row.locator('button:has-text("Деталі")').first().click();
+    // Row-action button "Деталі" was replaced with a hover-only Pencil icon
+    // (title="Відкрити деталі") in commit a5cf804. Use the hover icon directly —
+    // hover on the row makes the opacity-0 button focusable & clickable.
+    await row.hover();
+    await row.locator('button[title="Відкрити деталі"]').first().click();
     const receiveBtn = page.locator('button:has-text("Позначити отриманим")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
@@ -177,7 +185,11 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    await row.locator('button:has-text("Деталі")').first().click();
+    // Row-action button "Деталі" was replaced with a hover-only Pencil icon
+    // (title="Відкрити деталі") in commit a5cf804. Use the hover icon directly —
+    // hover on the row makes the opacity-0 button focusable & clickable.
+    await row.hover();
+    await row.locator('button[title="Відкрити деталі"]').first().click();
     const receiveBtn = page.locator('button:has-text("Позначити отриманим")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
@@ -249,7 +261,11 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    await row.locator('button:has-text("Деталі")').first().click();
+    // Row-action button "Деталі" was replaced with a hover-only Pencil icon
+    // (title="Відкрити деталі") in commit a5cf804. Use the hover icon directly —
+    // hover on the row makes the opacity-0 button focusable & clickable.
+    await row.hover();
+    await row.locator('button[title="Відкрити деталі"]').first().click();
     const receiveBtn = page.locator('button:has-text("Позначити отриманим")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);

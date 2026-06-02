@@ -2,10 +2,10 @@
   "cookies": [
     {
       "name": "sto_refresh",
-      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDI0ODU0MywiZXhwIjoxNzgyODQwNTQzfQ.t9YPLEsf9Cqu8G6l7iSIfN1J1fut04vDGBlB2UiCUQg",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMTAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6ImExMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc4MDQyMDMwMiwiZXhwIjoxNzgzMDEyMzAyfQ.iLKVUU21LlnxDr5KzjWBiuo6fdl_HHilPikyfNH0cn8",
       "domain": "localhost",
       "path": "/api/auth",
-      "expires": 1814808543.500385,
+      "expires": 1814980302.624986,
       "httpOnly": true,
       "secure": false,
       "sameSite": "Strict"
@@ -14,11 +14,16 @@
   "origins": [
     {
       "origin": "http://localhost:3001",
-      "localStorage": [],
+      "localStorage": [
+        {
+          "name": "sto_e2e_disable_devtools",
+          "value": "1"
+        }
+      ],
       "sessionStorage": [
         {
           "name": "sto_access_token",
-          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDI0ODU0MywiZXhwIjoxNzgwMjQ5NDQzfQ.QlOqOwHJdSQ3m4FwQSR0YpXTKYypuqognBnWEpRkVGc"
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMTAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6ImExMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc4MDQyMDMwMiwiZXhwIjoxNzgwNDIxMjAyfQ.X3Rf28IwxReXBFole4ZdqPlBD2YsjmIUJVKcRw007HM"
         }
       ]
     }

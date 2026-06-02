@@ -83,6 +83,16 @@ async function globalSetup() {
     state.origins.push(origin);
   }
   origin.localStorage = origin.localStorage || [];
+  // Hide TanStack Query Devtools FAB during E2E — it sits bottom-left and
+  // intercepts pointer events for hover-only icon buttons in the last column
+  // of tables when Playwright scrolls a row into view at the bottom of the
+  // viewport. QueryProvider checks this localStorage key.
+  const hasDevtoolsFlag = origin.localStorage.some(
+    (e: { name: string }) => e.name === 'sto_e2e_disable_devtools',
+  );
+  if (!hasDevtoolsFlag) {
+    origin.localStorage.push({ name: 'sto_e2e_disable_devtools', value: '1' });
+  }
   // Save accessToken in localStorage too as fallback (most pages read sessionStorage via TOKEN_KEY)
   // Real apps use sessionStorage — Playwright stores it as `sessionStorage` since 1.40.
   origin.sessionStorage = [{ name: 'sto_access_token', value: loginResult.accessToken }];

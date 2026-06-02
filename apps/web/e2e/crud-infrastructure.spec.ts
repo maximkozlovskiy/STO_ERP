@@ -12,6 +12,10 @@ async function goToTab(page: import('@playwright/test').Page, tabName: string) {
     timeout: 20_000,
   });
   await page.locator(`button:has-text("${tabName}")`).first().click();
+  // Wait for the section header (h2 with the tab name) to appear — guarantees
+  // that the tab content is mounted before we click "Додати". Without this the
+  // "Додати" button may resolve in a stale section and open the wrong modal.
+  await expect(page.locator(`h2:has-text("${tabName}")`).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({ timeout: 10_000 });
 }
 

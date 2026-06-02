@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode } from 'react';
+import { type ReactNode, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/query-client';
@@ -16,11 +16,30 @@ const ReactQueryDevtools =
       })
     : null;
 
+// Devtools FAB сидить bottom-left і може перекривати hover-only icon buttons
+// у останній колонці таблиць коли Playwright скролить рядок у viewport.
+// E2E тести виставляють localStorage('sto_e2e_disable_devtools') = '1'
+// через addInitScript у beforeEach — це повністю прибирає DevTools з DOM.
+function useDevtoolsEnabled(): boolean {
+  return useSyncExternalStore(
+    () => () => {},
+    () => {
+      try {
+        return localStorage.getItem('sto_e2e_disable_devtools') !== '1';
+      } catch {
+        return true;
+      }
+    },
+    () => true,
+  );
+}
+
 export function QueryProvider({ children }: { children: ReactNode }) {
+  const devtoolsEnabled = useDevtoolsEnabled();
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      {ReactQueryDevtools && <ReactQueryDevtools initialIsOpen={false} />}
+      {ReactQueryDevtools && devtoolsEnabled && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   );
 }

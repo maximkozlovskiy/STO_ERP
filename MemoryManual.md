@@ -9,7 +9,8 @@
 ## Останній commit
 
 ```
-<NEW>  fix(tester): Bugs #316-#317 — coefficient defense-in-depth + calendar type=button
+<NEW>  test(e2e): refresh locators after add-button rename + hide TanStack Devtools in tests
+2c7c563 docs(memory): record sto-optimize cycle of 2026-06-02 (HEAD a838718 + 5ad9f1b)
 5ad9f1b docs(skills): add soft-delete updateMany with isSystem guard + speculative duplicate-check patterns to sto-optimize
 a838718 perf(optimize): updateMany soft-delete + speculative duplicate-check + AbortController in WorksTab
 fbf04a1 fix(tester): Bugs #312-#315 — coefficient=0 guards, useConfirm bulk-actions, type=button, AbortController
@@ -25,6 +26,8 @@ c3cd333 fix(ui): remove flex gap-3 from table+panel containers; drop + prefix fr
 Дата: 2026-06-02
 
 TypeScript: ✅ 0 errors (api, web)
+
+Latest E2E: 2026-06-02 (sto-e2e-agent, HEAD 2c7c563 → 17 failed + 3 flaky → 162 passed / 5 skipped / 0 failed) — **add-button rename regression in test suite: 11 specs still expected old button labels (`Новий наряд`/`Нове замовлення`/`Новий рахунок`/`Новий документ`/`Додати`/`Деталі`) that were renamed in commits `3785721` ("rename add-button to '+ [Object]'") і `c3cd333` ("drop + prefix") і `a5cf804` (table row "Деталі" → hover icon Pencil with `title="Відкрити деталі"`). Updated locators to new single-noun convention (`Наряд`/`Замовлення`/`Рахунок`/`Документ`/`Контрагент`/`Співробітник`) with `getByRole('button', { name: /^X$/ })` to avoid matching page header `Наряди`/`Контрагенти`. Updated `purchase-orders-receive.spec.ts` to use `row.hover() → button[title="Відкрити деталі"]`. Fixed catalog goods CRUD test: `create()` intentionally reopens modal in EDIT mode after save (calls `openEditGood(newGood)` to allow immediate barcode/UoM editing) — test now expects title transition `Новий товар → Редагування товару` and presses Escape with dirty-guard handling. Fixed `crud-infrastructure` flaky modal title check: wait for `h2:has-text(tabName)` before clicking `Додати` (guarantees Section mount). **NEW root-cause fix:** TanStack Query Devtools FAB at bottom-left was intercepting pointer events for hover-only icon buttons (`Trash2`, `Pencil`) in the last column of tables when Playwright scrolls a row into view at the bottom of the viewport — QueryProvider now reads `localStorage.sto_e2e_disable_devtools` to skip rendering devtools entirely; `setup-auth.ts` writes this flag into storageState so all auth'd specs inherit it.**
 
 Latest tester: 2026-06-02 (sto-tester-agent FULL, HEAD fbf04a1 → +2 bugs Bugs #316-#317) — **post-coefficient-guard defense-in-depth audit: 1 MEDIUM (#316 — `fetchPartCoefficients`/`toPartDto`/`toInvoiceLineDto` використовували `coefficient ?? 1` де nullish coalescing НЕ ловить 0 з legacy DB → `quantity / 0 = Infinity` у RESERVATION/WRITEOFF/RESERVATION_RELEASE; додано `safeCoeff(v)` helper у `work-orders.service.ts` + `invoices.service.ts` що повертає 1 для null/0/NaN/негативних; defense-in-depth до DTO `@Min(0.000001)` бо migration/CSV-import можуть оминути валідацію), 1 LOW (#317 — DraggableSlot/PendingSlotBlock/calView buttons у calendar/page.tsx без `type="button"` → drift із Bug #314 fix). API 525/525, web 218/218, tsc 0 errors api+web. Bug #318 — non-bug (memo deps на confirm правильно покриті через `useCallback` у useConfirm).**
 

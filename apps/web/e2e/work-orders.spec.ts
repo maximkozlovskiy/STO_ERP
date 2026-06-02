@@ -32,8 +32,10 @@ test.describe('Наряди — список', () => {
     ).toBeVisible({ timeout: 20_000 });
   });
 
-  test('кнопка "Новий наряд" присутня', async ({ page }) => {
-    await expect(page.locator('button:has-text("Новий наряд")').first()).toBeVisible({
+  test('кнопка "Наряд" (додати) присутня', async ({ page }) => {
+    // Add-button renamed from "Новий наряд" to single noun "Наряд" (commit 3785721/c3cd333).
+    // Use exact button text to avoid matching "Наряди" page header.
+    await expect(page.getByRole('button', { name: /^Наряд$/ }).first()).toBeVisible({
       timeout: 20_000,
     });
   });
@@ -54,18 +56,25 @@ test.describe('Наряди — форма створення', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/work-orders');
     await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
-    await expect(page.locator('button:has-text("Новий наряд")').first()).toBeVisible({
+    // Add-button: exact text "Наряд" (renamed in commit 3785721/c3cd333).
+    await expect(page.getByRole('button', { name: /^Наряд$/ }).first()).toBeVisible({
       timeout: 20_000,
     });
   });
 
   test('відкривається модалка нового наряду', async ({ page }) => {
-    await page.locator('button:has-text("Новий наряд")').first().click();
+    await page
+      .getByRole('button', { name: /^Наряд$/ })
+      .first()
+      .click();
     await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 8_000 });
   });
 
   test('модалка закривається кнопкою Скасувати або Escape', async ({ page }) => {
-    await page.locator('button:has-text("Новий наряд")').first().click();
+    await page
+      .getByRole('button', { name: /^Наряд$/ })
+      .first()
+      .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 

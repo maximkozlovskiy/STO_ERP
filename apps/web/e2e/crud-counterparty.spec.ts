@@ -11,11 +11,14 @@ test.describe('CRM — CRUD контрагента', () => {
     const name = `E2E-${uid()}`;
 
     await page.goto('/crm');
-    await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({
-      timeout: 20_000,
-    });
+    // Add-button renamed: "+ Контрагент"/"Додати" → "Контрагент" (commit 3785721/c3cd333).
+    // Exclude page header text "Контрагенти".
+    const addBtn = page
+      .locator('button:has-text("Контрагент"):not(:has-text("Контрагенти"))')
+      .first();
+    await expect(addBtn).toBeVisible({ timeout: 20_000 });
 
-    await page.locator('button:has-text("Додати")').first().click();
+    await addBtn.click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(modal.locator('h2:has-text("Новий контрагент")')).toBeVisible();
@@ -55,11 +58,14 @@ test.describe('CRM — CRUD контрагента', () => {
     const companyName = `E2E-Пост-${uid()}`;
 
     await page.goto('/crm');
-    await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({
-      timeout: 20_000,
-    });
+    // Add-button renamed: "+ Контрагент"/"Додати" → "Контрагент" (commit 3785721/c3cd333).
+    // Exclude page header text "Контрагенти".
+    const addBtn = page
+      .locator('button:has-text("Контрагент"):not(:has-text("Контрагенти"))')
+      .first();
+    await expect(addBtn).toBeVisible({ timeout: 20_000 });
 
-    await page.locator('button:has-text("Додати")').first().click();
+    await addBtn.click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
@@ -95,12 +101,14 @@ test.describe('CRM — CRUD контрагента', () => {
     const name = `E2E-Panel-${uid()}`;
 
     await page.goto('/crm');
-    await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({
-      timeout: 20_000,
-    });
+    // Add-button renamed: "Додати" → "Контрагент" (commit 3785721/c3cd333).
+    const addBtn = page
+      .locator('button:has-text("Контрагент"):not(:has-text("Контрагенти"))')
+      .first();
+    await expect(addBtn).toBeVisible({ timeout: 20_000 });
 
     // Створити
-    await page.locator('button:has-text("Додати")').first().click();
+    await addBtn.click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await modal.getByRole('textbox', { name: "Ім'я" }).fill(name);

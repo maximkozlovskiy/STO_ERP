@@ -8,10 +8,10 @@ test.describe('CRM — список контрагентів', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/crm');
     await expect(page).toHaveURL(/\/crm/, { timeout: 15_000 });
-    // Чекати кнопку "Новий" — стабільний індикатор готовності UI
-    // Кнопка в CRM має текст "Додати" (leftIcon + "Додати")
+    // Чекати кнопку додавання — стабільний індикатор готовності UI.
+    // Після commit 3785721/c3cd333 add-button перейменовано: "Додати"/"+ Контрагент" → "Контрагент".
     await page
-      .locator('button:has-text("Додати")')
+      .locator('button:has-text("Контрагент"):not(:has-text("Контрагенти"))')
       .first()
       .waitFor({ state: 'visible', timeout: 20_000 });
   });
@@ -46,9 +46,12 @@ test.describe('CRM — список контрагентів', () => {
     await expect(typeFilter).toBeVisible({ timeout: 10_000 });
   });
 
-  test('кнопка "Додати" контрагента присутня', async ({ page }) => {
-    // CRM page: кнопка має текст "Додати" (не "Новий")
-    await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({
+  test('кнопка "Контрагент" (додати) присутня', async ({ page }) => {
+    // CRM page: add-button renamed to single-noun "Контрагент" (commit 3785721/c3cd333).
+    // Exclude the "Контрагенти" page header.
+    await expect(
+      page.locator('button:has-text("Контрагент"):not(:has-text("Контрагенти"))').first(),
+    ).toBeVisible({
       timeout: 10_000,
     });
   });

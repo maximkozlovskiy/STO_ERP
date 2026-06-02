@@ -43,7 +43,11 @@ test.describe('Документи складу — TRANSFER (Переміщен�
   test('форма TRANSFER показує два склади (джерело + призначення)', async ({ page }) => {
     await readyPage(page);
 
-    await page.locator('button:has-text("Новий документ")').first().click();
+    // Add-button renamed: "Новий документ" → "Документ" (commit 3785721/c3cd333).
+    await page
+      .getByRole('button', { name: /^Документ$/ })
+      .first()
+      .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
@@ -151,7 +155,11 @@ test.describe('Документи складу — OPENING_BALANCE (Початк
   test('форма OPENING_BALANCE — не показує "Склад призначення"', async ({ page }) => {
     await readyPage(page);
 
-    await page.locator('button:has-text("Новий документ")').first().click();
+    // Add-button renamed: "Новий документ" → "Документ" (commit 3785721/c3cd333).
+    await page
+      .getByRole('button', { name: /^Документ$/ })
+      .first()
+      .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 

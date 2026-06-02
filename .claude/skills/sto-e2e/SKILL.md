@@ -286,12 +286,17 @@ apps/web/e2e/
 
 ## Gotchas
 
-| Проблема                                   | Причина                                    | Правильне рішення                                 |
-| ------------------------------------------ | ------------------------------------------ | ------------------------------------------------- | --------------------------- | ------------------------------------------- |
-| Redirect на `/login` при тестах            | Token протух або `/auth/refresh` throttled | `@SkipThrottle()` на refresh; не `if (auth) skip` |
-| `networkidle` не настає                    | SSE (dashboard) або TanStack polling       | Чекати конкретний UI-елемент, не `networkidle`    |
-| Element not found після `domcontentloaded` | React async fetch не завершився            | `waitFor({ state: 'visible' })` на ready-signal   |
-| `sessionStorage` не в storageState         | Playwright 1.40+ потрібен патч             | setup-auth.ts явно записує sessionStorage в JSON  |
-| `serial` mode у console-errors             | Cold Next.js dev compile race              | Не змінювати на `parallel`                        |
-| 429 на `/auth/refresh`                     | Dev throttler                              | `@SkipThrottle()` — refresh захищений cookie      |
-| Тест "проходить" але поведінка зламана     | `                                          |                                                   | true`або`if return` в тесті | Видалити обхідний шлях, знайти реальний баг |
+| Проблема                                                  | Причина                                                                | Правильне рішення                                                                                                                |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Redirect на `/login` при тестах                           | Token протух або `/auth/refresh` throttled                             | `@SkipThrottle()` на refresh; не `if (auth) skip`                                                                                |
+| `networkidle` не настає                                   | SSE (dashboard) або TanStack polling                                   | Чекати конкретний UI-елемент, не `networkidle`                                                                                   |
+| Element not found після `domcontentloaded`                | React async fetch не завершився                                        | `waitFor({ state: 'visible' })` на ready-signal                                                                                  |
+| `sessionStorage` не в storageState                        | Playwright 1.40+ потрібен патч                                         | setup-auth.ts явно записує sessionStorage в JSON                                                                                 |
+| `serial` mode у console-errors                            | Cold Next.js dev compile race                                          | Не змінювати на `parallel`                                                                                                       |
+| 429 на `/auth/refresh`                                    | Dev throttler                                                          | `@SkipThrottle()` — refresh захищений cookie                                                                                     |
+| Тест "проходить" але поведінка зламана                    | `\|\| true` або `if return` в тесті                                    | Видалити обхідний шлях, знайти реальний баг                                                                                      |
+| `tsqd-parent-container subtree intercepts pointer events` | TanStack Query Devtools FAB (bottom-left) перекриває кнопку у viewport | Прибрати DevTools у E2E через `localStorage.sto_e2e_disable_devtools='1'` (setup-auth додає у storageState, QueryProvider читає) |
+| Кнопка `Новий X`/`Нове X` не знайдена                     | Add-button у списках перейменовано на одне слово (3785721/c3cd333)     | Використати `getByRole('button', { name: /^X$/ })` з exact match щоб не зловити заголовок `Xs` (множина)                         |
+| Row-action button `Деталі` не знайдено                    | Hover-only icon Pencil з `title="Відкрити деталі"` (a5cf804)           | `row.hover()` + `row.locator('button[title="Відкрити деталі"]').click()`                                                         |
+| Модалка створення товару не закривається після `Зберегти` | `openEditGood(newGood)` після save → reopen в edit mode                | Чекати title `Редагування товару`, потім Escape з dirty-guard handling                                                           |
+| Modal title тесту не з'являється після click на Tab       | Tab content ще не змонтований коли тест клікає `Додати`                | Чекати `h2:has-text(tabName)` (section header) перед `Додати`                                                                    |

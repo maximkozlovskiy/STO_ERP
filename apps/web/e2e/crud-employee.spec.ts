@@ -11,11 +11,14 @@ test.describe('Персонал — CRUD співробітника', () => {
     const firstName = `E2E-${uid()}`;
 
     await page.goto('/employees');
-    await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({
-      timeout: 20_000,
-    });
+    // Add-button renamed to single noun "Співробітник" (commit 3785721/c3cd333).
+    // Page header is "Співробітники" — exclude that.
+    const addBtn = page
+      .locator('button:has-text("Співробітник"):not(:has-text("Співробітники"))')
+      .first();
+    await expect(addBtn).toBeVisible({ timeout: 20_000 });
 
-    await page.locator('button:has-text("Додати")').first().click();
+    await addBtn.click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(modal.locator('h2:has-text("Новий співробітник")')).toBeVisible();
@@ -45,11 +48,14 @@ test.describe('Персонал — CRUD співробітника', () => {
     const firstName = `E2E-Adm-${uid()}`;
 
     await page.goto('/employees');
-    await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({
-      timeout: 20_000,
-    });
+    // Add-button renamed to single noun "Співробітник" (commit 3785721/c3cd333).
+    // Page header is "Співробітники" — exclude that.
+    const addBtn = page
+      .locator('button:has-text("Співробітник"):not(:has-text("Співробітники"))')
+      .first();
+    await expect(addBtn).toBeVisible({ timeout: 20_000 });
 
-    await page.locator('button:has-text("Додати")').first().click();
+    await addBtn.click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
@@ -77,11 +83,14 @@ test.describe('Персонал — CRUD співробітника', () => {
 
   test("форма — кнопка Зберегти disabled без обов'язкових полів", async ({ page }) => {
     await page.goto('/employees');
-    await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({
-      timeout: 20_000,
-    });
+    // Add-button renamed to single noun "Співробітник" (commit 3785721/c3cd333).
+    // Page header is "Співробітники" — exclude that.
+    const addBtn = page
+      .locator('button:has-text("Співробітник"):not(:has-text("Співробітники"))')
+      .first();
+    await expect(addBtn).toBeVisible({ timeout: 20_000 });
 
-    await page.locator('button:has-text("Додати")').first().click();
+    await addBtn.click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
@@ -93,11 +102,12 @@ test.describe('Персонал — CRUD співробітника', () => {
     await expect(modal.locator('button:has-text("Зберегти")')).toBeDisabled();
 
     await modal.getByRole('button', { name: 'Закрити' }).click();
-    // useDirtyForm guard — після введення тексту з'являється confirm dialog
+    // useDirtyForm guard fires because the "Ім'я" input was modified.
+    // Wait explicitly for the leave button — it MUST appear; relying on isVisible
+    // with a tight timeout makes this flaky under parallel load.
     const leaveBtn = page.locator('button:has-text("Покинути")').first();
-    if (await leaveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await leaveBtn.click();
-    }
-    await expect(modal).not.toBeVisible({ timeout: 5_000 });
+    await expect(leaveBtn).toBeVisible({ timeout: 5_000 });
+    await leaveBtn.click();
+    await expect(modal).not.toBeVisible({ timeout: 8_000 });
   });
 });
