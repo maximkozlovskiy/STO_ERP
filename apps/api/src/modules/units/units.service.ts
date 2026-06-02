@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { CreateUnitDto, UpdateUnitDto, UnitResponseDto } from './units.dto';
@@ -92,6 +97,8 @@ export class UnitsService {
       where: { id, orgId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Одиниця виміру не знайдена');
+    if (existing.isSystem)
+      throw new BadRequestException('Системну одиницю виміру не можна видалити');
     await this.prisma.unitOfMeasure.update({
       where: { id, orgId },
       data: { deletedAt: new Date() },

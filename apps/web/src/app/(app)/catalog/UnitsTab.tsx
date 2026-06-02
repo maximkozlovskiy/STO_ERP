@@ -303,9 +303,11 @@ export default function UnitsTab() {
             Одиниці виміру, що використовуються в каталозі товарів
           </p>
           {/* Filter pills */}
-          <div className="flex gap-1">
+          <div className="flex gap-1" role="group" aria-label="Фільтр одиниць">
             <button
+              type="button"
               onClick={() => setShowDeleted(false)}
+              aria-pressed={!showDeleted}
               className={cn(
                 'px-2.5 py-0.5 rounded-full text-[12px] font-medium border transition-colors',
                 !showDeleted
@@ -317,7 +319,9 @@ export default function UnitsTab() {
             </button>
             {deletedCount > 0 || showDeleted ? (
               <button
+                type="button"
                 onClick={() => setShowDeleted(true)}
+                aria-pressed={showDeleted}
                 className={cn(
                   'px-2.5 py-0.5 rounded-full text-[12px] font-medium border transition-colors',
                   showDeleted
@@ -393,7 +397,7 @@ export default function UnitsTab() {
                     className={cn(
                       'group',
                       isDeleted
-                        ? 'opacity-50 bg-secondary/30'
+                        ? 'bg-secondary/30 text-muted-foreground'
                         : !u.isSystem
                           ? 'cursor-pointer hover:bg-surface-hover'
                           : '',
