@@ -139,7 +139,7 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 w-80 bg-surface border border-border rounded-xl shadow-2xl z-250 overflow-hidden">
+        <div className="absolute left-full bottom-0 ml-2 w-80 bg-surface border border-border rounded-xl shadow-2xl z-250 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="text-[13px] font-semibold text-foreground">Сповіщення</span>
             {unreadCount > 0 && (
