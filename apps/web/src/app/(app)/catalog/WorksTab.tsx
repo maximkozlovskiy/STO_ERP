@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWorks, worksKeys } from '@/hooks/api/useWorks';
+import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, BookOpen, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -89,10 +90,19 @@ function Pagination({
 
 // ─── Works Tab ────────────────────────────────────────────────────────────────
 
+const WORKS_PANEL_FIELDS = [
+  { key: 'category', label: 'Категорія' },
+  { key: 'normo_hours', label: 'Нормо-год' },
+  { key: 'price', label: 'Ціна' },
+  { key: 'is_warranty', label: 'Гарантійна' },
+  { key: 'description', label: 'Опис' },
+] as const;
+
 export default function WorksTab() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
   const detailPanel = useDetailPanel('catalog-works');
+  const panelConfig = useDetailPanelConfig('catalog-works-panel');
   const qc = useQueryClient();
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
@@ -724,17 +734,46 @@ export default function WorksTab() {
         </div>
 
         {(() => {
+          const worksPanelConfigFields = WORKS_PANEL_FIELDS.map(f => ({
+            ...f,
+            hidden: panelConfig.isFieldHidden(f.key),
+          }));
           const buildWorkTabs = (w: Work): DetailPanelTab[] => [
             {
               key: 'info',
               label: 'Основне',
               content: (
                 <div className="space-y-3">
-                  <PanelField label="Категорія" value={w.categoryName} />
-                  <PanelField label="Нормо-год" value={String(w.normoHours)} />
-                  <PanelField label="Ціна" value={`${fmtMoney(w.price)} ₴`} />
-                  {w.isWarranty && <PanelField label="Гарантійна" value="Так" />}
-                  {w.description && <PanelField label="Опис" value={w.description} />}
+                  <PanelField
+                    fieldKey="category"
+                    label="Категорія"
+                    value={w.categoryName}
+                    hidden={panelConfig.isFieldHidden('category')}
+                  />
+                  <PanelField
+                    fieldKey="normo_hours"
+                    label="Нормо-год"
+                    value={String(w.normoHours)}
+                    hidden={panelConfig.isFieldHidden('normo_hours')}
+                  />
+                  <PanelField
+                    fieldKey="price"
+                    label="Ціна"
+                    value={`${fmtMoney(w.price)} ₴`}
+                    hidden={panelConfig.isFieldHidden('price')}
+                  />
+                  <PanelField
+                    fieldKey="is_warranty"
+                    label="Гарантійна"
+                    value={w.isWarranty ? 'Так' : undefined}
+                    hidden={panelConfig.isFieldHidden('is_warranty')}
+                  />
+                  <PanelField
+                    fieldKey="description"
+                    label="Опис"
+                    value={w.description}
+                    hidden={panelConfig.isFieldHidden('description')}
+                  />
                 </div>
               ),
             },
@@ -745,6 +784,9 @@ export default function WorksTab() {
               onClose={() => setSelectedWork(null)}
               title={selectedWork?.name ?? ''}
               tabs={selectedWork ? buildWorkTabs(selectedWork) : undefined}
+              configFields={worksPanelConfigFields}
+              onToggleField={panelConfig.toggleField}
+              onReset={panelConfig.reset}
             />
           );
         })()}

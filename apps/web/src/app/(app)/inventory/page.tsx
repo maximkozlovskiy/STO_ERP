@@ -28,7 +28,8 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import { DetailPanel } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField } from '@/components/ui/detail-panel';
+import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { cn } from '@/lib/utils';
 import { fmtMoney } from '@/lib/format';
 
@@ -44,10 +45,21 @@ function fmt(n: number) {
   return `${fmtMoney(n)} ₴`;
 }
 
+const INVENTORY_PANEL_FIELDS = [
+  { key: 'sku', label: 'Артикул (SKU)' },
+  { key: 'warehouse', label: 'Склад' },
+  { key: 'quantity', label: 'Кількість' },
+  { key: 'reserved', label: 'Резерв' },
+  { key: 'available', label: 'Доступно' },
+  { key: 'sale_price', label: 'Ціна продажу' },
+  { key: 'min_stock', label: 'Мінімальний залишок' },
+] as const;
+
 export default function InventoryPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST']);
 
   const queryClient = useQueryClient();
+  const panelConfig = useDetailPanelConfig('inventory-panel');
 
   // Local filter & UI state
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -265,6 +277,12 @@ export default function InventoryPage() {
           open={!!selectedItem}
           onClose={() => setSelectedItem(null)}
           title={selectedItem?.goodName ?? ''}
+          configFields={INVENTORY_PANEL_FIELDS.map(f => ({
+            ...f,
+            hidden: panelConfig.isFieldHidden(f.key),
+          }))}
+          onToggleField={panelConfig.toggleField}
+          onReset={panelConfig.reset}
         >
           {selectedItem && (
             <div className="space-y-4">
@@ -276,63 +294,65 @@ export default function InventoryPage() {
                 </div>
               )}
 
-              <div className="space-y-2 text-[13px]">
-                <div>
-                  <span className="text-muted-foreground">Артикул (SKU)</span>
-                  <p className="font-mono font-medium text-foreground mt-0.5">
-                    {selectedItem.goodSku ?? '—'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Склад</span>
-                  <p className="font-medium text-foreground mt-0.5">{selectedItem.warehouseName}</p>
-                </div>
+              <div className="space-y-3">
+                <PanelField
+                  fieldKey="sku"
+                  label="Артикул (SKU)"
+                  value={selectedItem.goodSku}
+                  hidden={panelConfig.isFieldHidden('sku')}
+                />
+                <PanelField
+                  fieldKey="warehouse"
+                  label="Склад"
+                  value={selectedItem.warehouseName}
+                  hidden={panelConfig.isFieldHidden('warehouse')}
+                />
+                <PanelField
+                  fieldKey="quantity"
+                  label="Кількість"
+                  value={`${selectedItem.quantity} ${selectedItem.unit}`}
+                  hidden={panelConfig.isFieldHidden('quantity')}
+                />
+                <PanelField
+                  fieldKey="reserved"
+                  label="Резерв"
+                  hidden={panelConfig.isFieldHidden('reserved')}
+                  value={
+                    selectedItem.reserved > 0 ? (
+                      <span className="text-warning-text tabular-nums">
+                        {selectedItem.reserved} {selectedItem.unit}
+                      </span>
+                    ) : undefined
+                  }
+                />
+                <PanelField
+                  fieldKey="available"
+                  label="Доступно"
+                  hidden={panelConfig.isFieldHidden('available')}
+                  value={
+                    <span
+                      className={cn(
+                        'font-semibold tabular-nums',
+                        selectedItem.available <= 0 ? 'text-destructive' : 'text-success',
+                      )}
+                    >
+                      {selectedItem.available} {selectedItem.unit}
+                    </span>
+                  }
+                />
+                <PanelField
+                  fieldKey="sale_price"
+                  label="Ціна продажу"
+                  value={fmt(selectedItem.salePrice)}
+                  hidden={panelConfig.isFieldHidden('sale_price')}
+                />
               </div>
-
-              {/* Stock quantities */}
-              <div className="rounded-lg border border-border divide-y divide-border">
-                <div className="flex items-center justify-between px-3 py-2 text-[13px]">
-                  <span className="text-muted-foreground">Кількість</span>
-                  <span className="font-medium text-foreground tabular-nums">
-                    {selectedItem.quantity} {selectedItem.unit}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between px-3 py-2 text-[13px]">
-                  <span className="text-muted-foreground">Резерв</span>
-                  <span
-                    className={cn(
-                      'font-medium tabular-nums',
-                      selectedItem.reserved > 0 ? 'text-warning-text' : 'text-muted-foreground',
-                    )}
-                  >
-                    {selectedItem.reserved > 0
-                      ? `${selectedItem.reserved} ${selectedItem.unit}`
-                      : '—'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between px-3 py-2 text-[13px]">
-                  <span className="text-muted-foreground">Доступно</span>
-                  <span
-                    className={cn(
-                      'font-semibold tabular-nums',
-                      selectedItem.available <= 0 ? 'text-destructive' : 'text-success',
-                    )}
-                  >
-                    {selectedItem.available} {selectedItem.unit}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-2 text-[13px]">
-                <div>
-                  <span className="text-muted-foreground">Ціна продажу</span>
-                  <p className="font-semibold text-foreground mt-0.5">
-                    {fmt(selectedItem.salePrice)}
-                  </p>
-                </div>
+              {!panelConfig.isFieldHidden('min_stock') && (
                 <div>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Мінімальний залишок</span>
+                    <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
+                      Мінімальний залишок
+                    </span>
                     {!editingMinStock && (
                       <button
                         className="text-xs text-primary hover:underline"
@@ -387,7 +407,7 @@ export default function InventoryPage() {
                     </div>
                   )}
                 </div>
-              </div>
+              )}
             </div>
           )}
         </DetailPanel>

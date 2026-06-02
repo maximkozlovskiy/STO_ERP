@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
+import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
@@ -104,10 +105,16 @@ function Pagination({
 
 // ─── Services Tab ─────────────────────────────────────────────────────────────
 
+const SERVICES_PANEL_FIELDS = [
+  { key: 'price', label: 'Ціна' },
+  { key: 'description', label: 'Опис' },
+] as const;
+
 export default function ServicesTab() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
   const detailPanel = useDetailPanel('catalog-services');
+  const panelConfig = useDetailPanelConfig('catalog-services-panel');
   const [services, setServices] = useState<PaginatedServices | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeleted, setShowDeleted] = useState(false);
@@ -580,14 +587,28 @@ export default function ServicesTab() {
         </div>
 
         {(() => {
+          const servicesPanelConfigFields = SERVICES_PANEL_FIELDS.map(f => ({
+            ...f,
+            hidden: panelConfig.isFieldHidden(f.key),
+          }));
           const buildServiceTabs = (s: Service): DetailPanelTab[] => [
             {
               key: 'info',
               label: 'Основне',
               content: (
                 <div className="space-y-3">
-                  {s.price != null && <PanelField label="Ціна" value={`${fmtMoney(s.price)} ₴`} />}
-                  {s.description && <PanelField label="Опис" value={s.description} />}
+                  <PanelField
+                    fieldKey="price"
+                    label="Ціна"
+                    value={s.price != null ? `${fmtMoney(s.price)} ₴` : undefined}
+                    hidden={panelConfig.isFieldHidden('price')}
+                  />
+                  <PanelField
+                    fieldKey="description"
+                    label="Опис"
+                    value={s.description}
+                    hidden={panelConfig.isFieldHidden('description')}
+                  />
                 </div>
               ),
             },
@@ -642,6 +663,9 @@ export default function ServicesTab() {
               onClose={() => setSelectedService(null)}
               title={selectedService?.name ?? ''}
               tabs={selectedService ? buildServiceTabs(selectedService) : undefined}
+              configFields={servicesPanelConfigFields}
+              onToggleField={panelConfig.toggleField}
+              onReset={panelConfig.reset}
             />
           );
         })()}

@@ -41,6 +41,7 @@ import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
+import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
@@ -114,6 +115,16 @@ function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
 }
 
+const PO_PANEL_FIELDS = [
+  { key: 'status', label: 'Статус' },
+  { key: 'supplier', label: 'Постачальник' },
+  { key: 'warehouse', label: 'Склад' },
+  { key: 'total_amount', label: 'Сума' },
+  { key: 'lines_count', label: 'Позицій' },
+  { key: 'notes', label: 'Нотатки' },
+  { key: 'created_at', label: 'Дата' },
+] as const;
+
 export default function PurchaseOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
@@ -147,6 +158,7 @@ export default function PurchaseOrdersPage() {
   const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
 
   const detailPanel = useDetailPanel('purchase-orders');
+  const panelConfig = useDetailPanelConfig('purchase-orders-panel');
 
   // Local filter & pagination state
   const [page, setPage] = useState(1);
@@ -527,25 +539,51 @@ export default function PurchaseOrdersPage() {
       content: (
         <div className="space-y-3">
           <PanelField
+            fieldKey="status"
             label="Статус"
+            hidden={panelConfig.isFieldHidden('status')}
             value={
               <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>
                 {STATUS_LABELS[po.status]}
               </Badge>
             }
           />
-          <PanelField label="Постачальник" value={po.supplierName} />
-          <PanelField label="Склад" value={po.warehouseName} />
           <PanelField
+            fieldKey="supplier"
+            label="Постачальник"
+            value={po.supplierName}
+            hidden={panelConfig.isFieldHidden('supplier')}
+          />
+          <PanelField
+            fieldKey="warehouse"
+            label="Склад"
+            value={po.warehouseName}
+            hidden={panelConfig.isFieldHidden('warehouse')}
+          />
+          <PanelField
+            fieldKey="total_amount"
             label="Сума"
             value={po.totalAmount != null ? `${fmtMoney(po.totalAmount)} ₴` : undefined}
+            hidden={panelConfig.isFieldHidden('total_amount')}
           />
           <PanelField
+            fieldKey="lines_count"
             label="Позицій"
             value={po.linesCount != null ? String(po.linesCount) : undefined}
+            hidden={panelConfig.isFieldHidden('lines_count')}
           />
-          {po.notes && <PanelField label="Нотатки" value={po.notes} />}
-          <PanelField label="Дата" value={fmtDate(po.createdAt)} />
+          <PanelField
+            fieldKey="notes"
+            label="Нотатки"
+            value={po.notes}
+            hidden={panelConfig.isFieldHidden('notes')}
+          />
+          <PanelField
+            fieldKey="created_at"
+            label="Дата"
+            value={fmtDate(po.createdAt)}
+            hidden={panelConfig.isFieldHidden('created_at')}
+          />
           {(po.status === 'RECEIVED' || po.status === 'PARTIAL') && (
             <div className="pt-1 space-y-2">
               <Button
@@ -904,6 +942,12 @@ export default function PurchaseOrdersPage() {
           title={selectedPO?.number ?? ''}
           subtitle={selectedPO?.supplierName}
           tabs={selectedPO ? buildPOTabs(selectedPO) : undefined}
+          configFields={PO_PANEL_FIELDS.map(f => ({
+            ...f,
+            hidden: panelConfig.isFieldHidden(f.key),
+          }))}
+          onToggleField={panelConfig.toggleField}
+          onReset={panelConfig.reset}
         />
       </div>
 

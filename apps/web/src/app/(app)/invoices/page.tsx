@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
+import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
@@ -114,12 +115,27 @@ function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
 }
 
+const INVOICES_PANEL_FIELDS = [
+  { key: 'status', label: 'Статус' },
+  { key: 'counterparty', label: 'Контрагент' },
+  { key: 'work_order', label: 'Наряд' },
+  { key: 'invoice_type', label: 'Тип' },
+  { key: 'amount', label: 'Сума' },
+  { key: 'total_without_vat', label: 'Без ПДВ' },
+  { key: 'total_vat', label: 'ПДВ' },
+  { key: 'total_with_vat', label: 'Разом з ПДВ' },
+  { key: 'paid_amount', label: 'Сплачено' },
+  { key: 'due_date', label: 'Термін оплати' },
+  { key: 'notes', label: 'Нотатки' },
+] as const;
+
 export default function InvoicesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+  const panelConfig = useDetailPanelConfig('invoices-panel');
 
   const INVOICE_COLUMNS = useMemo(
     () => [
@@ -460,47 +476,83 @@ export default function InvoicesPage() {
       content: (
         <div className="space-y-3">
           <PanelField
+            fieldKey="status"
             label="Статус"
+            hidden={panelConfig.isFieldHidden('status')}
             value={
               <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
                 {STATUS_LABELS[inv.status]}
               </Badge>
             }
           />
-          <PanelField label="Контрагент" value={inv.counterpartyName} />
-          <PanelField label="Наряд" value={inv.workOrderNumber} />
           <PanelField
+            fieldKey="counterparty"
+            label="Контрагент"
+            value={inv.counterpartyName}
+            hidden={panelConfig.isFieldHidden('counterparty')}
+          />
+          <PanelField
+            fieldKey="work_order"
+            label="Наряд"
+            value={inv.workOrderNumber}
+            hidden={panelConfig.isFieldHidden('work_order')}
+          />
+          <PanelField
+            fieldKey="invoice_type"
             label="Тип"
             value={inv.invoiceType ? INVOICE_TYPE_LABELS[inv.invoiceType] : undefined}
+            hidden={panelConfig.isFieldHidden('invoice_type')}
           />
           <PanelField
+            fieldKey="amount"
             label="Сума"
             value={inv.amount != null ? `${fmtMoney(inv.amount)} ₴` : undefined}
+            hidden={panelConfig.isFieldHidden('amount')}
           />
-          {/* Bug #274: hide breakdown rows коли totalWithoutVat=0 (header-only invoice
-              без lines) — то Prisma-default, не справжня сума. */}
+          {/* Bug #274: hide breakdown rows коли totalWithoutVat=0 (header-only invoice без lines) */}
           {inv.totalWithoutVat != null && inv.totalWithoutVat > 0 && (
-            <PanelField label="Без ПДВ" value={`${fmtMoney(inv.totalWithoutVat)} ₴`} />
+            <PanelField
+              fieldKey="total_without_vat"
+              label="Без ПДВ"
+              value={`${fmtMoney(inv.totalWithoutVat)} ₴`}
+              hidden={panelConfig.isFieldHidden('total_without_vat')}
+            />
           )}
           {inv.totalVat != null && inv.totalVat !== 0 && (
-            <PanelField label="ПДВ" value={`${fmtMoney(inv.totalVat)} ₴`} />
+            <PanelField
+              fieldKey="total_vat"
+              label="ПДВ"
+              value={`${fmtMoney(inv.totalVat)} ₴`}
+              hidden={panelConfig.isFieldHidden('total_vat')}
+            />
           )}
-          {/* Bug #274: invoices with header-only data (no lines) keep totalWith*=0 в БД
-              (Prisma default), inv.amount містить реальну суму. Раніше умова `!== inv.amount`
-              була truth-сетна для (0 !== 100) → відображалось «Разом з ПДВ: 0,00 ₴» — оманливо.
-              Додано guard `> 0` щоб ховати нуль, але показувати реальний breakdown коли є lines. */}
+          {/* Bug #274: guard > 0 щоб ховати нуль, але показувати реальний breakdown коли є lines */}
           {inv.totalWithVat != null && inv.totalWithVat > 0 && inv.totalWithVat !== inv.amount && (
-            <PanelField label="Разом з ПДВ" value={`${fmtMoney(inv.totalWithVat)} ₴`} />
+            <PanelField
+              fieldKey="total_with_vat"
+              label="Разом з ПДВ"
+              value={`${fmtMoney(inv.totalWithVat)} ₴`}
+              hidden={panelConfig.isFieldHidden('total_with_vat')}
+            />
           )}
           <PanelField
+            fieldKey="paid_amount"
             label="Сплачено"
             value={inv.paidAmount != null ? `${fmtMoney(inv.paidAmount)} ₴` : undefined}
+            hidden={panelConfig.isFieldHidden('paid_amount')}
           />
           <PanelField
+            fieldKey="due_date"
             label="Термін оплати"
             value={inv.dueDate ? fmtDate(inv.dueDate) : undefined}
+            hidden={panelConfig.isFieldHidden('due_date')}
           />
-          {inv.notes && <PanelField label="Нотатки" value={inv.notes} />}
+          <PanelField
+            fieldKey="notes"
+            label="Нотатки"
+            value={inv.notes}
+            hidden={panelConfig.isFieldHidden('notes')}
+          />
           <PanelSection title="Дії">
             <div className="flex flex-col gap-2">
               {STATUS_TRANSITIONS[inv.status]?.map(s => (
@@ -838,6 +890,12 @@ export default function InvoicesPage() {
           title={selectedInv?.number ?? ''}
           subtitle={selectedInv?.counterpartyName}
           tabs={selectedInv ? buildInvoiceTabs(selectedInv) : undefined}
+          configFields={INVOICES_PANEL_FIELDS.map(f => ({
+            ...f,
+            hidden: panelConfig.isFieldHidden(f.key),
+          }))}
+          onToggleField={panelConfig.toggleField}
+          onReset={panelConfig.reset}
         />
       </div>
 

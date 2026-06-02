@@ -33,9 +33,10 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { DetailPanel } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
+import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
@@ -194,10 +195,23 @@ const EMPTY_ADD_UOM_FORM = {
   weight: '',
 };
 
+const GOODS_PANEL_FIELDS = [
+  { key: 'sku', label: 'Артикул' },
+  { key: 'type', label: 'Тип' },
+  { key: 'unit', label: 'Одиниця' },
+  { key: 'cost_price', label: 'Ціна закупки' },
+  { key: 'sale_price', label: 'Ціна продажу' },
+  { key: 'category', label: 'Категорія' },
+  { key: 'barcode', label: 'Штрихкод' },
+  { key: 'supplier', label: 'Постачальник' },
+  { key: 'notes', label: 'Нотатки' },
+] as const;
+
 export default function GoodsTab() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
   const detailPanel = useDetailPanel('catalog-goods');
+  const panelConfig = useDetailPanelConfig('catalog-goods-panel');
   const [goods, setGoods] = useState<PaginatedGoods | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -1213,6 +1227,12 @@ export default function GoodsTab() {
           open={!!selectedGood && detailPanel.enabled}
           onClose={() => selectGood(null)}
           title={selectedGood?.name ?? ''}
+          configFields={GOODS_PANEL_FIELDS.map(f => ({
+            ...f,
+            hidden: panelConfig.isFieldHidden(f.key),
+          }))}
+          onToggleField={panelConfig.toggleField}
+          onReset={panelConfig.reset}
         >
           {selectedGood && (
             <div className="space-y-3 text-sm">
@@ -1241,64 +1261,70 @@ export default function GoodsTab() {
               {/* Info tab */}
               {goodDetailTab === 'info' && (
                 <div className="space-y-3">
-                  {selectedGood.sku && (
-                    <div>
-                      <span className="text-muted-foreground">Артикул:</span>{' '}
-                      <span className="text-foreground font-mono">{selectedGood.sku}</span>
-                    </div>
-                  )}
-                  {selectedGood.goodType && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Тип:</span>
-                      <Badge variant={GOOD_TYPE_BADGE[selectedGood.goodType] ?? 'secondary'}>
-                        {GOOD_TYPE_LABELS[selectedGood.goodType] ?? selectedGood.goodType}
-                      </Badge>
-                    </div>
-                  )}
-                  <div>
-                    <span className="text-muted-foreground">Одиниця:</span>{' '}
-                    <span className="text-foreground">{selectedGood.unit}</span>
-                  </div>
-                  {selectedGood.purchasePrice != null && (
-                    <div>
-                      <span className="text-muted-foreground">Ціна закупки:</span>{' '}
-                      <span className="text-foreground">
-                        {fmtMoney(selectedGood.purchasePrice)} ₴
-                      </span>
-                    </div>
-                  )}
-                  <div>
-                    <span className="text-muted-foreground">Ціна продажу:</span>{' '}
-                    <span className="text-foreground font-semibold">
-                      {fmtMoney(selectedGood.salePrice)} ₴
-                    </span>
-                  </div>
-                  {(selectedGood.goodCategoryName ?? selectedGood.category) && (
-                    <div>
-                      <span className="text-muted-foreground">Категорія:</span>{' '}
-                      <span className="text-foreground">
-                        {selectedGood.goodCategoryName ?? selectedGood.category}
-                      </span>
-                    </div>
-                  )}
-                  {selectedGood.barcode && (
-                    <div>
-                      <span className="text-muted-foreground">Штрихкод:</span>{' '}
-                      <span className="text-foreground font-mono">{selectedGood.barcode}</span>
-                    </div>
-                  )}
-                  {selectedGood.preferredSupplierName && (
-                    <div>
-                      <span className="text-muted-foreground">Постачальник:</span>{' '}
-                      <span className="text-foreground">{selectedGood.preferredSupplierName}</span>
-                    </div>
-                  )}
-                  {selectedGood.notes && (
-                    <div>
-                      <p className="text-muted-foreground mb-1">Нотатки:</p>
-                      <p className="text-foreground italic">{selectedGood.notes}</p>
-                    </div>
-                  )}
+                  <PanelField
+                    fieldKey="sku"
+                    label="Артикул"
+                    value={selectedGood.sku}
+                    hidden={panelConfig.isFieldHidden('sku')}
+                  />
+                  <PanelField
+                    fieldKey="type"
+                    label="Тип"
+                    hidden={panelConfig.isFieldHidden('type')}
+                    value={
+                      selectedGood.goodType ? (
+                        <Badge variant={GOOD_TYPE_BADGE[selectedGood.goodType] ?? 'secondary'}>
+                          {GOOD_TYPE_LABELS[selectedGood.goodType] ?? selectedGood.goodType}
+                        </Badge>
+                      ) : undefined
+                    }
+                  />
+                  <PanelField
+                    fieldKey="unit"
+                    label="Одиниця"
+                    value={selectedGood.unit}
+                    hidden={panelConfig.isFieldHidden('unit')}
+                  />
+                  <PanelField
+                    fieldKey="cost_price"
+                    label="Ціна закупки"
+                    value={
+                      selectedGood.purchasePrice != null
+                        ? `${fmtMoney(selectedGood.purchasePrice)} ₴`
+                        : undefined
+                    }
+                    hidden={panelConfig.isFieldHidden('cost_price')}
+                  />
+                  <PanelField
+                    fieldKey="sale_price"
+                    label="Ціна продажу"
+                    value={`${fmtMoney(selectedGood.salePrice)} ₴`}
+                    hidden={panelConfig.isFieldHidden('sale_price')}
+                  />
+                  <PanelField
+                    fieldKey="category"
+                    label="Категорія"
+                    value={selectedGood.goodCategoryName ?? selectedGood.category}
+                    hidden={panelConfig.isFieldHidden('category')}
+                  />
+                  <PanelField
+                    fieldKey="barcode"
+                    label="Штрихкод"
+                    value={selectedGood.barcode}
+                    hidden={panelConfig.isFieldHidden('barcode')}
+                  />
+                  <PanelField
+                    fieldKey="supplier"
+                    label="Постачальник"
+                    value={selectedGood.preferredSupplierName}
+                    hidden={panelConfig.isFieldHidden('supplier')}
+                  />
+                  <PanelField
+                    fieldKey="notes"
+                    label="Нотатки"
+                    value={selectedGood.notes}
+                    hidden={panelConfig.isFieldHidden('notes')}
+                  />
                 </div>
               )}
 

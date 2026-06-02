@@ -28,9 +28,10 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import { DetailPanel } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
+import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { InlineEditCell, InlineViewCell } from '@/components/ui/inline-edit-cell';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
@@ -154,6 +155,18 @@ function isOverdue(dueDateIso: string, nowMs: number): boolean {
   return due.getTime() < nowMs;
 }
 
+const WO_PANEL_FIELDS = [
+  { key: 'status', label: 'Статус' },
+  { key: 'priority', label: 'Пріоритет' },
+  { key: 'category', label: 'Категорія' },
+  { key: 'counterparty', label: 'Клієнт' },
+  { key: 'vehicle', label: 'Автомобіль' },
+  { key: 'total_amount', label: 'Сума' },
+  { key: 'due_date', label: 'Дедлайн' },
+  { key: 'planned_at', label: 'Заплановано' },
+  { key: 'created_at', label: 'Створено' },
+] as const;
+
 export default function WorkOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
   const queryClient = useQueryClient();
@@ -181,6 +194,7 @@ export default function WorkOrdersPage() {
   const myOrdersInitRef = useRef(false);
   const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
   const detailPanel = useDetailPanel('work-orders');
+  const panelConfig = useDetailPanelConfig('work-orders-panel');
 
   // Auto-activate "my orders" chip once for MECHANIC role (run only once after employee loads).
   // Must be declared AFTER the `myOrdersInitRef` and `setMyOrders` it references, otherwise TDZ
@@ -938,76 +952,97 @@ export default function WorkOrdersPage() {
           open={!!selectedWO && detailPanel.enabled}
           onClose={() => setSelectedWO(null)}
           title={selectedWO?.number ?? ''}
+          configFields={WO_PANEL_FIELDS.map(f => ({
+            ...f,
+            hidden: panelConfig.isFieldHidden(f.key),
+          }))}
+          onToggleField={panelConfig.toggleField}
+          onReset={panelConfig.reset}
         >
           {selectedWO && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant={STATUS_BADGE[selectedWO.status] ?? 'secondary'} dot>
-                  {STATUS_LABELS[selectedWO.status] ?? selectedWO.status}
-                </Badge>
-                {selectedWO.priority && (
-                  <Badge variant={PRIORITY_BADGE[selectedWO.priority] ?? 'secondary'}>
-                    {PRIORITY_LABELS[selectedWO.priority] ?? selectedWO.priority}
+            <div className="space-y-3">
+              <PanelField
+                fieldKey="status"
+                label="Статус"
+                hidden={panelConfig.isFieldHidden('status')}
+                value={
+                  <Badge variant={STATUS_BADGE[selectedWO.status] ?? 'secondary'} dot>
+                    {STATUS_LABELS[selectedWO.status] ?? selectedWO.status}
                   </Badge>
-                )}
-              </div>
-
-              <div className="space-y-2 text-[13px]">
-                {selectedWO.repairCategory && (
-                  <div>
-                    <span className="text-muted-foreground">Категорія</span>
-                    <p className="font-medium text-foreground mt-0.5">
-                      {CATEGORY_LABELS[selectedWO.repairCategory] ?? selectedWO.repairCategory}
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted-foreground">Клієнт</span>
-                  <p className="font-medium text-foreground mt-0.5">
-                    {selectedWO.counterpartyName ?? '—'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Автомобіль</span>
-                  <p className="font-medium text-foreground mt-0.5">
-                    {selectedWO.vehicleSummary ?? '—'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Сума</span>
-                  <p className="font-semibold text-foreground mt-0.5 tabular-nums">
-                    {fmtMoney(selectedWO.totalAmount)} ₴
-                  </p>
-                </div>
-                {selectedWO.dueDate && (
-                  <div>
-                    <span className="text-muted-foreground">Дедлайн</span>
-                    <p
+                }
+              />
+              <PanelField
+                fieldKey="priority"
+                label="Пріоритет"
+                hidden={panelConfig.isFieldHidden('priority')}
+                value={
+                  selectedWO.priority ? (
+                    <Badge variant={PRIORITY_BADGE[selectedWO.priority] ?? 'secondary'}>
+                      {PRIORITY_LABELS[selectedWO.priority] ?? selectedWO.priority}
+                    </Badge>
+                  ) : undefined
+                }
+              />
+              <PanelField
+                fieldKey="category"
+                label="Категорія"
+                hidden={panelConfig.isFieldHidden('category')}
+                value={
+                  selectedWO.repairCategory
+                    ? (CATEGORY_LABELS[selectedWO.repairCategory] ?? selectedWO.repairCategory)
+                    : undefined
+                }
+              />
+              <PanelField
+                fieldKey="counterparty"
+                label="Клієнт"
+                value={selectedWO.counterpartyName}
+                hidden={panelConfig.isFieldHidden('counterparty')}
+              />
+              <PanelField
+                fieldKey="vehicle"
+                label="Автомобіль"
+                value={selectedWO.vehicleSummary}
+                hidden={panelConfig.isFieldHidden('vehicle')}
+              />
+              <PanelField
+                fieldKey="total_amount"
+                label="Сума"
+                value={`${fmtMoney(selectedWO.totalAmount)} ₴`}
+                hidden={panelConfig.isFieldHidden('total_amount')}
+              />
+              <PanelField
+                fieldKey="due_date"
+                label="Дедлайн"
+                hidden={panelConfig.isFieldHidden('due_date')}
+                value={
+                  selectedWO.dueDate ? (
+                    <span
                       className={cn(
-                        'font-medium mt-0.5',
-                        isOverdue(selectedWO.dueDate, nowMs) ? 'text-warning' : 'text-foreground',
+                        'font-medium',
+                        isOverdue(selectedWO.dueDate, nowMs) ? 'text-warning' : undefined,
                       )}
                     >
                       {formatDate(selectedWO.dueDate)}
                       {isOverdue(selectedWO.dueDate, nowMs) && (
                         <span className="ml-1 text-[11px]">(прострочено)</span>
                       )}
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted-foreground">Заплановано</span>
-                  <p className="font-medium text-foreground mt-0.5">
-                    {selectedWO.plannedAt ? fmtDateTime(selectedWO.plannedAt) : '—'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Створено</span>
-                  <p className="font-medium text-foreground mt-0.5">
-                    {fmtDateTime(selectedWO.createdAt)}
-                  </p>
-                </div>
-              </div>
+                    </span>
+                  ) : undefined
+                }
+              />
+              <PanelField
+                fieldKey="planned_at"
+                label="Заплановано"
+                value={selectedWO.plannedAt ? fmtDateTime(selectedWO.plannedAt) : undefined}
+                hidden={panelConfig.isFieldHidden('planned_at')}
+              />
+              <PanelField
+                fieldKey="created_at"
+                label="Створено"
+                value={fmtDateTime(selectedWO.createdAt)}
+                hidden={panelConfig.isFieldHidden('created_at')}
+              />
 
               <Button
                 className="w-full"
