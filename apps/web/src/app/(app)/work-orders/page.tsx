@@ -511,31 +511,29 @@ export default function WorkOrdersPage() {
         </div>
       )}
 
-      {/* Status filter pills */}
-      <div className="flex gap-1.5 mb-4 flex-wrap">
-        {STATUS_TABS.map(([v, l]) => (
-          <button
-            key={v}
-            onClick={() => {
-              setStatusFilter(v);
-              setPage(1);
-              setActiveSavedFilterId(null);
-            }}
-            className={cn(
-              'px-3 py-1 rounded-full text-[12px] font-medium border transition-all duration-100',
-              statusFilter === v
-                ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
-            )}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {/* "Мої наряди" quick filter chip */}
-      {employee && (
-        <div className="flex gap-2 mb-3">
+      {/* Status filter pills + Мої наряди */}
+      <div className="flex gap-1.5 mb-4 flex-wrap items-center justify-between">
+        <div className="flex gap-1.5 flex-wrap">
+          {STATUS_TABS.map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => {
+                setStatusFilter(v);
+                setPage(1);
+                setActiveSavedFilterId(null);
+              }}
+              className={cn(
+                'px-3 py-1 rounded-full text-[12px] font-medium border transition-all duration-100',
+                statusFilter === v
+                  ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
+              )}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        {employee && (
           <button
             onClick={() => {
               setMyOrders(v => !v);
@@ -552,8 +550,8 @@ export default function WorkOrdersPage() {
             <User className="h-3 w-3 shrink-0" />
             Мої наряди
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Saved filters */}
       {features.savedFiltersEnabled && (
