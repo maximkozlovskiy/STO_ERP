@@ -9,16 +9,18 @@
 ## Останній commit
 
 ```
+3cf2824 fix(review): catalog categories — tenant FK + React/Tailwind hygiene
+0269ffc docs(memory): update MemoryManual after sync fix for GoodCategoryId
 72d0158 fix(sync): align GoodsTab with GoodCategoryId API contract
 b27aa8e feat(catalog): WorkCategory + GoodCategory trees with management UI
 27d31b4 docs(memory): update MemoryManual after invoices+stock-documents E2E + Bug #319-#320
-50fb2d8 test(e2e): add stock-documents spec (23 tests) + fix showDeleted + bulk locator
-17e5e36 test(e2e): add invoices spec (23 tests) + fix invoices search/showDeleted
 ```
 
 Дата: 2026-06-02
 
 TypeScript: ✅ 0 errors (api, web)
+
+Latest review: 2026-06-02 (sto-review-agent AUTO, HEAD 3cf2824 ← 0269ffc, scope: catalog categories trees feature) — **1 CRITICAL (goods.service.ts `validateFkReferences` НЕ перевіряв новий `goodCategoryId` → cross-tenant FK risk, Bug #161 pattern) + 3 IMPORTANT (good-categories `update`/`toggleActive` без compound-where defense; `remove()` `$transaction(array)` без timeout option — переписано на interactive tx; `getLinked*Categories` без `take:` — OOM ризик) + 4 SUGGESTION (category-tree `ml-${depth*3}` динамічний клас не сканується Tailwind JIT → inline style; `React.MouseEvent` → named import; category-manager-modal `window.confirm` → useConfirm+ConfirmDialog; видалено unused useRef/useEffect/RotateCcw imports). Всі 8 виправлено. tsc 0 errors api+web.**
 
 **⚠ ПОТРІБЕН РЕСТАРТ API СЕРВЕРА** — GoodCategoriesModule зареєстровано в app.module.ts але hot reload не підхопив новий модуль. `GET /api/good-categories` → 404 до рестарту.
 
