@@ -622,7 +622,6 @@ export default function InvoicesPage() {
           />
         </div>
         <div className="flex items-center gap-2 ml-auto">
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
             columns={orderedColumns}
@@ -636,6 +635,7 @@ export default function InvoicesPage() {
               Object.keys(customLabels).length > 0
             }
           />
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
       </div>
 

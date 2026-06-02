@@ -646,26 +646,20 @@ export default function PurchaseOrdersPage() {
           />
         </div>
 
-        {/* Show deleted toggle */}
-        <button
-          onClick={() => {
-            setShowDeleted(v => !v);
-            setPage(1);
-            setActiveSavedFilterId(null);
-          }}
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
-            showDeleted
-              ? 'bg-destructive/10 text-destructive border-destructive/30'
-              : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
-          )}
-        >
-          {showDeleted ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          Показати видалені
-        </button>
-
         <div className="flex items-center gap-2 ml-auto">
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button
+            variant="outline"
+            size="icon-sm"
+            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            onClick={() => {
+              setShowDeleted(v => !v);
+              setPage(1);
+              setActiveSavedFilterId(null);
+            }}
+            className={cn(showDeleted && 'border-primary text-primary')}
+          >
+            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </Button>
           {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
             columns={orderedColumns}
@@ -679,6 +673,7 @@ export default function PurchaseOrdersPage() {
               Object.keys(customLabels).length > 0
             }
           />
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
       </div>
 

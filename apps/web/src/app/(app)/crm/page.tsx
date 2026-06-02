@@ -712,21 +712,20 @@ export default function CrmPage() {
             </option>
           ))}
         </Select>
-        <Button
-          variant="outline"
-          size="md"
-          leftIcon={showDeleted ? <Eye /> : <EyeOff />}
-          onClick={() => {
-            setShowDeleted(d => !d);
-            setPage(1);
-            setActiveSavedFilterId(null);
-          }}
-          className={showDeleted ? 'border-primary text-primary' : ''}
-        >
-          {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
-        </Button>
         <div className="flex items-center gap-2 ml-auto">
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button
+            variant="outline"
+            size="icon-sm"
+            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            onClick={() => {
+              setShowDeleted(d => !d);
+              setPage(1);
+              setActiveSavedFilterId(null);
+            }}
+            className={showDeleted ? 'border-primary text-primary' : ''}
+          >
+            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </Button>
           {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
             columns={orderedColumns}
@@ -740,6 +739,7 @@ export default function CrmPage() {
               Object.keys(customLabels).length > 0
             }
           />
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
       </div>
 

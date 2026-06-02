@@ -607,21 +607,20 @@ export default function WorkOrdersPage() {
           ))}
         </Select>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setShowDeleted(v => !v);
-            setPage(1);
-            setActiveSavedFilterId(null);
-          }}
-          className={cn(showDeleted && 'border-primary text-primary bg-primary/5')}
-        >
-          {showDeleted ? <EyeOff className="h-4 w-4 mr-1.5" /> : <Eye className="h-4 w-4 mr-1.5" />}
-          {showDeleted ? 'Приховати видалені' : 'Показати видалені'}
-        </Button>
-
         <div className="flex items-center gap-2 ml-auto">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            onClick={() => {
+              setShowDeleted(v => !v);
+              setPage(1);
+              setActiveSavedFilterId(null);
+            }}
+            className={cn(showDeleted && 'border-primary text-primary')}
+          >
+            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </Button>
           {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
             columns={orderedColumns}
