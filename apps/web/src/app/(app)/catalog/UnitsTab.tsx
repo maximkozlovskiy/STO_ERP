@@ -162,9 +162,11 @@ export default function UnitsTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
+  // Bug #303: блокування повторних кліків Restore (інакше дублюючі POST → 2nd+ повертає 404)
+  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(
-    (opts?: { fromCache?: boolean; withDeleted?: boolean }) => {
+    (opts?: { fromCache?: boolean; withDeleted?: boolean; signal?: AbortSignal }) => {
       const fromCache = opts?.fromCache ?? false;
       const withDeleted = opts?.withDeleted ?? showDeleted;
       const cached = fromCache && !withDeleted ? getCached<Unit[]>('cache:units') : null;
@@ -174,21 +176,33 @@ export default function UnitsTab() {
       } else setLoading(true);
 
       const url = withDeleted ? '/units?showDeleted=true' : '/units';
-      apiFetch<Unit[]>(url)
+      return apiFetch<Unit[]>(url, opts?.signal ? { signal: opts.signal } : undefined)
         .then(d => {
+          if (opts?.signal?.aborted) return;
           setUnits(d);
-          if (!withDeleted) setCache('cache:units', d);
+          // Bug #300: cache:units завжди має містити лише активні (consumers like GoodsTab
+          // показують одиниці у select). Якщо ми у withDeleted режимі — фільтруємо клієнтсайд.
+          const activeOnly = withDeleted ? d.filter(u => !u.deletedAt) : d;
+          setCache('cache:units', activeOnly);
         })
         .catch((e: unknown) => {
+          if (opts?.signal?.aborted) return;
+          if (e instanceof Error && e.name === 'AbortError') return;
           if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження');
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (opts?.signal?.aborted) return;
+          setLoading(false);
+        });
     },
     [showDeleted],
   );
 
   useEffect(() => {
-    load({ fromCache: !showDeleted });
+    // Bug #301: AbortController щоб попередній fetch не "виграв" race після toggle.
+    const controller = new AbortController();
+    load({ fromCache: !showDeleted, signal: controller.signal });
+    return () => controller.abort();
   }, [load, showDeleted]);
 
   // ── Create ────────────────────────────────────────────────────────────────
@@ -196,6 +210,12 @@ export default function UnitsTab() {
   const create = async () => {
     if (!form.name.trim() || !form.shortName.trim()) {
       setError("Усі поля є обов'язковими");
+      return;
+    }
+    // Bug #302: coefficient = 0 → divide-by-zero у qty_base. Frontend guard.
+    const coeff = form.coefficient ? Number(form.coefficient) : undefined;
+    if (coeff !== undefined && (!Number.isFinite(coeff) || coeff <= 0)) {
+      setError('Коефіцієнт має бути більший 0');
       return;
     }
     setSaving(true);
@@ -206,7 +226,7 @@ export default function UnitsTab() {
         body: JSON.stringify({
           name: form.name.trim(),
           shortName: form.shortName.trim(),
-          coefficient: form.coefficient ? Number(form.coefficient) : undefined,
+          coefficient: coeff,
           width: form.width ? Number(form.width) : undefined,
           height: form.height ? Number(form.height) : undefined,
           depth: form.depth ? Number(form.depth) : undefined,
@@ -231,6 +251,12 @@ export default function UnitsTab() {
       setEditError("Скорочення та назва є обов'язковими");
       return;
     }
+    // Bug #302: coefficient guard
+    const coeff = editForm.coefficient ? Number(editForm.coefficient) : undefined;
+    if (coeff !== undefined && (!Number.isFinite(coeff) || coeff <= 0)) {
+      setEditError('Коефіцієнт має бути більший 0');
+      return;
+    }
     setEditSaving(true);
     setEditError('');
     try {
@@ -239,7 +265,7 @@ export default function UnitsTab() {
         body: JSON.stringify({
           name: editForm.name.trim(),
           shortName: editForm.shortName.trim(),
-          coefficient: editForm.coefficient ? Number(editForm.coefficient) : undefined,
+          coefficient: coeff,
         }),
       });
       setEditingId(null);
@@ -262,6 +288,8 @@ export default function UnitsTab() {
       }))
     )
       return;
+    // Bug #304: очистити попередню помилку перед action
+    setError('');
     try {
       await apiFetch<void>(`/units/${id}`, { method: 'DELETE' });
       load();
@@ -273,11 +301,25 @@ export default function UnitsTab() {
   // ── Restore ───────────────────────────────────────────────────────────────
 
   const restore = async (id: string) => {
+    // Bug #303: in-flight guard — блокувати повторні кліки, інакше дублюючі POST → 404 errors
+    if (restoringIds.has(id)) return;
+    setRestoringIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    setError('');
     try {
       await apiFetch<Unit>(`/units/${id}/restore`, { method: 'POST' });
       load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка відновлення');
+    } finally {
+      setRestoringIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -317,21 +359,23 @@ export default function UnitsTab() {
             >
               Активні{activeCount > 0 && ` (${activeCount})`}
             </button>
-            {deletedCount > 0 || showDeleted ? (
-              <button
-                type="button"
-                onClick={() => setShowDeleted(true)}
-                aria-pressed={showDeleted}
-                className={cn(
-                  'px-2.5 py-0.5 rounded-full text-[12px] font-medium border transition-colors',
-                  showDeleted
-                    ? 'bg-destructive/10 text-destructive border-destructive/30'
-                    : 'border-border text-muted-foreground hover:bg-secondary',
-                )}
-              >
-                Всі{deletedCount > 0 && ` (+${deletedCount} архів)`}
-              </button>
-            ) : null}
+            {/* Bug #295: кнопка "Всі" завжди видима, інакше soft-delete feature недосяжна
+                (initial state showDeleted=false → API повертає тільки активні → deletedCount=0
+                → кнопка не рендерилась → користувач не міг переключитися у режим перегляду
+                видалених і відновити одиницю). */}
+            <button
+              type="button"
+              onClick={() => setShowDeleted(true)}
+              aria-pressed={showDeleted}
+              className={cn(
+                'px-2.5 py-0.5 rounded-full text-[12px] font-medium border transition-colors',
+                showDeleted
+                  ? 'bg-destructive/10 text-destructive border-destructive/30'
+                  : 'border-border text-muted-foreground hover:bg-secondary',
+              )}
+            >
+              Архів{showDeleted && deletedCount > 0 && ` (${deletedCount})`}
+            </button>
           </div>
         </div>
         <Button
@@ -438,10 +482,15 @@ export default function UnitsTab() {
                               e.stopPropagation();
                               void restore(u.id);
                             }}
+                            disabled={restoringIds.has(u.id)}
                             className="text-success/70 hover:text-success hover:bg-success/10"
                             title="Відновити"
                           >
-                            <RotateCcw className="h-3.5 w-3.5" />
+                            {restoringIds.has(u.id) ? (
+                              <Spinner size="xs" />
+                            ) : (
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            )}
                           </Button>
                         ) : u.isSystem ? (
                           <span className="text-[11px] px-1.5 py-0.5 bg-info-subtle text-info rounded">

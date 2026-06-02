@@ -28,7 +28,12 @@ import { UnitsService } from './units.service';
 export class UnitsController {
   constructor(private readonly service: UnitsService) {}
 
-  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
+  // Bug #299: попередньо `max-age=300, stale-while-revalidate=60` → browser cache
+  // міг показувати застарілий список (включно з вже видаленими/відновленими) до 360с
+  // після mutation. Redis cache на бекенді інвалідується через `cache.del()` після кожного
+  // write, тому браузеру довіряти кеш не потрібно — нехай завжди питає сервер
+  // (сервер відповість з Redis за мікросекунди при кеш-хіті).
+  @Header('Cache-Control', 'private, no-cache')
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список одиниць виміру' })

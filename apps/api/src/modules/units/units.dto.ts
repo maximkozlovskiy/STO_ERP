@@ -15,7 +15,9 @@ export class CreateUnitDto {
   @ApiPropertyOptional({ example: 1, description: 'Коефіцієнт перерахунку до базової одиниці' })
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  // Bug #302: coefficient використовується як дільник у `qty_base = qty / coefficient`
+  // (work-orders.service.ts, purchase-orders, invoices). 0 → Infinity → silent NaN-propagation.
+  @Min(0.000001)
   coefficient?: number;
 
   @ApiPropertyOptional({ description: 'Ширина (м)' })
@@ -65,7 +67,8 @@ export class UpdateUnitDto {
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  // Bug #302: coefficient як дільник — 0 заборонено.
+  @Min(0.000001)
   coefficient?: number;
 
   @ApiPropertyOptional()

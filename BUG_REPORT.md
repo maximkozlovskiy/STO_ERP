@@ -8695,3 +8695,223 @@ React не гідрується → AuthProvider не запускається �
 **Очікувана поведінка:** обчислити `now` всередині `useState` lazy initializer без зовнішньої змінної.
 **Фактична поведінка:** змінна на render path створюється завжди.
 **Статус:** [x] виправлено — `new Date()` переміщено всередину `useState(() => ...)` initializer-ів для `from` і `to`. Виконується тільки на першому mount.
+
+---
+
+## Session 2026-06-02 — Soft delete + restore feature audit for units of measure
+
+**Scope:**
+
+- Recent commits b675317, 82dda25, d6a1f9f додали soft delete для UnitsOfMeasure: `DELETE /units/:id` (soft), `POST /units/:id/restore`, `GET /units?showDeleted=true`, UI filter pills у `UnitsTab.tsx`.
+- Файли: `apps/api/src/modules/units/units.{service,controller,dto}.ts`, `apps/web/src/app/(app)/catalog/UnitsTab.tsx`.
+
+**TS baseline:** ✅ green (API + web). **Unit tests:** не для units модуля (відсутні).
+
+---
+
+## Bug #295 — [CRITICAL] "Всі" tab невидимий доки немає видалених — soft-delete feature недосяжна з UI
+
+**Файл:** `apps/web/src/app/(app)/catalog/UnitsTab.tsx:320`
+**Severity:** CRITICAL (release-blocker: користувач може видалити одиницю, але НЕ МОЖЕ відновити через UI)
+**Категорія:** frontend / UX state / soft-delete
+
+**Опис:** Умова рендеру кнопки "Всі": `{deletedCount > 0 || showDeleted ? <button> : null}`. У початковому стані `showDeleted=false`, тому API повертає тільки активні одиниці (`{ deletedAt: null }`) → `deletedCount = units.filter(u => !!u.deletedAt).length = 0` ЗАВЖДИ → кнопка не рендериться → користувач НЕ МАЄ способу переключитися у режим перегляду видалених. Видалив одиницю → тепер вона прихована назавжди (можна тільки створити нову з тим самим shortName, що resurrection-патерн у бекенді відновить, але це неінтуїтивно і не відображає сценарій «помилково видалив, хочу повернути»).
+
+**Очікувана поведінка:** кнопка "Всі" завжди видима (як стабільний toggle). Альтернатива: робити preflight HEAD/GET виклик щоб дізнатися чи є видалені, і кешувати цей стан. Простіше — завжди показувати.
+**Фактична поведінка:** chicken-and-egg: треба бачити видалені щоб побачити кнопку, а щоб побачити видалені — треба натиснути кнопку.
+**Статус:** [x] виправлено — умову `deletedCount > 0 || showDeleted` замінено на безумовний рендер (кнопка завжди показана). Кількість архівних рендериться тільки при `deletedCount > 0`.
+
+---
+
+## Bug #296 — [CRITICAL] `findAll` `orderBy: [{ deletedAt: 'asc' }, ...]` — у Postgres NULLs first/last за замовчуванням LAST → видалені одиниці показуються ПЕРЕД активними
+
+**Файл:** `apps/api/src/modules/units/units.service.ts:30`
+**Severity:** CRITICAL (UX broken у "Всі" режимі: видалені одиниці зверху, активні внизу)
+**Категорія:** backend / Prisma sort / NULL semantics
+
+**Опис:** `orderBy: [{ deletedAt: 'asc' }, { shortName: 'asc' }]`. У Postgres за замовчуванням `ORDER BY col ASC` ставить NULL **в кінець** (`NULLS LAST`). Активні рядки мають `deletedAt = NULL` → у режимі `?showDeleted=true` БД повертає видалені (з timestamp) ПЕРШИМИ (бо timestamp < NULL у ASC NULLS LAST), потім активні. UX очікує зворотне: активні зверху, видалені знизу.
+
+Перевірка Prisma docs: `orderBy: { col: 'asc' }` дефолтно мапиться на `ORDER BY col ASC NULLS LAST` (для Postgres). Тобто видалені (з deletedAt timestamp) йдуть перед активними (deletedAt=NULL).
+
+**Очікувана поведінка:** активні зверху, видалені знизу. Сортування: `[{ deletedAt: { sort: 'asc', nulls: 'first' } }, { shortName: 'asc' }]`.
+**Фактична поведінка:** у "Всі" режимі видалені (рядки з timestamp) йдуть першими, активні в кінці списку.
+**Як знайдено:** static analysis SKILL §1.1 — патерн «sort by nullable + nulls handling» (Bug #29, #198 FEFO).
+**Статус:** [x] виправлено — `orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { shortName: 'asc' }]` (Prisma 5+ синтаксис). Активні (NULL deletedAt) тепер першими.
+
+---
+
+## Bug #297 — [CRITICAL] `update()` не перевіряє конфлікт shortName з SOFT-DELETED одиницею → P2002 → 500 Internal Server Error
+
+**Файл:** `apps/api/src/modules/units/units.service.ts:84-89`
+**Severity:** CRITICAL (release-blocker: при ренеймінгу активної одиниці у shortName, що співпадає з soft-deleted у тій же org, бекенд кидає P2002 → 500 замість осмисленого 409)
+**Категорія:** backend / soft-delete + @@unique / SKILL §1.1 «Soft-delete + @@unique = P2002»
+
+**Опис:** Схема має `@@unique([orgId, shortName])` БЕЗ partial filter `WHERE deletedAt IS NULL` у migration (`packages/database/prisma/migrations/20260524222044_add_units_of_measure/migration.sql:CREATE UNIQUE INDEX "units_of_measure_orgId_shortName_key"`). DB-rівень constraint не зважає на soft-delete.
+
+`update()` перевіряє duplicate тільки серед активних: `where: { orgId, shortName: dto.shortName, deletedAt: null, NOT: { id } }`. Soft-deleted одиниця з тим же shortName **не вважається duplicate** → check проходить → `prisma.unitOfMeasure.update({ data: dto })` намагається записати → DB constraint hit → P2002 → 500.
+
+**Сценарій:**
+
+1. Org has unit "L" (active, id=A) і "л" (soft-deleted, id=B).
+2. User edits "L" → renames to "л".
+3. Backend: duplicate-check `findFirst({ orgId, shortName: 'л', deletedAt: null, NOT: { id: A }})` → нічого (B виключено бо deletedAt != null).
+4. `prisma.update({ where: { id: A }, data: { shortName: 'л' }})` → P2002 → 500.
+
+**Очікувана поведінка:** до `update`-виклику зробити re-check `findFirst({ orgId, shortName, NOT: { id }})` БЕЗ `deletedAt: null` → якщо знайшов soft-deleted дублікат → `ConflictException` з повідомленням «Одиниця з такою скороченою назвою існує у архіві. Спочатку відновіть її.». Тоді 409, а не 500.
+**Фактична поведінка:** P2002 → NestJS дефолтний exception filter → 500.
+**Як знайдено:** SKILL §1.1 checklist item «PATCH що змінює unique-поле → ConflictException (Bug #151)» — тут той самий патерн, але з додатковим soft-delete виміром.
+**Статус:** [x] виправлено — `update()` робить additional re-check на soft-deleted дублікат, кидає `ConflictException` з месиджем що пропонує відновлення.
+
+---
+
+## Bug #298 — [HIGH] `restore()` не перевіряє конфлікт shortName з активною одиницею → P2002 при відновленні
+
+**Файл:** `apps/api/src/modules/units/units.service.ts:39-50`
+**Severity:** HIGH (release-blocker для edge case: відновлення одиниці після ручної DB-маніпуляції / seed/migration що додав активну з тим же shortName)
+**Категорія:** backend / soft-delete restore + @@unique
+
+**Опис:** `restore()` робить `findFirst({ id, orgId, NOT: { deletedAt: null }})` → знаходить soft-deleted рядок → `prisma.update({ data: { deletedAt: null }})`. Якщо у БД є **активна** одиниця з тим самим `(orgId, shortName)` (наприклад, нова "л" створена після soft-delete старої "л" коли resurrection-патерн був пропущений через прямий SQL/seed), `update` отримає P2002 → 500.
+
+**Очікувана поведінка:** `restore()` робить prep-check: `findFirst({ orgId, shortName: existing.shortName, deletedAt: null })` — якщо знайшов → `ConflictException('Активна одиниця з такою скороченою назвою вже існує')`.
+**Фактична поведінка:** P2002 → 500.
+**Статус:** [x] виправлено — `restore()` робить prep-check на активний дублікат.
+
+---
+
+## Bug #299 — [HIGH] `Cache-Control` header кешує `?showDeleted=true` у браузері до 300с → stale list після remove/restore
+
+**Файл:** `apps/api/src/modules/units/units.controller.ts:31`
+**Severity:** HIGH (UX: користувач може бачити вже відновлену одиницю як видалену протягом 5 хв)
+**Категорія:** backend / HTTP cache / soft-delete
+
+**Опис:** `@Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')` застосовується до **всіх** GET `/units`, включно з `?showDeleted=true`. HTTP cache key включає query string, тому `/units` і `/units?showDeleted=true` кешуються окремо. Але після mutation (`POST /units`, `DELETE`, `POST /:id/restore`) браузер НЕ знає що список застарів — буде продовжувати показувати кешований до 300с.
+
+Прикладні наслідки:
+
+1. User у "Всі" режимі видаляє одиницю → `apiFetch` reload → `/units?showDeleted=true` — браузер може повернути ranndomly з кешу (якщо < 300с з минулого load) → видалена одиниця досі без strikethrough.
+2. Аналогічно для restore.
+
+(Redis cache на бекенді інвалідується через `cache.del()` після кожного write — це OK. Проблема в HTTP layer.)
+
+**Очікувана поведінка:** не повертати `Cache-Control: max-age` для `?showDeleted=true` (бо management view має бути fresh). АБО використовувати ETag/If-None-Match для conditional GET. Простіше — встановити `Cache-Control: private, max-age=0, must-revalidate` для будь-якого `/units` (let server decide через Redis cache).
+**Фактична поведінка:** browser cache може показувати stale до 360с.
+**Статус:** [x] виправлено — `Cache-Control` змінено на `private, no-cache` (let server вирішувати через Redis). Перформанс не страждає бо Redis cache залишається + dedup `inFlight` у `apiFetch`.
+
+---
+
+## Bug #300 — [HIGH] `cache:units` sessionStorage стає stale після actions у `showDeleted=true` режимі
+
+**Файл:** `apps/web/src/app/(app)/catalog/UnitsTab.tsx:180`
+**Severity:** HIGH (GoodsTab/інші модулі читають `cache:units` → бачать stale дані до закриття сесії)
+**Категорія:** frontend / cache invalidation / cross-module data sharing
+
+**Опис:** Після успішного `apiFetch` у `load()`:
+
+```ts
+if (!withDeleted) setCache('cache:units', d);
+```
+
+`setCache` викликається **тільки якщо** `withDeleted=false`. Якщо користувач у "Всі" режимі робить create/update/remove/restore → `load()` викликається з `withDeleted=true` → `cache:units` НЕ оновлюється → залишається старий стан з попереднього active-only load.
+
+Наслідок: `GoodsTab.tsx:401` читає `cache:units` → у dropdown товару показуються вже видалені одиниці (або відсутні новостворені) поки сесія не закінчиться.
+
+**Очікувана поведінка:** після кожної action у "Всі" режимі робити **другий запит** `/units` (active-only) щоб оновити `cache:units`. АБО фільтрувати клієнтсайд: якщо `withDeleted=true`, фільтрувати `d.filter(u => !u.deletedAt)` і кешувати це у `cache:units`.
+**Фактична поведінка:** stale `cache:units` між модулями.
+**Статус:** [x] виправлено — у load() при `withDeleted=true` ми додатково фільтруємо `d.filter(u => !u.deletedAt)` і кешуємо це. Cache завжди містить актуальний active subset.
+
+---
+
+## Bug #301 — [MEDIUM] Race condition: швидке перемикання фільтра без AbortController → stale state
+
+**Файл:** `apps/web/src/app/(app)/catalog/UnitsTab.tsx:166-188`
+**Severity:** MEDIUM (UX: при швидких toggle-кліках UI може показувати неправильний список)
+**Категорія:** frontend / race / no AbortController
+
+**Опис:** `load()` робить `apiFetch<Unit[]>(url).then(d => setUnits(d))` без cancellation token. При швидкому toggle:
+
+1. T0: `showDeleted=false`, `load()` стартує fetch `/units` (slow).
+2. T0+50ms: user toggles, `showDeleted=true`, useEffect re-runs `load()` → fetch `/units?showDeleted=true`.
+3. T0+200ms: `/units?showDeleted=true` resolves → `setUnits(deleted list)`.
+4. T0+500ms: `/units` (slow) resolves → `setUnits(active list)` ← **wins, but UI shows showDeleted=true**.
+
+Результат: UI у `showDeleted=true` режимі, але `units` — active-only. Користувач бачить пустий або неправильний список.
+
+**Очікувана поведінка:** `load()` приймає `AbortSignal`, useEffect передає AbortController.signal, cleanup абортує.
+**Фактична поведінка:** race possible.
+**Статус:** [x] виправлено — додано AbortController, useEffect cleanup аборти попередній запит.
+
+---
+
+## Bug #302 — [MEDIUM] Inline edit та create form приймають coefficient=0 → майбутній divide-by-zero у `qty_base = qty / coefficient`
+
+**Файл:** `apps/web/src/app/(app)/catalog/UnitsTab.tsx:242`, `apps/api/src/modules/units/units.dto.ts:18,68`
+**Severity:** MEDIUM (data corruption: GoodUoM.coefficient=0 у `work-orders.service.ts:623` `qty_base = qty / coefficient` → Infinity → silent NaN propagation)
+**Категорія:** backend+frontend validation / DTO guards
+
+**Опис:** DTO `CreateUnitDto.coefficient` і `UpdateUnitDto.coefficient` мають `@IsNumber() @Min(0)`. `@Min(0)` ALLOWS `0`. У бізнес-логіці coefficient використовується як дільник:
+
+- `apps/api/src/modules/work-orders/work-orders.service.ts:623` коментар: `qty_base = qty / coefficient`.
+- Інші модулі (purchase-orders, stock-documents, invoices) — той самий патерн.
+
+`coefficient=0` → `Infinity` → silent NaN-propagation у totalCost/totalParts → corruption.
+
+Frontend парсить `coefficient: form.coefficient ? Number(form.coefficient) : undefined`: рядок `'0'` truthy → `Number('0') = 0` → 0 відправляється бекенду → backend приймає (`@Min(0)`) → DB має coefficient=0.
+
+**Очікувана поведінка:** `@IsNumber() @Min(0.000001)` (або позитивне число, наприклад `@Min(0.0001)`). Frontend: валідація `parseFloat(form.coefficient) > 0`.
+**Фактична поведінка:** coefficient=0 проходить → DB corruption potential.
+**Статус:** [x] виправлено — `@Min(0.000001)` на DTO (обидва Create і Update). Frontend: inline edit і create form validate `Number(form.coefficient) > 0` перед submit (з помилкою «Коефіцієнт має бути більший 0»).
+
+---
+
+## Bug #303 — [MEDIUM] `restore()` не очищує попередні помилки + кнопка «Restore» можна клікати багато разів → дублюючі POST
+
+**Файл:** `apps/web/src/app/(app)/catalog/UnitsTab.tsx:275-282`
+**Severity:** MEDIUM (UX: дублюючі POST → 2nd/3rd reqs повертають NotFoundException 404 → flash error на екрані)
+**Категорія:** frontend / state management / no in-flight guard
+
+**Опис:** Функція `restore`:
+
+```tsx
+const restore = async (id: string) => {
+  try {
+    await apiFetch<Unit>(`/units/${id}/restore`, { method: 'POST' });
+    load();
+  } catch (e: unknown) {
+    setError(e instanceof Error ? e.message : 'Помилка відновлення');
+  }
+};
+```
+
+1. Не очищує `setError('')` перед спробою → попередня помилка лишається при успіху.
+2. Немає `restoringIds` state → user може клікати кнопку 5 разів → 5 паралельних POST → перший restore (`update deletedAt=null`), наступні 4 `findFirst NOT deletedAt: null` поверне null → 404 (`'Видалену одиницю виміру не знайдено'`) → setError → user бачить помилку хоча перший restore успішний.
+
+**Очікувана поведінка:** `setError('')` на старті + `restoringIds` Set для блокування повторних кліків.
+**Фактична поведінка:** flash false error + дубль-POST.
+**Статус:** [x] виправлено — додано `restoringIds` state (Set<string>), кнопка disabled поки restore в польоті; `setError('')` на старті.
+
+---
+
+## Bug #304 — [LOW] `remove()` не очищує попередню помилку перед action
+
+**Файл:** `apps/web/src/app/(app)/catalog/UnitsTab.tsx:256-271`
+**Severity:** LOW (UX cosmetics: попередня помилка лишається після успішного видалення)
+**Категорія:** frontend / state management
+
+**Опис:** Як і `restore`, `remove` не робить `setError('')` на старті. Після успіху помилка з попередньої спроби (наприклад «Скорочення вже існує» з невдалого create) лишається видимою на екрані.
+
+**Статус:** [x] виправлено — `setError('')` на старті.
+
+---
+
+## Bug #305 — [LOW] `isSystem` guard відсутній у `restore()` — теоретичне відновлення системної одиниці що була soft-deleted прямим SQL
+
+**Файл:** `apps/api/src/modules/units/units.service.ts:39-50`
+**Severity:** LOW (defensive — `remove()` блокує видалення системних, тому soft-deleted system не може існувати через нормальний flow; але defense-in-depth)
+**Категорія:** backend / defensive guard
+
+**Опис:** `remove()` блокує: `if (existing.isSystem) throw new BadRequestException('Системну одиницю виміру не можна видалити')`. Тобто система-isSystem одиниця не може бути soft-deleted через API. Але якщо `deletedAt` для system-row був встановлений напряму у БД (міграція, ручний SQL) — `restore()` спокійно відновить її, потенційно зруйнувавши певний інваріант (хоча тут інваріантом нібито є просто факт що system не видаляються).
+
+**Очікувана поведінка:** consistency — `restore()` теж блокує системні: «Системну одиницю не можна відновити» (це сигнал що щось пішло не так у БД).
+**Статус:** [x] виправлено — guard додано у `restore()`.
+
+---

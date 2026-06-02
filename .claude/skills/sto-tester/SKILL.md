@@ -231,6 +231,22 @@ grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "W
 **PATCH що змінює unique-поле → ConflictException (Bug #151)**
 
 - [ ] `update()` з `dto.field` що є у `@@unique` → re-check: `findFirst({ orgId, field, NOT: { id } })` → `ConflictException` якщо знайшов
+- [ ] **CRITICAL для soft-delete + @@unique без partial filter (Bug #297):** `update()` re-check MUST НЕ фільтрувати `deletedAt: null` (інакше soft-deleted рядок з тим же unique field проходить як «не дубль» → потім `prisma.update` отримає P2002 → 500). Правильно: `findFirst({ orgId, field: dto.field, NOT: { id } })` без `deletedAt: null`; якщо знайшов і `duplicate.deletedAt != null` → `ConflictException('... існує у архіві. Спочатку відновіть її або оберіть інше скорочення.')`; інакше звичайний `ConflictException`.
+
+**restore() prep-checks (Bug #298, #305)**
+
+- [ ] `restore(orgId, id)` робить prep-check на active duplicate: `findFirst({ orgId, <uniqueField>, deletedAt: null, NOT: { id } })` → якщо знайшов → `ConflictException` (інакше P2002 при `update deletedAt=null`).
+- [ ] `restore()` defensive guard: якщо `existing.isSystem` → `BadRequestException` (системні не повинні бути soft-deleted взагалі — це сигнал inconsistency).
+
+**`orderBy` нульового поля + NULL semantics (Bug #296)**
+
+```bash
+# orderBy { col: 'asc' } де col nullable → Postgres NULLS LAST за замовчуванням → сюрприз для soft-delete
+grep -rn "orderBy.*deletedAt.*['\"]asc['\"]" apps/api/src/modules --include="*.service.ts" | grep -v "nulls" | head -10
+grep -rn "orderBy.*expiryDate.*['\"]asc['\"]" apps/api/src/modules --include="*.service.ts" | grep -v "nulls" | head -10
+```
+
+- [ ] **`orderBy` по nullable полю + soft-delete = ОБОВ'ЯЗКОВО explicit `nulls`:** для `deletedAt` (active=NULL) у списку з deleted: `{ deletedAt: { sort: 'asc', nulls: 'first' } }` (активні зверху). Для `expiryDate` FEFO (товари без терміну): `{ sort: 'asc', nulls: 'last' }` (з терміном першими). Без explicit `nulls` Postgres дефолтно ставить NULL **в кінець** ASC → видалені (з timestamp) йдуть **ПЕРЕД активними** → UX broken silently (TS green, тест без integration green).
 
 #### List endpoints — API contract
 
@@ -505,6 +521,9 @@ done
 - [ ] **`useState(initializer)` з React Query error як initializer (Bug #278):** `const [error, setError] = useState(queryError instanceof Error ? queryError.message : '')` — **antipattern.** `useState`-initializer запускається ТІЛЬКИ на першому render. На першому render `queryError === undefined` (запит in-flight, не resolved) → `error` ініціалізується як `''`. Потім query завершується з error → `queryError` стає `Error` → але `error` state застиглий на `''`. UI не показує помилку. Подвійно небезпечно з `refetchInterval` — кожне poll-failure ховається. **Правильний паттерн:** derive `displayError` value на кожному render: `const displayError = error || (queryError instanceof Error ? queryError.message : '');`. Local `error` state лишається для manual mutations (post-action errors), `queryError` derive завжди актуальний. Grep: `grep -rn "useState(.*queryError\|useState(.*statusError\|useState(.*Error instanceof Error" apps/web/src/app --include="*.tsx"` — кожен match потребує перетворення у derived value. Severity: MEDIUM (silent failure mode для polling sync/dashboard widgets).
 - [ ] **Prefetch queryKey ↔ page queryKey shape mismatch (Bug #281):** `qc.prefetchQuery({ queryKey: Xkeys.list({}), queryFn: ... })` у `TopShell` / nav-prefetch буде у різному cache slot ніж сторінка що читає через `useX({ page: 1, limit: 20, status: '', q: '', showDeleted: false, ... })`. Default first-mount state хука зазвичай має **повний об'єкт** з derived empty-string/false values, НЕ `{}`. TanStack hashFn виробляє різні хеші. Prefetched data зберігається у unused cache slot, сторінка робить SECOND fetch при mount. Net: bandwidth+API load без жодного perceived speedup. Grep: для кожного `prefetchQuery` у `TopShell`/nav-компонентах знайти споживача сторінки → перевірити що `Xkeys.list({...})` shape ІДЕНТИЧНА (всі ключі і значення). Severity: MEDIUM (фіча декларована як «instant nav» не працює).
 - [ ] **Sub-resource default-flag mutation → parent-list staleness (Bug #226-#227):** для будь-якого sub-resource CRUD у modal-табі (`addX`/`setDefaultX`/`removeX` що викликають `/<parent>/:id/<sub>` ендпоінти) — pair-check проти backend service: чи endpoint виконує `prisma.<Parent>.update/updateMany({...})` (наприклад `Good.unitId` оновлюється коли default UoM змінюється)? Якщо так, success-handler frontend ОБОВ'ЯЗКОВО викликає `load()` для parent-table АБО invalidate `<parentKeys>.all`. Conditional: `addX` тільки коли `isFirst === true` (зчитати з backend → у response `created.isDefault`); `setDefaultX` завжди; `removeX` тільки якщо видаляли default (capture `wasDefault` перед DELETE). **Auto-promote next-default:** коли backend `removeX` логіка пише `findFirst({orderBy:createdAt asc}) + update({isDefault:true})` (наприклад `removeUoM` у `goods.service.ts`), оптимістичний `setModalXs(prev => prev.filter(...))` у клієнті НЕВІРНИЙ — replace optimistic filter на `refreshXs(parentId)` (race-guarded через існуючий reqRef). Grep: `grep -rn "apiFetch.*method:.*'POST\|PATCH\|DELETE'" apps/web/src/app --include="*.tsx" | grep -E "/uoms|/barcodes|/categories|/tax-rates|/warranties|/contacts|/services"` — pair-check проти backend. Severity: MEDIUM коли стале значення впливає на бізнес-сприйняття; HIGH коли стале значення гейтить наступну дію
+- [ ] **Filter pill chicken-and-egg для soft-delete UI (Bug #295):** будь-який toggle/filter-pill що відкриває **єдиний шлях** до архівних/прихованих даних (`Архів`/`Видалені`/`Корзина`) — його видимість НЕ МОЖЕ залежати від `derivedCount > 0` де count обчислюється з даних, видимих ТІЛЬКИ після toggle. Сценарій: initial state `showHidden=false` → API повертає лише видимі → `hiddenCount=0` → кнопка `{hiddenCount > 0 || showHidden ? <Toggle/> : null}` НЕ рендериться → користувач не має способу побачити архів → soft-delete фіча недосяжна. Grep: `grep -rnE "(deleted|archived|hidden|removed)Count\s*>\s*0\s*\|\|" apps/web/src/app --include="*.tsx"` — кожен match де count обчислюється з відфільтрованого списку = bug. Фікс: toggle завжди видимий, count показувати ТІЛЬКИ коли `showHidden=true` (бо у `false` mode count завжди 0 за визначенням). Severity: CRITICAL (feature недосяжна без power-user URL hack)
+- [ ] **AbortController у `useEffect` для filter-toggle race (Bug #301):** будь-який `useEffect(() => { load() }, [filterState])` де `filterState` toggle-able і `load()` робить `apiFetch` — потребує `AbortController` у cleanup. Без нього: швидке перемикання filter → попередній fetch не cancelled → resolve order non-deterministic → last setUnits(...) wins, який може суперечити поточному UI mode (stale state shown for current filter). Grep: `grep -rn "useEffect" apps/web/src/app --include="*.tsx" -A 5 | grep -B1 "load\(\)\|apiFetch" | grep -v "AbortController\|signal"` — кожен match без AbortController при наявності залежності від toggle/filter state = bug. Severity: MEDIUM
+- [ ] **In-flight guard для async-кнопок без overlay-блокування (Bug #303):** будь-яка `<Button onClick={() => action(id)}>` де `action` робить async POST/PATCH/DELETE і немає `disabled` prop тримати `inFlightIds` Set state. Без нього: користувач клікає 5 разів швидко → 5 паралельних POST → перший успіх, 2nd-5th повертають 404/409 (ресурс уже змінено) → setError shows стається помилка хоча перший успіх. Особливо при операціях що змінюють стан рядка (delete/restore/approve/cancel) — наступні reqs після першого побачать новий стан і обуряться. Грубий tip-off: відсутність `setRestoringIds`/`processingIds`/`busyIds` state у компоненті який має destructive/state-changing button-actions. Severity: MEDIUM (UX flash false errors)
 
 ---
 
@@ -886,6 +905,149 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-02 — Soft-delete filter pill chicken-and-egg (Bug #295) — frontend, UX state, soft-delete
+
+**Сигнал:** `Toggle/FilterPill` що дає доступ до **єдиного режиму перегляду** прихованих даних (`Архів`/`Видалені`/`Корзина`) має умовний рендер `{derivedCount > 0 || isToggled ? <Btn/> : null}`, де `derivedCount` обчислюється з `items.filter(predicate).length`. Якщо у default-режимі (`isToggled=false`) API повертає ЛИШЕ items де predicate=false → `derivedCount=0` завжди → кнопка ніколи не рендериться → користувач не має способу побачити приховане.
+
+**Причина виникнення:** розробник додає filter feature і прагне «прибрати непотрібну кнопку коли немає видалених» (cleaner UX), не помічаючи що сам факт показу/приховання кнопки залежить від того що вона відкриває. UX-thinking «show only when relevant» працює для **інших** UI (export button only if data exists) але НЕ для toggle who reveals what fills its own counter.
+
+**Підхід до виявлення:**
+
+1. Знайти будь-який UI з умовним рендером кнопки, що читає `count > 0 || state`: `grep -rnE "(\b(deleted|archived|hidden|removed)Count)\s*>\s*0\s*\|\|" apps/web/src/app --include="*.tsx"`.
+2. Для кожного match — простежити: звідки береться `count`. Якщо `items.filter(it => it.X).length` де `items` від API, а API повертає `it.X = false` коли filter=false → bug.
+3. Альтернатива: перевірити що default-mode API returns ИЗОЛЮВАНО subset, а лічильник для протилежного субсету обчислюється ЦІЛКОМ з default-mode response → нерозв'язно без preflight.
+
+**Підхід до фіксу:**
+
+1. **Простіше:** toggle завжди видимий. Count показувати ТІЛЬКИ коли `isToggled=true` (бо у `false` mode count завжди 0).
+2. Альтернатива: preflight HEAD/`/count`-endpoint при mount → знати чи є приховані → conditionally render toggle.
+3. Альтернатива: для админ-only views завжди показувати обидва filters (active/archived) без count badge.
+
+**Severity:** CRITICAL — soft-delete фіча недосяжна з UI. Виявляється тільки manual QA з реальним даним (одиниця створена → видалена → користувач шукає як відновити).
+
+**Де шукати ще:**
+
+- Будь-який майбутній «archived» / «inactive» / «deleted» filter у CRUD-табах (counterparties, vehicles, goods, services, employees-roles).
+- Notification-center «прочитані»/«непрочитані» filter — якщо unreadCount=0 chowа «прочитані» вкладку, користувач не бачить історію.
+- Settings → «вимкнені» інтеграції / payment-methods — якщо в default-режимі показуються лише увімкнені, кнопка «показати вимкнені» не повинна залежати від наявності вимкнених у поточному списку.
+
+**Профілактика:** для кожного нового CRUD-таба з soft-delete review-checklist: «Чи можна побачити архів коли активних 100% і видалених 0?» — якщо ні, бо кнопки немає, → fix.
+
+---
+
+### 2026-06-02 — Postgres NULLS LAST default ламає sort by nullable soft-delete (Bug #296) — backend, Prisma, sort, NULL semantics
+
+**Сигнал:** `findMany({ orderBy: [{ deletedAt: 'asc' }, ...] })` без explicit `nulls: 'first'` у Prisma 5+ → Postgres за замовчуванням ставить NULL В КІНЕЦЬ ASC → активні рядки (deletedAt=NULL) йдуть **ПОСЛЕ** видалених (з timestamp) у списку «showDeleted=true». TS green, unit-тести green (бо mocks повертають вже відсортований масив), runtime — UX broken silently.
+
+**Причина виникнення:** розробник пише `orderBy: { deletedAt: 'asc' }` думаючи що NULL = «no date» = «найменше» = «перше» (інтуїтивне сприйняття). У SQL/Postgres NULL — «unknown», за замовчуванням sortується В КІНЕЦЬ ASC і НА ПОЧАТКУ DESC. Prisma не нормалізує цю поведінку — простий `'asc'` напряму мапиться на `ORDER BY col ASC` без `NULLS FIRST/LAST` hint.
+
+**Підхід до виявлення:**
+
+```bash
+# Шукати orderBy по nullable полю без explicit nulls:
+grep -rn "orderBy.*deletedAt.*['\"]asc['\"]" apps/api/src/modules --include="*.service.ts" | grep -v "nulls" | head -10
+grep -rn "orderBy.*expiryDate.*['\"]asc['\"]" apps/api/src/modules --include="*.service.ts" | grep -v "nulls" | head -10
+grep -rn "orderBy.*completedAt.*['\"]asc['\"]" apps/api/src/modules --include="*.service.ts" | grep -v "nulls" | head -10
+grep -rn "orderBy.*[a-zA-Z]+At.*['\"]asc['\"]" apps/api/src/modules --include="*.service.ts" | grep -v "createdAt\|updatedAt\|spec\|nulls" | head -10
+```
+
+Прим. `createdAt`/`updatedAt` зазвичай NOT NULL — безпечно. `*At` поля що nullable — потребують explicit nulls hint.
+
+**Підхід до фіксу:**
+
+1. Замінити `{ col: 'asc' }` на `{ col: { sort: 'asc', nulls: 'first'|'last' } }` (Prisma 5+ syntax).
+2. **Soft-delete sort у списку «з deleted»:** `nulls: 'first'` (активні зверху, видалені знизу).
+3. **FEFO/expiry sort:** `nulls: 'last'` (товари з близьким терміном першими, без терміну в кінці).
+4. **Completion-date sort:** залежить від бізнес-смислу — зазвичай `nulls: 'last'` (незавершені після завершених).
+
+**Severity:** HIGH-CRITICAL коли впливає на основну сторінку перегляду; MEDIUM для рідких admin-views.
+
+**Де шукати ще:**
+
+- Будь-який `findMany` що включає soft-deleted рядки (admin views, audit logs, archive pages).
+- FEFO батч-вибір (`batch.service.ts:findFEFOBatches`).
+- Calendar/timeline що показує completed + pending tasks разом.
+- Payment-list з partial payments (`paidAt` nullable).
+- Email-queue з failed sends (`sentAt` nullable).
+
+**Профілактика:**
+
+1. ESLint custom-rule (майбутнє) для `orderBy` з nullable column без explicit nulls.
+2. У `/sto-dev` SKILL — додати ❌/✅ приклад для nullable orderBy.
+3. Integration-тест на список «з видаленими»: 3 active + 2 deleted → asserts active першими.
+
+---
+
+### 2026-06-02 — Soft-delete + @@unique без partial filter = P2002 у `update`/`restore` (Bugs #297, #298) — backend, soft-delete, unique-constraint, error-handling
+
+**Сигнал:** `@@unique([orgId, X])` у `schema.prisma` без `WHERE deletedAt IS NULL` у migration `CREATE UNIQUE INDEX`. `update()` сервісу робить duplicate-check `findFirst({ orgId, X: dto.X, deletedAt: null, NOT: { id } })` (тільки серед активних) → soft-deleted дублікат не помічається → `prisma.update({ data: { X: dto.X } })` намагається записати → DB constraint hit → P2002 → NestJS дефолтний exception filter → **500 Internal Server Error** замість осмисленого 409 з повідомленням.
+
+Аналогічно для `restore()`: prep-check лише на soft-deleted рядок з потрібним id, але не перевіряє чи нема активного дублікату → `prisma.update({ data: { deletedAt: null } })` отримає P2002.
+
+**Причина виникнення:** SKILL § Bug #152 покриває resurrection-патерн для `create()` — розробник це знає і робить правильно. Але:
+
+1. Для `update()` той самий розробник копіює існуючий patterns з brands/services що використовує `deletedAt: null` у duplicate-check (бо для них рідко є soft-deleted з тим же name) — забуває що для unit-shortname це може траплятись частіше через коротку довжину (`шт`, `л`, `кг`).
+2. Для `restore()` розробник не задумується що активний дублікат може існувати (думає що sost-deleted рядок гарантовано «не має конкурента»).
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти всі @@unique у схемі без partial filter у migration
+grep -n "@@unique" packages/database/prisma/schema.prisma | awk '{print $2}'
+grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "WHERE"
+
+# Для кожної моделі з @@unique[orgId,X] перевірити service:
+# 1. update() — duplicate-check НЕ повинен мати deletedAt: null у where (інакше дублікат прихований)
+# 2. restore() — prep-check на активний дублікат ОБОВ'ЯЗКОВИЙ
+grep -rn "ConflictException\|P2002\|@@unique" apps/api/src/modules/<module>/<module>.service.ts
+```
+
+**Підхід до фіксу:**
+
+1. **`update()` duplicate-check без `deletedAt: null`:**
+
+   ```ts
+   const duplicate = await prisma.X.findFirst({
+     where: { orgId, field: dto.field, NOT: { id } }, // НЕ deletedAt: null!
+   });
+   if (duplicate) {
+     if (duplicate.deletedAt) {
+       throw new ConflictException(
+         'X з таким значенням існує у архіві. Спочатку відновіть її або оберіть інше значення.',
+       );
+     }
+     throw new ConflictException('X з таким значенням вже існує');
+   }
+   ```
+
+2. **`restore()` active-duplicate prep-check:**
+
+   ```ts
+   const activeDuplicate = await prisma.X.findFirst({
+     where: { orgId, field: existing.field, deletedAt: null, NOT: { id } },
+   });
+   if (activeDuplicate)
+     throw new ConflictException('Активна X з таким значенням вже існує — відновлення неможливе');
+   ```
+
+3. **Альтернатива (DB-level):** додати migration з partial unique index `CREATE UNIQUE INDEX ... WHERE deleted_at IS NULL` + DROP старого full unique. Складніше, потребує даним cleanup. Але fundamentally безпечніше — guard на рівні БД, не сервісу.
+
+**Severity:** CRITICAL для `update()` (часта операція, легко відтворити для shortName); HIGH для `restore()` (edge-case але реальний).
+
+**Де шукати ще:**
+
+- Кожен модуль з `@@unique([orgId, X])` що має soft-delete: `brands`, `units`, `services`, `work-categories`, `payment-methods`, `tax-rates`, `bank-accounts`, `branches` (`@@unique([orgId, name])`).
+- Multi-column unique: `@@unique([orgId, X, Y])` — той самий патерн з більшою кількістю полів у duplicate-check.
+- Backend-only resurrection sites (seed/migration scripts) — теж потребують той самий захист.
+
+**Профілактика:**
+
+1. Контракт-тест-шаблон для кожного soft-delete CRUD: `it('update rename to soft-deleted shortName returns 409, not 500')` + `it('restore conflicting active returns 409')`.
+2. У `/sto-dev` SKILL приклад правильного `update()` з soft-delete-aware duplicate check.
+3. Майбутнє: автоматизована перевірка migration → schema parity для @@unique → partial filter pairing.
+
+---
 
 ### 2026-05-31 — Prefetch queryKey ↔ page queryKey shape mismatch (Bug #281) — frontend, react-query, wasted-work
 
