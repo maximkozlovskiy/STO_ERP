@@ -1259,6 +1259,38 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 
 ---
 
+### 2026-06-02 — Soft-delete `remove()` з business-rule guard (isSystem/isLocked) — переписати на updateMany з guard у WHERE з fallback на cheap re-read
+
+**Сигнал:** Service має простий `async remove(orgId, id)` що завжди робить (1) `findFirst` для tenant guard + business-rule guard (isSystem/isLocked/status check), (2) `update` для soft-delete. Існуючий паттерн «findOne + update» 2-RTT відомий і часто вже виправлений простими CRUD (templates/configs). Але коли є додаткова business-rule перевірка (`if (existing.isSystem) throw`), стандартний 1-RTT updateMany паттерн «з orgId guard» не підходить — потрібно ще читання `isSystem` поля.
+
+**Причина виникнення:** простий `findOne + update` 1-RTT рецепт описує лише tenant guard. Розробник бачить що для units/work-categories/branches треба ще `isSystem` перевірку → лишається у 2-RTT pattern бо «без читання неможливо знати isSystem». Не помічається що Postgres індекс на (orgId, isSystem, deletedAt) дозволяє ВСЮ перевірку як WHERE filter — рядок з isSystem=true просто не буде зачеплений updateMany, count повертає 0.
+
+**Підхід до виявлення:** grep `async remove\(orgId.*id\)` + читати тіло. Якщо: (1) findFirst → check + throw → update → 3 окремих кроки; (2) перевірка є `existing.X === true` де `X` — boolean/enum скалярне поле; (3) updateMany з orgId зараз не використовується → кандидат.
+
+**Підхід до фіксу:** `updateMany({ where: { id, orgId, deletedAt: null, isSystem: false }, data: { deletedAt: new Date() } })`. Якщо count===0 → cheap fallback `findFirst({ where: { id, orgId, deletedAt: null }, select: { isSystem: true } })` для визначення конкретного UA повідомлення (404 vs 400 «isSystem»). У 95% happy-path (entity active+non-system) — 1 RTT. У 5% помилкового шляху — 2 RTT (як було), але з конкретним повідомленням. Race-safe: між updateMany і fallback findFirst entity можна hard-delete, тоді відмалюємо NotFound.
+
+**Реальний impact:** -1 RTT у happy-path для frequently-called CRUD admin endpoints (catalog/settings/infrastructure). На WAN 30-50ms × десятки операцій на сесію.
+
+**Де шукати ще:** будь-який сервіс з простим CRUD де `remove()` має додатковий business-rule guard. Особливо часто: units (isSystem), branches (isLocked), work-categories (isSystem), payment-methods (isSystem), warehouses (status), maintenance-schedules (isActive).
+
+---
+
+### 2026-06-02 — Speculative duplicate-check у update з business-rule перевіркою — paralleлити Promise.all навіть коли duplicate check умовна
+
+**Сигнал:** `async update(orgId, id, dto)` робить `findFirst` для tenant guard, потім (умовно) `if (dto.X && dto.X !== existing.X) { duplicate.findFirst }` — другий запит вирішують виконати на основі результату першого. Виглядає як «не можна паралелити, бо умова». Насправді duplicate-check читає за **новим значенням з DTO**, не за existing — отже він tenant-safe і не залежить від існуючого значення.
+
+**Причина виникнення:** не плутати з простим «speculative duplicate-check у tier-merger» (2026-05-31) — там не було business-rule guard. Тут є додатковий шар: `existing.X !== dto.X` — здається що це **робить умовність необхідною**. Насправді: для duplicate-check важлива лише наявність `dto.X` (як ключ пошуку), а порівняння з `existing.X` визначає чи ВЗАГАЛІ кидати помилку — це post-filter, не pre-filter.
+
+**Підхід до виявлення:** для кожного `update` метода прочитати чи перший await — це `findOne`, далі чи є умовна `if (dto.field && dto.field !== existing.field) { duplicate.findFirst }`. Якщо field == DTO scalar з compound unique constraint — кандидат.
+
+**Підхід до фіксу:** запустити обидва запити у `Promise.all([existing, dto.X ? duplicate : Promise.resolve(null)])`. ПІСЛЯ awaits — `if (!existing) throw NotFound; if (dto.X && existing.X !== dto.X && duplicate) throw Conflict`. Speculative cost: 1 RTT даремно у ~5% випадків коли DTO повторює existing значення — копійки порівняно з виграшем у 95% коли значення дійсно змінилось.
+
+**Реальний impact:** -1 RTT у happy-path (95%+) reference-CRUD endpoints (units/brands/categories/currencies/payment-methods). UI редагування довідників відчувається миттєво.
+
+**Де шукати ще:** усі update методи з compound unique constraint (orgId + name/code/shortName + NOT id). Особливо часто: units, brands, categories, payment-methods, tax-rates, document-number-configs.
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -1347,6 +1379,11 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ maintenance-schedules.remove: findFirst + soft-delete update → updateMany з orgId guard (2 RTT → 1)
 - ✅ inspection.create auto-lines: sequential `tx.workOrderLine.create` у циклі criticalPoints → `tx.workOrderLine.createMany` (N INSERTs → 1 у $transaction; 50+ critical points типовий заряд)
 - ✅ followup.processor: 2 sequential findMany (upcomingMaintenance + inactiveVehicles) → Promise.all (-1 RTT per daily tick); 2 sequential SMS send loops → collect-then-Promise.allSettled fan-out (sequential N × RTT → parallel max RTT, обмежено SMS provider concurrency)
+- ✅ goods.remove: findOne + update (2 RTT) → updateMany з compound where {id, orgId, deletedAt: null} (1 RTT)
+- ✅ brands.remove: findOne + update (2 RTT) → updateMany з compound where + cache.del (1 RTT)
+- ✅ units.remove: findOne + isSystem check + update (2 RTT) → updateMany з compound where {id, orgId, deletedAt: null, isSystem: false} (1 RTT happy path); cheap fallback findFirst для UA error message
+- ✅ units.update: speculative duplicate-check у Promise.all з tenant guard (2 RTT → 1 RTT у 95% happy path при зміні shortName)
+- ✅ maintenance-schedules.update: existing findFirst narrow select (drop vehicle/syncVersion/orgId/etc over-fetch) — payload менший, recalc fallback працює як було
 
 **Frontend:**
 
