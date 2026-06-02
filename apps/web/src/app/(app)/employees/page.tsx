@@ -939,7 +939,7 @@ export default function EmployeesPage() {
                     <TableRow
                       key={emp.id}
                       className={cn(
-                        'transition-colors',
+                        'group transition-colors',
                         isDeleted && 'opacity-60',
                         detailPanel.enabled && 'cursor-pointer',
                         selectedEmp?.id === emp.id && detailPanel.enabled && 'bg-secondary',
@@ -1039,6 +1039,7 @@ export default function EmployeesPage() {
                             variant="ghost"
                             size="icon-sm"
                             title="Редагувати"
+                            className="opacity-0 group-hover:opacity-100"
                             onClick={() => openEditEmp(emp)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -1046,7 +1047,7 @@ export default function EmployeesPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                            className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                             title="Помітити на видалення"
                             disabled={isMarking || !!markingId || isDeleted}
                             onClick={() => markForDeletion(emp.id)}
