@@ -288,7 +288,7 @@ export class InvoicesService {
     // Tenant-guard invoice + FK validations (good/work) — all three independent
     // and already orgId-scoped. Saves one RTT vs the previous «invoice-first, then
     // parallel good+work» pattern.
-    const [inv, good, work] = await Promise.all([
+    const [inv, good, work, goodUoM] = await Promise.all([
       this.prisma.invoice.findFirst({
         where: { id: invoiceId, orgId, deletedAt: null },
       }),
@@ -304,12 +304,20 @@ export class InvoicesService {
             select: { id: true },
           })
         : Promise.resolve(null),
+      dto.unitOfMeasureId && dto.goodId
+        ? this.prisma.goodUoM.findFirst({
+            where: { id: dto.unitOfMeasureId, goodId: dto.goodId, orgId },
+            select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
+          })
+        : Promise.resolve(null),
     ]);
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
     if (inv.status !== InvoiceStatus.DRAFT)
       throw new BadRequestException('Рядки можна додавати лише до чернетки');
     if (dto.goodId && !good) throw new NotFoundException('Запчастину не знайдено');
     if (dto.workId && !work) throw new NotFoundException('Роботу не знайдено');
+    if (dto.unitOfMeasureId && dto.goodId && !goodUoM)
+      throw new NotFoundException('Одиницю виміру не знайдено для цього товару');
 
     const vatRate = dto.vatRate ?? 20;
     const priceWithoutVat = dto.quantity * dto.unitPrice;
@@ -330,6 +338,7 @@ export class InvoicesService {
         vatAmount,
         priceWithVat,
         sortOrder: dto.sortOrder ?? 0,
+        unitOfMeasureId: dto.unitOfMeasureId ?? null,
       },
       // Bug #232: include good для unitShortName/coefficient у відповіді.
       include: {
@@ -343,7 +352,7 @@ export class InvoicesService {
     });
 
     await this.recalcTotals(orgId, invoiceId);
-    return this.toLineDto(line);
+    return this.toLineDto({ ...line, goodUoM });
   }
 
   async updateLine(
@@ -615,20 +624,25 @@ export class InvoicesService {
     vatAmount: Prisma.Decimal;
     priceWithVat: Prisma.Decimal;
     sortOrder: number;
+    unitOfMeasureId?: string | null;
     createdAt: Date;
     good?: {
       unit: string;
       unitOfMeasure: { shortName: string; coefficient: number } | null;
     } | null;
+    goodUoM?: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null;
   }): InvoiceLineResponseDto {
+    const selectedUoM = l.goodUoM;
+    const baseUoM = l.good?.unitOfMeasure;
     return {
       id: l.id,
       invoiceId: l.invoiceId,
       goodId: l.goodId,
       workId: l.workId,
       description: l.description,
-      unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
-      coefficient: l.good?.unitOfMeasure?.coefficient ?? 1,
+      unitOfMeasureId: l.unitOfMeasureId ?? null,
+      unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? l.good?.unit,
+      coefficient: selectedUoM?.coefficient ?? baseUoM?.coefficient ?? 1,
       quantity: l.quantity,
       unitPrice: Number(l.unitPrice),
       vatRate: Number(l.vatRate),

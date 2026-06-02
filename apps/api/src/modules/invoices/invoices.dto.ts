@@ -68,6 +68,11 @@ export class CreateInvoiceLineDto {
   @IsUUID()
   workId?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) sortOrder?: number;
+  @ApiPropertyOptional({ description: 'ID одиниці виміру з GoodUoM товару' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  unitOfMeasureId?: string;
 }
 
 export class UpdateInvoiceLineDto {
@@ -76,6 +81,11 @@ export class UpdateInvoiceLineDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) unitPrice?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) vatRate?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) sortOrder?: number;
+  @ApiPropertyOptional({ description: 'ID одиниці виміру з GoodUoM товару' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  unitOfMeasureId?: string;
 }
 
 export class InvoiceLineResponseDto {
@@ -84,6 +94,7 @@ export class InvoiceLineResponseDto {
   @ApiPropertyOptional() goodId?: string | null;
   @ApiPropertyOptional() workId?: string | null;
   @ApiProperty() description!: string;
+  @ApiPropertyOptional() unitOfMeasureId?: string | null;
   @ApiPropertyOptional() unitShortName?: string;
   @ApiPropertyOptional() coefficient?: number;
   @ApiProperty() quantity!: number;

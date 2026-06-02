@@ -152,10 +152,33 @@ export class WorkOrdersService {
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
 
+    // Batch-fetch GoodUoM coefficients for parts that have unitOfMeasureId set.
+    const uomIds = wo.parts
+      .map(p => (p as { unitOfMeasureId?: string | null }).unitOfMeasureId)
+      .filter((id): id is string => !!id);
+    const goodUoMMap: Record<
+      string,
+      { id: string; coefficient: number; unitOfMeasure: { shortName: string } }
+    > = {};
+    if (uomIds.length > 0) {
+      const goodUoMs = await this.prisma.goodUoM.findMany({
+        where: { id: { in: uomIds } },
+        select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
+      });
+      for (const u of goodUoMs) goodUoMMap[u.id] = u;
+    }
+
     return {
       ...this.toDto(wo),
       lines: wo.lines.map(l => this.toLineDto(l)),
-      parts: wo.parts.map(p => this.toPartDto(p)),
+      parts: wo.parts.map(p => {
+        const uomId = (p as { unitOfMeasureId?: string | null }).unitOfMeasureId;
+        return this.toPartDto({
+          ...p,
+          unitOfMeasureId: uomId,
+          goodUoM: uomId ? (goodUoMMap[uomId] ?? null) : null,
+        });
+      }),
     };
   }
 
@@ -597,14 +620,18 @@ export class WorkOrdersService {
       where: { workOrderId, orgId, deletedAt: null },
       take: 1000,
     });
+    // Batch-fetch GoodUoM coefficients for qty conversion: qty_base = qty / coefficient
+    const coeffMap = await this.fetchPartCoefficients(parts, db);
+
     for (const part of parts) {
+      const coeff = coeffMap[part.id] ?? 1;
       await this.inventory.createMovement(
         orgId,
         {
           goodId: part.goodId,
           warehouseId: part.warehouseId,
           type: 'RESERVATION',
-          quantity: part.quantity,
+          quantity: part.quantity / coeff,
           documentType: 'WorkOrder',
           documentId: workOrderId,
           createdBy: userId,
@@ -625,14 +652,17 @@ export class WorkOrdersService {
       where: { workOrderId, orgId, deletedAt: null },
       take: 1000,
     });
+    const coeffMap = await this.fetchPartCoefficients(parts, db);
+
     for (const part of parts) {
+      const coeff = coeffMap[part.id] ?? 1;
       await this.inventory.createMovement(
         orgId,
         {
           goodId: part.goodId,
           warehouseId: part.warehouseId,
           type: 'RESERVATION_RELEASE',
-          quantity: -part.quantity,
+          quantity: -(part.quantity / coeff),
           documentType: 'WorkOrder',
           documentId: workOrderId,
           createdBy: userId,
@@ -653,14 +683,18 @@ export class WorkOrdersService {
       where: { workOrderId: wo.id, orgId, deletedAt: null },
       take: 1000,
     });
+    const coeffMap = await this.fetchPartCoefficients(parts, db);
+
     for (const part of parts) {
+      const coeff = coeffMap[part.id] ?? 1;
+      const baseQty = part.quantity / coeff;
       await this.inventory.createMovement(
         orgId,
         {
           goodId: part.goodId,
           warehouseId: part.warehouseId,
           type: 'WRITEOFF',
-          quantity: -part.quantity,
+          quantity: -baseQty,
           price: Number(part.price),
           documentType: 'WorkOrder',
           documentId: wo.id,
@@ -675,7 +709,7 @@ export class WorkOrdersService {
           goodId: part.goodId,
           warehouseId: part.warehouseId,
           type: 'RESERVATION_RELEASE',
-          quantity: -part.quantity,
+          quantity: -baseQty,
           documentType: 'WorkOrder',
           documentId: wo.id,
           createdBy: userId,
@@ -838,11 +872,17 @@ export class WorkOrdersService {
     workOrderId: string,
     dto: CreateWorkOrderPartDto,
   ): Promise<WorkOrderPartResponseDto> {
-    // Tiered parallelization — wo + good + warehouse у єдиний Promise.all (3 RTT → 1).
-    const [wo, good, warehouse] = await Promise.all([
+    // Tiered parallelization — wo + good + warehouse + optional goodUoM у єдиний Promise.all.
+    const [wo, good, warehouse, goodUoM] = await Promise.all([
       this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
       this.prisma.good.findFirst({ where: { id: dto.goodId, orgId, deletedAt: null } }),
       this.prisma.warehouse.findFirst({ where: { id: dto.warehouseId, orgId, deletedAt: null } }),
+      dto.unitOfMeasureId
+        ? this.prisma.goodUoM.findFirst({
+            where: { id: dto.unitOfMeasureId, goodId: dto.goodId, orgId },
+            select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
+          })
+        : Promise.resolve(null),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (!EDITABLE_STATUSES.includes(wo.status)) {
@@ -850,6 +890,9 @@ export class WorkOrdersService {
     }
     if (!good) throw new NotFoundException('Товар не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
+    if (dto.unitOfMeasureId && !goodUoM) {
+      throw new NotFoundException('Одиницю виміру не знайдено для цього товару');
+    }
 
     const price = dto.price !== undefined ? dto.price : Number(good.salePrice);
     const amount = dto.quantity * price;
@@ -865,6 +908,7 @@ export class WorkOrdersService {
             quantity: dto.quantity,
             price,
             amount,
+            unitOfMeasureId: dto.unitOfMeasureId ?? null,
           },
           include: {
             good: {
@@ -877,7 +921,7 @@ export class WorkOrdersService {
           },
         });
         await this.recalcTotals(workOrderId, tx, orgId);
-        return created;
+        return { ...created, goodUoM };
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — create + recalcTotals
@@ -908,11 +952,24 @@ export class WorkOrdersService {
     const price = dto.price !== undefined ? dto.price : Number(part.price);
     const amount = quantity * price;
 
+    // Validate new unitOfMeasureId if provided
+    let goodUoM: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null =
+      null;
+    const newUoMId = dto.unitOfMeasureId !== undefined ? dto.unitOfMeasureId : part.unitOfMeasureId;
+    if (newUoMId) {
+      const goodIdForPart = dto.goodId ?? part.goodId;
+      goodUoM = await this.prisma.goodUoM.findFirst({
+        where: { id: newUoMId, goodId: goodIdForPart, orgId },
+        select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
+      });
+      if (!goodUoM) throw new NotFoundException('Одиницю виміру не знайдено для цього товару');
+    }
+
     const updated = await this.prisma.$transaction(
       async tx => {
         const result = await tx.workOrderPart.update({
           where: { id: partId, orgId },
-          data: { quantity, price, amount },
+          data: { quantity, price, amount, unitOfMeasureId: newUoMId ?? null },
           include: {
             good: {
               select: {
@@ -924,7 +981,7 @@ export class WorkOrdersService {
           },
         });
         await this.recalcTotals(workOrderId, tx, orgId);
-        return result;
+        return { ...result, goodUoM };
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — update + recalcTotals
@@ -1165,6 +1222,30 @@ export class WorkOrdersService {
     };
   }
 
+  // Batch-fetches GoodUoM coefficients for a list of parts.
+  // Returns map: partId → coefficient (1 if no UoM or not found).
+  private async fetchPartCoefficients(
+    parts: { id: string; unitOfMeasureId?: string | null; goodId: string }[],
+    db: Prisma.TransactionClient | typeof this.prisma,
+  ): Promise<Record<string, number>> {
+    const uomIds = parts.map(p => p.unitOfMeasureId).filter((id): id is string => !!id);
+    if (uomIds.length === 0) return {};
+    const uoms = await (db as typeof this.prisma).goodUoM.findMany({
+      where: { id: { in: uomIds } },
+      select: { id: true, coefficient: true },
+    });
+    const uomCoeffById: Record<string, number> = Object.fromEntries(
+      uoms.map(u => [u.id, u.coefficient]),
+    );
+    const result: Record<string, number> = {};
+    for (const part of parts) {
+      if (part.unitOfMeasureId) {
+        result[part.id] = uomCoeffById[part.unitOfMeasureId] ?? 1;
+      }
+    }
+    return result;
+  }
+
   private toPartDto(part: {
     id: string;
     workOrderId: string;
@@ -1173,21 +1254,28 @@ export class WorkOrdersService {
     quantity: number;
     price: Prisma.Decimal;
     amount: Prisma.Decimal;
+    unitOfMeasureId?: string | null;
     createdAt: Date;
     good?: {
       name: string;
       unit: string;
       unitOfMeasure: { shortName: string; coefficient: number } | null;
     } | null;
+    // Populated when unitOfMeasureId is set — per-good GoodUoM record
+    goodUoM?: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null;
   }): WorkOrderPartResponseDto {
-    const uom = part.good?.unitOfMeasure;
+    // If a specific GoodUoM was selected — use its shortName/coefficient.
+    // Fallback to the good's base unit.
+    const selectedUoM = part.goodUoM;
+    const baseUoM = part.good?.unitOfMeasure;
     return {
       id: part.id,
       workOrderId: part.workOrderId,
       goodId: part.goodId,
       goodName: part.good?.name,
-      unitShortName: uom?.shortName ?? part.good?.unit,
-      coefficient: uom?.coefficient ?? 1,
+      unitOfMeasureId: part.unitOfMeasureId ?? null,
+      unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? part.good?.unit,
+      coefficient: selectedUoM?.coefficient ?? baseUoM?.coefficient ?? 1,
       warehouseId: part.warehouseId,
       quantity: part.quantity,
       price: Number(part.price),

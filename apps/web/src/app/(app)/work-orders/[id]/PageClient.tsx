@@ -267,8 +267,12 @@ export default function WorkOrderCardPage() {
     warehouseId: '',
     quantity: '1',
     price: '',
+    unitOfMeasureId: '',
   });
   const [goodDisplayName, setGoodDisplayName] = useState('');
+  const [partGoodUoMs, setPartGoodUoMs] = useState<
+    { id: string; unitShortName: string; coefficient: number; isDefault: boolean }[]
+  >([]);
   const [stockAvailable, setStockAvailable] = useState<number | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
 
@@ -559,8 +563,16 @@ export default function WorkOrderCardPage() {
       ...f,
       goodId: item.id,
       price: item.salePrice ? String(item.salePrice) : f.price,
+      unitOfMeasureId: '',
     }));
+    setPartGoodUoMs([]);
     partDirty.markDirty();
+    // Load available UoMs for this good
+    apiFetch<{ id: string; unitShortName: string; coefficient: number; isDefault: boolean }[]>(
+      `/goods/${item.id}/uoms`,
+    )
+      .then(setPartGoodUoMs)
+      .catch(() => setPartGoodUoMs([]));
   };
 
   const closeLineModal = async () => {
@@ -640,6 +652,7 @@ export default function WorkOrderCardPage() {
           warehouseId: partForm.warehouseId,
           quantity: Number(partForm.quantity),
           price: partForm.price ? Number(partForm.price) : undefined,
+          unitOfMeasureId: partForm.unitOfMeasureId || undefined,
         }),
       });
       setPartModal(false);
@@ -647,8 +660,15 @@ export default function WorkOrderCardPage() {
       // across consecutive part additions. The auto-select useEffect runs
       // only on mount; without this, MECHANIC adding 3-5 parts would have
       // to re-pick the same warehouse every time — defeating the feature.
-      setPartForm(f => ({ goodId: '', warehouseId: f.warehouseId, quantity: '1', price: '' }));
+      setPartForm(f => ({
+        goodId: '',
+        warehouseId: f.warehouseId,
+        quantity: '1',
+        price: '',
+        unitOfMeasureId: '',
+      }));
       setGoodDisplayName('');
+      setPartGoodUoMs([]);
       partDirty.resetDirty();
       if (features.toastEnabled) toast.success('Запчастину додано');
       load();
@@ -1676,6 +1696,32 @@ export default function WorkOrderCardPage() {
               </p>
             )}
           </div>
+          {partGoodUoMs.length > 0 && (
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">
+                Одиниця виміру
+              </label>
+              <Select
+                value={partForm.unitOfMeasureId}
+                onChange={e => {
+                  setPartForm(f => ({ ...f, unitOfMeasureId: e.target.value }));
+                  partDirty.markDirty();
+                }}
+              >
+                <option value="">— Базова —</option>
+                {partGoodUoMs.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.unitShortName}
+                    {u.coefficient !== 1 ? ` (коеф. ${u.coefficient})` : ''}
+                    {u.isDefault ? ' ★' : ''}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Кількість вводиться в обраній одиниці. Для складу перераховується автоматично.
+              </p>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">

@@ -279,6 +279,12 @@ export class CreateWorkOrderPartDto {
   warehouseId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
+  @ApiPropertyOptional({
+    description: 'ID одиниці виміру з GoodUoM. Якщо не передано — базова одиниця товару.',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  unitOfMeasureId?: string;
 }
 
 export class UpdateWorkOrderPartDto extends PartialType(CreateWorkOrderPartDto) {}
@@ -288,6 +294,7 @@ export class WorkOrderPartResponseDto {
   @ApiProperty() workOrderId!: string;
   @ApiProperty() goodId!: string;
   @ApiPropertyOptional() goodName?: string;
+  @ApiPropertyOptional() unitOfMeasureId?: string | null;
   @ApiPropertyOptional() unitShortName?: string;
   @ApiPropertyOptional() coefficient?: number;
   @ApiProperty() warehouseId!: string;
