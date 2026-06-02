@@ -9,19 +9,21 @@
 ## Останній commit
 
 ```
+82dda25 fix(review): system unit guard + a11y on filter pills
+b675317 feat(catalog): soft delete and restore for units of measure
+c6d89fc feat(catalog): multi-UoM selection in work order parts and invoice lines
+63c9b24 feat(catalog): add coefficient and dimensions to UoM add form
+ce69fc3 feat(catalog): per-good coefficient and dimensions in GoodUoM
+78a4ab1 feat(catalog): inline edit for units of measure in list
 4ed3372 fix(review): dedupe PICK_MINUTES, drop dead PICK_HOURS export
 9a3b54b perf(web): remove unused deps + dead code (depcheck/knip cleanup)
-722eafd fix(web): remove duplicate pages after route groups refactor
-a3a8c62 perf(web): route groups — isolate TopShell/AuthProvider from auth pages
-286c3fd docs(skills): add bundle-size patterns to sto-optimize
-c236c21 perf(web): lazy dynamic imports — reduce bundle size
-6729fa1 perf(dashboard): replace SSE with React Query polling
-19ced3c perf(auth): optimistic auth init — eliminate 300-800ms loading spinner
 ```
 
-Дата: 2026-06-01
+Дата: 2026-06-02
 
-Latest review: 2026-06-01 (sto-review-agent, HEAD 4ed3372) — **route groups + bundle opt + deps cleanup review: 1 issue знайдено (duplicate PICK_MINUTES + dead PICK_HOURS export у calendar), виправлено, tsc 0 errors**
+TypeScript: ✅ 0 errors (api, web)
+
+Latest review: 2026-06-02 (sto-review-agent, HEAD 82dda25 ← b675317) — **soft-delete/restore for units of measure: 2 IMPORTANT (backend remove() пропускав isSystem units; filter pills без type=button + aria-pressed) + 1 SUGGESTION (opacity-50 ховала restore button) — всі виправлено, tsc 0 errors.**
 
 Latest tester: 2026-06-01 (sto-tester-agent FULL, HEAD 539871c → +4 bugs) — **route groups regression: 1 CRITICAL stale `.next/` cache (webpack chunks 500 → auth-guard E2E fail), 2 CRITICAL/HIGH `apiFetch` у публічних сторінках (`/setup`, `/`) — додано централізований `publicFetch` у `api-client.ts`, замінено виклики; 1 LOW `new Date()` у render path у reports. Всі 4 виправлено. E2E smoke 8/8 пройшли, full E2E 160 passed / 2 flaky / 5 skipped.**
 
