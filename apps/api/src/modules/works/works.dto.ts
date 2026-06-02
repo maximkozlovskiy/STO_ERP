@@ -2,6 +2,7 @@ import {
   IsString,
   IsNotEmpty,
   IsNumber,
+  IsArray,
   Matches,
   Min,
   Max,
@@ -44,6 +45,14 @@ export class WorkQueryDto {
   @Transform(emptyToUndefined)
   @Matches(UUID_RE, { message: 'categoryId must be a UUID' })
   categoryId?: string;
+
+  // Масив ID категорій (батько + всі нащадки) — для фільтрації по піддереву
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @Matches(UUID_RE, { each: true })
+  @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
+  categoryIds?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()

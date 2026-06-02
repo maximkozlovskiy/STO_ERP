@@ -7,7 +7,11 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, BookOpen, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { CategoryTree, type CategoryNode } from '@/components/ui/category-tree';
+import {
+  CategoryTree,
+  collectDescendantIds,
+  type CategoryNode,
+} from '@/components/ui/category-tree';
 import { CategoryManagerModal } from '@/components/ui/category-manager-modal';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -98,10 +102,15 @@ export default function WorksTab() {
   const [page, setPage] = useState(1);
   const [showDeleted, setShowDeleted] = useState(false);
 
+  const categoryIds = useMemo(
+    () => (selectedCat ? collectDescendantIds(categories, selectedCat) : undefined),
+    [selectedCat, categories],
+  );
+
   const { data: works, isLoading: loading } = useWorks({
     page,
     limit: 30,
-    categoryId: selectedCat ?? undefined,
+    categoryIds: categoryIds ?? undefined,
     q: debouncedQ || undefined,
     showDeleted,
   });

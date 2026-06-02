@@ -18,6 +18,7 @@ export interface WorksFilter {
   page?: number;
   limit?: number;
   categoryId?: string;
+  categoryIds?: string[];
   q?: string;
   showDeleted?: boolean;
 }
@@ -41,7 +42,9 @@ export function useWorks(filters: WorksFilter = {}) {
     page: String(filters.page ?? 1),
     limit: String(filters.limit ?? 50),
   });
-  if (filters.categoryId) params.set('categoryId', filters.categoryId);
+  if (filters.categoryIds?.length)
+    filters.categoryIds.forEach(id => params.append('categoryIds', id));
+  else if (filters.categoryId) params.set('categoryId', filters.categoryId);
   if (filters.q) params.set('q', filters.q);
   if (filters.showDeleted) params.set('showDeleted', 'true');
 

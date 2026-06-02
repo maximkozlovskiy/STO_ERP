@@ -2,6 +2,8 @@ import {
   IsString,
   IsNotEmpty,
   IsNumber,
+  IsArray,
+  Matches,
   Min,
   Max,
   IsOptional,
@@ -65,11 +67,20 @@ export class CreateGoodDto {
 
 export class UpdateGoodDto extends PartialType(CreateGoodDto) {}
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export class GoodQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() category?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() goodCategoryId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @Matches(UUID_RE, { each: true })
+  @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
+  goodCategoryIds?: string[];
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

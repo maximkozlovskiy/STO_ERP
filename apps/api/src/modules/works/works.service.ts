@@ -18,7 +18,8 @@ export class WorksService {
       orgId,
       ...(query.showDeleted ? {} : { deletedAt: null }),
     };
-    if (query.categoryId) where.categoryId = query.categoryId;
+    if (query.categoryIds?.length) where.categoryId = { in: query.categoryIds };
+    else if (query.categoryId) where.categoryId = query.categoryId;
     if (query.q) where.name = { contains: query.q, mode: 'insensitive' };
 
     const skip = (query.page - 1) * query.limit;

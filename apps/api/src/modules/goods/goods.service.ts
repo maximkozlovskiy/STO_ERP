@@ -38,7 +38,8 @@ export class GoodsService {
       ];
     }
     if (query.category) where.category = { contains: query.category, mode: 'insensitive' };
-    if (query.goodCategoryId) where.goodCategoryId = query.goodCategoryId;
+    if (query.goodCategoryIds?.length) where.goodCategoryId = { in: query.goodCategoryIds };
+    else if (query.goodCategoryId) where.goodCategoryId = query.goodCategoryId;
 
     const skip = (query.page - 1) * query.limit;
     const supplierSelect = {

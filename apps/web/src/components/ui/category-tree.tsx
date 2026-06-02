@@ -122,6 +122,29 @@ function TreeNode({
   );
 }
 
+// ─── Helper: всі ID вузла + нащадків (для фільтрації по піддереву) ────────────
+
+export function collectDescendantIds(tree: CategoryNode[], id: string): string[] {
+  const ids: string[] = [];
+  function walk(nodes: CategoryNode[]) {
+    for (const n of nodes) {
+      if (n.id === id) {
+        // знайшли — збираємо цей вузол і всіх нащадків
+        function collect(node: CategoryNode) {
+          ids.push(node.id);
+          for (const c of node.children) collect(c);
+        }
+        collect(n);
+        return true;
+      }
+      if (walk(n.children)) return true;
+    }
+    return false;
+  }
+  walk(tree);
+  return ids;
+}
+
 // ─── CategoryTree ─────────────────────────────────────────────────────────────
 
 export function CategoryTree({

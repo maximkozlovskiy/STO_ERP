@@ -19,7 +19,11 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { CategoryTree, type CategoryNode } from '@/components/ui/category-tree';
+import {
+  CategoryTree,
+  collectDescendantIds,
+  type CategoryNode,
+} from '@/components/ui/category-tree';
 import { CategoryManagerModal } from '@/components/ui/category-manager-modal';
 import { Button } from '@/components/ui/button';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
@@ -477,13 +481,19 @@ export default function GoodsTab() {
   }, []);
 
   // Bug #307: race-guard для swift showDeleted/q/page toggles — outdated response відкидається.
+  const goodCategoryIds = useMemo(
+    () => (selectedGoodCat ? collectDescendantIds(goodCatTree, selectedGoodCat) : undefined),
+    [selectedGoodCat, goodCatTree],
+  );
+
   const loadReqRef = useRef(0);
   const load = useCallback(() => {
     setLoading(true);
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (debouncedQ) p.set('q', debouncedQ);
     if (showDeleted) p.set('showDeleted', 'true');
-    if (selectedGoodCat) p.set('goodCategoryId', selectedGoodCat);
+    if (goodCategoryIds?.length) goodCategoryIds.forEach(id => p.append('goodCategoryIds', id));
+    else if (selectedGoodCat) p.set('goodCategoryId', selectedGoodCat);
     const reqId = ++loadReqRef.current;
     apiFetch<PaginatedGoods>(`/goods?${p}`)
       .then(r => {
@@ -497,7 +507,7 @@ export default function GoodsTab() {
       .finally(() => {
         if (loadReqRef.current === reqId) setLoading(false);
       });
-  }, [page, debouncedQ, showDeleted, selectedGoodCat]);
+  }, [page, debouncedQ, showDeleted, selectedGoodCat, goodCategoryIds]);
 
   // Keep ref in sync so goodsActions can call load() without depending on it
   useEffect(() => {
