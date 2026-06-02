@@ -27,6 +27,8 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { DetailPanel } from '@/components/ui/detail-panel';
+import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
+import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { InlineEditCell, InlineViewCell } from '@/components/ui/inline-edit-cell';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
@@ -175,6 +177,7 @@ export default function WorkOrdersPage() {
   const [myOrders, setMyOrders] = useState(false);
   const myOrdersInitRef = useRef(false);
   const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
+  const detailPanel = useDetailPanel('work-orders');
 
   // Auto-activate "my orders" chip once for MECHANIC role (run only once after employee loads).
   // Must be declared AFTER the `myOrdersInitRef` and `setMyOrders` it references, otherwise TDZ
@@ -634,6 +637,7 @@ export default function WorkOrdersPage() {
               Object.keys(customLabels).length > 0
             }
           />
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
         </div>
       </div>
 
@@ -718,9 +722,12 @@ export default function WorkOrdersPage() {
                 orders.map((wo: WorkOrder) => (
                   <TableRow
                     key={wo.id}
-                    onClick={() => setSelectedWO(wo)}
+                    onClick={() =>
+                      detailPanel.enabled && setSelectedWO(prev => (prev?.id === wo.id ? null : wo))
+                    }
                     className={cn(
-                      selectedWO?.id === wo.id && 'bg-primary/5',
+                      detailPanel.enabled && 'cursor-pointer',
+                      selectedWO?.id === wo.id && detailPanel.enabled && 'bg-primary/5',
                       bulkSelect.isSelected(wo.id) && 'bg-primary/5',
                     )}
                   >
@@ -897,7 +904,7 @@ export default function WorkOrdersPage() {
         </div>
 
         <DetailPanel
-          open={!!selectedWO}
+          open={!!selectedWO && detailPanel.enabled}
           onClose={() => setSelectedWO(null)}
           title={selectedWO?.number ?? ''}
         >
