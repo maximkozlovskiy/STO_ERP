@@ -360,7 +360,7 @@ export default function UnitsTab() {
               setModal(true);
             }}
           >
-            Одиниця
+            + Одиниця
           </Button>
         </div>
       </div>

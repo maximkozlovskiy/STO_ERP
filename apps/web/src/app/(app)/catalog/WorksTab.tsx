@@ -477,25 +477,25 @@ export default function WorksTab() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button
+            leftIcon={<Plus className="h-4 w-4" />}
+            onClick={() => {
+              setForm({
+                categoryId: flat[0]?.id ?? '',
+                name: '',
+                normoHours: '',
+                price: '',
+                description: '',
+                isWarranty: false,
+              });
+              worksFormDirty.resetDirty();
+              setError('');
+              setModal(true);
+            }}
+          >
+            + Робота
+          </Button>
         </div>
-        <Button
-          leftIcon={<Plus className="h-4 w-4" />}
-          onClick={() => {
-            setForm({
-              categoryId: flat[0]?.id ?? '',
-              name: '',
-              normoHours: '',
-              price: '',
-              description: '',
-              isWarranty: false,
-            });
-            worksFormDirty.resetDirty();
-            setError('');
-            setModal(true);
-          }}
-        >
-          Робота
-        </Button>
       </div>
 
       {features.bulkActionsEnabled && (

@@ -525,9 +525,6 @@ export default function StockDocumentsPage() {
           <h1 className="page-title">Складські документи</h1>
           <p className="page-subtitle">{total} документів</p>
         </div>
-        <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-          Новий документ
-        </Button>
       </div>
 
       {/* Saved filters */}
@@ -623,6 +620,9 @@ export default function StockDocumentsPage() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
+            + Документ
+          </Button>
         </div>
       </div>
 

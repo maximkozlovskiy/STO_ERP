@@ -503,15 +503,6 @@ export default function WorkOrdersPage() {
           <h1 className="page-title">Наряди</h1>
           <p className="page-subtitle">{`${total} записів`}</p>
         </div>
-        <Button
-          onClick={() => {
-            setError('');
-            setModal(true);
-          }}
-          leftIcon={<Plus />}
-        >
-          Новий наряд
-        </Button>
       </div>
 
       {!modal && (error || queryError) && (
@@ -638,6 +629,15 @@ export default function WorkOrdersPage() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button
+            onClick={() => {
+              setError('');
+              setModal(true);
+            }}
+            leftIcon={<Plus className="h-4 w-4" />}
+          >
+            + Наряд
+          </Button>
         </div>
       </div>
 

@@ -611,9 +611,6 @@ export default function PurchaseOrdersPage() {
           <h1 className="page-title">Замовлення постачальникам</h1>
           <p className="page-subtitle">{total} замовлень</p>
         </div>
-        <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-          Нове замовлення
-        </Button>
       </div>
 
       {/* Saved filters */}
@@ -674,6 +671,9 @@ export default function PurchaseOrdersPage() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
+            + Замовлення
+          </Button>
         </div>
       </div>
 

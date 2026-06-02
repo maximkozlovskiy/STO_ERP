@@ -787,9 +787,6 @@ export default function EmployeesPage() {
           <h1 className="page-title">Співробітники</h1>
           <p className="page-subtitle">{employees.length} записів</p>
         </div>
-        <Button onClick={openCreate} leftIcon={<Plus />}>
-          Додати
-        </Button>
       </div>
 
       {!modal && error && (
@@ -864,6 +861,9 @@ export default function EmployeesPage() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button onClick={openCreate} leftIcon={<Plus className="h-4 w-4" />}>
+            + Співробітник
+          </Button>
         </div>
       </div>
 

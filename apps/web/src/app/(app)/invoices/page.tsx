@@ -566,9 +566,6 @@ export default function InvoicesPage() {
           <h1 className="page-title">Рахунки</h1>
           <p className="page-subtitle">{total} рахунків</p>
         </div>
-        <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-          Новий рахунок
-        </Button>
       </div>
 
       {/* Saved filters */}
@@ -636,6 +633,9 @@ export default function InvoicesPage() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
+            + Рахунок
+          </Button>
         </div>
       </div>
 

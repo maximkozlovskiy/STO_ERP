@@ -397,10 +397,10 @@ export default function ServicesTab() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
+            + Послуга
+          </Button>
         </div>
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-          Послуга
-        </Button>
       </div>
 
       {features.bulkActionsEnabled && (

@@ -929,17 +929,17 @@ export default function GoodsTab() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button
+            leftIcon={<Plus className="h-4 w-4" />}
+            onClick={() => {
+              goodsFormDirty.resetDirty();
+              setError('');
+              setModal(true);
+            }}
+          >
+            + Товар
+          </Button>
         </div>
-        <Button
-          leftIcon={<Plus className="h-4 w-4" />}
-          onClick={() => {
-            goodsFormDirty.resetDirty();
-            setError('');
-            setModal(true);
-          }}
-        >
-          Товар
-        </Button>
       </div>
 
       {features.bulkActionsEnabled && (

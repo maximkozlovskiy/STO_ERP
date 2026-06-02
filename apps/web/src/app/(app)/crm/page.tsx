@@ -640,29 +640,6 @@ export default function CrmPage() {
           <h1 className="page-title">Контрагенти</h1>
           <p className="page-subtitle">{`${total} записів`}</p>
         </div>
-        <Button
-          leftIcon={<Plus />}
-          onClick={() => {
-            setEditingCp(null);
-            setForm({
-              type: 'CLIENT',
-              firstName: '',
-              lastName: '',
-              companyName: '',
-              phone: '',
-              email: '',
-              edrpou: '',
-              vatPayer: false,
-              notes: '',
-              contactPerson: '',
-            });
-            dirty.resetDirty();
-            setError('');
-            setModal(true);
-          }}
-        >
-          Додати
-        </Button>
       </div>
 
       {!modal && (error || queryError) && (
@@ -740,6 +717,29 @@ export default function CrmPage() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          <Button
+            leftIcon={<Plus className="h-4 w-4" />}
+            onClick={() => {
+              setEditingCp(null);
+              setForm({
+                type: 'CLIENT',
+                firstName: '',
+                lastName: '',
+                companyName: '',
+                phone: '',
+                email: '',
+                edrpou: '',
+                vatPayer: false,
+                notes: '',
+                contactPerson: '',
+              });
+              dirty.resetDirty();
+              setError('');
+              setModal(true);
+            }}
+          >
+            + Контрагент
+          </Button>
         </div>
       </div>
 
