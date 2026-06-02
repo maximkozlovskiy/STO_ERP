@@ -122,6 +122,25 @@ apps/api/src/modules/{domain}/
   {domain}.spec.ts        ← unit tests
 ```
 
+### Fastify route ordering — специфічні роути ПЕРЕД параметричними
+
+```typescript
+// ❌ :id матчить "toggle-active" як параметр → Cannot PATCH /resource/:id/toggle-active
+@Patch(':id')          update(...)    // захоплює "uuid/toggle-active" цілком
+@Patch(':id/toggle-active')  toggle(...)
+
+// ✅ Специфічний суброут ПЕРЕД загальним :id
+@Patch(':id/toggle-active')  toggle(...)   // ← ПЕРШИЙ
+@Get(':id/linked-something')  getLinks(...)  // ← ПЕРШИЙ
+@Get(':id')           findOne(...)    // ← після всіх sub-routes
+@Patch(':id')         update(...)     // ← після всіх sub-routes
+@Delete(':id')        remove(...)     // ← після всіх sub-routes
+```
+
+> **Правило:** у Fastify (на відміну від Express) роути матчаться в порядку оголошення.
+> `:id` — жадібний параметр, він захоплює `uuid/toggle-active` якщо оголошений першим.
+> Завжди: `GET/PATCH :id/action` → вище за `GET/PATCH :id` у контролері.
+
 ### Controller — тільки HTTP шар
 
 ```typescript
@@ -1561,6 +1580,116 @@ const closePanel = () => {
 ```
 
 > Реальний приклад: `apps/web/src/app/calendar/page.tsx` — форма слоту (showAdd → formMounted/formVisible).
+
+---
+
+## §15 Schema-driven UI (metadata-driven rendering)
+
+> **Правило:** Будь-який список полів для відображення в UI **ніколи не хардкодиться** в page.tsx.  
+> Поля описуються один раз у схемі поряд з TypeScript типом — і рендеряться автоматично.
+
+### Коли застосовувати
+
+| Сценарій                              | Рішення                                            |
+| ------------------------------------- | -------------------------------------------------- |
+| Detail Panel з 3+ полями              | `PanelFieldDef<T>[]` + `buildPanelFields()`        |
+| Конфігурований список реквізитів      | schema + `useDetailPanelConfig`                    |
+| Нова сторінка з інформаційною панеллю | Схема в `lib/panel-schema.ts`, НЕ масив у page.tsx |
+
+### Структура
+
+**`apps/web/src/lib/panel-schema.ts`** — єдине місце правди для всіх схем.
+
+```typescript
+// 1. Схема — satisfies гарантує що key існує в типі T
+export const INVOICE_PANEL_SCHEMA = [
+  { key: 'status',          label: 'Статус',       always: true }, // always=true — не ховати
+  { key: 'counterpartyName',label: 'Контрагент' },
+  { key: 'amount',          label: 'Сума',          type: 'money' }, // auto fmtMoney()
+  { key: 'dueDate',         label: 'Термін оплати', type: 'date' },  // auto fmtDate()
+  { key: 'notes',           label: 'Нотатки' },
+] as const satisfies readonly PanelFieldDef<Invoice>[];
+
+// 2. Рендеринг у page.tsx — замість N окремих <PanelField>
+{buildPanelFields(inv, INVOICE_PANEL_SCHEMA, panelConfig.config, {
+  // renderOverrides — тільки для полів що потребують Badge/кольорів
+  status: v => <Badge variant={STATUS_BADGE[String(v)]}>{STATUS_LABELS[String(v)]}</Badge>,
+}).map(f => (
+  <PanelField key={f.key} fieldKey={f.key} label={f.label} value={f.value} hidden={f.hidden} />
+))}
+
+// 3. configFields у <DetailPanel> — через schemaToPanelConfigFields
+<DetailPanel
+  configFields={schemaToPanelConfigFields(INVOICE_PANEL_SCHEMA, panelConfig.config)}
+  onToggleField={panelConfig.toggleField}
+  onReorderFields={panelConfig.reorderFields}
+  onReset={panelConfig.reset}
+/>
+```
+
+### Типи полів (type)
+
+| type             | Форматування                            |
+| ---------------- | --------------------------------------- |
+| `text` (default) | `String(value)`                         |
+| `money`          | `fmtMoney(value) + ' ₴'`                |
+| `date`           | `fmtDate(value)`                        |
+| `datetime`       | `fmtDateTime(value)`                    |
+| `number`         | `String(value)`                         |
+| `node`           | власний `render()` або `renderOverride` |
+
+### renderOverrides vs render у схемі
+
+- **`renderOverrides`** (передається в `buildPanelFields`) — для per-сторінкової кастомізації (Badge, кольори що залежать від локальних констант)
+- **`render` у схемі** — для кастомізації що не залежить від page-контексту (уникай, бо schema.ts не має доступу до React компонентів)
+
+### useDetailPanelConfig — що повертає
+
+```typescript
+const panelConfig = useDetailPanelConfig('invoices-panel'); // ключ унікальний per-сторінка
+
+panelConfig.config; // { hiddenFields: string[], fieldOrder: string[] }
+panelConfig.isFieldHidden; // (key) => boolean — для прямих перевірок
+panelConfig.toggleField; // (key) => void
+panelConfig.reorderFields; // (newOrder: string[]) => void
+panelConfig.reset; // () => void
+```
+
+Стан зберігається в `localStorage` + синхронізується з API `/user-preferences/{pageKey}`.
+
+### Як додати нове поле в майбутньому
+
+Тільки в `lib/panel-schema.ts` — додати рядок у відповідну схему:
+
+```typescript
+{ key: 'newField', label: 'Нова назва', type: 'text' }
+```
+
+Поле автоматично з'являється в панелі, доступне для toggle/reorder — **жодних змін у page.tsx**.
+
+### ❌ Заборонено
+
+```typescript
+// ❌ Хардкод масиву полів у page.tsx
+const MY_PANEL_FIELDS = [
+  { key: 'status', label: 'Статус' },
+  { key: 'amount', label: 'Сума' },
+] as const;
+
+// ❌ Вручну перебирати поля без buildPanelFields
+<PanelField hidden={panelConfig.isFieldHidden('status')} fieldKey="status" label="Статус" value={...} />
+<PanelField hidden={panelConfig.isFieldHidden('amount')} fieldKey="amount" label="Сума" value={...} />
+// (якщо полів 5+ — це вже порушення)
+```
+
+### ✅ Правильно
+
+```typescript
+// ✅ Схема в lib/panel-schema.ts, рендер через buildPanelFields
+{buildPanelFields(record, MY_SCHEMA, panelConfig.config).map(f => (
+  <PanelField key={f.key} fieldKey={f.key} label={f.label} value={f.value} hidden={f.hidden} />
+))}
+```
 
 ---
 
