@@ -224,7 +224,11 @@ function SettingsPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = (searchParams.get('tab') ?? 'org') as Tab;
-  const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
+  const setTab = (t: Tab) => {
+    setMsg('');
+    setError('');
+    router.replace(`?tab=${t}`, { scroll: false });
+  };
 
   const { confirm, dialogProps } = useConfirm();
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
