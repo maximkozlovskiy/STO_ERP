@@ -85,7 +85,7 @@ export function DetailPanel({
               type="button"
               onClick={() => setShowConfig(s => !s)}
               className={cn(
-                'flex h-7 w-7 items-center justify-center rounded-md transition-colors',
+                'flex h-5 w-5 items-center justify-center rounded transition-colors',
                 showConfig
                   ? 'text-primary bg-secondary'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary',
@@ -98,7 +98,7 @@ export function DetailPanel({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
             title="Закрити"
           >
             <X className="h-4 w-4" />
