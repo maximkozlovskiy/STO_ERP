@@ -9,7 +9,9 @@
 ## Останній commit
 
 ```
-<tester +#312-#315>
+5ad9f1b docs(skills): add soft-delete updateMany with isSystem guard + speculative duplicate-check patterns to sto-optimize
+a838718 perf(optimize): updateMany soft-delete + speculative duplicate-check + AbortController in WorksTab
+fbf04a1 fix(tester): Bugs #312-#315 — coefficient=0 guards, useConfirm bulk-actions, type=button, AbortController
 6417cf9 docs(skills): add grep for hover-only buttons missing focus-visible to sto-review
 c606952 docs(memory): record review of commit a45c04f (focus-visible sweep)
 a45c04f fix(review): add focus-visible:opacity-100 to remaining hover-only buttons
@@ -17,14 +19,13 @@ a45c04f fix(review): add focus-visible:opacity-100 to remaining hover-only butto
 203786d fix(crm,employees): hover-only edit/delete buttons + fix notes/contactPerson init in edit form
 7cab569 fix(review): gate employees DetailPanel on toggle + cleanup unused imports
 c3cd333 fix(ui): remove flex gap-3 from table+panel containers; drop + prefix from add buttons
-3785721 fix(ui): move add-button to toolbar end, rename to '+ [Object]'
-3008d7c fix(work-orders): remove gap from table+panel container
-10aa96e feat(work-orders): add DetailPanelToggle to toolbar
 ```
 
 Дата: 2026-06-02
 
 TypeScript: ✅ 0 errors (api, web)
+
+Latest optimize: 2026-06-02 (sto-optimize-agent AUTO, HEAD a838718 → +5 perf fixes + 2 нові SKILL accumulated patterns) — **backend N+1 → 1-RTT pattern для CRUD soft-delete з business-rule guard: goods.remove/brands.remove/units.remove переписано на updateMany з compound where {id, orgId, deletedAt: null}; units.remove має `isSystem: false` у WHERE з cheap fallback findFirst для конкретного UA message (404 vs 400 isSystem); units.update — speculative duplicate-check у Promise.all з tenant guard (queries у Postgres швидкі бо @@unique index hit; -1 RTT у 95% happy path); maintenance-schedules.update — narrow select на existing (drop syncVersion/vehicle/orgId/etc over-fetch). Frontend: WorksTab work-categories useEffect отримав AbortController (Bug #315 pattern) — попереджає setState після unmount. Накопичено 2 нові SKILL патерни (soft-delete з isSystem guard, speculative duplicate-check з business-rule).**
 
 Latest tester: 2026-06-02 (sto-tester-agent AUTO, HEAD 6417cf9 → +4 bugs Bugs #312-#315) — **catalog tabs + saved-filters-bar + bulk-actions audit after a45c04f focus-visible sweep: 1 HIGH (#312 `GoodsTab.addUoM`/`saveUoMEdit` приймає coefficient=0 → divide-by-zero у `qty_base = qty / coefficient` — повторення Bug #302 для нової моделі GoodUoM: backend DTO `CreateGoodUoMDto`/`UpdateGoodUoMDto` мав `@Min(0)` замість `@Min(0.000001)`; додано frontend guard `Number > 0` + backend `@Min(0.000001)`), 1 MEDIUM (#313 bulk-delete у WorksTab/ServicesTab/GoodsTab використовував `window.confirm` замість `useConfirm` хука — нативний блокуючий діалог без проєктних кольорів; замінено на async `confirm({ title, variant: 'destructive' })`), 2 LOW (#314 `SavedFiltersBar` 5 кнопок без `type="button"` → ризик form submission при майбутній вбудові у `<form>`, парний `SaveFilterButton` уже мав; #315 `GoodsTab` reference data `Promise.all` без AbortController → setState після unmount → React DEV warning). Всі 4 виправлено. API 525/525, web 218/218, tsc 0 errors api+web. SKILL.md: додано 4 нових підходи (coefficient-zero replicated bug, window.confirm vs useConfirm consistency, type="button" defensive a11y, Promise.all + AbortController у useEffect).**
 
