@@ -40,14 +40,16 @@ export class StockDocumentsController {
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'type', required: false, enum: ['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'] })
   @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'CONFIRMED', 'CANCELLED'] })
+  @ApiQuery({ name: 'showDeleted', required: false })
   findAll(
     @OrgContext() orgId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('type') type?: string,
     @Query('status') status?: string,
+    @Query('showDeleted') showDeleted?: string,
   ) {
-    return this.service.findAll(orgId, +page, +limit, type, status);
+    return this.service.findAll(orgId, +page, +limit, type, status, showDeleted === 'true');
   }
 
   @Get(':id')

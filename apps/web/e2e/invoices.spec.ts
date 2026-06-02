@@ -839,7 +839,8 @@ test.describe('Рахунки — bulk cancel', () => {
 
     // BulkActionsBar має з'явитись
     const bulkBar = page
-      .locator('[data-testid="bulk-actions-bar"], .bulk-actions, text=вибрано')
+      .locator('[data-testid="bulk-actions-bar"], .bulk-actions')
+      .or(page.getByText(/Обрано:/i))
       .first();
     await expect(bulkBar).toBeVisible({ timeout: 5_000 });
 

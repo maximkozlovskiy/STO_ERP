@@ -39,8 +39,12 @@ export class StockDocumentsService {
     limit = 20,
     type?: string,
     status?: string,
+    showDeleted = false,
   ): Promise<PaginatedStockDocumentsDto> {
-    const where: Prisma.StockDocumentWhereInput = { orgId, deletedAt: null };
+    const where: Prisma.StockDocumentWhereInput = {
+      orgId,
+      deletedAt: showDeleted ? undefined : null,
+    };
     if (type) where.type = type as StockDocumentType;
     if (status) where.status = status as DocStatus;
 
