@@ -43,13 +43,17 @@ export class InvoicesController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'showDeleted', required: false })
   findAll(
     @OrgContext() orgId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('status') status?: string,
+    @Query('q') q?: string,
+    @Query('showDeleted') showDeleted?: string,
   ) {
-    return this.service.findAll(orgId, +page, +limit, status);
+    return this.service.findAll(orgId, +page, +limit, status, q, showDeleted === 'true');
   }
 
   @Get(':id')

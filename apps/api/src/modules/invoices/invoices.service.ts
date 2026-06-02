@@ -48,9 +48,29 @@ export class InvoicesService {
     page = 1,
     limit = 20,
     status?: string,
+    q?: string,
+    showDeleted = false,
   ): Promise<PaginatedInvoicesDto> {
-    const where: Prisma.InvoiceWhereInput = { orgId, deletedAt: null };
+    const where: Prisma.InvoiceWhereInput = {
+      orgId,
+      deletedAt: showDeleted ? undefined : null,
+    };
     if (status) where.status = status as InvStatus;
+    if (q) {
+      const like = q.trim();
+      where.OR = [
+        { number: { contains: like, mode: 'insensitive' } },
+        {
+          counterparty: {
+            OR: [
+              { firstName: { contains: like, mode: 'insensitive' } },
+              { lastName: { contains: like, mode: 'insensitive' } },
+              { companyName: { contains: like, mode: 'insensitive' } },
+            ],
+          },
+        },
+      ];
+    }
 
     const skip = (page - 1) * limit;
     const [items, total] = await this.prisma.$transaction([
