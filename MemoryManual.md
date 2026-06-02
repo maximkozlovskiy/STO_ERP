@@ -9,18 +9,15 @@
 ## Останній commit
 
 ```
-<NEW>  test(e2e): refresh locators after add-button rename + hide TanStack Devtools in tests
+50fb2d8 test(e2e): add stock-documents spec (23 tests) + fix showDeleted + bulk locator
+17e5e36 test(e2e): add invoices spec (23 tests) + fix invoices search/showDeleted
+2d3eabd fix(tester): Bugs #316-#317 — safeCoeff for DB zero division, button type=button calendar
 2c7c563 docs(memory): record sto-optimize cycle of 2026-06-02 (HEAD a838718 + 5ad9f1b)
-5ad9f1b docs(skills): add soft-delete updateMany with isSystem guard + speculative duplicate-check patterns to sto-optimize
+5ad9f1b docs(skills): add soft-delete updateMany with isSystem guard + speculative duplicate-check patterns
 a838718 perf(optimize): updateMany soft-delete + speculative duplicate-check + AbortController in WorksTab
 fbf04a1 fix(tester): Bugs #312-#315 — coefficient=0 guards, useConfirm bulk-actions, type=button, AbortController
-6417cf9 docs(skills): add grep for hover-only buttons missing focus-visible to sto-review
-c606952 docs(memory): record review of commit a45c04f (focus-visible sweep)
 a45c04f fix(review): add focus-visible:opacity-100 to remaining hover-only buttons
 12d6681 fix(review): add focus-visible:opacity-100 to hover-only edit/delete buttons
-203786d fix(crm,employees): hover-only edit/delete buttons + fix notes/contactPerson init in edit form
-7cab569 fix(review): gate employees DetailPanel on toggle + cleanup unused imports
-c3cd333 fix(ui): remove flex gap-3 from table+panel containers; drop + prefix from add buttons
 ```
 
 Дата: 2026-06-02
@@ -30,6 +27,8 @@ TypeScript: ✅ 0 errors (api, web)
 Latest E2E: 2026-06-02 (sto-e2e-agent, HEAD 2c7c563 → 17 failed + 3 flaky → 162 passed / 5 skipped / 0 failed) — **add-button rename regression in test suite: 11 specs still expected old button labels (`Новий наряд`/`Нове замовлення`/`Новий рахунок`/`Новий документ`/`Додати`/`Деталі`) that were renamed in commits `3785721` ("rename add-button to '+ [Object]'") і `c3cd333` ("drop + prefix") і `a5cf804` (table row "Деталі" → hover icon Pencil with `title="Відкрити деталі"`). Updated locators to new single-noun convention (`Наряд`/`Замовлення`/`Рахунок`/`Документ`/`Контрагент`/`Співробітник`) with `getByRole('button', { name: /^X$/ })` to avoid matching page header `Наряди`/`Контрагенти`. Updated `purchase-orders-receive.spec.ts` to use `row.hover() → button[title="Відкрити деталі"]`. Fixed catalog goods CRUD test: `create()` intentionally reopens modal in EDIT mode after save (calls `openEditGood(newGood)` to allow immediate barcode/UoM editing) — test now expects title transition `Новий товар → Редагування товару` and presses Escape with dirty-guard handling. Fixed `crud-infrastructure` flaky modal title check: wait for `h2:has-text(tabName)` before clicking `Додати` (guarantees Section mount). **NEW root-cause fix:** TanStack Query Devtools FAB at bottom-left was intercepting pointer events for hover-only icon buttons (`Trash2`, `Pencil`) in the last column of tables when Playwright scrolls a row into view at the bottom of the viewport — QueryProvider now reads `localStorage.sto_e2e_disable_devtools` to skip rendering devtools entirely; `setup-auth.ts` writes this flag into storageState so all auth'd specs inherit it.**
 
 Latest tester: 2026-06-02 (sto-tester-agent FULL, HEAD fbf04a1 → +2 bugs Bugs #316-#317) — **post-coefficient-guard defense-in-depth audit: 1 MEDIUM (#316 — `fetchPartCoefficients`/`toPartDto`/`toInvoiceLineDto` використовували `coefficient ?? 1` де nullish coalescing НЕ ловить 0 з legacy DB → `quantity / 0 = Infinity` у RESERVATION/WRITEOFF/RESERVATION_RELEASE; додано `safeCoeff(v)` helper у `work-orders.service.ts` + `invoices.service.ts` що повертає 1 для null/0/NaN/негативних; defense-in-depth до DTO `@Min(0.000001)` бо migration/CSV-import можуть оминути валідацію), 1 LOW (#317 — DraggableSlot/PendingSlotBlock/calView buttons у calendar/page.tsx без `type="button"` → drift із Bug #314 fix). API 525/525, web 218/218, tsc 0 errors api+web. Bug #318 — non-bug (memo deps на confirm правильно покриті через `useCallback` у useConfirm).**
+
+Latest E2E (manual): 2026-06-02 (HEAD 50fb2d8) — **+46 нових E2E тестів для двох раніше незакритих сторінок: `/invoices` (23 тести: навігація, UI форма, Detail Panel+tabs, FSM DRAFT→SENT→CANCELLED, оплата PAID, клонування, search/filter, soft-delete hover, PDF, bulk cancel) + `/stock-documents` (23 тести: навігація, TRANSFER умовне поле, Detail Panel sidebar, Detail Modal FSM кнопки, CONFIRMED/CANCELLED, type-фільтри, позиції у Create формі, soft-delete, toggle title). Виявлено 2 backend баги: Bug #319 (invoices `?q=` і `?showDeleted=` ігноруються), Bug #320 (stock-documents `?showDeleted=` ігнорується) — обидва виправлено в контролерах і сервісах. Gotcha: sessionStorage недоступний до page.goto → завжди навігувати ПЕРШОЮ у helper-функціях. stock-documents FSM кнопки у Detail MODAL (hover → «Відкрити деталі»), не у Detail PANEL sidebar. BulkActionsBar показує «Обрано: N», не «вибрано».**
 
 Latest optimize: 2026-06-02 (sto-optimize-agent AUTO, HEAD a838718 → +5 perf fixes + 2 нові SKILL accumulated patterns) — **backend N+1 → 1-RTT pattern для CRUD soft-delete з business-rule guard: goods.remove/brands.remove/units.remove переписано на updateMany з compound where {id, orgId, deletedAt: null}; units.remove має `isSystem: false` у WHERE з cheap fallback findFirst для конкретного UA message (404 vs 400 isSystem); units.update — speculative duplicate-check у Promise.all з tenant guard (queries у Postgres швидкі бо @@unique index hit; -1 RTT у 95% happy path); maintenance-schedules.update — narrow select на existing (drop syncVersion/vehicle/orgId/etc over-fetch). Frontend: WorksTab work-categories useEffect отримав AbortController (Bug #315 pattern) — попереджає setState після unmount. Накопичено 2 нові SKILL патерни (soft-delete з isSystem guard, speculative duplicate-check з business-rule).**
 
