@@ -25,6 +25,8 @@ export interface CategoryTreeProps {
   label: string;
   /** IDs категорій що підсвічуються як "пов'язані" */
   highlightedIds?: Set<string>;
+  /** Завжди стартувати згорнутим (ігнорує авто-логіку tree.length <= 20) */
+  defaultCollapsed?: boolean;
   className?: string;
 }
 
@@ -154,6 +156,7 @@ export function CategoryTree({
   onManage,
   label,
   highlightedIds,
+  defaultCollapsed = false,
   className,
 }: CategoryTreeProps) {
   // allExpanded: true = всі розгорнуті, false = всі згорнуті, null = початковий стан
@@ -163,8 +166,8 @@ export function CategoryTree({
     setAllExpanded(p => (p === false ? true : false));
   }, []);
 
-  // defaultExpanded для кожного TreeNode — визначається глобальним станом або авто-логікою
-  const nodeDefault = allExpanded !== null ? allExpanded : tree.length <= 20;
+  // defaultExpanded: авто (tree.length <= 20), але якщо defaultCollapsed=true — завжди false
+  const nodeDefault = allExpanded !== null ? allExpanded : !defaultCollapsed && tree.length <= 20;
 
   return (
     <aside

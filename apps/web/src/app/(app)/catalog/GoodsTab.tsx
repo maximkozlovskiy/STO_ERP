@@ -134,7 +134,7 @@ interface StockBatchDto {
   unitShortName: string | null;
 }
 
-type GoodDetailTab = 'info' | 'barcodes' | 'batches';
+type GoodDetailTab = 'info' | 'barcodes';
 
 interface GoodsFilters extends Record<string, unknown> {
   search: string;
@@ -1222,7 +1222,6 @@ export default function GoodsTab() {
                   [
                     { key: 'info' as const, label: 'Інформація', icon: Package },
                     { key: 'barcodes' as const, label: 'Штрихкоди', icon: Barcode },
-                    { key: 'batches' as const, label: 'Партії', icon: Layers },
                   ] as const
                 ).map(({ key, label, icon: Icon }) => (
                   <button
@@ -1300,24 +1299,6 @@ export default function GoodsTab() {
                       <p className="text-foreground italic">{selectedGood.notes}</p>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Batches tab */}
-              {goodDetailTab === 'batches' && (
-                <div className="space-y-3">
-                  <p className="text-[12px] text-muted-foreground">
-                    Партії надходження та цінова історія товару.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    leftIcon={<Layers className="h-3.5 w-3.5" />}
-                    onClick={() => setBatchViewerGoodId(selectedGood.id)}
-                  >
-                    Відкрити Batch Viewer
-                  </Button>
                 </div>
               )}
 
@@ -1404,6 +1385,7 @@ export default function GoodsTab() {
         <CategoryTree
           tree={goodCatTree}
           selectedId={selectedGoodCat}
+          defaultCollapsed
           onSelect={id => {
             setSelectedGoodCat(id);
             setPage(1);
