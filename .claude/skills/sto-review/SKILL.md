@@ -560,13 +560,18 @@ grep -rn "Promise\.all(" apps/web/src/ --include="*.tsx" \
 
 # indeterminate через inline ref (крихко)
 grep -rn "indeterminate" apps/web/src/ --include="*.tsx" | grep -v "useEffect\|useRef\|//"
+
+# Hover-only кнопки без focus-visible/focus → невидимі при Tab-навігації (WCAG 2.1.1)
+# Виключаємо pointer-events-none overlays (декоративні, не інтерактивні)
+grep -rn "group-hover:opacity-100" apps/web/src/ --include="*.tsx" \
+  | grep -v "focus-visible:opacity-100\|focus:opacity-100\|pointer-events-none"
 ```
 
 - [ ] `toast.X(...)` → `if (features.toastEnabled)`; fallback: `setError(msg)`
 - [ ] Bulk-мутації → `Promise.allSettled` + `bulkSelect.clear()` + `load()` у finally
 - [ ] `indeterminate` → `useRef` + `useEffect([dep])`, не inline `ref={el => el.indeterminate = x}`
 - [ ] `useBulkSelect` → items prop оновлюється при `setData`
-- [ ] Кнопка delete → `group-hover:opacity-100` + `focus:opacity-100` (не `self-hover`)
+- [ ] Кнопка delete / hover-only action → `group-hover:opacity-100` **+ `focus-visible:opacity-100`** (або `focus:opacity-100`). Без focus-стану Tab-фокус приховує кнопку → недоступно з клавіатури. Виняток: `pointer-events-none` overlay-індикатори (декоративні, не інтерактивні).
 
 #### §8.6 Модульність UI
 
