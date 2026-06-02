@@ -208,7 +208,7 @@ export function TemplatePickerModal({
                 >
                   {/* Checkbox */}
                   <span
-                    className={`flex-shrink-0 h-4 w-4 rounded border flex items-center justify-center transition-colors ${
+                    className={`shrink-0 h-4 w-4 rounded border flex items-center justify-center transition-colors ${
                       isExisting
                         ? 'border-muted bg-muted'
                         : isSelected
@@ -229,18 +229,18 @@ export function TemplatePickerModal({
 
                   {/* Symbol / extra info */}
                   {typeof t.data.symbol === 'string' && t.data.symbol && (
-                    <span className="text-[13px] text-muted-foreground font-mono flex-shrink-0">
+                    <span className="text-[13px] text-muted-foreground font-mono shrink-0">
                       {t.data.symbol}
                     </span>
                   )}
                   {typeof t.data.shortName === 'string' && t.data.shortName && !t.data.symbol && (
-                    <span className="text-[13px] text-muted-foreground flex-shrink-0">
+                    <span className="text-[13px] text-muted-foreground shrink-0">
                       {t.data.shortName}
                     </span>
                   )}
 
                   {isExisting && (
-                    <span className="text-[11px] text-success flex-shrink-0 bg-success/10 px-1.5 py-0.5 rounded">
+                    <span className="text-[11px] text-success shrink-0 bg-success/10 px-1.5 py-0.5 rounded">
                       є
                     </span>
                   )}

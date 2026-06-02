@@ -8,6 +8,6 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "outDir": "./dist",
-    "baseUrl": "."
+    "ignoreDeprecations": "5.0"
   }
 }
