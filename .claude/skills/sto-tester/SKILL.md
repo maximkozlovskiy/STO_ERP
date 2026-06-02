@@ -524,6 +524,7 @@ done
 - [ ] **Filter pill chicken-and-egg для soft-delete UI (Bug #295):** будь-який toggle/filter-pill що відкриває **єдиний шлях** до архівних/прихованих даних (`Архів`/`Видалені`/`Корзина`) — його видимість НЕ МОЖЕ залежати від `derivedCount > 0` де count обчислюється з даних, видимих ТІЛЬКИ після toggle. Сценарій: initial state `showHidden=false` → API повертає лише видимі → `hiddenCount=0` → кнопка `{hiddenCount > 0 || showHidden ? <Toggle/> : null}` НЕ рендериться → користувач не має способу побачити архів → soft-delete фіча недосяжна. Grep: `grep -rnE "(deleted|archived|hidden|removed)Count\s*>\s*0\s*\|\|" apps/web/src/app --include="*.tsx"` — кожен match де count обчислюється з відфільтрованого списку = bug. Фікс: toggle завжди видимий, count показувати ТІЛЬКИ коли `showHidden=true` (бо у `false` mode count завжди 0 за визначенням). Severity: CRITICAL (feature недосяжна без power-user URL hack)
 - [ ] **AbortController у `useEffect` для filter-toggle race (Bug #301):** будь-який `useEffect(() => { load() }, [filterState])` де `filterState` toggle-able і `load()` робить `apiFetch` — потребує `AbortController` у cleanup. Без нього: швидке перемикання filter → попередній fetch не cancelled → resolve order non-deterministic → last setUnits(...) wins, який може суперечити поточному UI mode (stale state shown for current filter). Grep: `grep -rn "useEffect" apps/web/src/app --include="*.tsx" -A 5 | grep -B1 "load\(\)\|apiFetch" | grep -v "AbortController\|signal"` — кожен match без AbortController при наявності залежності від toggle/filter state = bug. Severity: MEDIUM
 - [ ] **In-flight guard для async-кнопок без overlay-блокування (Bug #303):** будь-яка `<Button onClick={() => action(id)}>` де `action` робить async POST/PATCH/DELETE і немає `disabled` prop тримати `inFlightIds` Set state. Без нього: користувач клікає 5 разів швидко → 5 паралельних POST → перший успіх, 2nd-5th повертають 404/409 (ресурс уже змінено) → setError shows стається помилка хоча перший успіх. Особливо при операціях що змінюють стан рядка (delete/restore/approve/cancel) — наступні reqs після першого побачать новий стан і обуряться. Грубий tip-off: відсутність `setRestoringIds`/`processingIds`/`busyIds` state у компоненті який має destructive/state-changing button-actions. Severity: MEDIUM (UX flash false errors)
+- [ ] **Toggle-state UI desync: highlight/cursor не gated на enabled-flag (Bugs #310-#311):** додавання toggle-component (`DetailPanelToggle`, `useDetailPanel`, `FilterToggle`, `CompactModeToggle`) що керує boolean state, але ефекти toggle (highlight рядка `bg-secondary`/`bg-primary/5`, `cursor-pointer`, hover-effects) застосовуються на основі іншої state-змінної (`selectedX?.id === item.id`, `expandedRows.has(id)`) **БЕЗ** gate на toggle-state → після `toggle()` → `enabled=false`, але `selectedX` залишається non-null → класи рендеряться, action недоступна, UX desync. Grep: `grep -rnE "selected[A-Z][a-zA-Z]*\?.id\s*===\s*[a-z]+\.id\s*&&\s*'bg-" apps/web/src/app --include="*.tsx" | grep -v "detailPanel\.enabled\|panel\.enabled\|enabled &&"` — кожен match без enabled-gate. Парний grep для cursor: `grep -rnE "'group cursor-pointer'|className=\\\`group cursor-pointer" apps/web/src/app --include="\*.tsx"`. Фікс: додати `&& detailPanel.enabled`до КОЖНОГО affordance class (cursor + highlight + hover). Альтернатива:`useEffect(() => { if (!detailPanel.enabled) setSelectedX(null) }, [detailPanel.enabled])` у consumer-page. Симетрія: якщо одне gated → друге теж має бути gated; асиметрія = bug. Severity: MEDIUM для stale highlight; LOW для cursor-only
 
 ---
 
@@ -905,6 +906,60 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-02 — Toggle-state UI desync: highlight/cursor not gated on enabled flag (Bugs #310, #311) — frontend, UI consistency, toggle-state
+
+**Сигнал:** Додається новий toggle-component (`DetailPanelToggle`, `FilterToggle`, `CompactModeToggle`) що керує boolean state через окремий hook (`useDetailPanel`, `useFilterMode`). Ефекти toggle (highlight рядка, cursor, hover, badge-count) застосовуються до DOM на основі іншої state-змінної (`selectedX?.id === item.id`, `expandedRows.has(id)`) яка **НЕ синхронізується** з toggle-state. Після `toggle()` → `enabled=false`, але `selectedX` залишається — клас типу `bg-secondary` / `cursor-pointer` рендериться, хоча action більше не доступна. Користувач бачить «вибрано» але панель прихована.
+
+**Причина виникнення:** Розробник реалізує toggle для **видимості панелі** (`open={!!selectedX && enabled}`) і думає що цього достатньо. Інші візуальні affordance-и (cursor pointer, row highlight, hover effects) залишаються прив'язані до старої state — бо вони писались до того як з'явився toggle. Inverse pattern: `enabled && 'cursor-pointer'` написано (бо нова фіча), але `selectedX?.id === item.id && 'bg-secondary'` ні (стара фіча). Поломка часткова — TS green, unit green, бо `enabled` boolean правильний, але UI каже одне, поведінка інше.
+
+**Підхід до виявлення:**
+
+1. Для кожного нового toggle-component запитати: «Що **ще** перемикається разом з ним?» — panel visibility, cursor, hover, row highlight, click behavior. Усе має один gate.
+2. Шукати rows / cards / list-items де класи selection / hover / cursor рендеряться **без** перевірки toggle-state:
+   ```bash
+   # Знайти всі TableRow / list items де selection highlight НЕ has toggle gate:
+   grep -rnE "selected[A-Z][a-zA-Z]*\?.id\s*===\s*[a-z]+\.id\s*&&\s*'bg-" apps/web/src/app --include="*.tsx" | \
+     grep -v "detailPanel\.enabled\|panel\.enabled\|enabled &&"
+   ```
+3. Шукати `cursor-pointer` поза `cn()` conditional / поза `enabled &&`:
+   ```bash
+   grep -rnE "'group cursor-pointer'|className=\\\`group cursor-pointer" apps/web/src/app --include="*.tsx"
+   ```
+4. Перевірити **симетрію**: якщо `cursor-pointer` gated → highlight теж має бути gated, і навпаки. Один без другого = bug.
+
+**Підхід до фіксу:**
+
+1. Defensive fix (швидкий): на render-рівні додати `&& detailPanel.enabled` до КОЖНОГО affordance class:
+   ```tsx
+   selectedX?.id === item.id && detailPanel.enabled && 'bg-secondary',
+   detailPanel.enabled && 'cursor-pointer',
+   ```
+2. Alternative fix (cleaner): у toggle-hook очищати залежну state при `enabled=false` через external `useEffect` у consumer:
+   ```tsx
+   useEffect(() => {
+     if (!detailPanel.enabled) setSelectedX(null);
+   }, [detailPanel.enabled]);
+   ```
+   Це автоматично знімає highlight + закриває панель, але втрачає «memory» вибору при повторному включенні.
+3. Перевірити **усі copy-cat сторінки** (work-orders, crm, employees, invoices, purchase-orders, stock-documents + catalog tabs) одночасно — pattern завжди реплікується N-разів.
+
+**Severity:** MEDIUM (UX confusion: stale highlight + неіснуюча панель), LOW для cursor-only варіанту (просто misleading affordance).
+
+**Де шукати ще:**
+
+- Sprint що додає `useCompactMode` / `useGridMode` → перевірити чи hover/cursor/padding gated на mode.
+- Sprint що додає `useExpandedRows` Set → row classes мають gate на `expanded.has(id)`.
+- Sprint що додає `useReadOnly` mode → cursor/hover/click-handlers мають gate на `!readOnly`.
+- Будь-який hook-based toggle (`use<Feature>`) з persisted state у localStorage — селекція не повинна «пам'ятати» між сесіями якщо toggle off.
+
+**Профілактика:**
+
+1. У `/sto-web` SKILL.md: «При додаванні toggle для feature-видимості — кожна affordance class має той самий gate». Додати ✅/❌ приклад з 2-line cn().
+2. У `/sto-review` checklist: «Чи всі visual affordances (cursor, highlight, hover, badge) gated на тому ж flag що panel.open?»
+3. У `useDetailPanel` hook документувати: «`enabled` гейтує VIDIMOСTI панелі, але consumer ВІДПОВІДАЛЬНИЙ за решту affordances (cursor, highlight)». Або додати `disabled` boolean у return + контекст.
+
+---
 
 ### 2026-06-02 — Multi-module soft-delete sprint: pattern dilution (Bug #306) — backend, sprint-replicated bug, code-copy
 
