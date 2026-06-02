@@ -752,6 +752,7 @@ export default function WorksTab() {
         <CategoryTree
           tree={categories}
           selectedId={selectedCat}
+          storageKey="sto:cat-tree:works"
           onSelect={id => {
             setSelectedCat(id);
             setPage(1);

@@ -1385,7 +1385,7 @@ export default function GoodsTab() {
         <CategoryTree
           tree={goodCatTree}
           selectedId={selectedGoodCat}
-          defaultCollapsed
+          storageKey="sto:cat-tree:goods"
           onSelect={id => {
             setSelectedGoodCat(id);
             setPage(1);
