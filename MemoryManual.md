@@ -9,19 +9,22 @@
 ## Останній commit
 
 ```
-910f4b2 fix(tester): catalog categories isSystem guard + race-guard + contract specs (Bugs #319-#327)
-41bd14d docs(memory): record sto-review-agent fixes for catalog categories
-3cf2824 fix(review): catalog categories — tenant FK + React/Tailwind hygiene
-0269ffc docs(memory): update MemoryManual after sync fix for GoodCategoryId
-72d0158 fix(sync): align GoodsTab with GoodCategoryId API contract
-b27aa8e feat(catalog): WorkCategory + GoodCategory trees with management UI
+f253c33 fix(hooks): usePaginatedList — skip false values + no trailing ? in URL
+e50d3a7 refactor(ui): schema-driven panel audit — crm/employees migrated to buildPanelFields
+4845223 feat(hooks): useApiError — centralized API error handling
+97fe940 feat(shared): shared Zod validators (phone, email, IBAN, UUID)
+831c003 feat(hooks): useApiMutation — unified mutation wrapper with toast+error
+c998513 feat(ui): FSMButtons — shared FSM transition buttons component
+39d862a feat(hooks): useListPage composable hook
+a0b0da6 refactor(hooks): usePaginatedList factory — reduce hook boilerplate by 80%
+8cc14e0 feat(shared): SharedStatusConstants — STATUS_LABELS/BADGE centralized in @sto/shared
 ```
 
-Дата: 2026-06-02
+Дата: 2026-06-03
 
 TypeScript: ✅ 0 errors (api, web)
-Unit+Contract: ✅ 562/562 passed (baseline 525 → 562, +37 нових: good-categories.contract.spec×15 + good-categories.service.spec×12 + work-categories.contract.spec×10)
-Web components: ✅ 218/218 passed
+Unit+Contract: ✅ 562/562 passed (api unchanged)
+Web components: ✅ 215/218 passed (3 pre-existing failures in useDetailPanelConfig.test.tsx — stale test expectations for fieldOrder, introduced before this session)
 
 Latest tester: 2026-06-02 (sto-tester-agent FULL, HEAD 41bd14d → +9 bugs Bugs #319-#327) — **catalog categories trees audit після плану «Категорії робіт та товарів у каталозі» + sto-review-agent fixes: 2 HIGH (#319 `WorkCategoriesService.update`/`GoodCategoriesService.update` не перевіряли `existing.isSystem` → PATCH name/parentId системних 71 work + 365 good категорій через curl з ADMIN JWT; UI ховала кнопку «Перейменувати» але backend — авторитет; #320 `remove()` обох сервісів так само дозволяли soft-delete системних → весь catalog зникав до `seed-catalog.ts` повторного запуску), 1 MEDIUM business-logic (#321 `update`/`toggleActive` робили `findFirst` + `update({where:{id,orgId}})` без `deletedAt: null` у write-where → race-вікно для soft-deleted рядка → переписано на atomic updateMany з повним compound where), 1 MEDIUM frontend (#323 `WorksTab.onChanged` і `GoodsTab.loadGoodCategories` робили raw apiFetch без race-guard → швидкі CRUD у CategoryManagerModal показували stale tree; додано `catReqRef`/`goodCatReqRef` ref-counter), 1 MEDIUM dev-debt (#322 schema без `@@unique([orgId, code])` для WorkCategory/GoodCategory → відкладено бо потребує DB migration), 2 MEDIUM test-coverage (#326 GoodCategoriesModule без contract spec → 15 нових тестів; #327 WorkCategoriesController нові endpoints без покриття → 10 нових тестів), 1 LOW code-hygiene (#325 `ImportBranchDto` dead export видалено), 1 LOW UX (#324 CategoryTree `defaultExpanded` — задокументовано, не bug). Всі crit/high/med (крім #322 відкладено) виправлено. API tests 525→562, web 218 unchanged, tsc 0 errors api+web.**
 
@@ -2170,6 +2173,38 @@ Prisma schema **без `@map`** → Postgres колонки double-quoted camelC
 - Перевірити проти `information_schema.columns` перед написанням
 
 ---
+
+## Universal Patterns (B1-B7 + C, 2026-06-03)
+
+**B1 — SharedStatusConstants** (`packages/shared/src/constants/statuses.ts`):
+
+- `WO_STATUS_LABELS/BADGE/TRANSITIONS`, `WO_PRIORITY_*`, `WO_CATEGORY_LABELS`
+- `INVOICE_STATUS_*`, `INVOICE_TYPE_LABELS`
+- `PO_STATUS_*`, `PO_STATUS_ACTION_LABELS`
+- `STOCK_DOC_STATUS_*`, `STOCK_DOC_TYPE_*`
+- `EMPLOYEE_STATUS_*`, `EMPLOYEE_ROLE_*`
+- Re-exported from `@sto/shared`. All 7 pages migrated.
+
+**B2 — usePaginatedList** (`apps/web/src/hooks/api/usePaginatedList.ts`):
+
+- `buildParams` skips `null/undefined/''/false` values, no trailing `?` for empty params
+- All 5 list hooks (useWorkOrders, useInvoices, useCounterparties, usePurchaseOrders, useStockDocuments) delegate findAll to `usePaginatedList`
+
+**B3 — useListPage** (`apps/web/src/hooks/useListPage.ts`): composable for list pages, bundles pagination + bulkSelect + tableColumns + detailPanel + panelConfig + savedFilters
+
+**B4 — FSMButtons** (`apps/web/src/components/ui/fsm-buttons.tsx`): shared FSM transition buttons, `size: 'sm' | 'md'` (NOT 'default' — Button uses xs/sm/md/lg/icon)
+
+**B5 — useApiMutation** (`apps/web/src/hooks/useApiMutation.ts`): unified mutation wrapper with toast+error+saving state
+
+**B6 — Shared Zod validators** (`packages/shared/src/schemas/validators.ts`): `phoneUaSchema`, `emailSchema`, `ibanUaSchema`, `uuidFieldSchema`, `positiveNumberSchema`, `nonNegativeNumberSchema`. Note: avoid name clash with existing `uuidSchema` in `schemas.ts` (that uses `.uuid()`, this uses regex)
+
+**B7 — useApiError** (`apps/web/src/hooks/useApiError.ts`): `useApiError(initial?)` + `parseApiError(e: unknown): string`
+
+**C — Schema-driven audit**:
+
+- Added `COUNTERPARTY_PANEL_SCHEMA` + `EMPLOYEE_PANEL_SCHEMA` to `apps/web/src/lib/panel-schema.ts`
+- CRM page: replaced `CRM_CONFIG_FIELD_DEFS` → `schemaToPanelConfigFields`, replaced inline PanelFields → `buildPanelFields` with renderOverrides for type (combined badge) + balance (colored)
+- Employees page: replaced `EMP_CONFIG_FIELD_DEFS` → `schemaToPanelConfigFields`, replaced most inline PanelFields → `buildPanelFields`; kept `rateScheme` as direct PanelField (complex nested type not in EmployeeForSchema)
 
 ## Архітектура — де що живе
 
