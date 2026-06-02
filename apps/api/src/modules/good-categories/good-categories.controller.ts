@@ -32,7 +32,7 @@ import { GoodCategoriesService } from './good-categories.service';
 export class GoodCategoriesController {
   constructor(private readonly service: GoodCategoriesService) {}
 
-  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
+  @Header('Cache-Control', 'private, no-cache')
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({ summary: 'Дерево категорій товарів' })

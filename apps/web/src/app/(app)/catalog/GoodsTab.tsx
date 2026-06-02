@@ -424,7 +424,7 @@ export default function GoodsTab() {
     const cached = getCached<CategoryNode[]>('cache:good-categories');
     if (cached) setGoodCatTree(cached);
     const reqId = ++goodCatReqRef.current;
-    apiFetch<CategoryNode[]>('/good-categories')
+    apiFetch<CategoryNode[]>('/good-categories', { headers: { 'Cache-Control': 'no-cache' } })
       .then(d => {
         if (goodCatReqRef.current !== reqId) return;
         setGoodCatTree(d);

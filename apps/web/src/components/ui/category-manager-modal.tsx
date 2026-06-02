@@ -56,6 +56,13 @@ function ManagerNode({
   const [expanded, setExpanded] = useState(depth < 1);
   const [editMode, setEditMode] = useState(false);
   const [editName, setEditName] = useState(node.name);
+  // Optimistic local isActive — миттєво відображає toggle без чекання на reload
+  const [localActive, setLocalActive] = useState(node.isActive !== false);
+  // Sync з prop коли батько оновлює tree після reload
+  const prevIsActive = node.isActive !== false;
+  if (localActive !== prevIsActive && saving !== node.id + '-toggle') {
+    setLocalActive(prevIsActive);
+  }
   const [addMode, setAddMode] = useState(false);
   const [newName, setNewName] = useState('');
   const hasChildren = node.children.length > 0;
@@ -135,7 +142,7 @@ function ManagerNode({
       <div
         className={cn(
           'group flex items-center gap-1 rounded-md px-2 py-1 text-[13px] transition-colors hover:bg-secondary',
-          node.isActive === false && 'opacity-50',
+          !localActive && 'opacity-50',
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
@@ -155,13 +162,17 @@ function ManagerNode({
           ) : null}
         </button>
 
-        {/* Toggle active checkbox */}
+        {/* Toggle active checkbox — optimistic update */}
         <input
           type="checkbox"
-          checked={node.isActive !== false}
-          title={node.isActive !== false ? 'Вимкнути категорію' : 'Увімкнути категорію'}
+          checked={localActive}
+          title={localActive ? 'Вимкнути категорію' : 'Увімкнути категорію'}
           disabled={isSavingThis}
-          onChange={e => void onToggleActive(node.id, e.target.checked)}
+          onChange={e => {
+            const next = e.target.checked;
+            setLocalActive(next); // оновлюємо одразу
+            void onToggleActive(node.id, next).catch(() => setLocalActive(!next)); // rollback при помилці
+          }}
           className="shrink-0 h-3.5 w-3.5 rounded border-border cursor-pointer"
         />
 

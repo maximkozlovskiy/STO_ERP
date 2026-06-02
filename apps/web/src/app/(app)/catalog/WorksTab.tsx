@@ -238,7 +238,7 @@ export default function WorksTab() {
   const catReqRef = useRef(0);
   const reloadCategories = useCallback(() => {
     const reqId = ++catReqRef.current;
-    apiFetch<Category[]>('/work-categories')
+    apiFetch<Category[]>('/work-categories', { headers: { 'Cache-Control': 'no-cache' } })
       .then(d => {
         if (catReqRef.current !== reqId) return;
         setCategories(d);
