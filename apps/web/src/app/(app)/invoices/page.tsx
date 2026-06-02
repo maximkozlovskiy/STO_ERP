@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Receipt, Search } from 'lucide-react';
+import { Plus, Receipt, Search, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -153,6 +153,7 @@ export default function InvoicesPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [error, setError] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
 
   // React Query hooks
   const limit = 20;
@@ -165,6 +166,7 @@ export default function InvoicesPage() {
     limit,
     status,
     q: debouncedSearch,
+    showDeleted,
   });
   const invoices = queryData?.items ?? [];
   const total = queryData?.total ?? 0;
@@ -431,6 +433,24 @@ export default function InvoicesPage() {
     }
   };
 
+  const markDeleted = async (inv: InvoiceWithOptionals) => {
+    if (
+      !(await confirm({
+        title: `Позначити рахунок ${inv.number} на видалення?`,
+        variant: 'destructive',
+      }))
+    )
+      return;
+    try {
+      await apiFetch(`/invoices/${inv.id}`, { method: 'DELETE' });
+      if (selectedInv?.id === inv.id) setSelectedInv(null);
+      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+      toast.success('Рахунок позначено на видалення');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+    }
+  };
+
   const statuses = ['', 'DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'];
 
   const buildInvoiceTabs = (inv: InvoiceWithOptionals): DetailPanelTab[] => [
@@ -617,6 +637,18 @@ export default function InvoicesPage() {
           className="w-72"
         />
         <div className="flex items-center gap-2 ml-auto">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            onClick={() => {
+              setShowDeleted(d => !d);
+              setPage(1);
+            }}
+            className={showDeleted ? 'border-primary text-primary' : ''}
+          >
+            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </Button>
           {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown
             columns={orderedColumns}
@@ -711,8 +743,9 @@ export default function InvoicesPage() {
                       if (detailPanel.enabled) selectInvoice(inv);
                     }}
                     className={cn(
+                      'group transition-colors',
                       detailPanel.enabled && 'cursor-pointer',
-                      'transition-colors',
+                      inv.deletedAt && 'opacity-60',
                       selectedInv?.id === inv.id && detailPanel.enabled && 'bg-primary/5',
                       bulkSelect.isSelected(inv.id) && 'bg-primary/5',
                     )}
@@ -769,27 +802,28 @@ export default function InvoicesPage() {
                         );
                       return null;
                     })}
-                    <TableCell>
-                      <div className="flex gap-1.5 justify-end" onClick={e => e.stopPropagation()}>
-                        {STATUS_TRANSITIONS[inv.status]?.map(s => (
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Відкрити деталі"
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          onClick={() => selectInvoice(inv)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        {!inv.deletedAt && (
                           <Button
-                            key={s}
-                            variant={
-                              s === 'CANCELLED'
-                                ? 'destructive'
-                                : s === 'PAID'
-                                  ? 'default'
-                                  : 'outline'
-                            }
-                            size="sm"
-                            onClick={() =>
-                              s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s)
-                            }
-                            loading={savingId === inv.id}
+                            variant="ghost"
+                            size="icon-sm"
+                            title="Позначити на видалення"
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => void markDeleted(inv)}
                           >
-                            {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                        ))}
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

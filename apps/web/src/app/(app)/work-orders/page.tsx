@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { Plus, ClipboardList, Eye, EyeOff, Search, User } from 'lucide-react';
+import { Plus, ClipboardList, Eye, EyeOff, Search, User, ExternalLink, Trash2 } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -12,6 +12,8 @@ import { useWorkOrders, workOrdersKeys, WorkOrder } from '@/hooks/api/useWorkOrd
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
@@ -157,6 +159,7 @@ export default function WorkOrdersPage() {
   const queryClient = useQueryClient();
   const { employee } = useAuth();
   const router = useRouter();
+  const { confirm, dialogProps: confirmDialogProps } = useConfirm();
 
   const [nowMs, setNowMs] = useState(0);
   useEffect(() => {
@@ -494,6 +497,24 @@ export default function WorkOrdersPage() {
     }
   };
 
+  const markDeleted = async (wo: WorkOrder) => {
+    if (
+      !(await confirm({
+        title: `Позначити наряд ${wo.number} на видалення?`,
+        variant: 'destructive',
+      }))
+    )
+      return;
+    try {
+      await apiFetch(`/work-orders/${wo.id}`, { method: 'DELETE' });
+      if (selectedWO?.id === wo.id) setSelectedWO(null);
+      queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+      toast.success('Наряд позначено на видалення');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+    }
+  };
+
   const totalPages = Math.ceil(total / limit);
 
   return (
@@ -722,7 +743,9 @@ export default function WorkOrdersPage() {
                       detailPanel.enabled && setSelectedWO(prev => (prev?.id === wo.id ? null : wo))
                     }
                     className={cn(
+                      'group transition-colors',
                       detailPanel.enabled && 'cursor-pointer',
+                      wo.deletedAt && 'opacity-60',
                       selectedWO?.id === wo.id && detailPanel.enabled && 'bg-primary/5',
                       bulkSelect.isSelected(wo.id) && 'bg-primary/5',
                     )}
@@ -881,17 +904,29 @@ export default function WorkOrdersPage() {
                         );
                       return null;
                     })}
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={e => {
-                          e.stopPropagation();
-                          router.push(`/work-orders/${wo.id}`);
-                        }}
-                      >
-                        Відкрити →
-                      </Button>
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Відкрити наряд"
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          onClick={() => router.push(`/work-orders/${wo.id}`)}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Button>
+                        {!wo.deletedAt && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            title="Позначити на видалення"
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => void markDeleted(wo)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1199,6 +1234,8 @@ export default function WorkOrdersPage() {
           />
         </div>
       </Modal>
+
+      <ConfirmDialog {...confirmDialogProps} />
     </div>
   );
 }

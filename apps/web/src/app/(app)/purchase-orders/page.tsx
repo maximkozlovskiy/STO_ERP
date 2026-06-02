@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, ShoppingCart, Search, Eye, EyeOff } from 'lucide-react';
+import { Plus, ShoppingCart, Search, Eye, EyeOff, Pencil, Trash2, Zap } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -395,6 +395,24 @@ export default function PurchaseOrdersPage() {
     }
   };
 
+  const markDeleted = async (po: PurchaseOrder) => {
+    if (
+      !(await confirm({
+        title: `Позначити замовлення ${po.number} на видалення?`,
+        variant: 'destructive',
+      }))
+    )
+      return;
+    try {
+      await apiFetch(`/purchase-orders/${po.id}`, { method: 'DELETE' });
+      if (selectedPO?.id === po.id) setSelectedPO(null);
+      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+      toast.success('Замовлення позначено на видалення');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+    }
+  };
+
   const loadDetail = async (po: PurchaseOrder, mode: 'detail' | 'receive') => {
     // Lines are not included in list response — fetch full PO on demand
     if (po.lines.length > 0 || po.linesCount === 0) {
@@ -767,8 +785,8 @@ export default function PurchaseOrdersPage() {
                   <TableRow
                     key={po.id}
                     className={cn(
+                      'group transition-colors',
                       detailPanel.enabled && 'cursor-pointer',
-                      'transition-colors',
                       selectedPO?.id === po.id && detailPanel.enabled && 'bg-secondary',
                       bulkSelect.isSelected(po.id) && 'bg-primary/5',
                       po.deletedAt && 'opacity-60',
@@ -835,70 +853,43 @@ export default function PurchaseOrdersPage() {
                         );
                       return null;
                     })}
-                    <TableCell>
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={e => {
-                            e.stopPropagation();
-                            void loadDetail(po, 'detail');
-                          }}
-                        >
-                          Деталі
-                        </Button>
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
                         {(po.status === 'RECEIVED' || po.status === 'PARTIAL') && (
                           <Button
                             type="button"
-                            size="sm"
-                            variant="outline"
+                            variant="ghost"
+                            size="icon-sm"
                             loading={applyingPricingId === po.id}
-                            onClick={e => {
-                              e.stopPropagation();
-                              void applyPricing(po);
-                            }}
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                            onClick={() => void applyPricing(po)}
                             title="Розцінити товари за правилами"
                           >
-                            Розцінити
+                            <Zap className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Відкрити деталі"
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          onClick={() => void loadDetail(po, 'detail')}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        {!po.deletedAt && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            title="Позначити на видалення"
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => void markDeleted(po)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         )}
                       </div>
-                      {pricingResult[po.id] && (
-                        <div className="mt-2 rounded-lg border border-border bg-secondary/30 p-3">
-                          <div className="text-[12px] text-muted-foreground mb-2">
-                            Оновлено: {pricingResult[po.id].updated} товарів
-                          </div>
-                          {pricingResult[po.id].details.length > 0 && (
-                            <table className="w-full text-[12px]">
-                              <thead>
-                                <tr className="text-muted-foreground">
-                                  <th className="text-left py-1">Товар</th>
-                                  <th className="text-right py-1">Собів.</th>
-                                  <th className="text-right py-1">Стара ціна</th>
-                                  <th className="text-right py-1">Нова ціна</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {pricingResult[po.id].details.map(d => (
-                                  <tr key={d.goodId}>
-                                    <td className="py-0.5 text-foreground">{d.goodName}</td>
-                                    <td className="py-0.5 text-right text-muted-foreground">
-                                      {fmtMoney(d.costPrice)}
-                                    </td>
-                                    <td className="py-0.5 text-right text-muted-foreground line-through">
-                                      {fmtMoney(d.oldSalePrice)}
-                                    </td>
-                                    <td className="py-0.5 text-right font-medium text-foreground">
-                                      {fmtMoney(d.newSalePrice)} ₴
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                        </div>
-                      )}
                     </TableCell>
                   </TableRow>
                 ))}

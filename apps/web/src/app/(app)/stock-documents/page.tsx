@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useStockDocuments, stockDocsKeys } from '@/hooks/api/useStockDocuments';
-import { Plus, FileText, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { Plus, FileText, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -423,6 +423,24 @@ export default function StockDocumentsPage() {
     }
   };
 
+  const markDeleted = async (doc: StockDoc) => {
+    if (
+      !(await confirm({
+        title: `Позначити документ ${doc.number} на видалення?`,
+        variant: 'destructive',
+      }))
+    )
+      return;
+    try {
+      await apiFetch(`/stock-documents/${doc.id}`, { method: 'DELETE' });
+      if (selectedDoc?.id === doc.id) setSelectedDoc(null);
+      load();
+      toast.success('Документ позначено на видалення');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+    }
+  };
+
   const addLine = () => {
     setLines(l => [
       ...l,
@@ -697,8 +715,8 @@ export default function StockDocumentsPage() {
                   <TableRow
                     key={doc.id}
                     className={cn(
+                      'group transition-colors',
                       detailPanel.enabled && 'cursor-pointer',
-                      'transition-colors',
                       selectedDoc?.id === doc.id && detailPanel.enabled && 'bg-secondary',
                       bulkSelect.isSelected(doc.id) && 'bg-primary/5',
                       doc.deletedAt && 'opacity-60',
@@ -770,17 +788,29 @@ export default function StockDocumentsPage() {
                         );
                       return null;
                     })}
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setShowDetail(doc);
-                        }}
-                      >
-                        Деталі
-                      </Button>
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Відкрити деталі"
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          onClick={() => setShowDetail(doc)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        {!doc.deletedAt && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            title="Позначити на видалення"
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => void markDeleted(doc)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
