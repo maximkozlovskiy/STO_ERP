@@ -605,19 +605,17 @@ export default function InvoicesPage() {
 
       {/* Search + Columns */}
       <div className="mb-3 flex items-center gap-3">
-        <div className="relative w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            value={search}
-            onChange={e => {
-              setSearch(e.target.value);
-              setPage(1);
-              setActiveSavedFilterId(null);
-            }}
-            placeholder="Пошук за номером або контрагентом..."
-            className="pl-9"
-          />
-        </div>
+        <Input
+          value={search}
+          onChange={e => {
+            setSearch(e.target.value);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="Пошук за номером або контрагентом..."
+          leftElement={<Search />}
+          className="w-72"
+        />
         <div className="flex items-center gap-2 ml-auto">
           {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
           <ColumnsDropdown

@@ -650,20 +650,17 @@ export default function PurchaseOrdersPage() {
 
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-3 mb-3">
-        {/* Search */}
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            value={q}
-            onChange={e => {
-              setQ(e.target.value);
-              setPage(1);
-              setActiveSavedFilterId(null);
-            }}
-            placeholder="Пошук за номером, постачальником..."
-            className="pl-9"
-          />
-        </div>
+        <Input
+          value={q}
+          onChange={e => {
+            setQ(e.target.value);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="Пошук за номером, постачальником..."
+          leftElement={<Search />}
+          className="w-64"
+        />
 
         <div className="flex items-center gap-2 ml-auto">
           <Button

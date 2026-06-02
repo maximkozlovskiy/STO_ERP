@@ -150,15 +150,13 @@ export default function InventoryPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            value={q}
-            onChange={e => setQ(e.target.value)}
-            placeholder="Пошук по назві..."
-            className="pl-9"
-          />
-        </div>
+        <Input
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Пошук по назві..."
+          leftElement={<Search />}
+          className="w-64"
+        />
         <Select value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
           <option value="">Всі склади</option>
           {warehouses.map(w => (

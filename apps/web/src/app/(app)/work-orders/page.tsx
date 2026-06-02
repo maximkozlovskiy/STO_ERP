@@ -568,19 +568,17 @@ export default function WorkOrdersPage() {
 
       {/* Search + category filter + showDeleted controls */}
       <div className="flex flex-wrap gap-3 mb-3">
-        <div className="relative w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            value={search}
-            onChange={e => {
-              setSearch(e.target.value);
-              setPage(1);
-              setActiveSavedFilterId(null);
-            }}
-            placeholder="Пошук за номером або клієнтом..."
-            className="pl-9"
-          />
-        </div>
+        <Input
+          value={search}
+          onChange={e => {
+            setSearch(e.target.value);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="Пошук за номером або клієнтом..."
+          leftElement={<Search />}
+          className="w-72"
+        />
 
         <Select
           value={categoryFilter}

@@ -883,19 +883,17 @@ export default function GoodsTab() {
       )}
 
       <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            value={q}
-            onChange={e => {
-              setQ(e.target.value);
-              setPage(1);
-              setActiveSavedFilterId(null);
-            }}
-            placeholder="Пошук за назвою, артикулом, штрихкодом..."
-            className="pl-9"
-          />
-        </div>
+        <Input
+          value={q}
+          onChange={e => {
+            setQ(e.target.value);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="Пошук за назвою, артикулом, штрихкодом..."
+          leftElement={<Search />}
+          className="flex-1 min-w-48"
+        />
         <XlsxImportButton
           templateType="goods"
           importUrl="/xlsx/import/goods"
