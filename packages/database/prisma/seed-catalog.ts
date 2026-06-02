@@ -79,9 +79,11 @@ async function main() {
   });
   const existingWorkCatByCode = new Map(existingWorkCats.map(c => [c.code!, c.id]));
 
-  // Сортуємо за level (1 → 2 → 3) щоб батько завжди оброблявся до дитини
+  // Сортуємо: кореневі (parent_id=null) першими, потім дочірні — тільки 2 рівні в services JSON
   const sortedCategoryNodes = [...categoryNodes].sort(
-    (a, b) => (a.level ?? 1) - (b.level ?? 1) || a.sort_order - b.sort_order,
+    (a, b) =>
+      (a.parent_id === null ? 0 : 1) - (b.parent_id === null ? 0 : 1) ||
+      a.sort_order - b.sort_order,
   );
 
   for (const node of sortedCategoryNodes) {
