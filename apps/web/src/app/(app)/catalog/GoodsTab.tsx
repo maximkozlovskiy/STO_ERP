@@ -1453,6 +1453,7 @@ export default function GoodsTab() {
             <Input
               label="Ціна закупки, ₴"
               type="number"
+              min="0"
               value={editGoodForm.purchasePrice}
               onChange={e => {
                 setEditGoodForm(f => ({ ...f, purchasePrice: e.target.value }));
@@ -1463,6 +1464,7 @@ export default function GoodsTab() {
             <Input
               label="Ціна продажу, ₴"
               type="number"
+              min="0"
               value={editGoodForm.salePrice}
               onChange={e => {
                 setEditGoodForm(f => ({ ...f, salePrice: e.target.value }));
@@ -2229,6 +2231,7 @@ export default function GoodsTab() {
             <Input
               label="Ціна закупки, ₴"
               type="number"
+              min="0"
               value={form.purchasePrice}
               onChange={e => {
                 setForm(f => ({ ...f, purchasePrice: e.target.value }));
@@ -2239,6 +2242,7 @@ export default function GoodsTab() {
             <Input
               label="Ціна продажу, ₴"
               type="number"
+              min="0"
               value={form.salePrice}
               onChange={e => {
                 setForm(f => ({ ...f, salePrice: e.target.value }));

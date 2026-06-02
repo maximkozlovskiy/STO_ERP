@@ -772,6 +772,7 @@ export default function WorksTab() {
               label="Нормо-год"
               required
               type="number"
+              min="0"
               value={form.normoHours}
               onChange={e => {
                 setForm(f => ({ ...f, normoHours: e.target.value }));
@@ -783,6 +784,7 @@ export default function WorksTab() {
               label="Ціна, ₴"
               required
               type="number"
+              min="0"
               value={form.price}
               onChange={e => {
                 setForm(f => ({ ...f, price: e.target.value }));
@@ -883,6 +885,7 @@ export default function WorksTab() {
               label="Нормо-год"
               required
               type="number"
+              min="0"
               value={editForm.normoHours}
               onChange={e => {
                 setEditForm(f => ({ ...f, normoHours: e.target.value }));
@@ -894,6 +897,7 @@ export default function WorksTab() {
               label="Ціна, ₴"
               required
               type="number"
+              min="0"
               value={editForm.price}
               onChange={e => {
                 setEditForm(f => ({ ...f, price: e.target.value }));

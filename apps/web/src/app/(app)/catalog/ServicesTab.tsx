@@ -684,6 +684,7 @@ export default function ServicesTab() {
           <Input
             label="Фіксована ціна, ₴ (не заповнювати = авто)"
             type="number"
+            min="0"
             value={form.price}
             onChange={e => {
               setForm(f => ({ ...f, price: e.target.value }));

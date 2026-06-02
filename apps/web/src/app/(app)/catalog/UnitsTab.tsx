@@ -546,6 +546,7 @@ export default function UnitsTab() {
           <Input
             label="Коефіцієнт"
             type="number"
+            min="0"
             value={form.coefficient}
             onChange={e => setForm(f => ({ ...f, coefficient: e.target.value }))}
             placeholder="1"
@@ -555,6 +556,7 @@ export default function UnitsTab() {
             <Input
               label="Ширина, м"
               type="number"
+              min="0"
               value={form.width}
               onChange={e => setForm(f => ({ ...f, width: e.target.value }))}
               placeholder="0.0"
@@ -562,6 +564,7 @@ export default function UnitsTab() {
             <Input
               label="Висота, м"
               type="number"
+              min="0"
               value={form.height}
               onChange={e => setForm(f => ({ ...f, height: e.target.value }))}
               placeholder="0.0"
@@ -569,6 +572,7 @@ export default function UnitsTab() {
             <Input
               label="Глибина, м"
               type="number"
+              min="0"
               value={form.depth}
               onChange={e => setForm(f => ({ ...f, depth: e.target.value }))}
               placeholder="0.0"
@@ -578,6 +582,7 @@ export default function UnitsTab() {
             <Input
               label="Об'єм, м³"
               type="number"
+              min="0"
               value={form.volume}
               onChange={e => setForm(f => ({ ...f, volume: e.target.value }))}
               placeholder="0.0"
@@ -585,6 +590,7 @@ export default function UnitsTab() {
             <Input
               label="Вага, кг"
               type="number"
+              min="0"
               value={form.weight}
               onChange={e => setForm(f => ({ ...f, weight: e.target.value }))}
               placeholder="0.0"

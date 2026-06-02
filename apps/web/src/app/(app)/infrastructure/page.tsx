@@ -748,6 +748,7 @@ function InfrastructurePageClient() {
           <Input
             label="Вантажність, кг"
             type="number"
+            min="0"
             value={form.maxWeightKg ?? ''}
             onChange={e => setForm(f => ({ ...f, maxWeightKg: e.target.value }))}
             placeholder="3500"
@@ -774,6 +775,7 @@ function InfrastructurePageClient() {
             <Input
               label="Інтервал ТО (днів)"
               type="number"
+              min="0"
               value={form.maintenanceIntervalDays ?? ''}
               onChange={e => setForm(f => ({ ...f, maintenanceIntervalDays: e.target.value }))}
               placeholder="180"

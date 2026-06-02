@@ -887,12 +887,12 @@ export default function InvoicesPage() {
             label="Сума, ₴"
             required
             type="number"
+            min="0.01"
             value={form.amount}
             onChange={e => {
               setForm(f => ({ ...f, amount: e.target.value }));
               dirty.markDirty();
             }}
-            min="0.01"
             step="0.01"
             placeholder="0.00"
           />

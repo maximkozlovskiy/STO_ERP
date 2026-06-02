@@ -196,6 +196,7 @@ export default function RuleFormModal({
             label="Надбавка, %"
             required
             type="number"
+            min="0"
             value={form.percentValue}
             onChange={e => set({ percentValue: e.target.value })}
             placeholder="35"
@@ -206,6 +207,7 @@ export default function RuleFormModal({
             label="Надбавка, ₴"
             required
             type="number"
+            min="0"
             value={form.fixedAmount}
             onChange={e => set({ fixedAmount: e.target.value })}
             placeholder="50"
@@ -216,6 +218,7 @@ export default function RuleFormModal({
             label="Фіксована ціна, ₴"
             required
             type="number"
+            min="0"
             value={form.fixedPrice}
             onChange={e => set({ fixedPrice: e.target.value })}
             placeholder="320"
@@ -291,6 +294,7 @@ export default function RuleFormModal({
         <Input
           label="Округлення до, ₴ (необов'язково)"
           type="number"
+          min="0"
           value={form.roundTo}
           onChange={e => set({ roundTo: e.target.value })}
           hint="Напр. 0.5 → до 50 коп, 1 → до гривні"
@@ -344,6 +348,7 @@ export default function RuleFormModal({
           <Input
             label="Пріоритет"
             type="number"
+            min="0"
             value={form.priority}
             onChange={e => set({ priority: e.target.value })}
             hint="Менше число = вищий пріоритет"

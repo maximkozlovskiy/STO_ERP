@@ -1198,6 +1198,7 @@ export default function EmployeesPage() {
             <Input
               label="Відсоток, %"
               type="number"
+              min="0"
               value={form.percent}
               onChange={e => {
                 setForm(f => ({ ...f, percent: e.target.value }));
@@ -1210,6 +1211,7 @@ export default function EmployeesPage() {
               <Input
                 label="Ставка, грн/міс"
                 type="number"
+                min="0"
                 value={form.fixedMonthly}
                 onChange={e => {
                   setForm(f => ({ ...f, fixedMonthly: e.target.value }));
@@ -1219,6 +1221,7 @@ export default function EmployeesPage() {
               <Input
                 label="Бонус, %"
                 type="number"
+                min="0"
                 value={form.bonusPercent}
                 onChange={e => {
                   setForm(f => ({ ...f, bonusPercent: e.target.value }));
@@ -1436,6 +1439,7 @@ export default function EmployeesPage() {
             <Input
               label="Відсоток, %"
               type="number"
+              min="0"
               value={editForm.percent}
               onChange={e => {
                 setEditForm(f => ({ ...f, percent: e.target.value }));
@@ -1448,6 +1452,7 @@ export default function EmployeesPage() {
               <Input
                 label="Ставка, грн/міс"
                 type="number"
+                min="0"
                 value={editForm.fixedMonthly}
                 onChange={e => {
                   setEditForm(f => ({ ...f, fixedMonthly: e.target.value }));
@@ -1457,6 +1462,7 @@ export default function EmployeesPage() {
               <Input
                 label="Бонус, %"
                 type="number"
+                min="0"
                 value={editForm.bonusPercent}
                 onChange={e => {
                   setEditForm(f => ({ ...f, bonusPercent: e.target.value }));

@@ -1034,6 +1034,7 @@ export default function CounterpartyCardPage() {
                     onChange={e => setRedeemPoints(e.target.value)}
                     placeholder="Кількість балів"
                     type="number"
+                    min="0"
                     className="w-36"
                   />
                   <Button
