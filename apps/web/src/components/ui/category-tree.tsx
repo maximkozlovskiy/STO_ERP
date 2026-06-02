@@ -136,25 +136,24 @@ export function CategoryTree({
   return (
     <aside
       className={cn(
-        'flex flex-col w-48 shrink-0 rounded-xl border border-border bg-surface overflow-hidden ml-3',
+        'flex flex-col w-48 shrink-0 rounded-xl border border-border bg-surface overflow-hidden ml-2',
         className,
       )}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between gap-1 px-3 py-2 border-b border-border shrink-0">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
+      {/* Header — висота та стилі як у TableHead (py-2 + text-[11px]) */}
+      <div className="flex items-center justify-between gap-1 px-4 py-2 bg-secondary border-b border-border shrink-0">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted truncate">
           {label}
         </span>
         {onManage && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
+          <button
+            type="button"
             title="Управління категоріями"
             onClick={onManage}
-            className="shrink-0"
+            className="shrink-0 -mr-1 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <Settings2 className="h-3.5 w-3.5" />
-          </Button>
+          </button>
         )}
       </div>
 

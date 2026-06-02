@@ -66,7 +66,7 @@ export function DetailPanel({
     <div
       className={cn(
         'flex flex-col shrink-0 bg-surface transition-[width,margin] duration-200 overflow-hidden rounded-xl border border-border',
-        open ? 'w-80 ml-3' : 'w-0 ml-0 border-transparent',
+        open ? 'w-80 ml-2' : 'w-0 ml-0 border-transparent',
       )}
     >
       {/* Header */}
