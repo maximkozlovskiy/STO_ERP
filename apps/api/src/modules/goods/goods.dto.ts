@@ -43,6 +43,11 @@ export class CreateGoodDto {
   salePrice?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsString() category?: string;
+  @ApiPropertyOptional({ description: 'UUID категорії товарів (GoodCategory)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  goodCategoryId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
   // Bug #262: emptyToUndefined gap — UpdateGoodDto extends PartialType успадковує цей баг.
@@ -64,6 +69,7 @@ export class GoodQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() category?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() goodCategoryId?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
@@ -98,6 +104,8 @@ export class GoodResponseDto {
   @ApiPropertyOptional() purchasePrice!: number | null;
   @ApiProperty() salePrice!: number;
   @ApiPropertyOptional() category!: string | null;
+  @ApiPropertyOptional() goodCategoryId?: string | null;
+  @ApiPropertyOptional() goodCategoryName?: string | null;
   @ApiPropertyOptional() barcode!: string | null;
   @ApiPropertyOptional() notes!: string | null;
   @ApiPropertyOptional({ enum: GoodType }) goodType?: GoodType | null;

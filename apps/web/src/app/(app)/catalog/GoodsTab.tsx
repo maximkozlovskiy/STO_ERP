@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
+import { CategoryTree, type CategoryNode } from '@/components/ui/category-tree';
+import { CategoryManagerModal } from '@/components/ui/category-manager-modal';
 import { Button } from '@/components/ui/button';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -193,6 +195,9 @@ export default function GoodsTab() {
   const [goods, setGoods] = useState<PaginatedGoods | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
+  const [goodCatTree, setGoodCatTree] = useState<CategoryNode[]>([]);
+  const [selectedGoodCat, setSelectedGoodCat] = useState<string | null>(null);
+  const [goodCatManagerOpen, setGoodCatManagerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showDeleted, setShowDeleted] = useState(false);
   const [q, setQ] = useState('');
@@ -407,15 +412,28 @@ export default function GoodsTab() {
   const goodsFormDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const editGoodDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
+  const loadGoodCategories = useCallback(() => {
+    const cached = getCached<CategoryNode[]>('cache:good-categories');
+    if (cached) setGoodCatTree(cached);
+    apiFetch<CategoryNode[]>('/good-categories')
+      .then(d => {
+        setGoodCatTree(d);
+        setCache('cache:good-categories', d);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     // Reference data (brands, units, suppliers) — paint instantly from
-    // sessionStorage, then refresh all three in parallel.
+    // sessionStorage, then refresh all in parallel.
     const cBrands = getCached<Brand[]>('cache:brands');
     const cUnits = getCached<Unit[]>('cache:units');
     const cSuppliers = getCached<Supplier[]>('cache:suppliers');
+    const cGoodCats = getCached<CategoryNode[]>('cache:good-categories');
     if (cBrands) setBrands(cBrands);
     if (cUnits) setUnits(cUnits);
     if (cSuppliers) setSuppliers(cSuppliers);
+    if (cGoodCats) setGoodCatTree(cGoodCats);
 
     // Bug #315: AbortController щоб setState не виконувався після unmount
     // (React warning у DEV + memory churn).
@@ -431,7 +449,10 @@ export default function GoodsTab() {
       apiFetch<{ items: Supplier[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200', {
         signal: ac.signal,
       }).catch(() => ({ items: [] as Supplier[] })),
-    ]).then(([brandsRes, unitsRes, suppliersRes]) => {
+      apiFetch<CategoryNode[]>('/good-categories', { signal: ac.signal }).catch(
+        () => [] as CategoryNode[],
+      ),
+    ]).then(([brandsRes, unitsRes, suppliersRes, goodCatsRes]) => {
       if (ac.signal.aborted) return;
       setBrands(brandsRes.items);
       setCache('cache:brands', brandsRes.items);
@@ -439,6 +460,8 @@ export default function GoodsTab() {
       setCache('cache:units', unitsRes);
       setSuppliers(suppliersRes.items);
       setCache('cache:suppliers', suppliersRes.items);
+      setGoodCatTree(goodCatsRes);
+      setCache('cache:good-categories', goodCatsRes);
     });
     return () => ac.abort();
   }, []);
@@ -450,6 +473,7 @@ export default function GoodsTab() {
     const p = new URLSearchParams({ page: String(page), limit: '30' });
     if (debouncedQ) p.set('q', debouncedQ);
     if (showDeleted) p.set('showDeleted', 'true');
+    if (selectedGoodCat) p.set('goodCategoryId', selectedGoodCat);
     const reqId = ++loadReqRef.current;
     apiFetch<PaginatedGoods>(`/goods?${p}`)
       .then(r => {
@@ -463,7 +487,7 @@ export default function GoodsTab() {
       .finally(() => {
         if (loadReqRef.current === reqId) setLoading(false);
       });
-  }, [page, debouncedQ, showDeleted]);
+  }, [page, debouncedQ, showDeleted, selectedGoodCat]);
 
   // Keep ref in sync so goodsActions can call load() without depending on it
   useEffect(() => {
@@ -1344,7 +1368,26 @@ export default function GoodsTab() {
             </div>
           )}
         </DetailPanel>
+
+        <CategoryTree
+          tree={goodCatTree}
+          selectedId={selectedGoodCat}
+          onSelect={id => {
+            setSelectedGoodCat(id);
+            setPage(1);
+          }}
+          onManage={() => setGoodCatManagerOpen(true)}
+          label="Категорії товарів"
+        />
       </div>
+
+      <CategoryManagerModal
+        open={goodCatManagerOpen}
+        onClose={() => setGoodCatManagerOpen(false)}
+        type="good"
+        tree={goodCatTree}
+        onChanged={loadGoodCategories}
+      />
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 

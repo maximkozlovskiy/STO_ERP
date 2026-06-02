@@ -7,7 +7,8 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, BookOpen, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { TemplatePickerModal, type SystemTemplate } from '@/components/ui/template-picker-modal';
+import { CategoryTree, type CategoryNode } from '@/components/ui/category-tree';
+import { CategoryManagerModal } from '@/components/ui/category-manager-modal';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -45,11 +46,7 @@ import { Badge } from '@/components/ui/badge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Category {
-  id: string;
-  name: string;
-  children: Category[];
-}
+type Category = CategoryNode;
 import type { Work } from '@/hooks/api/useWorks';
 
 interface WorksFilters extends Record<string, unknown> {
@@ -94,8 +91,8 @@ export default function WorksTab() {
   const detailPanel = useDetailPanel('catalog-works');
   const qc = useQueryClient();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCat, setSelectedCat] = useState('');
-  const [categoryTemplatePicker, setCategoryTemplatePicker] = useState(false);
+  const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
@@ -104,7 +101,7 @@ export default function WorksTab() {
   const { data: works, isLoading: loading } = useWorks({
     page,
     limit: 30,
-    categoryId: selectedCat || undefined,
+    categoryId: selectedCat ?? undefined,
     q: debouncedQ || undefined,
     showDeleted,
   });
@@ -172,14 +169,14 @@ export default function WorksTab() {
 
   const applyFilter = useCallback((preset: { id: string; filters: WorksFilters }) => {
     setQ(preset.filters.search ?? '');
-    setSelectedCat(preset.filters.categoryId ?? '');
+    setSelectedCat(preset.filters.categoryId || null);
     setPage(1);
     setActiveSavedFilterId(preset.id);
   }, []);
 
   const handleSaveFilter = useCallback(
     (name: string) => {
-      const preset = saveFilter(name, { search: q, categoryId: selectedCat });
+      const preset = saveFilter(name, { search: q, categoryId: selectedCat ?? '' });
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
     },
@@ -442,22 +439,6 @@ export default function WorksTab() {
           leftElement={<Search />}
           className="flex-1 min-w-48"
         />
-        <Select
-          value={selectedCat}
-          onChange={e => {
-            setSelectedCat(e.target.value);
-            setPage(1);
-            setActiveSavedFilterId(null);
-          }}
-        >
-          <option value="">Всі категорії</option>
-          {flat.map(c => (
-            <option key={c.id} value={c.id}>
-              {' '.repeat(c.depth * 4)}
-              {c.name}
-            </option>
-          ))}
-        </Select>
         <XlsxImportButton
           templateType="works"
           importUrl="/xlsx/import/works"
@@ -490,9 +471,6 @@ export default function WorksTab() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <Button variant="outline" onClick={() => setCategoryTemplatePicker(true)}>
-            Категорії
-          </Button>
           <Button
             leftIcon={<Plus className="h-4 w-4" />}
             onClick={() => {
@@ -514,24 +492,18 @@ export default function WorksTab() {
         </div>
       </div>
 
-      <TemplatePickerModal
-        open={categoryTemplatePicker}
-        onClose={() => setCategoryTemplatePicker(false)}
-        entityType="work_category"
-        title="Додати категорії робіт з шаблону"
-        existingKeys={flat.map(c => c.name)}
-        onImport={async (templates: SystemTemplate[]) => {
-          for (const t of templates) {
-            await apiFetch<Category>('/work-categories', {
-              method: 'POST',
-              body: JSON.stringify(t.data),
-            });
-          }
-          // reload categories
-          apiFetch<Category[]>('/work-categories').then(d => {
-            setCategories(d);
-            setCache('cache:work-categories', d);
-          });
+      <CategoryManagerModal
+        open={categoryManagerOpen}
+        onClose={() => setCategoryManagerOpen(false)}
+        type="work"
+        tree={categories}
+        onChanged={() => {
+          apiFetch<Category[]>('/work-categories')
+            .then(d => {
+              setCategories(d);
+              setCache('cache:work-categories', d);
+            })
+            .catch(() => {});
         }}
       />
 
@@ -751,6 +723,17 @@ export default function WorksTab() {
             />
           );
         })()}
+
+        <CategoryTree
+          tree={categories}
+          selectedId={selectedCat}
+          onSelect={id => {
+            setSelectedCat(id);
+            setPage(1);
+          }}
+          onManage={() => setCategoryManagerOpen(true)}
+          label="Категорії робіт"
+        />
       </div>
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />

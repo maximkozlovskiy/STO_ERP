@@ -667,8 +667,11 @@ model WorkCategory {
   orgId       String    @db.Uuid
   parentId    String?   @db.Uuid
   name        String
+  code        String?
   icon        String?
   sortOrder   Int       @default(0)
+  isSystem    Boolean   @default(false)
+  isActive    Boolean   @default(true)
   syncVersion BigInt    @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -678,10 +681,51 @@ model WorkCategory {
   children               WorkCategory[]         @relation("CategoryHierarchy")
   works                  Work[]
   employeeWorkCategories EmployeeWorkCategory[]
+  goodLinks              WorkGoodCategoryLink[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("work_categories")
+}
+
+model GoodCategory {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  parentId    String?   @db.Uuid
+  name        String
+  code        String?
+  isSystem    Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  parent    GoodCategory?  @relation("GoodCatHierarchy", fields: [parentId], references: [id])
+  children  GoodCategory[] @relation("GoodCatHierarchy")
+  goods     Good[]
+  workLinks WorkGoodCategoryLink[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, parentId])
+  @@index([orgId, syncVersion])
+  @@map("good_categories")
+}
+
+model WorkGoodCategoryLink {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String @db.Uuid
+  workCategoryId String @db.Uuid
+  goodCategoryId String @db.Uuid
+
+  workCategory WorkCategory @relation(fields: [workCategoryId], references: [id])
+  goodCategory GoodCategory @relation(fields: [goodCategoryId], references: [id])
+
+  @@unique([orgId, workCategoryId, goodCategoryId])
+  @@index([orgId, workCategoryId])
+  @@index([orgId, goodCategoryId])
+  @@map("work_good_category_links")
 }
 
 model Work {
@@ -726,28 +770,30 @@ model Brand {
 }
 
 model Good {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId         String    @db.Uuid
-  brandId       String?   @db.Uuid
-  unitId        String?   @db.Uuid
-  sku           String?
-  name          String
-  unit          String    @default("шт")
-  purchasePrice Decimal?  @db.Decimal(12, 2)
-  salePrice     Decimal   @db.Decimal(12, 2)
-  category      String?
-  barcode       String?
-  notes         String?
-  syncVersion   BigInt    @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String    @db.Uuid
+  brandId         String?   @db.Uuid
+  unitId          String?   @db.Uuid
+  goodCategoryId  String?   @db.Uuid
+  sku             String?
+  name            String
+  unit            String    @default("шт")
+  purchasePrice   Decimal?  @db.Decimal(12, 2)
+  salePrice       Decimal   @db.Decimal(12, 2)
+  category        String?
+  barcode         String?
+  notes           String?
+  syncVersion     BigInt    @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
   goodType            GoodType?
   preferredSupplierId String?   @db.Uuid
 
   brand              Brand?             @relation(fields: [brandId], references: [id])
   unitOfMeasure      UnitOfMeasure?     @relation(fields: [unitId], references: [id])
+  goodCategory       GoodCategory?      @relation(fields: [goodCategoryId], references: [id])
   preferredSupplier  Counterparty?      @relation("GoodSupplier", fields: [preferredSupplierId], references: [id])
   barcodes           GoodBarcode[]
   uoms               GoodUoM[]

@@ -29,7 +29,8 @@ export type RefCacheKey =
   | 'cache:wo-templates'
   | 'cache:currencies'
   | 'cache:bank-accounts'
-  | 'cache:works';
+  | 'cache:works'
+  | 'cache:good-categories';
 
 export function getCached<T>(key: RefCacheKey): T | null {
   if (typeof window === 'undefined') return null;

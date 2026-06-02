@@ -7,6 +7,20 @@ import {
   WorkCategoryResponseDto,
 } from './work-categories.dto';
 
+type WorkCategoryRow = {
+  id: string;
+  orgId: string;
+  parentId: string | null;
+  name: string;
+  code: string | null;
+  icon: string | null;
+  sortOrder: number;
+  isSystem: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 const TTL = 300;
 const cacheKey = (orgId: string) => `ref:work-categories:${orgId}`;
 
@@ -87,6 +101,29 @@ export class WorkCategoriesService {
     await this.cache.del(cacheKey(orgId));
   }
 
+  async toggleActive(
+    orgId: string,
+    id: string,
+    isActive: boolean,
+  ): Promise<WorkCategoryResponseDto> {
+    const item = await this.prisma.workCategory.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!item) throw new NotFoundException('Категорію не знайдено');
+    const updated = await this.prisma.workCategory.update({ where: { id }, data: { isActive } });
+    await this.cache.del(cacheKey(orgId));
+    return { ...this.toDto(updated), children: [] };
+  }
+
+  async getLinkedGoodCategories(orgId: string, id: string): Promise<string[]> {
+    const links = await this.prisma.workGoodCategoryLink.findMany({
+      where: { orgId, workCategoryId: id },
+      select: { goodCategoryId: true },
+    });
+    return links.map(l => l.goodCategoryId);
+  }
+
   private async getDescendantIds(orgId: string, parentId: string): Promise<string[]> {
     // Load all org categories once, then walk in memory — avoids N+1 recursion
     const all = await this.prisma.workCategory.findMany({
@@ -112,19 +149,7 @@ export class WorkCategoriesService {
     return result;
   }
 
-  private buildTree(
-    all: Array<{
-      id: string;
-      orgId: string;
-      parentId: string | null;
-      name: string;
-      icon: string | null;
-      sortOrder: number;
-      createdAt: Date;
-      updatedAt: Date;
-    }>,
-    parentId: string | null,
-  ): WorkCategoryResponseDto[] {
+  private buildTree(all: WorkCategoryRow[], parentId: string | null): WorkCategoryResponseDto[] {
     return all
       .filter(item => item.parentId === parentId)
       .map(item => ({
@@ -133,23 +158,17 @@ export class WorkCategoriesService {
       }));
   }
 
-  private toDto(item: {
-    id: string;
-    orgId: string;
-    parentId: string | null;
-    name: string;
-    icon: string | null;
-    sortOrder: number;
-    createdAt: Date;
-    updatedAt: Date;
-  }): Omit<WorkCategoryResponseDto, 'children'> {
+  private toDto(item: WorkCategoryRow): Omit<WorkCategoryResponseDto, 'children'> {
     return {
       id: item.id,
       orgId: item.orgId,
       parentId: item.parentId,
+      code: item.code,
       name: item.name,
       icon: item.icon,
       sortOrder: item.sortOrder,
+      isSystem: item.isSystem,
+      isActive: item.isActive,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

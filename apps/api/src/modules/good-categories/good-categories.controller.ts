@@ -18,40 +18,47 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import {
-  CreateWorkCategoryDto,
-  UpdateWorkCategoryDto,
-  ToggleActiveCategoryDto,
-  WorkCategoryResponseDto,
-} from './work-categories.dto';
-import { WorkCategoriesService } from './work-categories.service';
+  CreateGoodCategoryDto,
+  UpdateGoodCategoryDto,
+  ToggleActiveDto,
+  GoodCategoryResponseDto,
+} from './good-categories.dto';
+import { GoodCategoriesService } from './good-categories.service';
 
-@ApiTags('Категорії робіт')
-@Controller('work-categories')
+@ApiTags('Категорії товарів')
+@Controller('good-categories')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
-export class WorkCategoriesController {
-  constructor(private readonly service: WorkCategoriesService) {}
+export class GoodCategoriesController {
+  constructor(private readonly service: GoodCategoriesService) {}
 
   @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
   @Get()
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
-  @ApiOperation({ summary: 'Дерево категорій робіт' })
-  @ApiResponse({ status: 200, type: [WorkCategoryResponseDto] })
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Дерево категорій товарів' })
+  @ApiResponse({ status: 200, type: [GoodCategoryResponseDto] })
   findAll(@OrgContext() orgId: string) {
     return this.service.findAll(orgId);
   }
 
   @Get(':id')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
+  @Get(':id/linked-work-categories')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
+  @ApiOperation({ summary: "Пов'язані категорії робіт для категорії товарів" })
+  getLinkedWorkCategories(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getLinkedWorkCategories(orgId, id);
+  }
+
   @Post()
   @Roles('OWNER', 'ADMIN')
-  @ApiOperation({ summary: 'Створити категорію' })
-  @ApiResponse({ status: 201, type: WorkCategoryResponseDto })
-  create(@OrgContext() orgId: string, @Body() dto: CreateWorkCategoryDto) {
+  @ApiOperation({ summary: 'Створити категорію товарів' })
+  @ApiResponse({ status: 201, type: GoodCategoryResponseDto })
+  create(@OrgContext() orgId: string, @Body() dto: CreateGoodCategoryDto) {
     return this.service.create(orgId, dto);
   }
 
@@ -60,33 +67,26 @@ export class WorkCategoriesController {
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateWorkCategoryDto,
+    @Body() dto: UpdateGoodCategoryDto,
   ) {
     return this.service.update(orgId, id, dto);
   }
 
   @Patch(':id/toggle-active')
   @Roles('OWNER', 'ADMIN')
-  @ApiOperation({ summary: 'Увімкнути/вимкнути категорію робіт' })
+  @ApiOperation({ summary: 'Увімкнути/вимкнути категорію' })
   toggleActive(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: ToggleActiveCategoryDto,
+    @Body() dto: ToggleActiveDto,
   ) {
     return this.service.toggleActive(orgId, id, dto.isActive);
-  }
-
-  @Get(':id/linked-good-categories')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
-  @ApiOperation({ summary: "Пов'язані категорії товарів для категорії робіт" })
-  getLinkedGoodCategories(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getLinkedGoodCategories(orgId, id);
   }
 
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Видалити категорію та всіх нащадків (soft delete)' })
+  @ApiOperation({ summary: 'Видалити категорію та нащадків (soft delete), товари → без категорії' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }

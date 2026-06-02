@@ -38,11 +38,13 @@ export class GoodsService {
       ];
     }
     if (query.category) where.category = { contains: query.category, mode: 'insensitive' };
+    if (query.goodCategoryId) where.goodCategoryId = query.goodCategoryId;
 
     const skip = (query.page - 1) * query.limit;
     const supplierSelect = {
       select: { firstName: true, lastName: true, companyName: true },
     } as const;
+    const goodCategorySelect = { select: { id: true, name: true } } as const;
     const [items, total] = await this.prisma.$transaction([
       this.prisma.good.findMany({
         where,
@@ -51,7 +53,7 @@ export class GoodsService {
         orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         skip,
         take: query.limit,
-        include: { preferredSupplier: supplierSelect },
+        include: { preferredSupplier: supplierSelect, goodCategory: goodCategorySelect },
       }),
       this.prisma.good.count({ where }),
     ]);
@@ -69,6 +71,7 @@ export class GoodsService {
       where: { id, orgId, deletedAt: null },
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+        goodCategory: { select: { id: true, name: true } },
       },
     });
     if (!item) throw new NotFoundException('Товар не знайдено');
@@ -552,6 +555,7 @@ export class GoodsService {
     unit: string;
     unitId?: string | null;
     brandId?: string | null;
+    goodCategoryId?: string | null;
     purchasePrice: import('@prisma/client').Prisma.Decimal | null;
     salePrice: import('@prisma/client').Prisma.Decimal;
     category: string | null;
@@ -564,6 +568,7 @@ export class GoodsService {
       lastName: string | null;
       companyName: string | null;
     } | null;
+    goodCategory?: { id: string; name: string } | null;
     deletedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -579,6 +584,8 @@ export class GoodsService {
       purchasePrice: item.purchasePrice != null ? Number(item.purchasePrice) : null,
       salePrice: Number(item.salePrice),
       category: item.category ?? null,
+      goodCategoryId: item.goodCategoryId ?? null,
+      goodCategoryName: item.goodCategory?.name ?? null,
       barcode: item.barcode ?? null,
       notes: item.notes ?? null,
       goodType: item.goodType ?? null,

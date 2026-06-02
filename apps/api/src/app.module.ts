@@ -27,6 +27,7 @@ import { WorksModule } from './modules/works/works.module';
 import { GoodsModule } from './modules/goods/goods.module';
 import { ServicesModule } from './modules/services/services.module';
 import { BrandsModule } from './modules/brands/brands.module';
+import { GoodCategoriesModule } from './modules/good-categories/good-categories.module';
 import { UnitsModule } from './modules/units/units.module';
 import { XlsxModule } from './modules/xlsx/xlsx.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
@@ -139,6 +140,7 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
     GoodsModule,
     ServicesModule,
     BrandsModule,
+    GoodCategoriesModule,
     UnitsModule,
     XlsxModule,
     InventoryModule,

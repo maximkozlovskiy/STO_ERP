@@ -3,7 +3,7 @@ import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 
 import { Transform } from 'class-transformer';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
-export class CreateWorkCategoryDto {
+export class CreateGoodCategoryDto {
   @ApiProperty({ example: 'Двигун' })
   @IsString()
   @IsNotEmpty()
@@ -15,11 +15,6 @@ export class CreateWorkCategoryDto {
   @IsUUID()
   parentId?: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  icon?: string;
-
   @ApiPropertyOptional({ default: 0 })
   @IsOptional()
   @IsInt()
@@ -27,10 +22,11 @@ export class CreateWorkCategoryDto {
   sortOrder?: number;
 }
 
-export class UpdateWorkCategoryDto {
+export class UpdateGoodCategoryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @IsNotEmpty()
   name?: string;
 
   @ApiPropertyOptional()
@@ -41,33 +37,34 @@ export class UpdateWorkCategoryDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  icon?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
   @IsInt()
   @Min(0)
   sortOrder?: number;
 }
 
-export class ToggleActiveCategoryDto {
+export class ToggleActiveDto {
   @ApiProperty()
   @IsBoolean()
   isActive!: boolean;
 }
 
-export class WorkCategoryResponseDto {
+export class ImportBranchDto {
+  @ApiProperty({ example: 'ENG', description: 'Code кореневої системної WorkCategory' })
+  @IsString()
+  @IsNotEmpty()
+  branchCode!: string;
+}
+
+export class GoodCategoryResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orgId!: string;
   @ApiPropertyOptional() parentId?: string | null;
   @ApiPropertyOptional() code?: string | null;
   @ApiProperty() name!: string;
-  @ApiPropertyOptional() icon?: string | null;
-  @ApiProperty() sortOrder!: number;
   @ApiProperty() isSystem!: boolean;
   @ApiProperty() isActive!: boolean;
-  @ApiProperty({ type: () => [WorkCategoryResponseDto] }) children!: WorkCategoryResponseDto[];
+  @ApiProperty() sortOrder!: number;
+  @ApiProperty({ type: () => [GoodCategoryResponseDto] }) children!: GoodCategoryResponseDto[];
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }
