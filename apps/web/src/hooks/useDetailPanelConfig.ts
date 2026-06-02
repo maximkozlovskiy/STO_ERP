@@ -2,22 +2,17 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api-client';
+import type { PanelFieldConfig } from '@/lib/panel-schema';
 
-interface PanelConfig {
-  hiddenFields: string[]; // fieldKey values that are hidden
-}
-
-const STORAGE_PREFIX = 'sto_panel_cfg_'; // fallback localStorage
+const STORAGE_PREFIX = 'sto_panel_cfg_';
 
 export function useDetailPanelConfig(pageKey: string) {
   const storageKey = `${STORAGE_PREFIX}${pageKey}`;
   const apiKey = `detail_panel_${pageKey}`;
 
-  const [config, setConfig] = useState<PanelConfig>({ hiddenFields: [] });
+  const [config, setConfig] = useState<PanelFieldConfig>({ hiddenFields: [], fieldOrder: [] });
   const [loading, setLoading] = useState(true);
 
-  // Track mounted state — fire-and-forget PUTs з toggleField/reset не мають setState
-  // на unmounted компонент (race коли користувач перейшов на іншу сторінку).
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -26,23 +21,20 @@ export function useDetailPanelConfig(pageKey: string) {
     };
   }, []);
 
-  // AbortController для PUT-черги: rapid toggle → cancel попередній in-flight PUT,
-  // інакше last-arrived-wins може зберегти стале значення на сервері.
   const putAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const TS_KEY = `${storageKey}_ts`;
-    const CACHE_TTL_MS = 5 * 60 * 1000; // 5 хв — config змінюється рідко
+    const CACHE_TTL_MS = 5 * 60 * 1000;
 
-    // Optimistic: показати з localStorage поки завантажується з API.
-    // Якщо кеш свіжіший за TTL — пропускаємо API запит (config не міг змінитися на сервері).
     let skipFetch = false;
     try {
       const cached = localStorage.getItem(storageKey);
       const ts = Number(localStorage.getItem(TS_KEY) ?? 0);
       if (cached) {
-        setConfig(JSON.parse(cached) as PanelConfig);
+        const parsed = JSON.parse(cached) as Partial<PanelFieldConfig>;
+        setConfig({ hiddenFields: parsed.hiddenFields ?? [], fieldOrder: parsed.fieldOrder ?? [] });
         if (Date.now() - ts < CACHE_TTL_MS) skipFetch = true;
       }
     } catch {
@@ -54,19 +46,20 @@ export function useDetailPanelConfig(pageKey: string) {
       return;
     }
 
-    apiFetch<{ key: string; value: PanelConfig }>(`/user-preferences/${apiKey}`)
+    apiFetch<{ key: string; value: PanelFieldConfig }>(`/user-preferences/${apiKey}`)
       .then(res => {
         if (cancelled) return;
-        const cfg =
-          res.value && typeof res.value === 'object' && 'hiddenFields' in res.value
-            ? (res.value as PanelConfig)
-            : { hiddenFields: [] };
+        const v = res.value;
+        const cfg: PanelFieldConfig = {
+          hiddenFields: Array.isArray(v?.hiddenFields) ? v.hiddenFields : [],
+          fieldOrder: Array.isArray(v?.fieldOrder) ? v.fieldOrder : [],
+        };
         setConfig(cfg);
         try {
           localStorage.setItem(storageKey, JSON.stringify(cfg));
           localStorage.setItem(TS_KEY, String(Date.now()));
         } catch {
-          /* ignore quota */
+          /* ignore */
         }
       })
       .catch(() => {
@@ -81,15 +74,11 @@ export function useDetailPanelConfig(pageKey: string) {
     };
   }, [apiKey, storageKey]);
 
-  // Окремий стабільний savePref: cancel previous PUT + AbortController на новий.
-  // Не setState на unmount; не використовуємо apiFetch без catch (silent fail OK для UX —
-  // зміна вже у localStorage).
   const savePref = useCallback(
-    (next: PanelConfig) => {
+    (next: PanelFieldConfig) => {
       putAbortRef.current?.abort();
       const ac = new AbortController();
       putAbortRef.current = ac;
-      // Invalidate TTL so next mount re-fetches fresh value from server
       try {
         localStorage.setItem(`${STORAGE_PREFIX}${pageKey}_ts`, String(Date.now()));
       } catch {
@@ -100,7 +89,7 @@ export function useDetailPanelConfig(pageKey: string) {
         body: JSON.stringify({ key: apiKey, value: next }),
         signal: ac.signal,
       }).catch(() => {
-        /* AbortError or network: silent — localStorage already updated */
+        /* AbortError or network: silent */
       });
     },
     [apiKey, pageKey],
@@ -114,13 +103,32 @@ export function useDetailPanelConfig(pageKey: string) {
   const toggleField = useCallback(
     (fieldKey: string) => {
       setConfig(prev => {
-        const next: PanelConfig = prev.hiddenFields.includes(fieldKey)
-          ? { hiddenFields: prev.hiddenFields.filter(k => k !== fieldKey) }
-          : { hiddenFields: [...prev.hiddenFields, fieldKey] };
+        const next: PanelFieldConfig = {
+          ...prev,
+          hiddenFields: prev.hiddenFields.includes(fieldKey)
+            ? prev.hiddenFields.filter(k => k !== fieldKey)
+            : [...prev.hiddenFields, fieldKey],
+        };
         try {
           localStorage.setItem(storageKey, JSON.stringify(next));
         } catch {
-          /* ignore quota */
+          /* ignore */
+        }
+        savePref(next);
+        return next;
+      });
+    },
+    [storageKey, savePref],
+  );
+
+  const reorderFields = useCallback(
+    (newOrder: string[]) => {
+      setConfig(prev => {
+        const next: PanelFieldConfig = { ...prev, fieldOrder: newOrder };
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          /* ignore */
         }
         savePref(next);
         return next;
@@ -130,7 +138,7 @@ export function useDetailPanelConfig(pageKey: string) {
   );
 
   const reset = useCallback(() => {
-    const empty: PanelConfig = { hiddenFields: [] };
+    const empty: PanelFieldConfig = { hiddenFields: [], fieldOrder: [] };
     if (mountedRef.current) setConfig(empty);
     try {
       localStorage.removeItem(storageKey);
@@ -140,7 +148,6 @@ export function useDetailPanelConfig(pageKey: string) {
     savePref(empty);
   }, [storageKey, savePref]);
 
-  // Cancel pending PUT on unmount
   useEffect(
     () => () => {
       putAbortRef.current?.abort();
@@ -149,5 +156,5 @@ export function useDetailPanelConfig(pageKey: string) {
     [],
   );
 
-  return { isFieldHidden, toggleField, reset, loading, config };
+  return { isFieldHidden, toggleField, reorderFields, reset, loading, config };
 }

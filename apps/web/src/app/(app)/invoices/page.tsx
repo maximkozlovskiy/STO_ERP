@@ -36,6 +36,11 @@ import {
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
+import {
+  INVOICE_PANEL_SCHEMA,
+  buildPanelFields,
+  schemaToPanelConfigFields,
+} from '@/lib/panel-schema';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
@@ -114,20 +119,6 @@ const INVOICE_TYPE_LABELS: Record<string, string> = {
 function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
 }
-
-const INVOICES_PANEL_FIELDS = [
-  { key: 'status', label: 'Статус' },
-  { key: 'counterparty', label: 'Контрагент' },
-  { key: 'work_order', label: 'Наряд' },
-  { key: 'invoice_type', label: 'Тип' },
-  { key: 'amount', label: 'Сума' },
-  { key: 'total_without_vat', label: 'Без ПДВ' },
-  { key: 'total_vat', label: 'ПДВ' },
-  { key: 'total_with_vat', label: 'Разом з ПДВ' },
-  { key: 'paid_amount', label: 'Сплачено' },
-  { key: 'due_date', label: 'Термін оплати' },
-  { key: 'notes', label: 'Нотатки' },
-] as const;
 
 export default function InvoicesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
@@ -475,84 +466,31 @@ export default function InvoicesPage() {
       label: 'Основне',
       content: (
         <div className="space-y-3">
-          <PanelField
-            fieldKey="status"
-            label="Статус"
-            hidden={panelConfig.isFieldHidden('status')}
-            value={
-              <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
-                {STATUS_LABELS[inv.status]}
+          {/* Schema-driven fields — order + visibility from useDetailPanelConfig */}
+          {buildPanelFields(inv, INVOICE_PANEL_SCHEMA, panelConfig.config, {
+            status: v => (
+              <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'}>
+                {STATUS_LABELS[String(v)]}
               </Badge>
-            }
-          />
-          <PanelField
-            fieldKey="counterparty"
-            label="Контрагент"
-            value={inv.counterpartyName}
-            hidden={panelConfig.isFieldHidden('counterparty')}
-          />
-          <PanelField
-            fieldKey="work_order"
-            label="Наряд"
-            value={inv.workOrderNumber}
-            hidden={panelConfig.isFieldHidden('work_order')}
-          />
-          <PanelField
-            fieldKey="invoice_type"
-            label="Тип"
-            value={inv.invoiceType ? INVOICE_TYPE_LABELS[inv.invoiceType] : undefined}
-            hidden={panelConfig.isFieldHidden('invoice_type')}
-          />
-          <PanelField
-            fieldKey="amount"
-            label="Сума"
-            value={inv.amount != null ? `${fmtMoney(inv.amount)} ₴` : undefined}
-            hidden={panelConfig.isFieldHidden('amount')}
-          />
-          {/* Bug #274: hide breakdown rows коли totalWithoutVat=0 (header-only invoice без lines) */}
-          {inv.totalWithoutVat != null && inv.totalWithoutVat > 0 && (
+            ),
+            invoiceType: v => (v ? (INVOICE_TYPE_LABELS[String(v)] ?? String(v)) : undefined),
+            // Bug #274: hide zero VAT breakdown rows
+            totalWithoutVat: v =>
+              v != null && Number(v) > 0 ? `${fmtMoney(Number(v))} ₴` : undefined,
+            totalVat: v => (v != null && Number(v) !== 0 ? `${fmtMoney(Number(v))} ₴` : undefined),
+            totalWithVat: (v, r) =>
+              v != null && Number(v) > 0 && Number(v) !== r.amount
+                ? `${fmtMoney(Number(v))} ₴`
+                : undefined,
+          }).map(f => (
             <PanelField
-              fieldKey="total_without_vat"
-              label="Без ПДВ"
-              value={`${fmtMoney(inv.totalWithoutVat)} ₴`}
-              hidden={panelConfig.isFieldHidden('total_without_vat')}
+              key={f.key}
+              fieldKey={f.key}
+              label={f.label}
+              value={f.value}
+              hidden={f.hidden}
             />
-          )}
-          {inv.totalVat != null && inv.totalVat !== 0 && (
-            <PanelField
-              fieldKey="total_vat"
-              label="ПДВ"
-              value={`${fmtMoney(inv.totalVat)} ₴`}
-              hidden={panelConfig.isFieldHidden('total_vat')}
-            />
-          )}
-          {/* Bug #274: guard > 0 щоб ховати нуль, але показувати реальний breakdown коли є lines */}
-          {inv.totalWithVat != null && inv.totalWithVat > 0 && inv.totalWithVat !== inv.amount && (
-            <PanelField
-              fieldKey="total_with_vat"
-              label="Разом з ПДВ"
-              value={`${fmtMoney(inv.totalWithVat)} ₴`}
-              hidden={panelConfig.isFieldHidden('total_with_vat')}
-            />
-          )}
-          <PanelField
-            fieldKey="paid_amount"
-            label="Сплачено"
-            value={inv.paidAmount != null ? `${fmtMoney(inv.paidAmount)} ₴` : undefined}
-            hidden={panelConfig.isFieldHidden('paid_amount')}
-          />
-          <PanelField
-            fieldKey="due_date"
-            label="Термін оплати"
-            value={inv.dueDate ? fmtDate(inv.dueDate) : undefined}
-            hidden={panelConfig.isFieldHidden('due_date')}
-          />
-          <PanelField
-            fieldKey="notes"
-            label="Нотатки"
-            value={inv.notes}
-            hidden={panelConfig.isFieldHidden('notes')}
-          />
+          ))}
           <PanelSection title="Дії">
             <div className="flex flex-col gap-2">
               {STATUS_TRANSITIONS[inv.status]?.map(s => (
@@ -890,11 +828,9 @@ export default function InvoicesPage() {
           title={selectedInv?.number ?? ''}
           subtitle={selectedInv?.counterpartyName}
           tabs={selectedInv ? buildInvoiceTabs(selectedInv) : undefined}
-          configFields={INVOICES_PANEL_FIELDS.map(f => ({
-            ...f,
-            hidden: panelConfig.isFieldHidden(f.key),
-          }))}
+          configFields={schemaToPanelConfigFields(INVOICE_PANEL_SCHEMA, panelConfig.config)}
           onToggleField={panelConfig.toggleField}
+          onReorderFields={panelConfig.reorderFields}
           onReset={panelConfig.reset}
         />
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
-import { type ReactNode, useState, useEffect } from 'react';
-import { X, Settings } from 'lucide-react';
+import { type ReactNode, useState, useEffect, useRef } from 'react';
+import { X, Settings, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface DetailPanelTab {
@@ -14,25 +14,21 @@ export interface PanelConfigField {
   key: string;
   label: string;
   hidden: boolean;
+  always?: boolean;
 }
 
 interface DetailPanelProps {
   open: boolean;
   onClose: () => void;
   title: string;
-  /** Optional subtitle shown below title */
   subtitle?: string;
-  /** If provided, renders tabs instead of children */
   tabs?: DetailPanelTab[];
-  /** Used when no tabs — plain content */
   children?: ReactNode;
-  /** Default active tab key */
   defaultTab?: string;
-  /** Fields available for visibility toggling */
   configFields?: PanelConfigField[];
-  /** Called when user toggles a field's visibility */
   onToggleField?: (fieldKey: string) => void;
-  /** Called when user resets config to defaults */
+  /** Called when user drags to reorder fields — receives new ordered keys */
+  onReorderFields?: (newOrder: string[]) => void;
   onReset?: () => void;
 }
 
@@ -46,12 +42,15 @@ export function DetailPanel({
   defaultTab,
   configFields,
   onToggleField,
+  onReorderFields,
   onReset,
 }: DetailPanelProps) {
   const [activeTab, setActiveTab] = useState(defaultTab ?? tabs?.[0]?.key ?? '');
   const [showConfig, setShowConfig] = useState(false);
+  // Local drag state — dragged key and drop target key
+  const dragKeyRef = useRef<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
-  // Reset to first tab and close config when item changes
   useEffect(() => {
     if (defaultTab) setActiveTab(defaultTab);
     else if (tabs?.[0]) setActiveTab(tabs[0].key);
@@ -111,30 +110,70 @@ export function DetailPanel({
 
       {showConfig && hasConfig ? (
         /* Config panel */
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[13px] font-medium text-foreground">Налаштування панелі</span>
+        <div className="flex-1 overflow-y-auto px-3 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Поля панелі
+            </span>
             <button
               type="button"
-              onClick={() => {
-                onReset?.();
-              }}
-              className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+              onClick={onReset}
+              className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
             >
               Скинути
             </button>
           </div>
-          {configFields.map(field => (
-            <label key={field.key} className="flex items-center gap-2 py-1.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={!field.hidden}
-                onChange={() => onToggleField(field.key)}
-                className="h-3.5 w-3.5 accent-primary"
-              />
-              <span className="text-[13px] text-foreground">{field.label}</span>
-            </label>
-          ))}
+          <div className="space-y-0.5">
+            {configFields.map(field => (
+              <div
+                key={field.key}
+                draggable={!field.always && !!onReorderFields}
+                onDragStart={() => {
+                  dragKeyRef.current = field.key;
+                }}
+                onDragOver={e => {
+                  e.preventDefault();
+                  setDragOverKey(field.key);
+                }}
+                onDragLeave={() => setDragOverKey(null)}
+                onDrop={() => {
+                  setDragOverKey(null);
+                  const from = dragKeyRef.current;
+                  dragKeyRef.current = null;
+                  if (!from || from === field.key || !onReorderFields || !configFields) return;
+                  const keys = configFields.map(f => f.key);
+                  const fi = keys.indexOf(from);
+                  const ti = keys.indexOf(field.key);
+                  if (fi === -1 || ti === -1) return;
+                  const next = [...keys];
+                  next.splice(fi, 1);
+                  next.splice(ti, 0, from);
+                  onReorderFields(next);
+                }}
+                onDragEnd={() => {
+                  dragKeyRef.current = null;
+                  setDragOverKey(null);
+                }}
+                className={cn(
+                  'flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors select-none',
+                  dragOverKey === field.key ? 'bg-primary/10' : 'hover:bg-secondary',
+                  field.always && 'opacity-50 cursor-default',
+                )}
+              >
+                {!field.always && onReorderFields && (
+                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0 cursor-grab" />
+                )}
+                <input
+                  type="checkbox"
+                  checked={!field.hidden}
+                  disabled={field.always}
+                  onChange={() => !field.always && onToggleField(field.key)}
+                  className="h-3.5 w-3.5 accent-primary shrink-0"
+                />
+                <span className="text-[13px] text-foreground truncate">{field.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <>
