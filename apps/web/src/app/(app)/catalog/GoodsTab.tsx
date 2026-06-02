@@ -84,6 +84,8 @@ interface Good {
   purchasePrice: number | null;
   salePrice: number;
   category: string | null;
+  goodCategoryId?: string | null;
+  goodCategoryName?: string | null;
   barcode: string | null;
   brandId: string | null;
   notes: string | null;
@@ -212,6 +214,7 @@ export default function GoodsTab() {
     purchasePrice: '',
     salePrice: '',
     category: '',
+    goodCategoryId: '',
     brandId: '',
     barcode: '',
     notes: '',
@@ -237,6 +240,7 @@ export default function GoodsTab() {
     purchasePrice: '',
     salePrice: '',
     category: '',
+    goodCategoryId: '',
     brandId: '',
     notes: '',
     goodType: '',
@@ -526,6 +530,7 @@ export default function GoodsTab() {
           purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : undefined,
           salePrice: form.salePrice ? Number(form.salePrice) : undefined,
           category: form.category || undefined,
+          goodCategoryId: form.goodCategoryId || undefined,
           brandId: form.brandId || undefined,
           barcode: form.barcode || undefined,
           notes: form.notes || undefined,
@@ -542,6 +547,7 @@ export default function GoodsTab() {
         purchasePrice: '',
         salePrice: '',
         category: '',
+        goodCategoryId: '',
         brandId: '',
         barcode: '',
         notes: '',
@@ -648,6 +654,7 @@ export default function GoodsTab() {
       purchasePrice: g.purchasePrice != null ? String(g.purchasePrice) : '',
       salePrice: String(g.salePrice),
       category: g.category ?? '',
+      goodCategoryId: g.goodCategoryId ?? '',
       brandId: g.brandId ?? '',
       notes: g.notes ?? '',
       goodType: g.goodType ?? '',
@@ -896,6 +903,7 @@ export default function GoodsTab() {
             : undefined,
           salePrice: editGoodForm.salePrice ? Number(editGoodForm.salePrice) : undefined,
           category: editGoodForm.category || undefined,
+          goodCategoryId: editGoodForm.goodCategoryId || undefined,
           brandId: editGoodForm.brandId || undefined,
           notes: editGoodForm.notes || undefined,
           goodType: editGoodForm.goodType || undefined,
@@ -911,6 +919,12 @@ export default function GoodsTab() {
       setEditGoodSaving(false);
     }
   };
+
+  const flatCategories = (
+    cats: CategoryNode[],
+    depth = 0,
+  ): Array<CategoryNode & { depth: number }> =>
+    cats.flatMap(c => [{ ...c, depth }, ...flatCategories(c.children, depth + 1)]);
 
   const totalPages = goods ? Math.ceil(goods.total / goods.limit) : 1;
 
@@ -1094,7 +1108,7 @@ export default function GoodsTab() {
                         if (col.key === 'category')
                           return (
                             <TableCell key="category" className="text-[13px] text-muted-foreground">
-                              {g.category ?? '—'}
+                              {g.goodCategoryName ?? g.category ?? '—'}
                             </TableCell>
                           );
                         if (col.key === 'unit')
@@ -1244,10 +1258,12 @@ export default function GoodsTab() {
                       {fmtMoney(selectedGood.salePrice)} ₴
                     </span>
                   </div>
-                  {selectedGood.category && (
+                  {(selectedGood.goodCategoryName ?? selectedGood.category) && (
                     <div>
                       <span className="text-muted-foreground">Категорія:</span>{' '}
-                      <span className="text-foreground">{selectedGood.category}</span>
+                      <span className="text-foreground">
+                        {selectedGood.goodCategoryName ?? selectedGood.category}
+                      </span>
                     </div>
                   )}
                   {selectedGood.barcode && (
@@ -1559,15 +1575,34 @@ export default function GoodsTab() {
                 </option>
               ))}
             </Select>
-            <Input
-              label="Категорія"
-              value={editGoodForm.category}
-              onChange={e => {
-                setEditGoodForm(f => ({ ...f, category: e.target.value }));
-                editGoodDirty.markDirty();
-              }}
-              placeholder="Мастила"
-            />
+            {goodCatTree.length > 0 ? (
+              <Select
+                label="Категорія товарів"
+                value={editGoodForm.goodCategoryId}
+                onChange={e => {
+                  setEditGoodForm(f => ({ ...f, goodCategoryId: e.target.value }));
+                  editGoodDirty.markDirty();
+                }}
+              >
+                <option value="">— Не вказано —</option>
+                {flatCategories(goodCatTree).map(c => (
+                  <option key={c.id} value={c.id}>
+                    {' '.repeat(c.depth * 2)}
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input
+                label="Категорія"
+                value={editGoodForm.category}
+                onChange={e => {
+                  setEditGoodForm(f => ({ ...f, category: e.target.value }));
+                  editGoodDirty.markDirty();
+                }}
+                placeholder="Мастила"
+              />
+            )}
           </div>
           <Select
             label="Тип товару"
@@ -2337,15 +2372,34 @@ export default function GoodsTab() {
                 </option>
               ))}
             </Select>
-            <Input
-              label="Категорія"
-              value={form.category}
-              onChange={e => {
-                setForm(f => ({ ...f, category: e.target.value }));
-                goodsFormDirty.markDirty();
-              }}
-              placeholder="Мастила"
-            />
+            {goodCatTree.length > 0 ? (
+              <Select
+                label="Категорія товарів"
+                value={form.goodCategoryId}
+                onChange={e => {
+                  setForm(f => ({ ...f, goodCategoryId: e.target.value }));
+                  goodsFormDirty.markDirty();
+                }}
+              >
+                <option value="">— Не вказано —</option>
+                {flatCategories(goodCatTree).map(c => (
+                  <option key={c.id} value={c.id}>
+                    {' '.repeat(c.depth * 2)}
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input
+                label="Категорія"
+                value={form.category}
+                onChange={e => {
+                  setForm(f => ({ ...f, category: e.target.value }));
+                  goodsFormDirty.markDirty();
+                }}
+                placeholder="Мастила"
+              />
+            )}
           </div>
           <Select
             label="Тип товару"
