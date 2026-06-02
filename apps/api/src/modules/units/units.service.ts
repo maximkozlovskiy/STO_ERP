@@ -13,18 +13,35 @@ export class UnitsService {
     private readonly cache: CacheService,
   ) {}
 
-  async findAll(orgId: string): Promise<UnitResponseDto[]> {
-    const cached = await this.cache.get<UnitResponseDto[]>(cacheKey(orgId));
-    if (cached) return cached;
+  async findAll(orgId: string, showDeleted = false): Promise<UnitResponseDto[]> {
+    // Only cache the default (active-only) query — showDeleted is management-only
+    if (!showDeleted) {
+      const cached = await this.cache.get<UnitResponseDto[]>(cacheKey(orgId));
+      if (cached) return cached;
+    }
 
     const items = await this.prisma.unitOfMeasure.findMany({
-      where: { orgId, deletedAt: null },
-      orderBy: { shortName: 'asc' },
+      where: { orgId, ...(showDeleted ? {} : { deletedAt: null }) },
+      orderBy: [{ deletedAt: 'asc' }, { shortName: 'asc' }],
       take: 1000,
     });
     const result = items.map(item => this.toDto(item));
-    await this.cache.set(cacheKey(orgId), result, TTL);
+
+    if (!showDeleted) await this.cache.set(cacheKey(orgId), result, TTL);
     return result;
+  }
+
+  async restore(orgId: string, id: string): Promise<UnitResponseDto> {
+    const existing = await this.prisma.unitOfMeasure.findFirst({
+      where: { id, orgId, NOT: { deletedAt: null } },
+    });
+    if (!existing) throw new NotFoundException('Видалену одиницю виміру не знайдено');
+    const item = await this.prisma.unitOfMeasure.update({
+      where: { id, orgId },
+      data: { deletedAt: null },
+    });
+    await this.cache.del(cacheKey(orgId));
+    return this.toDto(item);
   }
 
   async findOne(orgId: string, id: string): Promise<UnitResponseDto> {
@@ -94,6 +111,7 @@ export class UnitsService {
     depth: number | null;
     volume: number | null;
     weight: number | null;
+    deletedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
   }): UnitResponseDto {
@@ -109,6 +127,7 @@ export class UnitsService {
       depth: item.depth,
       volume: item.volume,
       weight: item.weight,
+      deletedAt: item.deletedAt ?? null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Trash2, Ruler, Pencil, Check, X } from 'lucide-react';
+import { Plus, Trash2, Ruler, Pencil, Check, X, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { cn } from '@/lib/utils';
 import {
   Table,
   TableHeader,
@@ -28,6 +29,7 @@ interface Unit {
   shortName: string;
   isSystem: boolean;
   coefficient: number;
+  deletedAt?: string | null;
   width?: number | null;
   height?: number | null;
   depth?: number | null;
@@ -150,6 +152,7 @@ export default function UnitsTab() {
   const { confirm, dialogProps } = useConfirm();
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -160,27 +163,33 @@ export default function UnitsTab() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
-  const load = useCallback((opts?: { fromCache?: boolean }) => {
-    const fromCache = opts?.fromCache ?? false;
-    const cached = fromCache ? getCached<Unit[]>('cache:units') : null;
-    if (cached) {
-      setUnits(cached);
-      setLoading(false);
-    } else setLoading(true);
-    apiFetch<Unit[]>('/units')
-      .then(d => {
-        setUnits(d);
-        setCache('cache:units', d);
-      })
-      .catch((e: unknown) => {
-        if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження');
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const load = useCallback(
+    (opts?: { fromCache?: boolean; withDeleted?: boolean }) => {
+      const fromCache = opts?.fromCache ?? false;
+      const withDeleted = opts?.withDeleted ?? showDeleted;
+      const cached = fromCache && !withDeleted ? getCached<Unit[]>('cache:units') : null;
+      if (cached) {
+        setUnits(cached);
+        setLoading(false);
+      } else setLoading(true);
+
+      const url = withDeleted ? '/units?showDeleted=true' : '/units';
+      apiFetch<Unit[]>(url)
+        .then(d => {
+          setUnits(d);
+          if (!withDeleted) setCache('cache:units', d);
+        })
+        .catch((e: unknown) => {
+          if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        })
+        .finally(() => setLoading(false));
+    },
+    [showDeleted],
+  );
 
   useEffect(() => {
-    load({ fromCache: true });
-  }, [load]);
+    load({ fromCache: !showDeleted });
+  }, [load, showDeleted]);
 
   // ── Create ────────────────────────────────────────────────────────────────
 
@@ -242,10 +251,17 @@ export default function UnitsTab() {
     }
   };
 
-  // ── Delete ────────────────────────────────────────────────────────────────
+  // ── Delete (soft) ─────────────────────────────────────────────────────────
 
   const remove = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити одиницю виміру?', variant: 'destructive' }))) return;
+    if (
+      !(await confirm({
+        title: 'Помітити на видалення?',
+        message: 'Одиницю буде деактивовано. Можна відновити.',
+        variant: 'destructive',
+      }))
+    )
+      return;
     try {
       await apiFetch<void>(`/units/${id}`, { method: 'DELETE' });
       load();
@@ -253,6 +269,20 @@ export default function UnitsTab() {
       setError(e instanceof Error ? e.message : 'Помилка видалення');
     }
   };
+
+  // ── Restore ───────────────────────────────────────────────────────────────
+
+  const restore = async (id: string) => {
+    try {
+      await apiFetch<Unit>(`/units/${id}/restore`, { method: 'POST' });
+      load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка відновлення');
+    }
+  };
+
+  const activeCount = units.filter(u => !u.deletedAt).length;
+  const deletedCount = units.filter(u => !!u.deletedAt).length;
 
   return (
     <div>
@@ -268,9 +298,38 @@ export default function UnitsTab() {
       )}
 
       <div className="flex items-center justify-between gap-3 mb-4">
-        <p className="text-[13px] text-muted-foreground">
-          Одиниці виміру, що використовуються в каталозі товарів
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-[13px] text-muted-foreground">
+            Одиниці виміру, що використовуються в каталозі товарів
+          </p>
+          {/* Filter pills */}
+          <div className="flex gap-1">
+            <button
+              onClick={() => setShowDeleted(false)}
+              className={cn(
+                'px-2.5 py-0.5 rounded-full text-[12px] font-medium border transition-colors',
+                !showDeleted
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border text-muted-foreground hover:bg-secondary',
+              )}
+            >
+              Активні{activeCount > 0 && ` (${activeCount})`}
+            </button>
+            {deletedCount > 0 || showDeleted ? (
+              <button
+                onClick={() => setShowDeleted(true)}
+                className={cn(
+                  'px-2.5 py-0.5 rounded-full text-[12px] font-medium border transition-colors',
+                  showDeleted
+                    ? 'bg-destructive/10 text-destructive border-destructive/30'
+                    : 'border-border text-muted-foreground hover:bg-secondary',
+                )}
+              >
+                Всі{deletedCount > 0 && ` (+${deletedCount} архів)`}
+              </button>
+            ) : null}
+          </div>
+        </div>
         <Button
           leftIcon={<Plus className="h-4 w-4" />}
           onClick={() => {
@@ -310,37 +369,77 @@ export default function UnitsTab() {
               </TableRow>
             )}
             {!loading &&
-              units.map(u =>
-                editingId === u.id ? (
-                  <InlineEditRow
-                    key={u.id}
-                    unit={u}
-                    onSave={saveEdit}
-                    onCancel={() => {
-                      setEditingId(null);
-                      setEditError('');
-                    }}
-                    saving={editSaving}
-                  />
-                ) : (
+              units.map(u => {
+                const isDeleted = !!u.deletedAt;
+
+                if (editingId === u.id && !isDeleted) {
+                  return (
+                    <InlineEditRow
+                      key={u.id}
+                      unit={u}
+                      onSave={saveEdit}
+                      onCancel={() => {
+                        setEditingId(null);
+                        setEditError('');
+                      }}
+                      saving={editSaving}
+                    />
+                  );
+                }
+
+                return (
                   <TableRow
                     key={u.id}
-                    className={u.isSystem ? '' : 'cursor-pointer hover:bg-surface-hover group'}
+                    className={cn(
+                      'group',
+                      isDeleted
+                        ? 'opacity-50 bg-secondary/30'
+                        : !u.isSystem
+                          ? 'cursor-pointer hover:bg-surface-hover'
+                          : '',
+                    )}
                     onClick={() => {
-                      if (!u.isSystem && editingId === null) {
+                      if (!isDeleted && !u.isSystem && editingId === null) {
                         setEditError('');
                         setEditingId(u.id);
                       }
                     }}
                   >
-                    <TableCell className="font-medium text-foreground">{u.shortName}</TableCell>
-                    <TableCell className="text-muted-foreground">{u.name}</TableCell>
+                    <TableCell
+                      className={cn(
+                        'font-medium',
+                        isDeleted ? 'line-through text-muted-foreground' : 'text-foreground',
+                      )}
+                    >
+                      {u.shortName}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        isDeleted ? 'line-through text-muted-foreground' : 'text-muted-foreground',
+                      )}
+                    >
+                      {u.name}
+                    </TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
                       {u.coefficient !== 1 ? u.coefficient : '—'}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {u.isSystem ? (
+                        {isDeleted ? (
+                          // Deleted: show restore button
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={e => {
+                              e.stopPropagation();
+                              void restore(u.id);
+                            }}
+                            className="text-success/70 hover:text-success hover:bg-success/10"
+                            title="Відновити"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : u.isSystem ? (
                           <span className="text-[11px] px-1.5 py-0.5 bg-info-subtle text-info rounded">
                             системна
                           </span>
@@ -367,7 +466,7 @@ export default function UnitsTab() {
                                 void remove(u.id);
                               }}
                               className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              title="Видалити"
+                              title="Позначити на видалення"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -376,8 +475,8 @@ export default function UnitsTab() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ),
-              )}
+                );
+              })}
           </TableBody>
         </Table>
       </div>

@@ -111,6 +111,7 @@ export class UnitResponseDto {
   @ApiPropertyOptional() depth?: number | null;
   @ApiPropertyOptional() volume?: number | null;
   @ApiPropertyOptional() weight?: number | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: Date | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }
