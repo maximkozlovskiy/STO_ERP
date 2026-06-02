@@ -125,16 +125,17 @@ export class GoodsService {
   }
 
   async restore(orgId: string, id: string): Promise<GoodResponseDto> {
-    const existing = await this.prisma.good.findFirst({
+    // Defense-in-depth: atomic updateMany with full compound where (sto-review pattern
+    // 2026-05-30). Combines existence + tenant + "currently-deleted" assertion into one
+    // statement. include is fetched separately via findFirstOrThrow (updateMany does not
+    // support include).
+    const result = await this.prisma.good.updateMany({
       where: { id, orgId, NOT: { deletedAt: null } },
-      include: {
-        preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
-      },
-    });
-    if (!existing) throw new NotFoundException('Видалений товар не знайдено');
-    const item = await this.prisma.good.update({
-      where: { id, orgId },
       data: { deletedAt: null },
+    });
+    if (result.count === 0) throw new NotFoundException('Видалений товар не знайдено');
+    const item = await this.prisma.good.findFirstOrThrow({
+      where: { id, orgId },
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
       },

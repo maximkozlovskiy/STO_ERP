@@ -188,11 +188,19 @@ export class ServicesService {
   }
 
   async restore(orgId: string, id: string): Promise<ServiceResponseDto> {
-    const existing = await this.prisma.service.findFirst({
+    // Defense-in-depth: atomic updateMany with full compound where (sto-review pattern 2026-05-30).
+    // updateMany returns count → translate 0 → 404, eliminating the race window between
+    // a separate findFirst + update() that could resurrect a record concurrently soft-deleted
+    // (or worse, write to a record from another org if the FK pre-check passed but ownership
+    // changed). orgId + NOT deletedAt: null guarantees both tenant isolation and "must be
+    // currently deleted" invariant in a single statement.
+    const result = await this.prisma.service.updateMany({
       where: { id, orgId, NOT: { deletedAt: null } },
+      data: { deletedAt: null },
     });
-    if (!existing) throw new NotFoundException('Видалену послугу не знайдено');
-    const item = await this.prisma.service.findFirst({
+    if (result.count === 0) throw new NotFoundException('Видалену послугу не знайдено');
+
+    const item = await this.prisma.service.findFirstOrThrow({
       where: { id, orgId },
       include: {
         serviceWorks: {
@@ -205,8 +213,7 @@ export class ServicesService {
         },
       },
     });
-    await this.prisma.service.update({ where: { id, orgId }, data: { deletedAt: null } });
-    return this.toDto({ ...item!, deletedAt: null });
+    return this.toDto(item);
   }
 
   async findAll(

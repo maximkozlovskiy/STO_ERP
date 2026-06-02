@@ -39,14 +39,15 @@ export class BrandsService {
   }
 
   async restore(orgId: string, id: string): Promise<BrandResponseDto> {
-    const existing = await this.prisma.brand.findFirst({
+    // Defense-in-depth: atomic updateMany with full compound where (sto-review pattern
+    // 2026-05-30). One statement asserts (id, orgId, currently-deleted) — eliminates
+    // the race window between separate findFirst + update().
+    const result = await this.prisma.brand.updateMany({
       where: { id, orgId, NOT: { deletedAt: null } },
-    });
-    if (!existing) throw new NotFoundException('Видалений бренд не знайдено');
-    const item = await this.prisma.brand.update({
-      where: { id, orgId },
       data: { deletedAt: null },
     });
+    if (result.count === 0) throw new NotFoundException('Видалений бренд не знайдено');
+    const item = await this.prisma.brand.findFirstOrThrow({ where: { id, orgId } });
     await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }

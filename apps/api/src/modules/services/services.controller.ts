@@ -12,13 +12,18 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { ServicesService } from './services.service';
-import { CreateServiceDto, UpdateServiceDto, ServiceResponseDto } from './services.dto';
+import {
+  CreateServiceDto,
+  UpdateServiceDto,
+  ServiceQueryDto,
+  ServiceResponseDto,
+} from './services.dto';
 
 @ApiTags('Services')
 @Controller('services')
@@ -30,18 +35,11 @@ export class ServicesController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Список комплексних послуг' })
-  @ApiQuery({ name: 'q', required: false })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  @ApiQuery({ name: 'showDeleted', required: false, type: Boolean })
-  findAll(
-    @OrgContext() orgId: string,
-    @Query('q') q?: string,
-    @Query('page') page = '1',
-    @Query('limit') limit = '50',
-    @Query('showDeleted') showDeleted?: string,
-  ) {
-    return this.service.findAll(orgId, Number(page), Number(limit), q, showDeleted === 'true');
+  findAll(@OrgContext() orgId: string, @Query() query: ServiceQueryDto) {
+    // ServiceQueryDto enforces Max(200) on limit and IsBoolean coercion on
+    // showDeleted, mirroring works/goods. Manual @Query parsing in the previous
+    // version skipped both, allowing unvalidated `?limit=999999` requests.
+    return this.service.findAll(orgId, query.page, query.limit, query.q, query.showDeleted);
   }
 
   @Get(':id')

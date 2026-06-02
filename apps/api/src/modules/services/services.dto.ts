@@ -3,13 +3,16 @@ import {
   IsNotEmpty,
   IsNumber,
   Min,
+  Max,
+  IsPositive,
   IsOptional,
   IsUUID,
   IsArray,
+  IsBoolean,
   ValidateNested,
   ArrayMaxSize,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 
 export class ServiceWorkItemDto {
@@ -66,6 +69,34 @@ export class CreateServiceDto {
 }
 
 export class UpdateServiceDto extends PartialType(CreateServiceDto) {}
+
+export class ServiceQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  page: number = 1;
+
+  @ApiPropertyOptional({ default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  @Max(200)
+  limit: number = 50;
+
+  @ApiPropertyOptional({ description: 'Показати видалені' })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  showDeleted?: boolean;
+}
 
 export class ServiceResponseDto {
   @ApiProperty() id!: string;

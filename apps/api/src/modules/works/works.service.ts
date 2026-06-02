@@ -101,14 +101,16 @@ export class WorksService {
   }
 
   async restore(orgId: string, id: string): Promise<WorkResponseDto> {
-    const existing = await this.prisma.work.findFirst({
+    // Defense-in-depth: atomic updateMany with full compound where (sto-review pattern
+    // 2026-05-30). Replaces separate findFirst + update() which had a race-window where
+    // a concurrent session could resurrect or hard-delete between the two queries.
+    const result = await this.prisma.work.updateMany({
       where: { id, orgId, NOT: { deletedAt: null } },
-      include: { category: { select: { name: true } } },
-    });
-    if (!existing) throw new NotFoundException('Видалену роботу не знайдено');
-    const item = await this.prisma.work.update({
-      where: { id, orgId },
       data: { deletedAt: null },
+    });
+    if (result.count === 0) throw new NotFoundException('Видалену роботу не знайдено');
+    const item = await this.prisma.work.findFirstOrThrow({
+      where: { id, orgId },
       include: { category: { select: { name: true } } },
     });
     return this.toDto(item);
