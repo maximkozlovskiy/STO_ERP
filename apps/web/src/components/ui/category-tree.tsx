@@ -169,7 +169,7 @@ export function CategoryTree({
   return (
     <aside
       className={cn(
-        'flex flex-col w-48 shrink-0 rounded-xl border border-border bg-surface overflow-hidden ml-2',
+        'flex flex-col w-56 shrink-0 rounded-xl border border-border bg-surface overflow-hidden ml-2',
         className,
       )}
     >
