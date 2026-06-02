@@ -14,6 +14,7 @@ import {
   GoodResponseDto,
   PaginatedGoodsDto,
   CreateGoodUoMDto,
+  UpdateGoodUoMDto,
   GoodUoMResponseDto,
 } from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
@@ -235,13 +236,17 @@ export class GoodsService {
       }),
       this.prisma.goodUoM.findMany({
         where: { orgId, goodId },
-        // Tighten include → select to avoid over-fetching unitOfMeasure metadata
-        // (orgId, deletedAt, syncVersion, etc. are unused by toUoMDto).
         select: {
           id: true,
           unitOfMeasureId: true,
           isDefault: true,
-          unitOfMeasure: { select: { name: true, shortName: true, coefficient: true } },
+          coefficient: true,
+          width: true,
+          height: true,
+          depth: true,
+          volume: true,
+          weight: true,
+          unitOfMeasure: { select: { name: true, shortName: true } },
         },
         orderBy: { isDefault: 'desc' },
         // Safety cap — typical good has 1-5 UoMs; this prevents OOM if a
@@ -279,12 +284,31 @@ export class GoodsService {
       uom = await this.prisma.$transaction(
         async tx => {
           const created = await tx.goodUoM.create({
-            data: { orgId, goodId, unitOfMeasureId: dto.unitOfMeasureId, isDefault: isFirst },
+            data: {
+              orgId,
+              goodId,
+              unitOfMeasureId: dto.unitOfMeasureId,
+              isDefault: isFirst,
+              // Pre-populate from UnitOfMeasure template values so the per-good
+              // coefficient starts with a sensible default (editable afterwards).
+              coefficient: unit.coefficient,
+              width: unit.width,
+              height: unit.height,
+              depth: unit.depth,
+              volume: unit.volume,
+              weight: unit.weight,
+            },
             select: {
               id: true,
               unitOfMeasureId: true,
               isDefault: true,
-              unitOfMeasure: { select: { name: true, shortName: true, coefficient: true } },
+              coefficient: true,
+              width: true,
+              height: true,
+              depth: true,
+              volume: true,
+              weight: true,
+              unitOfMeasure: { select: { name: true, shortName: true } },
             },
           });
           if (isFirst) {
@@ -327,7 +351,13 @@ export class GoodsService {
           id: true,
           unitOfMeasureId: true,
           isDefault: true,
-          unitOfMeasure: { select: { name: true, shortName: true, coefficient: true } },
+          coefficient: true,
+          width: true,
+          height: true,
+          depth: true,
+          volume: true,
+          weight: true,
+          unitOfMeasure: { select: { name: true, shortName: true } },
         },
       }),
     ]);
@@ -398,19 +428,68 @@ export class GoodsService {
     );
   }
 
+  async updateUoM(
+    orgId: string,
+    goodId: string,
+    uomId: string,
+    dto: UpdateGoodUoMDto,
+  ): Promise<GoodUoMResponseDto> {
+    const [good, uom] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id: goodId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.goodUoM.findFirst({
+        where: { id: uomId, goodId, orgId },
+        select: { id: true },
+      }),
+    ]);
+    if (!good) throw new NotFoundException('Товар не знайдено');
+    if (!uom) throw new NotFoundException('Одиницю виміру товару не знайдено');
+
+    const updated = await this.prisma.goodUoM.update({
+      where: { id: uomId },
+      data: dto,
+      select: {
+        id: true,
+        unitOfMeasureId: true,
+        isDefault: true,
+        coefficient: true,
+        width: true,
+        height: true,
+        depth: true,
+        volume: true,
+        weight: true,
+        unitOfMeasure: { select: { name: true, shortName: true } },
+      },
+    });
+    return this.toUoMDto(updated);
+  }
+
   private toUoMDto(u: {
     id: string;
     unitOfMeasureId: string;
     isDefault: boolean;
-    unitOfMeasure: { name: string; shortName: string; coefficient: number };
+    coefficient: number;
+    width?: number | null;
+    height?: number | null;
+    depth?: number | null;
+    volume?: number | null;
+    weight?: number | null;
+    unitOfMeasure: { name: string; shortName: string };
   }): GoodUoMResponseDto {
     return {
       id: u.id,
       unitOfMeasureId: u.unitOfMeasureId,
       unitName: u.unitOfMeasure.name,
       unitShortName: u.unitOfMeasure.shortName,
-      coefficient: u.unitOfMeasure.coefficient,
+      coefficient: u.coefficient,
       isDefault: u.isDefault,
+      width: u.width,
+      height: u.height,
+      depth: u.depth,
+      volume: u.volume,
+      weight: u.weight,
     };
   }
 

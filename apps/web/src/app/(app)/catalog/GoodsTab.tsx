@@ -2,7 +2,18 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Plus, Pencil, Search, Trash2, Package, Layers, Star, Barcode, X } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Search,
+  Trash2,
+  Package,
+  Layers,
+  Star,
+  Barcode,
+  X,
+  Check,
+} from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
@@ -240,6 +251,19 @@ export default function GoodsTab() {
     unitShortName: string;
     coefficient: number;
     isDefault: boolean;
+    width?: number | null;
+    height?: number | null;
+    depth?: number | null;
+    volume?: number | null;
+    weight?: number | null;
+  }
+  interface UoMEditForm {
+    coefficient: string;
+    width: string;
+    height: string;
+    depth: string;
+    volume: string;
+    weight: string;
   }
   const [modalUoMs, setModalUoMs] = useState<GoodUoM[]>([]);
   const [modalUoMsLoading, setModalUoMsLoading] = useState(false);
@@ -248,6 +272,16 @@ export default function GoodsTab() {
   const [addUoMForm, setAddUoMForm] = useState({ unitOfMeasureId: '' });
   const [addingUoM, setAddingUoM] = useState(false);
   const [deletingUoMId, setDeletingUoMId] = useState<string | null>(null);
+  const [editingUoMId, setEditingUoMId] = useState<string | null>(null);
+  const [editUoMForm, setEditUoMForm] = useState<UoMEditForm>({
+    coefficient: '1',
+    width: '',
+    height: '',
+    depth: '',
+    volume: '',
+    weight: '',
+  });
+  const [savingUoMId, setSavingUoMId] = useState<string | null>(null);
   const modalUoMReqRef = useRef(0);
   const uomRefDefault = useRef(0);
 
@@ -668,6 +702,53 @@ export default function GoodsTab() {
       }
     } finally {
       setDeletingUoMId(null);
+    }
+  };
+
+  const openEditUoM = (u: GoodUoM) => {
+    setEditingUoMId(u.id);
+    setEditUoMForm({
+      coefficient: String(u.coefficient),
+      width: u.width != null ? String(u.width) : '',
+      height: u.height != null ? String(u.height) : '',
+      depth: u.depth != null ? String(u.depth) : '',
+      volume: u.volume != null ? String(u.volume) : '',
+      weight: u.weight != null ? String(u.weight) : '',
+    });
+    setUomError('');
+  };
+
+  const cancelEditUoM = () => {
+    setEditingUoMId(null);
+    setUomError('');
+  };
+
+  const saveUoMEdit = async (goodId: string, uomId: string) => {
+    if (!editUoMForm.coefficient.trim()) {
+      setUomError('Коефіцієнт є обовʼязковим');
+      return;
+    }
+    setSavingUoMId(uomId);
+    setUomError('');
+    try {
+      await apiFetch<GoodUoM>(`/goods/${goodId}/uoms/${uomId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          coefficient: Number(editUoMForm.coefficient),
+          width: editUoMForm.width ? Number(editUoMForm.width) : undefined,
+          height: editUoMForm.height ? Number(editUoMForm.height) : undefined,
+          depth: editUoMForm.depth ? Number(editUoMForm.depth) : undefined,
+          volume: editUoMForm.volume ? Number(editUoMForm.volume) : undefined,
+          weight: editUoMForm.weight ? Number(editUoMForm.weight) : undefined,
+        }),
+      });
+      setEditingUoMId(null);
+      refreshUoMs(goodId);
+      if (features.toastEnabled) toast.success('Одиницю виміру оновлено');
+    } catch (e: unknown) {
+      setUomError(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      setSavingUoMId(null);
     }
   };
 
@@ -1719,49 +1800,164 @@ export default function GoodsTab() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                              {modalUoMs.map(u => (
-                                <tr
-                                  key={u.id}
-                                  className="bg-surface hover:bg-secondary/50 transition-colors"
-                                >
-                                  <td className="px-3 py-2 text-foreground">
-                                    <div>
-                                      <p className="font-medium">{u.unitShortName}</p>
-                                      <p className="text-[12px] text-muted-foreground">
-                                        {u.unitName}
-                                      </p>
-                                    </div>
-                                  </td>
-                                  <td className="px-3 py-2 text-muted-foreground">
-                                    {u.coefficient}
-                                  </td>
-                                  <td className="px-3 py-2 text-center">
-                                    {u.isDefault ? (
-                                      <Star className="h-3.5 w-3.5 text-warning-text fill-warning-text mx-auto" />
-                                    ) : (
+                              {modalUoMs.map(u =>
+                                editingUoMId === u.id ? (
+                                  <>
+                                    <tr key={u.id} className="bg-primary/5">
+                                      <td className="px-3 py-2 text-foreground">
+                                        <div>
+                                          <p className="font-medium">{u.unitShortName}</p>
+                                          <p className="text-[12px] text-muted-foreground">
+                                            {u.unitName}
+                                          </p>
+                                        </div>
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <input
+                                          autoFocus
+                                          type="number"
+                                          min="0"
+                                          step="any"
+                                          value={editUoMForm.coefficient}
+                                          onChange={e =>
+                                            setEditUoMForm(f => ({
+                                              ...f,
+                                              coefficient: e.target.value,
+                                            }))
+                                          }
+                                          onKeyDown={e => {
+                                            if (e.key === 'Escape') cancelEditUoM();
+                                            if (e.key === 'Enter')
+                                              void (editGood && saveUoMEdit(editGood.id, u.id));
+                                          }}
+                                          className="w-24 rounded border border-primary/40 bg-surface px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                                        />
+                                      </td>
+                                      <td className="px-3 py-2 text-center">
+                                        {u.isDefault ? (
+                                          <Star className="h-3.5 w-3.5 text-warning-text fill-warning-text mx-auto" />
+                                        ) : (
+                                          <Star className="h-3.5 w-3.5 text-muted-foreground mx-auto" />
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <div className="flex items-center justify-end gap-1">
+                                          <button
+                                            type="button"
+                                            disabled={savingUoMId === u.id}
+                                            onClick={() =>
+                                              editGood && void saveUoMEdit(editGood.id, u.id)
+                                            }
+                                            className="text-success/80 hover:text-success hover:bg-success/10 p-1 rounded transition-colors"
+                                            title="Зберегти (Enter)"
+                                          >
+                                            {savingUoMId === u.id ? (
+                                              <span className="text-[11px]">...</span>
+                                            ) : (
+                                              <Check className="h-3.5 w-3.5" />
+                                            )}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={cancelEditUoM}
+                                            className="text-muted-foreground hover:text-foreground p-1 rounded transition-colors"
+                                            title="Скасувати (Esc)"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                    <tr key={`${u.id}-dims`} className="bg-primary/5 border-t-0">
+                                      <td colSpan={4} className="px-3 pb-2">
+                                        <div className="grid grid-cols-5 gap-2">
+                                          {(
+                                            [
+                                              { key: 'width', label: 'Ширина, м' },
+                                              { key: 'height', label: 'Висота, м' },
+                                              { key: 'depth', label: 'Глибина, м' },
+                                              { key: 'volume', label: "Об'єм, м³" },
+                                              { key: 'weight', label: 'Вага, кг' },
+                                            ] as { key: keyof UoMEditForm; label: string }[]
+                                          ).map(({ key, label }) => (
+                                            <div key={key}>
+                                              <label className="text-[11px] text-muted-foreground block mb-0.5">
+                                                {label}
+                                              </label>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                step="any"
+                                                value={editUoMForm[key]}
+                                                onChange={e =>
+                                                  setEditUoMForm(f => ({
+                                                    ...f,
+                                                    [key]: e.target.value,
+                                                  }))
+                                                }
+                                                onKeyDown={e => {
+                                                  if (e.key === 'Escape') cancelEditUoM();
+                                                }}
+                                                placeholder="—"
+                                                className="w-full rounded border border-border bg-surface px-2 py-1 text-[12px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                              />
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  </>
+                                ) : (
+                                  <tr
+                                    key={u.id}
+                                    className="bg-surface hover:bg-secondary/50 transition-colors cursor-pointer group"
+                                    onClick={() => openEditUoM(u)}
+                                  >
+                                    <td className="px-3 py-2 text-foreground">
+                                      <div>
+                                        <p className="font-medium">{u.unitShortName}</p>
+                                        <p className="text-[12px] text-muted-foreground">
+                                          {u.unitName}
+                                        </p>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-2 text-muted-foreground tabular-nums">
+                                      {u.coefficient !== 1 ? u.coefficient : '—'}
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                      {u.isDefault ? (
+                                        <Star className="h-3.5 w-3.5 text-warning-text fill-warning-text mx-auto" />
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={e => {
+                                            e.stopPropagation();
+                                            editGood && void setDefaultUoM(editGood.id, u.id);
+                                          }}
+                                          className="text-muted-foreground hover:text-warning-text transition-colors mx-auto block"
+                                          title="Встановити основною"
+                                        >
+                                          <Star className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
                                       <button
                                         type="button"
-                                        onClick={() => editGood && setDefaultUoM(editGood.id, u.id)}
-                                        className="text-muted-foreground hover:text-warning-text transition-colors"
-                                        title="Встановити основною"
+                                        disabled={deletingUoMId === u.id}
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          editGood && void deleteUoM(editGood.id, u.id);
+                                        }}
+                                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                        title="Видалити"
                                       >
-                                        <Star className="h-3.5 w-3.5" />
+                                        <X className="h-3.5 w-3.5" />
                                       </button>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2 text-center">
-                                    <button
-                                      type="button"
-                                      disabled={deletingUoMId === u.id}
-                                      onClick={() => editGood && deleteUoM(editGood.id, u.id)}
-                                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
-                                      title="Видалити"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
+                                    </td>
+                                  </tr>
+                                ),
+                              )}
                             </tbody>
                           </table>
                         </div>

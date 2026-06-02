@@ -24,6 +24,7 @@ import {
   UpdateGoodDto,
   GoodQueryDto,
   CreateGoodUoMDto,
+  UpdateGoodUoMDto,
   GoodUoMResponseDto,
 } from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
@@ -102,6 +103,18 @@ export class GoodsController {
     @Body() dto: CreateGoodUoMDto,
   ): Promise<GoodUoMResponseDto> {
     return this.service.addUoM(orgId, goodId, dto);
+  }
+
+  @Patch(':goodId/uoms/:uomId')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Оновити коефіцієнт та розміри одиниці виміру товару' })
+  updateUoM(
+    @OrgContext() orgId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+    @Param('uomId', ParseUUIDPipe) uomId: string,
+    @Body() dto: UpdateGoodUoMDto,
+  ): Promise<GoodUoMResponseDto> {
+    return this.service.updateUoM(orgId, goodId, uomId, dto);
   }
 
   @Patch(':goodId/uoms/:uomId/default')

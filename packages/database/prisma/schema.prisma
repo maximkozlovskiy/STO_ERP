@@ -791,6 +791,12 @@ model GoodUoM {
   goodId          String        @db.Uuid
   unitOfMeasureId String        @db.Uuid
   isDefault       Boolean       @default(false)
+  coefficient     Float         @default(1)
+  width           Float?
+  height          Float?
+  depth           Float?
+  volume          Float?
+  weight          Float?
   createdAt       DateTime      @default(now())
 
   good            Good          @relation(fields: [goodId], references: [id], onDelete: Cascade)

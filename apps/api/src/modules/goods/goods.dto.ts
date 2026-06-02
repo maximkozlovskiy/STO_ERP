@@ -113,6 +113,44 @@ export class CreateGoodUoMDto {
   unitOfMeasureId!: string;
 }
 
+export class UpdateGoodUoMDto {
+  @ApiPropertyOptional({ example: 1, description: 'Коефіцієнт перерахунку до базової одиниці' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  coefficient?: number;
+
+  @ApiPropertyOptional({ description: 'Ширина (м)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  width?: number;
+
+  @ApiPropertyOptional({ description: 'Висота (м)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  height?: number;
+
+  @ApiPropertyOptional({ description: 'Глибина/довжина (м)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  depth?: number;
+
+  @ApiPropertyOptional({ description: "Об'єм (м³)" })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  volume?: number;
+
+  @ApiPropertyOptional({ description: 'Вага (кг)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  weight?: number;
+}
+
 export class GoodUoMResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() unitOfMeasureId!: string;
@@ -120,4 +158,9 @@ export class GoodUoMResponseDto {
   @ApiProperty() unitShortName!: string;
   @ApiProperty() coefficient!: number;
   @ApiProperty() isDefault!: boolean;
+  @ApiPropertyOptional() width?: number | null;
+  @ApiPropertyOptional() height?: number | null;
+  @ApiPropertyOptional() depth?: number | null;
+  @ApiPropertyOptional() volume?: number | null;
+  @ApiPropertyOptional() weight?: number | null;
 }
