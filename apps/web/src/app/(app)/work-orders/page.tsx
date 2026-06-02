@@ -653,7 +653,7 @@ export default function WorkOrdersPage() {
       )}
 
       {/* Table + DetailPanel */}
-      <div className="flex gap-3">
+      <div className="flex">
         <div className="flex-1 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
           <Table>
             <TableHeader>
