@@ -137,17 +137,17 @@ export function DetailPanel({
         <>
           {/* Tabs */}
           {tabs && tabs.length > 1 && (
-            <div className="flex border-b border-border shrink-0 overflow-x-auto">
+            <div className="flex gap-1 bg-secondary rounded-lg p-0.5 mx-4 mt-3 shrink-0">
               {tabs.map(tab => (
                 <button
                   key={tab.key}
                   type="button"
                   onClick={() => setActiveTab(tab.key)}
                   className={cn(
-                    'px-4 py-2.5 text-[12px] font-medium transition-colors whitespace-nowrap border-b-2 shrink-0',
+                    'flex-1 px-2 py-1.5 text-[12px] font-medium transition-colors rounded-md whitespace-nowrap',
                     activeTab === tab.key
-                      ? 'text-primary border-primary'
-                      : 'text-muted-foreground border-transparent hover:text-foreground',
+                      ? 'bg-surface text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
                   {tab.label}
