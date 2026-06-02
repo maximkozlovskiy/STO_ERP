@@ -1007,7 +1007,7 @@ export default function GoodsTab() {
                   return (
                     <TableRow
                       key={g.id}
-                      className={`group cursor-pointer ${isDeleted ? 'opacity-60 bg-secondary/30' : selectedGood?.id === g.id ? 'bg-secondary' : ''}`}
+                      className={`group ${detailPanel.enabled && !isDeleted ? 'cursor-pointer' : ''} ${isDeleted ? 'opacity-60 bg-secondary/30' : selectedGood?.id === g.id && detailPanel.enabled ? 'bg-secondary' : ''}`}
                       onClick={
                         detailPanel.enabled && !isDeleted
                           ? () => selectGood(selectedGood?.id === g.id ? null : g)

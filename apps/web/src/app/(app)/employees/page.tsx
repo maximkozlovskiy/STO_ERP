@@ -942,7 +942,7 @@ export default function EmployeesPage() {
                         'transition-colors',
                         isDeleted && 'opacity-60',
                         detailPanel.enabled && 'cursor-pointer',
-                        selectedEmp?.id === emp.id && 'bg-secondary',
+                        selectedEmp?.id === emp.id && detailPanel.enabled && 'bg-secondary',
                         bulkSelect.isSelected(emp.id) && 'bg-primary/5',
                       )}
                       onClick={() => {

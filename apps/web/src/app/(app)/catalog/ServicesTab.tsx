@@ -470,10 +470,11 @@ export default function ServicesTab() {
                     <TableRow
                       key={s.id}
                       className={cn(
-                        'group cursor-pointer',
+                        'group',
+                        detailPanel.enabled && !isDeleted && 'cursor-pointer',
                         isDeleted
                           ? 'opacity-60 bg-secondary/30'
-                          : selectedService?.id === s.id
+                          : selectedService?.id === s.id && detailPanel.enabled
                             ? 'bg-secondary'
                             : '',
                       )}

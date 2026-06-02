@@ -813,7 +813,7 @@ export default function CrmPage() {
                         'transition-colors',
                         detailPanel.enabled && 'cursor-pointer',
                         isDeleted && 'opacity-60',
-                        selectedCp?.id === cp.id && 'bg-secondary',
+                        selectedCp?.id === cp.id && detailPanel.enabled && 'bg-secondary',
                         bulkSelect.isSelected(cp.id) && 'bg-primary/5',
                       )}
                       onClick={() => {

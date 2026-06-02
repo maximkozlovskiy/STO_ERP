@@ -699,7 +699,7 @@ export default function StockDocumentsPage() {
                     className={cn(
                       detailPanel.enabled && 'cursor-pointer',
                       'transition-colors',
-                      selectedDoc?.id === doc.id && 'bg-secondary',
+                      selectedDoc?.id === doc.id && detailPanel.enabled && 'bg-secondary',
                       bulkSelect.isSelected(doc.id) && 'bg-primary/5',
                       doc.deletedAt && 'opacity-60',
                     )}

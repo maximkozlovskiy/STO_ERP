@@ -9044,3 +9044,100 @@ const restore = async (id: string) => {
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-02 — UI toolbar refactor: DetailPanelToggle integration audit
+
+Сесія перевірки після рефакторингу що додав `DetailPanelToggle` у toolbar (work-orders, crm, employees, invoices, purchase-orders, stock-documents) та catalog tabs (WorksTab, GoodsTab, ServicesTab). Перевіряв 5 фокус-зон: TS, поведінка `detailPanel.enabled` toggle, доступність Add button, дублікати state, regressions у unit/component тестах.
+
+---
+
+## Bug #310 — [MEDIUM] Stale row selection highlight when `detailPanel.enabled = false` — на 8 list-сторінках
+
+**Файли:**
+
+- `apps/web/src/app/(app)/crm/page.tsx:816`
+- `apps/web/src/app/(app)/employees/page.tsx:945`
+- `apps/web/src/app/(app)/invoices/page.tsx:718`
+- `apps/web/src/app/(app)/purchase-orders/page.tsx:775`
+- `apps/web/src/app/(app)/stock-documents/page.tsx:702`
+- `apps/web/src/app/(app)/catalog/WorksTab.tsx:569-570`
+- `apps/web/src/app/(app)/catalog/ServicesTab.tsx:476-477`
+- `apps/web/src/app/(app)/catalog/GoodsTab.tsx:1010`
+
+**Severity:** MEDIUM (UX desync — користувач бачить підсвічений рядок але панель прихована, не може зрозуміти що "вибрано")
+**Категорія:** frontend / UI consistency / stale state
+
+**Опис:** Класи `bg-secondary` / `bg-primary/5` для виділеного рядка застосовуються тільки на основі `selected*?.id === item.id` БЕЗ перевірки `detailPanel.enabled`:
+
+```tsx
+// crm/page.tsx — фрагмент
+<TableRow
+  className={cn(
+    'transition-colors',
+    detailPanel.enabled && 'cursor-pointer', // ← cursor gated
+    isDeleted && 'opacity-60',
+    selectedCp?.id === cp.id && 'bg-secondary', // ← підсвітка НЕ gated
+    bulkSelect.isSelected(cp.id) && 'bg-primary/5',
+  )}
+/>
+```
+
+Сценарій відтворення:
+
+1. Користувач відкриває /crm, клікає на рядок → DetailPanel показується, рядок підсвічується.
+2. Користувач натискає `DetailPanelToggle` → `detailPanel.enabled = false`, `setSelectedCp(null)` НЕ викликається.
+3. Панель прихована (бо `open={!!selectedCp && detailPanel.enabled}`), але рядок ВСЕ ЩЕ виділений → юзер заплутаний.
+
+**Прецедент-правильний шаблон** є тільки у `work-orders/page.tsx:730`:
+
+```tsx
+selectedWO?.id === wo.id && detailPanel.enabled && 'bg-primary/5',  // ← правильно
+```
+
+**Очікувана поведінка:** highlight = AND з `detailPanel.enabled`. Альтернатива: очищати `selected*` коли `detailPanel.enabled` стає false (через `useEffect`). Перший варіант проще — рядок не "пам'ятає" stale selection.
+
+**Статус:** [x] виправлено — додано `&& detailPanel.enabled` до conditional highlight у всі 8 файлів.
+
+---
+
+## Bug #311 — [LOW] Unconditional `cursor-pointer` на TableRow у catalog tabs коли DetailPanel disabled
+
+**Файли:**
+
+- `apps/web/src/app/(app)/catalog/WorksTab.tsx:566`
+- `apps/web/src/app/(app)/catalog/ServicesTab.tsx:473`
+- `apps/web/src/app/(app)/catalog/GoodsTab.tsx:1010`
+
+**Severity:** LOW (UX: misleading affordance — пальцем-курсор натякає що клік щось зробить, але не робить)
+**Категорія:** frontend / UI consistency / misleading affordance
+
+**Опис:** Catalog tabs застосовують `cursor-pointer` БЕЗУМОВНО до кожного `TableRow`, навіть коли `detailPanel.enabled = false` і клік ніяк не реагує:
+
+```tsx
+// WorksTab.tsx:566 — фрагмент
+<TableRow
+  className={cn(
+    'group cursor-pointer', // ← always pointer
+    isDeleted ? 'opacity-60 bg-secondary/30' : selectedWork?.id === w.id ? 'bg-secondary' : '',
+  )}
+  onClick={() => {
+    if (detailPanel.enabled && !isDeleted)
+      // ← but click only does something conditionally
+      setSelectedWork(prev => (prev?.id === w.id ? null : w));
+  }}
+/>
+```
+
+GoodsTab навіть йде далі — там `onClick={detailPanel.enabled && !isDeleted ? () => ... : undefined}` (тобто `undefined` коли disabled), але `cursor-pointer` все одно є.
+
+**Прецедент-правильний шаблон** у list-сторінках:
+
+```tsx
+detailPanel.enabled && 'cursor-pointer',  // ← gated by toggle
+```
+
+**Очікувана поведінка:** `cursor-pointer` тільки коли клік реально робить щось — інакше `cursor-default`. Це уніфікує поведінку з list-сторінками (work-orders/crm/employees/invoices/purchase-orders/stock-documents) і запобігає WTF-моментам.
+
+**Статус:** [x] виправлено — `cursor-pointer` тепер conditional від `detailPanel.enabled` (і `!isDeleted` де доречно).
+
+---

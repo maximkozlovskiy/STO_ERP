@@ -563,10 +563,11 @@ export default function WorksTab() {
                     <TableRow
                       key={w.id}
                       className={cn(
-                        'group cursor-pointer',
+                        'group',
+                        detailPanel.enabled && !isDeleted && 'cursor-pointer',
                         isDeleted
                           ? 'opacity-60 bg-secondary/30'
-                          : selectedWork?.id === w.id
+                          : selectedWork?.id === w.id && detailPanel.enabled
                             ? 'bg-secondary'
                             : '',
                       )}

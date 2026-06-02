@@ -772,7 +772,7 @@ export default function PurchaseOrdersPage() {
                     className={cn(
                       detailPanel.enabled && 'cursor-pointer',
                       'transition-colors',
-                      selectedPO?.id === po.id && 'bg-secondary',
+                      selectedPO?.id === po.id && detailPanel.enabled && 'bg-secondary',
                       bulkSelect.isSelected(po.id) && 'bg-primary/5',
                       po.deletedAt && 'opacity-60',
                     )}

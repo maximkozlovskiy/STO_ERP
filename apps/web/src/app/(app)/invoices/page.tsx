@@ -715,7 +715,7 @@ export default function InvoicesPage() {
                     className={cn(
                       detailPanel.enabled && 'cursor-pointer',
                       'transition-colors',
-                      selectedInv?.id === inv.id && 'bg-primary/5',
+                      selectedInv?.id === inv.id && detailPanel.enabled && 'bg-primary/5',
                       bulkSelect.isSelected(inv.id) && 'bg-primary/5',
                     )}
                   >
