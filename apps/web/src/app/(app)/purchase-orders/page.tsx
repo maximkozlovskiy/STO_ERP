@@ -26,6 +26,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
+import {
+  PURCHASE_ORDER_PANEL_SCHEMA,
+  buildPanelFields,
+  schemaToPanelConfigFields,
+} from '@/lib/panel-schema';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
@@ -114,16 +119,6 @@ const STATUS_ACTION_LABELS: Record<string, string> = {
 function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
 }
-
-const PO_PANEL_FIELDS = [
-  { key: 'status', label: 'Статус' },
-  { key: 'supplier', label: 'Постачальник' },
-  { key: 'warehouse', label: 'Склад' },
-  { key: 'total_amount', label: 'Сума' },
-  { key: 'lines_count', label: 'Позицій' },
-  { key: 'notes', label: 'Нотатки' },
-  { key: 'created_at', label: 'Дата' },
-] as const;
 
 export default function PurchaseOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
@@ -538,52 +533,21 @@ export default function PurchaseOrdersPage() {
       label: 'Основне',
       content: (
         <div className="space-y-3">
-          <PanelField
-            fieldKey="status"
-            label="Статус"
-            hidden={panelConfig.isFieldHidden('status')}
-            value={
-              <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>
-                {STATUS_LABELS[po.status]}
+          {buildPanelFields(po, PURCHASE_ORDER_PANEL_SCHEMA, panelConfig.config, {
+            status: v => (
+              <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'}>
+                {STATUS_LABELS[String(v)]}
               </Badge>
-            }
-          />
-          <PanelField
-            fieldKey="supplier"
-            label="Постачальник"
-            value={po.supplierName}
-            hidden={panelConfig.isFieldHidden('supplier')}
-          />
-          <PanelField
-            fieldKey="warehouse"
-            label="Склад"
-            value={po.warehouseName}
-            hidden={panelConfig.isFieldHidden('warehouse')}
-          />
-          <PanelField
-            fieldKey="total_amount"
-            label="Сума"
-            value={po.totalAmount != null ? `${fmtMoney(po.totalAmount)} ₴` : undefined}
-            hidden={panelConfig.isFieldHidden('total_amount')}
-          />
-          <PanelField
-            fieldKey="lines_count"
-            label="Позицій"
-            value={po.linesCount != null ? String(po.linesCount) : undefined}
-            hidden={panelConfig.isFieldHidden('lines_count')}
-          />
-          <PanelField
-            fieldKey="notes"
-            label="Нотатки"
-            value={po.notes}
-            hidden={panelConfig.isFieldHidden('notes')}
-          />
-          <PanelField
-            fieldKey="created_at"
-            label="Дата"
-            value={fmtDate(po.createdAt)}
-            hidden={panelConfig.isFieldHidden('created_at')}
-          />
+            ),
+          }).map(f => (
+            <PanelField
+              key={f.key}
+              fieldKey={f.key}
+              label={f.label}
+              value={f.value}
+              hidden={f.hidden}
+            />
+          ))}
           {(po.status === 'RECEIVED' || po.status === 'PARTIAL') && (
             <div className="pt-1 space-y-2">
               <Button
@@ -942,11 +906,9 @@ export default function PurchaseOrdersPage() {
           title={selectedPO?.number ?? ''}
           subtitle={selectedPO?.supplierName}
           tabs={selectedPO ? buildPOTabs(selectedPO) : undefined}
-          configFields={PO_PANEL_FIELDS.map(f => ({
-            ...f,
-            hidden: panelConfig.isFieldHidden(f.key),
-          }))}
+          configFields={schemaToPanelConfigFields(PURCHASE_ORDER_PANEL_SCHEMA, panelConfig.config)}
           onToggleField={panelConfig.toggleField}
+          onReorderFields={panelConfig.reorderFields}
           onReset={panelConfig.reset}
         />
       </div>

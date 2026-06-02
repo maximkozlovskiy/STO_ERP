@@ -28,10 +28,15 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import { DetailPanel, PanelField } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
+import {
+  WORK_ORDER_PANEL_SCHEMA,
+  buildPanelFields,
+  schemaToPanelConfigFields,
+} from '@/lib/panel-schema';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { InlineEditCell, InlineViewCell } from '@/components/ui/inline-edit-cell';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
@@ -154,18 +159,6 @@ function isOverdue(dueDateIso: string, nowMs: number): boolean {
   due.setHours(23, 59, 59, 999);
   return due.getTime() < nowMs;
 }
-
-const WO_PANEL_FIELDS = [
-  { key: 'status', label: 'Статус' },
-  { key: 'priority', label: 'Пріоритет' },
-  { key: 'category', label: 'Категорія' },
-  { key: 'counterparty', label: 'Клієнт' },
-  { key: 'vehicle', label: 'Автомобіль' },
-  { key: 'total_amount', label: 'Сума' },
-  { key: 'due_date', label: 'Дедлайн' },
-  { key: 'planned_at', label: 'Заплановано' },
-  { key: 'created_at', label: 'Створено' },
-] as const;
 
 export default function WorkOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
@@ -948,112 +941,74 @@ export default function WorkOrdersPage() {
           </Table>
         </div>
 
-        <DetailPanel
-          open={!!selectedWO && detailPanel.enabled}
-          onClose={() => setSelectedWO(null)}
-          title={selectedWO?.number ?? ''}
-          configFields={WO_PANEL_FIELDS.map(f => ({
-            ...f,
-            hidden: panelConfig.isFieldHidden(f.key),
-          }))}
-          onToggleField={panelConfig.toggleField}
-          onReset={panelConfig.reset}
-        >
-          {selectedWO && (
-            <div className="space-y-3">
-              <PanelField
-                fieldKey="status"
-                label="Статус"
-                hidden={panelConfig.isFieldHidden('status')}
-                value={
-                  <Badge variant={STATUS_BADGE[selectedWO.status] ?? 'secondary'} dot>
-                    {STATUS_LABELS[selectedWO.status] ?? selectedWO.status}
-                  </Badge>
-                }
-              />
-              <PanelField
-                fieldKey="priority"
-                label="Пріоритет"
-                hidden={panelConfig.isFieldHidden('priority')}
-                value={
-                  selectedWO.priority ? (
-                    <Badge variant={PRIORITY_BADGE[selectedWO.priority] ?? 'secondary'}>
-                      {PRIORITY_LABELS[selectedWO.priority] ?? selectedWO.priority}
-                    </Badge>
-                  ) : undefined
-                }
-              />
-              <PanelField
-                fieldKey="category"
-                label="Категорія"
-                hidden={panelConfig.isFieldHidden('category')}
-                value={
-                  selectedWO.repairCategory
-                    ? (CATEGORY_LABELS[selectedWO.repairCategory] ?? selectedWO.repairCategory)
-                    : undefined
-                }
-              />
-              <PanelField
-                fieldKey="counterparty"
-                label="Клієнт"
-                value={selectedWO.counterpartyName}
-                hidden={panelConfig.isFieldHidden('counterparty')}
-              />
-              <PanelField
-                fieldKey="vehicle"
-                label="Автомобіль"
-                value={selectedWO.vehicleSummary}
-                hidden={panelConfig.isFieldHidden('vehicle')}
-              />
-              <PanelField
-                fieldKey="total_amount"
-                label="Сума"
-                value={`${fmtMoney(selectedWO.totalAmount)} ₴`}
-                hidden={panelConfig.isFieldHidden('total_amount')}
-              />
-              <PanelField
-                fieldKey="due_date"
-                label="Дедлайн"
-                hidden={panelConfig.isFieldHidden('due_date')}
-                value={
-                  selectedWO.dueDate ? (
-                    <span
-                      className={cn(
-                        'font-medium',
-                        isOverdue(selectedWO.dueDate, nowMs) ? 'text-warning' : undefined,
-                      )}
-                    >
-                      {formatDate(selectedWO.dueDate)}
-                      {isOverdue(selectedWO.dueDate, nowMs) && (
-                        <span className="ml-1 text-[11px]">(прострочено)</span>
-                      )}
-                    </span>
-                  ) : undefined
-                }
-              />
-              <PanelField
-                fieldKey="planned_at"
-                label="Заплановано"
-                value={selectedWO.plannedAt ? fmtDateTime(selectedWO.plannedAt) : undefined}
-                hidden={panelConfig.isFieldHidden('planned_at')}
-              />
-              <PanelField
-                fieldKey="created_at"
-                label="Створено"
-                value={fmtDateTime(selectedWO.createdAt)}
-                hidden={panelConfig.isFieldHidden('created_at')}
-              />
-
-              <Button
-                className="w-full"
-                size="sm"
-                onClick={() => router.push(`/work-orders/${selectedWO.id}`)}
-              >
-                Відкрити наряд
-              </Button>
-            </div>
-          )}
-        </DetailPanel>
+        {(() => {
+          const buildWOTabs = (wo: WorkOrder): DetailPanelTab[] => [
+            {
+              key: 'info',
+              label: 'Основне',
+              content: (
+                <div className="space-y-3">
+                  {buildPanelFields(wo, WORK_ORDER_PANEL_SCHEMA, panelConfig.config, {
+                    status: v => (
+                      <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'} dot>
+                        {STATUS_LABELS[String(v)] ?? String(v)}
+                      </Badge>
+                    ),
+                    priority: v =>
+                      v ? (
+                        <Badge variant={PRIORITY_BADGE[String(v)] ?? 'secondary'}>
+                          {PRIORITY_LABELS[String(v)] ?? String(v)}
+                        </Badge>
+                      ) : undefined,
+                    repairCategory: v =>
+                      v ? (CATEGORY_LABELS[String(v)] ?? String(v)) : undefined,
+                    dueDate: v =>
+                      v ? (
+                        <span
+                          className={cn(
+                            'font-medium',
+                            isOverdue(String(v), nowMs) ? 'text-warning' : undefined,
+                          )}
+                        >
+                          {formatDate(String(v))}
+                          {isOverdue(String(v), nowMs) && (
+                            <span className="ml-1 text-[11px]">(прострочено)</span>
+                          )}
+                        </span>
+                      ) : undefined,
+                  }).map(f => (
+                    <PanelField
+                      key={f.key}
+                      fieldKey={f.key}
+                      label={f.label}
+                      value={f.value}
+                      hidden={f.hidden}
+                    />
+                  ))}
+                  <Button
+                    className="w-full"
+                    size="sm"
+                    onClick={() => router.push(`/work-orders/${wo.id}`)}
+                  >
+                    Відкрити наряд
+                  </Button>
+                </div>
+              ),
+            },
+          ];
+          return (
+            <DetailPanel
+              open={!!selectedWO && detailPanel.enabled}
+              onClose={() => setSelectedWO(null)}
+              title={selectedWO?.number ?? ''}
+              tabs={selectedWO ? buildWOTabs(selectedWO) : undefined}
+              configFields={schemaToPanelConfigFields(WORK_ORDER_PANEL_SCHEMA, panelConfig.config)}
+              onToggleField={panelConfig.toggleField}
+              onReorderFields={panelConfig.reorderFields}
+              onReset={panelConfig.reset}
+            />
+          );
+        })()}
       </div>
 
       {/* Pagination */}

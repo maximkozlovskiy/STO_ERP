@@ -37,6 +37,11 @@ import { toast } from '@/lib/toast';
 import { fmtMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import {
+  SERVICE_PANEL_SCHEMA,
+  buildPanelFields,
+  schemaToPanelConfigFields,
+} from '@/lib/panel-schema';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,11 +109,6 @@ function Pagination({
 }
 
 // ─── Services Tab ─────────────────────────────────────────────────────────────
-
-const SERVICES_PANEL_FIELDS = [
-  { key: 'price', label: 'Ціна' },
-  { key: 'description', label: 'Опис' },
-] as const;
 
 export default function ServicesTab() {
   const { confirm, dialogProps } = useConfirm();
@@ -587,28 +587,21 @@ export default function ServicesTab() {
         </div>
 
         {(() => {
-          const servicesPanelConfigFields = SERVICES_PANEL_FIELDS.map(f => ({
-            ...f,
-            hidden: panelConfig.isFieldHidden(f.key),
-          }));
           const buildServiceTabs = (s: Service): DetailPanelTab[] => [
             {
               key: 'info',
               label: 'Основне',
               content: (
                 <div className="space-y-3">
-                  <PanelField
-                    fieldKey="price"
-                    label="Ціна"
-                    value={s.price != null ? `${fmtMoney(s.price)} ₴` : undefined}
-                    hidden={panelConfig.isFieldHidden('price')}
-                  />
-                  <PanelField
-                    fieldKey="description"
-                    label="Опис"
-                    value={s.description}
-                    hidden={panelConfig.isFieldHidden('description')}
-                  />
+                  {buildPanelFields(s, SERVICE_PANEL_SCHEMA, panelConfig.config).map(f => (
+                    <PanelField
+                      key={f.key}
+                      fieldKey={f.key}
+                      label={f.label}
+                      value={f.value}
+                      hidden={f.hidden}
+                    />
+                  ))}
                 </div>
               ),
             },
@@ -663,8 +656,9 @@ export default function ServicesTab() {
               onClose={() => setSelectedService(null)}
               title={selectedService?.name ?? ''}
               tabs={selectedService ? buildServiceTabs(selectedService) : undefined}
-              configFields={servicesPanelConfigFields}
+              configFields={schemaToPanelConfigFields(SERVICE_PANEL_SCHEMA, panelConfig.config)}
               onToggleField={panelConfig.toggleField}
+              onReorderFields={panelConfig.reorderFields}
               onReset={panelConfig.reset}
             />
           );

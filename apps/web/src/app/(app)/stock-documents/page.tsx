@@ -21,6 +21,11 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
+import {
+  STOCK_DOC_PANEL_SCHEMA,
+  buildPanelFields,
+  schemaToPanelConfigFields,
+} from '@/lib/panel-schema';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import {
   Table,
@@ -129,16 +134,6 @@ const STATUS_BADGE: Record<string, BadgeVariant> = {
   CONFIRMED: 'success',
   CANCELLED: 'destructive',
 };
-
-const STOCK_DOCS_PANEL_FIELDS = [
-  { key: 'type', label: 'Тип' },
-  { key: 'status', label: 'Статус' },
-  { key: 'warehouse', label: 'Склад-джерело' },
-  { key: 'target_warehouse', label: 'Склад-призначення' },
-  { key: 'branch', label: 'Філія' },
-  { key: 'confirmed_at', label: 'Підтверджено' },
-  { key: 'notes', label: 'Нотатки' },
-] as const;
 
 export default function StockDocumentsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
@@ -482,60 +477,31 @@ export default function StockDocumentsPage() {
   const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'];
   const statuses = ['', 'DRAFT', 'CONFIRMED', 'CANCELLED'];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const buildDocTabs = (doc: StockDoc): DetailPanelTab[] => [
     {
       key: 'info',
       label: 'Основне',
       content: (
         <div className="space-y-3">
-          <PanelField
-            fieldKey="type"
-            label="Тип"
-            hidden={panelConfig.isFieldHidden('type')}
-            value={
-              <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>{TYPE_LABELS[doc.type]}</Badge>
-            }
-          />
-          <PanelField
-            fieldKey="status"
-            label="Статус"
-            hidden={panelConfig.isFieldHidden('status')}
-            value={
-              <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>
-                {STATUS_LABELS[doc.status]}
+          {buildPanelFields(doc as any, STOCK_DOC_PANEL_SCHEMA as any, panelConfig.config, {
+            type: v => (
+              <Badge variant={TYPE_BADGE[String(v)] ?? 'secondary'}>{TYPE_LABELS[String(v)]}</Badge>
+            ),
+            status: v => (
+              <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'}>
+                {STATUS_LABELS[String(v)]}
               </Badge>
-            }
-          />
-          <PanelField
-            fieldKey="warehouse"
-            label="Склад-джерело"
-            value={doc.warehouseName}
-            hidden={panelConfig.isFieldHidden('warehouse')}
-          />
-          <PanelField
-            fieldKey="target_warehouse"
-            label="Склад-призначення"
-            value={doc.targetWarehouseName}
-            hidden={panelConfig.isFieldHidden('target_warehouse')}
-          />
-          <PanelField
-            fieldKey="branch"
-            label="Філія"
-            value={doc.branchName}
-            hidden={panelConfig.isFieldHidden('branch')}
-          />
-          <PanelField
-            fieldKey="confirmed_at"
-            label="Підтверджено"
-            value={doc.confirmedAt ? fmtDate(doc.confirmedAt) : undefined}
-            hidden={panelConfig.isFieldHidden('confirmed_at')}
-          />
-          <PanelField
-            fieldKey="notes"
-            label="Нотатки"
-            value={doc.notes}
-            hidden={panelConfig.isFieldHidden('notes')}
-          />
+            ),
+          }).map(f => (
+            <PanelField
+              key={f.key}
+              fieldKey={f.key}
+              label={f.label}
+              value={f.value}
+              hidden={f.hidden}
+            />
+          ))}
         </div>
       ),
     },
@@ -861,11 +827,13 @@ export default function StockDocumentsPage() {
           title={selectedDoc?.number ?? ''}
           subtitle={selectedDoc ? TYPE_LABELS[selectedDoc.type] : undefined}
           tabs={selectedDoc ? buildDocTabs(selectedDoc) : undefined}
-          configFields={STOCK_DOCS_PANEL_FIELDS.map(f => ({
-            ...f,
-            hidden: panelConfig.isFieldHidden(f.key),
-          }))}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          configFields={schemaToPanelConfigFields(
+            STOCK_DOC_PANEL_SCHEMA as any,
+            panelConfig.config,
+          )}
           onToggleField={panelConfig.toggleField}
+          onReorderFields={panelConfig.reorderFields}
           onReset={panelConfig.reset}
         />
       </div>

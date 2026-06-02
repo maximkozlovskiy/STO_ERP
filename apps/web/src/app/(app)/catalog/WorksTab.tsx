@@ -48,6 +48,7 @@ import { toast } from '@/lib/toast';
 import { fmtMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { WORK_PANEL_SCHEMA, buildPanelFields, schemaToPanelConfigFields } from '@/lib/panel-schema';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,14 +90,6 @@ function Pagination({
 }
 
 // ─── Works Tab ────────────────────────────────────────────────────────────────
-
-const WORKS_PANEL_FIELDS = [
-  { key: 'category', label: 'Категорія' },
-  { key: 'normo_hours', label: 'Нормо-год' },
-  { key: 'price', label: 'Ціна' },
-  { key: 'is_warranty', label: 'Гарантійна' },
-  { key: 'description', label: 'Опис' },
-] as const;
 
 export default function WorksTab() {
   const { confirm, dialogProps } = useConfirm();
@@ -734,46 +727,23 @@ export default function WorksTab() {
         </div>
 
         {(() => {
-          const worksPanelConfigFields = WORKS_PANEL_FIELDS.map(f => ({
-            ...f,
-            hidden: panelConfig.isFieldHidden(f.key),
-          }));
           const buildWorkTabs = (w: Work): DetailPanelTab[] => [
             {
               key: 'info',
               label: 'Основне',
               content: (
                 <div className="space-y-3">
-                  <PanelField
-                    fieldKey="category"
-                    label="Категорія"
-                    value={w.categoryName}
-                    hidden={panelConfig.isFieldHidden('category')}
-                  />
-                  <PanelField
-                    fieldKey="normo_hours"
-                    label="Нормо-год"
-                    value={String(w.normoHours)}
-                    hidden={panelConfig.isFieldHidden('normo_hours')}
-                  />
-                  <PanelField
-                    fieldKey="price"
-                    label="Ціна"
-                    value={`${fmtMoney(w.price)} ₴`}
-                    hidden={panelConfig.isFieldHidden('price')}
-                  />
-                  <PanelField
-                    fieldKey="is_warranty"
-                    label="Гарантійна"
-                    value={w.isWarranty ? 'Так' : undefined}
-                    hidden={panelConfig.isFieldHidden('is_warranty')}
-                  />
-                  <PanelField
-                    fieldKey="description"
-                    label="Опис"
-                    value={w.description}
-                    hidden={panelConfig.isFieldHidden('description')}
-                  />
+                  {buildPanelFields(w, WORK_PANEL_SCHEMA, panelConfig.config, {
+                    isWarranty: v => (v ? 'Так' : undefined),
+                  }).map(f => (
+                    <PanelField
+                      key={f.key}
+                      fieldKey={f.key}
+                      label={f.label}
+                      value={f.value}
+                      hidden={f.hidden}
+                    />
+                  ))}
                 </div>
               ),
             },
@@ -784,8 +754,9 @@ export default function WorksTab() {
               onClose={() => setSelectedWork(null)}
               title={selectedWork?.name ?? ''}
               tabs={selectedWork ? buildWorkTabs(selectedWork) : undefined}
-              configFields={worksPanelConfigFields}
+              configFields={schemaToPanelConfigFields(WORK_PANEL_SCHEMA, panelConfig.config)}
               onToggleField={panelConfig.toggleField}
+              onReorderFields={panelConfig.reorderFields}
               onReset={panelConfig.reset}
             />
           );

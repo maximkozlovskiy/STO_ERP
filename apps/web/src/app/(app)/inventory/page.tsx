@@ -28,8 +28,13 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import { DetailPanel, PanelField } from '@/components/ui/detail-panel';
+import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
+import {
+  STOCK_ITEM_PANEL_SCHEMA,
+  buildPanelFields,
+  schemaToPanelConfigFields,
+} from '@/lib/panel-schema';
 import { cn } from '@/lib/utils';
 import { fmtMoney } from '@/lib/format';
 
@@ -44,16 +49,6 @@ interface Warehouse {
 function fmt(n: number) {
   return `${fmtMoney(n)} ₴`;
 }
-
-const INVENTORY_PANEL_FIELDS = [
-  { key: 'sku', label: 'Артикул (SKU)' },
-  { key: 'warehouse', label: 'Склад' },
-  { key: 'quantity', label: 'Кількість' },
-  { key: 'reserved', label: 'Резерв' },
-  { key: 'available', label: 'Доступно' },
-  { key: 'sale_price', label: 'Ціна продажу' },
-  { key: 'min_stock', label: 'Мінімальний залишок' },
-] as const;
 
 export default function InventoryPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST']);
@@ -273,144 +268,131 @@ export default function InventoryPage() {
           </Table>
         </div>
 
-        <DetailPanel
-          open={!!selectedItem}
-          onClose={() => setSelectedItem(null)}
-          title={selectedItem?.goodName ?? ''}
-          configFields={INVENTORY_PANEL_FIELDS.map(f => ({
-            ...f,
-            hidden: panelConfig.isFieldHidden(f.key),
-          }))}
-          onToggleField={panelConfig.toggleField}
-          onReset={panelConfig.reset}
-        >
-          {selectedItem && (
-            <div className="space-y-4">
-              {/* Low stock warning */}
-              {selectedItem.isLow && (
-                <div className="flex items-center gap-2 p-2.5 bg-warning-subtle border border-warning-border rounded-lg text-[13px] text-warning-text">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span>Залишок нижче мінімального</span>
-                </div>
-              )}
-
-              <div className="space-y-3">
-                <PanelField
-                  fieldKey="sku"
-                  label="Артикул (SKU)"
-                  value={selectedItem.goodSku}
-                  hidden={panelConfig.isFieldHidden('sku')}
-                />
-                <PanelField
-                  fieldKey="warehouse"
-                  label="Склад"
-                  value={selectedItem.warehouseName}
-                  hidden={panelConfig.isFieldHidden('warehouse')}
-                />
-                <PanelField
-                  fieldKey="quantity"
-                  label="Кількість"
-                  value={`${selectedItem.quantity} ${selectedItem.unit}`}
-                  hidden={panelConfig.isFieldHidden('quantity')}
-                />
-                <PanelField
-                  fieldKey="reserved"
-                  label="Резерв"
-                  hidden={panelConfig.isFieldHidden('reserved')}
-                  value={
-                    selectedItem.reserved > 0 ? (
-                      <span className="text-warning-text tabular-nums">
-                        {selectedItem.reserved} {selectedItem.unit}
-                      </span>
-                    ) : undefined
-                  }
-                />
-                <PanelField
-                  fieldKey="available"
-                  label="Доступно"
-                  hidden={panelConfig.isFieldHidden('available')}
-                  value={
-                    <span
-                      className={cn(
-                        'font-semibold tabular-nums',
-                        selectedItem.available <= 0 ? 'text-destructive' : 'text-success',
-                      )}
-                    >
-                      {selectedItem.available} {selectedItem.unit}
-                    </span>
-                  }
-                />
-                <PanelField
-                  fieldKey="sale_price"
-                  label="Ціна продажу"
-                  value={fmt(selectedItem.salePrice)}
-                  hidden={panelConfig.isFieldHidden('sale_price')}
-                />
-              </div>
-              {!panelConfig.isFieldHidden('min_stock') && (
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
-                      Мінімальний залишок
-                    </span>
-                    {!editingMinStock && (
-                      <button
-                        className="text-xs text-primary hover:underline"
-                        onClick={() => {
-                          setMinStockVal(
-                            selectedItem.minStock != null ? String(selectedItem.minStock) : '',
-                          );
-                          setEditingMinStock(true);
-                        }}
-                      >
-                        змінити
-                      </button>
-                    )}
-                  </div>
-                  {editingMinStock ? (
-                    <div className="flex gap-1.5 mt-1.5">
-                      <Input
-                        type="number"
-                        value={minStockVal}
-                        onChange={e => setMinStockVal(e.target.value)}
-                        placeholder="0"
-                        min="0"
-                        step="1"
-                        className="h-7 text-sm"
-                      />
-                      <Button
-                        size="sm"
-                        onClick={saveMinStock}
-                        loading={savingMinStock}
-                        className="h-7 px-2 text-xs"
-                      >
-                        Зберегти
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditingMinStock(false)}
-                        className="h-7 px-2 text-xs"
-                      >
-                        ✕
-                      </Button>
+        {(() => {
+          const buildInventoryTabs = (item: StockItem): DetailPanelTab[] => [
+            {
+              key: 'info',
+              label: 'Основне',
+              content: (
+                <div className="space-y-4">
+                  {/* Low stock warning */}
+                  {item.isLow && (
+                    <div className="flex items-center gap-2 p-2.5 bg-warning-subtle border border-warning-border rounded-lg text-[13px] text-warning-text">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span>Залишок нижче мінімального</span>
                     </div>
-                  ) : (
-                    <div className="mt-1">
-                      {selectedItem.minStock != null ? (
-                        <Badge variant={selectedItem.isLow ? 'warning' : 'secondary'}>
-                          ≥ {selectedItem.minStock} {selectedItem.unit}
-                        </Badge>
+                  )}
+                  <div className="space-y-3">
+                    {buildPanelFields(item, STOCK_ITEM_PANEL_SCHEMA, panelConfig.config, {
+                      quantity: v => `${String(v)} ${item.unit}`,
+                      reserved: v =>
+                        Number(v) > 0 ? (
+                          <span className="text-warning-text tabular-nums">
+                            {String(v)} {item.unit}
+                          </span>
+                        ) : undefined,
+                      available: v => (
+                        <span
+                          className={cn(
+                            'font-semibold tabular-nums',
+                            Number(v) <= 0 ? 'text-destructive' : 'text-success',
+                          )}
+                        >
+                          {String(v)} {item.unit}
+                        </span>
+                      ),
+                      // minStock rendered separately below — skip here
+                      minStock: () => undefined,
+                    })
+                      .filter(f => f.key !== 'minStock')
+                      .map(f => (
+                        <PanelField
+                          key={f.key}
+                          fieldKey={f.key}
+                          label={f.label}
+                          value={f.value}
+                          hidden={f.hidden}
+                        />
+                      ))}
+                  </div>
+                  {!panelConfig.isFieldHidden('minStock') && (
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
+                          Мінімальний залишок
+                        </span>
+                        {!editingMinStock && (
+                          <button
+                            className="text-xs text-primary hover:underline"
+                            onClick={() => {
+                              setMinStockVal(item.minStock != null ? String(item.minStock) : '');
+                              setEditingMinStock(true);
+                            }}
+                          >
+                            змінити
+                          </button>
+                        )}
+                      </div>
+                      {editingMinStock ? (
+                        <div className="flex gap-1.5 mt-1.5">
+                          <Input
+                            type="number"
+                            value={minStockVal}
+                            onChange={e => setMinStockVal(e.target.value)}
+                            placeholder="0"
+                            min="0"
+                            step="1"
+                            className="h-7 text-sm"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={saveMinStock}
+                            loading={savingMinStock}
+                            className="h-7 px-2 text-xs"
+                          >
+                            Зберегти
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingMinStock(false)}
+                            className="h-7 px-2 text-xs"
+                          >
+                            ✕
+                          </Button>
+                        </div>
                       ) : (
-                        <span className="text-muted-foreground text-[12px]">не встановлено</span>
+                        <div className="mt-1">
+                          {item.minStock != null ? (
+                            <Badge variant={item.isLow ? 'warning' : 'secondary'}>
+                              ≥ {item.minStock} {item.unit}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-[12px]">
+                              не встановлено
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          )}
-        </DetailPanel>
+              ),
+            },
+          ];
+          return (
+            <DetailPanel
+              open={!!selectedItem}
+              onClose={() => setSelectedItem(null)}
+              title={selectedItem?.goodName ?? ''}
+              tabs={selectedItem ? buildInventoryTabs(selectedItem) : undefined}
+              configFields={schemaToPanelConfigFields(STOCK_ITEM_PANEL_SCHEMA, panelConfig.config)}
+              onToggleField={panelConfig.toggleField}
+              onReorderFields={panelConfig.reorderFields}
+              onReset={panelConfig.reset}
+            />
+          );
+        })()}
       </div>
 
       {/* Low stock modal */}
