@@ -1157,6 +1157,28 @@ useEffect(() => {
 
 ---
 
+### 2026-06-02 — Per-param `@Query('x')` без DTO → cap-less pagination + missing validation — §2.3 / §4 Architecture
+
+**Сигнал:** контролер декларує список endpoint через окремі `@Query('q') q?: string, @Query('page') page = '1', @Query('limit') limit = '50'` (string defaults!) і всередині handler робить `Number(page)`, `Number(limit)`, `showDeleted === 'true'`. Сусідні модулі (works/goods) використовують `*QueryDto` з `@Type(() => Number) @IsNumber() @Max(200) @IsPositive()` + `@Transform(({ value }) => value === 'true' || value === true) @IsBoolean()`. Без DTO ValidationPipe не бачить ці параметри → клієнт може слати `?limit=999999999` → service передає до Prisma `take: 999999999` → OOM/timeout (DoS вектор) + reviewer губить контекст бо validation чекіст шукає `*QueryDto`/`@Max` у DTO файлах, а не у controller.
+**Причина виникнення:** швидке прототипування — розробник копіює "найкоротший" патерн (`@Query('q')`) бо думає "це тільки список, пагінація проста"; забуває що (1) ValidationPipe не валідує per-param `@Query` без DTO декораторів; (2) `Number('abc')` → NaN → Prisma помилка; (3) кожен сусідній модуль уже має DTO, інакше — неконсистентність.
+**Підхід до виявлення:** `grep -rn "@Query('[a-z]" apps/api/src/modules --include="*.controller.ts"` → для кожного match: якщо handler приймає 3+ `@Query` параметрів окремо → BUG, треба DTO. Окремо: `grep -rn "Number(.*@Query\|Number(page)\|Number(limit)" apps/api/src` → пряма ознака coercion-у-handler-і.
+**Підхід до фіксу:** створити `*QueryDto` що дзеркалить works/goods (`@Type(() => Number) @IsNumber() @Min(1) page = 1`, `@IsPositive() @Max(200) limit = 50`, `@Transform(({ value }) => value === 'true' || value === true) @IsBoolean() showDeleted?: boolean`) → замінити handler signature на `@Query() query: <Name>QueryDto`. Якщо запит передається у service як positional args — або зберегти signature (передавати `query.page, query.limit, ...`), або переписати service на `query: QueryDto` (краще, але scope-creep).
+**Критичність:** IMPORTANT — DoS вектор + inconsistency з сусідніми модулями (review fatigue, copy-paste новими розробниками)
+**Де шукати ще:** будь-який list endpoint у новому module що "виглядає простим"; особливо after-feat-rush ситуації коли DTO ще не створене; catalog/reference-data endpoints; legacy endpoints до запровадження ValidationPipe
+
+---
+
+### 2026-06-02 — restore() з окремим read для відповіді + non-null assertion — §5.2 Soft-delete / §2.2 Tenant Isolation
+
+**Сигнал:** `restore(orgId, id)` робить ТРИ окремі DB-виклики: (1) `findFirst({ NOT: deletedAt: null })` для existence check → (2) `findFirst({ id, orgId, include })` БЕЗ deletedAt-фільтра щоб дістати ще-soft-deleted рядок для відповіді → (3) `update({ where: { id, orgId } }, data: { deletedAt: null })`. У кінці — `return this.toDto({ ...item!, deletedAt: null })` з non-null assertion. Між (1) і (2)/(3) існує race-window де паралельна сесія може hard-delete-нути запис → `item` буде `null` → `item!` спрацює як `{ deletedAt: null }`-only об'єкт → toDto впаде на доступі до `item.name`/`item.serviceWorks` із `TypeError: Cannot read properties of undefined`. Або update може потрапити у вже-resurrected рядок (no-op) → returns старий cached state.
+**Причина виникнення:** розробник хоче (а) перевірити "must be deleted" (то NOT: deletedAt: null filter), (б) повернути повний DTO з relations (то include), (в) виконати оновлення. Не помічає що Prisma `update().include` цілком покриває (а)+(б)+(в), або що `updateMany({ where: { NOT: deletedAt: null } }).count` дає той самий existence-check атомарно з оновленням. Use of `item!` ховає nullable від компілятора замість виправити race.
+**Підхід до виявлення:** для кожного нового `restore()` методу — порахувати кількість `await this.prisma.*` викликів: якщо ≥3 для одного aggregate → bug; шукати `item!.` або `existing!.` non-null assertions як червоний прапор; `grep -rn "restore\(.*orgId" apps/api/src/modules --include="*.service.ts"` → для кожного match counter callсити кількість findFirst + update.
+**Підхід до фіксу:** один atomic `updateMany({ where: { id, orgId, NOT: { deletedAt: null } }, data: { deletedAt: null } })` → перевірити `result.count === 0` → 404; ОДИН наступний `findFirstOrThrow({ where: { id, orgId }, include })` для повного DTO. Загальна формула: existence + tenant + must-be-deleted у one updateMany, повна форма — окремий read з includes. Усуває race, прибирає `!` assertion, зменшує RTT з 3 до 2.
+**Критичність:** CRITICAL — silent crash на concurrent hard-delete; data corruption на concurrent resurrect від іншої сесії
+**Де шукати ще:** будь-який новий soft-delete restore endpoint у каталозі/довідниках (Brand, Good, Work, Service, Unit, Customer, Supplier, Warehouse); особливо після bulk-додавання restore endpoints одним commit-ом — копіпаст ризик
+
+---
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |

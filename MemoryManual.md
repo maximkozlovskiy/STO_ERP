@@ -9,19 +9,21 @@
 ## Останній commit
 
 ```
+280f576 fix(review): harden catalog restore endpoints + add ServiceQueryDto validation
+13007b4 feat(catalog): unified soft-delete across all catalog entities
 82dda25 fix(review): system unit guard + a11y on filter pills
 b675317 feat(catalog): soft delete and restore for units of measure
 c6d89fc feat(catalog): multi-UoM selection in work order parts and invoice lines
 63c9b24 feat(catalog): add coefficient and dimensions to UoM add form
 ce69fc3 feat(catalog): per-good coefficient and dimensions in GoodUoM
 78a4ab1 feat(catalog): inline edit for units of measure in list
-4ed3372 fix(review): dedupe PICK_MINUTES, drop dead PICK_HOURS export
-9a3b54b perf(web): remove unused deps + dead code (depcheck/knip cleanup)
 ```
 
 Дата: 2026-06-02
 
 TypeScript: ✅ 0 errors (api, web)
+
+Latest review: 2026-06-02 (sto-review-agent, HEAD 280f576 ← 13007b4) — **unified catalog soft-delete (Brand/Work/Good/Service): 1 CRITICAL (services.service.ts `restore()` 3-RTT pattern з `item!` non-null assertion ламається при concurrent hard-delete між двома findFirst → race-prone) + 1 IMPORTANT (services.controller.ts `findAll` парсив limit через Number(@Query) без cap → DoS вектор `?limit=999999`; додано ServiceQueryDto з Max(200)) + defense-in-depth для brands/goods/works `restore()` (atomic updateMany з compound where id+orgId+NOT deletedAt: null) — всі виправлено, tsc 0 errors api+web.**
 
 Latest review: 2026-06-02 (sto-review-agent, HEAD 82dda25 ← b675317) — **soft-delete/restore for units of measure: 2 IMPORTANT (backend remove() пропускав isSystem units; filter pills без type=button + aria-pressed) + 1 SUGGESTION (opacity-50 ховала restore button) — всі виправлено, tsc 0 errors.**
 
