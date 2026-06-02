@@ -894,7 +894,7 @@ export default function CrmPage() {
                               variant="ghost"
                               size="icon-sm"
                               title="Редагувати"
-                              className="opacity-0 group-hover:opacity-100"
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                               onClick={() => openEdit(cp)}
                             >
                               <Pencil className="h-3.5 w-3.5" />
@@ -904,7 +904,7 @@ export default function CrmPage() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                               title="Позначити на видалення"
                               onClick={() => markDeleted(cp.id)}
                             >
