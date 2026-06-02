@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Plus, Trash2, Ruler } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { Plus, Trash2, Ruler, Pencil, Check, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,115 @@ interface Unit {
   weight?: number | null;
 }
 
+interface EditForm {
+  name: string;
+  shortName: string;
+  coefficient: string;
+}
+
+const EMPTY_FORM = {
+  name: '',
+  shortName: '',
+  coefficient: '1',
+  width: '',
+  height: '',
+  depth: '',
+  volume: '',
+  weight: '',
+};
+
+// ─── Inline edit row ──────────────────────────────────────────────────────────
+
+interface InlineEditRowProps {
+  unit: Unit;
+  onSave: (id: string, form: EditForm) => Promise<void>;
+  onCancel: () => void;
+  saving: boolean;
+}
+
+function InlineEditRow({ unit, onSave, onCancel, saving }: InlineEditRowProps) {
+  const [form, setForm] = useState<EditForm>({
+    name: unit.name,
+    shortName: unit.shortName,
+    coefficient: String(unit.coefficient),
+  });
+  const shortNameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    shortNameRef.current?.focus();
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') onCancel();
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void onSave(unit.id, form);
+    }
+  };
+
+  const valid = form.name.trim() && form.shortName.trim();
+
+  return (
+    <TableRow className="bg-primary/5">
+      <TableCell>
+        <input
+          ref={shortNameRef}
+          value={form.shortName}
+          onChange={e => setForm(f => ({ ...f, shortName: e.target.value }))}
+          onKeyDown={handleKeyDown}
+          placeholder="шт"
+          className="w-full rounded border border-primary/40 bg-surface px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+      </TableCell>
+      <TableCell>
+        <input
+          value={form.name}
+          onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+          onKeyDown={handleKeyDown}
+          placeholder="штука"
+          className="w-full rounded border border-primary/40 bg-surface px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+      </TableCell>
+      <TableCell>
+        <input
+          value={form.coefficient}
+          onChange={e => setForm(f => ({ ...f, coefficient: e.target.value }))}
+          onKeyDown={handleKeyDown}
+          type="number"
+          min="0"
+          step="any"
+          placeholder="1"
+          className="w-24 rounded border border-primary/40 bg-surface px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onSave(unit.id, form)}
+            disabled={!valid || saving}
+            className="text-success/80 hover:text-success hover:bg-success/10"
+            title="Зберегти (Enter)"
+          >
+            {saving ? <Spinner size="xs" /> : <Check className="h-3.5 w-3.5" />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            disabled={saving}
+            className="text-muted-foreground hover:text-foreground"
+            title="Скасувати (Esc)"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 // ─── Units Tab ────────────────────────────────────────────────────────────────
 
 export default function UnitsTab() {
@@ -42,22 +151,16 @@ export default function UnitsTab() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({
-    name: '',
-    shortName: '',
-    coefficient: '1',
-    width: '',
-    height: '',
-    depth: '',
-    volume: '',
-    weight: '',
-  });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // inline edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
   const load = useCallback((opts?: { fromCache?: boolean }) => {
-    // Seed from cache for instant first-paint; пропускати кеш після mutations щоб
-    // не показати STALE список між POST/DELETE та фінальним fetch.
     const fromCache = opts?.fromCache ?? false;
     const cached = fromCache ? getCached<Unit[]>('cache:units') : null;
     if (cached) {
@@ -78,6 +181,8 @@ export default function UnitsTab() {
   useEffect(() => {
     load({ fromCache: true });
   }, [load]);
+
+  // ── Create ────────────────────────────────────────────────────────────────
 
   const create = async () => {
     if (!form.name.trim() || !form.shortName.trim()) {
@@ -101,16 +206,7 @@ export default function UnitsTab() {
         }),
       });
       setModal(false);
-      setForm({
-        name: '',
-        shortName: '',
-        coefficient: '1',
-        width: '',
-        height: '',
-        depth: '',
-        volume: '',
-        weight: '',
-      });
+      setForm(EMPTY_FORM);
       load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
@@ -118,6 +214,35 @@ export default function UnitsTab() {
       setSaving(false);
     }
   };
+
+  // ── Inline update ─────────────────────────────────────────────────────────
+
+  const saveEdit = async (id: string, editForm: EditForm) => {
+    if (!editForm.name.trim() || !editForm.shortName.trim()) {
+      setEditError("Скорочення та назва є обов'язковими");
+      return;
+    }
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await apiFetch<Unit>(`/units/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: editForm.name.trim(),
+          shortName: editForm.shortName.trim(),
+          coefficient: editForm.coefficient ? Number(editForm.coefficient) : undefined,
+        }),
+      });
+      setEditingId(null);
+      load();
+    } catch (e: unknown) {
+      setEditError(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  // ── Delete ────────────────────────────────────────────────────────────────
 
   const remove = async (id: string) => {
     if (!(await confirm({ title: 'Видалити одиницю виміру?', variant: 'destructive' }))) return;
@@ -136,6 +261,12 @@ export default function UnitsTab() {
           {error}
         </div>
       )}
+      {editError && (
+        <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
+          {editError}
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-3 mb-4">
         <p className="text-[13px] text-muted-foreground">
           Одиниці виміру, що використовуються в каталозі товарів
@@ -157,7 +288,7 @@ export default function UnitsTab() {
             <TableRow>
               <TableHead>Скорочення</TableHead>
               <TableHead>Назва</TableHead>
-              <TableHead>Тип</TableHead>
+              <TableHead>Коефіцієнт</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -179,39 +310,79 @@ export default function UnitsTab() {
               </TableRow>
             )}
             {!loading &&
-              units.map(u => (
-                <TableRow key={u.id}>
-                  <TableCell className="font-medium text-foreground">{u.shortName}</TableCell>
-                  <TableCell className="text-muted-foreground">{u.name}</TableCell>
-                  <TableCell>
-                    {u.isSystem ? (
-                      <span className="text-[11px] px-1.5 py-0.5 bg-info-subtle text-info rounded">
-                        системна
-                      </span>
-                    ) : (
-                      <span className="text-[11px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">
-                        власна
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {!u.isSystem && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => remove(u.id)}
-                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+              units.map(u =>
+                editingId === u.id ? (
+                  <InlineEditRow
+                    key={u.id}
+                    unit={u}
+                    onSave={saveEdit}
+                    onCancel={() => {
+                      setEditingId(null);
+                      setEditError('');
+                    }}
+                    saving={editSaving}
+                  />
+                ) : (
+                  <TableRow
+                    key={u.id}
+                    className={u.isSystem ? '' : 'cursor-pointer hover:bg-surface-hover group'}
+                    onClick={() => {
+                      if (!u.isSystem && editingId === null) {
+                        setEditError('');
+                        setEditingId(u.id);
+                      }
+                    }}
+                  >
+                    <TableCell className="font-medium text-foreground">{u.shortName}</TableCell>
+                    <TableCell className="text-muted-foreground">{u.name}</TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">
+                      {u.coefficient !== 1 ? u.coefficient : '—'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {u.isSystem ? (
+                          <span className="text-[11px] px-1.5 py-0.5 bg-info-subtle text-info rounded">
+                            системна
+                          </span>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={e => {
+                                e.stopPropagation();
+                                setEditError('');
+                                setEditingId(u.id);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                              title="Редагувати"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={e => {
+                                e.stopPropagation();
+                                void remove(u.id);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                              title="Видалити"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ),
+              )}
           </TableBody>
         </Table>
       </div>
 
+      {/* ── Create modal ──────────────────────────────────────────────────── */}
       <Modal
         open={modal}
         onClose={() => setModal(false)}
