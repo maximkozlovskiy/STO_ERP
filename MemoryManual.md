@@ -9,19 +9,23 @@
 ## Останній commit
 
 ```
+7cab569 fix(review): gate employees DetailPanel on toggle + cleanup unused imports
+c3cd333 fix(ui): remove flex gap-3 from table+panel containers; drop + prefix from add buttons
+3785721 fix(ui): move add-button to toolbar end, rename to '+ [Object]'
+3008d7c fix(work-orders): remove gap from table+panel container
+10aa96e feat(work-orders): add DetailPanelToggle to toolbar
+0c781ce fix(ui): unify right toolbar button order across all list pages
+804c6e3 fix(catalog): icon-only Eye/EyeOff button, unified right toolbar order
+db8b301 fix(catalog): replace units filter pills with Eye/EyeOff toggle
+54217fd fix(tester): catalog soft-delete audit — bugs #306-#309
 280f576 fix(review): harden catalog restore endpoints + add ServiceQueryDto validation
-13007b4 feat(catalog): unified soft-delete across all catalog entities
-82dda25 fix(review): system unit guard + a11y on filter pills
-b675317 feat(catalog): soft delete and restore for units of measure
-c6d89fc feat(catalog): multi-UoM selection in work order parts and invoice lines
-63c9b24 feat(catalog): add coefficient and dimensions to UoM add form
-ce69fc3 feat(catalog): per-good coefficient and dimensions in GoodUoM
-78a4ab1 feat(catalog): inline edit for units of measure in list
 ```
 
 Дата: 2026-06-02
 
 TypeScript: ✅ 0 errors (api, web)
+
+Latest review: 2026-06-02 (sto-review-agent, HEAD 7cab569 ← 54217fd, scope: list-page UI toolbar refactor) — **uniform right-toolbar order `[Eye][SaveFilter][Columns][Panel][AddButton]` across 11 list pages (work-orders, crm, employees, invoices, purchase-orders, stock-documents, catalog Brands/Goods/Services/Units/Works): 1 IMPORTANT bug — `employees/page.tsx` DetailPanel `open={!!selectedEmp}` ignored toggle state → panel stayed visible after user disabled it via DetailPanelToggle. Fixed by adding `&& detailPanel.enabled`. 3 SUGGESTIONS — removed unused `PanelSection` import in crm/page.tsx, unused `activeCount/deletedCount` locals in catalog/UnitsTab.tsx (leftover from filter-pills era), redundant `flex gap-0` → `flex` in GoodsTab table+panel container. Bonus: work-orders/page.tsx add-button label was still `+ Наряд` (missed by c3cd333) → fixed to `Наряд`. tsc 0 errors web.**
 
 Latest review: 2026-06-02 (sto-review-agent, HEAD 280f576 ← 13007b4) — **unified catalog soft-delete (Brand/Work/Good/Service): 1 CRITICAL (services.service.ts `restore()` 3-RTT pattern з `item!` non-null assertion ламається при concurrent hard-delete між двома findFirst → race-prone) + 1 IMPORTANT (services.controller.ts `findAll` парсив limit через Number(@Query) без cap → DoS вектор `?limit=999999`; додано ServiceQueryDto з Max(200)) + defense-in-depth для brands/goods/works `restore()` (atomic updateMany з compound where id+orgId+NOT deletedAt: null) — всі виправлено, tsc 0 errors api+web.**
 
