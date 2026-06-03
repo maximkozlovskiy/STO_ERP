@@ -1190,7 +1190,7 @@ function CalendarPageClient() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="page-fill">
+    <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <h1 className="page-title">Календар</h1>
         <div className="flex items-center gap-2">
@@ -1239,7 +1239,7 @@ function CalendarPageClient() {
       </div>
 
       {/* Scrollable content area */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-[var(--spacing-page-x,2rem)] pb-6">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Date / month navigation — hidden in stats view */}
         {calView !== 'stats' && (
           <div className="flex items-center gap-4 mb-6">

@@ -62,7 +62,7 @@ export default function BookingsPage() {
   const displayError = error || (queryError instanceof Error ? queryError.message : '');
 
   return (
-    <div className="page-fill">
+    <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <h1 className="page-title">Онлайн-запис</h1>
         <Button variant="outline" size="sm" onClick={invalidate} disabled={loading}>
