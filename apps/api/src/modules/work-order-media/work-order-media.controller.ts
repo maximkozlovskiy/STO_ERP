@@ -43,6 +43,14 @@ export class WorkOrderMediaController {
       throw new BadRequestException('Очікується multipart/form-data');
     }
 
+    // Hard cap у controller (memory-safe): абортуємо stream щойно перевищено ліміт
+    // ще ДО того як вся бінарка опиниться у пам'яті процесу. Service.upload() робить
+    // фінальну перевірку — це лише швидкий defense-in-depth для DoS-кейсу:
+    // attacker завантажує 1 GB → без cap у controller, увесь чанк осідає у Node heap
+    // (Buffer.concat має навіть піковий розмір 2×N під час allocation), і only ТОДІ
+    // service кидає 400. Cap нижче дорівнює MAX_SIZE_BYTES сервісу + 1 KB headers slack.
+    const HARD_CAP_BYTES = 10 * 1024 * 1024 + 1024;
+
     const parts = req.parts();
     let fileBuffer: Buffer | null = null;
     let filename = 'photo.jpg';
@@ -52,7 +60,12 @@ export class WorkOrderMediaController {
     for await (const part of parts) {
       if (part.type === 'file') {
         const chunks: Buffer[] = [];
+        let accumulated = 0;
         for await (const chunk of part.file) {
+          accumulated += chunk.length;
+          if (accumulated > HARD_CAP_BYTES) {
+            throw new BadRequestException('Файл завеликий (максимум 10 МБ)');
+          }
           chunks.push(chunk);
         }
         fileBuffer = Buffer.concat(chunks);
