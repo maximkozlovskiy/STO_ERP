@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+c7f15dd fix(sync): expose deletedAt in list DTOs + purchase-orders showDeleted/q support
 f253c33 fix(hooks): usePaginatedList — skip false values + no trailing ? in URL
 e50d3a7 refactor(ui): schema-driven panel audit — crm/employees migrated to buildPanelFields
 4845223 feat(hooks): useApiError — centralized API error handling
@@ -23,6 +24,8 @@ a0b0da6 refactor(hooks): usePaginatedList factory — reduce hook boilerplate by
 Дата: 2026-06-03
 
 TypeScript: ✅ 0 errors (api, web)
+
+Latest sync: 2026-06-03 (sto-sync-agent, HEAD c7f15dd) — **3 Direction 3 type mismatches + 1 Direction 2 mismatch fixed. (1) invoices/work-orders/stock-documents/purchase-orders toDto() omitted deletedAt → UI used .deletedAt for opacity-60 + FSM button guard but always got undefined; fixed by adding deletedAt to 4 ResponseDtos + 4 service toDtos. (2) purchase-orders controller had no ?q= search or ?showDeleted= param — frontend PurchaseOrdersFilter sends both but backend ignored silently; added q (number+supplier name) + showDeleted to controller and service. (3) useCounterparties.Counterparty.edrpou was string|null (required) but findAll omits it (only findOne via includeEdrpou=true includes it) — changed to edrpou?: string|null. tsc 0 errors api+web.**
 Unit+Contract: ✅ 562/562 passed (api unchanged)
 Web components: ✅ 215/218 passed (3 pre-existing failures in useDetailPanelConfig.test.tsx — stale test expectations for fieldOrder, introduced before this session)
 
