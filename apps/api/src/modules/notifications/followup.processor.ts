@@ -2,7 +2,7 @@ import { Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { NotificationsService } from './notifications.service';
+import { NotificationsService, NotificationConfig } from './notifications.service';
 
 export interface FollowUpJob {
   orgId: string;
@@ -50,6 +50,16 @@ export class FollowUpProcessor {
     ]);
     if (!settings?.followUpActive) return;
     if (!branch) return;
+
+    // Pre-fetch SMS config once for the whole batch — branchSettings + template are
+    // shared across ALL recipients in one org (same branchId + same event type).
+    // Previously: notifications.send() fetched both per recipient → N × 2 DB reads.
+    // Now: 2 reads total regardless of recipient count.
+    const smsConfig: NotificationConfig | null = await this.notifications.resolveConfig(
+      orgId,
+      branch.id,
+      'FOLLOWUP_REMINDER',
+    );
 
     // DST-safe Kyiv "today" anchor (Bug #99). Set UTC 09:00 (= 11:00/12:00 Kyiv depending on DST)
     // so setDate(±N) operates well away from the local-midnight boundary.
@@ -193,11 +203,20 @@ export class FollowUpProcessor {
     let sendSuccess = 0;
     let lastError: Error | undefined;
 
+    // If SMS is not configured for this org, skip sending but log summary.
+    if (!smsConfig) {
+      this.logger.log(
+        `FollowUp для org=${orgId}: SMS не налаштовано або шаблон відсутній — відправка пропущена`,
+      );
+      return;
+    }
+
+    // Use pre-fetched config (sendWithConfig = no DB reads per recipient).
+    // Previously notifications.send() fetched branchSettings + template per call →
+    // N × 2 DB reads for the batch. Now: 0 DB reads in the fan-out loop.
     const results = await Promise.allSettled(
       recipients.map(r =>
-        this.notifications.send(orgId, 'FOLLOWUP_REMINDER', {
-          branchId: branch.id,
-          phone: r.phone,
+        this.notifications.sendWithConfig(orgId, r.phone, smsConfig, {
           clientName: r.clientName,
           vehicleMake: r.vehicleMake,
           vehicleModel: r.vehicleModel,

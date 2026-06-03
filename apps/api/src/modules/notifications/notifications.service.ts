@@ -6,6 +6,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 export type NotificationEvent = NotificationEventType;
 
+/** Pre-fetched SMS config shared across a batch of recipients in the same org+event. */
+export interface NotificationConfig {
+  provider: string;
+  apiKey: string;
+  senderName: string;
+  templateBody: string;
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -63,6 +71,73 @@ export class NotificationsService {
         provider: branchSettings.smsProvider ?? 'turbosms',
         apiKey: branchSettings.smsApiKey,
         senderName: branchSettings.smsSenderName ?? 'STO ERP',
+      },
+      {
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: true,
+      },
+    );
+  }
+
+  /**
+   * Fetch SMS config (branchSettings + template) once for a batch of recipients
+   * that share the same orgId, branchId and event type.
+   * Returns null if SMS is not configured or template is missing — batch should abort.
+   *
+   * Performance: follow-up processor sends to up to 2000 recipients/org.
+   * Without this, notifications.send() fetched branchSettings + template per recipient
+   * = 2 × 2000 = 4000 identical DB reads per daily tick. Now: 2 reads for the whole batch.
+   */
+  async resolveConfig(
+    orgId: string,
+    branchId: string,
+    event: NotificationEvent,
+  ): Promise<NotificationConfig | null> {
+    const [branchSettings, template] = await Promise.all([
+      this.prisma.branchSettings.findFirst({ where: { branchId, orgId } }),
+      this.prisma.notificationTemplate.findFirst({
+        where: { orgId, eventType: event, channel: 'SMS', isActive: true },
+      }),
+    ]);
+
+    if (!branchSettings?.smsEnabled || !branchSettings?.smsApiKey) {
+      this.logger.debug(`SMS не налаштовано для org=${orgId}, event=${event}`);
+      return null;
+    }
+    if (!template) {
+      this.logger.debug(`Шаблон сповіщення ${event}/SMS не знайдено для org=${orgId}`);
+      return null;
+    }
+
+    return {
+      provider: branchSettings.smsProvider ?? 'turbosms',
+      apiKey: branchSettings.smsApiKey,
+      senderName: branchSettings.smsSenderName ?? 'STO ERP',
+      templateBody: template.body,
+    };
+  }
+
+  /**
+   * Enqueue a single SMS using pre-fetched config (no DB reads).
+   * Use after resolveConfig() when sending to many recipients with the same config.
+   */
+  async sendWithConfig(
+    orgId: string,
+    phone: string,
+    config: NotificationConfig,
+    vars: Record<string, unknown>,
+  ): Promise<void> {
+    const message = this.renderTemplate(config.templateBody, vars);
+    await this.smsQueue.add(
+      'send-sms',
+      {
+        orgId,
+        phone,
+        message,
+        provider: config.provider,
+        apiKey: config.apiKey,
+        senderName: config.senderName,
       },
       {
         attempts: 10,

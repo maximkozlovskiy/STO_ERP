@@ -58,14 +58,28 @@ const makePrismaMock = () => ({
   vehicle: { findMany: vi.fn() },
 });
 
+/** Default resolved SMS config — non-null means SMS is configured and template exists. */
+const DEFAULT_SMS_CONFIG = {
+  provider: 'turbosms',
+  apiKey: 'test-key',
+  senderName: 'STO',
+  templateBody: 'Вітаємо, {{clientName}}!',
+};
+
 describe('FollowUpProcessor.handleSendReminders', () => {
   let processor: FollowUpProcessor;
   let prisma: ReturnType<typeof makePrismaMock>;
-  let notifications: { send: ReturnType<typeof vi.fn> };
+  let notifications: {
+    resolveConfig: ReturnType<typeof vi.fn>;
+    sendWithConfig: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     prisma = makePrismaMock();
-    notifications = { send: vi.fn().mockResolvedValue(undefined) };
+    notifications = {
+      resolveConfig: vi.fn().mockResolvedValue(DEFAULT_SMS_CONFIG),
+      sendWithConfig: vi.fn().mockResolvedValue(undefined),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -77,23 +91,42 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     processor = module.get(FollowUpProcessor);
   });
 
-  it('повертається без виклику send, якщо followUpActive=false', async () => {
+  it('повертається без виклику sendWithConfig, якщо followUpActive=false', async () => {
     prisma.organisationSettings.findFirst.mockResolvedValue({
       followUpActive: false,
       followUpDays: 90,
     });
     await processor.handleSendReminders(makeJob());
-    expect(notifications.send).not.toHaveBeenCalled();
+    expect(notifications.sendWithConfig).not.toHaveBeenCalled();
+    expect(notifications.resolveConfig).not.toHaveBeenCalled();
   });
 
-  it('повертається без виклику send, якщо org не має активного branch', async () => {
+  it('повертається без виклику sendWithConfig, якщо org не має активного branch', async () => {
     prisma.organisationSettings.findFirst.mockResolvedValue({
       followUpActive: true,
       followUpDays: 90,
     });
     prisma.garageBranch.findFirst.mockResolvedValue(null);
     await processor.handleSendReminders(makeJob());
-    expect(notifications.send).not.toHaveBeenCalled();
+    expect(notifications.sendWithConfig).not.toHaveBeenCalled();
+  });
+
+  it('повертається без виклику sendWithConfig, якщо SMS не налаштовано (resolveConfig=null)', async () => {
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
+    prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
+    prisma.maintenanceSchedule.findMany.mockResolvedValue([schedule()]);
+    prisma.vehicle.findMany.mockResolvedValue([]);
+    // Simulate: SMS not configured or template missing
+    notifications.resolveConfig.mockResolvedValue(null);
+
+    await processor.handleSendReminders(makeJob());
+    expect(notifications.sendWithConfig).not.toHaveBeenCalled();
+    // resolveConfig called once (not per-recipient)
+    expect(notifications.resolveConfig).toHaveBeenCalledTimes(1);
+    expect(notifications.resolveConfig).toHaveBeenCalledWith('org-1', 'br-1', 'FOLLOWUP_REMINDER');
   });
 
   it('фільтрує soft-deleted vehicles/garages/counterparties у maintenance', async () => {
@@ -134,12 +167,15 @@ describe('FollowUpProcessor.handleSendReminders', () => {
 
     await processor.handleSendReminders(makeJob());
     // Тільки 1 SMS — для активного запису
-    expect(notifications.send).toHaveBeenCalledTimes(1);
-    expect(notifications.send).toHaveBeenCalledWith(
+    expect(notifications.sendWithConfig).toHaveBeenCalledTimes(1);
+    expect(notifications.sendWithConfig).toHaveBeenCalledWith(
       'org-1',
-      'FOLLOWUP_REMINDER',
-      expect.objectContaining({ phone: '+380671234567' }),
+      '+380671234567',
+      DEFAULT_SMS_CONFIG,
+      expect.objectContaining({ vehicleMake: 'Toyota' }),
     );
+    // resolveConfig — 1 раз на весь batch (не per-recipient)
+    expect(notifications.resolveConfig).toHaveBeenCalledTimes(1);
   });
 
   it('дедуплікує phone — один клієнт з кількома авто отримує лише 1 SMS', async () => {
@@ -156,7 +192,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     prisma.vehicle.findMany.mockResolvedValue([]);
 
     await processor.handleSendReminders(makeJob());
-    expect(notifications.send).toHaveBeenCalledTimes(1);
+    expect(notifications.sendWithConfig).toHaveBeenCalledTimes(1);
   });
 
   it('пропускає клієнтів без phone', async () => {
@@ -175,7 +211,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     prisma.vehicle.findMany.mockResolvedValue([]);
 
     await processor.handleSendReminders(makeJob());
-    expect(notifications.send).not.toHaveBeenCalled();
+    expect(notifications.sendWithConfig).not.toHaveBeenCalled();
   });
 
   it('inactive vehicle з останнім WO до cutoff надсилається SMS', async () => {
@@ -198,11 +234,12 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     ]);
 
     await processor.handleSendReminders(makeJob());
-    expect(notifications.send).toHaveBeenCalledTimes(1);
-    expect(notifications.send).toHaveBeenCalledWith(
+    expect(notifications.sendWithConfig).toHaveBeenCalledTimes(1);
+    expect(notifications.sendWithConfig).toHaveBeenCalledWith(
       'org-1',
-      'FOLLOWUP_REMINDER',
-      expect.objectContaining({ phone: '+380777' }),
+      '+380777',
+      DEFAULT_SMS_CONFIG,
+      expect.any(Object),
     );
   });
 
@@ -225,10 +262,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     ]);
 
     await processor.handleSendReminders(makeJob());
-    expect(notifications.send).not.toHaveBeenCalled();
+    expect(notifications.sendWithConfig).not.toHaveBeenCalled();
   });
 
-  it('throw lastError, якщо ВСІ виклики send провалились (для BullMQ retry)', async () => {
+  it('throw lastError, якщо ВСІ виклики sendWithConfig провалились (для BullMQ retry)', async () => {
     prisma.organisationSettings.findFirst.mockResolvedValue({
       followUpActive: true,
       followUpDays: 90,
@@ -236,12 +273,12 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
     prisma.maintenanceSchedule.findMany.mockResolvedValue([schedule()]);
     prisma.vehicle.findMany.mockResolvedValue([]);
-    notifications.send.mockRejectedValueOnce(new Error('Redis недоступний'));
+    notifications.sendWithConfig.mockRejectedValueOnce(new Error('Redis недоступний'));
 
     await expect(processor.handleSendReminders(makeJob())).rejects.toThrow('Redis недоступний');
   });
 
-  it('НЕ throw якщо частина send успішна (часткові помилки не блокують batch)', async () => {
+  it('НЕ throw якщо частина sendWithConfig успішна (часткові помилки не блокують batch)', async () => {
     prisma.organisationSettings.findFirst.mockResolvedValue({
       followUpActive: true,
       followUpDays: 90,
@@ -272,11 +309,11 @@ describe('FollowUpProcessor.handleSendReminders', () => {
       }),
     ]);
     prisma.vehicle.findMany.mockResolvedValue([]);
-    notifications.send.mockRejectedValueOnce(new Error('Phone invalid')); // 1st fails
-    notifications.send.mockResolvedValueOnce(undefined); // 2nd succeeds
+    notifications.sendWithConfig.mockRejectedValueOnce(new Error('Phone invalid')); // 1st fails
+    notifications.sendWithConfig.mockResolvedValueOnce(undefined); // 2nd succeeds
 
     await expect(processor.handleSendReminders(makeJob())).resolves.toBeUndefined();
-    expect(notifications.send).toHaveBeenCalledTimes(2);
+    expect(notifications.sendWithConfig).toHaveBeenCalledTimes(2);
   });
 
   it('formatName fallback "клієнте" для контрагента без імен → SMS не "Вітаємо, !"', async () => {
@@ -304,9 +341,10 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     prisma.vehicle.findMany.mockResolvedValue([]);
 
     await processor.handleSendReminders(makeJob());
-    expect(notifications.send).toHaveBeenCalledWith(
+    expect(notifications.sendWithConfig).toHaveBeenCalledWith(
       'org-1',
-      'FOLLOWUP_REMINDER',
+      '+380000',
+      DEFAULT_SMS_CONFIG,
       expect.objectContaining({ clientName: 'клієнте' }),
     );
   });
