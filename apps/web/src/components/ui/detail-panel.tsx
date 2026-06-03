@@ -3,6 +3,7 @@
 import { type ReactNode, useState, useEffect, useRef } from 'react';
 import { X, Settings, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAnimatedPresence } from '@/hooks/useAnimatedPresence';
 
 export interface DetailPanelTab {
   key: string;
@@ -47,6 +48,7 @@ export function DetailPanel({
 }: DetailPanelProps) {
   const [activeTab, setActiveTab] = useState(defaultTab ?? tabs?.[0]?.key ?? '');
   const [showConfig, setShowConfig] = useState(false);
+  const { state: contentState } = useAnimatedPresence(open, 150);
   // Local drag state — dragged key and drop target key
   const dragKeyRef = useRef<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
@@ -198,8 +200,16 @@ export function DetailPanel({
             </div>
           )}
 
-          {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto p-4">{activeContent}</div>
+          {/* Scrollable content — key remount triggers enter animation on tab switch;
+              data-state animates on panel open/close via globals.css */}
+          <div
+            key={activeTab}
+            data-state={contentState}
+            data-variant="content"
+            className="flex-1 overflow-y-auto p-4"
+          >
+            {activeContent}
+          </div>
         </>
       )}
     </div>

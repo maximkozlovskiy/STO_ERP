@@ -947,6 +947,80 @@ import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 
 ---
 
+## §23 — Animated Presence (модалки, панелі, tab content)
+
+**Джерело правди:** `apps/web/src/hooks/useAnimatedPresence.ts` + `apps/web/src/app/globals.css` (`[data-state]` rules)
+
+### Проблема
+
+`if (!open) return null` прибирає DOM миттєво — анімація виходу неможлива. `animate-in` Tailwind дає лише enter-анімацію.
+
+### Патерн: useAnimatedPresence + data-state
+
+```tsx
+// ✅ ПРАВИЛЬНО — плавний вхід І вихід
+import { useAnimatedPresence } from '@/hooks/useAnimatedPresence';
+
+const { visible, state } = useAnimatedPresence(open); // exitDuration за замовчуванням 180ms
+
+if (!visible) return null; // DOM зникає ПІСЛЯ exit-анімації
+
+return (
+  <div data-state={state} className="my-panel">
+    {children}
+  </div>
+);
+// globals.css: [data-state="open"] → modal-in 200ms | [data-state="closed"] → modal-out 180ms
+```
+
+```tsx
+// ❌ ЗАБОРОНЕНО — миттєве зникнення без анімації виходу
+if (!open) return null;
+return <div className="animate-in fade-in zoom-in-95 duration-200">{children}</div>;
+```
+
+### Де застосовується
+
+| Компонент             | data-state на             | exitDuration           |
+| --------------------- | ------------------------- | ---------------------- |
+| `Modal` backdrop      | `[data-backdrop]`         | 180ms                  |
+| `Modal` panel         | root div                  | 180ms                  |
+| `DetailPanel` content | scrollable div            | 150ms                  |
+| Tab content           | `key={activeTab}` wrapper | remount → тільки enter |
+
+### Tab content — key remount патерн
+
+```tsx
+// ✅ При зміні таба — React remount'ить → завжди enter-анімація
+<div key={activeTab} data-state="open" className="flex-1 overflow-y-auto p-4">
+  {activeContent}
+</div>
+// Exit при зміні таба не потрібен — DOM замінюється одразу
+
+// ❌ animate-in fade-in duration-150 (тільки enter, нема exit, hardcoded duration)
+<div key="tab-main" className="animate-in fade-in duration-150">{content}</div>
+```
+
+### CSS easing токени (globals.css)
+
+```css
+--ease-enter: cubic-bezier(0.22, 1, 0.36, 1); /* spring, для появлення */
+--ease-exit: cubic-bezier(0.4, 0, 1, 1); /* ease-in, для зникнення */
+--ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* стандартний */
+--duration-enter: 200ms;
+--duration-exit: 180ms;
+```
+
+### Checklist для нового модального компонента
+
+- [ ] Рендерить через базовий `<Modal>` — анімація успадковується автоматично
+- [ ] Якщо кастомний overlay — використовує `useAnimatedPresence(open)` + `data-state={state}`
+- [ ] НЕ використовує `if (!open) return null` напряму (тільки `if (!visible) return null`)
+- [ ] НЕ має `animate-in` Tailwind-класів на root-елементі (замінені `[data-state]` rules)
+- [ ] Для accordion/collapse — використовує `<AnimatedBody>` з `modal.tsx`
+
+---
+
 ## Windows Dev
 
 ```powershell

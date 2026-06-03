@@ -4,6 +4,7 @@ import { useEffect, useCallback, useState, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAnimatedPresence } from '@/hooks/useAnimatedPresence';
 
 type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
 
@@ -92,6 +93,7 @@ export function Modal({
   hideClose,
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
+  const { visible, state } = useAnimatedPresence(open);
 
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
@@ -114,28 +116,29 @@ export function Modal({
     };
   }, [open, handleKey]);
 
-  if (!open || !mounted) return null;
+  if (!visible || !mounted) return null;
 
   return createPortal(
     <div
+      data-state={state}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? 'modal-title' : undefined}
     >
-      {/* Backdrop */}
+      {/* Backdrop — анімується через [data-state] > [data-backdrop] у globals.css */}
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-150"
+        data-backdrop
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={onClose}
       />
 
-      {/* Panel */}
+      {/* Panel — анімується через [data-state] у globals.css */}
       <div
         className={cn(
           'relative z-10 w-full rounded-xl bg-surface',
           'shadow-xl border border-border',
           'flex flex-col max-h-[90vh]',
-          'animate-in fade-in zoom-in-95 duration-200',
           className,
         )}
         style={{
