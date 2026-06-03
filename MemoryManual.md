@@ -9,25 +9,22 @@
 ## Останній commit
 
 ```
+3d4c6c5 docs(tester): regression round Cycle 2 — zero new bugs (207 E2E passed)
+0c94b0f docs(memory): update MemoryManual after sto-review-agent cycle 2
 c9bb833 fix(review): regression cycle 2 — EMPTY_ITEMS in catalog tabs + system-templates take cap
-4038910 docs(memory): update MemoryManual after sto-optimize-agent audit c600772
-7c2bc57 docs(skills): add 3 patterns to sto-optimize from Universal Patterns audit
+4038910 docs(memory): update MemoryManual after sto-optimize-agent audit
 c600772 perf(optimize): stable EMPTY_ITEMS fallback + purchase-orders limit cap
 b2707ae fix(tester): Bugs #328-#331 — useListPage stable items + useApiMutation latest-ref + regression tests
-0a60440 docs(memory): update MemoryManual after Universal Patterns code review
-b41c608 refactor(api): use shared PHONE_UA_REGEX / IBAN_UA_REGEX in DTO validators
 cde1792 fix(review): sync shared FSM transitions with backend authority
+b41c608 refactor(api): use shared PHONE_UA_REGEX / IBAN_UA_REGEX in DTO validators
 c7f15dd fix(sync): expose deletedAt in list DTOs + purchase-orders showDeleted/q support
-f253c33 fix(hooks): usePaginatedList — skip false values + no trailing ? in URL
-e50d3a7 refactor(ui): schema-driven panel audit — crm/employees migrated to buildPanelFields
-4845223 feat(hooks): useApiError — centralized API error handling
-97fe940 feat(shared): shared Zod validators (phone, email, IBAN, UUID)
-831c003 feat(hooks): useApiMutation — unified mutation wrapper with toast+error
-c998513 feat(ui): FSMButtons — shared FSM transition buttons component
-39d862a feat(hooks): useListPage composable hook
-a0b0da6 refactor(hooks): usePaginatedList factory — reduce hook boilerplate by 80%
-8cc14e0 feat(shared): SharedStatusConstants — STATUS_LABELS/BADGE centralized in @sto/shared
 ```
+
+Дата: 2026-06-03
+
+TypeScript: ✅ 0 errors (api, web, shared)
+Unit+Contract: ✅ 567/567 passed (api) | 251/251 passed (web)
+E2E Playwright: ✅ 207 passed / 6 skipped / 0 failed (baseline: 162 → +45)
 
 Дата: 2026-06-03
 
