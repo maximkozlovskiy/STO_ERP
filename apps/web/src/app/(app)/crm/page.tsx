@@ -887,9 +887,6 @@ export default function CrmPage() {
                 })}
             </TableBody>
           </Table>
-
-          {/* Pagination */}
-          <Pagination page={page} totalPages={totalPages} onChange={setPage} />
         </div>
 
         <DetailPanel
@@ -902,6 +899,8 @@ export default function CrmPage() {
           onReset={panelConfig.reset}
         />
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
       {/* Create / Edit modal */}
       <Modal
