@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+4f87da2 perf(optimize): add concurrency to outbound-webhook and sms BullMQ processors
 54dddc4 fix(review): cycle 2 — UTC date in exchange-rate form + a11y fixes for media delete button and batch viewer modal
 27995ca docs(memory): update MemoryManual after sto-sync-agent cycle 2
 7f9867e fix(sync): remove over-broad 'use client' from hooks/lib + minor UI cleanup
@@ -40,10 +41,12 @@ b2707ae fix(tester): Bugs #328-#331 — useListPage stable items + useApiMutatio
 cde1792 fix(review): sync shared FSM transitions with backend authority
 ```
 
-Дата: 2026-06-03
+Дата: 2026-06-04
 
 TypeScript: ✅ 0 errors (api, web, shared)
 Unit+Contract: ✅ 594/594 passed (api) | **281/281 passed (web)**
+
+Latest optimize: 2026-06-04 (sto-optimize-agent, cycle 2, HEAD 4f87da2) — 2 fixes. Verified non-issues: settlements getTransactions has pagination (limit=50 default); AuditService buildDiff uses per-field JSON.stringify for small dtos (not full entity); CommentsService has take:500; SearchService has sim>0.1 threshold already; work-order-media signed URLs are parallel Promise.all + local HMAC (not network); BatchViewerModal uses single /batches/lookup endpoint (both batches+history); NotificationCenter is localStorage-based (no polling); CommandPalette has 300ms debounce; PricingRulesClient has no search input; InspectionReport is manual save (no keystroke autoSave); exchange-rates service no N+1 (parallel Promise.all create/update, $transaction findAll); applyRuleToGoods runs synchronously in HTTP handler (intentional — async would break frontend contract). Fixed: (1) webhooks.processor.ts — @Process('deliver') default concurrency=1 caused serial 10s HTTP calls; burst of 20 webhooks = 200s; added concurrency:5. (2) sms.processor.ts — same pattern; added concurrency:3.
 
 Latest review: 2026-06-03 (sto-review-agent, cycle 2, HEAD 54dddc4, scope: sync-agent cycle 2 changes — use client removal + page subtitle cleanup + devtools devDeps) — \*\*3 fixes (1 IMPORTANT + 2 IMPORTANT a11y). Verified: (1) 'use client' removal from 14 API hooks + 4 lib files — all consumers have 'use client', no Server Component imports hooks — correct. (2) hooks/useDebounce, useConfirm, useTableColumns — localStorage only inside hooks/effects (SSR-safe), all callers are client components — correct. (3) batch.getAvgCost $queryRaw typing — ::float cast in SQL, type annotation number|null, Number() wrap — correct, no Decimal issue. (4) All updateMany remove() → result.count===0 → NotFoundException: branches/counterparties/employees/payment-methods/services/vehicles/warehouses/works — all correct. (5) CRM cancelled flags: all 5 load functions (loadGarages/loadSettlements/loadWorkOrders/loadWarranties/loadLoyalty) return cleanup fn — correct. Fixed: (A) IMPORTANT settings/page.tsx:1028 — exchange rate form default date used `new Date().toISOString().split('T')[0]` (UTC); between midnight and 2-3 AM Kyiv time shows yesterday → replaced with module-level `KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' })` + `kyivToday()`. (B) IMPORTANT work-orders/[id]/PageClient.tsx:1547 — media delete button `hidden group-hover:flex` without keyboard focus → added `focus-visible:flex`, `type="button"`, `aria-label="Видалити файл"`. (C) IMPORTANT batch-viewer-modal.tsx — custom overlay modal (no <Modal> wrapper) missing Escape key handler → added useEffect with window.addEventListener('keydown', handler) + cleanup. tsc 0 errors api+web+shared.
 

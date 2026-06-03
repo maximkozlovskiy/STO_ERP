@@ -1387,6 +1387,22 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 
 ---
 
+### 2026-06-04 — BullMQ processor без `concurrency` — I/O-bound job processors з external HTTP calls
+
+**Сигнал:** `@Processor('queue-name')` + `@Process('job-name')` без `concurrency` опції. За замовчуванням `@nestjs/bull` обробляє 1 job одночасно на processor. Якщо кожен job — окремий зовнішній HTTP виклик з timeout (10-15s), черга з N jobs виконується N × timeout секунд серійно.
+
+**Причина виникнення:** `@Process('name')` — мінімальний синтаксис (5 слів), `concurrency` опція виглядає непотрібною бо "черга і так queue — обробляє один за одним". Розробник не знає дефолт=1 або вважає що BullMQ сам паралелить. На on-prem з низьким трафіком (1-5 webhooks/SMS на день) проблема непомітна. При burst (20+ webhooks на publish події, 30+ SMS при батч-відправці) — серійний processing.
+
+**Підхід до виявлення:** grep `@Process(` у `*.processor.ts`. Для кожного без `{ concurrency: N }` — перевірити тіло: (1) чи job робить зовнішній HTTP виклик? (2) Чи є timeout на цей виклик? (3) Чи jobs взаємонезалежні (немає shared state що вимагає serialization)? Якщо всі три — кандидат.
+
+**Підхід до фіксу:** `@Process({ name: 'job-name', concurrency: N })`. Де N = кількість одночасних HTTP connections безпечна для провайдера. Хороші значення: webhook delivery: 5 (загальні HTTP endpoints); SMS TurboSMS: 3 (публічний rate-limit provider'а не документований, але 3 безпечно). Fiscal receipt (Checkbox/ПРРО): 1 — залишити serial для ідемпотентності. Loyalty earn: 1 — DB writes з balance update, serial safety. Fan-out FollowUp: 1 — один batch job per org, не parallel calls.
+
+**Реальний impact:** webhooks: burst 20 × 10s = 200s серійно → 5 паралельних = ~40s. SMS: burst 30 × 10s = 300s → 3 паралельних = ~100s. Особливо помітно при webhook subscriptions що тригеряться великими WO операціями (COMPLETED → 10+ endpoints × 5 різних event types).
+
+**Де шукати ще:** будь-який новий `*.processor.ts` з `@Process()`. Перевіряти при додаванні нового BullMQ processor. Особливо: email processor (SMTP calls), push notification processor (FCM/APNs HTTP), ERP integration processors (external API calls), document generation processors (remote render service).
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -1567,3 +1583,5 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 
 - ✅ usePaginatedList: module-level `EMPTY_ITEMS = Object.freeze([])` export — stable empty array fallback для 7 list pages (work-orders, purchase-orders, invoices, stock-documents, crm, employees, catalog/WorksTab); попереджає Bug #328 cascade на page-level бо `useListPage` fix покривав лише hook, не call-sites
 - ✅ purchase-orders.service.findAll: `safeLimit = Math.min(limit, 200)` + `safePage = Math.max(page, 1)` DoS hardening — попереджає `?limit=999999` OOM/connection pool exhaustion (паралель до services.controller pattern після audit 280f576)
+- ✅ webhooks.processor: `@Process({ name: 'deliver', concurrency: 5 })` — burst latency 200s → ~40s для 20 webhooks
+- ✅ sms.processor: `@Process({ name: 'send-sms', concurrency: 3 })` — серійні SMS calls → паралельні (3 одночасних TurboSMS HTTP calls)
