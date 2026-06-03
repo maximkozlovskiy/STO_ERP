@@ -764,6 +764,7 @@ export default function WorksTab() {
           tree={categories}
           selectedId={selectedCat}
           storageKey="sto:cat-tree:works"
+          hideInactive
           onSelect={id => {
             setSelectedCat(id);
             setPage(1);

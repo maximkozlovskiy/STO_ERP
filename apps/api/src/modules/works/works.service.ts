@@ -17,6 +17,8 @@ export class WorksService {
     const where: Prisma.WorkWhereInput = {
       orgId,
       ...(query.showDeleted ? {} : { deletedAt: null }),
+      // Приховуємо роботи вимкнених категорій (якщо не режим showDeleted)
+      ...(query.showDeleted ? {} : { category: { isActive: true } }),
     };
     if (query.categoryIds?.length) where.categoryId = { in: query.categoryIds };
     else if (query.categoryId) where.categoryId = query.categoryId;

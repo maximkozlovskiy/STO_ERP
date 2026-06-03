@@ -30,6 +30,8 @@ export interface CategoryTreeProps {
    */
   storageKey?: string;
   className?: string;
+  /** Якщо true — вимкнені категорії (isActive=false) не відображаються */
+  hideInactive?: boolean;
 }
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
@@ -185,6 +187,14 @@ export function collectDescendantIds(tree: CategoryNode[], id: string): string[]
   return ids;
 }
 
+// ─── Helper: рекурсивно видаляє вимкнені вузли ────────────────────────────────
+
+function filterActiveNodes(nodes: CategoryNode[]): CategoryNode[] {
+  return nodes
+    .filter(n => n.isActive !== false)
+    .map(n => ({ ...n, children: filterActiveNodes(n.children) }));
+}
+
 // ─── CategoryTree ─────────────────────────────────────────────────────────────
 
 export function CategoryTree({
@@ -196,7 +206,9 @@ export function CategoryTree({
   highlightedIds,
   storageKey,
   className,
+  hideInactive = false,
 }: CategoryTreeProps) {
+  const visibleTree = hideInactive ? filterActiveNodes(tree) : tree;
   // expandedIds — Set ID вузлів що зараз розгорнуті
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
     storageKey ? loadExpandedIds(storageKey) : new Set(),
@@ -231,7 +243,7 @@ export function CategoryTree({
   const toggleAll = useCallback(() => {
     if (allCollapsed) {
       // Розгорнути всі вузли що мають дітей
-      setExpandedIds(new Set(collectAllIds(tree)));
+      setExpandedIds(new Set(collectAllIds(visibleTree)));
     } else {
       setExpandedIds(new Set());
     }
@@ -307,13 +319,13 @@ export function CategoryTree({
 
       {/* Tree */}
       <nav className="flex-1 overflow-y-auto px-2 pb-2 pt-1">
-        {tree.length === 0 ? (
+        {visibleTree.length === 0 ? (
           <p className="px-2 py-3 text-[12px] text-muted-foreground text-center">
             Категорій не знайдено
           </p>
         ) : (
           <ul>
-            {tree.map(node => (
+            {visibleTree.map(node => (
               <TreeNode
                 key={node.id}
                 node={node}
