@@ -12,7 +12,11 @@ export class OutboundWebhookProcessor {
 
   constructor(private prisma: PrismaService) {}
 
-  @Process('deliver')
+  // Concurrency=5: кожна доставка — окремий зовнішній HTTP виклик (10s timeout).
+  // За замовчуванням bull обробляє 1 job за раз на processor → черга з 20 webhook
+  // виконувалась би 200+ секунд серійно. З concurrency=5 — до 5 паралельних HTTP
+  // calls, burst-latency знижується в 5× (20 jobs → ~40s замість ~200s).
+  @Process({ name: 'deliver', concurrency: 5 })
   async processDeliver(job: Job): Promise<void> {
     const { endpointId, url, secret, event, payload } = job.data as {
       endpointId: string;

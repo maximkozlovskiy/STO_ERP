@@ -15,7 +15,10 @@ interface SendSmsJob {
 export class SmsProcessor {
   private readonly logger = new Logger(SmsProcessor.name);
 
-  @Process('send-sms')
+  // Concurrency=3: кожна SMS — окремий зовнішній HTTP виклик (10s timeout).
+  // Без concurrency черга з 30 SMS виконувалась би ~300s серійно.
+  // 3 паралельних виклики до TurboSMS — безпечно (провайдер не має rate-limit per key).
+  @Process({ name: 'send-sms', concurrency: 3 })
   async handleSendSms(job: Job<SendSmsJob>) {
     const { phone, message, provider, apiKey, senderName } = job.data;
 
