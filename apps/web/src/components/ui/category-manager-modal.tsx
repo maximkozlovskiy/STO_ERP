@@ -42,6 +42,7 @@ function ManagerNode({
   saving,
   setSaving,
   confirm,
+  parentActive = true,
 }: {
   node: CategoryNode;
   depth: number;
@@ -51,6 +52,7 @@ function ManagerNode({
   saving: string | null;
   setSaving: (id: string | null) => void;
   confirm: ConfirmFn;
+  parentActive?: boolean;
 }) {
   const features = useUiFeatures();
   const [expanded, setExpanded] = useState(depth < 1);
@@ -142,7 +144,7 @@ function ManagerNode({
       <div
         className={cn(
           'group flex items-center gap-1 rounded-md px-2 py-1 text-[13px] transition-colors hover:bg-secondary',
-          !localActive && 'opacity-50',
+          (!localActive || !parentActive) && 'opacity-50',
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
@@ -291,6 +293,7 @@ function ManagerNode({
               saving={saving}
               setSaving={setSaving}
               confirm={confirm}
+              parentActive={parentActive && localActive}
             />
           ))}
         </ul>

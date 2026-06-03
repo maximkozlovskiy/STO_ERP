@@ -139,6 +139,16 @@ export class WorkCategoriesService {
       data: { isActive },
     });
     if (result.count === 0) throw new NotFoundException('Категорію не знайдено');
+
+    // Каскадно застосовуємо до всіх нащадків
+    const descendantIds = await this.getDescendantIds(orgId, id);
+    if (descendantIds.length > 0) {
+      await this.prisma.workCategory.updateMany({
+        where: { id: { in: descendantIds }, orgId, deletedAt: null },
+        data: { isActive },
+      });
+    }
+
     const updated = await this.prisma.workCategory.findFirstOrThrow({
       where: { id, orgId, deletedAt: null },
     });
