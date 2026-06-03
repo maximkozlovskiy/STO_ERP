@@ -438,7 +438,10 @@ export default function GoodsTab() {
         setGoodCatTree(d);
         setCache('cache:good-categories', d);
       })
-      .catch(() => {});
+      .catch((e: unknown) => {
+        // Optional load — tree falls back to cached/empty; log for debug-ability.
+        console.warn('[GoodsTab] /good-categories failed:', e instanceof Error ? e.message : e);
+      });
   }, []);
 
   useEffect(() => {

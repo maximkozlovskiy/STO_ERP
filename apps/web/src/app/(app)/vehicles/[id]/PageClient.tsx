@@ -157,7 +157,12 @@ export default function VehicleCardPage() {
       apiFetch<VehicleNode[]>(`/vehicles/${id}/nodes`).then(setNodes),
       apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${id}`)
         .then(setSchedules)
-        .catch(() => {}),
+        .catch((e: unknown) =>
+          console.warn(
+            '[Vehicle] maintenance-schedules load failed:',
+            e instanceof Error ? e.message : e,
+          ),
+        ),
     ]).catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
   };
   useEffect(() => {
@@ -300,7 +305,12 @@ export default function VehicleCardPage() {
       setShowAddSchedule(false);
       apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${id}`)
         .then(setSchedules)
-        .catch(() => {});
+        .catch((e: unknown) =>
+          console.warn(
+            '[Vehicle] maintenance-schedules refresh failed:',
+            e instanceof Error ? e.message : e,
+          ),
+        );
     } catch (e: unknown) {
       setLoadError(e instanceof Error ? e.message : 'Помилка збереження регламенту');
     } finally {

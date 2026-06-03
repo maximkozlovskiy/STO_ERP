@@ -430,10 +430,17 @@ function SettingsPageClient() {
       );
     apiFetch<DocNumberConfig[]>('/settings/document-numbers')
       .then(setDocNumbers)
-      .catch(() => {});
+      .catch((e: unknown) =>
+        console.warn(
+          '[Settings] /settings/document-numbers failed:',
+          e instanceof Error ? e.message : e,
+        ),
+      );
     apiFetch<TaxRateItem[]>('/settings/tax-rates')
       .then(setTaxRates)
-      .catch(() => {});
+      .catch((e: unknown) =>
+        console.warn('[Settings] /settings/tax-rates failed:', e instanceof Error ? e.message : e),
+      );
     apiFetch<{ items: BranchInfo[] } | BranchInfo[]>('/branches')
       .then(d => {
         const arr = Array.isArray(d) ? d : d.items;
@@ -441,7 +448,9 @@ function SettingsPageClient() {
         setCache('cache:branches', arr);
         if (arr.length > 0) setSelectedBranch(prev => prev || arr[0].id);
       })
-      .catch(() => {});
+      .catch((e: unknown) =>
+        console.warn('[Settings] /branches failed:', e instanceof Error ? e.message : e),
+      );
   }, []);
 
   // Фінансові довідники — завантажуються лише коли активна відповідна таба.
@@ -620,7 +629,9 @@ function SettingsPageClient() {
             slotDurationMinutes: s.slotDurationMinutes,
           });
       })
-      .catch(() => {});
+      .catch((e: unknown) =>
+        console.warn('[Settings] branch settings load failed:', e instanceof Error ? e.message : e),
+      );
     return () => {
       cancelled = true;
     };
@@ -630,7 +641,9 @@ function SettingsPageClient() {
     if (tab !== 'integrations') return;
     apiFetch<{ items: WebhookEndpoint[] }>('/webhooks')
       .then(d => setWebhooks(d.items))
-      .catch(() => {});
+      .catch((e: unknown) =>
+        console.warn('[Settings] /webhooks failed:', e instanceof Error ? e.message : e),
+      );
   }, [tab]);
 
   const saveBranchSettings = async () => {
