@@ -1,3 +1,5 @@
+'use client';
+
 import { useQueryClient } from '@tanstack/react-query';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 

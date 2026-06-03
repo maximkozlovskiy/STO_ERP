@@ -1,3 +1,5 @@
+'use client';
+
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
