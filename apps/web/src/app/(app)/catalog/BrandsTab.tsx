@@ -167,7 +167,7 @@ export default function BrandsTab() {
   const deletedCount = brands.filter(b => !!b.deletedAt).length;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 gap-2">
       {!modal && error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
