@@ -609,7 +609,6 @@ export default function CrmPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Контрагенти</h1>
-          <p className="page-subtitle">{`${total} записів`}</p>
         </div>
       </div>
 

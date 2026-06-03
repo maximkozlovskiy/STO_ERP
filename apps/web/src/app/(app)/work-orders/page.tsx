@@ -521,7 +521,6 @@ export default function WorkOrdersPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Наряди</h1>
-          <p className="page-subtitle">{`${total} записів`}</p>
         </div>
       </div>
 
@@ -529,6 +528,18 @@ export default function WorkOrdersPage() {
         <div className="mb-4 text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-4 py-2.5">
           {error || (queryError instanceof Error ? queryError.message : '')}
         </div>
+      )}
+
+      {/* Saved filters */}
+      {features.savedFiltersEnabled && (
+        <SavedFiltersBar<WOFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          hideSaveButton
+        />
       )}
 
       {/* Status filter pills + Мої наряди */}
@@ -543,7 +554,7 @@ export default function WorkOrdersPage() {
                 setActiveSavedFilterId(null);
               }}
               className={cn(
-                'px-3 py-1 rounded-full text-[12px] font-medium border transition-all duration-100',
+                'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
                 statusFilter === v
                   ? 'bg-primary text-primary-foreground border-primary shadow-sm'
                   : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
@@ -561,7 +572,7 @@ export default function WorkOrdersPage() {
               setActiveSavedFilterId(null);
             }}
             className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-medium border transition-all duration-100',
+              'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border transition-colors',
               myOrders
                 ? 'bg-primary text-primary-foreground border-primary shadow-sm'
                 : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
@@ -572,18 +583,6 @@ export default function WorkOrdersPage() {
           </button>
         )}
       </div>
-
-      {/* Saved filters */}
-      {features.savedFiltersEnabled && (
-        <SavedFiltersBar<WOFilters>
-          saved={savedFilters}
-          activeId={activeSavedFilterId}
-          onApply={applyFilter}
-          onSave={handleSaveFilter}
-          onRemove={removeFilter}
-          hideSaveButton
-        />
-      )}
 
       {/* Search + category filter + showDeleted controls */}
       <div className="flex flex-wrap gap-3 shrink-0">

@@ -241,9 +241,6 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.64.0
         version: 5.100.11(react@19.2.6)
-      '@tanstack/react-query-devtools':
-        specifier: ^5.64.0
-        version: 5.100.11(@tanstack/react-query@5.100.11(react@19.2.6))(react@19.2.6)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -278,6 +275,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4.3.0
         version: 4.3.0
+      '@tanstack/react-query-devtools':
+        specifier: ^5.100.11
+        version: 5.100.11(@tanstack/react-query@5.100.11(react@19.2.6))(react@19.2.6)
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.9.1

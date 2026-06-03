@@ -157,7 +157,6 @@ export default function InventoryPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Залишки на складах</h1>
-          <p className="page-subtitle">{items.length} позицій</p>
         </div>
         <Button
           variant="outline"

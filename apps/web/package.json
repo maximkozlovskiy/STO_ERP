@@ -21,7 +21,6 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@sto/shared": "workspace:*",
     "@tanstack/react-query": "^5.64.0",
-    "@tanstack/react-query-devtools": "^5.64.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.3.0",
     "lucide-react": "^0.475.0",
@@ -35,6 +34,7 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.3.0",
+    "@tanstack/react-query-devtools": "^5.100.11",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

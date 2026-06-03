@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useCallback, useMemo, useEffect } from 'react';
 
 export interface ColumnDef {

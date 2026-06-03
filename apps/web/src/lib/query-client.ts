@@ -1,5 +1,3 @@
-'use client';
-
 import { QueryClient } from '@tanstack/react-query';
 
 // Singleton — не recreate при кожному render

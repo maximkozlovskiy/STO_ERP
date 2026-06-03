@@ -559,7 +559,6 @@ export default function StockDocumentsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Складські документи</h1>
-          <p className="page-subtitle">{total} документів</p>
         </div>
       </div>
 

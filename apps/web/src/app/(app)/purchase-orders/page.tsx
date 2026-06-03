@@ -646,7 +646,6 @@ export default function PurchaseOrdersPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Замовлення постачальникам</h1>
-          <p className="page-subtitle">{total} замовлень</p>
         </div>
       </div>
 

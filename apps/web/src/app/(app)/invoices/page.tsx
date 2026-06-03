@@ -591,7 +591,6 @@ export default function InvoicesPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Рахунки</h1>
-          <p className="page-subtitle">{total} рахунків</p>
         </div>
       </div>
 

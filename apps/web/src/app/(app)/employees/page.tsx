@@ -757,7 +757,6 @@ export default function EmployeesPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Співробітники</h1>
-          <p className="page-subtitle">{employees.length} записів</p>
         </div>
       </div>
 
