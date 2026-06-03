@@ -10,6 +10,7 @@ import {
   Matches,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { PHONE_UA_REGEX } from '@sto/shared';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class BookingAvailabilityQueryDto {
@@ -36,7 +37,7 @@ export class CreateBookingRequestDto {
   @ApiProperty() @IsString() @MaxLength(200) clientName!: string;
   @ApiProperty()
   @IsString()
-  @Matches(/^\+380\d{9}$/, { message: 'Телефон має бути у форматі +380XXXXXXXXX' })
+  @Matches(PHONE_UA_REGEX, { message: 'Телефон має бути у форматі +380XXXXXXXXX' })
   clientPhone!: string;
   @ApiProperty() @IsDateString() requestedDate!: string;
   @ApiPropertyOptional({ type: [String] })

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { IBAN_UA_REGEX } from '@sto/shared';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateBankAccountDto {
@@ -13,7 +14,7 @@ export class CreateBankAccountDto {
     example: 'UA213223130000026007233566001',
     description: '2 літери + 27 цифр (29 символів)',
   })
-  @Matches(/^UA\d{27}$/, {
+  @Matches(IBAN_UA_REGEX, {
     message: 'Невірний формат IBAN. Має починатись з UA та містити 29 символів',
   })
   ibanUA!: string;
@@ -59,7 +60,7 @@ export class UpdateBankAccountDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^UA\d{27}$/, {
+  @Matches(IBAN_UA_REGEX, {
     message: 'Невірний формат IBAN. Має починатись з UA та містити 29 символів',
   })
   ibanUA?: string;
