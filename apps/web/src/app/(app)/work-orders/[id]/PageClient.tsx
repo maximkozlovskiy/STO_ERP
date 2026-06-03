@@ -390,7 +390,11 @@ export default function WorkOrderCardPage() {
       .then(r => {
         if (mountedRef.current) setComments(r.items ?? []);
       })
-      .catch(() => {});
+      .catch((e: unknown) => {
+        // Bug #341: silent .catch ховало помилки завантаження коментарів — діагностика
+        // неможлива. Тепер логуємо у console.warn (тісно з review patten 88d2c8d).
+        console.warn('Помилка завантаження коментарів:', e);
+      });
   }, [id]);
 
   const loadMedia = useCallback(() => {
@@ -398,7 +402,10 @@ export default function WorkOrderCardPage() {
       .then(d => {
         if (mountedRef.current) setMedia(d.items ?? []);
       })
-      .catch(() => {});
+      .catch((e: unknown) => {
+        // Bug #341: silent .catch ховало помилки завантаження медіа — debug-ability fix.
+        console.warn('Помилка завантаження медіа наряду:', e);
+      });
   }, [id]);
 
   // Bug #89: Escape closes lightbox + a11y. Without this keyboard users can't
@@ -537,7 +544,11 @@ export default function WorkOrderCardPage() {
       .then(d => {
         if (mountedRef.current) setInspectionPoints(d);
       })
-      .catch(() => {});
+      .catch((e: unknown) => {
+        // Bug #341: silent .catch ховало помилки завантаження inspection-points —
+        // debug-ability fix (тісно з review patten 88d2c8d).
+        console.warn('Помилка завантаження точок огляду:', e);
+      });
   }, [id]);
 
   const selectWork = (workId: string) => {

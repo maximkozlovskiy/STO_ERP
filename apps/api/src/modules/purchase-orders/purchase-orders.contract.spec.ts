@@ -159,6 +159,9 @@ describe('PurchaseOrders — HTTP Contract', () => {
       serviceMock.findAll.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
     });
 
+    // Bug #340: controller.findAll прокидує 10 args у service.findAll
+    // (orgId, page, limit, status, q, showDeleted, dateFrom, dateTo, sortBy, sortDir)
+    // — sortBy/sortDir додано у 65db856 (column sorting feature).
     it('showDeleted=true → service.findAll отримує true', async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
@@ -172,6 +175,8 @@ describe('PurchaseOrders — HTTP Contract', () => {
         undefined,
         undefined,
         true,
+        undefined,
+        undefined,
         undefined,
         undefined,
       );
@@ -192,6 +197,8 @@ describe('PurchaseOrders — HTTP Contract', () => {
         false,
         undefined,
         undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -208,6 +215,8 @@ describe('PurchaseOrders — HTTP Contract', () => {
         'DRAFT',
         'PO-001',
         false,
+        undefined,
+        undefined,
         undefined,
         undefined,
       );
@@ -228,6 +237,8 @@ describe('PurchaseOrders — HTTP Contract', () => {
         true,
         undefined,
         undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -246,6 +257,8 @@ describe('PurchaseOrders — HTTP Contract', () => {
         false,
         '2026-01-01',
         '2026-01-31',
+        undefined,
+        undefined,
       );
     });
   });

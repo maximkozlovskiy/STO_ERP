@@ -112,7 +112,9 @@ describe('StockDocuments — HTTP Contract', () => {
         url: '/stock-documents?dateFrom=2026-01-01&dateTo=2026-01-31',
       });
       expect(res.statusCode).toBe(200);
-      // StockDocumentsController.findAll викликає service.findAll(orgId, page, limit, type, status, showDeleted, dateFrom, dateTo)
+      // Bug #340: controller.findAll прокидує 10 args у service.findAll
+      // (orgId, page, limit, type, status, showDeleted, dateFrom, dateTo, sortBy, sortDir)
+      // — sortBy/sortDir додано у 65db856 (column sorting feature).
       expect(serviceMock.findAll).toHaveBeenCalledWith(
         'org-1',
         1,
@@ -122,6 +124,8 @@ describe('StockDocuments — HTTP Contract', () => {
         false,
         '2026-01-01',
         '2026-01-31',
+        undefined,
+        undefined,
       );
     });
 
@@ -141,6 +145,8 @@ describe('StockDocuments — HTTP Contract', () => {
         true,
         undefined,
         undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -158,6 +164,8 @@ describe('StockDocuments — HTTP Contract', () => {
         'WRITEOFF',
         'DRAFT',
         false,
+        undefined,
+        undefined,
         undefined,
         undefined,
       );

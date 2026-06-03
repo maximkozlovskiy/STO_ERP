@@ -160,6 +160,9 @@ describe('GoodCategoriesService — business rules', () => {
   describe('toggleActive — Bug #321 (deletedAt guard at write)', () => {
     it('updateMany з повним where (id, orgId, deletedAt: null) — defense-in-depth', async () => {
       prisma.goodCategory.updateMany.mockResolvedValueOnce({ count: 1 });
+      // Bug #340: toggleActive викликає getDescendantIds → prisma.goodCategory.findMany
+      // (каскадне поширення isActive на нащадків). Mock has-children-empty-case.
+      prisma.goodCategory.findMany.mockResolvedValueOnce([]);
       prisma.goodCategory.findFirstOrThrow.mockResolvedValueOnce({
         id: ID,
         orgId: ORG_ID,

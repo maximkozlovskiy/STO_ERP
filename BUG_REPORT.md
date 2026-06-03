@@ -10023,3 +10023,137 @@ Contract spec для work-orders не має жодного тесту, що п�
 
 **Bug #338 Статус:** [x] виправлено
 **Bug #339 Статус:** [x] виправлено
+
+---
+
+## Session 2026-06-03 — sto-tester cycle 1 (post review-agent 5 fixes)
+
+**Контекст:** review-agent щойно виправив 5 проблем (inline HSL у dark mode, silent .catch у GoodsTab/settings/vehicles, SMS/Checkbox AbortController timeout, CRM tab race condition, work-order-media memory DoS). Тестування cycle 1 запущено для перевірки нових і регресійних багів.
+
+**Перевірено:**
+
+- Memory DoS guard у `work-order-media.controller.ts` — chunk-by-chunk перевірка ДО Buffer.concat — правильно
+- SMS processor (10s) + Checkbox processor (15s) — AbortController, signal у fetch, try/finally clearTimeout — правильно
+- CRM tab race condition — кожен load\*() має локальний cancelled flag, useEffect повертає cleanup fn, dependency-array `[tab, ...]` — правильно
+- Silent .catch у GoodsTab/settings/vehicles — виправлено через console.warn
+- Inline HSL — повністю усунено у components/ui/ і apps/web/src/ загалом
+- BatchService.consumeBatch (FIFO/FEFO/LIFO/AVG_COST) — формули правильні, `nulls: 'last'` для FEFO, $transaction з timeout
+- LoyaltyService.earn — `Math.floor(amount / earnPer) * earnPoints` математика, NaN/Infinity guard
+- WorkOrder FSM — `WORK_ORDER_TRANSITIONS[wo.status]` map, side-effects у $transaction(timeout: 10s)
+- InventoryService.createMovement: RECEIPT → BatchService.createFromReceipt — правильно
+- PurchaseOrder.receive → createMovement(RECEIPT) + settlements.createTransaction(CHARGE) у $transaction(timeout: 30s) — правильно
+- DTO anti-DoS guards (ArrayMaxSize) — присутні
+- Outbound fetch (Checkbox, SMS, Webhooks) — всі мають AbortController + redirect: 'manual' + 3xx-rejection
+
+**Знайдено: 2 баги.**
+
+---
+
+## Bug #340 — [MEDIUM] 12 failing baseline tests — 4 stale specs з застарілою сигнатурою service.findAll (Bug #0 release-blocker)
+
+**Файли:**
+
+- `apps/api/src/modules/stock-documents/stock-documents.contract.spec.ts:116,135,154` (3 tests)
+- `apps/api/src/modules/invoices/invoices.contract.spec.ts:119,138,157` (3 tests)
+- `apps/api/src/modules/purchase-orders/purchase-orders.contract.spec.ts:168,186,204,222,240` (5 tests)
+- `apps/api/src/modules/good-categories/good-categories.service.spec.ts:175` (1 test — toggleActive Bug #321 defense-in-depth)
+
+**Severity:** MEDIUM (release-blocker — baseline червоний приховує регресії за шумом, наступні tester-сесії неможливі)
+**Категорія:** test-coverage (stale spec after refactor)
+
+**Опис:**
+
+Commit `65db856 feat(ui): column sorting for all list pages` додав 2 нових параметри `sortBy` і `sortDir` у controllers `findAll()` (stock-documents, invoices, purchase-orders, work-orders) та відповідні сервіс-методи. Контролер тепер передає 10 аргументів у `service.findAll(orgId, page, limit, type/status, status/q, showDeleted, dateFrom, dateTo, sortBy, sortDir)`, але contract specs Bug #339 (regression-guards для прокидання filter-параметрів) залишилися з 8 аргументами:
+
+```ts
+// Stale:
+expect(serviceMock.findAll).toHaveBeenCalledWith(
+  'org-1',
+  1,
+  20,
+  undefined,
+  undefined,
+  true,
+  undefined,
+  undefined,
+); // 8 args
+// Real call now:
+service.findAll(
+  'org-1',
+  1,
+  20,
+  undefined,
+  undefined,
+  true,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+); // 10 args
+```
+
+`toHaveBeenCalledWith` робить точне порівняння кількості аргументів → 8 vs 10 → AssertionError.
+
+Окремо у `good-categories.service.spec.ts:175` тест `toggleActive — Bug #321 (deletedAt guard at write)` падає з `TypeError: all is not iterable` — після review-fix Bug #321 метод `toggleActive` додав каскадне поширення на нащадків через `getDescendantIds(orgId, id)` (рядок 144 коду), який викликає `prisma.goodCategory.findMany(...)`. Spec test моки лише `updateMany` і `findFirstOrThrow`, не моки `findMany` → mock повертає `undefined` → `for (const c of all)` падає.
+
+**Очікувана поведінка:** baseline test suite = 0 failed. Contract specs документують правильний contract: 10-arg форма forwarding (включно з sortBy/sortDir як undefined по default).
+
+**Фактична поведінка:** 12 failing tests блокують baseline; нова tester-сесія не може відрізнити справжні регресії від stale specs.
+
+**Виправлення:**
+
+- `stock-documents.contract.spec.ts:116,135,154` — додано 2 args (sortBy, sortDir = undefined) у 3 `toHaveBeenCalledWith`
+- `invoices.contract.spec.ts:119,138,157` — те саме (3 tests)
+- `purchase-orders.contract.spec.ts:168,186,204,222,240` — те саме (5 tests)
+- `good-categories.service.spec.ts:175` — додано `prisma.goodCategory.findMany.mockResolvedValueOnce([])` перед toggleActive викликом (мок порожнього набору нащадків для getDescendantIds)
+
+**Верифікація:** 594/594 tests passed, tsc API + Web green.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #341 — [MEDIUM] Silent `.catch(() => {})` у `work-orders/[id]/PageClient.tsx` — review-fix пропустив 3 місця
+
+**Файл:** `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx:393,401,540`
+**Severity:** MEDIUM (debug-ability + UX silent failure для loadComments/loadMedia/inspection-points)
+**Категорія:** frontend (silent error swallowing)
+
+**Опис:**
+
+Review-fix `88d2c8d fix(review): replace silent .catch(() => {}) with console.warn` виправив silent .catch у 3 файлах: `catalog/GoodsTab.tsx`, `settings/page.tsx`, `vehicles/[id]/PageClient.tsx`. Але `work-orders/[id]/PageClient.tsx` має той самий патерн у 3 місцях, які review-fix пропустив:
+
+```tsx
+// рядок 393 — loadComments
+.then(r => { if (mountedRef.current) setComments(r.items ?? []); })
+.catch(() => {});
+
+// рядок 401 — loadMedia
+.then(d => { if (mountedRef.current) setMedia(d.items ?? []); })
+.catch(() => {});
+
+// рядок 540 — inspection-points
+.then(d => { if (mountedRef.current) setInspectionPoints(d); })
+.catch(() => {});
+```
+
+Той самий debug-ability bug: якщо `/comments` чи `/work-orders/:id/media` чи `/work-orders/:id/inspection/default-points` повертає 500/timeout — користувач не побачить нічого (порожній список), error не залогується ні в console, ні в моніторинг.
+
+**Очікувана поведінка:** `.catch((e: unknown) => { console.warn('Помилка X:', e); })` — паттерн з commit `88d2c8d`.
+
+**Фактична поведінка:** тиха ковтанка помилок, неможливо діагностувати чому стрічка коментарів/медіа порожня.
+
+**Примітка:** Залишені «легітимні» silent .catch:
+
+- `work-orders/page.tsx:839,909` — `inlineEdit.commitEdit().catch(() => {})` після того як onSave вже показав toast.error(); .catch() лише гасить unhandled-rejection warning, помилка вже доведена до користувача через toast
+- `ServiceWorkerRegistrar.tsx:8` — PWA install опціональний, помилка SW не критична
+
+**Виправлення:**
+
+- `work-orders/[id]/PageClient.tsx:393` (loadComments) → `.catch((e: unknown) => { console.warn('Помилка завантаження коментарів:', e); })`
+- `work-orders/[id]/PageClient.tsx:401` (loadMedia) → `.catch((e: unknown) => { console.warn('Помилка завантаження медіа наряду:', e); })`
+- `work-orders/[id]/PageClient.tsx:540` (inspection-points) → `.catch((e: unknown) => { console.warn('Помилка завантаження точок огляду:', e); })`
+
+**Верифікація:** Web tsc green (0 errors), решта silent .catch у проєкті — легітимні (toast-double-protection або опціональний SW).
+
+**Статус:** [x] виправлено

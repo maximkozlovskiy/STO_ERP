@@ -115,7 +115,9 @@ describe('Invoices — HTTP Contract', () => {
         url: '/invoices?dateFrom=2026-01-01&dateTo=2026-01-31',
       });
       expect(res.statusCode).toBe(200);
-      // InvoicesController.findAll викликає service.findAll(orgId, page, limit, status, q, showDeleted, dateFrom, dateTo)
+      // Bug #340: controller.findAll прокидує 10 args у service.findAll
+      // (orgId, page, limit, status, q, showDeleted, dateFrom, dateTo, sortBy, sortDir)
+      // — sortBy/sortDir додано у 65db856 (column sorting feature).
       expect(serviceMock.findAll).toHaveBeenCalledWith(
         'org-1',
         1,
@@ -125,6 +127,8 @@ describe('Invoices — HTTP Contract', () => {
         false,
         '2026-01-01',
         '2026-01-31',
+        undefined,
+        undefined,
       );
     });
 
@@ -144,6 +148,8 @@ describe('Invoices — HTTP Contract', () => {
         true,
         undefined,
         undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -161,6 +167,8 @@ describe('Invoices — HTTP Contract', () => {
         'DRAFT',
         'INV-001',
         false,
+        undefined,
+        undefined,
         undefined,
         undefined,
       );
