@@ -178,6 +178,8 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 - [ ] **Optional FK у `data: { ...dto }` / `data: dto`** (`brandId`, `unitId`, `preferredSupplierId`, `vehicleId`, `branchId`...) → сервіс валідує КОЖЕН наданий FK через `findFirst({ id: dto.XId, orgId, deletedAt: null })` ПЕРЕД write (патерн Bug #90). Сирий DB FK перевіряє лише глобальне існування `id`, НЕ `orgId` → FK з чужої org проходить → cross-tenant linkage. P2003 ловить ТІЛЬКИ неіснуючий ID, не cross-tenant — тому «P2003 прийнятний» НЕ закриває tenant-isolation. Severity HIGH
 - [ ] **Defense-in-depth для `update` (Bug #191):** жоден `prisma.X.update({ where: { id } })` на org-scoped таблиці без `orgId` у `where`. Prisma не підтримує `update({ where: { id, orgId } })` для primary-key (TS error) → використовувати `updateMany({ where: { id, orgId, deletedAt: null } })` + опціонально `if (count === 0) throw NotFoundException(...)`. Локально безпечно якщо `id` отриманий через org-scoped read, АЛЕ майбутній рефактор/copy-paste у controller без org-check = cross-tenant write без error. Grep: `grep -rn "\.update({ where: { id:" apps/api/src/modules/` — кожен match без `orgId` у where = LOW (profilatic), HIGH якщо викликається з prep-неперевіреним `id`
 - [ ] **FSM transition write-path persistence для new nullable row column (Bug #236):** sprint що додає `nullable colX?: TypeX` у row-модель (`PurchaseOrderLine`/`StockDocumentLine`/`InvoiceLine`/`WorkOrderPart`) + mapping `colX: l.colX ?? null` у `toDto` → у кожному `transition(STATE)` / `receive()` / `applyPricing()` / FSM-обчислювальному методі, де обчислюється resolved value (наприклад `lineUnitId = good.unitId`) і пропагується у side-effect resource (`inventory.createMovement(colX: lineUnitId)`/`stockMovement.create({ colX })`), ОБОВ'ЯЗКОВО має бути парний `tx.<rowTable>.update({ where: { id: line.id }, data: { colX: resolvedValue } })` для самого row, всередині $transaction. Інакше `findOne(id).lines[i].colX === null` назавжди → cross-resource inconsistency: history (movements) має X, current state (line) має NULL → audit/sync/export ламається. Symmetric-write для Bug #232 (read-side missing include). Grep: `grep -rnE "[a-z]*Id:\s*l\.[a-z]*Id\s*\?\?\s*null" apps/api/src/modules --include="*.service.ts"` → для кожного match у відповідному `transition()`/`receive()`/`applyPricing()` шукати `tx.<row>.update.*data.*colX`. Severity HIGH (silent data integrity)
+- [ ] **BullMQ processor idempotency guard (Bug #346):** кожен `@Process({ name: 'X', concurrency: N })` з external API call (`fetch`, `axios`, SMS, ПРРО/Checkbox) ТА `attempts > 1` ОБОВ'ЯЗКОВО читає відповідний DB-запис ПЕРЕД external call і перевіряє результат вже записаний (`fiscalReceiptId`, `sentAt`, `deliveredAt`). Без guard: transient DB error після успішного зовнішнього виклику → BullMQ retry → дублікат side-effect (2 фіскальних чеки, 2 SMS). Grep: `grep -rn "async handle" apps/api/src/modules/ --include="*.processor.ts" -l | while read f; do grep -q "fetch(\|axios\." "$f" && ! grep -q "findFirst\|findUnique" "$f" && echo "MISSING: $f"; done`. Регресія-guard: spec `it('пропускає якщо result-field вже встановлено')` + `it('пропускає якщо запис не знайдено')`. Severity: MEDIUM для ПРРО (fiscal compliance risk); LOW для webhook retry (acceptable by protocol).
+
 - [ ] **Dead-feature integration audit (Bugs #267, #268):** для КОЖНОГО `@Injectable` сервісу з queue/processor companion (`@nestjs/bull`, `@Processor`, `@InjectQueue`) — перевірити чи real callsite викликає його з payments/invoices/work-orders/settlements flow. Grep: `grep -rl "InjectQueue\|@Processor" apps/api/src/modules --include="*.ts"` → для кожного service-метода: `grep -rln "\.<method>(" apps/api/src --include="*.ts" | grep -v "spec\|<own-module>"` → якщо count=0 → bug. Парний сигнал: UI tab/sidebar/settings для фічі АЛЕ нема telemetry/trigger. Severity HIGH якщо feature розрекламована користувачу (`loyalty.queueEarn` ніколи не викликається з payments → бали не нараховуються); MEDIUM якщо admin/internal (`batch.consumeBatch` ніколи з inventory WRITEOFF → cost-method не застосовується). Фікс: додати виклик у trigger service (з `.catch(warn)` для non-blocking) + import відповідного Module у trigger Module + DI injection
 
 #### Prisma schema ↔ migration parity (release-blocker)
@@ -3177,5 +3179,58 @@ it('latest onSuccess (Bug #330)', async () => {
 1. `/sto-dev` SKILL.md: додати «Custom hook з callback options — використовуй Latest-Ref pattern: optionsRef + useEffect(no deps). Не disable exhaustive-deps».
 2. `/sto-review` checklist: «`eslint-disable react-hooks/exhaustive-deps` у custom hook → перевірити Latest-Ref. Якщо нема — bug».
 3. Регресія-test для будь-якого custom mutation hook: «latest onSuccess після rerender».
+
+---
+
+### 2026-06-04 — BullMQ processor без idempotency guard перед external API call (Bug #346) — backend, BullMQ
+
+**Сигнал:** Processor з `attempts: N > 1` (offline-first retry) викликає зовнішній API (`fetch`, `axios`, Checkbox, SMS, webhook) БЕЗ перевірки чи side-effect вже відбувся (наприклад `payment.fiscalReceiptId != null`). Якщо зовнішній виклик успішний але подальший DB write (`payment.update({ fiscalReceiptId })`) падає з transient error → BullMQ ретраює → external API викликається ВДРУГЕ → дублікат side-effect.
+
+**Причина виникнення:** Розробник фокусується на happy-path і retry-логіці (exponential backoff), але не моделює "partial success" scenario: API call OK + DB write failure. У ПРРО контексті (Checkbox) retry-count = 288 (24h) → ймовірність хоча б одного transient DB error за 24 годин при обробці > 100 платежів ненульова. Особливо небезпечно для fiscal receipts (ПРРО) та SMS: кожен дублікат = фінансові або юридичні наслідки.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти processors що мають зовнішній fetch АБО database write АЛЕ не перевіряють pre-existing state
+grep -rn "async handle" apps/api/src/modules/ --include="*.processor.ts" -l | while read f; do
+  # processor has fetch / external call?
+  if grep -q "fetch(\|axios\.\|nodemailer\|smsSend\|checkboxApi" "$f"; then
+    # does it read own record BEFORE the external call?
+    if ! grep -q "findFirst\|findUnique" "$f"; then
+      echo "MISSING IDEMPOTENCY GUARD: $f — external call with no pre-check"
+    fi
+  fi
+done
+
+# Специфічно для Checkbox/ПРРО:
+grep -rn "fiscalReceiptId" apps/api/src/modules/payments/checkbox.processor.ts | grep -v "update\|findFirst"
+# Якщо нема findFirst → bug
+```
+
+**Підхід до фіксу:** На початку `handleX(job)` — прочитати запис із БД і перевірити чи "результат" вже записаний:
+
+```ts
+const existing = await this.prisma.payment.findFirst({
+  where: { id: paymentId, orgId },
+  select: { fiscalReceiptId: true },
+});
+if (!existing) return; // deleted or cross-tenant — safe to drop
+if (existing.fiscalReceiptId) {
+  this.logger.debug(`Already processed — skip`);
+  return;
+}
+// ... тепер external call
+```
+
+Парний тест: `it('пропускає якщо fiscalReceiptId вже встановлено')` + `it('пропускає якщо платіж не знайдено')`.
+
+**Severity:** MEDIUM (фінансовий / юридичний ризик при ПРРО дублікатах; LOW для SMS якщо SMS-провайдер дедупліює)
+
+**Де шукати ще:**
+
+- `sms.processor.ts` — чи перевіряє `notification.sentAt != null` перед відправкою?
+- `followup.processor.ts` — чи пропускає counterparty що вже отримав нагадування цього циклу?
+- `webhooks.processor.ts` — delivery idempotency (менш критично — webhook retry є нормою, але бажано логувати дублікати)
+- Будь-який processor з `attempts > 5` і external API call — потенційний кандидат
 
 ---
