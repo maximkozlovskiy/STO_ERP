@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWorks, worksKeys } from '@/hooks/api/useWorks';
+import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, BookOpen, Eye, EyeOff, RotateCcw } from 'lucide-react';
@@ -196,7 +197,9 @@ export default function WorksTab() {
   );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
-  const bulkSelect = useBulkSelect(works?.items ?? []);
+  // Bug #328 regression guard — stable empty array reference.
+  const worksItems = works?.items ?? (EMPTY_ITEMS as unknown as Work[]);
+  const bulkSelect = useBulkSelect(worksItems);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;

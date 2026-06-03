@@ -9,6 +9,7 @@ import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { useWorkOrders, workOrdersKeys, WorkOrder } from '@/hooks/api/useWorkOrders';
+import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -178,7 +179,9 @@ export default function WorkOrdersPage() {
     showDeleted,
     employeeId: myOrders ? employee?.id : undefined,
   });
-  const orders = queryData?.items ?? [];
+  // Bug #328 regression guard: fresh `[]` literal per render → useBulkSelect
+  // effect fires on every render. Use module-level frozen EMPTY_ITEMS instead.
+  const orders = queryData?.items ?? (EMPTY_ITEMS as unknown as WorkOrder[]);
   const total = queryData?.total ?? 0;
 
   // Modal & form state

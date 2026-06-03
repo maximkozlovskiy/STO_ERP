@@ -8,6 +8,7 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { useInvoices, invoicesKeys, Invoice } from '@/hooks/api/useInvoices';
+import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -158,7 +159,8 @@ export default function InvoicesPage() {
     q: debouncedSearch,
     showDeleted,
   });
-  const invoices = queryData?.items ?? [];
+  // Bug #328 regression guard — stable empty array reference.
+  const invoices = queryData?.items ?? (EMPTY_ITEMS as unknown as Invoice[]);
   const total = queryData?.total ?? 0;
 
   const [selectedInv, setSelectedInv] = useState<InvoiceWithOptionals | null>(null);

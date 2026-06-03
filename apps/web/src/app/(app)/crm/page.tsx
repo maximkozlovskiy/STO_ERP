@@ -8,6 +8,7 @@ import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { useCounterparties, counterpartiesKeys, Counterparty } from '@/hooks/api/useCounterparties';
+import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import {
@@ -113,7 +114,8 @@ export default function CrmPage() {
     q: debouncedSearch,
     showDeleted,
   });
-  const counterparties = queryData?.items ?? [];
+  // Bug #328 regression guard — stable empty array reference.
+  const counterparties = queryData?.items ?? (EMPTY_ITEMS as unknown as Counterparty[]);
   const total = queryData?.total ?? 0;
 
   // Modal & form state

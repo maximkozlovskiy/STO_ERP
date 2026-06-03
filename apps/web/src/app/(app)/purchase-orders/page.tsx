@@ -12,6 +12,7 @@ import {
   purchaseOrdersKeys,
   PurchaseOrder,
 } from '@/hooks/api/usePurchaseOrders';
+import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { inventoryKeys } from '@/hooks/api/useInventory';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -160,7 +161,8 @@ export default function PurchaseOrdersPage() {
     q: debouncedQ,
     showDeleted,
   });
-  const orders = queryData?.items ?? [];
+  // Bug #328 regression guard — stable empty array reference.
+  const orders = queryData?.items ?? (EMPTY_ITEMS as unknown as PurchaseOrder[]);
   const total = queryData?.total ?? 0;
 
   // Saved filters

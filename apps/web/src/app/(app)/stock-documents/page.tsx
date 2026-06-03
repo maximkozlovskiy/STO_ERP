@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useStockDocuments, stockDocsKeys } from '@/hooks/api/useStockDocuments';
+import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Plus, FileText, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -173,7 +174,8 @@ export default function StockDocumentsPage() {
     status: statusFilter || undefined,
     showDeleted,
   });
-  const docs = docsData?.items ?? [];
+  // Bug #328 regression guard — stable empty array reference.
+  const docs = docsData?.items ?? (EMPTY_ITEMS as unknown as StockDoc[]);
   const total = docsData?.total ?? 0;
   const invalidate = () => qc.invalidateQueries({ queryKey: stockDocsKeys.all });
   const [error, setError] = useState('');

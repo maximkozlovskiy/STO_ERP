@@ -46,6 +46,12 @@ export class PurchaseOrdersService {
     q?: string,
     showDeleted = false,
   ): Promise<PaginatedPurchaseOrdersDto> {
+    // Defense-in-depth: cap `limit` to prevent DoS via `?limit=999999`.
+    // Matches the cap used by services/work-orders/invoices controllers.
+    const safeLimit = Math.min(Math.max(limit, 1), 200);
+    const safePage = Math.max(page, 1);
+    limit = safeLimit;
+    page = safePage;
     const where: Prisma.PurchaseOrderWhereInput = {
       orgId,
       ...(showDeleted ? {} : { deletedAt: null }),

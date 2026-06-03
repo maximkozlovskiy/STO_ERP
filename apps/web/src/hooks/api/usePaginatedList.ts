@@ -11,6 +11,13 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
+// Module-level frozen empty array — stable reference for callers that read
+// `data?.items ?? []` patterns. Without this, every render of a page that
+// uses useBulkSelect/useListPage with `data?.items ?? []` creates a fresh
+// array literal → useEffect([items]) inside useBulkSelect fires every render
+// → Bug #328 regression. Use `EMPTY_ITEMS as T[]` cast at call sites.
+export const EMPTY_ITEMS: readonly never[] = Object.freeze([]);
+
 function buildParams(filters: Record<string, unknown>): string {
   const p = new URLSearchParams();
   for (const [key, val] of Object.entries(filters)) {

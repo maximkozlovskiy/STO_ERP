@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEmployees, employeesKeys } from '@/hooks/api/useEmployees';
+import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -242,11 +243,15 @@ export default function EmployeesPage() {
   const [roleFilter, setRoleFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
 
-  const { data: employees = [], isLoading: loading } = useEmployees({
+  // Bug #328 regression guard: `data: employees = []` destructure default creates
+  // a fresh array each render → useBulkSelect(employees) effect fires on every
+  // render. Use module-level frozen EMPTY_ITEMS for a stable reference.
+  const { data, isLoading: loading } = useEmployees({
     q: debouncedSearch || undefined,
     role: roleFilter || undefined,
     showDeleted,
   });
+  const employees = data ?? (EMPTY_ITEMS as unknown as Employee[]);
   const qc = useQueryClient();
 
   const [form, setForm] = useState({
