@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+<PENDING> fix(review): animation system — ConfirmDialog wrapper kept exit, data-animate marker scopes [data-state] rules
+ac48d49 feat(ui): smooth open/close animations for all modals, panels & forms
 3d4c6c5 docs(tester): regression round Cycle 2 — zero new bugs (207 E2E passed)
 0c94b0f docs(memory): update MemoryManual after sto-review-agent cycle 2
 c9bb833 fix(review): regression cycle 2 — EMPTY_ITEMS in catalog tabs + system-templates take cap
@@ -29,6 +31,8 @@ E2E Playwright: ✅ 207 passed / 6 skipped / 0 failed (baseline: 162 → +45)
 Дата: 2026-06-03
 
 TypeScript: ✅ 0 errors (api, web, shared)
+
+Latest review: 2026-06-03 (sto-review-agent, post-ac48d49 animation system audit) — **2 CRITICAL + 2 IMPORTANT fixes.** (1) **ConfirmDialog wrapper had `if (!open) return null` before `<Modal>`** — це повністю ламало exit-анімацію: коли open→false, ConfirmDialog миттєво повертав null і Modal/useAnimatedPresence не отримували update, exit animation ніколи не запускалася. Прибрано guard у `confirm-dialog.tsx`. (2) **Глобальний `[data-state="open"]` селектор — занадто широкий**: будь-який майбутній Radix UI / HeadlessUI компонент з `data-state="open|closed"` (popover, dropdown, accordion, switch) автоматично отримував би modal-in/out анімацію. Звужено до `[data-animate][data-state="..."]` — анімація вмикається ТІЛЬКИ за наявності маркера `data-animate` на елементі. (3) **Backdrop descendant селектор `[data-state="open"] [data-backdrop]`** — для вкладених модалок (наприклад `ConfirmDialog` всередині `CategoryManagerModal`) outer-modal data-state змінювала анімацію inner backdrop. Замінено на direct-child `>` селектор — scope обмежений лише прямим backdrop поточної модалки. (4) Додано `data-animate` маркер у Modal root wrapper, DetailPanel content div, всі 3 tab-content div'и у crm/page.tsx. Оновлено §23 у sto-web SKILL.md: явна вимога `data-animate`, попередження про обгортки над `<Modal>` з раннім `if (!open) return null`, документація direct-child селектора для backdrop. Tests: 251/251 web, tsc 0 errors web.
 
 Latest tester: 2026-06-03 (sto-tester-agent REGRESSION ROUND, HEAD c9bb833, scope: post-Cycle-2 regression validation) — **Full regression test round after Cycle 2 review fixes (c9bb833): catalog GoodsTab/ServicesTab EMPTY_ITEMS migration + system-templates take:500. ZERO new bugs found. Baseline GREEN across the board: api 567/567 passed, web 251/251 passed, tsc api+web 0 errors, E2E playwright full suite **207 passed / 6 skipped / 0 failed (213 total, 3.7 min)\*\* — exceeds baseline 162 by +45 tests. Verified all 9 useBulkSelect call sites use EMPTY_ITEMS fallback (employees, crm, catalog Goods/Services/Works, invoices, work-orders, purchase-orders, stock-documents) — Bug #328 cascade fully closed across whole codebase. Audited every findMany in apps/api/src/modules — all have explicit take cap (branches 100, booking 100/500/50/20, brands 1000, calendar 500, comments 500, currencies 500, cash-registers 200, audit 100, employees DTO@Max(200), exchange-rates 500, goods 100/50, good-categories 1000/500/2000, inventory/batch 100, system-templates 500). §3.2 OOM guard fully enforced. Audit `any` usage: api 1 (comment), web 2 (stock-documents with eslint-disable justified). No new SKILL pattern updates needed — Cycle 1+2 review já covered all approaches. Session marker appended to BUG_REPORT.md.
 

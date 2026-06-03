@@ -24,7 +24,9 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  if (!open) return null;
+  // Bug #ANIM-1: НЕ робимо `if (!open) return null` — Modal сам тримає DOM
+  // на час exit-анімації через useAnimatedPresence. Раннє null-повернення
+  // тут скидало state без анімації виходу.
   return (
     <Modal open={open} onClose={onCancel ?? (() => {})} title={title} size="sm">
       {message && <p className="text-sm text-muted-foreground mb-4">{message}</p>}

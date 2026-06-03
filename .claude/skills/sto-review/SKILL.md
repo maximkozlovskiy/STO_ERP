@@ -565,6 +565,17 @@ grep -rn "indeterminate" apps/web/src/ --include="*.tsx" | grep -v "useEffect\|u
 # Виключаємо pointer-events-none overlays (декоративні, не інтерактивні)
 grep -rn "group-hover:opacity-100" apps/web/src/ --include="*.tsx" \
   | grep -v "focus-visible:opacity-100\|focus:opacity-100\|pointer-events-none"
+
+# Animation wrapper з власним `if (!open) return null` ламає exit-анімацію Modal
+# Wrapper що рендерить <Modal>/<PickerModal>/<SearchPickerModal> не має робити цей guard самостійно
+for f in $(grep -rl "if (!open) return null" apps/web/src/components/ui --include="*.tsx"); do
+  has_modal_wrapper=$(grep -c "<Modal\b\|<PickerModal\b\|<SearchPickerModal\b" "$f")
+  [ "$has_modal_wrapper" -gt 0 ] && echo "EXIT-ANIM BUG: $f має if(!open) перед <Modal>"
+done
+
+# Глобальний [data-state] селектор у globals.css без скоп-маркера — небезпечно
+# (Radix/HeadlessUI використовують data-state="open|closed" як публічний контракт)
+grep -nE "^\[data-state=" apps/web/src/app/globals.css | grep -v "data-animate"
 ```
 
 - [ ] `toast.X(...)` → `if (features.toastEnabled)`; fallback: `setError(msg)`
@@ -1170,6 +1181,28 @@ useEffect(() => {
 **Підхід до фіксу:** створити `*QueryDto` що дзеркалить works/goods (`@Type(() => Number) @IsNumber() @Min(1) page = 1`, `@IsPositive() @Max(200) limit = 50`, `@Transform(({ value }) => value === 'true' || value === true) @IsBoolean() showDeleted?: boolean`) → замінити handler signature на `@Query() query: <Name>QueryDto`. Якщо запит передається у service як positional args — або зберегти signature (передавати `query.page, query.limit, ...`), або переписати service на `query: QueryDto` (краще, але scope-creep).
 **Критичність:** IMPORTANT — DoS вектор + inconsistency з сусідніми модулями (review fatigue, copy-paste новими розробниками)
 **Де шукати ще:** будь-який list endpoint у новому module що "виглядає простим"; особливо after-feat-rush ситуації коли DTO ще не створене; catalog/reference-data endpoints; legacy endpoints до запровадження ValidationPipe
+
+---
+
+### 2026-06-03 — Animation wrapper `if (!open) return null` ламає exit-анімацію Modal — §8 Web Frontend / §3.1
+
+**Сигнал:** свіжий компонент-обгортка (`ConfirmDialog`, `DirtyConfirmDialog`, custom dialog) рендерить `<Modal open={open} ...>` — але має власний guard `if (!open) return null` ПЕРЕД return. Коли `open` стає false, wrapper миттєво повертає null → Modal/`useAnimatedPresence` НЕ отримують `open=false` → exit-анімація НЕ запускається (зникнення без переходу).
+**Причина виникнення:** legacy-патерн "оптимізації" `if (!open) return null` (запобігає рендеру важкого дерева коли модалка закрита) — коли Modal сам не мав exit-анімації, це було OK; після додавання `useAnimatedPresence` у Modal, обгортки що тримають той самий guard ламають архітектуру (Modal сам тримає DOM на час exit-анімації через `visible`-state).
+**Підхід до виявлення:** `grep -rn "if (!open) return null" apps/web/src/components/ui --include="*.tsx"` → для кожного файлу перевірити чи рендер містить `<Modal>`/`<PickerModal>`/`<SearchPickerModal>` — якщо ТАК → BUG, прибрати guard. Виняток — кастомний overlay БЕЗ обгортки `<Modal>` (custom backdrop), там guard потрібен (або замінити на `useAnimatedPresence`).
+**Підхід до фіксу:** прибрати `if (!open) return null` з wrapper; Modal сам обробляє visibility через useAnimatedPresence. Якщо є body що дорого рендерити — `{open && <HeavyContent/>}` всередині Modal children (умовний рендер змісту, не самого Modal).
+**Критичність:** CRITICAL — повна втрата exit-анімації для критичного UX-компонента (підтвердження дії, видалення, скасування); також ламає `useAnimatedPresence` invariant (state="closed" → 180ms → unmount), бо wrapper unmount-ить дочірній компонент раніше за animation
+**Де шукати ще:** будь-який *Dialog/*Modal wrapper у `components/ui/` що використовує базовий `<Modal>`; після введення exit-анімації у будь-якому presentational компоненті — пройтися по всіх consumers і прибрати дублікатний guard
+
+---
+
+### 2026-06-03 — Глобальний `[data-state="open"]` CSS селектор б'є по чужих data-state атрибутах — §1 TypeScript/Tailwind / §8
+
+**Сигнал:** глобальне CSS правило `[data-state="open"] { animation: ... }` (без додаткового класу/атрибута-маркера) у `globals.css`. Radix UI primitives (Accordion, Dialog, Dropdown, Popover, Switch, Tabs, Tooltip), HeadlessUI, Reach UI використовують `data-state="open|closed|on|off|checked|unchecked"` як публічний контракт — будь-який майбутній компонент з цих бібліотек автоматично отримає неочікувану анімацію (modal-in/out на dropdown trigger, ескалація animation budget).
+**Причина виникнення:** розробник хоче "одне правило для всіх модалок" — пише глобальний селектор за data-state; не знає що це публічний контракт сторонніх бібліотек; перевіряє лише поточні compoненти (де data-state ставить тільки Modal), не майбутні.
+**Підхід до виявлення:** для кожного нового глобального CSS правила що матчить `data-*` атрибут — звірити з відомими бібліотечними контрактами (Radix `data-state`, HeadlessUI `data-headlessui-state`, ARIA `aria-expanded`); якщо співпадає → звузити селектор додатковим маркером (наприклад `[data-animate]`); особливо якщо правило використовує `animation:` shorthand (агресивніший за `transition:`).
+**Підхід до фіксу:** ввести скоп-маркер: `[data-animate][data-state="open"]` — анімація вмикається лише на елементах де ми явно поставили `data-animate`. Direct-child `>` для backdrop замість descendant — щоб outer-modal не "затягував" inner-backdrop вкладеної модалки.
+**Критичність:** IMPORTANT — degradation без immediate breakage (поки немає Radix у codebase); ризик catastrophic regression при додаванні будь-якої headless UI бібліотеки; defence-in-depth invariant порушений.
+**Де шукати ще:** будь-який глобальний селектор на `data-*`/`aria-*` атрибут; після кожного PR що додає кастомні animation rules у `globals.css` — перевіряти scope; особливо якщо бібліотеки-кандидати з'являються у roadmap (Radix Tooltip, Sonner toast, Vaul drawer).
 
 ---
 

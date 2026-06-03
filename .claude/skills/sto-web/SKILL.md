@@ -955,7 +955,13 @@ import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 
 `if (!open) return null` прибирає DOM миттєво — анімація виходу неможлива. `animate-in` Tailwind дає лише enter-анімацію.
 
-### Патерн: useAnimatedPresence + data-state
+### Патерн: useAnimatedPresence + data-animate + data-state
+
+**Важливо:** анімації застосовуються ТІЛЬКИ якщо разом з `data-state` присутній маркер `data-animate`. Без маркера CSS rule не спрацьовує — це захист від:
+
+- Radix UI / HeadlessUI компонентів які теж використовують `data-state="open|closed"`
+- Випадкових співпадінь у власних компонентах
+- Каскадного впливу outer-modal на backdrop вкладеного modal'у (direct-child `>` селектор)
 
 ```tsx
 // ✅ ПРАВИЛЬНО — плавний вхід І вихід
@@ -966,17 +972,29 @@ const { visible, state } = useAnimatedPresence(open); // exitDuration за за�
 if (!visible) return null; // DOM зникає ПІСЛЯ exit-анімації
 
 return (
-  <div data-state={state} className="my-panel">
+  <div data-animate data-state={state} className="my-panel">
     {children}
   </div>
 );
-// globals.css: [data-state="open"] → modal-in 200ms | [data-state="closed"] → modal-out 180ms
+// globals.css: [data-animate][data-state="open"] → modal-in 200ms
+//              [data-animate][data-state="closed"] → modal-out 180ms
 ```
 
 ```tsx
 // ❌ ЗАБОРОНЕНО — миттєве зникнення без анімації виходу
 if (!open) return null;
 return <div className="animate-in fade-in zoom-in-95 duration-200">{children}</div>;
+
+// ❌ ЗАБОРОНЕНО — обгортка над <Modal> з `if (!open) return null` ламає Modal's exit
+// (Modal сам тримає DOM під час exit-анімації — не дублюй guard)
+export function MyDialog({ open, onClose }: Props) {
+  if (!open) return null; // ← BUG: Modal не отримає open=false для exit
+  return (
+    <Modal open={open} onClose={onClose}>
+      ...
+    </Modal>
+  );
+}
 ```
 
 ### Де застосовується
@@ -992,7 +1010,8 @@ return <div className="animate-in fade-in zoom-in-95 duration-200">{children}</d
 
 ```tsx
 // ✅ При зміні таба — React remount'ить → завжди enter-анімація
-<div key={activeTab} data-state="open" className="flex-1 overflow-y-auto p-4">
+<div key={activeTab} data-animate data-state="open" data-variant="content"
+     className="flex-1 overflow-y-auto p-4">
   {activeContent}
 </div>
 // Exit при зміні таба не потрібен — DOM замінюється одразу
@@ -1014,8 +1033,11 @@ return <div className="animate-in fade-in zoom-in-95 duration-200">{children}</d
 ### Checklist для нового модального компонента
 
 - [ ] Рендерить через базовий `<Modal>` — анімація успадковується автоматично
-- [ ] Якщо кастомний overlay — використовує `useAnimatedPresence(open)` + `data-state={state}`
+- [ ] Якщо кастомний overlay — використовує `useAnimatedPresence(open)` + `data-animate data-state={state}`
 - [ ] НЕ використовує `if (!open) return null` напряму (тільки `if (!visible) return null`)
+- [ ] **Обгортка над `<Modal>` НЕ має власного `if (!open) return null`** — Modal сам тримає DOM на час exit-анімації; раннє null-повернення у wrapper'і ламає exit (актуально для ConfirmDialog/PickerModal/SearchPickerModal patterns)
+- [ ] Якщо ставите `data-state` на власному елементі — додайте `data-animate` маркер
+- [ ] Backdrop використовує direct-child селектор у CSS (`> [data-backdrop]`), не descendant — інакше вкладена модалка (ConfirmDialog у CategoryManagerModal) отримує паразитну анімацію коли outer змінює state
 - [ ] НЕ має `animate-in` Tailwind-класів на root-елементі (замінені `[data-state]` rules)
 - [ ] Для accordion/collapse — використовує `<AnimatedBody>` з `modal.tsx`
 

@@ -294,16 +294,23 @@ th[data-dragover="true"] {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* data-state utilities — автоматично застосовуються до будь-якого елементу */
-[data-state="open"]   { animation: modal-in  var(--duration-enter) var(--ease-enter)   both; }
-[data-state="closed"] { animation: modal-out var(--duration-exit)  var(--ease-exit)    both; }
+/* data-state utilities — застосовуються ТІЛЬКИ до елементів з `data-animate`
+   маркером. Без маркера — Radix/HeadlessUI/native popovers які теж використовують
+   data-state="open|closed" не отримують випадково modal-in/out animation.
+   Також обмежує scope для вкладених модалок (outer wrapper не «затягує» inner). */
+[data-animate][data-state="open"]   { animation: modal-in  var(--duration-enter) var(--ease-enter)   both; }
+[data-animate][data-state="closed"] { animation: modal-out var(--duration-exit)  var(--ease-exit)    both; }
 
-/* Backdrop — вкладений елемент з data-backdrop атрибутом */
-[data-state="open"]   [data-backdrop] { animation: backdrop-in  var(--duration-enter) var(--ease-standard) both; }
-[data-state="closed"] [data-backdrop] { animation: backdrop-out var(--duration-exit)  var(--ease-exit)     both; }
+/* Backdrop — direct child (`>`) елемент з data-backdrop атрибутом.
+   Direct-child селектор (а не descendant) уникає каскадного впливу outer-modal'у
+   на backdrop вкладеної модалки (ConfirmDialog усередині CategoryManagerModal). */
+[data-animate][data-state="open"]   > [data-backdrop] { animation: backdrop-in  var(--duration-enter) var(--ease-standard) both; }
+[data-animate][data-state="closed"] > [data-backdrop] { animation: backdrop-out var(--duration-exit)  var(--ease-exit)     both; }
 
-/* Tab/panel content — менш виражена анімація */
-[data-state="open"][data-variant="content"] {
+/* Tab/panel content — менш виражена анімація; `data-animate` гарантує що
+   випадкові div'и зі state="open" (статично) у JSX не запускають анімацію
+   при кожному ре-рендері. */
+[data-animate][data-state="open"][data-variant="content"] {
   animation: fade-slide-in var(--duration-tab) var(--ease-enter) both;
 }
 

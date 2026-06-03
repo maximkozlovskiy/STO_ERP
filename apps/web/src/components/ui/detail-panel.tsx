@@ -201,9 +201,11 @@ export function DetailPanel({
           )}
 
           {/* Scrollable content — key remount triggers enter animation on tab switch;
-              data-state animates on panel open/close via globals.css */}
+              data-state animates on panel open/close via globals.css.
+              data-animate — marker scoping animation rule (див. globals.css). */}
           <div
             key={activeTab}
+            data-animate
             data-state={contentState}
             data-variant="content"
             className="flex-1 overflow-y-auto p-4"
