@@ -1403,6 +1403,22 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 
 ---
 
+### 2026-06-04 — Shared config fetched per-recipient in N-to-1 broadcast processor — batch notification dispatchers
+
+**Сигнал:** BullMQ processor (або scheduled job) будує список N recipients і для кожного викликає `service.send(orgId, recipientId, event, payload)`, де `send()` всередині тягне **однакові** shared config records (branchSettings + template, або org settings + channel config) з DB. Всі N викликів для одного org share той самий branchId і той самий event type → N×2 ідентичних DB reads замість 2.
+
+**Причина виникнення:** `service.send()` проєктований як standalone call — він сам дбає про config fetch для safety (не покладається на caller). Це правильно для single sends (one-off HTTP handler). Але batch processor що викликає `send()` в `Promise.allSettled(recipients.map(...))` не має спільного pre-fetch: кожна паралельна call тягне свій config. При 1000 recipients це 2000 однакових Postgres reads. Розробник пише batch processor так само як single-send handler — не помічає що config shared.
+
+**Підхід до виявлення:** знайти BullMQ processor методи що: (1) будують масив recipients/targets, (2) fan-out через `Promise.allSettled(recipients.map(r => service.sendX(orgId, r, ...)))`. Прочитати `sendX` — якщо воно робить DB reads для config/settings/templates де **всі N calls мають однакові inputs** (той самий orgId, branchId, eventType) → кандидат. Ключова ознака: config query не залежить від `r` (recipient), лише від org/branch/event.
+
+**Підхід до фіксу:** розбити `sendX()` на (1) `resolveConfig(orgId, branchId, event): Config | null` (async, DB reads) + (2) `sendWithConfig(orgId, recipient, config, vars)` (async, лише queue.add без DB). Processor: викликає `resolveConfig` ОДИН раз до fan-out. Якщо `null` — early return (SMS не налаштовано). Для fan-out: `sendWithConfig(orgId, r.phone, config, vars)` — 0 DB reads у loop. Ця схема backward-compatible: `sendX()` залишається як зручна обгортка для single sends (всередині викликає resolveConfig + sendWithConfig).
+
+**Реальний impact:** followup processor: 1000 recipients × 2 DB reads (branchSettings + template) → 2 reads per daily tick. При 20 org і 500 recipients середньому: 20000 reads/добу → 40 reads/добу.
+
+**Де шукати ще:** будь-який scheduled job або batch processor що fan-out'ить notification/email/SMS/webhook до N targets у межах одного org+event. Типові зони: CRM bulk SMS (якщо реалізується), newsletter processor, reminder batch, warranty expiry notification, payment due reminder. При додаванні нового batch-notification processor — ЗАВЖДИ перевіряти чи config shared across recipients.
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -1585,3 +1601,4 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ purchase-orders.service.findAll: `safeLimit = Math.min(limit, 200)` + `safePage = Math.max(page, 1)` DoS hardening — попереджає `?limit=999999` OOM/connection pool exhaustion (паралель до services.controller pattern після audit 280f576)
 - ✅ webhooks.processor: `@Process({ name: 'deliver', concurrency: 5 })` — burst latency 200s → ~40s для 20 webhooks
 - ✅ sms.processor: `@Process({ name: 'send-sms', concurrency: 3 })` — серійні SMS calls → паралельні (3 одночасних TurboSMS HTTP calls)
+- ✅ followup.processor: `resolveConfig` + `sendWithConfig` — branchSettings + notificationTemplate тягнулись per-recipient (N×2 DB reads); тепер 2 reads для всього batch незалежно від розміру org
