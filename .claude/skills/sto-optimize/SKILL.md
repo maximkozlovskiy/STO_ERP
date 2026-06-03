@@ -1291,6 +1291,54 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 
 ---
 
+### 2026-06-03 — Fresh `[]` literal у `data?.items ?? []` → useEffect([items]) фаєрить кожен рендер — Bug-#328 cascade pattern
+
+**Сигнал:** сторінка-список читає React Query result як `const orders = queryData?.items ?? []` або `const { data: list = [] } = useX()` (destructure default). Далі `useBulkSelect(orders)` або інший hook з `useEffect([items])` для prune/sync. У стані initial-load (data === undefined) кожен render створює **новий** `[]` літерал → reference change → effect ре-фаєрить → setState всередині → новий рендер → новий `[]` → нескінченна race до моменту коли data завантажилось. Bug визначений і виправлений у `useListPage` (b2707ae), але **call-sites НЕ мігровані** — кожна сторінка з useBulkSelect знову показує той самий патерн.
+
+**Причина виникнення:** `data?.items ?? []` — ідіоматичний шаблон React Query для безпечного fallback. Розробник не помічає що `[]` — новий літерал кожен render. Якщо downstream hook очікує stable input (через useEffect deps), регресія прихована до часу коли cycle відбудеться "в дикій природі" (slow API, network failure, fresh mount). Виправлення в `useListPage` через `EMPTY = Object.freeze([])` локалізоване в одному hook — не пропагується на сторінки що НЕ використовують useListPage (а їх більшість).
+
+**Підхід до виявлення:** грепнути `data\?\.items \?\? \[\]` + `data\?\.\w+ \?\? \[\]` + `data: \w+ = \[\]` (destructure default) у `apps/web/src/app/**/*.tsx`. Для кожного збігу перевірити чи resultат передається в hook з useEffect deps (useBulkSelect, useStableList, любий custom hook). Якщо так — кандидат на стабілізацію через `EMPTY_ITEMS` модульну константу.
+
+**Підхід до фіксу:** у hook що повертає paginated дані експортувати module-level `export const EMPTY_ITEMS: readonly never[] = Object.freeze([])`. Call-sites переходять на `data?.items ?? (EMPTY_ITEMS as unknown as T[])`. Cast потрібен бо TypeScript не дозволяє привласнити `readonly never[]` до `T[]` напряму — readonly видимо TypeScript-only, runtime семантика збережена (immutable empty array). Альтернатива — `useMemo(() => data?.items ?? [], [data])`, але це додатковий dep tracking; module-level frozen const простіше.
+
+**Реальний impact:** під час initial load (200-500ms перед першим успішним fetch) — usebulkSelect effect був би в нескінченному ре-running циклі без stable ref. Після data load — effect фаєрить нормально на legitimate changes. Економія в загальному CPU/render час: O(initial_load_ms × N_renders_per_ms × effect_cost). Для повільних мереж (мобільний 3G) це 10-50 зайвих effect runs до першого паінту.
+
+**Де шукати ще:** **кожна сторінка-список з useBulkSelect/useStableList** — це системно повторюваний патерн. Перевіряти при code review нових сторінок: `data?.items ?? []` без stable ref → ❌; `data?.items ?? EMPTY_ITEMS` → ✅. Bonus checkpoint: `data: list = []` destructure default — теж кандидат.
+
+---
+
+### 2026-06-03 — Bug fix у hook не пропагований на call-sites — `useListPage` приклад
+
+**Сигнал:** comprehensive QA знаходить regression bug (Bug #328: fresh `[]` → useEffect race), виправляє у новому композитному hook (`useListPage`), додає regression test. Бачимо в memo manual "Bug #328 fixed". Але `useListPage` ще не має consumer'ів — всі реальні сторінки досі мають той самий патерн на page-level. Fix solved a SUBSET of the problem; original bug surface STILL exists у 7+ файлах.
+
+**Причина виникнення:** новий hook створюється як майбутня infrastructure ("call sites мігруватимуть пізніше"). Bug fix у hook стає "done" з точки зору auditor'а — regression test guards new hook. Original bug pattern залишається на старих call sites бо `useListPage` ще не має consumer'ів. Розробник вважає що fix complete; reviewer focuses on hook, not on inline-grep.
+
+**Підхід до виявлення:** після кожного fix у utility/composable hook — **обов'язково** грепнути original anti-pattern (не лише ім'я хука!) у `apps/web/src/app/**/*.tsx`. Питання: «hook fix solved this pattern, але pattern також існує inline у NotMigratedYet pages?». Якщо так — пошир fix туди ж або як module-level export з hook.
+
+**Підхід до фіксу:** опція А — export shared primitive (`EMPTY_ITEMS`, `STABLE_FALLBACK`) з hook що його використовує; call-sites імпортують і використовують напряму до повної міграції. Опція Б — мігрувати негайно (якщо API стабільне). Опція В (НЕ recommended) — комент "TODO migrate to useListPage" — кожен такий комент = довгостроковий борг.
+
+**Реальний impact:** уникнення ситуації коли regression-test'и зеленi, MemoryManual каже "fixed", але реальний продукт усе ще має той самий bug. Якщо новий hook gets adoption — старі patterns поступово зникнуть; якщо ні — borrowed pattern (EMPTY_ITEMS export) рятує ситуацію відразу.
+
+**Де шукати ще:** будь-який bugfix у новий "universal" hook/composable що замінює existing inline pattern. Перевіряти при кожному `feat(hooks): useX` коміті — чи всі call sites старого patternу мігровано чи fix працює тільки для майбутніх migrations.
+
+---
+
+### 2026-06-03 — Limit cap на endpoints що приймають user-controlled pagination — DoS hardening для `?limit=999999`
+
+**Сигнал:** controller метод приймає `@Query('limit') limit = '20'` і передає у service як `+limit` (Number conversion) без cap. Service `findMany({ take: limit })`. Захист на limit є тільки у деяких endpoints (services, work-orders, invoices після audit 280f576), але новіші додані endpoints (purchase-orders, stock-documents, custom search APIs) можуть пропустити cap. DoS вектор: атакуючий з legit token робить `GET /endpoint?limit=999999` → Postgres завантажує до 1M рядків × `_count` subquery → OOM, connection pool exhaustion, latency spike.
+
+**Причина виникнення:** новий endpoint copy-paste'ить controller pattern з готового template або з existing module. Якщо template НЕ має cap (бо template був написаний до audit) — новий endpoint наслідує vulnerability. Розробник не помічає бо cap не у бізнес-логіці, а у defensive layer.
+
+**Підхід до виявлення:** грепнути `@Query\('limit'\) limit = '\d+'` у `apps/api/src/modules/*/controller.ts`. Для кожного збігу подивитись чи service findAll починається з `const safeLimit = Math.min(limit, MAX)` / `if (limit > MAX) limit = MAX` / Zod-DTO з `@Max(MAX)`. Якщо немає cap — кандидат. Особливо часто: новіші модулі додані після audit (purchase-orders після c7f15dd), search endpoints, autocomplete endpoints, дашборд-aggregation endpoints.
+
+**Підхід до фіксу:** на початку service findAll: `const safeLimit = Math.min(Math.max(limit, 1), 200); limit = safeLimit;`. Опціонально `page = Math.max(page, 1)` (захист від `?page=-1`). 200 — типовий cap для list endpoints (на 1 сторінку UI типово 20-100 елементів; 200 — generous buffer для admin/export use-cases). Reports endpoints що генерують CSV — 10000 max. Захист на controller-level через Zod DTO/Validation Pipe — кращий, але service-level cap — defensive backup. **НЕ** покладатися лише на UI що передає правильний limit — атакуючий обходить UI.
+
+**Реальний impact:** prevents OOM/connection-pool-exhaustion attacks на новостворені endpoints. Виявляється не за впливом на performance (на legit traffic 0 impact — cap не активується), а як security hardening. На systems з shared DB pool (multi-tenant) — критично, бо один atttacker org може покласти пул для всіх.
+
+**Де шукати ще:** будь-який новий @Controller з list/search endpoint. При додаванні нового модуля — обов'язково додати cap у service findAll. Перевіряти при кожному `feat(api): X module` коміті. Audit-trigger: новий `?q=` параметр додано — перевірити cap паралельно з q-validation.
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -1461,3 +1509,8 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ purchase_orders: `(orgId, deletedAt, createdAt)` covering — findAll без status filter (hot path) sort eliminated
 - ✅ stock_documents: `(orgId, deletedAt, createdAt)` covering — findAll без type/status filter (default browse) sort eliminated
 - ✅ invoices: `(orgId, deletedAt, createdAt)` covering — findAll без status filter (default list) sort eliminated
+
+**Universal Patterns (B1-B7 + C) post-audit (c600772):**
+
+- ✅ usePaginatedList: module-level `EMPTY_ITEMS = Object.freeze([])` export — stable empty array fallback для 7 list pages (work-orders, purchase-orders, invoices, stock-documents, crm, employees, catalog/WorksTab); попереджає Bug #328 cascade на page-level бо `useListPage` fix покривав лише hook, не call-sites
+- ✅ purchase-orders.service.findAll: `safeLimit = Math.min(limit, 200)` + `safePage = Math.max(page, 1)` DoS hardening — попереджає `?limit=999999` OOM/connection pool exhaustion (паралель до services.controller pattern після audit 280f576)
