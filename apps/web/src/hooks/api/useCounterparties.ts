@@ -34,6 +34,8 @@ export interface CounterpartiesFilter extends Record<string, unknown> {
   types?: string;
   q?: string;
   showDeleted?: boolean;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
 }
 
 /** @deprecated Use PaginatedResponse<Counterparty> from usePaginatedList */

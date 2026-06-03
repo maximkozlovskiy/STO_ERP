@@ -51,6 +51,8 @@ export interface WorkOrdersFilter extends Record<string, unknown> {
   include?: string;
   dateFrom?: string;
   dateTo?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
 }
 
 /** @deprecated Use PaginatedResponse<WorkOrder> from usePaginatedList */

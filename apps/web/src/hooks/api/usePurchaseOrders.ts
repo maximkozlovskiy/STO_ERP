@@ -43,6 +43,8 @@ export interface PurchaseOrdersFilter extends Record<string, unknown> {
   showDeleted?: boolean;
   dateFrom?: string;
   dateTo?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
 }
 
 /** @deprecated Use PaginatedResponse<PurchaseOrder> from usePaginatedList */

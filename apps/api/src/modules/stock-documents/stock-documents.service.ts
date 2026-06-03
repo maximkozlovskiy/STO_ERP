@@ -42,6 +42,8 @@ export class StockDocumentsService {
     showDeleted = false,
     dateFrom?: string,
     dateTo?: string,
+    sortBy?: string,
+    sortDir?: 'asc' | 'desc',
   ): Promise<PaginatedStockDocumentsDto> {
     const where: Prisma.StockDocumentWhereInput = {
       orgId,
@@ -57,12 +59,18 @@ export class StockDocumentsService {
     }
 
     const skip = (page - 1) * limit;
+    const SD_SORT: Record<string, string> = {
+      documentDate: 'documentDate',
+      createdAt: 'createdAt',
+    };
+    const sortField = SD_SORT[sortBy ?? ''] ?? 'createdAt';
+    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
     const [items, total] = await this.prisma.$transaction([
       this.prisma.stockDocument.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortField]: sortOrder },
         include: {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },

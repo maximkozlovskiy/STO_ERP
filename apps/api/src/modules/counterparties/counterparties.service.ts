@@ -59,7 +59,12 @@ export class CounterpartiesService {
       this.prisma.counterparty.findMany({
         where,
         include: { settlementAccount: { select: { balance: true } } },
-        orderBy: [{ lastName: 'asc' }, { companyName: 'asc' }],
+        orderBy:
+          query.sortBy === 'createdAt'
+            ? [{ createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' }]
+            : query.sortBy === 'balance'
+              ? [{ settlementAccount: { balance: query.sortDir === 'asc' ? 'asc' : 'desc' } }]
+              : [{ lastName: query.sortDir === 'desc' ? 'desc' : 'asc' }, { companyName: 'asc' }],
         skip: (query.page - 1) * query.limit,
         take: query.limit,
       }),

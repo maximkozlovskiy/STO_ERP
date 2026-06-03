@@ -1190,8 +1190,8 @@ function CalendarPageClient() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="page-container">
-      <div className="page-header mb-6">
+    <div className="page-fill">
+      <div className="page-header">
         <h1 className="page-title">Календар</h1>
         <div className="flex items-center gap-2">
           {/* View switcher */}
@@ -1238,265 +1238,273 @@ function CalendarPageClient() {
         </div>
       </div>
 
-      {/* Date / month navigation — hidden in stats view */}
-      {calView !== 'stats' && (
-        <div className="flex items-center gap-4 mb-6">
-          {calView === 'month' ? (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const [y, m] = yearMonth.split('-').map(Number);
-                  const d = new Date(y, m - 2, 1);
-                  setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
-                }}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Попередній
-              </Button>
-              <span className="text-sm font-medium text-foreground capitalize">
-                {date ? fmtKyivMonthYear(date) : ''}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const [y, m] = yearMonth.split('-').map(Number);
-                  const d = new Date(y, m, 1);
-                  setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
-                }}
-              >
-                Наступний
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setDate(toDateString(new Date()))}>
-                Цей місяць
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="outline" size="sm" onClick={prevDay}>
-                <ChevronLeft className="h-4 w-4" />
-                Попередній
-              </Button>
-              <div className="flex items-center gap-2">
-                <DatePickerInput
-                  value={date}
-                  onChange={setDate}
-                  placeholder="Дата"
-                  className="w-48"
-                />
-                <span
-                  className={`text-sm capitalize ${nowMs && date < toDateString(new Date(nowMs)) ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}
+      {/* Scrollable content area */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-[var(--spacing-page-x,2rem)] pb-6">
+        {/* Date / month navigation — hidden in stats view */}
+        {calView !== 'stats' && (
+          <div className="flex items-center gap-4 mb-6">
+            {calView === 'month' ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const [y, m] = yearMonth.split('-').map(Number);
+                    const d = new Date(y, m - 2, 1);
+                    setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+                  }}
                 >
-                  {formatKyivDate(date)}
-                  {nowMs && date < toDateString(new Date(nowMs)) ? ' — минулий день' : ''}
+                  <ChevronLeft className="h-4 w-4" />
+                  Попередній
+                </Button>
+                <span className="text-sm font-medium text-foreground capitalize">
+                  {date ? fmtKyivMonthYear(date) : ''}
                 </span>
-              </div>
-              <Button variant="outline" size="sm" onClick={nextDay}>
-                Наступний
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setDate(toDateString(new Date()))}>
-                Сьогодні
-              </Button>
-            </>
-          )}
-        </div>
-      )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const [y, m] = yearMonth.split('-').map(Number);
+                    const d = new Date(y, m, 1);
+                    setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+                  }}
+                >
+                  Наступний
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setDate(toDateString(new Date()))}>
+                  Цей місяць
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" onClick={prevDay}>
+                  <ChevronLeft className="h-4 w-4" />
+                  Попередній
+                </Button>
+                <div className="flex items-center gap-2">
+                  <DatePickerInput
+                    value={date}
+                    onChange={setDate}
+                    placeholder="Дата"
+                    className="w-48"
+                  />
+                  <span
+                    className={`text-sm capitalize ${nowMs && date < toDateString(new Date(nowMs)) ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}
+                  >
+                    {formatKyivDate(date)}
+                    {nowMs && date < toDateString(new Date(nowMs)) ? ' — минулий день' : ''}
+                  </span>
+                </div>
+                <Button variant="outline" size="sm" onClick={nextDay}>
+                  Наступний
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setDate(toDateString(new Date()))}>
+                  Сьогодні
+                </Button>
+              </>
+            )}
+          </div>
+        )}
 
-      {/* ── Add / edit form — hidden in stats view ──────────────────────────── */}
-      <CalendarSlotModal
-        open={showAdd && calView !== 'stats'}
-        onClose={handleModalClose}
-        onSaved={handleModalSaved}
-        date={date}
-        lifts={lifts}
-        form={form}
-        setForm={setForm}
-        editingSlotId={editingSlotId}
-        isEditingPast={isEditingPast}
-        pendingSlot={pendingSlot}
-        setPendingSlot={setPendingSlot}
-        formMounted={formMounted}
-        formVisible={formVisible}
-        formCollapseRef={formCollapseRef}
-        formInnerRef={formInnerRef}
-        minHour={minHour}
-        nowMs={nowMs}
-        error={error}
-        setError={setError}
-        saving={saving}
-        setSaving={setSaving}
-        cpDisplay={cpDisplay}
-        setCpDisplay={setCpDisplay}
-      />
-
-      {/* ── Hint — day view only ─────────────────────────────────────────────── */}
-      {calView === 'day' && !loading && lifts.length > 0 && !pendingSlot && !showAdd && (
-        <p className="text-xs text-muted-foreground mb-2">
-          Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї для зміни
-          тривалості. Натисніть на проміжок щоб зберегти.
-        </p>
-      )}
-      {calView === 'day' && pendingSlot && !showAdd && (
-        <p className="text-xs text-primary mb-2 font-medium">
-          ↑ Налаштуйте проміжок і натисніть на нього щоб відкрити форму збереження.
-        </p>
-      )}
-
-      {/* ── MONTH VIEW ──────────────────────────────────────────────────────── */}
-      {calView === 'month' && (
-        <CalendarMonthView
-          yearMonth={yearMonth}
-          monthSlots={monthSlots}
-          monthLoading={monthLoading}
-          monthError={monthError}
-          nowMs={nowMs}
-          onDayClick={dayStr => {
-            setDate(dayStr);
-            setCalView('day');
-          }}
-        />
-      )}
-
-      {/* ── STATS VIEW ──────────────────────────────────────────────────────── */}
-      {calView === 'stats' && (
-        <CalendarStatsTab
-          lifts={lifts}
-          statsSlots={statsSlots}
-          statsLoading={statsLoading}
-          statsError={statsError}
-          statsPeriod={statsPeriod}
-          setStatsPeriod={setStatsPeriod}
-          statsFrom={statsFrom}
-          setStatsFrom={setStatsFrom}
-          statsTo={statsTo}
-          setStatsTo={setStatsTo}
-          statsRangeTooLong={statsRangeTooLong}
+        {/* ── Add / edit form — hidden in stats view ──────────────────────────── */}
+        <CalendarSlotModal
+          open={showAdd && calView !== 'stats'}
+          onClose={handleModalClose}
+          onSaved={handleModalSaved}
           date={date}
-          setDate={setDate}
-          statsRange={statsRange}
+          lifts={lifts}
+          form={form}
+          setForm={setForm}
+          editingSlotId={editingSlotId}
+          isEditingPast={isEditingPast}
+          pendingSlot={pendingSlot}
+          setPendingSlot={setPendingSlot}
+          formMounted={formMounted}
+          formVisible={formVisible}
+          formCollapseRef={formCollapseRef}
+          formInnerRef={formInnerRef}
+          minHour={minHour}
+          nowMs={nowMs}
+          error={error}
+          setError={setError}
+          saving={saving}
+          setSaving={setSaving}
+          cpDisplay={cpDisplay}
+          setCpDisplay={setCpDisplay}
         />
-      )}
 
-      {/* ── DAY VIEW ────────────────────────────────────────────────────────── */}
-      {calView === 'day' && loading && (
-        <div className="flex justify-center py-8">
-          <Spinner size="md" />
-        </div>
-      )}
+        {/* ── Hint — day view only ─────────────────────────────────────────────── */}
+        {calView === 'day' && !loading && lifts.length > 0 && !pendingSlot && !showAdd && (
+          <p className="text-xs text-muted-foreground mb-2">
+            Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї для зміни
+            тривалості. Натисніть на проміжок щоб зберегти.
+          </p>
+        )}
+        {calView === 'day' && pendingSlot && !showAdd && (
+          <p className="text-xs text-primary mb-2 font-medium">
+            ↑ Налаштуйте проміжок і натисніть на нього щоб відкрити форму збереження.
+          </p>
+        )}
 
-      {calView === 'day' && !loading && lifts.length === 0 && (
-        <div className="bg-surface border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
-          Немає підйомників. Додайте їх у розділі{' '}
-          <a href="/infrastructure" className="text-primary hover:underline">
-            Інфраструктура
-          </a>
-          .
-        </div>
-      )}
+        {/* ── MONTH VIEW ──────────────────────────────────────────────────────── */}
+        {calView === 'month' && (
+          <CalendarMonthView
+            yearMonth={yearMonth}
+            monthSlots={monthSlots}
+            monthLoading={monthLoading}
+            monthError={monthError}
+            nowMs={nowMs}
+            onDayClick={dayStr => {
+              setDate(dayStr);
+              setCalView('day');
+            }}
+          />
+        )}
 
-      {calView === 'day' && !loading && lifts.length > 0 && (
-        <DndContext
-          sensors={sensors}
-          onDragEnd={e => {
-            void handleDragEnd(e);
-          }}
-        >
-          <div
-            ref={timelineRef}
-            className="bg-surface border border-border rounded-xl overflow-hidden"
+        {/* ── STATS VIEW ──────────────────────────────────────────────────────── */}
+        {calView === 'stats' && (
+          <CalendarStatsTab
+            lifts={lifts}
+            statsSlots={statsSlots}
+            statsLoading={statsLoading}
+            statsError={statsError}
+            statsPeriod={statsPeriod}
+            setStatsPeriod={setStatsPeriod}
+            statsFrom={statsFrom}
+            setStatsFrom={setStatsFrom}
+            statsTo={statsTo}
+            setStatsTo={setStatsTo}
+            statsRangeTooLong={statsRangeTooLong}
+            date={date}
+            setDate={setDate}
+            statsRange={statsRange}
+          />
+        )}
+
+        {/* ── DAY VIEW ────────────────────────────────────────────────────────── */}
+        {calView === 'day' && loading && (
+          <div className="flex justify-center py-8">
+            <Spinner size="md" />
+          </div>
+        )}
+
+        {calView === 'day' && !loading && lifts.length === 0 && (
+          <div className="bg-surface border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
+            Немає підйомників. Додайте їх у розділі{' '}
+            <a href="/infrastructure" className="text-primary hover:underline">
+              Інфраструктура
+            </a>
+            .
+          </div>
+        )}
+
+        {calView === 'day' && !loading && lifts.length > 0 && (
+          <DndContext
+            sensors={sensors}
+            onDragEnd={e => {
+              void handleDragEnd(e);
+            }}
           >
             <div
-              className="grid border-b border-border"
-              style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
+              ref={timelineRef}
+              className="bg-surface border border-border rounded-xl overflow-hidden"
             >
-              <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">
-                Підйомник
+              <div
+                className="grid border-b border-border"
+                style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
+              >
+                <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">
+                  Підйомник
+                </div>
+                {HOURS.map(h => (
+                  <div
+                    key={h}
+                    className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0"
+                  >
+                    {pad(h)}:00
+                  </div>
+                ))}
               </div>
-              {HOURS.map(h => (
+
+              {lifts.map(lift => (
                 <div
-                  key={h}
-                  className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0"
+                  key={lift.id}
+                  className="grid border-b border-border last:border-b-0"
+                  style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
                 >
-                  {pad(h)}:00
+                  <div className="px-3 py-3 min-h-20 bg-secondary border-r border-border flex flex-col justify-center gap-0.5">
+                    <span className="text-sm font-medium text-foreground leading-tight">
+                      {lift.name}
+                    </span>
+                    {nextSlotByLift.get(lift.id) === 'now' ? (
+                      <span className="text-[10px] font-medium text-success-text leading-none">
+                        ● зараз
+                      </span>
+                    ) : nextSlotByLift.has(lift.id) ? (
+                      <span className="text-[10px] text-muted-foreground leading-none">
+                        ↓ {fmtTime(nextSlotByLift.get(lift.id)!)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <DroppableLiftRow
+                    liftId={lift.id}
+                    liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
+                    ghost={ghost}
+                    pending={pendingSlot}
+                    editingSlotId={editingSlotId}
+                    blockedWidth={blockedWidth}
+                    onRemove={removeSlot}
+                    onEdit={handleEditSlot}
+                    onResizeStart={handleResizeStart}
+                    onPendingOpen={openFormFromPending}
+                    onPendingCancel={cancelPending}
+                    onPendingResizeStart={handlePendingResizeStart}
+                  />
                 </div>
               ))}
             </div>
+          </DndContext>
+        )}
 
-            {lifts.map(lift => (
-              <div
-                key={lift.id}
-                className="grid border-b border-border last:border-b-0"
-                style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
-              >
-                <div className="px-3 py-3 min-h-20 bg-secondary border-r border-border flex flex-col justify-center gap-0.5">
-                  <span className="text-sm font-medium text-foreground leading-tight">
-                    {lift.name}
-                  </span>
-                  {nextSlotByLift.get(lift.id) === 'now' ? (
-                    <span className="text-[10px] font-medium text-success-text leading-none">
-                      ● зараз
+        {/* Unassigned slots — day view only */}
+        {calView === 'day' && unassignedSlots.length > 0 && (
+          <div className="mt-6 bg-surface border border-border rounded-xl p-5">
+            <h3 className="font-semibold text-foreground mb-3 text-sm">Без підйомника</h3>
+            <div className="space-y-2">
+              {unassignedSlots.map(s => (
+                <div
+                  key={s.id}
+                  className="flex items-center justify-between px-3 py-2 bg-secondary rounded-lg"
+                >
+                  <div>
+                    <span className="text-sm text-foreground">
+                      {fmtTime(s.startAt)} – {fmtTime(s.endAt)}
                     </span>
-                  ) : nextSlotByLift.has(lift.id) ? (
-                    <span className="text-[10px] text-muted-foreground leading-none">
-                      ↓ {fmtTime(nextSlotByLift.get(lift.id)!)}
-                    </span>
-                  ) : null}
+                    {s.workOrderNumber && (
+                      <span className="ml-2 text-xs text-primary">Наряд {s.workOrderNumber}</span>
+                    )}
+                    {s.counterpartyName && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {s.counterpartyName}
+                      </span>
+                    )}
+                    {s.notes && (
+                      <span className="ml-2 text-xs text-muted-foreground">{s.notes}</span>
+                    )}
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => removeSlot(s.id)}>
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
                 </div>
-                <DroppableLiftRow
-                  liftId={lift.id}
-                  liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
-                  ghost={ghost}
-                  pending={pendingSlot}
-                  editingSlotId={editingSlotId}
-                  blockedWidth={blockedWidth}
-                  onRemove={removeSlot}
-                  onEdit={handleEditSlot}
-                  onResizeStart={handleResizeStart}
-                  onPendingOpen={openFormFromPending}
-                  onPendingCancel={cancelPending}
-                  onPendingResizeStart={handlePendingResizeStart}
-                />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </DndContext>
-      )}
-
-      {/* Unassigned slots — day view only */}
-      {calView === 'day' && unassignedSlots.length > 0 && (
-        <div className="mt-6 bg-surface border border-border rounded-xl p-5">
-          <h3 className="font-semibold text-foreground mb-3 text-sm">Без підйомника</h3>
-          <div className="space-y-2">
-            {unassignedSlots.map(s => (
-              <div
-                key={s.id}
-                className="flex items-center justify-between px-3 py-2 bg-secondary rounded-lg"
-              >
-                <div>
-                  <span className="text-sm text-foreground">
-                    {fmtTime(s.startAt)} – {fmtTime(s.endAt)}
-                  </span>
-                  {s.workOrderNumber && (
-                    <span className="ml-2 text-xs text-primary">Наряд {s.workOrderNumber}</span>
-                  )}
-                  {s.counterpartyName && (
-                    <span className="ml-2 text-xs text-muted-foreground">{s.counterpartyName}</span>
-                  )}
-                  {s.notes && <span className="ml-2 text-xs text-muted-foreground">{s.notes}</span>}
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => removeSlot(s.id)}>
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      <ConfirmDialog {...dialogProps} />
+        )}
+        <ConfirmDialog {...dialogProps} />
+      </div>
+      {/* end scrollable content */}
     </div>
   );
 }

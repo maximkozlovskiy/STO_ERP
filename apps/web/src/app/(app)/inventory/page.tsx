@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Package, Search } from 'lucide-react';
@@ -26,8 +26,10 @@ import {
   TableBody,
   TableRow,
   TableHead,
+  SortableHead,
   TableCell,
 } from '@/components/ui/table';
+import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import {
@@ -73,15 +75,30 @@ export default function InventoryPage() {
   // Low stock modal state
   const [showLowModal, setShowLowModal] = useState(false);
 
+  const { sort: invSort, toggle: toggleInvSort } = useSortState('goodName', 'asc');
+
   // React Query hooks
   const {
-    data: items = [],
+    data: rawItems = [],
     isLoading: loading,
     error: queryError,
   } = useStockItems({
     warehouseId,
     q: debouncedQ,
   });
+
+  // Client-side sort (StockItem has no indexed date fields — sort on fetched page)
+  const items = useMemo(() => {
+    if (!rawItems.length) return rawItems;
+    const dir = invSort.sortDir === 'asc' ? 1 : -1;
+    return [...rawItems].sort((a, b) => {
+      if (invSort.sortBy === 'quantity') return (a.quantity - b.quantity) * dir;
+      if (invSort.sortBy === 'available') return (a.available - b.available) * dir;
+      if (invSort.sortBy === 'salePrice') return (a.salePrice - b.salePrice) * dir;
+      // default: goodName
+      return a.goodName.localeCompare(b.goodName, 'uk') * dir;
+    });
+  }, [rawItems, invSort]);
   const { data: lowItems = [], refetch: refetchLowItems } = useLowStockItems();
 
   // Reference data — paint instantly from sessionStorage, refresh in background
@@ -189,13 +206,36 @@ export default function InventoryPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Товар</TableHead>
+                <SortableHead sortKey="goodName" currentSort={invSort} onSort={toggleInvSort}>
+                  Товар
+                </SortableHead>
                 <TableHead>Артикул</TableHead>
                 <TableHead>Склад</TableHead>
-                <TableHead className="text-right">Кількість</TableHead>
+                <SortableHead
+                  sortKey="quantity"
+                  currentSort={invSort}
+                  onSort={toggleInvSort}
+                  className="text-right"
+                >
+                  Кількість
+                </SortableHead>
                 <TableHead className="text-right">Резерв</TableHead>
-                <TableHead className="text-right">Доступно</TableHead>
-                <TableHead className="text-right">Ціна продажу</TableHead>
+                <SortableHead
+                  sortKey="available"
+                  currentSort={invSort}
+                  onSort={toggleInvSort}
+                  className="text-right"
+                >
+                  Доступно
+                </SortableHead>
+                <SortableHead
+                  sortKey="salePrice"
+                  currentSort={invSort}
+                  onSort={toggleInvSort}
+                  className="text-right"
+                >
+                  Ціна продажу
+                </SortableHead>
                 <TableHead>Мін. залишок</TableHead>
               </TableRow>
             </TableHeader>

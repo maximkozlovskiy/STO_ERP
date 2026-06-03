@@ -1,6 +1,7 @@
 import {
   IsUUID,
   IsOptional,
+  IsIn,
   IsNumber,
   Min,
   Max,
@@ -177,6 +178,19 @@ export class InvoiceQueryDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   dateTo?: string;
+
+  @ApiPropertyOptional({
+    description: 'Поле сортування',
+    enum: ['documentDate', 'createdAt', 'dueDate', 'amount'],
+  })
+  @IsOptional()
+  @IsIn(['documentDate', 'createdAt', 'dueDate', 'amount'])
+  sortBy?: string;
+
+  @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortDir?: 'asc' | 'desc';
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

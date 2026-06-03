@@ -1,5 +1,7 @@
 import type { HTMLAttributes, ThHTMLAttributes, TdHTMLAttributes } from 'react';
+import { ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { SortState } from '@/hooks/useSortState';
 
 function Table({ className, children, ...props }: HTMLAttributes<HTMLTableElement>) {
   return (
@@ -62,6 +64,49 @@ function TableHead({ className, children, ...props }: ThHTMLAttributes<HTMLTable
   );
 }
 
+interface SortableHeadProps extends ThHTMLAttributes<HTMLTableCellElement> {
+  sortKey: string;
+  currentSort: SortState;
+  onSort: (key: string) => void;
+}
+
+function SortableHead({
+  sortKey,
+  currentSort,
+  onSort,
+  children,
+  className,
+  ...props
+}: SortableHeadProps) {
+  const isActive = currentSort.sortBy === sortKey;
+  return (
+    <th
+      className={cn(
+        'px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em]',
+        'text-foreground-muted whitespace-nowrap cursor-pointer select-none group',
+        'hover:text-foreground transition-colors',
+        isActive && 'text-foreground',
+        className,
+      )}
+      onClick={() => onSort(sortKey)}
+      {...props}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
+        {isActive ? (
+          currentSort.sortDir === 'asc' ? (
+            <ArrowUp className="h-3 w-3 text-primary" />
+          ) : (
+            <ArrowDown className="h-3 w-3 text-primary" />
+          )
+        ) : (
+          <ChevronsUpDown className="h-3 w-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+        )}
+      </span>
+    </th>
+  );
+}
+
 function TableCell({ className, children, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
   return (
     <td className={cn('px-4 py-2 align-middle', className)} {...props}>
@@ -78,4 +123,13 @@ function TableCaption({ className, children, ...props }: HTMLAttributes<HTMLTabl
   );
 }
 
-export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableCaption };
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  SortableHead,
+  TableCell,
+  TableCaption,
+};

@@ -4,6 +4,7 @@ import {
   IsBooleanString,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsObject,
@@ -164,6 +165,16 @@ export class EmployeesQueryDto {
   @Min(1)
   @Max(200)
   limit?: number;
+
+  @ApiPropertyOptional({ description: 'Поле сортування', enum: ['lastName', 'createdAt'] })
+  @IsOptional()
+  @IsIn(['lastName', 'createdAt'])
+  sortBy?: string;
+
+  @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortDir?: 'asc' | 'desc';
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

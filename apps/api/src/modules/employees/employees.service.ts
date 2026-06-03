@@ -46,7 +46,10 @@ export class EmployeesService {
         employeeWorkCategories: { select: { workCategoryId: true } },
         employeeBranches: { select: { branchId: true } },
       },
-      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      orderBy:
+        query.sortBy === 'createdAt'
+          ? [{ createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' }]
+          : [{ lastName: query.sortDir === 'desc' ? 'desc' : 'asc' }, { firstName: 'asc' }],
       take: query.limit ?? 200,
       skip: query.page && query.limit ? (query.page - 1) * query.limit : 0,
     });

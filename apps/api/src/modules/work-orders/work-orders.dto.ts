@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsEnum,
   IsInt,
+  IsIn,
   IsNumber,
   Min,
   Max,
@@ -193,6 +194,19 @@ export class WorkOrderQueryDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   dateTo?: string;
+
+  @ApiPropertyOptional({
+    description: 'Поле сортування',
+    enum: ['documentDate', 'createdAt', 'plannedAt', 'dueDate', 'totalAmount'],
+  })
+  @IsOptional()
+  @IsIn(['documentDate', 'createdAt', 'plannedAt', 'dueDate', 'totalAmount'])
+  sortBy?: string;
+
+  @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortDir?: 'asc' | 'desc';
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

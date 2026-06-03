@@ -33,8 +33,10 @@ import {
   TableBody,
   TableRow,
   TableHead,
+  SortableHead,
   TableCell,
 } from '@/components/ui/table';
+import { useSortState } from '@/hooks/useSortState';
 import {
   DetailPanel,
   PanelField,
@@ -156,6 +158,7 @@ export default function InvoicesPage() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
+  const { sort: invSort, toggle: toggleInvSort } = useSortState('createdAt', 'desc');
 
   // React Query hooks
   const limit = 20;
@@ -171,6 +174,8 @@ export default function InvoicesPage() {
     showDeleted,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    sortBy: invSort.sortBy,
+    sortDir: invSort.sortDir,
   });
   // Bug #328 regression guard — stable empty array reference.
   const invoices = queryData?.items ?? (EMPTY_ITEMS as unknown as Invoice[]);
@@ -720,17 +725,28 @@ export default function InvoicesPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col =>
-                  col.key === 'amount' ? (
-                    <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>
-                      {col.label}
-                    </TableHead>
-                  ) : (
+                {visibleColumns.map(col => {
+                  const sortable = ['documentDate', 'dueDate', 'amount'].includes(col.key);
+                  const sortKey = col.key === 'amount' ? 'amount' : col.key;
+                  if (sortable)
+                    return (
+                      <SortableHead
+                        key={col.key}
+                        sortKey={sortKey}
+                        currentSort={invSort}
+                        onSort={toggleInvSort}
+                        className={col.key === 'amount' ? 'text-right' : undefined}
+                        {...dragProps(col.key)}
+                      >
+                        {col.label}
+                      </SortableHead>
+                    );
+                  return (
                     <TableHead key={col.key} {...dragProps(col.key)}>
                       {col.label}
                     </TableHead>
-                  ),
-                )}
+                  );
+                })}
                 <TableHead />
               </TableRow>
             </TableHeader>

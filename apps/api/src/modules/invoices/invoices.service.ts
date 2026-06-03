@@ -52,6 +52,8 @@ export class InvoicesService {
     showDeleted = false,
     dateFrom?: string,
     dateTo?: string,
+    sortBy?: string,
+    sortDir?: 'asc' | 'desc',
   ): Promise<PaginatedInvoicesDto> {
     const where: Prisma.InvoiceWhereInput = {
       orgId,
@@ -81,12 +83,20 @@ export class InvoicesService {
     }
 
     const skip = (page - 1) * limit;
+    const INV_SORT: Record<string, string> = {
+      documentDate: 'documentDate',
+      createdAt: 'createdAt',
+      dueDate: 'dueDate',
+      amount: 'amount',
+    };
+    const sortField = INV_SORT[sortBy ?? ''] ?? 'createdAt';
+    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
     const [items, total] = await this.prisma.$transaction([
       this.prisma.invoice.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortField]: sortOrder },
         include: {
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           workOrder: { select: { number: true } },

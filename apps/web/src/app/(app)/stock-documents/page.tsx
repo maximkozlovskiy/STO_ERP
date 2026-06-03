@@ -42,8 +42,10 @@ import {
   TableBody,
   TableRow,
   TableHead,
+  SortableHead,
   TableCell,
 } from '@/components/ui/table';
+import { useSortState } from '@/hooks/useSortState';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
@@ -176,6 +178,7 @@ export default function StockDocumentsPage() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
+  const { sort: sdSort, toggle: toggleSdSort } = useSortState('createdAt', 'desc');
 
   const qc = useQueryClient();
   const { data: docsData, isLoading: loading } = useStockDocuments({
@@ -186,6 +189,8 @@ export default function StockDocumentsPage() {
     showDeleted,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    sortBy: sdSort.sortBy,
+    sortDir: sdSort.sortDir,
   });
   // Bug #328 regression guard — stable empty array reference.
   const docs = docsData?.items ?? (EMPTY_ITEMS as unknown as StockDoc[]);
@@ -707,17 +712,30 @@ export default function StockDocumentsPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col =>
-                  col.key === 'lines' ? (
-                    <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>
+                {visibleColumns.map(col => {
+                  const sortable = ['date'].includes(col.key);
+                  if (sortable)
+                    return (
+                      <SortableHead
+                        key={col.key}
+                        sortKey="documentDate"
+                        currentSort={sdSort}
+                        onSort={toggleSdSort}
+                        {...dragProps(col.key)}
+                      >
+                        {col.label}
+                      </SortableHead>
+                    );
+                  return (
+                    <TableHead
+                      key={col.key}
+                      className={col.key === 'lines' ? 'text-right' : undefined}
+                      {...dragProps(col.key)}
+                    >
                       {col.label}
                     </TableHead>
-                  ) : (
-                    <TableHead key={col.key} {...dragProps(col.key)}>
-                      {col.label}
-                    </TableHead>
-                  ),
-                )}
+                  );
+                })}
                 <TableHead />
               </TableRow>
             </TableHeader>

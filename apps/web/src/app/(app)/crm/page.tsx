@@ -26,8 +26,10 @@ import {
   TableBody,
   TableRow,
   TableHead,
+  SortableHead,
   TableCell,
 } from '@/components/ui/table';
+import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import {
   COUNTERPARTY_PANEL_SCHEMA,
@@ -104,6 +106,7 @@ export default function CrmPage() {
 
   // React Query hooks
   const limit = 20;
+  const { sort: crmSort, toggle: toggleCrmSort } = useSortState('lastName', 'asc');
   const {
     data: queryData,
     isLoading: loading,
@@ -114,6 +117,8 @@ export default function CrmPage() {
     types: typeFilter,
     q: debouncedSearch,
     showDeleted,
+    sortBy: crmSort.sortBy,
+    sortDir: crmSort.sortDir,
   });
   // Bug #328 regression guard — stable empty array reference.
   const counterparties = queryData?.items ?? (EMPTY_ITEMS as unknown as Counterparty[]);
@@ -736,11 +741,23 @@ export default function CrmPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col => (
-                  <TableHead key={col.key} {...dragProps(col.key)}>
-                    {col.label}
-                  </TableHead>
-                ))}
+                {visibleColumns.map(col =>
+                  col.key === 'name' || col.key === 'balance' ? (
+                    <SortableHead
+                      key={col.key}
+                      sortKey={col.key === 'name' ? 'lastName' : 'balance'}
+                      currentSort={crmSort}
+                      onSort={toggleCrmSort}
+                      {...dragProps(col.key)}
+                    >
+                      {col.label}
+                    </SortableHead>
+                  ) : (
+                    <TableHead key={col.key} {...dragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  ),
+                )}
                 <TableHead />
               </TableRow>
             </TableHeader>

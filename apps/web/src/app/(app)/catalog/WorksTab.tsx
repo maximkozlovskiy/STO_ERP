@@ -35,8 +35,10 @@ import {
   TableBody,
   TableRow,
   TableHead,
+  SortableHead,
   TableCell,
 } from '@/components/ui/table';
+import { useSortState } from '@/hooks/useSortState';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
@@ -171,7 +173,17 @@ export default function WorksTab() {
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
   // Bug #328 regression guard — stable empty array reference.
-  const worksItems = works?.items ?? (EMPTY_ITEMS as unknown as Work[]);
+  const rawWorksItems = works?.items ?? (EMPTY_ITEMS as unknown as Work[]);
+  const { sort: worksSort, toggle: toggleWorksSort } = useSortState('name', 'asc');
+  const worksItems = useMemo(() => {
+    if (!rawWorksItems.length) return rawWorksItems;
+    const dir = worksSort.sortDir === 'asc' ? 1 : -1;
+    return [...rawWorksItems].sort((a, b) => {
+      if (worksSort.sortBy === 'normo') return ((a.normoHours ?? 0) - (b.normoHours ?? 0)) * dir;
+      if (worksSort.sortBy === 'price') return ((a.price ?? 0) - (b.price ?? 0)) * dir;
+      return (a.name ?? '').localeCompare(b.name ?? '', 'uk') * dir;
+    });
+  }, [rawWorksItems, worksSort]);
   const bulkSelect = useBulkSelect(worksItems);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -536,11 +548,23 @@ export default function WorksTab() {
                     />
                   </TableHead>
                 )}
-                {worksVisibleColumns.map(col => (
-                  <TableHead key={col.key} {...worksDragProps(col.key)}>
-                    {col.label}
-                  </TableHead>
-                ))}
+                {worksVisibleColumns.map(col =>
+                  ['name', 'normo', 'price'].includes(col.key) ? (
+                    <SortableHead
+                      key={col.key}
+                      sortKey={col.key}
+                      currentSort={worksSort}
+                      onSort={toggleWorksSort}
+                      {...worksDragProps(col.key)}
+                    >
+                      {col.label}
+                    </SortableHead>
+                  ) : (
+                    <TableHead key={col.key} {...worksDragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  ),
+                )}
                 <TableHead />
               </TableRow>
             </TableHeader>

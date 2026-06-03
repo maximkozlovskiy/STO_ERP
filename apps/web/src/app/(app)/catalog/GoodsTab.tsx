@@ -48,8 +48,10 @@ import {
   TableBody,
   TableRow,
   TableHead,
+  SortableHead,
   TableCell,
 } from '@/components/ui/table';
+import { useSortState } from '@/hooks/useSortState';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
@@ -187,6 +189,7 @@ export default function GoodsTab() {
   const detailPanel = useDetailPanel('catalog-goods');
   const panelConfig = useDetailPanelConfig('catalog-goods-panel');
   const [goods, setGoods] = useState<PaginatedGoods | null>(null);
+  const { sort: goodsSort, toggle: toggleGoodsSort } = useSortState('name', 'asc');
   const [brands, setBrands] = useState<Brand[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [goodCatTree, setGoodCatTree] = useState<CategoryNode[]>([]);
@@ -365,7 +368,17 @@ export default function GoodsTab() {
   // ── Bulk select ──────────────────────────────────────────────────────────────
   // Bug #328: `?? []` creates a fresh array literal each render → useBulkSelect prunes
   // every cycle. Use module-level frozen EMPTY_ITEMS for stable reference.
-  const goodsItems = goods?.items ?? (EMPTY_ITEMS as unknown as Good[]);
+  const rawGoodsItems = goods?.items ?? (EMPTY_ITEMS as unknown as Good[]);
+  const goodsItems = useMemo(() => {
+    if (!rawGoodsItems.length) return rawGoodsItems;
+    const dir = goodsSort.sortDir === 'asc' ? 1 : -1;
+    return [...rawGoodsItems].sort((a, b) => {
+      if (goodsSort.sortBy === 'sale') return ((a.salePrice ?? 0) - (b.salePrice ?? 0)) * dir;
+      if (goodsSort.sortBy === 'purchase')
+        return ((a.purchasePrice ?? 0) - (b.purchasePrice ?? 0)) * dir;
+      return (a.name ?? '').localeCompare(b.name ?? '', 'uk') * dir;
+    });
+  }, [rawGoodsItems, goodsSort]);
   const bulkSelect = useBulkSelect(goodsItems);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -1037,11 +1050,23 @@ export default function GoodsTab() {
                     />
                   </TableHead>
                 )}
-                {goodsVisibleColumns.map(col => (
-                  <TableHead key={col.key} {...goodsDragProps(col.key)}>
-                    {col.label}
-                  </TableHead>
-                ))}
+                {goodsVisibleColumns.map(col =>
+                  ['name', 'sale', 'purchase'].includes(col.key) ? (
+                    <SortableHead
+                      key={col.key}
+                      sortKey={col.key}
+                      currentSort={goodsSort}
+                      onSort={toggleGoodsSort}
+                      {...goodsDragProps(col.key)}
+                    >
+                      {col.label}
+                    </SortableHead>
+                  ) : (
+                    <TableHead key={col.key} {...goodsDragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  ),
+                )}
                 <TableHead>Тип</TableHead>
                 <TableHead />
               </TableRow>

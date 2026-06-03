@@ -31,8 +31,10 @@ import {
   TableBody,
   TableRow,
   TableHead,
+  SortableHead,
   TableCell,
 } from '@/components/ui/table';
+import { useSortState } from '@/hooks/useSortState';
 import {
   DetailPanel,
   PanelField,
@@ -246,10 +248,13 @@ export default function EmployeesPage() {
   // Bug #328 regression guard: `data: employees = []` destructure default creates
   // a fresh array each render → useBulkSelect(employees) effect fires on every
   // render. Use module-level frozen EMPTY_ITEMS for a stable reference.
+  const { sort: empSort, toggle: toggleEmpSort } = useSortState('lastName', 'asc');
   const { data, isLoading: loading } = useEmployees({
     q: debouncedSearch || undefined,
     role: roleFilter || undefined,
     showDeleted,
+    sortBy: empSort.sortBy,
+    sortDir: empSort.sortDir,
   });
   const employees = data ?? (EMPTY_ITEMS as unknown as Employee[]);
   const qc = useQueryClient();
@@ -861,11 +866,23 @@ export default function EmployeesPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col => (
-                  <TableHead key={col.key} {...dragProps(col.key)}>
-                    {col.label}
-                  </TableHead>
-                ))}
+                {visibleColumns.map(col =>
+                  col.key === 'name' ? (
+                    <SortableHead
+                      key={col.key}
+                      sortKey="lastName"
+                      currentSort={empSort}
+                      onSort={toggleEmpSort}
+                      {...dragProps(col.key)}
+                    >
+                      {col.label}
+                    </SortableHead>
+                  ) : (
+                    <TableHead key={col.key} {...dragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  ),
+                )}
                 <TableHead />
               </TableRow>
             </TableHeader>

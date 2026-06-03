@@ -36,6 +36,8 @@ export interface InvoicesFilter extends Record<string, unknown> {
   showDeleted?: boolean;
   dateFrom?: string;
   dateTo?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
 }
 
 /** @deprecated Use PaginatedResponse<Invoice> from usePaginatedList */

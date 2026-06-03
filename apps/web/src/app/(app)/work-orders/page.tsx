@@ -35,8 +35,10 @@ import {
   TableBody,
   TableRow,
   TableHead,
+  SortableHead,
   TableCell,
 } from '@/components/ui/table';
+import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
@@ -156,6 +158,7 @@ export default function WorkOrdersPage() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
+  const { sort: woSort, toggle: toggleWoSort } = useSortState('createdAt', 'desc');
   // Default to "my orders" for MECHANICs — initialized lazily after employee loads
   const [myOrders, setMyOrders] = useState(false);
   const myOrdersInitRef = useRef(false);
@@ -189,6 +192,8 @@ export default function WorkOrdersPage() {
     employeeId: myOrders ? employee?.id : undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    sortBy: woSort.sortBy,
+    sortDir: woSort.sortDir,
   });
   // Bug #328 regression guard: fresh `[]` literal per render → useBulkSelect
   // effect fires on every render. Use module-level frozen EMPTY_ITEMS instead.
@@ -701,17 +706,30 @@ export default function WorkOrdersPage() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col =>
-                  col.key === 'amount' ? (
-                    <TableHead key={col.key} className="text-right" {...dragProps(col.key)}>
-                      {col.label}
-                    </TableHead>
-                  ) : (
+                {visibleColumns.map(col => {
+                  const sortable = ['documentDate', 'plannedAt', 'dueDate', 'amount'].includes(
+                    col.key,
+                  );
+                  const sortKey = col.key === 'amount' ? 'totalAmount' : col.key;
+                  if (sortable)
+                    return (
+                      <SortableHead
+                        key={col.key}
+                        sortKey={sortKey}
+                        currentSort={woSort}
+                        onSort={toggleWoSort}
+                        className={col.key === 'amount' ? 'text-right' : undefined}
+                        {...dragProps(col.key)}
+                      >
+                        {col.label}
+                      </SortableHead>
+                    );
+                  return (
                     <TableHead key={col.key} {...dragProps(col.key)}>
                       {col.label}
                     </TableHead>
-                  ),
-                )}
+                  );
+                })}
                 <TableHead />
               </TableRow>
             </TableHeader>

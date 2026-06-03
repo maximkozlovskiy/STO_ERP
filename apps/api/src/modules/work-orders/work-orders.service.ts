@@ -97,12 +97,21 @@ export class WorkOrdersService {
     }
 
     const skip = (query.page - 1) * query.limit;
+    const WO_SORT: Record<string, string> = {
+      documentDate: 'documentDate',
+      createdAt: 'createdAt',
+      plannedAt: 'plannedAt',
+      dueDate: 'dueDate',
+      totalAmount: 'totalAmount',
+    };
+    const sortField = WO_SORT[query.sortBy ?? ''] ?? 'createdAt';
+    const sortDir = query.sortDir === 'asc' ? 'asc' : 'desc';
     const [items, total] = await this.prisma.$transaction([
       this.prisma.workOrder.findMany({
         where,
         skip,
         take: query.limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortField]: sortDir },
         include: {
           vehicle: { select: { make: true, model: true, licensePlate: true } },
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },

@@ -25,6 +25,8 @@ export interface EmployeesFilter {
   q?: string;
   role?: string;
   showDeleted?: boolean;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
 }
 
 export const employeesKeys = {
@@ -39,6 +41,8 @@ export function useEmployees(filters: EmployeesFilter = {}) {
   if (filters.q) params.set('q', filters.q);
   if (filters.role) params.set('role', filters.role);
   if (filters.showDeleted) params.set('showDeleted', 'true');
+  if (filters.sortBy) params.set('sortBy', filters.sortBy);
+  if (filters.sortDir) params.set('sortDir', filters.sortDir);
   const qs = params.toString();
 
   return useQuery<Employee[]>({

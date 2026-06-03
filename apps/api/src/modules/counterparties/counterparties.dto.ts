@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -97,6 +98,19 @@ export class CounterpartyQueryDto {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   showDeleted?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Поле сортування',
+    enum: ['lastName', 'createdAt', 'balance'],
+  })
+  @IsOptional()
+  @IsIn(['lastName', 'createdAt', 'balance'])
+  sortBy?: string;
+
+  @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortDir?: 'asc' | 'desc';
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

@@ -47,6 +47,8 @@ export class PurchaseOrdersController {
       query.showDeleted === 'true',
       query.dateFrom,
       query.dateTo,
+      query.sortBy,
+      query.sortDir,
     );
   }
 

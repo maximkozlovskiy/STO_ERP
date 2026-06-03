@@ -2,6 +2,7 @@ import {
   IsUUID,
   IsString,
   IsOptional,
+  IsIn,
   IsNumber,
   Min,
   Max,
@@ -162,6 +163,19 @@ export class PurchaseOrderQueryDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   dateTo?: string;
+
+  @ApiPropertyOptional({
+    description: 'Поле сортування',
+    enum: ['documentDate', 'createdAt', 'totalAmount'],
+  })
+  @IsOptional()
+  @IsIn(['documentDate', 'createdAt', 'totalAmount'])
+  sortBy?: string;
+
+  @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortDir?: 'asc' | 'desc';
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

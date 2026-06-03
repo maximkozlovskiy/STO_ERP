@@ -47,6 +47,8 @@ export class PurchaseOrdersService {
     showDeleted = false,
     dateFrom?: string,
     dateTo?: string,
+    sortBy?: string,
+    sortDir?: 'asc' | 'desc',
   ): Promise<PaginatedPurchaseOrdersDto> {
     // Defense-in-depth: cap `limit` to prevent DoS via `?limit=999999`.
     // Matches the cap used by services/work-orders/invoices controllers.
@@ -84,12 +86,19 @@ export class PurchaseOrdersService {
     }
 
     const skip = (page - 1) * limit;
+    const PO_SORT: Record<string, string> = {
+      documentDate: 'documentDate',
+      createdAt: 'createdAt',
+      totalAmount: 'totalAmount',
+    };
+    const sortField = PO_SORT[sortBy ?? ''] ?? 'createdAt';
+    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
     const [items, total] = await this.prisma.$transaction([
       this.prisma.purchaseOrder.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortField]: sortOrder },
         // Lines omitted from list — loaded on demand via findOne when detail opens.
         // Avoids fetching up to 1000 line rows × 20 POs per list request.
         include: {
