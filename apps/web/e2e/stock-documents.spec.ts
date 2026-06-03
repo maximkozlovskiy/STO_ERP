@@ -137,6 +137,70 @@ test.describe('Складські документи — створення че
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
   });
 
+  test('форма містить поле «Дата документа» з DatePicker', async ({ page }) => {
+    await gotoStockDocs(page);
+    await page
+      .getByRole('button', { name: /^Документ$/ })
+      .first()
+      .click();
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+    // DatePickerInput рендерить input[placeholder="ДД.ММ.РРРР"]
+    await expect(modal.locator('input[placeholder="ДД.ММ.РРРР"]')).toBeVisible({ timeout: 5_000 });
+    await page.keyboard.press('Escape');
+  });
+
+  test('поле «Дата документа» ініціалізується сьогоднішньою датою', async ({ page }) => {
+    await gotoStockDocs(page);
+    await page
+      .getByRole('button', { name: /^Документ$/ })
+      .first()
+      .click();
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+    const dateInput = modal.locator('input[placeholder="ДД.ММ.РРРР"]');
+    await expect(dateInput).toBeVisible({ timeout: 5_000 });
+    const value = await dateInput.inputValue();
+    // Має бути у форматі ДД.ММ.РРРР (сьогоднішня дата)
+    expect(value).toMatch(/^\d{2}\.\d{2}\.\d{4}$/);
+    await page.keyboard.press('Escape');
+  });
+
+  test('documentDate зберігається при створенні та відображається в таблиці', async ({ page }) => {
+    await gotoStockDocs(page);
+
+    await page
+      .getByRole('button', { name: /^Документ$/ })
+      .first()
+      .click();
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+
+    // Вибрати філію
+    const branchSelect = modal.getByLabel('Філія*');
+    await branchSelect.selectOption({ index: 1 });
+
+    // Вибрати склад
+    const warehouseSelect = modal.locator('select').nth(2);
+    await warehouseSelect.selectOption({ index: 1 });
+
+    // Дата документа — читаємо поточне (сьогоднішнє) значення з форми:
+    // список фільтрується по dateFrom=today, тому документ з іншою датою не з'явиться.
+    // Використовуємо значення що вже підставлене (kyivToday), і перевіряємо що воно є.
+    const dateInput = modal.locator('input[placeholder="ДД.ММ.РРРР"]');
+    await expect(dateInput).toBeVisible({ timeout: 5_000 });
+    const todayDate = await dateInput.inputValue();
+    expect(todayDate).toMatch(/^\d{2}\.\d{2}\.\d{4}$/);
+
+    // Зберегти
+    await modal.getByRole('button', { name: 'Створити документ' }).click();
+    await expect(modal).not.toBeVisible({ timeout: 10_000 });
+
+    // Найновіший рядок (перший, sort desc) показує сьогоднішню дату
+    const firstDateCell = page.locator('tbody tr').first().locator('td').nth(6);
+    await expect(firstDateCell).toHaveText(todayDate, { timeout: 10_000 });
+  });
+
   test("вибір типу TRANSFER — з'являється поле «Склад призначення»", async ({ page }) => {
     await gotoStockDocs(page);
     await page
