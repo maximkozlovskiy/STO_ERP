@@ -698,6 +698,8 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 - [ ] **Новий optional boolean prop у existing UI component (Bug #194):** будь-який diff що додає `propX?: boolean` до `InterfaceProps` у `components/ui/*.tsx` → парний `*.test.tsx` має МІНІМУМ 2 кейси для цього prop: (а) inverse-стан (`propX=true`) активує/блокує очікувану поведінку; (б) inverse-стан **не зачіпає інших елементів** (захист від занадто-широкого guard, copy-paste помилок). Default-стан зазвичай покрито existing-тестами, але inverse-стан без явного тесту = «mute regression»: інверсія guard (`!hideX` → `!!hideX`, `showX` → `!showX`) проходить зеленою. Особливо критично для prop, що впроваджується для увімкнення нового UX-режиму у N сторінках одночасно (як `hideSaveButton` у 8 page.tsx) — інверсія ламає UX на всіх 8 одночасно. Grep: `grep -nE "^\s+\w+\?: boolean" apps/web/src/components/ui/*.tsx` після diff
 - [ ] **Fake-green assertions у тестах (Bug #287):** будь-який `expect(<count|length>).toBeGreaterThanOrEqual(0)` — bug. `.count()` Playwright Locator повертає natural number (завжди ≥0), `arr.length` те саме → assertion завжди true → тест зеленіє назавжди, регресія не ловиться. Помилкова свідомість покриття. Grep: `grep -rn "toBeGreaterThanOrEqual(0)" apps/web/e2e apps/web/src --include="*.ts"`; також `expect(true)`, `expect(1).toBe(1)`, `toBeDefined()` на literal/number primitives. Фікс: знайти реальну очікувану кількість (`toBeGreaterThanOrEqual(N)` де N — мінімум з product spec; `toBe(N)` коли точна кількість); або переписати локатор на більш конкретний (`[data-testid="X"]` замість `[class*="X"]`); або видалити assertion якщо опціональна. Особливо підступно коли error-message string звучить як справжня перевірка (`'Має бути хоча б 3 KPI картки'`). Severity MEDIUM.
 - [ ] **jsdom browser-API стаби в `apps/web/src/__tests__/setup.ts`:** якщо diff чіпає `components/ui/` АБО `app/**/page.tsx` і додає `new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver)\(`, `window.matchMedia(`, `navigator.(clipboard|share|wakeLock|geolocation|mediaDevices)`, `crypto.subtle`, `Notification(` — перевірити що setup.ts стабає це API. tsc мовчить (типи у `lib.dom.d.ts`), prod працює (браузер має API), але jsdom падає → каскадне падіння всіх тестів які монтують компонент (включно з тестами далеких компонентів якщо shared-компонент усередині них). Фікс: noop-стаб під guard `typeof globalThis.X === 'undefined'`. Не стабати в самому компоненті, не вимикати тест
+- [ ] **CSS scoped marker (data-X) контракт — integration-тест на наявність маркера (Bug #334):** будь-який shared UI-компонент (`Modal`, `DetailPanel`, `Popover`, `Drawer`) що покладається на CSS-правило з selector-prefix-маркером (`[data-animate][data-state="open"]`, `[data-portal]`, `[data-overlay]`) — парний `*.test.tsx` має містити assertion на присутність маркера на правильному елементі + позицію (direct-child vs descendant). Без тесту: refactor що видаляє `data-animate` атрибут з root компонента → анімація мовчки перестає працювати (CSS правило не матчиться), tsc green, всі функціональні тести зелені (Modal все ще монтується/закривається), але exit-animation мертва. Шаблон: `expect(dialog).toHaveAttribute('data-animate'); expect(dialog).toHaveAttribute('data-state', 'open'); expect(dialog.querySelector(':scope > [data-backdrop]')).toBeTruthy();`. Grep для виявлення pattern у CSS: `grep -nE "\[data-[a-z]+\](\[data-[a-z]+\=)?" apps/web/src/app/globals.css` — кожен унікальний `data-*` selector має бути присутнім хоча б в одному `*.test.tsx`. Severity LOW (visual jank, не data-correctness).
+- [ ] **useEffect + rAF dance для CSS animation enter — 1-frame paint at previous state (Bug #335):** будь-який custom hook що використовує паттерн `setVisible(true); requestAnimationFrame(() => setState('open'))` у `useEffect` ДЛЯ enter-анімації CSS — потенційний flicker bug. React commits visible=true з застарілим state='closed', browser паінтиться 1 frame з закритими стилями (CSS animation FROM-keyframe для closed-state), потім rAF flips state → нова анімація стартує. У дефолтних exit-keyframes (`from { opacity:1; scale(1) }`) це означає що елемент **відмалюється з повним розміром** перед стартом enter-анімації — visual jank. Перевірити: grep `requestAnimationFrame.*setState\(` у `hooks/use*.ts` — кожен match потенційний bug. Безпечний паттерн: (а) `useLayoutEffect` + одразу `setState('open')` без rAF (CSS `animation` з `fill-mode: both` runs on mount, рAF dance не потрібен); або (б) initial state мати 'closed' + другий маркер `data-just-mounted="true"` що відключає exit-animation. Контракт-тест: між `rerender({ open: true })` і flush-rAF — `state === 'closed'` ОЧЕВИДНИЙ симптом → задокументувати у BUG_REPORT як LOW (1-frame jank). Severity LOW.
 
 ---
 
@@ -922,6 +924,45 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-03 — Animation hook (rAF + setTimeout cleanup) without tests + CSS marker contract gaps (Bugs #332-#335) — frontend, animation system
+
+**Сигнал:** Введено новий хук `useAnimatedPresence` що керує DOM-mounting під час exit-анімації CSS (replace `if (!open) return null` antipattern). Хук використовується транзитивно в `Modal` → всіх дітях Modal (ConfirmDialog, CategoryManagerModal). Будь-який рефактор без regression-тестів ламає exit-animation для ВСЬОГО проєкту silently — tsc green, Modal все ще монтується, але DOM зникає миттєво при close. Парально: CSS правила в `globals.css` scoped через `[data-animate][data-state="open"]` markers — refactor що видаляє `data-animate` атрибут teж тихо ламає анімацію без runtime-error.
+
+**Причина виникнення:**
+
+1. Хуки з timing-семантикою (rAF + setTimeout + cleanup) виглядають «прості» — 20 рядків коду. Розробник додає без тестів думаючи що `useState` і `useEffect` тривіальні.
+2. CSS scoped marker patterns (`[data-X]`-prefix) поширюються у проєкті щоб уникнути колізій з Radix/HeadlessUI, але немає очевидного зв'язку між CSS правилом і JSX атрибутом — рефактор JSX не запускає alarm для CSS.
+3. Animation enter паттерн з `requestAnimationFrame(() => setState('open'))` копіюється з React-anim tutorials, але має subtle 1-frame flicker при re-open (CSS animation starts from previous state's keyframe).
+
+**Підхід до виявлення:**
+
+1. **Hook без тестів:** `git diff HEAD --name-only | grep "hooks/use.*\.ts$"` — кожен match має парний `.test.tsx`. Якщо хук має `useState` + `useEffect` + `setTimeout`/`requestAnimationFrame` → обов'язковий test із controllable timer (`vi.useFakeTimers`) + controllable rAF (`vi.spyOn(window, 'requestAnimationFrame').mockImplementation(...)`).
+2. **CSS marker contract:** `grep -nE "\[data-[a-z]+\]" apps/web/src/app/globals.css` — для кожного унікального `data-X` selector → знайти JSX-споживача (`grep -rn "data-X" apps/web/src --include="*.tsx"`) → перевірити чи його `*.test.tsx` асертить наявність атрибута через `expect(...).toHaveAttribute('data-X')`. Якщо ні — додати integration-тест.
+3. **rAF dance flicker:** `grep -rn "requestAnimationFrame.*setState" apps/web/src/hooks --include="*.ts"` — кожен match потенційний bug. Безпечніше: `useLayoutEffect` + одразу `setState('open')` (CSS `animation` з `fill-mode: both` runs on mount без rAF).
+
+**Підхід до фіксу:**
+
+1. **Hook test шаблон:** `controllable rAF queue` (Array + flushRaf) + `vi.useFakeTimers` + 7-10 кейсів: init (sync state), enter (rAF flip), exit (timer flush), кастомний duration, rapid toggle ×2 напрямки, stress 4-фазний flip, unmount cleanup для setTimeout і rAF (як `apps/web/src/hooks/useAnimatedPresence.test.tsx`).
+2. **CSS marker integration test:** asserts `data-animate` + `data-state` + direct-child relation для backdrop (`:scope > [data-backdrop]`). Шаблон у `apps/web/src/components/ui/__tests__/modal.test.tsx`.
+3. **Re-open flicker:** змінити `useEffect` на `useLayoutEffect`, прибрати rAF dance — CSS animation runs on mount with fill-mode both. Не критично, але polish.
+
+**Severity:** MEDIUM для hook без тестів (silent regression на всю animation system); LOW для CSS marker drift (visual jank без data-loss); LOW для re-open flicker (1-frame ≈16ms).
+
+**Де шукати ще:**
+
+- Кожен новий custom hook у `hooks/use*.ts` з `setTimeout`/`setInterval`/`requestAnimationFrame` — needs controllable-timer test.
+- Кожне нове scoped CSS правило з `[data-X]` selector — needs integration-test що асертить marker presence + position (direct-child vs descendant).
+- Кожен новий shared modal-like компонент (`Drawer`, `Popover`, `Tooltip`) що використовує useAnimatedPresence — needs парний test що exit animation тримає DOM протягом duration.
+- React-animation libs альтернативи (framer-motion, react-spring) — той же class issues.
+
+**Профілактика:**
+
+1. У `/sto-dev` SKILL.md: «Custom hook з `useEffect` + timer/rAF — обов'язковий `*.test.tsx` з `vi.useFakeTimers`».
+2. У `/sto-review` checklist: «CSS scoped marker selector → парний integration-тест на marker presence».
+3. У grep §1.6: додати hook-test-coverage аудит у Кроці 1 AUTO-режиму (поки що тільки FULL).
+
+---
 
 ### 2026-06-02 — Coefficient-zero у нових Goods UoM endpoints (Bug #312) — повторення Bug #302 у різній моделі — backend+frontend, sprint-replicated bug
 
