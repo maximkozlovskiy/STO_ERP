@@ -29,6 +29,7 @@ export interface PurchaseOrder {
   notes: string | null;
   linesCount: number;
   lines: POLine[];
+  documentDate?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -40,6 +41,8 @@ export interface PurchaseOrdersFilter extends Record<string, unknown> {
   status?: string;
   q?: string;
   showDeleted?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /** @deprecated Use PaginatedResponse<PurchaseOrder> from usePaginatedList */

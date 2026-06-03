@@ -30,6 +30,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
@@ -94,6 +95,8 @@ interface PoFilters extends Record<string, unknown> {
   status: string;
   q: string;
   showDeleted: boolean;
+  dateFrom: string;
+  dateTo: string;
 }
 
 // Status/badge/transition/action constants imported from @sto/shared
@@ -148,6 +151,9 @@ export default function PurchaseOrdersPage() {
   const debouncedQ = useDebounce(q);
   const [showDeleted, setShowDeleted] = useState(false);
   const [error, setError] = useState('');
+  const today = new Date().toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
 
   // React Query hooks
   const limit = 20;
@@ -161,6 +167,8 @@ export default function PurchaseOrdersPage() {
     status,
     q: debouncedQ,
     showDeleted,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
   });
   // Bug #328 regression guard — stable empty array reference.
   const orders = queryData?.items ?? (EMPTY_ITEMS as unknown as PurchaseOrder[]);
@@ -179,17 +187,19 @@ export default function PurchaseOrdersPage() {
     setStatus(preset.filters.status ?? '');
     setQ(preset.filters.q ?? '');
     setShowDeleted(preset.filters.showDeleted ?? false);
+    setDateFrom(preset.filters.dateFrom ?? '');
+    setDateTo(preset.filters.dateTo ?? '');
     setPage(1);
     setActiveSavedFilterId(preset.id);
   }, []);
 
   const handleSaveFilter = useCallback(
     (name: string) => {
-      const preset = saveFilter(name, { status, q, showDeleted });
+      const preset = saveFilter(name, { status, q, showDeleted, dateFrom, dateTo });
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
     },
-    [saveFilter, status, q, showDeleted, features.toastEnabled],
+    [saveFilter, status, q, showDeleted, dateFrom, dateTo, features.toastEnabled],
   );
 
   // Bulk select
@@ -212,7 +222,12 @@ export default function PurchaseOrdersPage() {
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [supplierDisplayName, setSupplierDisplayName] = useState('');
-  const [form, setForm] = useState({ supplierId: '', warehouseId: '', notes: '' });
+  const [form, setForm] = useState({
+    supplierId: '',
+    warehouseId: '',
+    notes: '',
+    documentDate: new Date().toISOString().slice(0, 10),
+  });
   const [lines, setLines] = useState<
     {
       goodId: string;
@@ -337,6 +352,7 @@ export default function PurchaseOrdersPage() {
           supplierId: form.supplierId,
           warehouseId: form.warehouseId,
           notes: form.notes || undefined,
+          documentDate: form.documentDate || undefined,
           // Bug #231: конвертуємо display → base unit перед submit.
           // l.quantity у обраній UoM; l.coefficient = base_units_per_uom.
           // qty_base = qty_display * coeff; price_base = price_display / coeff.
@@ -355,7 +371,12 @@ export default function PurchaseOrdersPage() {
         }),
       });
       setShowCreate(false);
-      setForm({ supplierId: '', warehouseId: '', notes: '' });
+      setForm({
+        supplierId: '',
+        warehouseId: '',
+        notes: '',
+        documentDate: new Date().toISOString().slice(0, 10),
+      });
       setSupplierDisplayName('');
       setLines([]);
       dirty.resetDirty();
@@ -668,6 +689,28 @@ export default function PurchaseOrdersPage() {
           leftElement={<Search />}
           className="w-64"
         />
+        <DatePickerInput
+          value={dateFrom}
+          onChange={v => {
+            setDateFrom(v);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="Від"
+          max={dateTo || undefined}
+          className="w-36"
+        />
+        <DatePickerInput
+          value={dateTo}
+          onChange={v => {
+            setDateTo(v);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="До"
+          min={dateFrom || undefined}
+          className="w-36"
+        />
 
         <div className="flex items-center gap-2 ml-auto">
           <Button
@@ -908,7 +951,12 @@ export default function PurchaseOrdersPage() {
         onClose={async () => {
           if (!(await dirty.confirmClose())) return;
           setShowCreate(false);
-          setForm({ supplierId: '', warehouseId: '', notes: '' });
+          setForm({
+            supplierId: '',
+            warehouseId: '',
+            notes: '',
+            documentDate: new Date().toISOString().slice(0, 10),
+          });
           setSupplierDisplayName('');
           setLines([]);
           dirty.resetDirty();
@@ -978,6 +1026,14 @@ export default function PurchaseOrdersPage() {
               dirty.markDirty();
             }}
             placeholder="Необов'язково"
+          />
+          <DatePickerInput
+            label="Дата документа"
+            value={form.documentDate}
+            onChange={v => {
+              setForm(f => ({ ...f, documentDate: v }));
+              dirty.markDirty();
+            }}
           />
 
           {/* Lines */}

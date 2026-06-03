@@ -24,6 +24,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
@@ -120,6 +121,8 @@ interface StockDocFilters extends Record<string, unknown> {
   typeFilter: string;
   statusFilter: string;
   showDeleted: boolean;
+  dateFrom: string;
+  dateTo: string;
 }
 
 // Type/status/badge constants imported from @sto/shared
@@ -166,6 +169,9 @@ export default function StockDocumentsPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
 
   const qc = useQueryClient();
   const { data: docsData, isLoading: loading } = useStockDocuments({
@@ -174,6 +180,8 @@ export default function StockDocumentsPage() {
     type: typeFilter || undefined,
     status: statusFilter || undefined,
     showDeleted,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
   });
   // Bug #328 regression guard — stable empty array reference.
   const docs = docsData?.items ?? (EMPTY_ITEMS as unknown as StockDoc[]);
@@ -193,6 +201,7 @@ export default function StockDocumentsPage() {
     warehouseId: '',
     targetWarehouseId: '',
     notes: '',
+    documentDate: new Date().toISOString().slice(0, 10),
   });
   const [lines, setLines] = useState<
     {
@@ -221,17 +230,19 @@ export default function StockDocumentsPage() {
     setTypeFilter(preset.filters.typeFilter ?? '');
     setStatusFilter(preset.filters.statusFilter ?? '');
     setShowDeleted(preset.filters.showDeleted ?? false);
+    setDateFrom(preset.filters.dateFrom ?? '');
+    setDateTo(preset.filters.dateTo ?? '');
     setPage(1);
     setActiveSavedFilterId(preset.id);
   }, []);
 
   const handleSaveFilter = useCallback(
     (name: string) => {
-      const preset = saveFilter(name, { typeFilter, statusFilter, showDeleted });
+      const preset = saveFilter(name, { typeFilter, statusFilter, showDeleted, dateFrom, dateTo });
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
     },
-    [saveFilter, typeFilter, statusFilter, showDeleted, features.toastEnabled],
+    [saveFilter, typeFilter, statusFilter, showDeleted, dateFrom, dateTo, features.toastEnabled],
   );
 
   // — Bulk select ————————————————————————————————————————————————————————
@@ -365,6 +376,7 @@ export default function StockDocumentsPage() {
           warehouseId: form.warehouseId,
           targetWarehouseId: form.targetWarehouseId || undefined,
           notes: form.notes || undefined,
+          documentDate: form.documentDate || undefined,
           // Bug #231: конвертуємо display → base unit перед submit.
           // l.quantity у обраній UoM; l.coefficient = base_units_per_uom.
           // qty_base = qty_display * coeff; price_base = price_display / coeff.
@@ -390,6 +402,7 @@ export default function StockDocumentsPage() {
         warehouseId: '',
         targetWarehouseId: '',
         notes: '',
+        documentDate: new Date().toISOString().slice(0, 10),
       });
       setLines([]);
       load();
@@ -606,6 +619,28 @@ export default function StockDocumentsPage() {
             </button>
           ))}
         </div>
+        <DatePickerInput
+          value={dateFrom}
+          onChange={v => {
+            setDateFrom(v);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="Від"
+          max={dateTo || undefined}
+          className="w-36"
+        />
+        <DatePickerInput
+          value={dateTo}
+          onChange={v => {
+            setDateTo(v);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="До"
+          min={dateFrom || undefined}
+          className="w-36"
+        />
         <div className="flex items-center gap-2 ml-auto">
           <Button
             variant="outline"
@@ -925,6 +960,14 @@ export default function StockDocumentsPage() {
               dirty.markDirty();
             }}
             placeholder="Необов'язково"
+          />
+          <DatePickerInput
+            label="Дата документа"
+            value={form.documentDate}
+            onChange={v => {
+              setForm(f => ({ ...f, documentDate: v }));
+              dirty.markDirty();
+            }}
           />
 
           {/* Lines */}

@@ -144,6 +144,7 @@ export const INVOICE_PANEL_SCHEMA = [
   { key: 'totalVat', label: 'ПДВ', type: 'money' },
   { key: 'totalWithVat', label: 'Разом з ПДВ', type: 'money' },
   { key: 'paidAmount', label: 'Сплачено', type: 'money' },
+  { key: 'documentDate', label: 'Дата документа', type: 'date' },
   { key: 'dueDate', label: 'Термін оплати', type: 'date' },
   { key: 'notes', label: 'Нотатки' },
 ] as const satisfies readonly PanelFieldDef<Invoice>[];
@@ -155,6 +156,7 @@ export const WORK_ORDER_PANEL_SCHEMA = [
   { key: 'counterpartyName', label: 'Клієнт' },
   { key: 'vehicleSummary', label: 'Автомобіль' },
   { key: 'totalAmount', label: 'Сума', type: 'money' },
+  { key: 'documentDate', label: 'Дата документа', type: 'date' },
   { key: 'dueDate', label: 'Дедлайн', type: 'date' },
   { key: 'plannedAt', label: 'Заплановано', type: 'datetime' },
   { key: 'createdAt', label: 'Створено', type: 'datetime' },
@@ -175,6 +177,7 @@ export const PURCHASE_ORDER_PANEL_SCHEMA = [
   { key: 'warehouseName', label: 'Склад' },
   { key: 'totalAmount', label: 'Сума', type: 'money' },
   { key: 'linesCount', label: 'Позицій', type: 'number' },
+  { key: 'documentDate', label: 'Дата документа', type: 'date' },
   { key: 'notes', label: 'Нотатки' },
   { key: 'createdAt', label: 'Дата', type: 'date' },
 ] as const satisfies readonly PanelFieldDef<PurchaseOrder>[];
@@ -185,6 +188,7 @@ export const STOCK_DOC_PANEL_SCHEMA = [
   { key: 'warehouseName', label: 'Склад-джерело' },
   { key: 'targetWarehouseName', label: 'Склад-призначення' },
   { key: 'branchName', label: 'Філія' },
+  { key: 'documentDate', label: 'Дата документа', type: 'date' },
   { key: 'confirmedAt', label: 'Підтверджено', type: 'date' },
   { key: 'notes', label: 'Нотатки' },
 ] as const satisfies readonly PanelFieldDef<StockDoc>[];

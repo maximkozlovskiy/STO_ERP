@@ -30,6 +30,7 @@ export interface WorkOrder {
   slotStartAt?: string | null;
   slotEndAt?: string | null;
   slotLiftName?: string | null;
+  documentDate?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -48,6 +49,8 @@ export interface WorkOrdersFilter extends Record<string, unknown> {
   q?: string;
   showDeleted?: boolean;
   include?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /** @deprecated Use PaginatedResponse<WorkOrder> from usePaginatedList */

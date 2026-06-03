@@ -19,6 +19,7 @@ export interface Invoice {
   workOrderNumber?: string | null;
   paidAmount?: number | null;
   dueDate?: string | null;
+  documentDate?: string | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -33,6 +34,8 @@ export interface InvoicesFilter extends Record<string, unknown> {
   workOrderId?: string;
   q?: string;
   showDeleted?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /** @deprecated Use PaginatedResponse<Invoice> from usePaginatedList */

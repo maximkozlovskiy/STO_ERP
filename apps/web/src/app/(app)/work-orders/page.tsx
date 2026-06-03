@@ -89,6 +89,8 @@ interface WOFilters extends Record<string, unknown> {
   search: string;
   showDeleted: boolean;
   myOrders: boolean;
+  dateFrom: string;
+  dateTo: string;
 }
 
 // Status/badge/priority/category constants imported from @sto/shared
@@ -148,6 +150,9 @@ export default function WorkOrdersPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [showDeleted, setShowDeleted] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
   // Default to "my orders" for MECHANICs — initialized lazily after employee loads
   const [myOrders, setMyOrders] = useState(false);
   const myOrdersInitRef = useRef(false);
@@ -179,6 +184,8 @@ export default function WorkOrdersPage() {
     q: debouncedSearch,
     showDeleted,
     employeeId: myOrders ? employee?.id : undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
   });
   // Bug #328 regression guard: fresh `[]` literal per render → useBulkSelect
   // effect fires on every render. Use module-level frozen EMPTY_ITEMS instead.
@@ -236,6 +243,8 @@ export default function WorkOrdersPage() {
     setSearch(preset.filters.search ?? '');
     setShowDeleted(preset.filters.showDeleted ?? false);
     setMyOrders(preset.filters.myOrders ?? false);
+    setDateFrom(preset.filters.dateFrom ?? '');
+    setDateTo(preset.filters.dateTo ?? '');
     setPage(1);
     setActiveSavedFilterId(preset.id);
   }, []);
@@ -248,6 +257,8 @@ export default function WorkOrdersPage() {
         search,
         showDeleted,
         myOrders,
+        dateFrom,
+        dateTo,
       });
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
@@ -259,6 +270,8 @@ export default function WorkOrdersPage() {
       search,
       showDeleted,
       myOrders,
+      dateFrom,
+      dateTo,
       features.toastEnabled,
     ],
   );
@@ -301,6 +314,7 @@ export default function WorkOrdersPage() {
     priority: 'NORMAL',
     repairCategory: '',
     dueDate: '',
+    documentDate: new Date().toISOString().slice(0, 10),
   });
 
   useEffect(() => {
@@ -458,6 +472,7 @@ export default function WorkOrdersPage() {
           priority: form.priority || 'NORMAL',
           repairCategory: form.repairCategory || undefined,
           dueDate: form.dueDate || undefined,
+          documentDate: form.documentDate || undefined,
         }),
       });
       // Bug #212: invalidate workOrders cache до router.push щоб коли юзер натисне back
@@ -573,6 +588,28 @@ export default function WorkOrdersPage() {
           placeholder="Пошук за номером або клієнтом..."
           leftElement={<Search />}
           className="w-72"
+        />
+        <DatePickerInput
+          value={dateFrom}
+          onChange={v => {
+            setDateFrom(v);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="Від"
+          max={dateTo || undefined}
+          className="w-36"
+        />
+        <DatePickerInput
+          value={dateTo}
+          onChange={v => {
+            setDateTo(v);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="До"
+          min={dateFrom || undefined}
+          className="w-36"
         />
 
         <Select
@@ -998,6 +1035,7 @@ export default function WorkOrdersPage() {
             priority: 'NORMAL',
             repairCategory: '',
             dueDate: '',
+            documentDate: new Date().toISOString().slice(0, 10),
           }));
         }}
         title="Новий наряд"
@@ -1170,6 +1208,11 @@ export default function WorkOrdersPage() {
             label="Дедлайн"
             value={form.dueDate}
             onChange={v => setForm(f => ({ ...f, dueDate: v }))}
+          />
+          <DatePickerInput
+            label="Дата документа"
+            value={form.documentDate}
+            onChange={v => setForm(f => ({ ...f, documentDate: v }))}
           />
         </div>
       </Modal>

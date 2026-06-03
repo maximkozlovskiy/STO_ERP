@@ -89,6 +89,8 @@ interface InvoiceLine {
 interface InvoiceFilters extends Record<string, unknown> {
   search: string;
   status: string;
+  dateFrom: string;
+  dateTo: string;
 }
 
 // Extend Invoice from hook with optional fields used in this page
@@ -146,6 +148,9 @@ export default function InvoicesPage() {
   const debouncedSearch = useDebounce(search);
   const [error, setError] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
 
   // React Query hooks
   const limit = 20;
@@ -159,6 +164,8 @@ export default function InvoicesPage() {
     status,
     q: debouncedSearch,
     showDeleted,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
   });
   // Bug #328 regression guard — stable empty array reference.
   const invoices = queryData?.items ?? (EMPTY_ITEMS as unknown as Invoice[]);
@@ -171,7 +178,12 @@ export default function InvoicesPage() {
   const [showPayment, setShowPayment] = useState<InvoiceWithOptionals | null>(null);
 
   const [payMethods, setPayMethods] = useState<{ code: string; name: string }[]>([]);
-  const [form, setForm] = useState({ counterpartyId: '', amount: '', dueDate: '' });
+  const [form, setForm] = useState({
+    counterpartyId: '',
+    amount: '',
+    dueDate: '',
+    documentDate: new Date().toISOString().slice(0, 10),
+  });
   const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
   const [payForm, setPayForm] = useState({ method: 'cash', amount: '', notes: '' });
   const [saving, setSaving] = useState(false);
@@ -188,17 +200,19 @@ export default function InvoicesPage() {
   const applyFilter = useCallback((preset: { id: string; filters: InvoiceFilters }) => {
     setSearch(preset.filters.search ?? '');
     setStatus(preset.filters.status ?? '');
+    setDateFrom(preset.filters.dateFrom ?? '');
+    setDateTo(preset.filters.dateTo ?? '');
     setPage(1);
     setActiveSavedFilterId(preset.id);
   }, []);
 
   const handleSaveFilter = useCallback(
     (name: string) => {
-      const preset = saveFilter(name, { search, status });
+      const preset = saveFilter(name, { search, status, dateFrom, dateTo });
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
     },
-    [saveFilter, search, status, features.toastEnabled],
+    [saveFilter, search, status, dateFrom, dateTo, features.toastEnabled],
   );
 
   // Bulk select
@@ -304,11 +318,17 @@ export default function InvoicesPage() {
           counterpartyId: form.counterpartyId,
           amount: amt,
           dueDate: form.dueDate || undefined,
+          documentDate: form.documentDate || undefined,
         }),
       });
       dirty.resetDirty();
       setShowCreate(false);
-      setForm({ counterpartyId: '', amount: '', dueDate: '' });
+      setForm({
+        counterpartyId: '',
+        amount: '',
+        dueDate: '',
+        documentDate: new Date().toISOString().slice(0, 10),
+      });
       setCounterpartyDisplayName('');
       queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
     } catch (e: unknown) {
@@ -600,7 +620,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Search + Columns */}
-      <div className="shrink-0 flex items-center gap-3">
+      <div className="shrink-0 flex flex-wrap items-center gap-3">
         <Input
           value={search}
           onChange={e => {
@@ -611,6 +631,28 @@ export default function InvoicesPage() {
           placeholder="Пошук за номером або контрагентом..."
           leftElement={<Search />}
           className="w-72"
+        />
+        <DatePickerInput
+          value={dateFrom}
+          onChange={v => {
+            setDateFrom(v);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="Від"
+          max={dateTo || undefined}
+          className="w-36"
+        />
+        <DatePickerInput
+          value={dateTo}
+          onChange={v => {
+            setDateTo(v);
+            setPage(1);
+            setActiveSavedFilterId(null);
+          }}
+          placeholder="До"
+          min={dateFrom || undefined}
+          className="w-36"
         />
         <div className="flex items-center gap-2 ml-auto">
           <Button
@@ -830,7 +872,12 @@ export default function InvoicesPage() {
           if (!(await dirty.confirmClose())) return;
           dirty.resetDirty();
           setShowCreate(false);
-          setForm({ counterpartyId: '', amount: '', dueDate: '' });
+          setForm({
+            counterpartyId: '',
+            amount: '',
+            dueDate: '',
+            documentDate: new Date().toISOString().slice(0, 10),
+          });
           setCounterpartyDisplayName('');
         }}
         title="Новий рахунок"
@@ -892,6 +939,14 @@ export default function InvoicesPage() {
             value={form.dueDate}
             onChange={v => {
               setForm(f => ({ ...f, dueDate: v }));
+              dirty.markDirty();
+            }}
+          />
+          <DatePickerInput
+            label="Дата документа"
+            value={form.documentDate}
+            onChange={v => {
+              setForm(f => ({ ...f, documentDate: v }));
               dirty.markDirty();
             }}
           />

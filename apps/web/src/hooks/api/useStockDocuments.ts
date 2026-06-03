@@ -26,6 +26,7 @@ export interface StockDoc {
   targetWarehouseName?: string | null;
   notes: string | null;
   confirmedAt: string | null;
+  documentDate?: string | null;
   lines: StockDocLine[];
   createdAt: string;
   updatedAt: string;
@@ -38,6 +39,8 @@ export interface StockDocsFilter extends Record<string, unknown> {
   type?: string;
   status?: string;
   showDeleted?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /** @deprecated Use PaginatedResponse<StockDoc> from usePaginatedList */
