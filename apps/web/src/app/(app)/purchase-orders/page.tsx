@@ -606,7 +606,7 @@ export default function PurchaseOrdersPage() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-fill p-4 md:p-6 gap-4">
       {(error || queryError) && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error || (queryError instanceof Error ? queryError.message : '')}
@@ -715,7 +715,7 @@ export default function PurchaseOrdersPage() {
 
       {/* Table + DetailPanel */}
       <div className="flex">
-        <div className="flex-1 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+        <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
           <Table>
             <TableHeader>
               <TableRow>
@@ -901,7 +901,7 @@ export default function PurchaseOrdersPage() {
 
       {/* Pagination */}
       {total > limit && (
-        <div className="flex justify-center gap-1.5 mt-4">
+        <div className="shrink-0 flex justify-center gap-1.5 pt-1">
           <Button
             variant="outline"
             size="sm"

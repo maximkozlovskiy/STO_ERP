@@ -207,6 +207,18 @@ th[data-dragover="true"] {
 }
 
 /* ─── Page layout helpers ─── */
+
+/* Fill the entire <main> area without outer scroll.
+   Use on the root div of every list page:
+     <div className="page-fill p-4 md:p-6 gap-4">
+   Then add min-h-0 to the flex-1 table container so overflow-auto works. */
+.page-fill {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .page-container {
   padding: var(--spacing-page-y) var(--spacing-page-x);
   max-width: 96rem;

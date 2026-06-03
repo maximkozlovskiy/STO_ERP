@@ -748,7 +748,7 @@ export default function EmployeesPage() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-fill p-4 md:p-6 gap-4">
       <div className="page-header">
         <div>
           <h1 className="page-title">Співробітники</h1>
@@ -847,7 +847,7 @@ export default function EmployeesPage() {
 
       {/* Table + DetailPanel */}
       <div className="flex flex-1 min-h-0">
-        <div className="flex-1 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
+        <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
           <Table>
             <TableHeader>
               <TableRow>

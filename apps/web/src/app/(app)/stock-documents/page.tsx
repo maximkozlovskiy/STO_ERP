@@ -527,7 +527,7 @@ export default function StockDocumentsPage() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-fill p-4 md:p-6 gap-4">
       {error && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
@@ -652,7 +652,7 @@ export default function StockDocumentsPage() {
 
       {/* Table + DetailPanel */}
       <div className="flex">
-        <div className="flex-1 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+        <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
           <Table>
             <TableHeader>
               <TableRow>
@@ -833,7 +833,7 @@ export default function StockDocumentsPage() {
 
       {/* Pagination */}
       {total > limit && (
-        <div className="flex justify-center gap-1.5 mt-4">
+        <div className="shrink-0 flex justify-center gap-1.5 pt-1">
           <Button
             variant="outline"
             size="sm"

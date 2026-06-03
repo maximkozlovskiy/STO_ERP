@@ -354,7 +354,7 @@ export default function ServicesTab() {
   const totalPages = services ? Math.ceil(services.total / services.limit) : 1;
 
   return (
-    <div>
+    <div className="flex flex-col flex-1 min-h-0">
       {!modal && error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
@@ -429,7 +429,7 @@ export default function ServicesTab() {
       )}
 
       <div className="flex">
-        <div className="flex-1 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
+        <div className="flex-1 min-h-0 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>

@@ -599,7 +599,7 @@ export default function CrmPage() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-fill p-4 md:p-6 gap-4">
       <div className="page-header">
         <div>
           <h1 className="page-title">Контрагенти</h1>
@@ -721,7 +721,7 @@ export default function CrmPage() {
 
       {/* Table + DetailPanel */}
       <div className="flex flex-1 min-h-0">
-        <div className="flex-1 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+        <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
           <Table>
             <TableHeader>
               <TableRow>
@@ -891,7 +891,7 @@ export default function CrmPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex justify-center gap-1.5 mt-4 pb-4">
+            <div className="shrink-0 flex justify-center gap-1.5 pt-1 pb-1">
               {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
                 <button
                   key={p}

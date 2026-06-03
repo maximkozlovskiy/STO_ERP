@@ -139,7 +139,7 @@ export function Modal({
         className={cn(
           'relative z-10 w-full rounded-xl bg-surface',
           'shadow-xl border border-border',
-          'flex flex-col max-h-[90vh]',
+          'flex flex-col max-h-[90dvh]',
           className,
         )}
         style={{
@@ -179,9 +179,7 @@ export function Modal({
         )}
 
         {/* Body — height animates smoothly; overflow-y:auto on inner handles tall content */}
-        <AnimatedBody className="overflow-y-auto px-6 py-5 max-h-[calc(90vh-8rem)]">
-          {children}
-        </AnimatedBody>
+        <AnimatedBody className="overflow-y-auto px-6 py-5 flex-1 min-h-0">{children}</AnimatedBody>
 
         {/* Footer */}
         {footer && (

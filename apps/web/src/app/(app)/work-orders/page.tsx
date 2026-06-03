@@ -492,7 +492,7 @@ export default function WorkOrdersPage() {
   const totalPages = Math.ceil(total / limit);
 
   return (
-    <div className="page-container">
+    <div className="page-fill p-4 md:p-6 gap-4">
       <div className="page-header">
         <div>
           <h1 className="page-title">Наряди</h1>
@@ -645,7 +645,7 @@ export default function WorkOrdersPage() {
 
       {/* Table + DetailPanel */}
       <div className="flex">
-        <div className="flex-1 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
+        <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -980,7 +980,7 @@ export default function WorkOrdersPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex justify-center gap-1.5 mt-4">
+        <div className="shrink-0 flex justify-center gap-1.5 pt-1">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
             <button
               key={p}

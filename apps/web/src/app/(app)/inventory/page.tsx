@@ -131,7 +131,7 @@ export default function InventoryPage() {
   const displayed = showLow ? items.filter(i => i.isLow) : items;
 
   return (
-    <div className="page-container">
+    <div className="page-fill p-4 md:p-6 gap-4">
       {(error || queryError) && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error || (queryError instanceof Error ? queryError.message : '')}
@@ -185,7 +185,7 @@ export default function InventoryPage() {
 
       {/* Table + DetailPanel */}
       <div className="flex gap-3">
-        <div className="flex-1 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
+        <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
           <Table>
             <TableHeader>
               <TableRow>
