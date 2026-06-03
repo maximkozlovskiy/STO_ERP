@@ -10157,3 +10157,56 @@ Review-fix `88d2c8d fix(review): replace silent .catch(() => {}) with console.wa
 **Верифікація:** Web tsc green (0 errors), решта silent .catch у проєкті — легітимні (toast-double-protection або опціональний SW).
 
 **Статус:** [x] виправлено
+
+---
+
+## Session 2026-06-03 — E2E Cycle 1
+
+### Bug #342 — [HIGH] Auth guard тести: `storageState` не скидає httpOnly cookies у shared Playwright worker context
+
+**Файл:** `apps/web/e2e/auth-flow.spec.ts`, `apps/web/e2e/smoke.spec.ts`, `apps/web/e2e/inventory.spec.ts`
+
+**Причина:**
+`test.use({ storageState: { cookies: [], origins: [] } })` встановлює storage state, але httpOnly cookie `sto_refresh` (встановлена на попередньому authorized тесті в тому самому worker) залишається активною. При переході на захищений роут `AuthProvider` викликає `/api/auth/refresh` — cookie присутня → refresh успішний → `employee` заповнюється → guard не редіректить.
+
+**Виправлення:**
+Явне очищення cookies + web storage перед navigate у кожному no-auth тесті:
+
+```typescript
+await page.context().clearCookies();
+await page.goto('/login');
+await page.evaluate(() => {
+  sessionStorage.clear();
+  localStorage.clear();
+});
+```
+
+**Статус:** [x] виправлено в auth-flow.spec.ts, smoke.spec.ts, inventory.spec.ts
+
+---
+
+### Bug #343 — [MEDIUM] Next.js dev cold compile timeout у E2E
+
+**Файл:** `apps/web/playwright.config.ts`
+
+**Причина:**
+`timeout: 30_000` глобально, але `beforeEach` waitFor з 20s timeout не встигає при холодному Next.js dev compile першого запиту до нової сторінки (~15-25s). Паралельні 4 workers ще більше навантажують компіляцію.
+
+**Виправлення:**
+Збільшено `timeout: 45_000` у `playwright.config.ts`. Login→dashboard redirect timeout збільшено до 30s.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #344 — [HIGH] Stale Next.js dev chunks після optimize-agent змін — React не монтується
+
+**Файл:** `apps/web` (dev server state)
+
+**Причина:**
+Після змін optimize-agent Next.js dev server перекомпільовує chunks. Якщо Playwright запускає тести поки сервер ще не перекомпілював всі chunks, браузер отримує 404 на `main-app.js`, `app/(app)/layout.js`, `app-pages-internals.js`. React не монтується → auth guard не спрацьовує → URL залишається на захищеній сторінці. Симптом: білий screenshot + URL залишається `/work-orders/`.
+
+**Виправлення:**
+Перезапуск Next.js dev server перед E2E suite після будь-яких code changes. До auth фіксів у тестах (#342, #343) — після рестарту всі auth guard тести зелені (26/26).
+
+**Статус:** [x] виявлено і задокументовано — фіксується перезапуском dev сервера

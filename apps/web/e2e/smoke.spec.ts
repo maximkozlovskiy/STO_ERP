@@ -39,8 +39,16 @@ test.describe('Smoke — auth guard', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test('захищена /work-orders без auth — врешті redirect на /login', async ({ page }) => {
+    // Bug #342: storageState не скидає httpOnly cookies у shared worker context
+    // Явно очищуємо cookies + web storage
+    await page.context().clearCookies();
+    await page.goto('/login');
+    await page.evaluate(() => {
+      sessionStorage.clear();
+      localStorage.clear();
+    });
     await page.goto('/work-orders');
-    await expect(page).toHaveURL(/\/(login|setup)/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/(login|setup)/, { timeout: 20_000 });
   });
 });
 

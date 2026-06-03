@@ -8,7 +8,9 @@ export default defineConfig({
   testIgnore: ['**/setup-auth.ts'],
   globalSetup: './e2e/setup-auth.ts',
 
-  timeout: 30_000,
+  // Bug #343: Next.js dev cold compile on first request takes 15-25s.
+  // beforeEach waitFor patterns need headroom above the 20s they specify.
+  timeout: 45_000,
   expect: { timeout: 8_000 },
   retries: process.env.CI ? 2 : 2,
   fullyParallel: true,

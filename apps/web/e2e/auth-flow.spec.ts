@@ -32,7 +32,8 @@ test.describe('Auth — Login flow', () => {
     await page.locator('button[type="submit"]').click();
 
     // Після успішного логіну — перехід на захищену сторінку
-    await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
+    // Bug #343: /dashboard cold compile ~15-20s, needs more headroom
+    await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
     const url = page.url();
     expect(url).toMatch(/\/(dashboard|work-orders)/);
   });
@@ -52,6 +53,17 @@ test.describe('Auth — Login flow', () => {
 test.describe('Auth — Guard захищених роутів', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
+  // Bug #342: storageState { cookies:[], origins:[] } не завжди скидає httpOnly cookies у shared worker context.
+  // Явно очищуємо cookies + web storage щоб гарантувати fresh unauthenticated state.
+  const clearAuthState = async (page: import('@playwright/test').Page) => {
+    await page.context().clearCookies();
+    await page.goto('/login');
+    await page.evaluate(() => {
+      sessionStorage.clear();
+      localStorage.clear();
+    });
+  };
+
   const PROTECTED = [
     '/work-orders',
     '/calendar',
@@ -66,8 +78,9 @@ test.describe('Auth — Guard захищених роутів', () => {
 
   for (const route of PROTECTED) {
     test(`${route} без auth → /login`, async ({ page }) => {
+      await clearAuthState(page);
       await page.goto(route);
-      await expect(page).toHaveURL(/\/(login|setup)/, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/(login|setup)/, { timeout: 20_000 });
     });
   }
 });

@@ -13,8 +13,15 @@ test.describe('Інвентар — auth guard', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test('без авторизації → redirect на /login', async ({ page }) => {
+    // Bug #342: явно очищуємо cookies + web storage
+    await page.context().clearCookies();
+    await page.goto('/login');
+    await page.evaluate(() => {
+      sessionStorage.clear();
+      localStorage.clear();
+    });
     await page.goto('/inventory');
-    await expect(page).toHaveURL(/\/(login|setup)/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/(login|setup)/, { timeout: 20_000 });
   });
 });
 
