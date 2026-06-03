@@ -286,7 +286,7 @@ function InfrastructurePageClient() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border mb-6">
+      <div className="shrink-0 flex gap-1 border-b border-border mb-6">
         {TABS.map(t => (
           <button
             key={t.key}
@@ -303,287 +303,290 @@ function InfrastructurePageClient() {
         ))}
       </div>
 
-      {loading && (
-        <div className="flex justify-center py-8">
-          <Spinner size="lg" />
-        </div>
-      )}
-      {!loading && error && !modal && (
-        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">
-          {error}
-        </div>
-      )}
-
-      {/* BRANCHES */}
-      {!loading && tab === 'branches' && (
-        <Section title="Філії" onAdd={() => openModal('branch', { name: '', address: '' })}>
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Назва</TableHead>
-                  <TableHead>Адреса</TableHead>
-                  <TableHead>Часовий пояс</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {branches.map(b => (
-                  <TableRow key={b.id}>
-                    <TableCell className="font-medium text-foreground">{b.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{b.address}</TableCell>
-                    <TableCell className="text-muted-foreground">{b.timezone}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            openEditModal('branch', b.id, { name: b.name, address: b.address })
-                          }
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => remove('/branches', b.id)}
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+      {/* Scrollable content area (page-fill = overflow-hidden, тому тут власний скрол) */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {loading && (
+          <div className="flex justify-center py-8">
+            <Spinner size="lg" />
           </div>
-        </Section>
-      )}
-
-      {/* ZONES */}
-      {!loading && tab === 'zones' && (
-        <Section
-          title="Зони"
-          onAdd={() =>
-            openModal('zone', { branchId: branches[0]?.id ?? '', name: '', type: 'MECHANICAL' })
-          }
-        >
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Назва</TableHead>
-                  <TableHead>Тип</TableHead>
-                  <TableHead>Філія</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {zones.map(z => (
-                  <TableRow key={z.id}>
-                    <TableCell className="font-medium text-foreground">{z.name}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {ZONE_TYPE_LABELS[z.type] ?? z.type}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {branches.find(b => b.id === z.branchId)?.name ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            openEditModal('zone', z.id, {
-                              branchId: z.branchId,
-                              name: z.name,
-                              type: z.type,
-                            })
-                          }
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => remove('/zones', z.id)}
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        )}
+        {!loading && error && !modal && (
+          <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">
+            {error}
           </div>
-        </Section>
-      )}
+        )}
 
-      {/* LIFTS */}
-      {!loading && tab === 'lifts' && (
-        <Section
-          title="Пости"
-          onAdd={() =>
-            openModal('lift', {
-              zoneId: zones[0]?.id ?? '',
-              name: '',
-              type: 'TWO_POST',
-              maxWeightKg: '',
-              status: 'ACTIVE',
-              serialNumber: '',
-              purchaseDate: '',
-              warrantyUntil: '',
-              maintenanceIntervalDays: '',
-              lastMaintenanceDate: '',
-            })
-          }
-        >
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Назва</TableHead>
-                  <TableHead>Тип</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead>Вантажність, кг</TableHead>
-                  <TableHead>Зона</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lifts.map(l => (
-                  <LiftRow
-                    key={l.id}
-                    lift={l}
-                    zoneName={zones.find(z => z.id === l.zoneId)?.name ?? '—'}
-                    onEdit={() =>
-                      openEditModal('lift', l.id, {
-                        zoneId: l.zoneId,
-                        name: l.name,
-                        type: l.type,
-                        maxWeightKg: l.maxWeightKg != null ? String(l.maxWeightKg) : '',
-                        status: l.status,
-                        serialNumber: l.serialNumber ?? '',
-                        purchaseDate: l.purchaseDate ? l.purchaseDate.slice(0, 10) : '',
-                        warrantyUntil: l.warrantyUntil ? l.warrantyUntil.slice(0, 10) : '',
-                        maintenanceIntervalDays:
-                          l.maintenanceIntervalDays != null
-                            ? String(l.maintenanceIntervalDays)
+        {/* BRANCHES */}
+        {!loading && tab === 'branches' && (
+          <Section title="Філії" onAdd={() => openModal('branch', { name: '', address: '' })}>
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Назва</TableHead>
+                    <TableHead>Адреса</TableHead>
+                    <TableHead>Часовий пояс</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {branches.map(b => (
+                    <TableRow key={b.id}>
+                      <TableCell className="font-medium text-foreground">{b.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{b.address}</TableCell>
+                      <TableCell className="text-muted-foreground">{b.timezone}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              openEditModal('branch', b.id, { name: b.name, address: b.address })
+                            }
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => remove('/branches', b.id)}
+                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Section>
+        )}
+
+        {/* ZONES */}
+        {!loading && tab === 'zones' && (
+          <Section
+            title="Зони"
+            onAdd={() =>
+              openModal('zone', { branchId: branches[0]?.id ?? '', name: '', type: 'MECHANICAL' })
+            }
+          >
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Назва</TableHead>
+                    <TableHead>Тип</TableHead>
+                    <TableHead>Філія</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {zones.map(z => (
+                    <TableRow key={z.id}>
+                      <TableCell className="font-medium text-foreground">{z.name}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {ZONE_TYPE_LABELS[z.type] ?? z.type}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {branches.find(b => b.id === z.branchId)?.name ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              openEditModal('zone', z.id, {
+                                branchId: z.branchId,
+                                name: z.name,
+                                type: z.type,
+                              })
+                            }
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => remove('/zones', z.id)}
+                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Section>
+        )}
+
+        {/* LIFTS */}
+        {!loading && tab === 'lifts' && (
+          <Section
+            title="Пости"
+            onAdd={() =>
+              openModal('lift', {
+                zoneId: zones[0]?.id ?? '',
+                name: '',
+                type: 'TWO_POST',
+                maxWeightKg: '',
+                status: 'ACTIVE',
+                serialNumber: '',
+                purchaseDate: '',
+                warrantyUntil: '',
+                maintenanceIntervalDays: '',
+                lastMaintenanceDate: '',
+              })
+            }
+          >
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Назва</TableHead>
+                    <TableHead>Тип</TableHead>
+                    <TableHead>Статус</TableHead>
+                    <TableHead>Вантажність, кг</TableHead>
+                    <TableHead>Зона</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lifts.map(l => (
+                    <LiftRow
+                      key={l.id}
+                      lift={l}
+                      zoneName={zones.find(z => z.id === l.zoneId)?.name ?? '—'}
+                      onEdit={() =>
+                        openEditModal('lift', l.id, {
+                          zoneId: l.zoneId,
+                          name: l.name,
+                          type: l.type,
+                          maxWeightKg: l.maxWeightKg != null ? String(l.maxWeightKg) : '',
+                          status: l.status,
+                          serialNumber: l.serialNumber ?? '',
+                          purchaseDate: l.purchaseDate ? l.purchaseDate.slice(0, 10) : '',
+                          warrantyUntil: l.warrantyUntil ? l.warrantyUntil.slice(0, 10) : '',
+                          maintenanceIntervalDays:
+                            l.maintenanceIntervalDays != null
+                              ? String(l.maintenanceIntervalDays)
+                              : '',
+                          lastMaintenanceDate: l.lastMaintenanceDate
+                            ? l.lastMaintenanceDate.slice(0, 10)
                             : '',
-                        lastMaintenanceDate: l.lastMaintenanceDate
-                          ? l.lastMaintenanceDate.slice(0, 10)
-                          : '',
-                      })
-                    }
-                    onRemove={() => remove('/lifts', l.id)}
-                    nowMs={nowMs}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Section>
-      )}
+                        })
+                      }
+                      onRemove={() => remove('/lifts', l.id)}
+                      nowMs={nowMs}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Section>
+        )}
 
-      {/* WAREHOUSES */}
-      {!loading && tab === 'warehouses' && (
-        <Section
-          title="Склади"
-          onAdd={() =>
-            openModal('warehouse', { branchId: branches[0]?.id ?? '', name: '', type: 'MAIN' })
-          }
-        >
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Назва</TableHead>
-                  <TableHead>Тип</TableHead>
-                  <TableHead>Філія</TableHead>
-                  <TableHead>Основний</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {warehouses.map(w => (
-                  <TableRow key={w.id}>
-                    <TableCell className="font-medium text-foreground">{w.name}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {branches.find(b => b.id === w.branchId)?.name ?? '—'}
-                    </TableCell>
-                    <TableCell>
-                      <button
-                        type="button"
-                        title={w.isMain ? 'Основний склад' : 'Зробити основним'}
-                        onClick={async () => {
-                          if (w.isMain) return;
-                          setSaving(true);
-                          setError('');
-                          try {
-                            await apiFetch(`/warehouses/${w.id}`, {
-                              method: 'PATCH',
-                              body: JSON.stringify({ isMain: true }),
-                            });
-                            loadAll();
-                          } catch (e: unknown) {
-                            setError(e instanceof Error ? e.message : 'Помилка');
-                          } finally {
-                            setSaving(false);
-                          }
-                        }}
-                        className={cn(
-                          'w-4 h-4 rounded border-2 flex items-center justify-center',
-                          w.isMain
-                            ? 'bg-primary border-primary'
-                            : 'border-border hover:border-primary/60',
-                        )}
-                      >
-                        {w.isMain && <span className="block w-2 h-2 rounded-sm bg-white" />}
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            openEditModal('warehouse', w.id, {
-                              branchId: w.branchId,
-                              name: w.name,
-                              type: w.type,
-                              isMain: w.isMain ? 'true' : '',
-                            })
-                          }
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => remove('/warehouses', w.id)}
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
+        {/* WAREHOUSES */}
+        {!loading && tab === 'warehouses' && (
+          <Section
+            title="Склади"
+            onAdd={() =>
+              openModal('warehouse', { branchId: branches[0]?.id ?? '', name: '', type: 'MAIN' })
+            }
+          >
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Назва</TableHead>
+                    <TableHead>Тип</TableHead>
+                    <TableHead>Філія</TableHead>
+                    <TableHead>Основний</TableHead>
+                    <TableHead />
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Section>
-      )}
+                </TableHeader>
+                <TableBody>
+                  {warehouses.map(w => (
+                    <TableRow key={w.id}>
+                      <TableCell className="font-medium text-foreground">{w.name}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {branches.find(b => b.id === w.branchId)?.name ?? '—'}
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          type="button"
+                          title={w.isMain ? 'Основний склад' : 'Зробити основним'}
+                          onClick={async () => {
+                            if (w.isMain) return;
+                            setSaving(true);
+                            setError('');
+                            try {
+                              await apiFetch(`/warehouses/${w.id}`, {
+                                method: 'PATCH',
+                                body: JSON.stringify({ isMain: true }),
+                              });
+                              loadAll();
+                            } catch (e: unknown) {
+                              setError(e instanceof Error ? e.message : 'Помилка');
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                          className={cn(
+                            'w-4 h-4 rounded border-2 flex items-center justify-center',
+                            w.isMain
+                              ? 'bg-primary border-primary'
+                              : 'border-border hover:border-primary/60',
+                          )}
+                        >
+                          {w.isMain && <span className="block w-2 h-2 rounded-sm bg-white" />}
+                        </button>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              openEditModal('warehouse', w.id, {
+                                branchId: w.branchId,
+                                name: w.name,
+                                type: w.type,
+                                isMain: w.isMain ? 'true' : '',
+                              })
+                            }
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => remove('/warehouses', w.id)}
+                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Section>
+        )}
+      </div>
 
       {/* Branch modal */}
       <Modal

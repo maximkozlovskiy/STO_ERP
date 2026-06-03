@@ -222,289 +222,296 @@ function ReportsPageClient() {
         )}
       </div>
 
-      {!data && !loading && (
-        <div className="flex items-center justify-center h-64 text-muted-foreground text-[13px]">
-          Оберіть параметри і натисніть «Сформувати»
-        </div>
-      )}
+      {/* Scrollable content area — page-fill = overflow-hidden, тому тут власний скрол */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {!data && !loading && (
+          <div className="flex items-center justify-center h-64 text-muted-foreground text-[13px]">
+            Оберіть параметри і натисніть «Сформувати»
+          </div>
+        )}
 
-      {loading && (
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      )}
+        {loading && (
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        )}
 
-      {/* Revenue report */}
-      {data && data._tab === 'revenue' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-3 gap-4">
-            <StatCard label="Загальна виручка" value={fmt(data.totalRevenue)} />
-            <StatCard label="Кількість нарядів" value={String(data.totalOrders)} />
-            <StatCard
-              label="Середній чек"
-              value={data.totalOrders > 0 ? fmt(data.totalRevenue / data.totalOrders) : '—'}
-            />
+        {/* Revenue report */}
+        {data && data._tab === 'revenue' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-3 gap-4">
+              <StatCard label="Загальна виручка" value={fmt(data.totalRevenue)} />
+              <StatCard label="Кількість нарядів" value={String(data.totalOrders)} />
+              <StatCard
+                label="Середній чек"
+                value={data.totalOrders > 0 ? fmt(data.totalRevenue / data.totalOrders) : '—'}
+              />
+            </div>
+            <RevenueCharts rows={data.rows} />
           </div>
-          <RevenueCharts rows={data.rows} />
-        </div>
-      )}
+        )}
 
-      {/* Work orders report */}
-      {data && data._tab === 'work-orders' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-3 gap-4">
-            <StatCard label="Всього норм-годин" value={fmtNum(data.totalNormoHours)} />
-            <StatCard label="Сума робіт" value={fmt(data.totalAmount)} />
-            <StatCard label="Механіків" value={String(data.rows.length)} />
-          </div>
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Механік</TableHead>
-                  <TableHead className="text-right">Норм-год</TableHead>
-                  <TableHead className="text-right">Позицій</TableHead>
-                  <TableHead className="text-right">Сума</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.rows.map(r => (
-                  <TableRow key={r.employeeId}>
-                    <TableCell className="font-medium text-foreground">{r.employeeName}</TableCell>
-                    <TableCell className="text-right">{fmtNum(r.totalNormoHours)}</TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {r.linesCount}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">{fmt(r.totalAmount)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      )}
-
-      {/* Stock report */}
-      {data && data._tab === 'stock' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <StatCard label="Позицій на складах" value={String(data.stockItems.length)} />
-            <StatCard label="Загальна вартість" value={fmt(data.totalValue)} />
-          </div>
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Товар</TableHead>
-                  <TableHead>Склад</TableHead>
-                  <TableHead className="text-right">Кількість</TableHead>
-                  <TableHead className="text-right">Доступно</TableHead>
-                  <TableHead className="text-right">Вартість</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.stockItems.map((i, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>
-                      <div className="font-medium text-foreground">{i.goodName}</div>
-                      <div className="text-xs text-foreground-faint font-mono">
-                        {i.goodSku ?? '—'}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{i.warehouseName}</TableCell>
-                    <TableCell className="text-right">
-                      {fmtNum(i.quantity)} {i.unit}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right font-medium',
-                        i.available <= 0 ? 'text-destructive' : 'text-success',
-                      )}
-                    >
-                      {fmtNum(i.available)}
-                    </TableCell>
-                    <TableCell className="text-right">{fmt(i.value)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      )}
-
-      {/* Settlements report */}
-      {data && data._tab === 'settlements' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <StatCard
-              label="Дебіторська заборгованість"
-              value={fmt(data.totalDebit)}
-              sub="Клієнти нам"
-            />
-            <StatCard
-              label="Кредиторська заборгованість"
-              value={fmt(data.totalCredit)}
-              sub="Ми постачальникам"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-6">
-            <SettlementsChart rows={data.rows} />
+        {/* Work orders report */}
+        {data && data._tab === 'work-orders' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-3 gap-4">
+              <StatCard label="Всього норм-годин" value={fmtNum(data.totalNormoHours)} />
+              <StatCard label="Сума робіт" value={fmt(data.totalAmount)} />
+              <StatCard label="Механіків" value={String(data.rows.length)} />
+            </div>
             <div className="bg-surface rounded-xl border border-border overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Контрагент</TableHead>
-                    <TableHead className="text-right">Баланс</TableHead>
+                    <TableHead>Механік</TableHead>
+                    <TableHead className="text-right">Норм-год</TableHead>
+                    <TableHead className="text-right">Позицій</TableHead>
+                    <TableHead className="text-right">Сума</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.rows
-                    .filter(r => r.balance !== 0)
-                    .map(r => (
-                      <TableRow key={r.counterpartyId}>
-                        <TableCell className="text-foreground">{r.counterpartyName}</TableCell>
-                        <TableCell
-                          className={cn(
-                            'text-right font-semibold',
-                            r.balance > 0 ? 'text-destructive' : 'text-success',
-                          )}
-                        >
-                          {r.balance > 0 ? '+' : ''}
-                          {fmt(r.balance)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                  {data.rows.map(r => (
+                    <TableRow key={r.employeeId}>
+                      <TableCell className="font-medium text-foreground">
+                        {r.employeeName}
+                      </TableCell>
+                      <TableCell className="text-right">{fmtNum(r.totalNormoHours)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {r.linesCount}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {fmt(r.totalAmount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Profitability report */}
-      {data && data._tab === 'profitability' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <StatCard
-              label="Виручка"
-              value={fmt(data.totalRevenue)}
-              sub={`${data.ordersCount} нарядів`}
-            />
-            <StatCard
-              label="Собівартість"
-              value={fmt(data.totalCost)}
-              sub={`Запч: ${fmt(data.totalCostParts)}`}
-            />
-            <StatCard label="Валовий прибуток" value={fmt(data.grossProfit)} />
-            <StatCard
-              label="Маржинальність"
-              value={`${data.margin.toFixed(1)}%`}
-              sub={data.margin >= 30 ? '✓ Норма' : '↓ Нижче норми'}
-            />
-          </div>
-          <ProfitabilityChart data={data} />
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Показник</TableHead>
-                  <TableHead className="text-right">Сума</TableHead>
-                  <TableHead className="text-right">% до виручки</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[
-                  { label: 'Виручка', value: data.totalRevenue, pct: 100 },
-                  {
-                    label: '— Запчастини (собівартість)',
-                    value: data.totalCostParts,
-                    pct:
-                      data.totalRevenue > 0 ? (data.totalCostParts / data.totalRevenue) * 100 : 0,
-                  },
-                  {
-                    label: '— Праця (оцінка 40%)',
-                    value: data.totalCostLabor,
-                    pct:
-                      data.totalRevenue > 0 ? (data.totalCostLabor / data.totalRevenue) * 100 : 0,
-                  },
-                  { label: 'Валовий прибуток', value: data.grossProfit, pct: data.margin },
-                ].map(row => (
-                  <TableRow key={row.label}>
-                    <TableCell className="text-foreground">{row.label}</TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right font-semibold',
-                        row.label === 'Валовий прибуток'
-                          ? row.value >= 0
-                            ? 'text-success'
-                            : 'text-destructive'
-                          : '',
-                      )}
-                    >
-                      {fmt(row.value)}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {row.pct.toFixed(1)}%
-                    </TableCell>
+        {/* Stock report */}
+        {data && data._tab === 'stock' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <StatCard label="Позицій на складах" value={String(data.stockItems.length)} />
+              <StatCard label="Загальна вартість" value={fmt(data.totalValue)} />
+            </div>
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Товар</TableHead>
+                    <TableHead>Склад</TableHead>
+                    <TableHead className="text-right">Кількість</TableHead>
+                    <TableHead className="text-right">Доступно</TableHead>
+                    <TableHead className="text-right">Вартість</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      )}
-
-      {/* Load report */}
-      {data && data._tab === 'load' && (
-        <div className="space-y-6">
-          <LoadChart rows={data.rows} />
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Підйомник</TableHead>
-                  <TableHead>Зона</TableHead>
-                  <TableHead className="text-right">Слотів</TableHead>
-                  <TableHead className="text-right">Годин</TableHead>
-                  <TableHead className="text-right">Завантаженість</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.rows.map(r => (
-                  <TableRow key={r.liftId}>
-                    <TableCell className="font-medium text-foreground">{r.liftName}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.zoneName}</TableCell>
-                    <TableCell className="text-right">{r.totalSlots}</TableCell>
-                    <TableCell className="text-right">{fmtNum(r.totalHours)}г</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="w-24 bg-secondary rounded-full h-2">
-                          <div
-                            className="bg-primary h-2 rounded-full"
-                            style={{ width: `${Math.min(r.loadPercent, 100)}%` }}
-                          />
+                </TableHeader>
+                <TableBody>
+                  {data.stockItems.map((i, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>
+                        <div className="font-medium text-foreground">{i.goodName}</div>
+                        <div className="text-xs text-foreground-faint font-mono">
+                          {i.goodSku ?? '—'}
                         </div>
-                        <span
-                          className={cn(
-                            'text-xs font-medium',
-                            r.loadPercent >= 80
-                              ? 'text-destructive'
-                              : r.loadPercent >= 50
-                                ? 'text-warning'
-                                : 'text-success',
-                          )}
-                        >
-                          {r.loadPercent}%
-                        </span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{i.warehouseName}</TableCell>
+                      <TableCell className="text-right">
+                        {fmtNum(i.quantity)} {i.unit}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right font-medium',
+                          i.available <= 0 ? 'text-destructive' : 'text-success',
+                        )}
+                      >
+                        {fmtNum(i.available)}
+                      </TableCell>
+                      <TableCell className="text-right">{fmt(i.value)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Settlements report */}
+        {data && data._tab === 'settlements' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <StatCard
+                label="Дебіторська заборгованість"
+                value={fmt(data.totalDebit)}
+                sub="Клієнти нам"
+              />
+              <StatCard
+                label="Кредиторська заборгованість"
+                value={fmt(data.totalCredit)}
+                sub="Ми постачальникам"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-6">
+              <SettlementsChart rows={data.rows} />
+              <div className="bg-surface rounded-xl border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Контрагент</TableHead>
+                      <TableHead className="text-right">Баланс</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.rows
+                      .filter(r => r.balance !== 0)
+                      .map(r => (
+                        <TableRow key={r.counterpartyId}>
+                          <TableCell className="text-foreground">{r.counterpartyName}</TableCell>
+                          <TableCell
+                            className={cn(
+                              'text-right font-semibold',
+                              r.balance > 0 ? 'text-destructive' : 'text-success',
+                            )}
+                          >
+                            {r.balance > 0 ? '+' : ''}
+                            {fmt(r.balance)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Profitability report */}
+        {data && data._tab === 'profitability' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <StatCard
+                label="Виручка"
+                value={fmt(data.totalRevenue)}
+                sub={`${data.ordersCount} нарядів`}
+              />
+              <StatCard
+                label="Собівартість"
+                value={fmt(data.totalCost)}
+                sub={`Запч: ${fmt(data.totalCostParts)}`}
+              />
+              <StatCard label="Валовий прибуток" value={fmt(data.grossProfit)} />
+              <StatCard
+                label="Маржинальність"
+                value={`${data.margin.toFixed(1)}%`}
+                sub={data.margin >= 30 ? '✓ Норма' : '↓ Нижче норми'}
+              />
+            </div>
+            <ProfitabilityChart data={data} />
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Показник</TableHead>
+                    <TableHead className="text-right">Сума</TableHead>
+                    <TableHead className="text-right">% до виручки</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[
+                    { label: 'Виручка', value: data.totalRevenue, pct: 100 },
+                    {
+                      label: '— Запчастини (собівартість)',
+                      value: data.totalCostParts,
+                      pct:
+                        data.totalRevenue > 0 ? (data.totalCostParts / data.totalRevenue) * 100 : 0,
+                    },
+                    {
+                      label: '— Праця (оцінка 40%)',
+                      value: data.totalCostLabor,
+                      pct:
+                        data.totalRevenue > 0 ? (data.totalCostLabor / data.totalRevenue) * 100 : 0,
+                    },
+                    { label: 'Валовий прибуток', value: data.grossProfit, pct: data.margin },
+                  ].map(row => (
+                    <TableRow key={row.label}>
+                      <TableCell className="text-foreground">{row.label}</TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right font-semibold',
+                          row.label === 'Валовий прибуток'
+                            ? row.value >= 0
+                              ? 'text-success'
+                              : 'text-destructive'
+                            : '',
+                        )}
+                      >
+                        {fmt(row.value)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {row.pct.toFixed(1)}%
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+
+        {/* Load report */}
+        {data && data._tab === 'load' && (
+          <div className="space-y-6">
+            <LoadChart rows={data.rows} />
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Підйомник</TableHead>
+                    <TableHead>Зона</TableHead>
+                    <TableHead className="text-right">Слотів</TableHead>
+                    <TableHead className="text-right">Годин</TableHead>
+                    <TableHead className="text-right">Завантаженість</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.rows.map(r => (
+                    <TableRow key={r.liftId}>
+                      <TableCell className="font-medium text-foreground">{r.liftName}</TableCell>
+                      <TableCell className="text-muted-foreground">{r.zoneName}</TableCell>
+                      <TableCell className="text-right">{r.totalSlots}</TableCell>
+                      <TableCell className="text-right">{fmtNum(r.totalHours)}г</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="w-24 bg-secondary rounded-full h-2">
+                            <div
+                              className="bg-primary h-2 rounded-full"
+                              style={{ width: `${Math.min(r.loadPercent, 100)}%` }}
+                            />
+                          </div>
+                          <span
+                            className={cn(
+                              'text-xs font-medium',
+                              r.loadPercent >= 80
+                                ? 'text-destructive'
+                                : r.loadPercent >= 50
+                                  ? 'text-warning'
+                                  : 'text-success',
+                            )}
+                          >
+                            {r.loadPercent}%
+                          </span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

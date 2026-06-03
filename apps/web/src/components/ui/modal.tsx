@@ -35,12 +35,30 @@ const TRANSITION = 'cubic-bezier(0.4,0,0.2,1)';
 // outer: overflow:hidden — clips during transition, no scrollbar flash.
 // inner: holds padding + content, measured via scrollHeight.
 // Exported for use in accordions / collapsible sections outside Modal.
-export function AnimatedBody({ children, className }: { children: ReactNode; className?: string }) {
+//
+// `fill` mode (used by Modal body): outer розтягується через flex-1 min-h-0
+// у flex-col контейнері та сам стає скрол-вікном. JS-керування height
+// ВИМКНЕНЕ — інакше outer.height = inner.scrollHeight ламає flex-розтягування
+// (outer "застрягає" на висоті контенту замість заповнення вільного простору).
+// `className` у fill-режимі живе на ВНУТРІШНЬОМУ div лише для padding —
+// overflow і flex-розтягування контролюються outer.
+export function AnimatedBody({
+  children,
+  className,
+  fill = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  fill?: boolean;
+}) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // У fill-режимі height керується flex-розтягуванням, JS не втручається.
+    if (fill) return;
+
     const outer = outerRef.current;
     const inner = innerRef.current;
     if (!outer || !inner) return;
@@ -68,7 +86,19 @@ export function AnimatedBody({ children, className }: { children: ReactNode; cla
         rafRef.current = null;
       }
     };
-  }, []);
+  }, [fill]);
+
+  if (fill) {
+    // Fill-режим: outer — flex-1, бере залишок висоти, сам скролить.
+    // Inner — лише padding (через className), без власного overflow.
+    return (
+      <div ref={outerRef} className="flex-1 min-h-0 overflow-y-auto">
+        <div ref={innerRef} className={className}>
+          {children}
+        </div>
+      </div>
+    );
+  }
 
   return (
     // outer: clips content during animation — no scrollbar flash
@@ -178,8 +208,10 @@ export function Modal({
           </div>
         )}
 
-        {/* Body — height animates smoothly; overflow-y:auto on inner handles tall content */}
-        <AnimatedBody className="overflow-y-auto px-6 py-5 flex-1 min-h-0">{children}</AnimatedBody>
+        {/* Body — fill remaining space у flex-col панелі; outer сам скролить */}
+        <AnimatedBody fill className="px-6 py-5">
+          {children}
+        </AnimatedBody>
 
         {/* Footer */}
         {footer && (

@@ -219,10 +219,15 @@ th[data-dragover="true"] {
   overflow: hidden;
 }
 
+/* Legacy layout — pages that have not been migrated to .page-fill.
+   <main> now has overflow-hidden (для list pages), тому .page-container
+   повинен мати свій власний скрол, інакше довгий контент обрізається. */
 .page-container {
   padding: var(--spacing-page-y) var(--spacing-page-x);
   max-width: 96rem;
   margin: 0 auto;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .page-header {
@@ -231,6 +236,8 @@ th[data-dragover="true"] {
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: var(--spacing-section);
+  /* Всередині .page-fill (flex-col) — header не стискається, щоб не з'їдати простір таблиці */
+  flex-shrink: 0;
 }
 
 .page-title {

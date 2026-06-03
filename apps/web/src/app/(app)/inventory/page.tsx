@@ -184,7 +184,7 @@ export default function InventoryPage() {
       </div>
 
       {/* Table + DetailPanel */}
-      <div className="flex gap-3">
+      <div className="flex flex-1 min-h-0 gap-3">
         <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
           <Table>
             <TableHeader>

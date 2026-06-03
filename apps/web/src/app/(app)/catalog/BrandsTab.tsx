@@ -167,7 +167,7 @@ export default function BrandsTab() {
   const deletedCount = brands.filter(b => !!b.deletedAt).length;
 
   return (
-    <div>
+    <div className="flex flex-col flex-1 min-h-0">
       {!modal && error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
@@ -191,7 +191,7 @@ export default function BrandsTab() {
         </div>
       </div>
 
-      <div className="border border-border rounded-xl bg-surface overflow-auto">
+      <div className="flex-1 min-h-0 border border-border rounded-xl bg-surface overflow-auto">
         <Table>
           <TableHeader>
             <TableRow>

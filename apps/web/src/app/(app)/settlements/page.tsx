@@ -174,9 +174,9 @@ export default function SettlementsPage() {
           {error}
         </div>
       )}
-      <h1 className="page-title mb-6">Взаєморозрахунки</h1>
+      <h1 className="page-title mb-6 shrink-0">Взаєморозрахунки</h1>
 
-      <div className="grid grid-cols-12 gap-6">
+      <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-12 gap-6">
         {/* Left: counterparty list */}
         <div className="col-span-4">
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
