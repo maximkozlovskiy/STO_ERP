@@ -1217,6 +1217,28 @@ useEffect(() => {
 
 ---
 
+### 2026-06-03 — `(entity as any).newField` у toDto() — новий nullable optional у param type пропущено — §1 TypeScript / §13 API Contract
+
+**Сигнал:** `toDto(entity: { id: string; ... })` — новий optional field (`documentDate?: Date | null`) доданий у DB schema і у `create()` logic, але НЕ у типізованому параметрі `toDto`. Розробник використовує `(entity as any).newField` cast щоб обійти TS error замість оновити param type.
+**Причина виникнення:** toDto приймає explicit structural type (не `WorkOrder` from Prisma — бо include/select може повертати різні форми); новий field додається у create/update але забувають оновити toDto param type; `as any` cast — швидке рішення що ховає проблему від компілятора.
+**Підхід до виявлення:** `grep -rn "as any\)\..*Date\|as any\)\.[a-z]" apps/api/src/modules --include="*.service.ts"` → кожен `(entity as any).X` у toDto є симптомом непрописаного типу. Після будь-якого коміту що додає нове поле у schema.prisma + create() — перевірити toDto param type.
+**Підхід до фіксу:** додати `newField?: Type | null` у structural param type `toDto(entity: { ... newField?: Date | null; ... })`. Потім замінити `(entity as any).newField` на `entity.newField`.
+**Критичність:** IMPORTANT — TS contract порушений; IDE refactor не знаходить usages; майбутній consumer toDto не бачить поля у type inference.
+**Де шукати ще:** будь-який `private toDto(entity: { ... })` у service.ts після feat-коміту що додає нове поле; особливо `@db.Date`/`@db.Timestamp` поля (documentDate, confirmedAt, dueDate).
+
+---
+
+### 2026-06-03 — `new Date().toISOString().slice(0,10)` для local date в Kyiv — UTC vs local timezone — §7.2 Frontend Performance / §8.3 Hydration Safety
+
+**Сигнал:** `const today = new Date().toISOString().slice(0, 10)` або `new Date().toISOString().slice(0, 10)` в render body або `useState` initializer; використовується як default дата фільтра або як поле форми documentDate. `toISOString()` повертає UTC — для Ukraine (UTC+2 зимою / UTC+3 влітку) між полуночем і 2-3 AM locale `new Date()` поверне вчорашню UTC дату → фільтр "сьогодні" захоплює вчорашній день.
+**Причина виникнення:** розробник знає що `toISOString()` дає YYYY-MM-DD формат — зручно; не думає про timezone divergence; тест на UI зазвичай робиться вдень де UTC і local date збігаються.
+**Підхід до виявлення:** `grep -rn "toISOString()\.slice(0, 10)" apps/web/src/app --include="*.tsx"` → кожне таке місце — кандидат на timezone bug; якщо це default filter або default form field "today" — IMPORTANT.
+**Підхід до фіксу:** module-level formatter `const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }); const kyivToday = () => KYIV_YMD.format(new Date());`. `sv-SE` locale повертає YYYY-MM-DD. `useState(() => kyivToday())` — lazy initializer, не re-computed on every render. Цей патерн вже використовується у dashboard/page.tsx (KYIV_YMD_FMT) і reports/page.tsx (KYIV_DATE_FMT).
+**Критичність:** IMPORTANT — між midnight і 2-3 AM Ukraine time фільтр "сьогодні" показує документи вчорашнього дня; форма documentDate дефолтить на вчора; деградація без помилки.
+**Де шукати ще:** будь-яка page.tsx з date-filter toolbar (dateFrom/dateTo), форми з documentDate/dueDate default "today", dashboard stats що відфільтровані по today.
+
+---
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
