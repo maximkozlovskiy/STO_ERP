@@ -1,3 +1,5 @@
+'use client';
+
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 export interface ToastItem {
