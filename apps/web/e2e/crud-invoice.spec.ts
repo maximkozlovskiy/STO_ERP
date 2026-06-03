@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { clearDateFilter } from './fixtures';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -146,20 +147,9 @@ test.describe('Рахунки — CRUD', () => {
     }
 
     // Bug #345: invoices page has kyivToday() date filter by default.
-    // Clear date filters via UI (clear both DatePickerInput fields) to show all records.
     await page.goto('/invoices');
     await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
-
-    // Clear date filters: find date inputs (placeholder="Від"/"До") and clear them
-    const dateInputs = page.locator('input[placeholder="Від"], input[placeholder="До"]');
-    const dateCount = await dateInputs.count();
-    for (let i = 0; i < dateCount; i++) {
-      await dateInputs.nth(i).fill('');
-      await dateInputs.nth(i).press('Escape');
-    }
-    // Dismiss DatePicker popup (rdp-month intercepts table clicks) by clicking h1
-    await page.locator('h1').first().click({ force: true });
-    await page.waitForTimeout(500);
+    await clearDateFilter(page);
 
     // Search by number to narrow results
     const searchInput = page.locator('input[placeholder*="Пошук"]').first();

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { clearDateFilter } from './fixtures';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -180,15 +181,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     // Bug #345: purchase-orders page has kyivToday() date filter — clear it + search by number
     await page.goto('/purchase-orders');
     await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
-    const dateInputs = page.locator('input[placeholder="Від"], input[placeholder="До"]');
-    const dateCount = await dateInputs.count();
-    for (let i = 0; i < dateCount; i++) {
-      await dateInputs.nth(i).fill('');
-      await dateInputs.nth(i).press('Escape');
-    }
-    // Dismiss DatePicker popup (rdp-month intercepts table clicks) by clicking h1
-    await page.locator('h1').first().click({ force: true });
-    await page.waitForTimeout(500);
+    await clearDateFilter(page);
     const searchInput = page
       .locator('input[placeholder*="Пошук"], input[placeholder*="пошук"]')
       .first();

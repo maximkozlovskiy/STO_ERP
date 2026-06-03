@@ -2,8 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InvoiceStatus, Prisma } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
 
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => new Date(KYIV_YMD.format(new Date()));
+import { kyivToday } from '../../common/utils/kyiv-date';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';

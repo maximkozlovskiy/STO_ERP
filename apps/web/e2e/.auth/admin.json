@@ -2,10 +2,10 @@
   "cookies": [
     {
       "name": "sto_refresh",
-      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMTAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6ImExMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc4MDUyMjc2NCwiZXhwIjoxNzgzMTE0NzY0fQ.fBtQZzm4okmmuhiT8e_tW37vXWpJ_s95ZAI7VA0rvss",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMTAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6ImExMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc4MDUyNDc2OSwiZXhwIjoxNzgzMTE2NzY5fQ.V46fiokaPgNy_VT_wEU0oA5rkNQkQggbK7wtm3dAFh0",
       "domain": "localhost",
       "path": "/api/auth",
-      "expires": 1815082764.410411,
+      "expires": 1815084769.223105,
       "httpOnly": true,
       "secure": false,
       "sameSite": "Strict"
@@ -23,7 +23,7 @@
       "sessionStorage": [
         {
           "name": "sto_access_token",
-          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMTAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6ImExMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc4MDUyMjc2NCwiZXhwIjoxNzgwNTIzNjY0fQ.Xi82tcJeMr5pisymWv33MYDHNDYUhoabC0KX9Pqp1rY"
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMTAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6ImExMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc4MDUyNDc2OSwiZXhwIjoxNzgwNTI1NjY5fQ.VNB_MTq1pHt8_DZ9UYamZONsXSpNE41XsNtfjfvvU4E"
         }
       ]
     }

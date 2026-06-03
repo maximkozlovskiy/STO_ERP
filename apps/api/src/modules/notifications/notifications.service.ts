@@ -28,56 +28,18 @@ export class NotificationsService {
     event: NotificationEvent,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    // Load branch settings for SMS config — branchId is required; skip without it
     const branchId = typeof payload.branchId === 'string' ? payload.branchId : undefined;
     if (!branchId) {
       this.logger.debug(`branchId не вказано для org=${orgId}, event=${event} — SMS пропущено`);
       return;
     }
-    // Parallel: branchSettings + notificationTemplate are independent reads on different
-    // tables, both filtered by orgId. Both must succeed for SMS dispatch — running them
-    // concurrently collapses 2 sequential RTT into 1 on every notification fan-out.
-    const [branchSettings, template] = await Promise.all([
-      this.prisma.branchSettings.findFirst({
-        where: { branchId, orgId },
-      }),
-      this.prisma.notificationTemplate.findFirst({
-        where: { orgId, eventType: event, channel: 'SMS', isActive: true },
-      }),
-    ]);
-
-    if (!branchSettings?.smsEnabled || !branchSettings?.smsApiKey) {
-      this.logger.debug(`SMS не налаштовано для org=${orgId}, event=${event}`);
-      return;
-    }
-
-    if (!template) {
-      this.logger.debug(`Шаблон сповіщення ${event}/SMS не знайдено для org=${orgId}`);
-      return;
-    }
-
     const phone = typeof payload.phone === 'string' ? payload.phone : undefined;
     if (!phone) return;
 
-    const message = this.renderTemplate(template.body, payload);
+    const config = await this.resolveConfig(orgId, branchId, event);
+    if (!config) return;
 
-    // Enqueue SMS (offline-first — retry if no internet)
-    await this.smsQueue.add(
-      'send-sms',
-      {
-        orgId,
-        phone,
-        message,
-        provider: branchSettings.smsProvider ?? 'turbosms',
-        apiKey: branchSettings.smsApiKey,
-        senderName: branchSettings.smsSenderName ?? 'STO ERP',
-      },
-      {
-        attempts: 10,
-        backoff: { type: 'exponential', delay: 60_000 },
-        removeOnComplete: true,
-      },
-    );
+    await this.sendWithConfig(orgId, phone, config, payload);
   }
 
   /**

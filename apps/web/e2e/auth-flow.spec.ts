@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { clearAuthState } from './fixtures';
 
 // ─── Login flow ──────────────────────────────────────────────────────────────
 
@@ -52,17 +53,6 @@ test.describe('Auth — Login flow', () => {
 
 test.describe('Auth — Guard захищених роутів', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
-
-  // Bug #342: storageState { cookies:[], origins:[] } не завжди скидає httpOnly cookies у shared worker context.
-  // Явно очищуємо cookies + web storage щоб гарантувати fresh unauthenticated state.
-  const clearAuthState = async (page: import('@playwright/test').Page) => {
-    await page.context().clearCookies();
-    await page.goto('/login');
-    await page.evaluate(() => {
-      sessionStorage.clear();
-      localStorage.clear();
-    });
-  };
 
   const PROTECTED = [
     '/work-orders',

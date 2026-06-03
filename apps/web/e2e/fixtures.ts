@@ -1,5 +1,36 @@
 import { test as base, expect, Page } from '@playwright/test';
 
+// ─── Shared auth helpers ──────────────────────────────────────────────────
+
+export async function clearAuthState(page: Page): Promise<void> {
+  await page.context().clearCookies();
+  await page.goto('/login');
+  await page.evaluate(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+}
+
+// ─── Shared date-filter helpers ───────────────────────────────────────────
+
+export async function clearDateFilter(page: Page): Promise<void> {
+  const dateInputs = page.locator('input[placeholder="Від"], input[placeholder="До"]');
+  const count = await dateInputs.count();
+  await Promise.all(
+    Array.from({ length: count }, (_, i) =>
+      dateInputs
+        .nth(i)
+        .fill('')
+        .then(() => dateInputs.nth(i).press('Escape')),
+    ),
+  );
+  await page.locator('h1').first().click({ force: true });
+  await page
+    .locator('.rdp-month')
+    .waitFor({ state: 'hidden', timeout: 2_000 })
+    .catch(() => {});
+}
+
 // ─── Shared helpers ────────────────────────────────────────────────────────
 
 export async function loginViaAPI(page: Page) {

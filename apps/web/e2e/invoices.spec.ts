@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { clearDateFilter } from './fixtures';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -73,21 +74,11 @@ async function createInvoiceApi(
   return apiPost(page, '/invoices', { counterpartyId: cpId, amount });
 }
 
-async function gotoInvoices(page: Page, clearDateFilter = false) {
+async function gotoInvoices(page: Page, withClearDateFilter = false) {
   await page.goto('/invoices');
   await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
-  if (clearDateFilter) {
-    // Bug #345: invoices page has kyivToday() date filter by default — clear to show all records
-    const dateInputs = page.locator('input[placeholder="Від"], input[placeholder="До"]');
-    const count = await dateInputs.count();
-    for (let i = 0; i < count; i++) {
-      await dateInputs.nth(i).fill('');
-      await dateInputs.nth(i).press('Escape');
-    }
-    // Dismiss DatePicker popup (rdp-month intercepts table clicks) by clicking h1
-    await page.locator('h1').first().click({ force: true });
-    await page.waitForTimeout(500);
-  }
+  // Bug #345: invoices page has kyivToday() date filter by default
+  if (withClearDateFilter) await clearDateFilter(page);
 }
 
 // ─── 1. Базова навігація ──────────────────────────────────────────────────────
