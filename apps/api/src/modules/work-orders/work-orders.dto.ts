@@ -8,6 +8,7 @@ import {
   Min,
   Max,
   IsISO8601,
+  IsDateString,
   IsBoolean,
   IsBooleanString,
 } from 'class-validator';
@@ -179,16 +180,18 @@ export class WorkOrderQueryDto {
   @IsBooleanString()
   showDeleted?: string;
 
+  // Bug #337: @IsISO8601() приймає datetime рядки з часовою компонентою → хибна фільтрація.
+  // @IsDateString() приймає лише YYYY-MM-DD формат — відповідно до решти модулів.
   @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsISO8601()
+  @IsDateString()
   dateFrom?: string;
 
   @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsISO8601()
+  @IsDateString()
   dateTo?: string;
 
   @ApiPropertyOptional({ default: 1 })

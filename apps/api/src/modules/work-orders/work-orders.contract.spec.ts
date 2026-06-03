@@ -137,6 +137,23 @@ describe('WorkOrders — HTTP Contract', () => {
       // Для перевірки auth gateway цього достатньо.
       expect(res.statusCode).toBe(403);
     });
+
+    // Bug #338 regression guard — dateFrom/dateTo параметри мають прокидатись у service
+    // через WorkOrderQueryDto. Аналогічний guard є у purchase-orders.contract.spec.ts.
+    it('Bug #338: dateFrom + dateTo => query.dateFrom i query.dateTo v obiekt peredanomu do service.findAll', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
+      jwtAllow = true;
+      const callsBefore = serviceMock.findAll.mock.calls.length;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/work-orders?dateFrom=2026-01-01&dateTo=2026-01-31',
+      });
+      expect(res.statusCode).toBe(200);
+      // Controller передає query як WorkOrderQueryDto об'єкт (не spread)
+      const queryArg = serviceMock.findAll.mock.calls[callsBefore]![1] as Record<string, unknown>;
+      expect(queryArg.dateFrom).toBe('2026-01-01');
+      expect(queryArg.dateTo).toBe('2026-01-31');
+    });
   });
 
   describe('POST /work-orders', () => {

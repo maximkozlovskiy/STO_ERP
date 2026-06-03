@@ -1,0 +1,282 @@
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { Test } from '@nestjs/testing';
+import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { InvoicesController } from './invoices.controller';
+import { InvoicesService } from './invoices.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PrismaService } from '../../prisma/prisma.service';
+import { DocumentNumberService } from '../document-number/document-number.service';
+import { PdfService } from '../pdf/pdf.service';
+
+// ─── Mocks ────────────────────────────────────────────────
+
+const serviceMock = {
+  findAll: vi.fn(),
+  findOne: vi.fn(),
+  create: vi.fn(),
+  createFromWorkOrder: vi.fn(),
+  update: vi.fn(),
+  remove: vi.fn(),
+  transition: vi.fn(),
+  clone: vi.fn(),
+  generatePdf: vi.fn(),
+  addLine: vi.fn(),
+  updateLine: vi.fn(),
+  removeLine: vi.fn(),
+};
+
+let jwtAllow = true;
+const mockJwtGuard = {
+  canActivate: vi.fn().mockImplementation(ctx => {
+    if (!jwtAllow) return false;
+    const req = ctx.switchToHttp().getRequest();
+    req.user = { id: 'emp-1', orgId: 'org-1', role: 'ADMIN' };
+    return true;
+  }),
+};
+const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
+
+// Bug #339: invoices module had no contract spec at all — dateFrom/dateTo forwarding was untested.
+describe('Invoices — HTTP Contract', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      controllers: [InvoicesController],
+      providers: [
+        { provide: InvoicesService, useValue: serviceMock },
+        { provide: PrismaService, useValue: {} },
+        { provide: DocumentNumberService, useValue: {} },
+        { provide: PdfService, useValue: {} },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
+      .compile();
+
+    app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
+    );
+    await app.init();
+    await (app as NestFastifyApplication).getHttpAdapter().getInstance().ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    jwtAllow = true;
+    vi.clearAllMocks();
+  });
+
+  const VALID_UUID = '11111111-1111-4111-8111-111111111111';
+
+  describe('GET /invoices', () => {
+    it('повертає 200 з pagination shape', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/invoices?page=1&limit=20',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        items: expect.any(Array),
+        total: expect.any(Number),
+        page: expect.any(Number),
+        limit: expect.any(Number),
+      });
+    });
+
+    it('повертає 403 без JWT', async () => {
+      jwtAllow = false;
+      const res = await (app as NestFastifyApplication).inject({ method: 'GET', url: '/invoices' });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('відхиляє limit=201 з 400', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/invoices?limit=201',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    // Bug #339 regression guard — dateFrom/dateTo мають прокидатись до service.findAll
+    it('Bug #339: dateFrom + dateTo → service.findAll отримує дати', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/invoices?dateFrom=2026-01-01&dateTo=2026-01-31',
+      });
+      expect(res.statusCode).toBe(200);
+      // InvoicesController.findAll викликає service.findAll(orgId, page, limit, status, q, showDeleted, dateFrom, dateTo)
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        1,
+        20,
+        undefined,
+        undefined,
+        false,
+        '2026-01-01',
+        '2026-01-31',
+      );
+    });
+
+    it('Bug #339: showDeleted=true → service.findAll отримує true', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/invoices?showDeleted=true',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        1,
+        20,
+        undefined,
+        undefined,
+        true,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('Bug #339: status + q → service.findAll отримує фільтри', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/invoices?status=DRAFT&q=INV-001',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        1,
+        20,
+        'DRAFT',
+        'INV-001',
+        false,
+        undefined,
+        undefined,
+      );
+    });
+  });
+
+  describe('POST /invoices', () => {
+    it("повертає 400 без обов'язкових полів (counterpartyId, amount)", async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/invoices',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ notes: 'test' }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 коли counterpartyId не UUID', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/invoices',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ counterpartyId: 'not-uuid', amount: 100 }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 коли amount = 0 (Min(0.01))', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/invoices',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ counterpartyId: VALID_UUID, amount: 0 }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 201 при валідному body', async () => {
+      serviceMock.create.mockResolvedValueOnce({
+        id: VALID_UUID,
+        orgId: 'org-1',
+        number: 'INV-2026-0001',
+        status: 'DRAFT',
+        counterpartyId: VALID_UUID,
+        amount: 100,
+        totalWithoutVat: 100,
+        totalVat: 0,
+        totalWithVat: 100,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/invoices',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ counterpartyId: VALID_UUID, amount: 100 }),
+      });
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toMatchObject({ id: expect.any(String), number: expect.any(String) });
+    });
+
+    it('documentDate="" → передається undefined до service (emptyToUndefined transform)', async () => {
+      serviceMock.create.mockResolvedValueOnce({
+        id: VALID_UUID,
+        orgId: 'org-1',
+        number: 'INV-2026-0002',
+        status: 'DRAFT',
+        counterpartyId: VALID_UUID,
+        amount: 50,
+        totalWithoutVat: 50,
+        totalVat: 0,
+        totalWithVat: 50,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/invoices',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ counterpartyId: VALID_UUID, amount: 50, documentDate: '' }),
+      });
+      expect(res.statusCode).toBe(201);
+      const dtoArg = serviceMock.create.mock.calls[0]![1] as Record<string, unknown>;
+      expect(dtoArg.documentDate).toBeUndefined();
+    });
+  });
+
+  describe('GET /invoices/:id', () => {
+    it('повертає 200 при валідному UUID', async () => {
+      serviceMock.findOne.mockResolvedValueOnce({
+        id: VALID_UUID,
+        orgId: 'org-1',
+        number: 'INV-001',
+        status: 'DRAFT',
+        counterpartyId: VALID_UUID,
+        amount: 100,
+        totalWithoutVat: 100,
+        totalVat: 0,
+        totalWithVat: 100,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lines: [],
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/invoices/${VALID_UUID}`,
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('повертає 400 для не-UUID id', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/invoices/not-a-uuid',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+});

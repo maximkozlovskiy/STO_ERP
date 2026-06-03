@@ -280,7 +280,7 @@ function InfrastructurePageClient() {
   ];
 
   return (
-    <div className="page-fill p-4 md:p-6 gap-4">
+    <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <h1 className="page-title">Інфраструктура</h1>
       </div>

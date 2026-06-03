@@ -47,7 +47,7 @@ function CatalogPageClient() {
   const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
 
   return (
-    <div className="page-fill p-4 md:p-6 gap-4">
+    <div className="page-fill p-4 md:p-6">
       <h1 className="page-title shrink-0">Каталог</h1>
 
       <div className="flex gap-1 bg-secondary rounded-lg p-1 w-fit shrink-0">

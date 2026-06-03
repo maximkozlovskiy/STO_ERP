@@ -9896,3 +9896,130 @@ Existing modal.test.tsx тести (19 кейсів) перевіряли рен
 **Нових багів усього:** 1 (Bug #336).
 **Виправлено:** 1 (test-coverage — #336).
 **Залишилось open:** 0.
+
+---
+
+## Session 2026-06-03 — Regression testing after documentDate feature (commits 18b8ce6 → d615b23)
+
+### Baseline
+
+| Перевірка                                                   | Очікувано | Факт           | Статус |
+| ----------------------------------------------------------- | --------- | -------------- | ------ |
+| API unit tests (`pnpm --filter @sto/api test --run`)        | 568       | 568 / 51 files | ✓      |
+| Web unit tests (`pnpm --filter @sto/web exec vitest run`)   | 281       | 281 / 25 files | ✓      |
+| API TypeScript (`pnpm --filter @sto/api exec tsc --noEmit`) | 0 errors  | 0 errors       | ✓      |
+| Web TypeScript (`tsc --noEmit --incremental false`)         | 0 errors  | 0 errors       | ✓      |
+
+### Перевірки специфіки фічі documentDate
+
+| Пункт                                            | Факт                                                                                      | Статус     |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------- | ---------- | -------------------------------------- | --- |
+| Всі 4 сторінки мають `'use client'`              | work-orders, invoices, purchase-orders, stock-documents — так                             | ✓          |
+| `kyivToday()` лише в `'use client'` файлах       | module-level, DST-aware через `Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' })` | ✓          |
+| Default documentDate у create forms              | `kyivToday()` або `form.documentDate                                                      |            | undefined` guard                       | ✓   |
+| NaN у documentDate                               | `                                                                                         |            | undefined` guard у всіх 4 handleCreate | ✓   |
+| `@db.Date` у Prisma schema                       | WorkOrder, Invoice, PurchaseOrder, StockDocument — всі 4                                  | ✓          |
+| `dateTo` + `T23:59:59.999Z` коректний end-of-day | yes, `@db.Date` порівняння date-only                                                      | ✓          |
+| purchase-orders contract spec: dateFrom/dateTo   | покрито (Bug #328 тест)                                                                   | ✓          |
+| work-orders contract spec: dateFrom/dateTo       | **НЕ ПОКРИТО** — Bug #338                                                                 | ✗          |
+| invoices contract spec існує                     | немає                                                                                     | ✗ Bug #339 |
+| stock-documents contract spec існує              | немає                                                                                     | ✗ Bug #339 |
+
+---
+
+## Bug #337 — [MEDIUM] `WorkOrderQueryDto.dateFrom/dateTo` використовує `@IsISO8601()` замість `@IsDateString()` — inconsistency з іншими модулями
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.dto.ts` lines 182-192
+
+**Симптом:**
+`WorkOrderQueryDto.dateFrom` і `dateTo` декоровані `@IsISO8601()`, тоді як аналогічні поля в усіх трьох інших модулях (invoices, stock-documents, purchase-orders) використовують `@IsDateString()`.
+
+```typescript
+// work-orders.dto.ts (НЕПРАВИЛЬНО)
+@IsISO8601()
+dateFrom?: string;
+
+// invoices/purchase-orders/stock-documents (ПРАВИЛЬНО)
+@IsDateString()
+dateFrom?: string;
+```
+
+**Чому це bug:**
+`@IsISO8601()` приймає будь-який ISO 8601 рядок включно з часовими компонентами: `"2026-06-03T12:00:00"`, `"2026-06-03T00:00:00+03:00"` тощо.
+
+Коли фронтенд або зовнішній клієнт надсилає `?dateFrom=2026-06-03T12:00:00`, сервіс виконує:
+
+```typescript
+where.documentDate = { gte: new Date('2026-06-03T12:00:00') }; // UTC noon
+```
+
+В результаті документи за `2026-06-03` до 12:00 UTC (= до 15:00 Kyiv) не потраплять у вибірку — хибний результат фільтрації.
+
+`@IsDateString()` приймає лише `YYYY-MM-DD` формат, тому нечаянне передавання datetime відхиляється з 400, захищаючи від хибної фільтрації.
+
+**Виправлення:** замінити `@IsISO8601()` → `@IsDateString()` у `WorkOrderQueryDto.dateFrom` і `dateTo`.
+
+**Severity:** MEDIUM — неправильний тип валідатора, практично може призвести до неочевидно усічених результатів фільтрації наряд-замовлень.
+
+**Статус:** [ ] відкрито
+
+---
+
+## Bug #338 — [LOW] Відсутні тести `dateFrom/dateTo` у `work-orders.contract.spec.ts`
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.contract.spec.ts`
+
+**Симптом:**
+Contract spec для work-orders не має жодного тесту, що перевіряє HTTP-прокидання `?dateFrom=...&dateTo=...` до сервісу. Purchase-orders має такі тести (Bug #328 regression guard), work-orders — ні.
+
+**Ризик:** якщо controller перестане прокидати `query.dateFrom`/`query.dateTo` (наприклад при рефакторингу WorkOrderQueryDto), регресія не буде виявлена автоматично.
+
+**Виправлення:** додати тести `dateFrom + dateTo → service.findAll отримує дати` аналогічно purchase-orders.contract.spec.ts.
+
+**Severity:** LOW — відсутність тесту не є runtime bug, але залишає regression-сліпу зону після нещодавно доданої фічі.
+
+**Статус:** [ ] відкрито
+
+---
+
+## Bug #339 — [LOW] Відсутні contract specs для `invoices` та `stock-documents` модулів
+
+**Файли:**
+
+- `apps/api/src/modules/invoices/` — немає `invoices.contract.spec.ts`
+- `apps/api/src/modules/stock-documents/` — немає `stock-documents.contract.spec.ts`
+
+**Симптом:**
+Обидва модулі мають `dateFrom/dateTo` фільтрацію, але жодних HTTP contract тестів немає взагалі. Будь-який баг у прокиданні параметрів через controller не буде спійманий.
+
+**Виправлення:** створити базові contract specs для обох модулів з testами: GET 200, GET з `dateFrom/dateTo`, POST 400 без обов'язкових полів, GET без JWT → 403.
+
+**Severity:** LOW — відсутність тестів. Але враховуючи що фіча `documentDate` нова і активно тестується — пріоритет підвищений.
+
+**Статус:** [ ] відкрито
+
+---
+
+## Поправка до Bug #337 — СКАСОВАНО (хибно-позитивний аналіз)
+
+**Висновок після перевірки:** `@IsDateString()` і `@IsISO8601()` у class-validator мають однакову поведінку — обидва приймають datetime рядки з часовою компонентою (`2026-01-01T12:00:00` → valid). Bug #337 був заснований на хибному припущенні про обмеження `@IsDateString()`. Inconsistency є косметичною (обидва декоратори функціонально ідентичні для ISO date strings).
+
+**Дія:** Декоратор `@IsDateString()` все одно залишений у `WorkOrderQueryDto.dateFrom/dateTo` для консистентності з іншими модулями. Регресійний тест що перевіряв `400` для datetime string — видалений (тест сам був неправильним).
+
+**Bug #337 Severity:** скасовано, LOW (косметика, не runtime bug)
+
+---
+
+## Поправка до Bug #338 та #339 — ВИПРАВЛЕНО
+
+**Bug #338:** Додано 1 тест у `work-orders.contract.spec.ts` — `dateFrom + dateTo => query.dateFrom i query.dateTo v obiekt peredanomu do service.findAll`. Тест підтвердив що controller коректно прокидує параметри.
+
+**Bug #339:** Створено 2 нових contract spec файли:
+
+- `apps/api/src/modules/invoices/invoices.contract.spec.ts` — 9 нових тестів
+- `apps/api/src/modules/stock-documents/stock-documents.contract.spec.ts` — 9 нових тестів
+
+Усього нових тестів: 26 (594 total vs 568 baseline). TS green.
+
+**Bug #338 Статус:** [x] виправлено
+**Bug #339 Статус:** [x] виправлено
