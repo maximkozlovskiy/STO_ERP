@@ -494,7 +494,6 @@ export default function StockDocumentsPage() {
   const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'];
   const statuses = ['', 'DRAFT', 'CONFIRMED', 'CANCELLED'];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const buildDocTabs = (doc: StockDoc): DetailPanelTab[] => [
     {
       key: 'info',
@@ -877,7 +876,6 @@ export default function StockDocumentsPage() {
           title={selectedDoc?.number ?? ''}
           subtitle={selectedDoc ? TYPE_LABELS[selectedDoc.type] : undefined}
           tabs={selectedDoc ? buildDocTabs(selectedDoc) : undefined}
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           configFields={schemaToPanelConfigFields(
             STOCK_DOC_PANEL_SCHEMA as any,
             panelConfig.config,

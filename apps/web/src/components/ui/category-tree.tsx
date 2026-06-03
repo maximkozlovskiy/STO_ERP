@@ -247,7 +247,7 @@ export function CategoryTree({
     } else {
       setExpandedIds(new Set());
     }
-  }, [allCollapsed, tree]);
+  }, [allCollapsed, visibleTree]);
 
   return (
     <aside
