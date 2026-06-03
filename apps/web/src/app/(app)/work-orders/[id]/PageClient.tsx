@@ -22,7 +22,15 @@ import { fmtMoney, fmtInt, fmtDate, fmtDateTime, fmtShortDateTime } from '@/lib/
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
-import { WO_STATUS_LABELS, WO_STATUS_TRANSITIONS } from '@sto/shared';
+import {
+  WO_STATUS_LABELS,
+  WO_STATUS_TRANSITIONS,
+  WO_PRIORITY_LABELS,
+  WO_PRIORITY_BADGE,
+  WO_CATEGORY_LABELS,
+} from '@sto/shared';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { Badge } from '@/components/ui/badge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -94,6 +102,7 @@ interface WorkOrderDetail {
   priority?: string;
   repairCategory?: string | null;
   clientApproval?: boolean;
+  documentDate?: string | null;
   totalLabor: number;
   totalParts: number;
   totalAmount: number;
@@ -730,6 +739,60 @@ export default function WorkOrderCardPage() {
 
   const [cloning, setCloning] = useState(false);
 
+  // ── Редагування реквізитів ────────────────────────────────────────────────
+  const [editModal, setEditModal] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    documentDate: '',
+    priority: '',
+    repairCategory: '',
+    description: '',
+    inMileage: '',
+    dueDate: '',
+    clientApproval: false,
+  });
+
+  const openEditModal = () => {
+    if (!wo) return;
+    setEditForm({
+      documentDate: wo.documentDate ?? '',
+      priority: wo.priority ?? 'NORMAL',
+      repairCategory: wo.repairCategory ?? '',
+      description: wo.description ?? '',
+      inMileage: wo.inMileage != null ? String(wo.inMileage) : '',
+      dueDate: wo.dueDate ? wo.dueDate.slice(0, 10) : '',
+      clientApproval: wo.clientApproval ?? false,
+    });
+    setEditModal(true);
+  };
+
+  const saveEdit = async () => {
+    if (!wo) return;
+    setEditSaving(true);
+    setError('');
+    try {
+      const updated = await apiFetch<WorkOrderDetail>(`/work-orders/${wo.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          documentDate: editForm.documentDate || undefined,
+          priority: editForm.priority || undefined,
+          repairCategory: editForm.repairCategory || undefined,
+          description: editForm.description || undefined,
+          inMileage: editForm.inMileage ? Number(editForm.inMileage) : undefined,
+          dueDate: editForm.dueDate || undefined,
+          clientApproval: editForm.clientApproval,
+        }),
+      });
+      setWo(updated);
+      setEditModal(false);
+      toast.success('Реквізити збережено');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const downloadPdf = async () => {
     // Bug #77: use apiBlobFetch which does silent refresh on 401 — direct fetch
     // breaks when access token expired (~15min) requiring full page reload.
@@ -903,61 +966,86 @@ export default function WorkOrderCardPage() {
       </div>
 
       {/* Info */}
-      <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-2 gap-3 text-sm">
-        {wo.branchName && (
-          <div>
-            <p className="text-xs text-muted-foreground">Філія</p>
-            <p className="text-foreground">{wo.branchName}</p>
-          </div>
-        )}
-        {wo.priority && (
-          <div>
-            <p className="text-xs text-muted-foreground">Пріоритет</p>
-            <p className="text-foreground">{wo.priority}</p>
-          </div>
-        )}
-        {wo.repairCategory && (
-          <div>
-            <p className="text-xs text-muted-foreground">Категорія ремонту</p>
-            <p className="text-foreground">{wo.repairCategory}</p>
-          </div>
-        )}
-        {wo.dueDate && (
-          <div>
-            <p className="text-xs text-muted-foreground">Дедлайн</p>
-            <p className="text-foreground">{fmtDate(wo.dueDate)}</p>
-          </div>
-        )}
-        {wo.clientApproval != null && (
-          <div>
-            <p className="text-xs text-muted-foreground">Погодження клієнта</p>
-            <p className="text-foreground">{wo.clientApproval ? 'Так' : 'Ні'}</p>
-          </div>
-        )}
-        {wo.inMileage != null && (
-          <div>
-            <p className="text-xs text-muted-foreground">Пробіг (вхід)</p>
-            <p className="text-foreground">{fmtInt(wo.inMileage)} км</p>
-          </div>
-        )}
-        {wo.outMileage != null && (
-          <div>
-            <p className="text-xs text-muted-foreground">Пробіг (вихід)</p>
-            <p className="text-foreground">{fmtInt(wo.outMileage)} км</p>
-          </div>
-        )}
-        {wo.plannedAt && (
-          <div>
-            <p className="text-xs text-muted-foreground">Заплановано</p>
-            <p className="text-foreground">{fmtDateTime(wo.plannedAt)}</p>
-          </div>
-        )}
-        {wo.description && (
-          <div className="col-span-2">
-            <p className="text-xs text-muted-foreground">Опис</p>
-            <p className="text-foreground">{wo.description}</p>
-          </div>
-        )}
+      <div className="bg-surface rounded-xl border border-border p-5 text-sm">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+            Реквізити
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={openEditModal}
+            className="h-6 text-[12px] px-2"
+          >
+            Редагувати
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {wo.documentDate && (
+            <div>
+              <p className="text-xs text-muted-foreground">Дата документа</p>
+              <p className="text-foreground font-medium">{fmtDate(wo.documentDate)}</p>
+            </div>
+          )}
+          {wo.branchName && (
+            <div>
+              <p className="text-xs text-muted-foreground">Філія</p>
+              <p className="text-foreground">{wo.branchName}</p>
+            </div>
+          )}
+          {wo.priority && (
+            <div>
+              <p className="text-xs text-muted-foreground">Пріоритет</p>
+              <Badge variant={WO_PRIORITY_BADGE[wo.priority] ?? 'secondary'} className="mt-0.5">
+                {WO_PRIORITY_LABELS[wo.priority] ?? wo.priority}
+              </Badge>
+            </div>
+          )}
+          {wo.repairCategory && (
+            <div>
+              <p className="text-xs text-muted-foreground">Категорія ремонту</p>
+              <p className="text-foreground">
+                {WO_CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
+              </p>
+            </div>
+          )}
+          {wo.dueDate && (
+            <div>
+              <p className="text-xs text-muted-foreground">Дедлайн</p>
+              <p className="text-foreground">{fmtDate(wo.dueDate)}</p>
+            </div>
+          )}
+          {wo.clientApproval != null && (
+            <div>
+              <p className="text-xs text-muted-foreground">Погодження клієнта</p>
+              <p className="text-foreground">{wo.clientApproval ? 'Так' : 'Ні'}</p>
+            </div>
+          )}
+          {wo.inMileage != null && (
+            <div>
+              <p className="text-xs text-muted-foreground">Пробіг (вхід)</p>
+              <p className="text-foreground">{fmtInt(wo.inMileage)} км</p>
+            </div>
+          )}
+          {wo.outMileage != null && (
+            <div>
+              <p className="text-xs text-muted-foreground">Пробіг (вихід)</p>
+              <p className="text-foreground">{fmtInt(wo.outMileage)} км</p>
+            </div>
+          )}
+          {wo.plannedAt && (
+            <div>
+              <p className="text-xs text-muted-foreground">Заплановано</p>
+              <p className="text-foreground">{fmtDateTime(wo.plannedAt)}</p>
+            </div>
+          )}
+          {wo.description && (
+            <div className="col-span-2">
+              <p className="text-xs text-muted-foreground">Опис</p>
+              <p className="text-foreground">{wo.description}</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* FSM Buttons */}
@@ -1757,6 +1845,108 @@ export default function WorkOrderCardPage() {
       <DirtyConfirmDialog {...lineDirty.dialogProps} />
       <DirtyConfirmDialog {...partDirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
+
+      {/* ── Редагування реквізитів ─────────────────────────────────────────── */}
+      <Modal
+        open={editModal}
+        onClose={() => setEditModal(false)}
+        title="Редагування реквізитів"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button variant="outline" onClick={() => setEditModal(false)}>
+              Скасувати
+            </Button>
+            <Button onClick={saveEdit} loading={editSaving}>
+              Зберегти
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1">
+              Дата документа
+            </label>
+            <DatePickerInput
+              value={editForm.documentDate}
+              onChange={v => setEditForm(f => ({ ...f, documentDate: v }))}
+              placeholder="ДД.ММ.РРРР"
+            />
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1">Пріоритет</label>
+            <Select
+              value={editForm.priority}
+              onChange={e => setEditForm(f => ({ ...f, priority: e.target.value }))}
+            >
+              <option value="LOW">Низький</option>
+              <option value="NORMAL">Звичайний</option>
+              <option value="HIGH">Високий</option>
+              <option value="URGENT">Терміново</option>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1">
+              Категорія ремонту
+            </label>
+            <Select
+              value={editForm.repairCategory}
+              onChange={e => setEditForm(f => ({ ...f, repairCategory: e.target.value }))}
+            >
+              <option value="">— не вказано —</option>
+              <option value="MAINTENANCE">ТО</option>
+              <option value="CURRENT_REPAIR">Поточний ремонт</option>
+              <option value="MAJOR_REPAIR">Кап. ремонт</option>
+              <option value="BODY_REPAIR">Кузовний</option>
+              <option value="DIAGNOSTICS">Діагностика</option>
+              <option value="WARRANTY">Гарантійний</option>
+              <option value="SEASONAL">Сезонне</option>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1">Дедлайн</label>
+            <DatePickerInput
+              value={editForm.dueDate}
+              onChange={v => setEditForm(f => ({ ...f, dueDate: v }))}
+              placeholder="ДД.ММ.РРРР"
+            />
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1">
+              Пробіг (вхід), км
+            </label>
+            <Input
+              type="number"
+              min={0}
+              value={editForm.inMileage}
+              onChange={e => setEditForm(f => ({ ...f, inMileage: e.target.value }))}
+              placeholder="0"
+            />
+          </div>
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer text-[13px] font-medium text-foreground">
+              <input
+                type="checkbox"
+                checked={editForm.clientApproval}
+                onChange={e => setEditForm(f => ({ ...f, clientApproval: e.target.checked }))}
+                className="h-4 w-4 rounded border-border accent-primary"
+              />
+              Погодження клієнта
+            </label>
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1">Опис</label>
+            <textarea
+              value={editForm.description}
+              onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+              rows={3}
+              placeholder="Опис робіт..."
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
