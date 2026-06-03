@@ -199,6 +199,10 @@ grep -rn "\.add(" apps/api/src/ --include="*.ts" | grep -v "attempts\|spec"
 # Прямі HTTP поза чергою
 grep -rn "axios\|node-fetch\|https\.request\|http\.request" apps/api/src/modules/ --include="*.ts" \
   | grep -v "spec\|queue\|processor"
+
+# @Process без concurrency (IMPORTANT: без concurrency Bull default = 1, але для I/O процесорів
+# з мережевими викликами це означає серіалізацію: 100 jobs × 15s = 1500s стіни)
+grep -rn "@Process(" apps/api/src/ --include="*.processor.ts" | grep -v "concurrency\|spec"
 ```
 
 - [ ] Кожен `.add()` → `attempts ≥ 10`, `backoff: { type: 'exponential' }`
@@ -206,6 +210,11 @@ grep -rn "axios\|node-fetch\|https\.request\|http\.request" apps/api/src/modules
 - [ ] SMS: `attempts: 10`, `backoff: { delay: 60_000 }`
 - [ ] Процесори → `try/catch` + `throw err` (щоб BullMQ retry спрацював)
 - [ ] Ніяких прямих HTTP до зовнішніх API поза чергою
+- [ ] **Кожен `@Process(name)` → `@Process({ name, concurrency: N })`** — обов'язковий explicit concurrency:
+  - Мережевий I/O (HTTP до Checkbox/SMS/webhook): `concurrency: 3–5` (обмежує provider rate-limit)
+  - Легкі DB write (loyalty earn, тощо): `concurrency: 3` (паралелізм при burst payments)
+  - Планувальник з batch fan-out (followup daily): `concurrency: 1` (serialize щоб не 429 SMS)
+  - Bug-pattern (cycle 3): `loyalty`/`checkbox`/`followup` processors мали `@Process('name')` без concurrency — checkbox з 15s HTTP calls серіалізував чергу; 100 receipt jobs = 1500s wall-clock
 
 #### §2.6 Sentry
 
