@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+94e68a5 fix(tester): Bug #346 — checkbox.processor idempotency guard before Checkbox API call
 9a5b263 fix(review): add explicit concurrency to loyalty/followup/checkbox processors
 6fd730e fix(sync): kyivToday() for documentDate default in work-orders, stock-documents, purchase-orders
 4f87da2 perf(optimize): add concurrency to outbound-webhook and sms BullMQ processors
@@ -48,7 +49,8 @@ cde1792 fix(review): sync shared FSM transitions with backend authority
 TypeScript: ✅ 0 errors (api, web, shared)
 
 Latest review: 2026-06-04 (sto-review-agent, cycle 3, HEAD 9a5b263) — **1 fix (3 processors). Verified clean: (1) kyivToday() — invoices/purchase-orders/stock-documents/work-orders all correct; no other services write documentDate. (2) Decimal→Number — all DTO conversions use Number(), no .toString() on Decimal fields. (3) @Roles — webhooks/warranties/loyalty/completion-acts all have @Roles on every endpoint. (4) ParseUUIDPipe — all new endpoints (webhooks/warranties/loyalty/completion-acts) have ParseUUIDPipe. (5) forwardRef — goods.module.ts→InventoryModule: intentional, no new circulars. Fixed: loyalty.processor @Process('earn') → concurrency:3; followup.processor @Process('send-reminders') → concurrency:1 (serialize daily org batches to avoid SMS 429); checkbox.processor @Process('fiscal-receipt') → concurrency:3 (15s HTTP calls blocked queue; 100 receipts = 1500s without concurrency). sms.processor (concurrency:3) and webhooks.processor (concurrency:5) were already fixed in cycle 2 optimize.**
-Unit+Contract: ✅ 594/594 passed (api) | **281/281 passed (web)**
+Unit+Contract: ✅ 597/597 passed (api, +3 checkbox idempotency tests) | **281/281 passed (web)**
+Latest tester: 2026-06-04 (sto-tester-agent, cycle 3, HEAD 94e68a5) — **1 bug found + fixed. Bug #346 [MEDIUM]: checkbox.processor missing idempotency guard — on retry after transient DB error, Checkbox API was called again creating duplicate fiscal receipt. Fixed: payment.findFirst({ fiscalReceiptId }) check before API call + 3 regression tests. kyivToday() verified correct (returns Date object, not string). loyalty.processor concurrency=3 balance writes verified safe (Postgres atomic increment). checkbox.processor concurrency=3 verified safe (different jobs = different paymentIds, same-job retries are sequential in BullMQ). tsc 0 errors api+web+shared.**
 
 Latest sync: 2026-06-04 (sto-sync-agent, HEAD 6fd730e, cycle 3 final) — **Direction 1: 0 missing. Direction 2: 0 URL mismatches. Direction 3: 1 timezone mismatch fixed across 3 backend services.** Verified: (1) invoices.service.ts kyivToday() — returns new Date(KYIV_YMD.format(new Date())) i.e. midnight UTC of Kyiv date; documentDate stored as @db.Date; frontend sends YYYY-MM-DD string (sv-SE format) — no conflict. (2) webhooks.processor concurrency:5 + sms.processor concurrency:3 — these are BullMQ processor decorators, no response contract change. (3) E2E clearDateFilter pattern — test-helper only, no API URL change. Fixed: work-orders.service.ts + stock-documents.service.ts + purchase-orders.service.ts — all 3 used `new Date()` (UTC midnight) as documentDate fallback when not provided by frontend; invoices.service.ts was fixed in e2e cycle but the other 3 were missed. Between 00:00 and 02:00-03:00 Kyiv time this caused documents to be created with yesterday's date. All 3 services now use module-level KYIV_YMD + kyivToday() pattern matching invoices.service.ts. tsc 0 errors api+web. API 594/594 passed.
 
