@@ -18,6 +18,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
   CategoryTree,
@@ -389,7 +390,10 @@ export default function GoodsTab() {
   );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
-  const bulkSelect = useBulkSelect(goods?.items ?? []);
+  // Bug #328: `?? []` creates a fresh array literal each render → useBulkSelect prunes
+  // every cycle. Use module-level frozen EMPTY_ITEMS for stable reference.
+  const goodsItems = goods?.items ?? (EMPTY_ITEMS as unknown as Good[]);
+  const bulkSelect = useBulkSelect(goodsItems);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;

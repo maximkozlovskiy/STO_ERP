@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, Layers, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -180,7 +181,10 @@ export default function ServicesTab() {
   );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
-  const bulkSelect = useBulkSelect(services?.items ?? []);
+  // Bug #328: `?? []` creates a fresh array literal each render → useBulkSelect prunes
+  // every cycle. Use module-level frozen EMPTY_ITEMS for stable reference.
+  const servicesItems = services?.items ?? (EMPTY_ITEMS as unknown as Service[]);
+  const bulkSelect = useBulkSelect(servicesItems);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;

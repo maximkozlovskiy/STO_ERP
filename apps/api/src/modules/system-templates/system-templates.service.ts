@@ -22,6 +22,9 @@ export class SystemTemplatesService {
     const items = await this.prisma.systemTemplate.findMany({
       where: entityType ? { entityType } : undefined,
       orderBy: [{ entityType: 'asc' }, { sortOrder: 'asc' }],
+      // Seed-managed catalogue (size bounded by deploy/seed), but enforce explicit
+      // upper bound to satisfy §3.2 OOM guard — system templates fit comfortably under 500.
+      take: 500,
     });
 
     const result = items.map(item => this.toDto(item));
