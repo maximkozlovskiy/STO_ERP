@@ -1,3 +1,5 @@
+'use client';
+
 import type { HTMLAttributes, ThHTMLAttributes, TdHTMLAttributes } from 'react';
 import { ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
