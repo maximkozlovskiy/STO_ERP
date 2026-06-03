@@ -26,6 +26,20 @@ export class CheckboxProcessor {
   async handleFiscalReceipt(job: Job<FiscalReceiptJob>) {
     const { paymentId, orgId, branchId, amount, method } = job.data;
 
+    // Bug #346: idempotency guard — if fiscalReceiptId already set (from a previous
+    // attempt that succeeded at Checkbox but failed before payment.update committed),
+    // skip the external API call entirely. Without this, a transient DB error on
+    // payment.update causes a retry that creates a SECOND fiscal receipt in Checkbox.
+    const existingPayment = await this.prisma.payment.findFirst({
+      where: { id: paymentId, orgId },
+      select: { fiscalReceiptId: true },
+    });
+    if (!existingPayment) return; // deleted or cross-tenant — safe to drop
+    if (existingPayment.fiscalReceiptId) {
+      this.logger.debug(`Фіскальний чек вже існує для платежу ${paymentId}, пропускаємо`);
+      return;
+    }
+
     // Load branch settings to get Checkbox credentials — scoped to the specific branch
     const branchSettings = await this.prisma.branchSettings.findFirst({
       where: branchId ? { orgId, branchId } : { orgId },

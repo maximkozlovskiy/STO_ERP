@@ -51,6 +51,7 @@ const makePrismaMock = () => ({
     findFirst: vi.fn(),
   },
   payment: {
+    findFirst: vi.fn().mockResolvedValue({ fiscalReceiptId: null }), // default: not yet fiscalized
     update: vi.fn().mockResolvedValue({}),
   },
 });
@@ -71,6 +72,39 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
 
   afterEach(() => {
     fetchSpy.mockRestore();
+  });
+
+  describe('Bug #346: idempotency guard (fiscalReceiptId already set → skip)', () => {
+    it('пропускає зовнішній виклик якщо fiscalReceiptId вже встановлено', async () => {
+      prisma.payment.findFirst.mockResolvedValueOnce({ fiscalReceiptId: 'fr-existing' });
+
+      await expect(processor.handleFiscalReceipt(makeJob())).resolves.toBeUndefined();
+
+      // Must NOT call Checkbox API or update payment
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('пропускає якщо платіж не знайдено (deleted / cross-tenant)', async () => {
+      prisma.payment.findFirst.mockResolvedValueOnce(null);
+
+      await expect(processor.handleFiscalReceipt(makeJob())).resolves.toBeUndefined();
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('продовжує до API якщо fiscalReceiptId = null', async () => {
+      prisma.payment.findFirst.mockResolvedValueOnce({ fiscalReceiptId: null });
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        checkboxLicenseKey: null,
+        fiscalEnabled: false,
+      });
+
+      // branchSettings → skip path (fiscalEnabled:false), но fetch НЕ викликається
+      await expect(processor.handleFiscalReceipt(makeJob())).resolves.toBeUndefined();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('Bug #273: redirect handling (SSRF defense-in-depth #2)', () => {

@@ -10261,3 +10261,36 @@ No new bugs found. All checklist items verified:
 - `crud-invoice.spec.ts`, `crud-purchase-order.spec.ts` — clearDateFilter + search by number
 
 **Статус:** [x] виправлено (backend + E2E тести)
+
+---
+
+## Session 2026-06-04 — Tester cycle 3: kyivToday() + concurrency audit (HEAD 9a5b263)
+
+### Bug #346 — [MEDIUM] checkbox.processor: відсутня ідемпотентна перевірка перед викликом Checkbox API
+
+**Файли:** `apps/api/src/modules/payments/checkbox.processor.ts`
+
+**Причина:**
+Процесор виконує зовнішній виклик `fetch(Checkbox API)` одразу, не перевіряючи чи `payment.fiscalReceiptId` вже встановлено. При 288 спроб (`attempts: 288`) сценарій:
+
+1. Job #1: fetch → Checkbox API повертає `{ id: "fr-001" }` (успіх)
+2. `payment.update({ fiscalReceiptId: "fr-001" })` → transient DB error → job fails
+3. BullMQ ставить retry через 5 хв
+4. Job #1 retry: fetch ЗНОВУ → Checkbox API реєструє ДРУГИЙ фіскальний чек `fr-002`
+5. `payment.fiscalReceiptId = "fr-002"` — перший чек `fr-001` "осирів"
+
+Дублікат фіскального чеку = порушення вимог ПРРО, можлива відповідальність платника.
+
+**Виправлення:**
+Додати на початку `handleFiscalReceipt()` перевірку payment з DB:
+
+```ts
+const payment = await this.prisma.payment.findFirst({ where: { id: paymentId, orgId } });
+if (!payment) return; // deleted/cross-tenant
+if (payment.fiscalReceiptId) {
+  this.logger.debug(`Фіскальний чек вже існує для платежу ${paymentId}, пропускаємо`);
+  return; // idempotent skip
+}
+```
+
+**Статус:** [x] виправлено — idempotency guard added + 3 regression tests (checkbox.processor.spec.ts)
