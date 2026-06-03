@@ -16,7 +16,7 @@ import { SearchCombobox, type ComboboxItem } from '@/components/ui/search-combob
 import { Spinner } from '@/components/ui/spinner';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
-import { Layers } from 'lucide-react';
+import { Layers, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtInt, fmtDate, fmtDateTime, fmtShortDateTime } from '@/lib/format';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -972,11 +972,12 @@ export default function WorkOrderCardPage() {
             Реквізити
           </p>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={openEditModal}
-            className="h-6 text-[12px] px-2"
+            className="h-7 text-[12px] gap-1.5"
           >
+            <Pencil className="h-3.5 w-3.5" />
             Редагувати
           </Button>
         </div>
@@ -1018,7 +1019,7 @@ export default function WorkOrderCardPage() {
           {wo.clientApproval != null && (
             <div>
               <p className="text-xs text-muted-foreground">Погодження клієнта</p>
-              <p className="text-foreground">{wo.clientApproval ? 'Так' : 'Ні'}</p>
+              <p className="text-foreground">{wo.clientApproval === true ? 'Так' : 'Ні'}</p>
             </div>
           )}
           {wo.inMileage != null && (
