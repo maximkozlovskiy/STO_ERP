@@ -949,6 +949,7 @@ model WorkOrder {
   totalParts      Decimal           @default(0) @db.Decimal(12, 2)
   totalAmount     Decimal           @default(0) @db.Decimal(12, 2)
   paidAmount      Decimal           @default(0) @db.Decimal(12, 2)
+  documentDate    DateTime          @default(now()) @db.Date
   syncVersion     BigInt            @default(0)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -1231,12 +1232,13 @@ model PurchaseOrder {
   warehouseId String    @db.Uuid
   number      String
   status      PurchaseOrderStatus @default(DRAFT)
-  totalAmount Decimal             @default(0) @db.Decimal(12, 2)
-  notes       String?
-  syncVersion BigInt              @default(0)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  deletedAt   DateTime?
+  totalAmount  Decimal             @default(0) @db.Decimal(12, 2)
+  notes        String?
+  documentDate DateTime            @default(now()) @db.Date
+  syncVersion  BigInt              @default(0)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  deletedAt    DateTime?
 
   supplier  Counterparty        @relation(fields: [supplierId], references: [id])
   warehouse Warehouse           @relation(fields: [warehouseId], references: [id])
@@ -1288,6 +1290,7 @@ model StockDocument {
   notes             String?
   confirmedAt       DateTime?
   confirmedBy       String?             @db.Uuid
+  documentDate      DateTime            @default(now()) @db.Date
   syncVersion       BigInt              @default(0)
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
@@ -1477,6 +1480,7 @@ model Invoice {
   totalWithoutVat Decimal       @default(0) @db.Decimal(12, 2)
   totalVat        Decimal       @default(0) @db.Decimal(12, 2)
   totalWithVat    Decimal       @default(0) @db.Decimal(12, 2)
+  documentDate    DateTime      @default(now()) @db.Date
   syncVersion     BigInt        @default(0)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
