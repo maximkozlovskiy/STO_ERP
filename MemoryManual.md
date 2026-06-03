@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+007109c docs(skills): add shared-config-per-recipient broadcast pattern to sto-optimize
+22984f0 perf(optimize): batch SMS config resolve in followup processor — 2×N DB reads → 2 total
 94e68a5 fix(tester): Bug #346 — checkbox.processor idempotency guard before Checkbox API call
 9a5b263 fix(review): add explicit concurrency to loyalty/followup/checkbox processors
 6fd730e fix(sync): kyivToday() for documentDate default in work-orders, stock-documents, purchase-orders
@@ -47,6 +49,8 @@ cde1792 fix(review): sync shared FSM transitions with backend authority
 Дата: 2026-06-04
 
 TypeScript: ✅ 0 errors (api, web, shared)
+
+Latest optimize: 2026-06-04 (sto-optimize-agent, cycle 3, HEAD 22984f0) — **1 fix. Verified non-issues: (1) DB indexes on documentDate — all 4 models (invoices/purchase-orders/stock-documents/work-orders) already have `@@index([orgId, documentDate, deletedAt])` — correct, nothing to add. (2) Follow-up processor chunking — MAX_SCHEDULES_PER_RUN=1000 + MAX_VEHICLES_PER_RUN=1000 hard caps with warn log; concurrency:1 serializes per-org batches to avoid SMS 429; no chunking needed at current scale. (3) AuditService.buildDiff — per-field JSON.stringify for small DTO fields (already verified in cycle 2); no large-entity risk. (4) Loyalty settings cache — read from DB per earn() call; low impact (background BullMQ job, not user-facing); concurrency:3 means max 3 concurrent reads; skipped as low-frequency/low-impact. (5) WorkOrderMedia signed URLs — `presignedGetObject` is local HMAC computation (no network), already wrapped in try/catch with fallback URL; no timeout needed. (6) pg_trgm maintenance_work_mem — GIN indexes already created in prod; adding maintenance_work_mem hint would only help fresh installs; STO ERP tables are small (<100K rows); skipped as premature optimization. Fixed: followup.processor.ts — `notifications.send()` fetched branchSettings + notificationTemplate per recipient; for 1000 recipients this was 2000 identical DB reads per daily tick. Added `resolveConfig(orgId, branchId, event)` + `sendWithConfig(orgId, phone, config, vars)` to NotificationsService. Processor calls resolveConfig once before fan-out; sendWithConfig does zero DB reads. Updated 11 existing spec tests + added 1 new test for null-config early-return path. 598/598 tests passed, tsc 0 errors api+web.**
 
 Latest review: 2026-06-04 (sto-review-agent, cycle 3, HEAD 9a5b263) — **1 fix (3 processors). Verified clean: (1) kyivToday() — invoices/purchase-orders/stock-documents/work-orders all correct; no other services write documentDate. (2) Decimal→Number — all DTO conversions use Number(), no .toString() on Decimal fields. (3) @Roles — webhooks/warranties/loyalty/completion-acts all have @Roles on every endpoint. (4) ParseUUIDPipe — all new endpoints (webhooks/warranties/loyalty/completion-acts) have ParseUUIDPipe. (5) forwardRef — goods.module.ts→InventoryModule: intentional, no new circulars. Fixed: loyalty.processor @Process('earn') → concurrency:3; followup.processor @Process('send-reminders') → concurrency:1 (serialize daily org batches to avoid SMS 429); checkbox.processor @Process('fiscal-receipt') → concurrency:3 (15s HTTP calls blocked queue; 100 receipts = 1500s without concurrency). sms.processor (concurrency:3) and webhooks.processor (concurrency:5) were already fixed in cycle 2 optimize.**
 Unit+Contract: ✅ 597/597 passed (api, +3 checkbox idempotency tests) | **281/281 passed (web)**
