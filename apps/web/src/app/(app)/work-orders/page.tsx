@@ -508,7 +508,7 @@ export default function WorkOrdersPage() {
       )}
 
       {/* Status filter pills + Мої наряди */}
-      <div className="flex gap-1.5 mb-3 flex-wrap items-center justify-between">
+      <div className="flex gap-1.5 flex-wrap items-center justify-between shrink-0">
         <div className="flex gap-1.5 flex-wrap">
           {STATUS_TABS.map(([v, l]) => (
             <button

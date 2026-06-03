@@ -634,7 +634,7 @@ export default function PurchaseOrdersPage() {
       )}
 
       {/* Status filters */}
-      <div className="flex flex-wrap gap-1.5 mb-3">
+      <div className="flex flex-wrap gap-1.5 shrink-0">
         {statuses.map(s => (
           <button
             key={s}
@@ -656,7 +656,7 @@ export default function PurchaseOrdersPage() {
       </div>
 
       {/* Filters row */}
-      <div className="flex flex-wrap items-center gap-3 mb-3">
+      <div className="flex flex-wrap items-center gap-3 shrink-0">
         <Input
           value={q}
           onChange={e => {

@@ -249,8 +249,8 @@ export default function PricingRulesClient() {
     : EMPTY_FORM;
 
   return (
-    <div className="page-fill p-4 md:p-6 gap-4">
-      <div className="page-header mb-6">
+    <div className="page-fill p-4 md:p-6">
+      <div className="page-header">
         <div>
           <h1 className="page-title">Правила ціноутворення</h1>
           <p className="page-subtitle">

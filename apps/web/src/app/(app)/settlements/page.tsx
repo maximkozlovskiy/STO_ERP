@@ -168,13 +168,13 @@ export default function SettlementsPage() {
   );
 
   return (
-    <div className="page-fill p-4 md:p-6 gap-4">
+    <div className="page-fill p-4 md:p-6">
       {error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
         </div>
       )}
-      <h1 className="page-title mb-6 shrink-0">Взаєморозрахунки</h1>
+      <h1 className="page-title shrink-0">Взаєморозрахунки</h1>
 
       <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-12 gap-6">
         {/* Left: counterparty list */}

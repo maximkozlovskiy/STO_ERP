@@ -154,13 +154,13 @@ function ReportsPageClient() {
   const needsDates = ['revenue', 'work-orders', 'load', 'stock', 'profitability'].includes(tab);
 
   return (
-    <div className="page-fill p-4 md:p-6 gap-4">
+    <div className="page-fill p-4 md:p-6">
       {error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
         </div>
       )}
-      <h1 className="page-title mb-6">Звіти</h1>
+      <h1 className="page-title shrink-0">Звіти</h1>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border mb-6">

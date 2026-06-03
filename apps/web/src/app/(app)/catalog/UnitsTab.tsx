@@ -338,7 +338,7 @@ export default function UnitsTab() {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="flex items-center justify-between gap-3 shrink-0">
         <p className="text-[13px] text-muted-foreground">
           Одиниці виміру, що використовуються в каталозі товарів
         </p>

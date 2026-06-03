@@ -578,7 +578,7 @@ export default function InvoicesPage() {
       )}
 
       {/* Status filters */}
-      <div className="flex flex-wrap gap-1.5 mb-3">
+      <div className="flex flex-wrap gap-1.5 shrink-0">
         {statuses.map(s => (
           <button
             key={s}

@@ -341,12 +341,11 @@ export default function ServicesTab() {
           onApply={applyFilter}
           onSave={handleSaveFilter}
           onRemove={removeFilter}
-          className="mb-3"
           hideSaveButton
         />
       )}
 
-      <div className="flex items-center gap-3 mb-3">
+      <div className="flex items-center gap-3 shrink-0">
         <Input
           value={q}
           onChange={e => {
@@ -397,7 +396,6 @@ export default function ServicesTab() {
           selectedIds={[...bulkSelect.selected]}
           actions={servicesActions}
           onClear={bulkSelect.clear}
-          className="mb-3"
         />
       )}
 

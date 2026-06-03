@@ -949,12 +949,11 @@ export default function GoodsTab() {
           onApply={applyFilter}
           onSave={handleSaveFilter}
           onRemove={removeFilter}
-          className="mb-3"
           hideSaveButton
         />
       )}
 
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
+      <div className="flex items-center gap-3 flex-wrap shrink-0">
         <Input
           value={q}
           onChange={e => {
@@ -1018,7 +1017,6 @@ export default function GoodsTab() {
           selectedIds={[...bulkSelect.selected]}
           actions={goodsActions}
           onClear={bulkSelect.clear}
-          className="mb-3"
         />
       )}
 

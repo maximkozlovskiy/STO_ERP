@@ -131,7 +131,7 @@ export default function InventoryPage() {
   const displayed = showLow ? items.filter(i => i.isLow) : items;
 
   return (
-    <div className="page-fill p-4 md:p-6 gap-4">
+    <div className="page-fill p-4 md:p-6">
       {(error || queryError) && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error || (queryError instanceof Error ? queryError.message : '')}
@@ -156,7 +156,7 @@ export default function InventoryPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-5">
+      <div className="flex flex-wrap gap-3 shrink-0">
         <Input
           value={q}
           onChange={e => setQ(e.target.value)}
