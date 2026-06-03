@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-<PENDING> fix(tester): Bug #336 — AnimatedBody fill prop regression-guard tests (7 нових кейсів)
+ccd6284 fix(tester): Bug #336 — AnimatedBody fill prop regression-guard tests (7 нових кейсів)
 327acd4 docs(memory): update MemoryManual after viewport-fill review (4809160)
 4809160 fix(review): viewport-fill correctness — Modal AnimatedBody fill mode, table row min-h-0, page-container scroll
 0578198 feat(ui): adaptive viewport-fill for all list pages, modal & catalog tabs
@@ -2754,7 +2754,7 @@ pnpm --filter @sto/web build
 
 | Hash      | Опис                                                                                                                                                                                                                            |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<PEND>`  | fix(tester): Bug #336 — AnimatedBody fill prop regression-guard (7 нових modal.test.tsx тестів: outer-flex-1/className-on-inner/RO-not-constructed/no-inline-style-height/legacy-overflow-hidden/Modal-integration/max-h-90dvh) |
+| `ccd6284` | fix(tester): Bug #336 — AnimatedBody fill prop regression-guard (7 нових modal.test.tsx тестів: outer-flex-1/className-on-inner/RO-not-constructed/no-inline-style-height/legacy-overflow-hidden/Modal-integration/max-h-90dvh) |
 | `f13b9ad` | fix(review): SSR-safe today (useMemo→useState+useEffect), cancel guard on CRM loadGarages + wired into tab effect, removed dead loadAudit useCallback in WO detail                                                              |
 | `6a72c23` | perf(round2): parallel Promise.all queries (invoices, completion-acts, CRM staged loads, WO loadSecondary) + img lazy/decoding                                                                                                  |
 | `f70c7c7` | docs(tester): record Bugs #61-#67 from /sto-tester FULL pass + update MemoryManual                                                                                                                                              |
