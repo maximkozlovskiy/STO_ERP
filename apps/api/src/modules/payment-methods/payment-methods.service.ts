@@ -73,14 +73,13 @@ export class PaymentMethodsService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.paymentMethodConfig.findFirst({
+    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
+    // where (id+orgId+deletedAt:null). -1 RTT per delete.
+    const result = await this.prisma.paymentMethodConfig.updateMany({
       where: { id, orgId, deletedAt: null },
-    });
-    if (!existing) throw new NotFoundException('Метод оплати не знайдено');
-    await this.prisma.paymentMethodConfig.update({
-      where: { id, orgId },
       data: { deletedAt: new Date() },
     });
+    if (result.count === 0) throw new NotFoundException('Метод оплати не знайдено');
     await this.cache.del(cacheKey(orgId));
   }
 

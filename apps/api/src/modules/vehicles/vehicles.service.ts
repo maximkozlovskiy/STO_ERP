@@ -44,9 +44,13 @@ export class VehiclesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.vehicle.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!existing) throw new NotFoundException('Автомобіль не знайдено');
-    await this.prisma.vehicle.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
+    // where (id+orgId+deletedAt:null). -1 RTT per delete.
+    const result = await this.prisma.vehicle.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (result.count === 0) throw new NotFoundException('Автомобіль не знайдено');
   }
 
   // ─── VehicleNodes ────────────────────────────────────────

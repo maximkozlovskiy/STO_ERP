@@ -135,14 +135,14 @@ export class CounterpartiesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.counterparty.findFirst({
+    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
+    // where (id+orgId+deletedAt:null) — eliminates race window between guard and write,
+    // saves one round-trip per delete.
+    const result = await this.prisma.counterparty.updateMany({
       where: { id, orgId, deletedAt: null },
-    });
-    if (!existing) throw new NotFoundException('Контрагента не знайдено');
-    await this.prisma.counterparty.update({
-      where: { id, orgId },
       data: { deletedAt: new Date() },
     });
+    if (result.count === 0) throw new NotFoundException('Контрагента не знайдено');
   }
 
   // ─── Garages ─────────────────────────────────────────────

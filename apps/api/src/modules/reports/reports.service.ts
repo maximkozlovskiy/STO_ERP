@@ -47,13 +47,6 @@ export class ReportsService {
   async revenue(orgId: string, from: string, to: string, branchId?: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
-    if (branchId) {
-      const branch = await this.prisma.garageBranch.findFirst({
-        where: { id: branchId, orgId, deletedAt: null },
-      });
-      if (!branch) throw new NotFoundException('Філію не знайдено');
-    }
-
     // DB-side aggregation via DATE_TRUNC at Europe/Kyiv — раніше findMany(take:10000)
     // тягнув повний набір рядків і робив JS reduce у циклі. Тепер Postgres віддає
     // ~30 рядків (по одному на день) безпосередньо у потрібному форматі.
@@ -64,23 +57,36 @@ export class ReportsService {
       parts: number;
       count: number;
     };
-    const rows = await this.prisma.$queryRaw<RevenueRow[]>`
-      SELECT
-        DATE_TRUNC('day', "completedAt" AT TIME ZONE 'Europe/Kyiv') AS date,
-        COALESCE(SUM("totalAmount"), 0)::float AS revenue,
-        COALESCE(SUM("totalLabor"),  0)::float AS labor,
-        COALESCE(SUM("totalParts"),  0)::float AS parts,
-        COUNT(*)::int                          AS count
-      FROM work_orders
-      WHERE "orgId"       = ${orgId}::uuid
-        AND "deletedAt"   IS NULL
-        AND "status"      = ANY(ARRAY['COMPLETED','INVOICED','PAID','ARCHIVED']::"WorkOrderStatus"[])
-        AND "completedAt" >= ${fromDate}
-        AND "completedAt" <= ${toDate}
-        ${branchId ? Prisma.sql`AND "branchId" = ${branchId}::uuid` : Prisma.empty}
-      GROUP BY 1
-      ORDER BY 1
-    `;
+    // Parallel: optional branch guard + main aggregation — обидва незалежні reads.
+    // Якщо branchId передано і філія не знайдена — кидаємо 404, але обидва запити
+    // вже виконані (-1 RTT у happy path). Aggregation з фільтром по неіснуючому
+    // branchId поверне порожній результат що ми все одно перепишемо exception'ом.
+    const [branch, rows] = await Promise.all([
+      branchId
+        ? this.prisma.garageBranch.findFirst({
+            where: { id: branchId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.$queryRaw<RevenueRow[]>`
+        SELECT
+          DATE_TRUNC('day', "completedAt" AT TIME ZONE 'Europe/Kyiv') AS date,
+          COALESCE(SUM("totalAmount"), 0)::float AS revenue,
+          COALESCE(SUM("totalLabor"),  0)::float AS labor,
+          COALESCE(SUM("totalParts"),  0)::float AS parts,
+          COUNT(*)::int                          AS count
+        FROM work_orders
+        WHERE "orgId"       = ${orgId}::uuid
+          AND "deletedAt"   IS NULL
+          AND "status"      = ANY(ARRAY['COMPLETED','INVOICED','PAID','ARCHIVED']::"WorkOrderStatus"[])
+          AND "completedAt" >= ${fromDate}
+          AND "completedAt" <= ${toDate}
+          ${branchId ? Prisma.sql`AND "branchId" = ${branchId}::uuid` : Prisma.empty}
+        GROUP BY 1
+        ORDER BY 1
+      `,
+    ]);
+    if (branchId && !branch) throw new NotFoundException('Філію не знайдено');
 
     // Convert raw rows to API shape; формат `YYYY-MM-DD` через Kyiv-формaтер
     // зберігається ідентичний до попередньої версії.
@@ -101,13 +107,6 @@ export class ReportsService {
   async workOrders(orgId: string, from: string, to: string, employeeId?: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
-    if (employeeId) {
-      const emp = await this.prisma.employee.findFirst({
-        where: { id: employeeId, orgId, deletedAt: null },
-      });
-      if (!emp) throw new NotFoundException('Співробітника не знайдено');
-    }
-
     // Use groupBy for DB-side aggregation — avoids loading up to 10 000 raw rows into memory.
     // groupBy requires a filter on the grouped field, so we join through workOrder via raw SQL.
     type GroupRow = {
@@ -118,26 +117,36 @@ export class ReportsService {
       totalAmount: number;
       linesCount: bigint;
     };
-    const rows = await this.prisma.$queryRaw<GroupRow[]>`
-      SELECT
-        wol."employeeId",
-        e."firstName",
-        e."lastName",
-        COALESCE(SUM(wol."normoHours"), 0)::float AS "totalNormoHours",
-        COALESCE(SUM(wol."amount"), 0)::float     AS "totalAmount",
-        COUNT(*)                                   AS "linesCount"
-      FROM work_order_lines wol
-      JOIN work_orders wo ON wo.id = wol."workOrderId"
-      JOIN employees e    ON e.id  = wol."employeeId"
-      WHERE wol."orgId"      = ${orgId}::uuid
-        AND wol."deletedAt"  IS NULL
-        AND wo."orgId"       = ${orgId}::uuid
-        AND wo."deletedAt"   IS NULL
-        AND wo."createdAt"   BETWEEN ${fromDate} AND ${toDate}
-        ${employeeId ? Prisma.sql`AND wol."employeeId" = ${employeeId}::uuid` : Prisma.empty}
-      GROUP BY wol."employeeId", e."firstName", e."lastName"
-      ORDER BY "totalAmount" DESC
-    `;
+    // Parallel: optional employee guard + main aggregation (-1 RTT у happy path).
+    const [emp, rows] = await Promise.all([
+      employeeId
+        ? this.prisma.employee.findFirst({
+            where: { id: employeeId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.$queryRaw<GroupRow[]>`
+        SELECT
+          wol."employeeId",
+          e."firstName",
+          e."lastName",
+          COALESCE(SUM(wol."normoHours"), 0)::float AS "totalNormoHours",
+          COALESCE(SUM(wol."amount"), 0)::float     AS "totalAmount",
+          COUNT(*)                                   AS "linesCount"
+        FROM work_order_lines wol
+        JOIN work_orders wo ON wo.id = wol."workOrderId"
+        JOIN employees e    ON e.id  = wol."employeeId"
+        WHERE wol."orgId"      = ${orgId}::uuid
+          AND wol."deletedAt"  IS NULL
+          AND wo."orgId"       = ${orgId}::uuid
+          AND wo."deletedAt"   IS NULL
+          AND wo."createdAt"   BETWEEN ${fromDate} AND ${toDate}
+          ${employeeId ? Prisma.sql`AND wol."employeeId" = ${employeeId}::uuid` : Prisma.empty}
+        GROUP BY wol."employeeId", e."firstName", e."lastName"
+        ORDER BY "totalAmount" DESC
+      `,
+    ]);
+    if (employeeId && !emp) throw new NotFoundException('Співробітника не знайдено');
 
     const result = rows.map(r => ({
       employeeId: r.employeeId,
@@ -157,13 +166,6 @@ export class ReportsService {
   }
 
   async stock(orgId: string, warehouseId?: string, from?: string, to?: string) {
-    if (warehouseId) {
-      const wh = await this.prisma.warehouse.findFirst({
-        where: { id: warehouseId, orgId, deletedAt: null },
-      });
-      if (!wh) throw new NotFoundException('Склад не знайдено');
-    }
-
     const stockWhere: { orgId: string; warehouseId?: string; deletedAt: null } = {
       orgId,
       deletedAt: null,
@@ -185,8 +187,16 @@ export class ReportsService {
       movWhere.createdAt = { ...movWhere.createdAt, lte: new Date(d.getTime() - kyivOffsetMs(d)) };
     }
 
-    // Parallel: stockItems and stockMovements are independent queries on different tables.
-    const [stockItems, movements] = await Promise.all([
+    // Parallel: warehouse guard (optional) + stockItems + stockMovements — три
+    // незалежні reads. Warehouse guard йшов послідовно ДО Promise.all, тепер усе
+    // в одній хвилі. -1 RTT у happy path для filtered stock report.
+    const [wh, stockItems, movements] = await Promise.all([
+      warehouseId
+        ? this.prisma.warehouse.findFirst({
+            where: { id: warehouseId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
       this.prisma.stockItem.findMany({
         where: stockWhere,
         include: {
@@ -203,6 +213,7 @@ export class ReportsService {
         take: 500,
       }),
     ]);
+    if (warehouseId && !wh) throw new NotFoundException('Склад не знайдено');
 
     return {
       stockItems: stockItems.map(i => ({
@@ -325,25 +336,28 @@ export class ReportsService {
   async load(orgId: string, from: string, to: string, branchId?: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
-    if (branchId) {
-      const branch = await this.prisma.garageBranch.findFirst({
-        where: { id: branchId, orgId, deletedAt: null },
-      });
-      if (!branch) throw new NotFoundException('Філію не знайдено');
-    }
-
-    const slots = await this.prisma.calendarSlot.findMany({
-      where: {
-        orgId,
-        deletedAt: null,
-        startAt: { gte: fromDate, lte: toDate },
-        ...(branchId ? { lift: { zone: { branchId, orgId } } } : {}),
-      },
-      include: {
-        lift: { select: { name: true, zone: { select: { name: true } } } },
-      },
-      take: 5000,
-    });
+    // Parallel: optional branch guard + slot scan (-1 RTT у happy path).
+    const [branch, slots] = await Promise.all([
+      branchId
+        ? this.prisma.garageBranch.findFirst({
+            where: { id: branchId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.calendarSlot.findMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          startAt: { gte: fromDate, lte: toDate },
+          ...(branchId ? { lift: { zone: { branchId, orgId } } } : {}),
+        },
+        include: {
+          lift: { select: { name: true, zone: { select: { name: true } } } },
+        },
+        take: 5000,
+      }),
+    ]);
+    if (branchId && !branch) throw new NotFoundException('Філію не знайдено');
 
     // Aggregate by lift
     const byLift: Record<

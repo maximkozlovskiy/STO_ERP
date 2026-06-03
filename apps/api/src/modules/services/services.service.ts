@@ -183,8 +183,14 @@ export class ServicesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
-    await this.prisma.service.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
+    // where (id+orgId+deletedAt:null). -1 RTT per delete; findOne loaded full Service
+    // with works/goods includes лише для 404 guard, що марно.
+    const result = await this.prisma.service.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (result.count === 0) throw new NotFoundException('Послугу не знайдено');
   }
 
   async restore(orgId: string, id: string): Promise<ServiceResponseDto> {

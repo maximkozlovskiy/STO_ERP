@@ -18,6 +18,7 @@ describe('BatchService', () => {
     batchConsumption: { create: ReturnType<typeof vi.fn> };
     priceHistory: { create: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
+    $queryRaw: ReturnType<typeof vi.fn>;
   };
   let pricing: {
     calculateSalePrice: ReturnType<typeof vi.fn>;
@@ -43,6 +44,10 @@ describe('BatchService', () => {
         }
         return Promise.all(arg as Promise<unknown>[]);
       }),
+      // sto-optimize: getAvgCost використовує $queryRaw для weighted SUM (1 RTT
+      // замість findMany 500 + JS reduce ×2). Тагований template literal приймає
+      // strings array + N values — повертаємо те що тест передав через mockResolvedValueOnce.
+      $queryRaw: vi.fn().mockResolvedValue([]),
     };
     // Refactor (cycle 3): createFromReceipt тепер паралельно тягне good + active rules
     // і використовує sync `computePriceFromRules` замість async `calculateSalePrice`.
@@ -146,10 +151,9 @@ describe('BatchService', () => {
 
   describe('consumeBatch', () => {
     it('AVG_COST повертає середню вартість', async () => {
-      prisma.stockBatch.findMany.mockResolvedValue([
-        { remainingQty: 5, costPrice: 100 },
-        { remainingQty: 5, costPrice: 200 },
-      ]);
+      // sto-optimize: AVG_COST шлях кличе getAvgCost → $queryRaw weighted SUM.
+      // SUM(qty*cost) = 5*100 + 5*200 = 1500; SUM(qty) = 10; 1500/10 = 150.
+      prisma.$queryRaw.mockResolvedValueOnce([{ total_cost: 1500, total_qty: 10 }]);
       const result = await service.consumeBatch(
         'org',
         'g1',
@@ -204,18 +208,17 @@ describe('BatchService', () => {
 
   describe('getAvgCost', () => {
     it('повертає 0 коли немає партій', async () => {
-      prisma.stockBatch.findMany.mockResolvedValue([]);
+      // sto-optimize: Postgres weighted SUM повертає рядок з нулями коли recent CTE порожній.
+      prisma.$queryRaw.mockResolvedValueOnce([{ total_cost: 0, total_qty: 0 }]);
       const cost = await service.getAvgCost('org', 'g1', 'wh1');
       expect(cost).toBe(0);
     });
 
     it('зважена середня по remainingQty', async () => {
-      prisma.stockBatch.findMany.mockResolvedValue([
-        { remainingQty: 2, costPrice: 100 },
-        { remainingQty: 8, costPrice: 200 },
-      ]);
+      // Postgres рахує: SUM(qty*cost)=2*100+8*200=1800, SUM(qty)=10; service ділить на 10 → 180.
+      prisma.$queryRaw.mockResolvedValueOnce([{ total_cost: 1800, total_qty: 10 }]);
       const cost = await service.getAvgCost('org', 'g1', 'wh1');
-      expect(cost).toBe(180); // (2*100 + 8*200) / 10
+      expect(cost).toBe(180);
     });
   });
 

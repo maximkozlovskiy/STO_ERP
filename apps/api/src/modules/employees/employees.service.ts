@@ -114,11 +114,13 @@ export class EmployeesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.employee.findFirst({
+    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
+    // where (id+orgId+deletedAt:null) — eliminates race window, saves one round-trip.
+    const result = await this.prisma.employee.updateMany({
       where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
     });
-    if (!existing) throw new NotFoundException('Співробітника не знайдено');
-    await this.prisma.employee.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    if (result.count === 0) throw new NotFoundException('Співробітника не знайдено');
   }
 
   // ─── Assignments ─────────────────────────────────────────

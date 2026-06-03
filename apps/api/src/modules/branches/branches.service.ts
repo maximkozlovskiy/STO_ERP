@@ -54,14 +54,14 @@ export class BranchesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const existing = await this.prisma.garageBranch.findFirst({
+    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with full
+    // compound where (id+orgId+deletedAt:null). One statement, no race window,
+    // -1 RTT per delete. Tenant ізоляція збережена через orgId у WHERE.
+    const result = await this.prisma.garageBranch.updateMany({
       where: { id, orgId, deletedAt: null },
-    });
-    if (!existing) throw new NotFoundException('Філію не знайдено');
-    await this.prisma.garageBranch.update({
-      where: { id, orgId },
       data: { deletedAt: new Date() },
     });
+    if (result.count === 0) throw new NotFoundException('Філію не знайдено');
     await this.cache.del(cacheKey(orgId));
   }
 

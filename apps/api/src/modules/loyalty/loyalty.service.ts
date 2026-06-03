@@ -108,8 +108,20 @@ export class LoyaltyService {
     // NaN/null у БД → балансу немає, але `loyaltyTransaction` створено. Захист.
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) return;
 
-    const settings = await this.prisma.organisationSettings.findFirst({ where: { orgId } });
+    // Parallel: settings read + tenant guard на counterparty. assertCounterparty
+    // викликається всередині getOrCreateAccount, але це послідовний 2-RTT шлях:
+    // settings (~30ms) → assertCounterparty (~30ms) → upsert. Запускаємо обидва
+    // незалежні reads разом — settings гарантовано потрібен (якщо disabled — early
+    // return до upsert), counterparty гарантовано потрібен (для upsert).
+    const [settings, cp] = await Promise.all([
+      this.prisma.organisationSettings.findFirst({ where: { orgId } }),
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+    ]);
     if (!settings?.loyaltyEnabled) return;
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
 
     const earnPer = Number(settings.loyaltyEarnPer ?? 100);
     const earnPoints = Number(settings.loyaltyEarnPoints ?? 1);
@@ -118,7 +130,12 @@ export class LoyaltyService {
     const points = Math.floor(paymentAmount / earnPer) * earnPoints;
     if (points <= 0) return;
 
-    const acc = await this.getOrCreateAccount(orgId, counterpartyId);
+    // tenant вже перевірений у Promise.all вище — лишається лише upsert.
+    const acc = await this.prisma.loyaltyAccount.upsert({
+      where: { counterpartyId },
+      update: {},
+      create: { orgId, counterpartyId, balance: 0 },
+    });
     await this.prisma.$transaction(
       async tx => {
         await tx.loyaltyAccount.update({

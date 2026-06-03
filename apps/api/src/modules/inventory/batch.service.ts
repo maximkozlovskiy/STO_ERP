@@ -234,21 +234,48 @@ export class BatchService {
   async getAvgCost(orgId: string, goodId: string, warehouseId?: string): Promise<number> {
     // Bug #16: warehouseId опціональний. Якщо не передано — агрегуємо по всіх складах.
     // Порожній рядок раніше зі сторони контролера трактувався як склад "" → 0 партій.
-    const filter = warehouseId
-      ? { orgId, goodId, warehouseId, isActive: true, remainingQty: { gt: 0 } }
-      : { orgId, goodId, isActive: true, remainingQty: { gt: 0 } };
-    const batches = await this.prisma.stockBatch.findMany({
-      where: filter,
-      select: { remainingQty: true, costPrice: true },
-      // Bug #270: без orderBy при take:500 Postgres повертає рядки в довільному
-      // порядку — для >500 партій того ж goodId+warehouseId середня була
-      // недетерміністична між викликами. Беремо найновіші — старі вже списані.
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-    });
-    if (!batches.length) return 0;
-    const totalCost = batches.reduce((sum, b) => sum + b.remainingQty * Number(b.costPrice), 0);
-    const totalQty = batches.reduce((sum, b) => sum + b.remainingQty, 0);
+    // sto-optimize: Postgres weighted SUM (SUM(qty*cost) / SUM(qty)) одним запитом
+    // замість findMany(take:500) + JS reduce ×2. Bug #270 detminism збережено через
+    // ORDER BY createdAt DESC + LIMIT 500 у CTE — той самий контракт. Hot-path
+    // (consumeBatch AVG_COST, кожна WO продаж/списання) — менше row marshaling
+    // + менший wire payload (1 рядок з 2 float замість 500 рядків × 2 колонки).
+    type AvgCostRow = { total_cost: number | null; total_qty: number | null };
+    const rows = warehouseId
+      ? await this.prisma.$queryRaw<AvgCostRow[]>`
+          WITH recent AS (
+            SELECT "remainingQty", "costPrice"
+            FROM stock_batches
+            WHERE "orgId" = ${orgId}::uuid
+              AND "goodId" = ${goodId}::uuid
+              AND "warehouseId" = ${warehouseId}::uuid
+              AND "isActive" = true
+              AND "remainingQty" > 0
+            ORDER BY "createdAt" DESC
+            LIMIT 500
+          )
+          SELECT
+            COALESCE(SUM("remainingQty" * "costPrice"), 0)::float AS total_cost,
+            COALESCE(SUM("remainingQty"),               0)::float AS total_qty
+          FROM recent
+        `
+      : await this.prisma.$queryRaw<AvgCostRow[]>`
+          WITH recent AS (
+            SELECT "remainingQty", "costPrice"
+            FROM stock_batches
+            WHERE "orgId" = ${orgId}::uuid
+              AND "goodId" = ${goodId}::uuid
+              AND "isActive" = true
+              AND "remainingQty" > 0
+            ORDER BY "createdAt" DESC
+            LIMIT 500
+          )
+          SELECT
+            COALESCE(SUM("remainingQty" * "costPrice"), 0)::float AS total_cost,
+            COALESCE(SUM("remainingQty"),               0)::float AS total_qty
+          FROM recent
+        `;
+    const totalCost = Number(rows[0]?.total_cost ?? 0);
+    const totalQty = Number(rows[0]?.total_qty ?? 0);
     return totalQty > 0 ? totalCost / totalQty : 0;
   }
 

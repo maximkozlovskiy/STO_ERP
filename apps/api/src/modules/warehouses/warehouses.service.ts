@@ -95,8 +95,13 @@ export class WarehousesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    await this.findOne(orgId, id);
-    await this.prisma.warehouse.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
+    // where (id+orgId+deletedAt:null). -1 RTT per delete.
+    const result = await this.prisma.warehouse.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (result.count === 0) throw new NotFoundException('Склад не знайдено');
     await this.cache.delPattern(`ref:warehouses:${orgId}*`);
   }
 
