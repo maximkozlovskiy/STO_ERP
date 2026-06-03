@@ -99,7 +99,7 @@ const LIFT_STATUS_BADGE: Record<string, BadgeVariant> = {
   DECOMMISSIONED: 'secondary',
 };
 const WAREHOUSE_TYPE_LABELS: Record<string, string> = {
-  MAIN: 'Основний',
+  MAIN: 'Товарний',
   WORKSHOP: 'Цеховий',
   TIRE_HOTEL: 'Шиновий готель',
   MOBILE: 'Мобільний',
