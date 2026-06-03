@@ -297,21 +297,44 @@ export default function CounterpartyCardPage() {
   }, [id]);
 
   const loadSettlements = useCallback(() => {
+    // cancelled guard: tab-switch during fetch must not mutate state for the previous tab.
+    // Returning cleanup fn lets the parent useEffect chain (`if (tab === 'settlements') return loadSettlements();`)
+    // abort an in-flight load when the tab changes again.
+    let cancelled = false;
     setSettlementsLoading(true);
     apiFetch<{ items: Transaction[]; total: number }>(
       `/counterparties/${id}/transactions?page=1&limit=50`,
     )
-      .then(r => setTransactions(r.items ?? []))
-      .catch(() => setTransactions([]))
-      .finally(() => setSettlementsLoading(false));
+      .then(r => {
+        if (!cancelled) setTransactions(r.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setTransactions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSettlementsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const loadWorkOrders = useCallback(() => {
+    let cancelled = false;
     setWoLoading(true);
     apiFetch<{ items: WorkOrder[] }>(`/work-orders?counterpartyId=${id}&limit=50`)
-      .then(r => setWorkOrders(r.items ?? []))
-      .catch(() => setWorkOrders([]))
-      .finally(() => setWoLoading(false));
+      .then(r => {
+        if (!cancelled) setWorkOrders(r.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkOrders([]);
+      })
+      .finally(() => {
+        if (!cancelled) setWoLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const loadWarranties = useCallback(() => {
@@ -333,6 +356,7 @@ export default function CounterpartyCardPage() {
   }, [id]);
 
   const loadLoyalty = useCallback(() => {
+    let cancelled = false;
     setLoyaltyLoading(true);
     setLoyaltyError('');
     Promise.all([
@@ -340,13 +364,19 @@ export default function CounterpartyCardPage() {
       apiFetch<{ items: LoyaltyTransaction[] }>(`/loyalty/transactions/${id}`),
     ])
       .then(([bal, txs]) => {
+        if (cancelled) return;
         setLoyaltyBalance(bal.balance);
         setLoyaltyTxs(txs.items ?? []);
       })
-      .catch((e: unknown) =>
-        setLoyaltyError(e instanceof Error ? e.message : 'Помилка завантаження'),
-      )
-      .finally(() => setLoyaltyLoading(false));
+      .catch((e: unknown) => {
+        if (!cancelled) setLoyaltyError(e instanceof Error ? e.message : 'Помилка завантаження');
+      })
+      .finally(() => {
+        if (!cancelled) setLoyaltyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
@@ -354,13 +384,14 @@ export default function CounterpartyCardPage() {
   }, [loadCp]);
 
   useEffect(() => {
-    // loadGarages/loadWarranties return a cancel fn — return it so switching tabs
-    // (or unmount) aborts an in-flight staged load instead of letting it overwrite state.
+    // Усі load*() повертають cancel-fn — return дозволяє useEffect автоматично
+    // викликати її на tab-switch/unmount, скасовуючи in-flight load і не даючи
+    // йому перезаписати state поточного табу.
     if (tab === 'garages') return loadGarages();
-    if (tab === 'settlements') loadSettlements();
-    if (tab === 'work-orders') loadWorkOrders();
+    if (tab === 'settlements') return loadSettlements();
+    if (tab === 'work-orders') return loadWorkOrders();
     if (tab === 'warranties') return loadWarranties();
-    if (tab === 'loyalty') loadLoyalty();
+    if (tab === 'loyalty') return loadLoyalty();
   }, [tab, loadGarages, loadSettlements, loadWorkOrders, loadWarranties, loadLoyalty]);
 
   const addGarage = async () => {
