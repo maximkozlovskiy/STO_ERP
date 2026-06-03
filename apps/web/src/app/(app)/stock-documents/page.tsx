@@ -109,6 +109,7 @@ interface StockDoc {
   targetWarehouseName?: string | null;
   notes: string | null;
   confirmedAt: string | null;
+  documentDate?: string | null;
   lines: DocLine[];
   createdAt: string;
   updatedAt: string;
@@ -148,7 +149,7 @@ export default function StockDocumentsPage() {
       { key: 'warehouse', label: 'Склад' },
       { key: 'status', label: 'Статус' },
       { key: 'lines', label: 'Позицій' },
-      { key: 'date', label: 'Дата' },
+      { key: 'date', label: 'Дата документа' },
     ],
     [],
   );
@@ -816,7 +817,7 @@ export default function StockDocumentsPage() {
                       if (col.key === 'date')
                         return (
                           <TableCell key="date" className="text-[13px] text-muted-foreground">
-                            {fmtDate(doc.createdAt)}
+                            {doc.documentDate ? fmtDate(doc.documentDate) : fmtDate(doc.createdAt)}
                           </TableCell>
                         );
                       return null;

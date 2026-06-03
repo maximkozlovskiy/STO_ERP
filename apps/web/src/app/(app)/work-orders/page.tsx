@@ -58,7 +58,7 @@ import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
-import { fmtMoney, fmtShortDateTime, fmtDateTime } from '@/lib/format';
+import { fmtMoney, fmtDate, fmtShortDateTime, fmtDateTime } from '@/lib/format';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
@@ -214,6 +214,7 @@ export default function WorkOrdersPage() {
       { key: 'status', label: 'Статус' },
       { key: 'priority', label: 'Пріоритет' },
       { key: 'amount', label: 'Сума, ₴' },
+      { key: 'documentDate', label: 'Дата документа' },
       { key: 'plannedAt', label: 'Заплановано' },
       { key: 'dueDate', label: 'Дедлайн' },
     ],
@@ -859,6 +860,15 @@ export default function WorkOrdersPage() {
                             className="font-medium text-foreground tabular-nums text-right"
                           >
                             {fmtMoney(wo.totalAmount)}
+                          </TableCell>
+                        );
+                      if (col.key === 'documentDate')
+                        return (
+                          <TableCell
+                            key="documentDate"
+                            className="text-[13px] text-muted-foreground"
+                          >
+                            {wo.documentDate ? fmtDate(wo.documentDate) : '—'}
                           </TableCell>
                         );
                       if (col.key === 'plannedAt')

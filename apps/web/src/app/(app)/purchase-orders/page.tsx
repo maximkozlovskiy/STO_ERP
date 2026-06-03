@@ -127,7 +127,7 @@ export default function PurchaseOrdersPage() {
       { key: 'warehouse', label: 'Склад', defaultVisible: true },
       { key: 'status', label: 'Статус', defaultVisible: true },
       { key: 'amount', label: 'Сума', defaultVisible: true },
-      { key: 'date', label: 'Дата', defaultVisible: true },
+      { key: 'date', label: 'Дата документа', defaultVisible: true },
     ],
     [],
   );
@@ -882,7 +882,7 @@ export default function PurchaseOrdersPage() {
                       if (col.key === 'date')
                         return (
                           <TableCell key="date" className="text-[13px] text-muted-foreground">
-                            {fmtDate(po.createdAt)}
+                            {po.documentDate ? fmtDate(po.documentDate) : fmtDate(po.createdAt)}
                           </TableCell>
                         );
                       return null;

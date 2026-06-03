@@ -126,6 +126,7 @@ export default function InvoicesPage() {
       { key: 'counterparty', label: 'Контрагент', defaultVisible: true },
       { key: 'workOrder', label: 'Наряд', defaultVisible: true },
       { key: 'status', label: 'Статус', defaultVisible: true },
+      { key: 'documentDate', label: 'Дата документа', defaultVisible: true },
       { key: 'amount', label: 'Сума', defaultVisible: true },
       { key: 'dueDate', label: 'Термін оплати', defaultVisible: true },
     ],
@@ -813,6 +814,15 @@ export default function InvoicesPage() {
                         return (
                           <TableCell key="amount" className="text-right font-semibold text-[13px]">
                             {fmt(inv.amount)}
+                          </TableCell>
+                        );
+                      if (col.key === 'documentDate')
+                        return (
+                          <TableCell
+                            key="documentDate"
+                            className="text-[13px] text-muted-foreground"
+                          >
+                            {inv.documentDate ? fmtDate(inv.documentDate) : '—'}
                           </TableCell>
                         );
                       if (col.key === 'dueDate')
