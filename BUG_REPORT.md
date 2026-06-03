@@ -10210,3 +10210,30 @@ await page.evaluate(() => {
 Перезапуск Next.js dev server перед E2E suite після будь-яких code changes. До auth фіксів у тестах (#342, #343) — після рестарту всі auth guard тести зелені (26/26).
 
 **Статус:** [x] виявлено і задокументовано — фіксується перезапуском dev сервера
+
+---
+
+## Session 2026-06-03 — Tester cycle 2: sync-agent + review-agent cycle 2 changes (HEAD 8d1d2e2)
+
+Scope: 'use client' removal from hooks/api/\*.ts + lib files; page-subtitle removal from 7 pages; review-agent fixes: kyivToday() UTC fix, media delete a11y, batch-viewer-modal Escape key handler.
+
+**Baseline:**
+
+- TypeScript (web): 0 errors
+- API unit+contract tests: 594/594 passed
+- Web component tests: 281/281 passed
+
+**Static analysis results:**
+
+No new bugs found. All checklist items verified:
+
+- kyivToday() uses `sv-SE` locale with `Europe/Kyiv` TZ → produces YYYY-MM-DD ✅
+- batch-viewer-modal Escape handler: cleanup via `return () => removeEventListener` ✅
+- media delete button `hidden group-hover:flex focus-visible:flex` — no Tailwind 4 cascade conflict ✅
+- api-client.ts without 'use client': has `typeof window === 'undefined'` guards for sessionStorage ✅
+- hooks/api/\*.ts without 'use client': only imported by 'use client' pages — safe ✅
+- auth/index.ts barrel export without 'use client': actual context.tsx + protected-route.tsx retain 'use client' ✅
+- tenant isolation in changed services (branches, counterparties, employees, vehicles, warehouses, works): all findFirst/findMany have orgId ✅
+- no hard deletes in changed services ✅
+- no direct stockItem.update outside InventoryService ✅
+- loyalty balance increment/decrement is on loyaltyAccount (not settlementAccount) — correct ✅
