@@ -77,7 +77,13 @@ export class VehiclesService {
     vehicleId: string,
     dto: CreateVehicleNodeDto,
   ): Promise<VehicleNodeResponseDto> {
-    await this.findOne(orgId, vehicleId);
+    // sto-optimize: narrow tenant guard (id-only select) замість findOne що тягне
+    // повний Vehicle об'єкт. findOne повертав DTO лише для існування — марно.
+    const parent = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!parent) throw new NotFoundException('Автомобіль не знайдено');
     const item = await this.prisma.vehicleNode.create({ data: { ...dto, orgId, vehicleId } });
     return this.toNodeDto(item);
   }

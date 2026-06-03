@@ -169,7 +169,13 @@ export class CounterpartiesService {
     counterpartyId: string,
     dto: CreateGarageDto,
   ): Promise<GarageResponseDto> {
-    await this.findOne(orgId, counterpartyId);
+    // sto-optimize: narrow tenant guard (id-only select) замість findOne що тягне
+    // повний Counterparty + settlementAccount include. Existence лише потрібна.
+    const cp = await this.prisma.counterparty.findFirst({
+      where: { id: counterpartyId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
     const item = await this.prisma.customerGarage.create({
       data: { orgId, counterpartyId, ...dto },
     });

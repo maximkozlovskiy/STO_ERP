@@ -92,7 +92,14 @@ export class EmployeesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateEmployeeDto): Promise<EmployeeResponseDto> {
-    await this.findOne(orgId, id);
+    // sto-optimize: replace findOne (full DTO + 4 join tables) with narrow
+    // existence check — лише id потрібен для 404 guard. Update нижче все одно
+    // тягне всі relations. -1 over-fetch per call.
+    const existing = await this.prisma.employee.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Співробітника не знайдено');
     if (dto.rateScheme) this.validateRateScheme(dto.rateScheme);
     const item = await this.prisma.employee.update({
       where: { id, orgId },

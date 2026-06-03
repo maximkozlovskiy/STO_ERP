@@ -103,7 +103,13 @@ export class ServicesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateServiceDto): Promise<ServiceResponseDto> {
-    await this.findOne(orgId, id);
+    // sto-optimize: replace findOne (full DTO + serviceWorks/serviceGoods includes)
+    // with narrow existence check. Update path below повертає full DTO у tx.
+    const existing = await this.prisma.service.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Послугу не знайдено');
 
     const item = await this.prisma.$transaction(
       async tx => {
