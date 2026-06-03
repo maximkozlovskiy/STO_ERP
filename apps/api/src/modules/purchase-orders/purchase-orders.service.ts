@@ -45,6 +45,8 @@ export class PurchaseOrdersService {
     status?: string,
     q?: string,
     showDeleted = false,
+    dateFrom?: string,
+    dateTo?: string,
   ): Promise<PaginatedPurchaseOrdersDto> {
     // Defense-in-depth: cap `limit` to prevent DoS via `?limit=999999`.
     // Matches the cap used by services/work-orders/invoices controllers.
@@ -73,6 +75,12 @@ export class PurchaseOrdersService {
           },
         ];
       }
+    }
+    if (dateFrom || dateTo) {
+      where.documentDate = {
+        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+        ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59.999Z') } : {}),
+      };
     }
 
     const skip = (page - 1) * limit;
@@ -150,6 +158,7 @@ export class PurchaseOrdersService {
             number,
             notes: dto.notes,
             totalAmount,
+            documentDate: dto.documentDate ? new Date(dto.documentDate) : new Date(),
           },
         });
         if (lines.length) {
@@ -590,6 +599,9 @@ export class PurchaseOrdersService {
       warehouseName: po.warehouse?.name,
       totalAmount: Number(po.totalAmount),
       notes: po.notes ?? null,
+      documentDate: (po as any).documentDate
+        ? ((po as any).documentDate as Date).toISOString().slice(0, 10)
+        : null,
       linesCount: po._count?.lines ?? po.lines?.length ?? 0,
       deletedAt: po.deletedAt ?? null,
       lines: (po.lines ?? []).map(l => ({

@@ -24,6 +24,7 @@ import {
   UpdateStockDocumentDto,
   TransitionStockDocumentDto,
   DocTransitionStatus,
+  StockDocumentQueryDto,
 } from './stock-documents.dto';
 
 @ApiTags('Stock Documents')
@@ -36,20 +37,17 @@ export class StockDocumentsController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'РЎРїРёСЃРѕРє СЃРєР»Р°РґСЃСЊРєРёС… РґРѕРєСѓРјРµРЅС‚С–РІ' })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  @ApiQuery({ name: 'type', required: false, enum: ['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'] })
-  @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'CONFIRMED', 'CANCELLED'] })
-  @ApiQuery({ name: 'showDeleted', required: false })
-  findAll(
-    @OrgContext() orgId: string,
-    @Query('page') page = '1',
-    @Query('limit') limit = '20',
-    @Query('type') type?: string,
-    @Query('status') status?: string,
-    @Query('showDeleted') showDeleted?: string,
-  ) {
-    return this.service.findAll(orgId, +page, +limit, type, status, showDeleted === 'true');
+  findAll(@OrgContext() orgId: string, @Query() query: StockDocumentQueryDto) {
+    return this.service.findAll(
+      orgId,
+      query.page,
+      query.limit,
+      query.type,
+      query.status,
+      query.showDeleted === 'true',
+      query.dateFrom,
+      query.dateTo,
+    );
   }
 
   @Get(':id')

@@ -40,6 +40,8 @@ export class StockDocumentsService {
     type?: string,
     status?: string,
     showDeleted = false,
+    dateFrom?: string,
+    dateTo?: string,
   ): Promise<PaginatedStockDocumentsDto> {
     const where: Prisma.StockDocumentWhereInput = {
       orgId,
@@ -47,6 +49,12 @@ export class StockDocumentsService {
     };
     if (type) where.type = type as StockDocumentType;
     if (status) where.status = status as DocStatus;
+    if (dateFrom || dateTo) {
+      where.documentDate = {
+        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+        ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59.999Z') } : {}),
+      };
+    }
 
     const skip = (page - 1) * limit;
     const [items, total] = await this.prisma.$transaction([
@@ -153,6 +161,7 @@ export class StockDocumentsService {
             type: dto.type as StockDocumentType,
             number,
             notes: dto.notes,
+            documentDate: dto.documentDate ? new Date(dto.documentDate) : new Date(),
           },
         });
         if (lines.length) {
@@ -429,6 +438,9 @@ export class StockDocumentsService {
       targetWarehouseName: doc.targetWarehouse?.name ?? null,
       notes: doc.notes ?? null,
       confirmedAt: doc.confirmedAt ?? null,
+      documentDate: (doc as any).documentDate
+        ? ((doc as any).documentDate as Date).toISOString().slice(0, 10)
+        : null,
       lines: (doc.lines ?? []).map(l => ({
         id: l.id,
         goodId: l.goodId,

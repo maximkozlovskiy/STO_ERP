@@ -4,10 +4,13 @@ import {
   IsOptional,
   IsNumber,
   Min,
+  Max,
   IsArray,
   ValidateNested,
   IsEnum,
   ArrayMaxSize,
+  IsDateString,
+  IsBooleanString,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -41,6 +44,12 @@ export class CreateStockDocumentDto {
 
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 
+  @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD), за замовчуванням — сьогодні' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  documentDate?: string;
+
   @ApiPropertyOptional({ type: [StockDocumentLineDto] })
   @IsOptional()
   @IsArray()
@@ -53,6 +62,12 @@ export class CreateStockDocumentDto {
 
 export class UpdateStockDocumentDto {
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+
+  @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  documentDate?: string;
 
   @ApiPropertyOptional({ type: [StockDocumentLineDto] })
   @IsOptional()
@@ -99,6 +114,7 @@ export class StockDocumentResponseDto {
   @ApiPropertyOptional() targetWarehouseName?: string | null;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() confirmedAt?: Date | null;
+  @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiProperty({ type: [StockDocumentLineResponseDto] }) lines!: StockDocumentLineResponseDto[];
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
@@ -111,4 +127,52 @@ export class PaginatedStockDocumentsDto {
   @ApiProperty() total!: number;
   @ApiProperty() page!: number;
   @ApiProperty() limit!: number;
+}
+
+export class StockDocumentQueryDto {
+  @ApiPropertyOptional({ enum: ['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'] })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'])
+  type?: string;
+
+  @ApiPropertyOptional({ enum: ['DRAFT', 'CONFIRMED', 'CANCELLED'] })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(['DRAFT', 'CONFIRMED', 'CANCELLED'])
+  status?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
+
+  @ApiPropertyOptional({ description: 'Показати видалені' })
+  @IsOptional()
+  @IsBooleanString()
+  showDeleted?: string;
+
+  @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  dateFrom?: string;
+
+  @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  dateTo?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  page: number = 1;
+
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(200)
+  limit: number = 20;
 }

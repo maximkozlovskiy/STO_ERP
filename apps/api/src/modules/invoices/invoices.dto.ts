@@ -7,8 +7,9 @@ import {
   IsString,
   IsDateString,
   IsEnum,
+  IsBooleanString,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InvoiceStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
@@ -30,6 +31,12 @@ export class CreateInvoiceDto {
   @IsDateString()
   dueDate?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+
+  @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD), за замовчуванням — сьогодні' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  documentDate?: string;
 }
 
 export class UpdateInvoiceDto {
@@ -41,6 +48,12 @@ export class UpdateInvoiceDto {
   @IsDateString()
   dueDate?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+
+  @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  documentDate?: string;
 }
 
 const INV_TRANSITION_STATUSES = ['SENT', 'PAID', 'CANCELLED'] as const;
@@ -123,6 +136,7 @@ export class InvoiceResponseDto {
   @ApiPropertyOptional() invoiceType?: string;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() dueDate?: Date | null;
+  @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiPropertyOptional() paidAmount?: number;
   @ApiPropertyOptional({ type: [InvoiceLineResponseDto] }) lines?: InvoiceLineResponseDto[];
   @ApiProperty() createdAt!: Date;
@@ -136,4 +150,46 @@ export class PaginatedInvoicesDto {
   @ApiProperty() total!: number;
   @ApiProperty() page!: number;
   @ApiProperty() limit!: number;
+}
+
+export class InvoiceQueryDto {
+  @ApiPropertyOptional({ enum: InvoiceStatus })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(InvoiceStatus)
+  status?: InvoiceStatus;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
+
+  @ApiPropertyOptional({ description: 'Показати видалені' })
+  @IsOptional()
+  @IsBooleanString()
+  showDeleted?: string;
+
+  @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  dateFrom?: string;
+
+  @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  dateTo?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  page: number = 1;
+
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(200)
+  limit: number = 20;
 }

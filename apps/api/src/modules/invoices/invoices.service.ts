@@ -50,6 +50,8 @@ export class InvoicesService {
     status?: string,
     q?: string,
     showDeleted = false,
+    dateFrom?: string,
+    dateTo?: string,
   ): Promise<PaginatedInvoicesDto> {
     const where: Prisma.InvoiceWhereInput = {
       orgId,
@@ -70,6 +72,12 @@ export class InvoicesService {
           },
         },
       ];
+    }
+    if (dateFrom || dateTo) {
+      where.documentDate = {
+        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+        ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59.999Z') } : {}),
+      };
     }
 
     const skip = (page - 1) * limit;
@@ -174,6 +182,7 @@ export class InvoicesService {
         number,
         amount: dto.amount,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        documentDate: dto.documentDate ? new Date(dto.documentDate) : new Date(),
         notes: dto.notes ?? null,
         status: InvoiceStatus.DRAFT,
       },
@@ -557,6 +566,9 @@ export class InvoicesService {
       invoiceType: inv.invoiceType,
       notes: inv.notes,
       dueDate: inv.dueDate ?? null,
+      documentDate: (inv as any).documentDate
+        ? ((inv as any).documentDate as Date).toISOString().slice(0, 10)
+        : null,
       ...(paidAmount !== undefined ? { paidAmount } : {}),
       ...(includeLines && inv.lines ? { lines: inv.lines.map(l => this.toLineDto(l)) } : {}),
       createdAt: inv.createdAt,

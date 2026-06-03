@@ -89,6 +89,12 @@ export class WorkOrdersService {
         { counterparty: { firstName: { contains: query.q, mode: 'insensitive' } } },
       ];
     }
+    if (query.dateFrom || query.dateTo) {
+      where.documentDate = {
+        ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
+        ...(query.dateTo ? { lte: new Date(query.dateTo + 'T23:59:59.999Z') } : {}),
+      };
+    }
 
     const skip = (query.page - 1) * query.limit;
     const [items, total] = await this.prisma.$transaction([
@@ -224,6 +230,7 @@ export class WorkOrdersService {
         repairCategory: dto.repairCategory ?? null,
         plannedAt: dto.plannedAt ? new Date(dto.plannedAt) : null,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        documentDate: dto.documentDate ? new Date(dto.documentDate) : new Date(),
       },
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
@@ -1191,6 +1198,9 @@ export class WorkOrdersService {
       totalParts: Number(wo.totalParts),
       totalAmount: Number(wo.totalAmount),
       paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,
+      documentDate: (wo as any).documentDate
+        ? ((wo as any).documentDate as Date).toISOString().slice(0, 10)
+        : null,
       createdAt: wo.createdAt,
       updatedAt: wo.updatedAt,
       hasActiveWarranty: (wo._count?.warranties ?? 0) > 0,

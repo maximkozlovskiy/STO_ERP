@@ -58,6 +58,12 @@ export class CreateWorkOrderDto {
   @Transform(emptyToUndefined)
   @IsISO8601()
   dueDate?: string;
+
+  @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD), за замовчуванням — сьогодні' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsISO8601()
+  documentDate?: string;
 }
 
 export class UpdateWorkOrderDto {
@@ -93,6 +99,12 @@ export class UpdateWorkOrderDto {
   @Transform(emptyToUndefined)
   @IsISO8601()
   dueDate?: string | null;
+
+  @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsISO8601()
+  documentDate?: string;
 }
 
 export class TransitionWorkOrderDto {
@@ -167,6 +179,18 @@ export class WorkOrderQueryDto {
   @IsBooleanString()
   showDeleted?: string;
 
+  @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsISO8601()
+  dateFrom?: string;
+
+  @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsISO8601()
+  dateTo?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -207,6 +231,7 @@ export class WorkOrderResponseDto {
   @ApiProperty() totalParts!: number;
   @ApiProperty() totalAmount!: number;
   @ApiProperty() paidAmount!: number;
+  @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
   @ApiPropertyOptional({ description: 'Є активна гарантія' }) hasActiveWarranty?: boolean;
