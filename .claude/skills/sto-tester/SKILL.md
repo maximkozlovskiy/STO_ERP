@@ -541,6 +541,7 @@ done
 - [ ] **AbortController у `useEffect` для filter-toggle race (Bug #301):** будь-який `useEffect(() => { load() }, [filterState])` де `filterState` toggle-able і `load()` робить `apiFetch` — потребує `AbortController` у cleanup. Без нього: швидке перемикання filter → попередній fetch не cancelled → resolve order non-deterministic → last setUnits(...) wins, який може суперечити поточному UI mode (stale state shown for current filter). Grep: `grep -rn "useEffect" apps/web/src/app --include="*.tsx" -A 5 | grep -B1 "load\(\)\|apiFetch" | grep -v "AbortController\|signal"` — кожен match без AbortController при наявності залежності від toggle/filter state = bug. Severity: MEDIUM
 - [ ] **In-flight guard для async-кнопок без overlay-блокування (Bug #303):** будь-яка `<Button onClick={() => action(id)}>` де `action` робить async POST/PATCH/DELETE і немає `disabled` prop тримати `inFlightIds` Set state. Без нього: користувач клікає 5 разів швидко → 5 паралельних POST → перший успіх, 2nd-5th повертають 404/409 (ресурс уже змінено) → setError shows стається помилка хоча перший успіх. Особливо при операціях що змінюють стан рядка (delete/restore/approve/cancel) — наступні reqs після першого побачать новий стан і обуряться. Грубий tip-off: відсутність `setRestoringIds`/`processingIds`/`busyIds` state у компоненті який має destructive/state-changing button-actions. Severity: MEDIUM (UX flash false errors)
 - [ ] **Toggle-state UI desync: highlight/cursor не gated на enabled-flag (Bugs #310-#311):** додавання toggle-component (`DetailPanelToggle`, `useDetailPanel`, `FilterToggle`, `CompactModeToggle`) що керує boolean state, але ефекти toggle (highlight рядка `bg-secondary`/`bg-primary/5`, `cursor-pointer`, hover-effects) застосовуються на основі іншої state-змінної (`selectedX?.id === item.id`, `expandedRows.has(id)`) **БЕЗ** gate на toggle-state → після `toggle()` → `enabled=false`, але `selectedX` залишається non-null → класи рендеряться, action недоступна, UX desync. Grep: `grep -rnE "selected[A-Z][a-zA-Z]*\?.id\s*===\s*[a-z]+\.id\s*&&\s*'bg-" apps/web/src/app --include="*.tsx" | grep -v "detailPanel\.enabled\|panel\.enabled\|enabled &&"` — кожен match без enabled-gate. Парний grep для cursor: `grep -rnE "'group cursor-pointer'|className=\\\`group cursor-pointer" apps/web/src/app --include="\*.tsx"`. Фікс: додати `&& detailPanel.enabled`до КОЖНОГО affordance class (cursor + highlight + hover). Альтернатива:`useEffect(() => { if (!detailPanel.enabled) setSelectedX(null) }, [detailPanel.enabled])` у consumer-page. Симетрія: якщо одне gated → друге теж має бути gated; асиметрія = bug. Severity: MEDIUM для stale highlight; LOW для cursor-only
+- [ ] **Review-fix completeness audit для крос-файлових патернів (Bug #341):** будь-який review-fix commit `fix(review): replace X with Y` що чіпає **N файлів** (наприклад заміна `.catch(() => {})` на `console.warn`) — після кожного такого commit пройти **ВЕСЬ codebase** на той самий патерн і переконатись що review знайшов УСІ файли. Grep-команда має бути така ж яка вживалась у review, але БЕЗ filter по changed-files. Типові пропуски: (а) сторінки `[id]/PageClient.tsx` коли review працював зі сторінкою у root (`/X/page.tsx`); (б) tabbed-content (`*Tab.tsx`) поза основним route файлом; (в) sub-components всередині той самий сторінки; (г) shared hooks/utilities у `apps/web/src/hooks` чи `lib`. Парний сигнал у git log: `git log --oneline | grep "fix(review)" | head -3` — для останнього review-fix-commit взяти grep-паттерн з нього (наприклад `\.catch(() => {})`) і виконати `grep -rn "<pattern>" apps/web/src --include="*.tsx" --include="*.ts" | grep -v <вже-виправлені>` → нові match = upskipped review (BUG нової tester-сесії). Виключення з cleanup: легітимні випадки документуються у самому місці (toast-double-protection, optional PWA SW, fire-and-forget telemetry) — тестер відрізняє за наявністю парного user-feedback каналу (toast/setError/console.warn вище у фукнції). Severity: успадковує severity оригінального review-fix bug-у. Grep шаблон: `git show --stat <last-review-commit> -- '*.tsx' '*.ts' | awk '/^ /{print $1}'` — список файлів review-fix; для кожного знайденого згодом match → перевірити чи серед них. Якщо ні → bug.
 
 ---
 
@@ -650,6 +651,8 @@ done
 - [ ] Якщо `service.create()/update()` спрощено з N `findFirst` до 1 (single round-trip resurrection/dup-check) → spec мокає `findFirst` РІВНО стільки разів скільки реальних викликів (не успадкований `mockResolvedValueOnce(null).mockResolvedValueOnce(...)`)
 - [ ] **Defense-in-depth status guard + stale fixtures (Bug #200):** review-фікс додав `if (entity.status !== ALLOWED_A && entity.status !== ALLOWED_B) throw BadRequestException(...)` у сервісі, але парний spec мокає `findFirst` БЕЗ поля `status` → undefined ≠ ALLOWED → guard кидає на ВСЕ існуючих тестах → release-blocker baseline. Grep: `grep -n "findFirst.mockResolvedValueOnce({" *.spec.ts` → для кожного мока у сервісі що додав status guard → перевірити чи fixture містить `status: <ALLOWED_STATUS>`. Якщо нове guard перевіряє додаткові поля (deletedAt, isActive, ownerId) — той самий патерн. Профілактично після кожного review-commit що додав early-throw guard у service.X — пройти всі `findFirst.mockResolvedValueOnce(...)` у відповідній spec і додати потрібні поля.
 - [ ] **Refactored public method usage + stale mock (Bug #200):** рефактор сервісу замінив виклик `private/inline X()` на нову public method `Y()` (наприклад `calculateSalePrice` → `getActiveRulesForOrg + computePriceFromRules`). Парний spec ще мокає СТАРИЙ виклик (`pricingService.calculateSalePrice.mockResolvedValueOnce(...)`) — тест проходить **випадково** бо `Y` не викликається насправді. Регресія: майбутній рефактор поверне виклик `X` → тест зелений але реальна логіка зламана. Grep: `git diff HEAD~1 -- service.ts` шукає `+ this.X.Y(` + перевірити що spec мок названо `Y` а не `Z`. Принцип: spec повинна мокати ТЕ ЩО СПРАВДІ викликається — не успадковане.
+- [ ] **Controller arg-count drift у `toHaveBeenCalledWith` форвардингу (Bug #340):** feature-commit що додає `sortBy`/`sortDir`/`branchId`/інший новий query-param у `*.dto.ts` зазвичай також редагує controller щоб прокинути `query.NEW` як додатковий positional arg у `this.service.findAll(orgId, ...args, query.NEW)`. Існуючі regression-guard contract specs (Bug #339 patten) асертять `toHaveBeenCalledWith(orgId, ...8 args)` — після рефактору controller передає 9-10 args → AssertionError на КОЖНОМУ існуючому contract spec тому ж модулю. tsc green (TypeScript не перевіряє кількість positional args при варіадичному передаванні всередині `.then(query => service.X(orgId, query.A, query.B, ...))`). Grep для виявлення pre-commit: `git diff HEAD~N HEAD -- "*.controller.ts" | grep -E "^\+.*service\.findAll\(.*\bquery\.[a-zA-Z]+\b"` — кожен новий `query.X` arg → перевірити **усі** `*.contract.spec.ts` у тому ж модулі на `toHaveBeenCalledWith` з фіксованою кількістю args і додати `undefined` для нових parametrів. Альтернатива (безпечніший pattern для майбутнього): передавати **об'єкт** `{ page, limit, ..., sortBy, sortDir }` замість positional args → нові поля не ламають existing specs (вони асертять об'єкт, додаткові поля у новому об'єкті НЕ матчаться assertion'ом якщо використовується `expect.objectContaining({...})`). Severity: MEDIUM (release-blocker — baseline червоний → tester-сесії неможливі). Boundary-check: після КОЖНОГО `feat(api|ui): add X filter`/`feat(api|ui): add X sorting` commit що чіпає controller — пройти `*.contract.spec.ts` того ж модулю.
+- [ ] **Stale mock після додавання cascade-helper у service-method (Bug #340):** review-fix що додає каскадну логіку через helper-метод (`getDescendantIds`, `getAncestorIds`, `getLinkedRecords`) у існуючий service-метод (`toggleActive`/`deactivate`/`archive`/`remove`) часто додає НОВИЙ Prisma call (`findMany`, `count`, `groupBy`) ВСЕРЕДИНІ helper-а. Існуючі spec що мокали лише top-level Prisma calls (наприклад `updateMany` + `findFirstOrThrow`) тепер ловлять `TypeError: X is not iterable`/`Cannot read property 'length' of undefined` бо helper отримує `undefined` від unmocked `findMany`. Grep: `git diff HEAD~N HEAD -- "*.service.ts" | grep -E "^\+.*await this\.(getDescendantIds|getAncestorIds|getLinkedX|expandX|cascade)"` → для кожного нового helper-виклику читати helper-метод і знайти усі Prisma read-ops → у відповідному `*.spec.ts` додати `prisma.<model>.findMany.mockResolvedValueOnce([])` (порожній цаскад = mock default) ПЕРЕД викликом service-методу. Severity: MEDIUM. Парне з Bug #200 (Defense-in-depth status guard) — той самий принцип «новий read у сервісі → новий mock у spec».
 
 **Query-shape фікс потребує service-spec, не contract-spec (Bug #163):**
 
@@ -925,6 +928,92 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-03 — Stale contract-spec через arg-count drift після додавання нового positional query-param (Bug #340) — backend, contract tests
+
+**Сигнал:** Усі existing `toHaveBeenCalledWith(orgId, ...8 args)` у `*.contract.spec.ts` модуля раптом починають падати після безпечного-на-вигляд feature commit (`feat(ui|api): column sorting`/`feat(api): X filter`). Error pattern: `Expected: [...N args], Received: [...N+1 or N+2 args, +undefined, +undefined]`. tsc green, інші тести того ж модуля та інших модулів зелені.
+
+**Причина виникнення:** Контролер форвардить query-params у service-метод як **positional arguments** (`this.service.findAll(orgId, query.page, query.limit, query.status, ..., query.sortBy, query.sortDir)`). Коли feature додає 2 нових опціональні параметри (`sortBy`, `sortDir`), розробник просто додає їх у кінець positional list — TS не скаржиться бо service-сигнатура теж розширилась з опціональними `sortBy?: string, sortDir?: string`. Існуючі contract specs (з попередніх Bug #X regression-guards) асертять ТОЧНУ кількість args через `toHaveBeenCalledWith(...)`, який в Vitest суворо порівнює довжину масиву → 8 args expected vs 10 received → AssertionError. Сторонній ефект: ВСІ existing contract tests того модуля падають одразу → baseline червоний → release-blocker.
+
+**Підхід до виявлення:**
+
+```bash
+# Pre-commit (виявити перед commit ще під час реалізації feature)
+git diff --staged -- "*.controller.ts" | grep -E "^\+.*\bquery\.[a-zA-Z]+\b.*,?\s*$"
+# для кожного нового query.X arg → знайти всі toHaveBeenCalledWith у тому модулі
+git diff --name-only --staged -- "*.controller.ts" | while read ctrl; do
+  module=$(dirname "$ctrl")
+  spec=$(find "$module" -name "*.contract.spec.ts" 2>/dev/null)
+  [ -n "$spec" ] && grep -n "toHaveBeenCalledWith" "$spec"
+done
+
+# Post-commit baseline (як Tester виявляє Bug #340)
+pnpm --filter @sto/api test --run 2>&1 | grep "Received:" -A 12 | grep -E "^\+\s*undefined,$"
+# Якщо знайдено "+   undefined," у diff → arg-count drift
+```
+
+**Підхід до фіксу:** Додати `undefined, undefined` (або значення нових parametrів) у КОЖЕН `toHaveBeenCalledWith` у тому модулі. **Долгосрочний фікс (рекомендований):** мігрувати controller-service interface на **object-form** замість positional: `this.service.findAll(orgId, { page, limit, status, sortBy, sortDir })` — тоді existing contract specs продовжать працювати з `expect.objectContaining({page, limit, status})` без оновлення; нові поля у об'єкті не ламають assertion. Object-form має додаткові переваги: required vs optional чітко видно, легше додавати/видаляти поля, IDE autocomplete з типу.
+
+**Severity:** MEDIUM (release-blocker — baseline червоний → tester-сесії неможливі)
+
+**Де шукати ще:** Кожен sprint `feat(api|ui): add X filter|sort` що чіпає `*.controller.ts` — особливо list endpoints з паттерном Bug #339 (regression-guard tests на forwarding). Найбільш вразливі: `work-orders`, `invoices`, `purchase-orders`, `stock-documents`, `inventory`, `crm/counterparties`, `vehicles`, `employees` — будь-який контролер з фільтр-параметрами що growing-set.
+
+---
+
+### 2026-06-03 — Stale mock після додавання cascade-helper у service-method (Bug #340b) — backend, test-coverage
+
+**Сигнал:** Existing service-spec тест раптом падає з `TypeError: X is not iterable` або `Cannot read property 'length' of undefined` у helper-метод (`getDescendantIds`, `getAncestorIds`, `expandX`). Stack trace показує `for (const c of all)` де `all` повертається з невмоканого `prisma.<model>.findMany(...)`.
+
+**Причина виникнення:** Review/feature додав НОВИЙ behavior у існуючий service-метод (cascade-update, propagation, related-records expansion) через приватний helper. Helper викликає Prisma read-op (`findMany`, `count`, `groupBy`), який існуючий spec не мокав бо до фіксу метод не робив цього виклику. Mock повертає `undefined` за замовчуванням → ітерація по `undefined` крашиться. **Парний патерн** Bug #200 (Defense-in-depth status guard + stale fixtures) — той самий принцип «новий read у сервісі → новий mock у spec», але через helper-метод замість direct field-read.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти review/feature commit що додав helper
+git log --oneline -10 -- apps/api/src/modules/<module>/<module>.service.ts | head -3
+git show <commit> -- "*.service.ts" | grep -E "^\+.*await this\.(get|expand|cascade|propagate|collect|gather)"
+
+# Для кожного знайденого helper — перевірити що spec мокає Prisma read-ops helper-а
+grep -n "private async <helper>" apps/api/src/modules/<module>/<module>.service.ts -A 15
+# знайти всі `prisma.<model>.<readOp>` всередині helper
+# у spec — додати `prisma.<model>.<readOp>.mockResolvedValueOnce([])` перед викликом service-method
+```
+
+**Підхід до фіксу:** Додати `mockResolvedValueOnce([])` (або відповідний default empty-state) для кожного нового Prisma read-op у helper, ПЕРЕД викликом service-методу у тесті. Альтернатива: уніфікувати mock через `beforeEach(() => { prisma.<model>.findMany.mockResolvedValue([]) })` — лиш якщо тести не залежать від конкретного return value.
+
+**Severity:** MEDIUM (release-blocker — guard-тести не запускаються через crash)
+
+**Де шукати ще:** Cascade-update паттерни — toggleActive, archive, deactivate, remove (з soft-delete на нащадків), restoreCascade. Особливо вразливі: ієрархічні моделі з `parentId` (GoodCategory, WorkCategory, Branch hierarchy), графи (WorkGoodCategoryLink, Permission roles).
+
+---
+
+### 2026-06-03 — Review-fix completeness audit для крос-файлових патернів (Bug #341) — frontend, refactoring
+
+**Сигнал:** Tester виявляє новий bug з ТИМ САМИМ патерном як review-fix що вже виправив його у N файлах. Файл який пропустили — зазвичай `[id]/PageClient.tsx`, `*Tab.tsx`, або sub-component, що не у root route folder. Grep-команда з review-fix без файлового filter знаходить додатковий match-set.
+
+**Причина виникнення:** Review-агент часто шукає bug-патерн у scope недавніх commits / specific files (наприклад `apps/web/src/app/(app)/X/page.tsx`) і ефективно фіксить там, але не виконує full-codebase grep на той самий патерн. Розробник, який раніше додав файл з тим патерном у іншому folder (наприклад `[id]/PageClient.tsx` коли review працював на root `/page.tsx`), залишається з невиправленим патерном. tsc green бо bug — runtime (silent .catch ховає помилку), unit tests green бо silent .catch не тестується unit-тестами.
+
+**Підхід до виявлення:**
+
+```bash
+# Після кожного review-fix commit
+last_review=$(git log --oneline -10 | grep "fix(review)" | head -1 | awk '{print $1}')
+# 1) Витягти grep-патерн з commit message або з diff (заміна "X" на "Y")
+pattern=$(git show "$last_review" -- "*.ts" "*.tsx" | grep "^-" | grep -oE '[\.]catch\(\(\) => \{\}\)' | head -1)
+# 2) Виконати full-codebase grep
+grep -rn "$pattern" apps/web/src --include="*.tsx" --include="*.ts"
+# 3) Виключити файли вже виправлені review-fix
+git show --stat "$last_review" -- '*.tsx' '*.ts' | awk '/^ /{print $1}' | head -10
+# 4) Усі match-и поза цим списком = upskipped review = новий Bug нового tester-циклу
+```
+
+**Підхід до фіксу:** Застосувати ТУ САМУ заміну (з review-fix) до пропущених файлів. Якщо знайдене місце легітимно потребує silent поведінку (toast-double-protection, fire-and-forget telemetry, optional SW registration) — задокументувати у коментарі біля коду АБО у BUG_REPORT.md як «Залишені «легітимні» silent .catch».
+
+**Severity:** Успадковує severity оригінального review-fix bug-у (зазвичай MEDIUM для debug-ability)
+
+**Де шукати ще:** Будь-який review-fix commit з `fix(review): replace X with Y` патерном — особливо у файл-категоріях що часто пропускаються: `[id]/PageClient.tsx` (dynamic-route detail), `*Tab.tsx` (tabbed sub-content), `components/<feature>/<sub>.tsx` (внутрішні компоненти фічі), `hooks/api/use*.ts` (data-fetch hooks). Пул silent .catch / .then-without-catch / unmocked side-effect — найчастіші drift патерни.
+
+---
 
 ### 2026-06-03 — Нові query-param фільтри без contract-spec coverage (Bugs #338, #339) — backend, contract tests
 
