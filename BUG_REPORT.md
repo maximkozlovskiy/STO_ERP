@@ -9604,3 +9604,63 @@ Universal Patterns rollout додав 4 нові hooks/components і зміни�
 **Статус:** [x] виправлено
 
 ---
+
+---
+
+## Session 2026-06-03 — Regression test round after Cycle 2 review
+
+**Контекст:** Цикл 2 review (commit `c9bb833`) виправив 2 регресії:
+
+- Bug #328 cascade у `catalog/GoodsTab.tsx` + `catalog/ServicesTab.tsx` (EMPTY_ITEMS fallback)
+- `system-templates.service.ts` `findMany` без явного `take` (§3.2 OOM guard)
+
+**Регресійний тест-раунд (повний baseline + E2E):**
+
+| Перевірка                                   | Очікувано                      | Факт                                                       | Статус                   |
+| ------------------------------------------- | ------------------------------ | ---------------------------------------------------------- | ------------------------ |
+| API unit tests (`@sto/api exec vitest`)     | 567/567                        | 567/567 passed (51 files, 16.5s)                           | ✓                        |
+| Web unit tests (`@sto/web exec vitest`)     | 251/251                        | 251/251 passed (23 files, 17.9s)                           | ✓                        |
+| API tsc --noEmit                            | 0 errors                       | 0 errors                                                   | ✓                        |
+| Web tsc --noEmit                            | 0 errors                       | 0 errors                                                   | ✓                        |
+| E2E Playwright (`@sto/web exec playwright`) | baseline 162 / 5 skip / 0 fail | **207 passed / 6 skipped / 0 failed** (3.7 min, 213 tests) | ✓ (зростання +45 тестів) |
+
+**Перевірка фіксів c9bb833:**
+
+- `GoodsTab.tsx:395` — `const goodsItems = goods?.items ?? (EMPTY_ITEMS as unknown as Good[]);` + `useBulkSelect(goodsItems)` на 396. ✓
+- `ServicesTab.tsx:186` — `const servicesItems = services?.items ?? (EMPTY_ITEMS as unknown as Service[]);` + `useBulkSelect(servicesItems)` на 187. ✓
+- `system-templates.service.ts:27` — `take: 500` присутнє, коментар про seed-managed catalogue. ✓
+
+**Розширений static audit Bug #328 cascade — всі 9 викликів `useBulkSelect` тепер з EMPTY_ITEMS fallback:**
+
+```
+employees/page.tsx:309        ← data ?? EMPTY_ITEMS
+crm/page.tsx:236              ← queryData?.items ?? EMPTY_ITEMS
+catalog/GoodsTab.tsx:396      ← goods?.items ?? EMPTY_ITEMS  (фікс c9bb833)
+catalog/ServicesTab.tsx:187   ← services?.items ?? EMPTY_ITEMS  (фікс c9bb833)
+catalog/WorksTab.tsx:202      ← works?.items ?? EMPTY_ITEMS
+invoices/page.tsx:203         ← queryData?.items ?? EMPTY_ITEMS
+work-orders/page.tsx:265      ← queryData?.items ?? EMPTY_ITEMS
+purchase-orders/page.tsx:194  ← queryData?.items ?? EMPTY_ITEMS
+stock-documents/page.tsx:237  ← docsData?.items ?? EMPTY_ITEMS
+```
+
+Bug #328 cascade pattern повністю закритий — жодне відоме місце не має `?? []` literal у залежності `useBulkSelect`.
+
+**Розширений static audit OOM guard (§3.2):** усі знайдені `findMany` у `apps/api/src/modules/**/*.service.ts` мають явний `take:` cap. Перевірені сервіси: branches (100), booking (100/500/50/20), bank-accounts, brands (1000), calendar (500), comments (500), currencies (500), cash-registers (200), audit (100), employees (limit ≤200 via DTO @Max), exchange-rates (500), goods (100/50), good-categories (1000/500/2000), inventory/batch (100), system-templates (500, фікс c9bb833).
+
+**Static audit `any` usage:**
+
+- API: 1 знайдено — `payments/checkbox.processor.ts:73` (коментар, не код).
+- Web: 2 знайдено — `stock-documents/page.tsx:480, 825` з `// eslint-disable-next-line @typescript-eslint/no-explicit-any` (навмисне рішення через рознесений interface, не критичний баг).
+
+**Нових багів НЕ знайдено.** Цикл 2 review закрив усі регресії.
+
+**Покриття patterns (всі активні):**
+
+- §1.1 Business logic / FSM: ✓ (E2E DRAFT→PAID повний цикл, stock-documents FSM)
+- §1.2 TypeScript: ✓ (0 tsc errors)
+- §1.3 Frontend hooks: ✓ (EMPTY_ITEMS cascade)
+- §1.4 Soft delete + tenant isolation: ✓ (E2E soft-delete toggle)
+- §1.5 OOM guard / pagination: ✓ (всі findMany з take)
+- §1.6 Stale closure / latest-ref: ✓ (Bug #330 guard test)
+- §1.7 E2E smoke: ✓ (207 passed, 213 total)
