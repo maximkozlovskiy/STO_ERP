@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+5525f78 fix(tester): documentDate regression — Bug #337-#339 contract spec coverage
 d615b23 fix(review): documentDate — remove as any casts + Kyiv-local date init + update contract tests
 ccd6284 fix(tester): Bug #336 — AnimatedBody fill prop regression-guard tests (7 нових кейсів)
 327acd4 docs(memory): update MemoryManual after viewport-fill review (4809160)
@@ -30,8 +31,10 @@ cde1792 fix(review): sync shared FSM transitions with backend authority
 Дата: 2026-06-03
 
 TypeScript: ✅ 0 errors (api, web, shared)
-Unit+Contract: ✅ 568/568 passed (api, +1 dateFrom/dateTo forwarding test) | **281/281 passed (web)**
+Unit+Contract: ✅ 594/594 passed (api: 568 baseline +26 new contract tests для WO/invoices/stock-docs) | **281/281 passed (web)**
 E2E Playwright: ✅ 207 passed / 6 skipped / 0 failed (baseline: 162 → +45)
+
+Latest tester: 2026-06-03 (sto-tester-agent, HEAD 5525f78, scope: documentDate feature regression — commits 18b8ce6→d615b23) — **0 runtime bugs found. 3 coverage gaps addressed (Bug #337 скасовано як хибно-позитивний, Bug #338 + #339 виправлено — 26 нових contract tests). Перевірено: (1) всі 4 сторінки мають `use client` — OK; (2) `kyivToday()` лише в client files — OK; (3) `form.documentDate || undefined` guard у всіх 4 create forms — NaN не потрапить у API — OK; (4) `@db.Date` у schema — date-only порівняння в фільтрі коректне — OK; (5) WorkOrderQueryDto.dateFrom/dateTo: виявлено що `@IsISO8601()` → `@IsDateString()` є косметичною зміною (обидва приймають datetime strings) — Bug #337 скасовано; зміна залишена для консистентності; (6) work-orders.contract.spec.ts: додано 1 тест dateFrom/dateTo forwarding — Bug #338 закрито; (7) invoices і stock-documents не мали жодного contract spec — створено по 9 тестів кожний — Bug #339 закрито. API: 594/594 passed (53 files). Web: 281/281 passed. tsc 0 errors.**
 
 Latest tester: 2026-06-03 (sto-tester-agent, HEAD pending ← 327acd4, scope: viewport-fill QA after 0578198 → 4809160) — **1 MEDIUM bug found (#336) + fixed. Bug #336: `AnimatedBody.fill` prop додано (4809160) для viewport-fill розкладки Modal, АЛЕ existing 22 тести modal.test.tsx покривали лише `fill={false}` (legacy ResizeObserver-mode). Integration-тест `використовується всередині Modal` перевіряв тільки наявність children, не структуру outer (flex-1 min-h-0 overflow-y-auto). Regression-blind: інверсія умови `if (!fill) return` (замість `if (fill) return`) у useEffect → JS-керування height активується для Modal-body → outer.height = inner.scrollHeight → flex-розтягування ламається у max-h-[90dvh] панелі, footer "пливе". TS+тести green, баг не ловиться. Додано 7 нових regression-guard тестів у `modal.test.tsx > AnimatedBody (standalone) > fill prop`: (1) outer має `flex-1 min-h-0 overflow-y-auto`, (2) className на inner, не outer, (3) `fill=true` НЕ створює ResizeObserver (spy на constructor — НЕ викликаний; useEffect early return), (4) `fill=true` НЕ виставляє inline-style height/transition, (5) `fill=false` default лишає `overflow:hidden` inline (legacy mode), (6) Modal-body internal `fill=true` (інтеграційний — рендер Modal → перевірка outer wrapper structure), (7) Modal panel має `max-h-[90dvh] flex flex-col` (viewport-fill container контракт). Baseline web vitest: 274→281 passed (25 файлів). tsc 0 errors api+web+shared. Самовдосконалення SKILL.md: §1.3 frontend pattern "Bool prop early-return у useEffect — regression-guard тест ОБОВ'ЯЗКОВО для обох гілок (constructor not called/called)".**
 
