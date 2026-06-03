@@ -672,6 +672,7 @@ done
 
 - [ ] Нові `*.service.ts` → парний `*.spec.ts` з мінімальними кейсами вище
 - [ ] Нові `@Controller` → парний `*.contract.spec.ts`
+- [ ] **Нові query-param фільтри (dateFrom, dateTo, branchId, q...) у існуючому QueryDto (Bugs #338, #339):** перевірити що відповідний `*.contract.spec.ts` має тест `toHaveBeenCalledWith(..., paramValue)` або `queryArg.param === value` (залежно від spread vs object). Якщо contract spec відсутня — створити. Grep: `git diff HEAD~5 HEAD --name-only | grep "\.dto\.ts$"` → для кожного QueryDto знайти spec → перевірити покриття нових полів.
 - [ ] **Boundary-кейси для діапазонних правил (COST_TIER, sliding-scale, age-brackets, tax-brackets):** будь-яке правило з `min <= x < max` (або `<=`/`>=`) має тести точно НА межі (`x === min`, `x === max`), на нулі (`x === 0`), і за межами (`x < минімум`, `x > максимум`). Реалізація працює, але регресія `<=`/`<` беззвучно змінить semantics — рідко-проходимий код. Boundary-тест документує contract і ловить інверсію оператора (Bug #184)
 - [ ] **Cross-tenant FK contract test для optional FK у payload:** якщо контролер валідує optional FK через `findFirst({id, orgId})` перед write (Bug #161 патерн) → contract spec має асертити: (а) POST з FK з ЦІЄЇ org → 201 + `findFirst` викликаний з правильним `{id, orgId, deletedAt:null}`; (б) POST з FK з ЧУЖОЇ org → 404 + `create` НЕ викликаний; (в) PATCH з FK з ЧУЖОЇ org → 404 + `update` НЕ викликаний. Без цих тестів регресія (видалення org-scoped перевірки під рефактор) пройде CI зеленою → cross-tenant linkage у проді без error (Bug #186)
 
@@ -924,6 +925,57 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-03 — Нові query-param фільтри без contract-spec coverage (Bugs #338, #339) — backend, contract tests
+
+**Сигнал:** Sprint додає нові query-param фільтри (`dateFrom`/`dateTo`) до кількох контролерів. Contract specs для деяких модулів не існують взагалі (invoices, stock-documents) або не покривають нові параметри (work-orders). TS green, unit tests green — але якщо контролер перестане прокидати параметри у сервіс (наприклад через рефакторинг Query DTO або додавання нового параметра поверх старих), регресія залишається непоміченою до ручного QA або баг-репорту від користувача.
+
+**Причина виникнення:** Розробник додає `dateFrom/dateTo` у DTO + controller + service за раз. Якщо contract spec вже існує — тести для старих параметрів passing, нові не додаються. Якщо contract spec відсутня — ніхто її не пишe бо "controller простий, просто проксіює". Справжня цінність contract spec — саме в тому, що контролер є intercept-точкою: DTO transformation, @Transform decorators, parameter forwarding — все це видиме ТІЛЬКИ через HTTP contract test.
+
+**Підхід до виявлення:**
+
+```bash
+# Крок 1: знайти всі модифіковані QueryDto файли у diff
+git diff HEAD~5 HEAD --name-only | grep -E "\.dto\.ts$"
+
+# Крок 2: для кожного DTO перевірити чи contract spec покриває нові поля
+for dto in $(git diff HEAD~5 HEAD --name-only | grep "\.dto\.ts$"); do
+  module=$(dirname "$dto")
+  spec=$(find "$module" -name "*.contract.spec.ts" 2>/dev/null | head -1)
+  new_fields=$(git diff HEAD~5 HEAD -- "$dto" | grep "^+" | grep -oE "[a-z][a-zA-Z]+\?" | tr -d '?' | head -5)
+  if [ -z "$spec" ]; then
+    echo "NO SPEC: $module (missing contract spec entirely)"
+  else
+    for field in $new_fields; do
+      grep -q "$field" "$spec" || echo "MISSING TEST: $field not covered in $spec"
+    done
+  fi
+done
+
+# Крок 3: якщо контролер передає query як цілий об'єкт (не spread) — перевірити call-assert форму
+grep -n "service.findAll\|serviceMock.findAll" apps/api/src/modules/*/\*.contract.spec.ts 2>/dev/null | grep -v "mock\|fn()" | head -20
+```
+
+- [ ] Кожен sprint що додає нові query-param поля у QueryDto (`dateFrom`, `dateTo`, `branchId`, `vehicleId`, `q`) → парний test у contract spec (`toHaveBeenCalledWith(..., dateFromValue, dateToValue)`)
+- [ ] Якщо contract spec модуля відсутня + модуль має нову фільтрацію → **обов'язково створити базовий spec** з мінімум: GET 200, GET з новими params, POST без mandatory fields → 400, GET без JWT → 403
+- [ ] Якщо контролер передає `@Query() query: XxxQueryDto` як ціліснй об'єкт до сервісу → тест через `serviceMock.findAll.mock.calls[callsBefore]![1] as Record<string, unknown>` → `expect(queryArg.dateFrom).toBe(...)` (не `toHaveBeenCalledWith` бо форма аргументу — объект, не spread)
+
+**Підхід до фіксу:**
+
+1. Визначити: controller передає params як spread чи як QueryDto об'єкт? (`service.findAll(orgId, query)` vs `service.findAll(orgId, query.page, query.limit, ...)`).
+2. Для spread-стилю — оновити `toHaveBeenCalledWith('org-1', 1, 20, ..., dateFrom, dateTo)`.
+3. Для object-стилю — асертити `queryArg.dateFrom` та `queryArg.dateTo` через `mock.calls[idx][1]`.
+4. При відсутній spec — створити базову (9-12 тестів): GET pagination shape, GET 403, GET limit=201 400, GET з новими params, POST mandatory 400, POST valid 201, POST з empty field → undefined (emptyToUndefined).
+
+**Severity:** LOW — відсутність тестів не є runtime bug, але залишає regression-blind зону після кожного sprint що додає query params.
+
+**Де шукати ще:**
+
+- Кожен sprint що додає date-range фільтри (`documentDate`, `createdAt range`, `dueDate range`) — перевірити що існуючий contract spec оновлено
+- Модулі з `findAll(orgId, ...args)` signature (spread) vs `findAll(orgId, query)` (object) — різна форма assertion у тестах
+- Нові модулі без contract spec взагалі: `find apps/api/src/modules -name "*.controller.ts" | while read c; do d=$(dirname "$c"); ls "$d"/*.contract.spec.ts 2>/dev/null || echo "NO SPEC: $d"; done`
+
+---
 
 ### 2026-06-03 — Bool prop early-return у useEffect — обидві гілки потребують regression-guard (Bug #336) — frontend, hooks & component props
 
