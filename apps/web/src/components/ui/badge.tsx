@@ -26,7 +26,7 @@ const variants: Record<BadgeVariant, string> = {
   warning: 'bg-warning-subtle text-warning-text border-warning-border',
   destructive: 'bg-destructive-subtle text-destructive-text border-destructive-border',
   info: 'bg-info-subtle text-info-text border-info-border',
-  purple: 'bg-[hsl(270_100%_97%)] text-[hsl(262_83%_44%)] border-[hsl(270_88%_82%)]',
+  purple: 'bg-purple-subtle text-purple-text border-purple-border',
 };
 
 const dotColors: Record<BadgeVariant, string> = {
@@ -37,7 +37,7 @@ const dotColors: Record<BadgeVariant, string> = {
   warning: 'bg-warning',
   destructive: 'bg-destructive',
   info: 'bg-info',
-  purple: 'bg-[hsl(262_83%_58%)]',
+  purple: 'bg-purple',
 };
 
 function Badge({ variant = 'default', className, children, dot }: BadgeProps) {

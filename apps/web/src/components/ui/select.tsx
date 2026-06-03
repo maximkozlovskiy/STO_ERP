@@ -38,7 +38,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
               'hover:border-border-hover',
               'focus:border-primary focus:ring-3 focus:ring-brand-100',
               'disabled:bg-secondary disabled:opacity-60 disabled:cursor-not-allowed',
-              hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)]',
+              hasError && 'border-destructive focus:ring-destructive-ring',
               className,
             )}
             aria-invalid={hasError}

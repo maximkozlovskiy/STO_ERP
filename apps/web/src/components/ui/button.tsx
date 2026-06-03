@@ -34,7 +34,7 @@ const variants: Record<Variant, string> = {
   ghost: 'text-foreground-muted ' + 'hover:bg-secondary hover:text-foreground active:scale-[0.98]',
   destructive:
     'bg-destructive text-white shadow-[0_1px_2px_rgb(0_0_0/0.12)] ' +
-    'hover:bg-[hsl(0_84%_52%)] active:scale-[0.98]',
+    'hover:bg-destructive-hover active:scale-[0.98]',
   link: 'text-primary underline-offset-4 hover:underline p-0 h-auto',
 };
 
