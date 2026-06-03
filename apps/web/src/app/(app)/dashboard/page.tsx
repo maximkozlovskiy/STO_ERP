@@ -228,7 +228,7 @@ export default function DashboardPage() {
   if (!employee) return null;
 
   return (
-    <div className="page-container">
+    <div className="page-fill p-4 md:p-6 overflow-y-auto">
       {error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
@@ -262,9 +262,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* KPI row 1 */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <Link href="/work-orders">
+          {/* KPI grid — 6 рівних карток */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+            <Link href="/work-orders" className="flex">
               <KpiCard
                 label="В роботі"
                 value={streamData?.activeWo ?? kpi.inProgressOrders}
@@ -274,37 +274,37 @@ export default function DashboardPage() {
                   value: `${kpi.completedToday} завершено сьогодні`,
                   up: kpi.completedToday > 0,
                 }}
+                className="w-full"
               />
             </Link>
-            <Link href="/work-orders">
+            <Link href="/work-orders" className="flex">
               <KpiCard
                 label="Очікують"
                 value={kpi.openOrders}
                 icon={<Clock />}
                 colorClass="kpi-card-amber"
+                className="w-full"
               />
             </Link>
-            <Link href="/reports">
+            <Link href="/reports" className="flex">
               <KpiCard
                 label="Виручка сьогодні"
                 value={fmt(streamData?.todayRevenue ?? kpi.revenueToday)}
                 icon={<TrendingUp />}
                 colorClass="kpi-card-green"
+                className="w-full"
               />
             </Link>
-            <Link href="/reports">
+            <Link href="/reports" className="flex">
               <KpiCard
                 label="Виручка за місяць"
                 value={fmt(kpi.revenueMonth)}
                 icon={<BarChart2 />}
                 colorClass="kpi-card-violet"
+                className="w-full"
               />
             </Link>
-          </div>
-
-          {/* KPI row 2 */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <Link href="/invoices">
+            <Link href="/invoices" className="flex">
               <KpiCard
                 label="Несплачені рахунки"
                 value={streamData?.pendingInvoices ?? kpi.unpaidInvoices}
@@ -317,9 +317,10 @@ export default function DashboardPage() {
                 trend={
                   kpi.unpaidAmount > 0 ? { value: fmt(kpi.unpaidAmount), up: false } : undefined
                 }
+                className="w-full"
               />
             </Link>
-            <Link href="/inventory">
+            <Link href="/inventory" className="flex">
               <KpiCard
                 label="Низький залишок"
                 value={streamData?.lowStockCount ?? kpi.lowStockCount}
@@ -329,6 +330,7 @@ export default function DashboardPage() {
                     ? 'kpi-card-amber'
                     : 'kpi-card-teal'
                 }
+                className="w-full"
               />
             </Link>
           </div>

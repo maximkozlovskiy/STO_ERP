@@ -89,7 +89,7 @@ function KpiCard({
   return (
     <div
       className={cn(
-        'rounded-lg border p-5 flex items-start justify-between gap-3',
+        'rounded-lg border p-4 flex items-start justify-between gap-3 h-full',
         colorClass,
         'bg-(--kpi-bg) border-(--kpi-border)',
         className,
