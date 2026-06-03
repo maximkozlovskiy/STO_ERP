@@ -1339,6 +1339,54 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 
 ---
 
+### 2026-06-03 — Optional guard блокує main aggregation у reports — sequential branch/employee/warehouse findFirst перед raw SQL
+
+**Сигнал:** report-метод (revenue, workOrders, stock, load, profitability) починається з `if (branchId) { const branch = await this.prisma.X.findFirst(...); if (!branch) throw }`, потім робить тяжкий `$queryRaw` aggregation з тим самим branchId/employeeId/warehouseId у WHERE. Перший RTT повністю незалежний від другого — обидва читають за orgId + ID з параметра, але стоять sequential. У happy path (filter валідний) — 1 зайвий RTT на кожен виклик звіту.
+
+**Причина виникнення:** "спочатку перевір існування → потім запит" — інстинктивно правильно для CRUD endpoints, де NotFound має повернутись ПЕРЕД будь-якою тяжкою роботою. У reports це інтуїтивно те саме, але aggregation на неіснуючому filter ID просто повертає порожній результат (без жодної шкоди — sum=0, count=0). Тому можна виконувати обидва паралельно і кинути NotFound ПІСЛЯ awaits на основі результату guard query.
+
+**Підхід до виявлення:** грепнути `await this.prisma.\w+.findFirst.*\n.*await this.prisma.\$queryRaw|await this.prisma.\w+\.findMany` (multiline) у `*.service.ts`. Особливо у reports/dashboard/analytics. Якщо перший findFirst — це optional filter guard (за `if (X)` умовою) і не використовується у наступному запиті — кандидат.
+
+**Підхід до фіксу:** `const [guard, rows] = await Promise.all([X ? findFirst(select:id) : Promise.resolve(null), $queryRaw...])`. ПІСЛЯ awaits: `if (X && !guard) throw NotFound`. Failure mode: aggregation на неіснуючому ID просто повертає пустий результат — throw NotFound прийдеє у нормі ПІСЛЯ обох reads, користувач бачить ту саму UA error. Cost: 1 зайвий empty aggregation у нещасному випадку (filter invalid) — копійки порівняно з -1 RTT у happy path.
+
+**Реальний impact:** reports endpoints викликаються при відкритті звіту + кожному change date range / filter (debounced). На WAN 30-50ms × десятки переглядів = відчутне покращення UX.
+
+**Де шукати ще:** усі reports/analytics/dashboard сервіси з optional filter guards. Особливо: revenue (branch), workOrders (employee), stock (warehouse), load (branch), profitability (branch/customer), settlements (counterparty). Перевіряти при додаванні нового звіту з опціональним filter.
+
+---
+
+### 2026-06-03 — findOne як guard у update/create методах де update сам повертає DTO — narrow до id-only select
+
+**Сигнал:** метод `update(orgId, id, dto)` або `createChild(orgId, parentId, dto)` починається з `await this.findOne(orgId, id)` — повертає повний DTO з усіма include relations, але результат **не використовується** (лише як 404 guard). Наступний `update`/`create` сам повертає потрібний DTO через `include`. findOne працює як 1 RTT, але навантаження на wire і V8 непропорційно велике до своєї мети.
+
+**Причина виникнення:** findOne це найкоротший спосіб написати tenant guard з UA error message. Загальна абстракція з простою сигнатурою (`(orgId, id)`) приваблює — особливо коли логіка update/create складна (transactions, FK validation, etc.). Розробник не помічає що findOne тягне employeeZones/serviceWorks/settlementAccount/lines+parts через include — тобто 3-10 relations на гарячому шляху редагування. JSON serialization + V8 allocation на guard query — марна робота.
+
+**Підхід до виявлення:** для кожного `await this.findOne(orgId, id)` як перший рядок update/create методу — перевірити чи результат використовується далі. Якщо ні (тільки як 404 guard) — кандидат на narrow `findFirst({ where, select: { id: true } })`. Не плутати з випадками де findOne result використовується далі (status check у FSM, isSystem guard, balance check).
+
+**Підхід до фіксу:** замінити `await this.findOne(orgId, id)` на `const existing = await this.prisma.X.findFirst({ where: { id, orgId, deletedAt: null }, select: { id: true } }); if (!existing) throw NotFoundException('UA message')`. Той самий 1 RTT, але select { id: true } у 10-50× менший payload на wire і no relations marshaling. Якщо findOne використовується скрізь у класі — лишити його, локалізована заміна на hot-path тільки.
+
+**Реальний impact:** на CRUD-важких сторінках (employees, services, vehicles, counterparties) — менша latency на кожну форму save + менший memory pressure на API процесі. Найпомітніше при batch-операціях (bulk edit, import) де update викликається тисячі разів.
+
+**Де шукати ще:** будь-який сервіс з тяжким findOne (full DTO + includes) що використовується як guard у update/create-child методах. Особливо: employees.update, services.update, vehicles.createNode, counterparties.createGarage, work-orders.createLine/addPart (на гарячому шляху редагування). Перевіряти кожен новий update method з findOne як першим рядком.
+
+---
+
+### 2026-06-03 — Weighted SUM у JS reduce замість Postgres aggregate — `findMany(select scalars) + reduce(qty * cost)`
+
+**Сигнал:** хелпер що рахує середньозважене значення (avg cost, avg margin, weighted score) робить `findMany({ select: { qty, cost } })` потім `.reduce((s, b) => s + b.qty * b.cost, 0)` + `.reduce((s, b) => s + b.qty, 0)` + ділення. Стандартний `prisma.aggregate({ _sum: { X: true } })` не підтримує cross-column множення, тому розробник «змушений» завантажити рядки + JS compute. Насправді `$queryRaw` з `SUM(qty * cost)` робить це у Postgres за 1 RTT з 1-row response.
+
+**Причина виникнення:** Prisma high-level API не має cross-column aggregate. Якщо потреба є weighted SUM — інстинктивний шлях `findMany + JS`. take:500 створює false-sense-of-safety, але навіть 500 рядків × часті виклики = непотрібний marshaling. Hot-path (avg cost у WO продаж/списання) — кожен виклик рівноцінний find query → reduce N times.
+
+**Підхід до виявлення:** грепнути `findMany.*select.*\.reduce.*\*` у backend services. Для кожного збігу спитати: «чи цей reduce це weighted SUM (a*b + a*b)?» Якщо так — кандидат на `$queryRaw SUM(a * b)`.
+
+**Підхід до фіксу:** `$queryRaw<{total_cost, total_qty}[]>SELECT SUM(qty * cost) AS total_cost, SUM(qty) AS total_qty FROM X WHERE...` У CTE можна зберегти detminism (ORDER BY createdAt DESC + LIMIT N), якщо потрібно ранжування рядків перед aggregation. Service ділить total_cost / total_qty синхронно. -1 wire payload (1 рядок з 2 float замість N рядків × 2 колонки) + Postgres aggregate швидший за JS reduce на великих наборах.
+
+**Реальний impact:** для AVG_COST hot-path (consumeBatch у кожному WO продаж/списання + getAvgCost у inventory report) — менше CPU + менше allocation. На batch-операціях (inventory re-cost, applyPricing) — масштабований виграш.
+
+**Де шукати ще:** будь-який hot-path сервіс з weighted aggregate: cost methods (AVG_COST), inventory valuation, weighted-average price across batches, GPA-like calculations, weighted average across periods. Перевіряти `findMany + reduce` що містить множення.
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -1432,6 +1480,11 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ units.remove: findOne + isSystem check + update (2 RTT) → updateMany з compound where {id, orgId, deletedAt: null, isSystem: false} (1 RTT happy path); cheap fallback findFirst для UA error message
 - ✅ units.update: speculative duplicate-check у Promise.all з tenant guard (2 RTT → 1 RTT у 95% happy path при зміні shortName)
 - ✅ maintenance-schedules.update: existing findFirst narrow select (drop vehicle/syncVersion/orgId/etc over-fetch) — payload менший, recalc fallback працює як було
+- ✅ branches/counterparties/employees/payment-methods/services/vehicles/warehouses/works.remove: `findOne + update` 2-RTT → `updateMany` з compound where (id+orgId+deletedAt:null), 1 RTT, race-safe (8 services)
+- ✅ reports.revenue/workOrders/stock/load: optional branch/employee/warehouse guard inlined into Promise.all з main aggregation (-1 RTT у happy path для filtered reports)
+- ✅ loyalty.earn: settings + counterparty tenant guard у Promise.all замість sequential (getOrCreateAccount внутрішньо викликав assertCounterparty після settings) (-1 RTT у hot daily payment flow)
+- ✅ batch.getAvgCost: findMany(take:500, select:{qty, cost}) + 2× JS reduce → $queryRaw weighted SUM CTE (SUM(qty\*cost)/SUM(qty)) — 1 row response замість 500, no V8 allocation, Postgres aggregate швидше за JS reduce. Detinism (Bug #270) збережено через ORDER BY createdAt DESC + LIMIT 500 у CTE
+- ✅ employees/services.update + vehicles.createNode/counterparties.createGarage: findOne (full DTO + relations) → narrow findFirst({select:{id:true}}) tenant guard — той самий 1 RTT, але -50-80% wire payload (no relations marshaling)
 
 **Frontend:**
 
