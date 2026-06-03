@@ -22,7 +22,7 @@ import { fmtMoney, fmtInt, fmtDate, fmtDateTime, fmtShortDateTime } from '@/lib/
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
-import { WO_STATUS_LABELS } from '@sto/shared';
+import { WO_STATUS_LABELS, WO_STATUS_TRANSITIONS } from '@sto/shared';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -182,16 +182,10 @@ const STATUS_COLORS: Record<string, string> = {
   ARCHIVED: 'bg-secondary text-muted-foreground',
   CANCELLED: 'bg-destructive-subtle text-destructive',
 };
-const TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ['ESTIMATE', 'CANCELLED'],
-  ESTIMATE: ['APPROVED', 'DRAFT', 'CANCELLED'],
-  APPROVED: ['IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
-  IN_PROGRESS: ['ON_HOLD', 'COMPLETED'],
-  ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
-  COMPLETED: ['INVOICED'],
-  INVOICED: ['PAID'],
-  PAID: ['ARCHIVED'],
-};
+// Single source of truth: WO_STATUS_TRANSITIONS in @sto/shared mirrors the
+// backend WORK_ORDER_TRANSITIONS map. Local fallback for terminal statuses
+// (ARCHIVED/CANCELLED → []) so `?? []` is unnecessary at call sites.
+const TRANSITIONS = WO_STATUS_TRANSITIONS;
 const TRANSITION_LABELS: Record<string, string> = {
   ESTIMATE: 'Кошторис',
   APPROVED: 'Затвердити',

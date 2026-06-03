@@ -42,13 +42,16 @@ export const WO_STATUS_BADGE: Record<string, BadgeVariant> = {
   CANCELLED: 'destructive',
 };
 
+// Single source of truth: must mirror backend `WORK_ORDER_TRANSITIONS`
+// in apps/api/src/modules/work-orders/work-orders.fsm.ts. Backend is authoritative —
+// if these diverge the UI offers transitions the API will reject with 400.
 export const WO_STATUS_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['ESTIMATE', 'CANCELLED'],
-  ESTIMATE: ['APPROVED', 'CANCELLED'],
-  APPROVED: ['IN_PROGRESS', 'CANCELLED'],
+  ESTIMATE: ['APPROVED', 'DRAFT', 'CANCELLED'],
+  APPROVED: ['IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
   IN_PROGRESS: ['ON_HOLD', 'COMPLETED'],
   ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
-  COMPLETED: ['INVOICED', 'ARCHIVED'],
+  COMPLETED: ['INVOICED'],
   INVOICED: ['PAID'],
   PAID: ['ARCHIVED'],
   ARCHIVED: [],
@@ -97,6 +100,8 @@ export const INVOICE_STATUS_BADGE: Record<string, BadgeVariant> = {
   CANCELLED: 'destructive',
 };
 
+// Single source of truth: must mirror backend `INV_TRANSITIONS` in
+// apps/api/src/modules/invoices/invoices.service.ts.
 export const INVOICE_STATUS_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['SENT', 'CANCELLED'],
   SENT: ['PAID', 'CANCELLED'],
@@ -129,9 +134,11 @@ export const PO_STATUS_BADGE: Record<string, BadgeVariant> = {
   CANCELLED: 'destructive',
 };
 
+// Single source of truth: must mirror backend `PO_TRANSITIONS` in
+// apps/api/src/modules/purchase-orders/purchase-orders.service.ts.
 export const PO_STATUS_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['ORDERED', 'CANCELLED'],
-  ORDERED: ['RECEIVED', 'CANCELLED'],
+  ORDERED: ['PARTIAL', 'RECEIVED', 'CANCELLED'],
   PARTIAL: ['RECEIVED', 'CANCELLED'],
   RECEIVED: [],
   CANCELLED: [],
@@ -158,6 +165,8 @@ export const STOCK_DOC_STATUS_BADGE: Record<string, BadgeVariant> = {
   CANCELLED: 'destructive',
 };
 
+// Single source of truth: must mirror backend `DOC_TRANSITIONS` in
+// apps/api/src/modules/stock-documents/stock-documents.service.ts.
 export const STOCK_DOC_STATUS_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: [],
