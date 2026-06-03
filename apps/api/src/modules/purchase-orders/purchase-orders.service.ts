@@ -236,7 +236,11 @@ export class PurchaseOrdersService {
         }
         return tx.purchaseOrder.update({
           where: { id, orgId },
-          data: { notes: dto.notes, totalAmount },
+          data: {
+            notes: dto.notes,
+            totalAmount,
+            documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
+          },
           include: {
             supplier: { select: { firstName: true, lastName: true, companyName: true } },
             warehouse: { select: { name: true } },

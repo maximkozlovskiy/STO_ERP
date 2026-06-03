@@ -236,7 +236,10 @@ export class StockDocumentsService {
         }
         return tx.stockDocument.update({
           where: { id, orgId },
-          data: { notes: dto.notes },
+          data: {
+            notes: dto.notes,
+            documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
+          },
           include: {
             branch: { select: { name: true } },
             warehouse: { select: { name: true } },

@@ -206,6 +206,7 @@ export class InvoicesService {
       data: {
         amount: dto.amount ?? undefined,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+        documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
         notes: dto.notes ?? undefined,
       },
       include: {

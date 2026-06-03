@@ -311,6 +311,7 @@ export class WorkOrdersService {
             : dto.dueDate === null
               ? null
               : new Date(dto.dueDate),
+        documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
       },
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },

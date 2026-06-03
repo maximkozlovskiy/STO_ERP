@@ -771,7 +771,7 @@ export default function WorkOrderCardPage() {
     setEditSaving(true);
     setError('');
     try {
-      const updated = await apiFetch<WorkOrderDetail>(`/work-orders/${wo.id}`, {
+      const updated = await apiFetch<Partial<WorkOrderDetail>>(`/work-orders/${wo.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           documentDate: editForm.documentDate || undefined,
@@ -783,7 +783,8 @@ export default function WorkOrderCardPage() {
           clientApproval: editForm.clientApproval,
         }),
       });
-      setWo(updated);
+      // PATCH returns WorkOrderResponseDto without lines/parts — merge to preserve them
+      setWo(prev => (prev ? { ...prev, ...updated } : prev));
       setEditModal(false);
       toast.success('Реквізити збережено');
     } catch (e: unknown) {
@@ -1196,7 +1197,7 @@ export default function WorkOrderCardPage() {
             </button>
           )}
         </div>
-        {wo.lines.length === 0 ? (
+        {(wo.lines?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">Роботи не додані</p>
         ) : (
           <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
@@ -1265,7 +1266,7 @@ export default function WorkOrderCardPage() {
             </div>
           )}
         </div>
-        {wo.parts.length === 0 ? (
+        {(wo.parts?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">Запчастини не додані</p>
         ) : (
           <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
