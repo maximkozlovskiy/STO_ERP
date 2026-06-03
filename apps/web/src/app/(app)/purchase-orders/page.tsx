@@ -63,6 +63,10 @@ import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
+// Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const kyivToday = () => KYIV_YMD.format(new Date());
+
 interface Supplier {
   id: string;
   firstName?: string;
@@ -151,9 +155,8 @@ export default function PurchaseOrdersPage() {
   const debouncedQ = useDebounce(q);
   const [showDeleted, setShowDeleted] = useState(false);
   const [error, setError] = useState('');
-  const today = new Date().toISOString().slice(0, 10);
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
+  const [dateFrom, setDateFrom] = useState(() => kyivToday());
+  const [dateTo, setDateTo] = useState(() => kyivToday());
 
   // React Query hooks
   const limit = 20;
@@ -226,7 +229,7 @@ export default function PurchaseOrdersPage() {
     supplierId: '',
     warehouseId: '',
     notes: '',
-    documentDate: new Date().toISOString().slice(0, 10),
+    documentDate: kyivToday(),
   });
   const [lines, setLines] = useState<
     {
@@ -375,7 +378,7 @@ export default function PurchaseOrdersPage() {
         supplierId: '',
         warehouseId: '',
         notes: '',
-        documentDate: new Date().toISOString().slice(0, 10),
+        documentDate: kyivToday(),
       });
       setSupplierDisplayName('');
       setLines([]);
@@ -955,7 +958,7 @@ export default function PurchaseOrdersPage() {
             supplierId: '',
             warehouseId: '',
             notes: '',
-            documentDate: new Date().toISOString().slice(0, 10),
+            documentDate: kyivToday(),
           });
           setSupplierDisplayName('');
           setLines([]);

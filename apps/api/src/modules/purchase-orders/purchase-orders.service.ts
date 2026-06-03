@@ -560,6 +560,7 @@ export class PurchaseOrdersService {
     warehouseId: string;
     totalAmount: import('@prisma/client').Prisma.Decimal;
     notes: string | null;
+    documentDate?: Date | null;
     createdAt: Date;
     updatedAt: Date;
     deletedAt?: Date | null;
@@ -599,9 +600,7 @@ export class PurchaseOrdersService {
       warehouseName: po.warehouse?.name,
       totalAmount: Number(po.totalAmount),
       notes: po.notes ?? null,
-      documentDate: (po as any).documentDate
-        ? ((po as any).documentDate as Date).toISOString().slice(0, 10)
-        : null,
+      documentDate: po.documentDate ? po.documentDate.toISOString().slice(0, 10) : null,
       linesCount: po._count?.lines ?? po.lines?.length ?? 0,
       deletedAt: po.deletedAt ?? null,
       lines: (po.lines ?? []).map(l => ({

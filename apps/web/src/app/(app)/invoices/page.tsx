@@ -63,6 +63,11 @@ import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
+// Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
+// new Date().toISOString() returns UTC, which diverges from Kyiv date between midnight and UTC+2/+3.
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const kyivToday = () => KYIV_YMD.format(new Date());
+
 interface Counterparty {
   id: string;
   firstName?: string;
@@ -148,9 +153,8 @@ export default function InvoicesPage() {
   const debouncedSearch = useDebounce(search);
   const [error, setError] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
+  const [dateFrom, setDateFrom] = useState(() => kyivToday());
+  const [dateTo, setDateTo] = useState(() => kyivToday());
 
   // React Query hooks
   const limit = 20;
@@ -182,7 +186,7 @@ export default function InvoicesPage() {
     counterpartyId: '',
     amount: '',
     dueDate: '',
-    documentDate: new Date().toISOString().slice(0, 10),
+    documentDate: kyivToday(),
   });
   const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
   const [payForm, setPayForm] = useState({ method: 'cash', amount: '', notes: '' });
@@ -327,7 +331,7 @@ export default function InvoicesPage() {
         counterpartyId: '',
         amount: '',
         dueDate: '',
-        documentDate: new Date().toISOString().slice(0, 10),
+        documentDate: kyivToday(),
       });
       setCounterpartyDisplayName('');
       queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
@@ -876,7 +880,7 @@ export default function InvoicesPage() {
             counterpartyId: '',
             amount: '',
             dueDate: '',
-            documentDate: new Date().toISOString().slice(0, 10),
+            documentDate: kyivToday(),
           });
           setCounterpartyDisplayName('');
         }}

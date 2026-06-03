@@ -1157,6 +1157,7 @@ export class WorkOrdersService {
     totalParts: Prisma.Decimal;
     totalAmount: Prisma.Decimal;
     paidAmount: Prisma.Decimal | null;
+    documentDate?: Date | null;
     createdAt: Date;
     updatedAt: Date;
     deletedAt?: Date | null;
@@ -1198,9 +1199,7 @@ export class WorkOrdersService {
       totalParts: Number(wo.totalParts),
       totalAmount: Number(wo.totalAmount),
       paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,
-      documentDate: (wo as any).documentDate
-        ? ((wo as any).documentDate as Date).toISOString().slice(0, 10)
-        : null,
+      documentDate: wo.documentDate ? wo.documentDate.toISOString().slice(0, 10) : null,
       createdAt: wo.createdAt,
       updatedAt: wo.updatedAt,
       hasActiveWarranty: (wo._count?.warranties ?? 0) > 0,

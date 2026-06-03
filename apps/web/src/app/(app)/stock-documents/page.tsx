@@ -57,6 +57,10 @@ import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtDateTime } from '@/lib/format';
 
+// Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const kyivToday = () => KYIV_YMD.format(new Date());
+
 interface Branch {
   id: string;
   name: string;
@@ -169,9 +173,8 @@ export default function StockDocumentsPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
+  const [dateFrom, setDateFrom] = useState(() => kyivToday());
+  const [dateTo, setDateTo] = useState(() => kyivToday());
 
   const qc = useQueryClient();
   const { data: docsData, isLoading: loading } = useStockDocuments({
@@ -201,7 +204,7 @@ export default function StockDocumentsPage() {
     warehouseId: '',
     targetWarehouseId: '',
     notes: '',
-    documentDate: new Date().toISOString().slice(0, 10),
+    documentDate: kyivToday(),
   });
   const [lines, setLines] = useState<
     {
@@ -402,7 +405,7 @@ export default function StockDocumentsPage() {
         warehouseId: '',
         targetWarehouseId: '',
         notes: '',
-        documentDate: new Date().toISOString().slice(0, 10),
+        documentDate: kyivToday(),
       });
       setLines([]);
       load();

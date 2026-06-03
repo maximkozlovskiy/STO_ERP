@@ -165,7 +165,16 @@ describe('PurchaseOrders — HTTP Contract', () => {
         url: '/purchase-orders?showDeleted=true',
       });
       expect(res.statusCode).toBe(200);
-      expect(serviceMock.findAll).toHaveBeenCalledWith('org-1', 1, 20, undefined, undefined, true);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        1,
+        20,
+        undefined,
+        undefined,
+        true,
+        undefined,
+        undefined,
+      );
     });
 
     it('showDeleted відсутній → service.findAll отримує false (showDeleted === "true" check)', async () => {
@@ -174,7 +183,16 @@ describe('PurchaseOrders — HTTP Contract', () => {
         url: '/purchase-orders',
       });
       expect(res.statusCode).toBe(200);
-      expect(serviceMock.findAll).toHaveBeenCalledWith('org-1', 1, 20, undefined, undefined, false);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        1,
+        20,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+      );
     });
 
     it('q=PO-001 → service.findAll отримує query string', async () => {
@@ -183,7 +201,16 @@ describe('PurchaseOrders — HTTP Contract', () => {
         url: '/purchase-orders?q=PO-001&status=DRAFT',
       });
       expect(res.statusCode).toBe(200);
-      expect(serviceMock.findAll).toHaveBeenCalledWith('org-1', 1, 20, 'DRAFT', 'PO-001', false);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        1,
+        20,
+        'DRAFT',
+        'PO-001',
+        false,
+        undefined,
+        undefined,
+      );
     });
 
     it('page=2&limit=50&q=test&showDeleted=true → всі параметри прокинуті', async () => {
@@ -192,7 +219,34 @@ describe('PurchaseOrders — HTTP Contract', () => {
         url: '/purchase-orders?page=2&limit=50&q=test&showDeleted=true&status=RECEIVED',
       });
       expect(res.statusCode).toBe(200);
-      expect(serviceMock.findAll).toHaveBeenCalledWith('org-1', 2, 50, 'RECEIVED', 'test', true);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        2,
+        50,
+        'RECEIVED',
+        'test',
+        true,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('dateFrom + dateTo → service.findAll отримує дати', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/purchase-orders?dateFrom=2026-01-01&dateTo=2026-01-31',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        1,
+        20,
+        undefined,
+        undefined,
+        false,
+        '2026-01-01',
+        '2026-01-31',
+      );
     });
   });
 

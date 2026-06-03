@@ -516,6 +516,7 @@ export class InvoicesService {
       invoiceType: string;
       notes: string | null;
       dueDate: Date | null;
+      documentDate?: Date | null;
       createdAt: Date;
       updatedAt: Date;
       deletedAt?: Date | null;
@@ -566,9 +567,7 @@ export class InvoicesService {
       invoiceType: inv.invoiceType,
       notes: inv.notes,
       dueDate: inv.dueDate ?? null,
-      documentDate: (inv as any).documentDate
-        ? ((inv as any).documentDate as Date).toISOString().slice(0, 10)
-        : null,
+      documentDate: inv.documentDate ? inv.documentDate.toISOString().slice(0, 10) : null,
       ...(paidAmount !== undefined ? { paidAmount } : {}),
       ...(includeLines && inv.lines ? { lines: inv.lines.map(l => this.toLineDto(l)) } : {}),
       createdAt: inv.createdAt,

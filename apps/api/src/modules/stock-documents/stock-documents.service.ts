@@ -403,6 +403,7 @@ export class StockDocumentsService {
     warehouseId: string;
     targetWarehouseId: string | null;
     notes: string | null;
+    documentDate?: Date | null;
     confirmedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -438,9 +439,7 @@ export class StockDocumentsService {
       targetWarehouseName: doc.targetWarehouse?.name ?? null,
       notes: doc.notes ?? null,
       confirmedAt: doc.confirmedAt ?? null,
-      documentDate: (doc as any).documentDate
-        ? ((doc as any).documentDate as Date).toISOString().slice(0, 10)
-        : null,
+      documentDate: doc.documentDate ? doc.documentDate.toISOString().slice(0, 10) : null,
       lines: (doc.lines ?? []).map(l => ({
         id: l.id,
         goodId: l.goodId,

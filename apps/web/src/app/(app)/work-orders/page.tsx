@@ -60,6 +60,10 @@ import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
 import { fmtMoney, fmtShortDateTime, fmtDateTime } from '@/lib/format';
 
+// Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const kyivToday = () => KYIV_YMD.format(new Date());
+
 interface Branch {
   id: string;
   name: string;
@@ -150,9 +154,8 @@ export default function WorkOrdersPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [showDeleted, setShowDeleted] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
+  const [dateFrom, setDateFrom] = useState(() => kyivToday());
+  const [dateTo, setDateTo] = useState(() => kyivToday());
   // Default to "my orders" for MECHANICs — initialized lazily after employee loads
   const [myOrders, setMyOrders] = useState(false);
   const myOrdersInitRef = useRef(false);
@@ -314,7 +317,7 @@ export default function WorkOrdersPage() {
     priority: 'NORMAL',
     repairCategory: '',
     dueDate: '',
-    documentDate: new Date().toISOString().slice(0, 10),
+    documentDate: kyivToday(),
   });
 
   useEffect(() => {
@@ -1035,7 +1038,7 @@ export default function WorkOrdersPage() {
             priority: 'NORMAL',
             repairCategory: '',
             dueDate: '',
-            documentDate: new Date().toISOString().slice(0, 10),
+            documentDate: kyivToday(),
           }));
         }}
         title="Новий наряд"
