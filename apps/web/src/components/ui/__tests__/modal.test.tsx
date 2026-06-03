@@ -313,4 +313,131 @@ describe('AnimatedBody (standalone)', () => {
     // Modal-body — AnimatedBody-обгортка, children мають бути доступні
     expect(screen.getByTestId('modal-children')).toBeInTheDocument();
   });
+
+  // ─── fill prop (Bug #336) ──────────────────────────────────────────────────
+  //
+  // `fill` mode використовується Modal-body для viewport-fill розкладки:
+  //   - outer стає flex-1 min-h-0 overflow-y-auto (заповнює простір у flex-col панелі)
+  //   - inner отримує лише padding (className)
+  //   - JS-height-керування (ResizeObserver + scrollHeight) ВИМКНЕНЕ —
+  //     інакше outer.height = inner.scrollHeight ламає flex-розтягування.
+  //
+  // Без цих тестів regression "fill prop невипадково ввімкнено для standalone
+  // використання" або "fill=true все одно створює ResizeObserver" не ловиться.
+
+  describe('fill prop', () => {
+    it('fill=true: outer має flex-1 min-h-0 overflow-y-auto (заповнює доступний простір)', () => {
+      const { container } = render(
+        <AnimatedBody fill className="px-6 py-5">
+          <p>Body content</p>
+        </AnimatedBody>,
+      );
+      // outer = root child container
+      const outer = container.firstElementChild as HTMLElement;
+      expect(outer).toBeTruthy();
+      expect(outer.className).toMatch(/flex-1/);
+      expect(outer.className).toMatch(/min-h-0/);
+      expect(outer.className).toMatch(/overflow-y-auto/);
+    });
+
+    it('fill=true: className застосовується на inner div (не на outer)', () => {
+      const { container } = render(
+        <AnimatedBody fill className="px-6 py-5">
+          <p>Body content</p>
+        </AnimatedBody>,
+      );
+      const outer = container.firstElementChild as HTMLElement;
+      const inner = outer.firstElementChild as HTMLElement;
+      // className має жити лише на inner
+      expect(inner.className).toBe('px-6 py-5');
+      // outer.className НЕ має містити користувацький className (тільки fill-класи)
+      expect(outer.className).not.toMatch(/px-6/);
+      expect(outer.className).not.toMatch(/py-5/);
+    });
+
+    it('fill=true: НЕ створює ResizeObserver (JS height-керування вимкнене — useEffect early return)', () => {
+      // Spy на ResizeObserver constructor через мок-клас
+      const constructorSpy = vi.fn();
+      const observeSpy = vi.fn();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const origRO = (globalThis as any).ResizeObserver;
+      class ROCapture {
+        constructor() {
+          constructorSpy();
+        }
+        disconnect = vi.fn();
+        observe = observeSpy;
+        unobserve = vi.fn();
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).ResizeObserver = ROCapture;
+
+      render(
+        <AnimatedBody fill className="px-6 py-5">
+          <p>Контент</p>
+        </AnimatedBody>,
+      );
+
+      // У fill-режимі useEffect має early-return ДО створення ResizeObserver
+      expect(constructorSpy).not.toHaveBeenCalled();
+      expect(observeSpy).not.toHaveBeenCalled();
+
+      // restore
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).ResizeObserver = origRO;
+    });
+
+    it('fill=true: НЕ виставляє inline-style height на outer (flex-розтягування)', () => {
+      const { container } = render(
+        <AnimatedBody fill className="px-6 py-5">
+          <p>Контент</p>
+        </AnimatedBody>,
+      );
+      const outer = container.firstElementChild as HTMLElement;
+      // У fill-режимі outer не має inline height — height керується flex
+      expect(outer.style.height).toBe('');
+      expect(outer.style.transition).toBe('');
+    });
+
+    it('fill=false (default): outer має overflow:hidden inline-style (legacy animation mode)', () => {
+      const { container } = render(
+        <AnimatedBody className="p-4">
+          <p>Контент</p>
+        </AnimatedBody>,
+      );
+      const outer = container.firstElementChild as HTMLElement;
+      // Legacy режим: outer має style.overflow="hidden" для clip під час animated height
+      expect(outer.style.overflow).toBe('hidden');
+    });
+
+    it('Modal-body внутрішньо передає fill=true: outer Modal-body має flex-1 min-h-0 overflow-y-auto', () => {
+      render(
+        <Modal open onClose={vi.fn()} title="Test">
+          <div data-testid="content">Modal content</div>
+        </Modal>,
+      );
+      const content = screen.getByTestId('content');
+      // Найближчий батьківський div з overflow-y-auto = AnimatedBody outer
+      const outer = content.parentElement?.parentElement as HTMLElement;
+      expect(outer).toBeTruthy();
+      expect(outer.className).toMatch(/flex-1/);
+      expect(outer.className).toMatch(/min-h-0/);
+      expect(outer.className).toMatch(/overflow-y-auto/);
+    });
+
+    it('Modal panel має max-h-[90dvh] + flex flex-col (viewport-fill контракт)', () => {
+      render(
+        <Modal open onClose={vi.fn()} title="Test">
+          <p>Content</p>
+        </Modal>,
+      );
+      const dialog = screen.getByRole('dialog');
+      const panel = dialog.querySelector('[style*="max-width"]') as HTMLElement | null;
+      expect(panel).toBeTruthy();
+      expect(panel!.className).toMatch(/flex/);
+      expect(panel!.className).toMatch(/flex-col/);
+      // max-h-[90dvh] — обмежує висоту панелі до 90% viewport
+      expect(panel!.className).toMatch(/max-h-\[90dvh\]/);
+    });
+  });
 });

@@ -9826,3 +9826,73 @@ Existing modal.test.tsx тести (19 кейсів) перевіряли рен
 **Нових багів усього:** 4 (Bug #332-#335).
 **Виправлено:** 3 (test-coverage — #332-#334).
 **Залишилось open:** 1 (#335 re-open flicker — LOW, відкладено до UX-polish sprint).
+
+---
+
+## Session 2026-06-03 — viewport-fill QA (commits 0578198 → 4809160)
+
+**Scope:** адаптивний viewport-fill для list pages + AnimatedBody `fill` prop у Modal.
+
+**Що змінилось:**
+
+- `.page-fill` utility CSS (h-100% flex-col overflow-hidden) + `.page-container` (height:100% overflow-y:auto) + `.page-header` (flex-shrink:0)
+- TopShell `<main>` тепер `overflow-hidden` (раніше overflow-auto)
+- Modal: `max-h-[90dvh]` + `flex flex-col` + AnimatedBody з новим `fill` prop
+- `AnimatedBody.fill={true}`: вимикає JS-керування height (useEffect early return — НЕ створює ResizeObserver), рендерить outer як `flex-1 min-h-0 overflow-y-auto`, className лише на inner
+- 13 list pages: page-fill + min-h-0 table + shrink-0 pagination
+- 5 catalog tabs (Goods/Works/Services/Units/Brands): `flex-col flex-1 min-h-0`
+- reports/infrastructure/settlements: `<div className="flex-1 min-h-0 overflow-y-auto">` wrapper
+
+### Bug #336 — [MEDIUM] AnimatedBody `fill` prop не покритий regression-guard тестами
+
+**Файли:** `apps/web/src/components/ui/modal.tsx` (lines 45-112), `apps/web/src/components/ui/__tests__/modal.test.tsx`
+
+**Симптом:**
+Новий `fill` prop (commit 4809160 "Modal AnimatedBody fill mode") додано в API `AnimatedBody`, але існуючі 22 тести modal.test.tsx покривають лише `fill={false}` (legacy ResizeObserver-mode):
+
+- `cleanup чистить ResizeObserver і cancelAnimationFrame на unmount` — тестує лише дефолтний шлях
+- `використовується всередині Modal через AnimatedBody body (інтеграція)` — рендерить Modal (який тепер пускає `fill={true}` всередину), АЛЕ перевіряє лише наявність children, не структуру (flex-1 min-h-0 overflow-y-auto на outer).
+
+**Чому це bug:**
+
+1. **Regression-blind:** якщо рефакторинг помилково інвертує умову (`if (!fill) return;` замість `if (fill) return;`) → JS-керування height активується для Modal-body → outer.height = inner.scrollHeight → flex-розтягування ламається (outer "застрягає" на висоті контенту замість заповнення вільного простору у max-h-[90dvh] панелі), панель скорочується, footer "пливе" вгору. TS green, всі 22 тести green — баг не ловиться.
+2. **API контракт не зафіксований:** немає тесту що підтверджує:
+   - `fill=true` → outer має `flex-1 min-h-0 overflow-y-auto` (контракт viewport-fill розкладки)
+   - `fill=true` → className застосовується лише на inner (не дублюється на outer)
+   - `fill=true` → НЕ створює ResizeObserver (важливо для performance — Modal може рендерити багато AnimatedBody одночасно)
+   - `fill=true` → outer не має inline-style `height` / `transition` (інакше CSS flex-розтягування переб'ється)
+   - Modal panel має `max-h-[90dvh] flex flex-col` (контракт viewport-fill контейнера)
+3. **Дрейф документації-vs-код:** коментар у modal.tsx обіцяє "JS-керування height ВИМКНЕНЕ" для fill, але без тесту цей інваріант може непомітно зламатися.
+
+**Виправлення:**
+Додано **7 нових тестів** у `modal.test.tsx > AnimatedBody (standalone) > fill prop`:
+
+1. `fill=true: outer має flex-1 min-h-0 overflow-y-auto`
+2. `fill=true: className застосовується на inner div (не на outer)`
+3. `fill=true: НЕ створює ResizeObserver (useEffect early return)` — spy на ResizeObserver constructor
+4. `fill=true: НЕ виставляє inline-style height на outer (flex-розтягування)`
+5. `fill=false (default): outer має overflow:hidden inline-style (legacy animation mode)`
+6. `Modal-body внутрішньо передає fill=true: outer Modal-body має flex-1 min-h-0 overflow-y-auto` — інтеграційний
+7. `Modal panel має max-h-[90dvh] + flex flex-col (viewport-fill контракт)`
+
+**Severity:** MEDIUM — viewport-fill розкладка є основою для нових list pages; regression тут одразу візуально помітний (footer Modal "стрибає"), але без тестів детектиться лише через manual QA.
+
+**Статус:** [x] виправлено — 7 нових тестів додано до `modal.test.tsx`, всі 29 тестів passing (22 baseline + 7 fill).
+
+---
+
+## Підсумок Session 2026-06-03 (viewport-fill QA)
+
+| Перевірка                                 | Очікувано     | Факт                                            | Статус |
+| ----------------------------------------- | ------------- | ----------------------------------------------- | ------ |
+| TypeScript (`@sto/web exec tsc --noEmit`) | 0 errors      | 0 errors                                        | ✓      |
+| TypeScript (`@sto/api exec tsc --noEmit`) | 0 errors      | 0 errors                                        | ✓      |
+| TypeScript (`@sto/shared exec tsc`)       | 0 errors      | 0 errors                                        | ✓      |
+| Web unit tests (`@sto/web exec vitest`)   | ≥ 274 passing | **281 passed / 25 files** (+7 fill-prop тестів) | ✓      |
+| AnimatedBody `fill` prop API contract     | covered       | 7/7 нових тестів passing                        | ✓      |
+| `fill=true` skips ResizeObserver          | regression    | 1/1 spy-тест passing (constructor not called)   | ✓      |
+| Modal panel viewport-fill контракт        | max-h-[90dvh] | 1/1 інтеграційний тест passing                  | ✓      |
+
+**Нових багів усього:** 1 (Bug #336).
+**Виправлено:** 1 (test-coverage — #336).
+**Залишилось open:** 0.

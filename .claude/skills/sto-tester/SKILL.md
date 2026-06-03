@@ -925,6 +925,51 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-03 — Bool prop early-return у useEffect — обидві гілки потребують regression-guard (Bug #336) — frontend, hooks & component props
+
+**Сигнал:** Існуючий компонент (`AnimatedBody`) отримує новий boolean prop (`fill?: boolean`), який міняє поведінку `useEffect`: legacy шлях (default `false`) залишається з ResizeObserver + JS height-setting, новий шлях (`true`) робить early-return одразу після перевірки prop. Тести компонента покривають лише legacy шлях (`fill=false`) — як той що було. Якщо хтось рефакторить умову на інверсну (`if (!fill) return` замість `if (fill) return`), або переплутає присвоєння через rebase merge conflict, JS-логіка активується для нової гілки (fill=true) → CSS layout assumption (`flex-1 min-h-0 overflow-y-auto`) ламається `outer.style.height = inner.scrollHeight` → outer "застрягає" на висоті контенту, flex-розтягування не працює. tsc green, unit tests green (legacy шлях не зачеплений), баг видно тільки manual QA — footer Modal "пливе" / panel скорочується.
+
+**Причина виникнення:**
+
+1. Розробник додає булевий feature-flag prop у існуючий хук/компонент думаючи "default зберігає поведінку". Тести не оновлюються бо "default-шлях не змінено".
+2. Нова гілка коду виглядає тривіальною (`if (fill) return;`) — здається не потребує тесту, "просто пропускає setup".
+3. Документація-коментар описує контракт ("JS-керування ВИМКНЕНЕ для fill"), але без тесту цей інваріант не зафіксований у CI.
+
+**Підхід до виявлення:**
+
+1. `git diff HEAD~5 HEAD --name-only | xargs grep -l "useEffect\|useLayoutEffect"` → для кожного файлу з зміною hook-body перевірити чи доданий новий prop у JSX-сигнатурі.
+2. Якщо у `useEffect` додано умовний early-return на основі boolean prop:
+   ```bash
+   grep -nE "if \(\w+\) return;?$" apps/web/src/components --include="*.tsx" -A1 -B5 | grep -B1 -A8 "useEffect\|useLayoutEffect"
+   ```
+3. Перевірити чи `*.test.tsx` має тест(и) для **обох гілок**:
+   - `prop=true` → setup НЕ виконується (spy на ключовий side-effect — `new ResizeObserver`, `setTimeout`, `setInterval`, `fetch` — `expect(spy).not.toHaveBeenCalled()`)
+   - `prop=false` → setup виконується (як baseline)
+4. Парний сигнал: tag/comment у коді ("JS-керування ВИМКНЕНЕ для fill") без парного `it(...)` що це асертить.
+
+**Підхід до фіксу:**
+
+1. Додати regression-guard тест на early-return гілку: spy на side-effect що ХОЧЕ зайти у setup (ResizeObserver constructor, fetch, setTimeout), render component з `prop=true`, асертити `expect(spy).not.toHaveBeenCalled()`.
+2. Додати regression-guard тест на DOM/CSS контракт нової гілки: render → query outer/inner елементи → асертити className/inline-style match (наприклад `outer.className).toMatch(/flex-1 min-h-0 overflow-y-auto/`, `outer.style.height).toBe('')`).
+3. Якщо новий prop пропускається у внутрішньому використанні (Modal → AnimatedBody `fill={true}`), додати інтеграційний тест на верхньому рівні (Modal): рендер → query outer wrapper → асертити структуру (бо може зламатись лише при певному use-site).
+4. Pattern для шаблону: коли вводимо boolean prop що міняє useEffect setup, ОДРАЗУ додаємо мінімум 3 тести — два per-branch (`prop=true`/`prop=false` setup behavior) + один контракт DOM/CSS.
+
+**Severity:** MEDIUM — silent layout regression при майбутніх refactor; виявляється лише manual QA, ламає viewport-fill розкладку для всіх місць де компонент використовується.
+
+**Де шукати ще:**
+
+- Кожен компонент-обгортка з boolean feature-prop у `apps/web/src/components/ui/` (`AnimatedBody.fill`, `Modal.hideClose`, `DetailPanel.compact`...) — перевірити test-coverage на нову гілку.
+- Кожен custom hook у `apps/web/src/hooks/use*.ts` де додано boolean param що включає early-return — той самий test pattern.
+- Кожен `useEffect` що robить cleanup-критичний setup (ResizeObserver, MutationObserver, IntersectionObserver, EventListener, setTimeout) із умовним gate — early-return шлях завжди needs regression-guard, бо cleanup function НЕ реєструється коли гілка early-returns (виявлення memory-leak / double-cleanup при toggle).
+
+**Профілактика:**
+
+1. У `/sto-dev` SKILL.md: «Boolean prop що міняє `useEffect` setup → ОБОВ'ЯЗКОВО ≥2 unit-тести: per-branch side-effect (constructor/timer/fetch не викликається у early-return гілці) + DOM/CSS контракт нової гілки».
+2. У `/sto-review` checklist §3.x: «Новий feature-prop у компоненті/хуку → перевірити `*.test.tsx` describe-блок з назвою cthe prop name».
+3. У `/sto-tester` Крок 1 §1.3 frontend: grep для unguarded `if (\w+) return` всередині `useEffect`/`useLayoutEffect` + cross-check з тестами.
+
+---
+
 ### 2026-06-03 — Animation hook (rAF + setTimeout cleanup) without tests + CSS marker contract gaps (Bugs #332-#335) — frontend, animation system
 
 **Сигнал:** Введено новий хук `useAnimatedPresence` що керує DOM-mounting під час exit-анімації CSS (replace `if (!open) return null` antipattern). Хук використовується транзитивно в `Modal` → всіх дітях Modal (ConfirmDialog, CategoryManagerModal). Будь-який рефактор без regression-тестів ламає exit-animation для ВСЬОГО проєкту silently — tsc green, Modal все ще монтується, але DOM зникає миттєво при close. Парально: CSS правила в `globals.css` scoped через `[data-animate][data-state="open"]` markers — refactor що видаляє `data-animate` атрибут teж тихо ламає анімацію без runtime-error.
