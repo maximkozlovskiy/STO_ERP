@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+6fd730e fix(sync): kyivToday() for documentDate default in work-orders, stock-documents, purchase-orders
 4f87da2 perf(optimize): add concurrency to outbound-webhook and sms BullMQ processors
 54dddc4 fix(review): cycle 2 — UTC date in exchange-rate form + a11y fixes for media delete button and batch viewer modal
 27995ca docs(memory): update MemoryManual after sto-sync-agent cycle 2
@@ -45,6 +46,8 @@ cde1792 fix(review): sync shared FSM transitions with backend authority
 
 TypeScript: ✅ 0 errors (api, web, shared)
 Unit+Contract: ✅ 594/594 passed (api) | **281/281 passed (web)**
+
+Latest sync: 2026-06-04 (sto-sync-agent, HEAD 6fd730e, cycle 3 final) — **Direction 1: 0 missing. Direction 2: 0 URL mismatches. Direction 3: 1 timezone mismatch fixed across 3 backend services.** Verified: (1) invoices.service.ts kyivToday() — returns new Date(KYIV_YMD.format(new Date())) i.e. midnight UTC of Kyiv date; documentDate stored as @db.Date; frontend sends YYYY-MM-DD string (sv-SE format) — no conflict. (2) webhooks.processor concurrency:5 + sms.processor concurrency:3 — these are BullMQ processor decorators, no response contract change. (3) E2E clearDateFilter pattern — test-helper only, no API URL change. Fixed: work-orders.service.ts + stock-documents.service.ts + purchase-orders.service.ts — all 3 used `new Date()` (UTC midnight) as documentDate fallback when not provided by frontend; invoices.service.ts was fixed in e2e cycle but the other 3 were missed. Between 00:00 and 02:00-03:00 Kyiv time this caused documents to be created with yesterday's date. All 3 services now use module-level KYIV_YMD + kyivToday() pattern matching invoices.service.ts. tsc 0 errors api+web. API 594/594 passed.
 
 Latest optimize: 2026-06-04 (sto-optimize-agent, cycle 2, HEAD 4f87da2) — 2 fixes. Verified non-issues: settlements getTransactions has pagination (limit=50 default); AuditService buildDiff uses per-field JSON.stringify for small dtos (not full entity); CommentsService has take:500; SearchService has sim>0.1 threshold already; work-order-media signed URLs are parallel Promise.all + local HMAC (not network); BatchViewerModal uses single /batches/lookup endpoint (both batches+history); NotificationCenter is localStorage-based (no polling); CommandPalette has 300ms debounce; PricingRulesClient has no search input; InspectionReport is manual save (no keystroke autoSave); exchange-rates service no N+1 (parallel Promise.all create/update, $transaction findAll); applyRuleToGoods runs synchronously in HTTP handler (intentional — async would break frontend contract). Fixed: (1) webhooks.processor.ts — @Process('deliver') default concurrency=1 caused serial 10s HTTP calls; burst of 20 webhooks = 200s; added concurrency:5. (2) sms.processor.ts — same pattern; added concurrency:3.
 
