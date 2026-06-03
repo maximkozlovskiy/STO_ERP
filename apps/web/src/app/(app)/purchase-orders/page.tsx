@@ -606,7 +606,7 @@ export default function PurchaseOrdersPage() {
   ];
 
   return (
-    <div className="page-fill p-4 md:p-6 gap-4">
+    <div className="page-fill p-4 md:p-6">
       {(error || queryError) && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error || (queryError instanceof Error ? queryError.message : '')}
@@ -627,7 +627,6 @@ export default function PurchaseOrdersPage() {
           onApply={applyFilter}
           onSave={handleSaveFilter}
           onRemove={removeFilter}
-          className="mb-3"
           hideSaveButton
         />
       )}
@@ -709,7 +708,6 @@ export default function PurchaseOrdersPage() {
           selectedIds={Array.from(bulkSelect.selected)}
           actions={bulkActions}
           onClear={bulkSelect.clear}
-          className="mb-3"
         />
       )}
 

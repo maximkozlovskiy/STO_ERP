@@ -550,7 +550,7 @@ export default function InvoicesPage() {
   ];
 
   return (
-    <div className="page-fill p-4 md:p-6 gap-4">
+    <div className="page-fill p-4 md:p-6">
       {(error || queryError) && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error || (queryError instanceof Error ? queryError.message : '')}
@@ -571,7 +571,6 @@ export default function InvoicesPage() {
           onApply={applyFilter}
           onSave={handleSaveFilter}
           onRemove={removeFilter}
-          className="mb-3"
           hideSaveButton
         />
       )}
@@ -599,7 +598,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Search + Columns */}
-      <div className="mb-3 flex items-center gap-3">
+      <div className="shrink-0 flex items-center gap-3">
         <Input
           value={search}
           onChange={e => {
@@ -651,7 +650,6 @@ export default function InvoicesPage() {
           selectedIds={Array.from(bulkSelect.selected)}
           actions={bulkActions}
           onClear={bulkSelect.clear}
-          className="mb-3"
         />
       )}
 

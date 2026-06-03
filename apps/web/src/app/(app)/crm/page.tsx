@@ -599,7 +599,7 @@ export default function CrmPage() {
   ];
 
   return (
-    <div className="page-fill p-4 md:p-6 gap-4">
+    <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
           <h1 className="page-title">Контрагенти</h1>
@@ -621,13 +621,12 @@ export default function CrmPage() {
           onApply={applyFilter}
           onSave={handleSaveFilter}
           onRemove={removeFilter}
-          className="mb-3"
           hideSaveButton
         />
       )}
 
       {/* Filters */}
-      <div className="flex gap-3 mb-3 flex-wrap">
+      <div className="flex gap-3 flex-wrap shrink-0">
         <Input
           value={search}
           onChange={e => {
@@ -715,7 +714,6 @@ export default function CrmPage() {
           selectedIds={Array.from(bulkSelect.selected)}
           actions={bulkActions}
           onClear={bulkSelect.clear}
-          className="mb-3"
         />
       )}
 

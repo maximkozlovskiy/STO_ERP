@@ -217,6 +217,7 @@ th[data-dragover="true"] {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  gap: 0.5rem;   /* 8px між header / toolbar / table / pagination */
 }
 
 /* Legacy layout — pages that have not been migrated to .page-fill.
@@ -236,8 +237,13 @@ th[data-dragover="true"] {
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: var(--spacing-section);
-  /* Всередині .page-fill (flex-col) — header не стискається, щоб не з'їдати простір таблиці */
   flex-shrink: 0;
+}
+
+/* Всередині .page-fill gap вже контролює відступи між дітьми —
+   margin-bottom на page-header призводить до подвійного відступу. */
+.page-fill > .page-header {
+  margin-bottom: 0;
 }
 
 .page-title {

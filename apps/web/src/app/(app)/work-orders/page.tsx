@@ -492,7 +492,7 @@ export default function WorkOrdersPage() {
   const totalPages = Math.ceil(total / limit);
 
   return (
-    <div className="page-fill p-4 md:p-6 gap-4">
+    <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
           <h1 className="page-title">Наряди</h1>
@@ -556,13 +556,12 @@ export default function WorkOrdersPage() {
           onApply={applyFilter}
           onSave={handleSaveFilter}
           onRemove={removeFilter}
-          className="mb-3"
           hideSaveButton
         />
       )}
 
       {/* Search + category filter + showDeleted controls */}
-      <div className="flex flex-wrap gap-3 mb-3">
+      <div className="flex flex-wrap gap-3 shrink-0">
         <Input
           value={search}
           onChange={e => {
@@ -639,7 +638,6 @@ export default function WorkOrdersPage() {
           selectedIds={Array.from(bulkSelect.selected)}
           actions={bulkActions}
           onClear={bulkSelect.clear}
-          className="mb-3"
         />
       )}
 
