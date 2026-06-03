@@ -84,7 +84,9 @@ async function gotoInvoices(page: Page, clearDateFilter = false) {
       await dateInputs.nth(i).fill('');
       await dateInputs.nth(i).press('Escape');
     }
-    await page.waitForTimeout(400);
+    // Dismiss DatePicker popup (rdp-month intercepts table clicks) by clicking h1
+    await page.locator('h1').first().click({ force: true });
+    await page.waitForTimeout(500);
   }
 }
 

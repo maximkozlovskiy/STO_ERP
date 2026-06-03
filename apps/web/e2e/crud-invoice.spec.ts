@@ -157,7 +157,9 @@ test.describe('Рахунки — CRUD', () => {
       await dateInputs.nth(i).fill('');
       await dateInputs.nth(i).press('Escape');
     }
-    await page.waitForTimeout(400);
+    // Dismiss DatePicker popup (rdp-month intercepts table clicks) by clicking h1
+    await page.locator('h1').first().click({ force: true });
+    await page.waitForTimeout(500);
 
     // Search by number to narrow results
     const searchInput = page.locator('input[placeholder*="Пошук"]').first();

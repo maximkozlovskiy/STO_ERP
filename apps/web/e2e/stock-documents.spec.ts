@@ -86,7 +86,9 @@ async function gotoStockDocs(page: Page, clearDateFilter = false) {
       await dateInputs.nth(i).fill('');
       await dateInputs.nth(i).press('Escape');
     }
-    await page.waitForTimeout(400);
+    // Dismiss DatePicker popup (rdp-month intercepts table clicks) by clicking h1
+    await page.locator('h1').first().click({ force: true });
+    await page.waitForTimeout(500);
   }
 }
 
@@ -309,7 +311,7 @@ test.describe('Складські документи — Detail Panel', () => {
 
   test('Detail Modal — кнопка «Підтвердити документ» присутня для DRAFT', async ({ page }) => {
     if (!docId) return test.skip(true, 'Документ не створено');
-    await gotoStockDocs(page);
+    await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     // Відкрити Detail Modal через hover → кнопку «Відкрити деталі»
@@ -327,7 +329,7 @@ test.describe('Складські документи — Detail Panel', () => {
 
   test('Detail Modal — кнопка «Скасувати» присутня для DRAFT', async ({ page }) => {
     if (!docId) return test.skip(true, 'Документ не створено');
-    await gotoStockDocs(page);
+    await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.hover();
@@ -377,7 +379,7 @@ test.describe('Складські документи — FSM', () => {
 
   test('DRAFT → CANCELLED: «Скасувати» → badge «Скасовано»', async ({ page }) => {
     if (!docId) return test.skip(true, 'Документ не створено');
-    await gotoStockDocs(page);
+    await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
 
@@ -441,7 +443,7 @@ test.describe('Складські документи — FSM CONFIRMED', () => {
 
   test('DRAFT → CONFIRMED: «Підтвердити документ» → badge «Підтверджено»', async ({ page }) => {
     if (!docId) return test.skip(true, 'Документ не створено');
-    await gotoStockDocs(page);
+    await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
 
@@ -581,7 +583,7 @@ test.describe('Складські документи — позиції (lines)'
 
   test('Detail Modal — показує таблицю позицій з колонкою «Товар»', async ({ page }) => {
     if (!docId) return test.skip(true, 'Документ не створено');
-    await gotoStockDocs(page);
+    await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     // Відкрити Detail Modal
@@ -639,7 +641,7 @@ test.describe('Складські документи — soft delete', () => {
 
   test('hover → іконки дій → «Позначити на видалення» → рядок зникає', async ({ page }) => {
     if (!docId) return test.skip(true, 'Документ не створено');
-    await gotoStockDocs(page);
+    await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
 
@@ -738,7 +740,7 @@ test.describe('Складські документи — XLSX', () => {
 
   test('в Detail Modal DRAFT документа є кнопка XLSX-імпорту позицій', async ({ page }) => {
     if (!docId) return test.skip(true, 'Документ не створено');
-    await gotoStockDocs(page);
+    await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     // Відкрити Detail Modal
