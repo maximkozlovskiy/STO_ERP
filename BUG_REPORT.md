@@ -9664,3 +9664,165 @@ Bug #328 cascade pattern повністю закритий — жодне від
 - §1.5 OOM guard / pagination: ✓ (всі findMany з take)
 - §1.6 Stale closure / latest-ref: ✓ (Bug #330 guard test)
 - §1.7 E2E smoke: ✓ (207 passed, 213 total)
+
+---
+
+## Session 2026-06-03 — Animation system audit (commits ac48d49 → 300bda7)
+
+**Контекст:** Сесія тестування `useAnimatedPresence` хука + `data-state`/`data-animate` маркерів у `modal.tsx`, `detail-panel.tsx`, `confirm-dialog.tsx`, `globals.css`, `crm/page.tsx`.
+
+**Baseline:** TypeScript ✅ 0 errors, web vitest 251/251 ✅, web tsc clean ✅.
+
+**Знайдено багів:** 3 (1 MEDIUM, 2 LOW).
+**Виправлено:** 2 (test-coverage gaps).
+**Залишилось open:** 1 (re-open flicker — design tradeoff, не блокер).
+
+---
+
+## Bug #332 — [MEDIUM] `useAnimatedPresence` хук не має unit-тестів — regression-guard відсутній для enter/exit/rapid-toggle invariants
+
+**Файл:** `apps/web/src/hooks/useAnimatedPresence.ts` (новий хук без `*.test.tsx`)
+**Severity:** MEDIUM (test-coverage gap)
+**Категорія:** test-coverage
+
+**Опис:**
+Хук `useAnimatedPresence` керує critical-path механізмом збереження DOM під час exit-анімації (replace `if (!open) return null` antipattern). Використовується у `Modal`, `DetailPanel` і **транзитивно** усіх дітях Modal (ConfirmDialog, CategoryManagerModal, тощо). Будь-який рефактор хука без тестів = silent breakage exit-анімації для всіх модалів проєкту. tsc green, бо state-machine коректна на рівні типів, але runtime semantics (timing rAF/setTimeout/cleanup) ламається невідловно.
+
+**Очікувана поведінка:** покриття 3-х режимів (enter, exit, rapid toggle) + cleanup на unmount.
+
+**Фактична поведінка:** Жоден тест не існує — хук додано без regression-guard.
+
+**Фікс:** Створено `apps/web/src/hooks/useAnimatedPresence.test.tsx` (10 кейсів):
+
+- **Init:** `open=true` initial → `visible=true, state='open'`; `open=false` initial → `visible=false, state='closed'`.
+- **Enter:** `open=false → true` → `visible=true` одразу; `state='closed'` між commit і rAF; `state='open'` після rAF.
+- **Exit:** `open=true → false` → `state='closed'` одразу; `visible=true` під час exitDuration; `visible=false` ПІСЛЯ exitDuration (179ms → still true, 180ms → false).
+- **Custom exitDuration:** 300ms кастомний — 180ms ще true, 300ms → false.
+- **Rapid toggle open→close→open:** `clearTimeout` викликаний для попереднього exit-таймера; `visible` лишається true; rAF flush → `state='open'`.
+- **Rapid toggle close→open→close:** `cancelAnimationFrame` викликаний для попереднього enter-rAF; стара rAF не змінює state після cancel.
+- **Stress rapid toggle:** 4-фазний flip — у будь-який момент тільки 1 активний таймер (попередні cancelled через cleanup).
+- **Unmount cleanup:** unmount під час exit → `clearTimeout` викликаний; unmount між rerender і rAF → `cancelAnimationFrame` викликаний.
+
+**Тест-pattern:** Controllable rAF queue через `vi.spyOn(window, 'requestAnimationFrame')` + `vi.spyOn(window, 'cancelAnimationFrame')` + `vi.useFakeTimers()` — детерміноване відтворення enter/exit timing у jsdom.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #333 — [LOW] `ConfirmDialog` не має `*.test.tsx` — regression-guard відсутній для exit-animation propagation через Modal
+
+**Файл:** `apps/web/src/components/ui/confirm-dialog.tsx` (без парного `__tests__/confirm-dialog.test.tsx`)
+**Severity:** LOW (test-coverage gap)
+**Категорія:** test-coverage
+
+**Опис:**
+`ConfirmDialog` був відрефакторений у commit 300bda7 — прибрано `if (!open) return null` wrapper antipattern. Тепер компонент покладається на `Modal` + `useAnimatedPresence` для збереження DOM під час exit-анімації. Без тесту regression (повернення if-guard у refactor) пройде CI зеленим — Modal сам по собі працює, ConfirmDialog зі stale-pattern теж рендериться, але exit-анімація НЕ програється — modal зникає миттєво.
+
+Парний сигнал: `// Bug #ANIM-1: НЕ робимо `if (!open) return null`` — коментар-нагадування у коді, але без тесту інтенція не enforced.
+
+**Очікувана поведінка:** при `open=true → false` dialog лишається у DOM з `data-state="closed"` протягом 180ms, потім видаляється.
+
+**Фактична поведінка:** Тест відсутній.
+
+**Фікс:** Створено `apps/web/src/components/ui/__tests__/confirm-dialog.test.tsx` (10 кейсів):
+
+- Базові рендер (open=false → no DOM; open=true → dialog + title + message + 2 buttons).
+- Кастомні confirmLabel/cancelLabel — приймаються пропом.
+- variant="destructive" → applied на confirm-кнопці.
+- onConfirm/onCancel callbacks викликаються через клік.
+- Escape викликає onCancel через Modal.
+- onCancel=undefined → noop, не падає на Escape.
+- **Exit anim through Modal:** open=true → false → dialog ще у DOM з `data-state="closed"` 180ms; після 180ms видалено.
+- **Re-open під час exit:** rerender open=true ДО завершення 180ms exit-таймера → dialog лишається у DOM (exit перервано).
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #334 — [LOW] `Modal` `data-animate` + `data-state` + `data-backdrop` markers не покриті інтеграційними тестами
+
+**Файл:** `apps/web/src/components/ui/__tests__/modal.test.tsx` (existing) — недостатньо тестів CSS-marker контракту.
+**Severity:** LOW (test-coverage gap)
+**Категорія:** test-coverage
+
+**Опис:**
+`globals.css` має scoped CSS-правила:
+
+- `[data-animate][data-state="open"] { animation: modal-in ... }` — scoped до `data-animate` маркера (не global) для уникнення колізій з Radix/HeadlessUI.
+- `[data-animate][data-state="open"] > [data-backdrop]` — direct-child selector щоб outer modal не «затягував» backdrop вкладеної модалки.
+
+Existing modal.test.tsx тести (19 кейсів) перевіряли рендер/розмір/onClose, але НЕ перевіряли наявність `data-animate`/`data-state`/`data-backdrop` атрибутів і їх взаємну позицію (direct-child). Регресія (видалення data-backdrop у refactor) → CSS animation не застосовується → ламається UX без runtime-помилки.
+
+**Очікувана поведінка:**
+
+1. Root dialog має атрибут `data-animate` і `data-state="open"|"closed"`.
+2. Backdrop має атрибут `data-backdrop` і є **direct child** root-у (для `:scope > [data-backdrop]` селектора).
+3. Закриття `open=true → false` → `data-state` переключається на `"closed"` синхронно; dialog лишається у DOM 180ms; після — видалено.
+
+**Фактична поведінка:** Атрибути не перевіряються — drift пройде silently.
+
+**Фікс:** Додано 3 нові тести в `modal.test.tsx` (тепер 22 кейсів):
+
+- `root має data-animate marker і data-state="open" коли open=true`.
+- `backdrop має data-backdrop marker як direct child root-у`.
+- `open=true → false: dialog тримається у DOM з data-state="closed" протягом exit-анімації` (інтеграційний — 180ms timer flush через `vi.advanceTimersByTime`).
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #335 — [LOW] Re-open flicker: `useAnimatedPresence` рендерить елемент з `data-state="closed"` для 1 paint frame перед flip на `"open"` → modal-out FROM-keyframe видимий
+
+**Файл:** `apps/web/src/hooks/useAnimatedPresence.ts:24-37` (effect rAF dance)
+**Severity:** LOW (1-frame visual jank при re-open ПІСЛЯ завершеного exit)
+**Категорія:** frontend / animation timing
+
+**Опис:**
+Сценарій:
+
+1. `open=true` → `open=false` → 180ms exit → `visible=false` (modal видалено з DOM).
+2. `open=true` знову → effect runs: `setVisible(true)` + `requestAnimationFrame(setState('open'))`.
+3. **React commits render**: visible=true, state='closed' (state ще з попереднього cycle); element монтується з `data-state="closed"`.
+4. **Browser paints frame N**: CSS rule `[data-animate][data-state="closed"] { animation: modal-out ... }` застосовується. З `animation-fill-mode: both` браузер paint-ить FROM-keyframe `modal-out`: `opacity:1, transform: scale(1) translateY(0)` — **повний розмір видимий**.
+5. rAF callback fires (наступний frame): `setState('open')` → re-render → `data-state="open"` → CSS застосовує `modal-in` keyframes (FROM: opacity:0, scale:0.95).
+6. **Frame N+1+**: modal-in animation програється від scale(0.95) до scale(1).
+
+**Візуальний ефект:** при re-open модалка спалахує на повному розмірі (16ms), потім «миттєво стискається» у 0.95 і починає expand-анімацію. Drag-pop ефект помітний на повільних дисплеях / при професійному QA review.
+
+**Перший open** (mount від `open=false → true` коли state initial='closed' просто з useState) — той самий патерн, але користувач НЕ бачить попереднього стану, тому jank менш помітний (виглядає як «нормальний open animation з невеликим overshoot»).
+
+**Підтвердження тестом:** `useAnimatedPresence.test.tsx` кейс "enter: open=false → true → visible=true одразу; state стає 'open' після rAF" — між `setVisible(true)` і rAF flush, `state === 'closed'`. Це render-state, який паінтиться один кадр.
+
+**Фікс (не застосовано — design tradeoff):**
+
+Опція A (мінімальний diff): замінити `useEffect` → `useLayoutEffect` + одразу `setState('open')` без rAF — element монтується з `data-state="open"`, CSS animation `modal-in` запускається на mount (з `both` fill-mode браузер застосовує FROM-keyframe правильно). **Ризик:** змінює timing semantics для DetailPanel що передає кастомний `exitDuration=150` (Bug #336 candidate — потрібен ручний QA на 4 модалках).
+
+Опція B: додати маркер `data-just-mounted="true"` на initial render, CSS правило `[data-animate][data-just-mounted="true"][data-state="closed"] { animation: none }` — пропускає modal-out для свіжо-mounted елементів. **Ризик:** ускладнює API хука.
+
+Опція C: використати double-rAF + skip першого paint через `visibility: hidden` на 1 кадр.
+
+**Рекомендований підхід:** A — найпростіше і узгоджується з CSS animation semantics (animations run on mount with fill-mode both).
+
+**Чому НЕ виправлено у цій сесії:**
+
+1. Jank LOW severity (1 frame ≈ 16ms на 60Hz), не блокує функціональність.
+2. Зміна вимагає QA усіх 4 модалок (Modal, DetailPanel, ConfirmDialog, AnimatedBody-внутрішня анімація) — поза scope test-сесії.
+3. Потенційно ламає кастомний `exitDuration=150` для DetailPanel якщо timing-semantics зміниться.
+
+**Статус:** [ ] відкритий — задокументовано, фікс відкладено до окремого UX-polish sprint.
+
+---
+
+## Підсумок Session 2026-06-03 (animation system audit)
+
+| Перевірка                                   | Очікувано             | Факт                                   | Статус |
+| ------------------------------------------- | --------------------- | -------------------------------------- | ------ |
+| TypeScript (`@sto/web exec tsc --noEmit`)   | 0 errors              | 0 errors                               | ✓      |
+| Web unit tests (`@sto/web exec vitest`)     | ≥ 251 passing         | **274 passed / 25 files** (+23 нові)   | ✓      |
+| useAnimatedPresence test coverage           | enter+exit+race       | 10/10 нових тестів passing             | ✓      |
+| ConfirmDialog regression-guard              | exit anim через Modal | 10/10 нових тестів passing             | ✓      |
+| Modal data-animate/data-state/data-backdrop | marker-контракт       | 3/3 нових інтеграційних тестів passing | ✓      |
+
+**Нових багів усього:** 4 (Bug #332-#335).
+**Виправлено:** 3 (test-coverage — #332-#334).
+**Залишилось open:** 1 (#335 re-open flicker — LOW, відкладено до UX-polish sprint).

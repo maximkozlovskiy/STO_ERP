@@ -1,6 +1,6 @@
 import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi, it, expect, describe } from 'vitest';
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { Modal, AnimatedBody } from '../modal';
 
 describe('Modal', () => {
@@ -172,6 +172,72 @@ describe('Modal', () => {
       </Modal>,
     );
     expect(getPanel().style.maxWidth).toBe('95vw');
+  });
+
+  // ─── Animation integration з useAnimatedPresence (data-state/data-animate) ──
+
+  describe('exit animation through useAnimatedPresence', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('root має data-animate marker і data-state="open" коли open=true', () => {
+      render(
+        <Modal open onClose={vi.fn()} title="Animated">
+          Вміст
+        </Modal>,
+      );
+      const dialog = screen.getByRole('dialog');
+      expect(dialog).toHaveAttribute('data-animate');
+      expect(dialog).toHaveAttribute('data-state', 'open');
+    });
+
+    it('backdrop має data-backdrop marker як direct child root-у (для CSS selector "> [data-backdrop]")', () => {
+      render(
+        <Modal open onClose={vi.fn()} title="Backdrop">
+          Вміст
+        </Modal>,
+      );
+      const dialog = screen.getByRole('dialog');
+      const backdrop = dialog.querySelector(':scope > [data-backdrop]');
+      expect(backdrop).toBeTruthy();
+    });
+
+    it('open=true → open=false: dialog тримається у DOM з data-state="closed" протягом exit-анімації', () => {
+      const { rerender } = render(
+        <Modal open onClose={vi.fn()} title="Exit">
+          Контент
+        </Modal>,
+      );
+      expect(screen.getByRole('dialog')).toHaveAttribute('data-state', 'open');
+
+      // Закриваємо
+      act(() => {
+        rerender(
+          <Modal open={false} onClose={vi.fn()} title="Exit">
+            Контент
+          </Modal>,
+        );
+      });
+
+      // Dialog ще у DOM з data-state="closed"
+      const dialog = screen.getByRole('dialog');
+      expect(dialog).toBeInTheDocument();
+      expect(dialog).toHaveAttribute('data-state', 'closed');
+      expect(screen.getByText('Контент')).toBeInTheDocument();
+
+      // Прокручуємо до завершення default exit (180ms)
+      act(() => {
+        vi.advanceTimersByTime(180);
+      });
+
+      // Тепер dialog видалено
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.queryByText('Контент')).not.toBeInTheDocument();
+    });
   });
 });
 
