@@ -215,6 +215,8 @@ export class WorkOrderResponseDto {
   @ApiPropertyOptional({ description: 'Найближчий слот у календарі: кінець' })
   slotEndAt?: Date | null;
   @ApiPropertyOptional({ description: 'Підйомник слота у календарі' }) slotLiftName?: string | null;
+  @ApiPropertyOptional({ description: 'Set when the work order is soft-deleted' })
+  deletedAt?: Date | null;
 }
 
 export class PaginatedWorkOrdersDto {

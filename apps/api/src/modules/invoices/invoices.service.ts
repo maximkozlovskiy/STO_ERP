@@ -509,6 +509,7 @@ export class InvoicesService {
       dueDate: Date | null;
       createdAt: Date;
       updatedAt: Date;
+      deletedAt?: Date | null;
       counterparty: {
         firstName: string | null;
         lastName: string | null;
@@ -560,6 +561,7 @@ export class InvoicesService {
       ...(includeLines && inv.lines ? { lines: inv.lines.map(l => this.toLineDto(l)) } : {}),
       createdAt: inv.createdAt,
       updatedAt: inv.updatedAt,
+      deletedAt: inv.deletedAt ?? null,
     };
   }
 

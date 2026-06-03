@@ -43,9 +43,31 @@ export class PurchaseOrdersService {
     page = 1,
     limit = 20,
     status?: string,
+    q?: string,
+    showDeleted = false,
   ): Promise<PaginatedPurchaseOrdersDto> {
-    const where: Prisma.PurchaseOrderWhereInput = { orgId, deletedAt: null };
+    const where: Prisma.PurchaseOrderWhereInput = {
+      orgId,
+      ...(showDeleted ? {} : { deletedAt: null }),
+    };
     if (status) where.status = status as POStatus;
+    if (q) {
+      const like = q.trim();
+      if (like.length > 0) {
+        where.OR = [
+          { number: { contains: like, mode: 'insensitive' } },
+          {
+            supplier: {
+              OR: [
+                { companyName: { contains: like, mode: 'insensitive' } },
+                { lastName: { contains: like, mode: 'insensitive' } },
+                { firstName: { contains: like, mode: 'insensitive' } },
+              ],
+            },
+          },
+        ];
+      }
+    }
 
     const skip = (page - 1) * limit;
     const [items, total] = await this.prisma.$transaction([
@@ -525,6 +547,7 @@ export class PurchaseOrdersService {
     notes: string | null;
     createdAt: Date;
     updatedAt: Date;
+    deletedAt?: Date | null;
     supplier: {
       firstName: string | null;
       lastName: string | null;
@@ -562,6 +585,7 @@ export class PurchaseOrdersService {
       totalAmount: Number(po.totalAmount),
       notes: po.notes ?? null,
       linesCount: po._count?.lines ?? po.lines?.length ?? 0,
+      deletedAt: po.deletedAt ?? null,
       lines: (po.lines ?? []).map(l => ({
         id: l.id,
         goodId: l.goodId,

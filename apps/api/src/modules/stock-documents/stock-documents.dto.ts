@@ -102,6 +102,8 @@ export class StockDocumentResponseDto {
   @ApiProperty({ type: [StockDocumentLineResponseDto] }) lines!: StockDocumentLineResponseDto[];
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional({ description: 'Set when the document is soft-deleted' })
+  deletedAt?: Date | null;
 }
 
 export class PaginatedStockDocumentsDto {

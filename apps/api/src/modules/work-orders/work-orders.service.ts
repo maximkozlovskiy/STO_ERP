@@ -1152,6 +1152,7 @@ export class WorkOrdersService {
     paidAmount: Prisma.Decimal | null;
     createdAt: Date;
     updatedAt: Date;
+    deletedAt?: Date | null;
     branch?: { name: string } | null;
     vehicle?: { make: string; model: string; licensePlate: string | null } | null;
     counterparty?: {
@@ -1196,6 +1197,7 @@ export class WorkOrdersService {
       slotStartAt: wo.calendarSlots?.[0]?.startAt ?? null,
       slotEndAt: wo.calendarSlots?.[0]?.endAt ?? null,
       slotLiftName: wo.calendarSlots?.[0]?.lift?.name ?? null,
+      deletedAt: wo.deletedAt ?? null,
     };
   }
 

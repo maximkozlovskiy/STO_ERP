@@ -11,7 +11,7 @@ export interface Counterparty {
   companyName: string | null;
   phone: string | null;
   email: string | null;
-  edrpou: string | null;
+  edrpou?: string | null;
   vatPayer: boolean;
   balance: number;
   notes?: string | null;

@@ -127,6 +127,8 @@ export class InvoiceResponseDto {
   @ApiPropertyOptional({ type: [InvoiceLineResponseDto] }) lines?: InvoiceLineResponseDto[];
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional({ description: 'Set when the invoice is soft-deleted' })
+  deletedAt?: Date | null;
 }
 
 export class PaginatedInvoicesDto {

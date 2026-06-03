@@ -110,6 +110,8 @@ export class PurchaseOrderResponseDto {
   @ApiProperty({ type: [PurchaseOrderLineResponseDto] }) lines!: PurchaseOrderLineResponseDto[];
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional({ description: 'Set when the purchase order is soft-deleted' })
+  deletedAt?: Date | null;
 }
 
 export class PaginatedPurchaseOrdersDto {

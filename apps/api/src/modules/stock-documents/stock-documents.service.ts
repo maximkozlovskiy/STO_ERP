@@ -397,6 +397,7 @@ export class StockDocumentsService {
     confirmedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
+    deletedAt?: Date | null;
     branch: { name: string } | null;
     warehouse: { name: string } | null;
     targetWarehouse: { name: string } | null;
@@ -442,6 +443,7 @@ export class StockDocumentsService {
       })),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
+      deletedAt: doc.deletedAt ?? null,
     };
   }
 }
