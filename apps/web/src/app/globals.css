@@ -213,11 +213,12 @@ th[data-dragover="true"] {
      <div className="page-fill p-4 md:p-6 gap-4">
    Then add min-h-0 to the flex-1 table container so overflow-auto works. */
 .page-fill {
-  height: 100%;
+  flex: 1 1 0;        /* grow to fill <main> flex-col context */
+  min-height: 0;      /* allow shrinking below content size */
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  gap: 0.5rem;   /* 8px між header / toolbar / table / pagination */
+  gap: 0.5rem;        /* 8px між header / toolbar / table / pagination */
 }
 
 /* Legacy layout — pages that have not been migrated to .page-fill.
@@ -227,7 +228,8 @@ th[data-dragover="true"] {
   padding: var(--spacing-page-y) var(--spacing-page-x);
   max-width: 96rem;
   margin: 0 auto;
-  height: 100%;
+  flex: 1 1 0;        /* grow in <main> flex-col context */
+  min-height: 0;
   overflow-y: auto;
 }
 
