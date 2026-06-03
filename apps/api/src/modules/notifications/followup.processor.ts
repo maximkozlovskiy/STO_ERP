@@ -29,7 +29,10 @@ export class FollowUpProcessor {
     private readonly notifications: NotificationsService,
   ) {}
 
-  @Process('send-reminders')
+  // concurrency: 1 — followup is a scheduled daily batch per org; a single run fans-out
+  // all SMS via Promise.allSettled internally. Parallel org runs would contend on the SMS
+  // provider rate limit — serialize at the queue level to avoid cascading 429s.
+  @Process({ name: 'send-reminders', concurrency: 1 })
   async handleSendReminders(job: Job<FollowUpJob>) {
     const { orgId } = job.data;
 

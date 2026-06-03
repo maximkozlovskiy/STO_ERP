@@ -18,7 +18,11 @@ export class CheckboxProcessor {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  @Process('fiscal-receipt')
+  // concurrency: 3 — each fiscal-receipt job makes a 15s network call to Checkbox API.
+  // Without concurrency the single-threaded Bull worker serializes jobs: 100 receipts ≈ 1500s.
+  // concurrency: 3 caps parallelism to respect Checkbox's per-licence rate limits while
+  // still draining the queue ~3× faster. Paired with AbortController timeout (15s) above.
+  @Process({ name: 'fiscal-receipt', concurrency: 3 })
   async handleFiscalReceipt(job: Job<FiscalReceiptJob>) {
     const { paymentId, orgId, branchId, amount, method } = job.data;
 
