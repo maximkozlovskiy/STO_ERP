@@ -9,7 +9,9 @@
 ## Останній commit
 
 ```
-<pending tester-commit> fix(tester): Bugs #328-#331 — useListPage stable items + useApiMutation latest-ref + regression tests
+7c2bc57 docs(skills): add 3 patterns to sto-optimize from Universal Patterns audit
+c600772 perf(optimize): stable EMPTY_ITEMS fallback + purchase-orders limit cap
+b2707ae fix(tester): Bugs #328-#331 — useListPage stable items + useApiMutation latest-ref + regression tests
 0a60440 docs(memory): update MemoryManual after Universal Patterns code review
 b41c608 refactor(api): use shared PHONE_UA_REGEX / IBAN_UA_REGEX in DTO validators
 cde1792 fix(review): sync shared FSM transitions with backend authority
@@ -28,6 +30,8 @@ a0b0da6 refactor(hooks): usePaginatedList factory — reduce hook boilerplate by
 Дата: 2026-06-03
 
 TypeScript: ✅ 0 errors (api, web, shared)
+
+Latest optimize: 2026-06-03 (sto-optimize-agent, HEAD c600772 + 7c2bc57, scope: post-Universal-Patterns audit) — **3 fixes + 3 нові SKILL patterns. (1) Bug #328 cascade fix: usePaginatedList тепер експортує module-level `EMPTY_ITEMS = Object.freeze([])`; мігровано 7 list pages (work-orders, purchase-orders, invoices, stock-documents, crm, employees, catalog/WorksTab) з `data?.items ?? []` (fresh literal кожен render) → `data?.items ?? (EMPTY_ITEMS as unknown as T[])` (stable ref). useListPage hook fix (b2707ae) покривав лише новий hook; реальні сторінки далі мали той самий patternу — fix у hook не пропагується автоматично на call sites без consumer migration. (2) purchase-orders.service.findAll: cap `limit` до [1, 200] + `page` до [1, ∞) — DoS hardening паралельно до services audit 280f576. (3) Накопичено 3 нові SKILL patterns: "Fresh `[]` literal у `data?.items ?? []` → useEffect race", "Bug fix у hook не пропагований на call-sites", "Limit cap на endpoints що приймають user-controlled pagination". Не-фікси (verified, accepted): useApiMutation latest-ref pattern коректний (test #6 guards Bug #330); SharedStatusConstants Object.entries у render — micro-optimization (4-10 entries × нечасто); useUiFeatures per useApiMutation instance — deferred (no consumers yet); PO `q` search вже використовує counterparties trgm indices, PO.number trgm не додано (SCO scale). TypeScript 0 errors api+web. Tests: 8/8 usePaginatedList, 7/7 useApiMutation, 10/10 useBulkSelect, 11/11 PO contract, 14/14 PO service.**
 
 Latest tester: 2026-06-03 (sto-tester-agent FULL, HEAD 0a60440 → +4 bugs Bugs #328-#331) — **Post-Universal-Patterns regression audit: 1 HIGH (#328 `useListPage` викликав `useBulkSelect<T>([])` з літералом `[]` — нова reference щоразу → effect race у `useBulkSelect.useEffect([items])` + disconnected selection; додано `UseListPageOptions.items?: readonly T[]` + module-level `EMPTY = Object.freeze([])`), 1 MEDIUM (#330 `useApiMutation` `useCallback` з `eslint-disable react-hooks/exhaustive-deps` опускав `options` → stale closure `onSuccess/onError`; latest-ref pattern: `optionsRef.current = options` у `useEffect()` no-deps), 1 LOW (#329 3 pre-existing failing tests у `useDetailPanelConfig.test.tsx` — assertions не врахували `fieldOrder: []` і signal у PUT body; виправлено), 1 MEDIUM (#331 додано 38 нових unit/contract tests — `usePaginatedList ×8` (Bug f253c33 regression-guard: false/null/empty/0/arrays/trailing-?), `FSMButtons ×8` (allowed transitions, terminal null), `useApiMutation ×7` (Bug #330 stale-closure guard), `useApiError ×10` (parseApiError types), `purchase-orders.contract ×5` (Bug c7f15dd ?q/?showDeleted forwarding + deletedAt у DTO)). Перевірено всі enum coverage (5 enums), всі 4 FSM transition maps shared↔backend, всі 4 deletedAt DTOs.**
 Unit+Contract: ✅ 567/567 passed (api: +5 contract tests для PO)
