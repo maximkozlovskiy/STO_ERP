@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+0cdbdfb fix(tester): Bugs #332-#335 — animation system test coverage (useAnimatedPresence + ConfirmDialog + Modal markers)
+1c698ae docs(memory): update MemoryManual with animation review commit hash 300bda7
 300bda7 fix(review): animation system — kept exit anim through wrappers + scoped data-state rules
 ac48d49 feat(ui): smooth open/close animations for all modals, panels & forms
 3d4c6c5 docs(tester): regression round Cycle 2 — zero new bugs (207 E2E passed)
@@ -25,8 +27,10 @@ c7f15dd fix(sync): expose deletedAt in list DTOs + purchase-orders showDeleted/q
 Дата: 2026-06-03
 
 TypeScript: ✅ 0 errors (api, web, shared)
-Unit+Contract: ✅ 567/567 passed (api) | 251/251 passed (web)
+Unit+Contract: ✅ 567/567 passed (api) | **274/274 passed (web — +23 нових anim-tests)**
 E2E Playwright: ✅ 207 passed / 6 skipped / 0 failed (baseline: 162 → +45)
+
+Latest tester: 2026-06-03 (sto-tester-agent, HEAD 0cdbdfb ← 300bda7, scope: animation system audit) — **4 bugs found (1 MEDIUM #332 + 3 LOW #333-#335). Виправлено 3 (test-coverage), 1 deferred. (1) Bug #332 [MEDIUM]: `useAnimatedPresence` хук не мав unit-тестів — створено `apps/web/src/hooks/useAnimatedPresence.test.tsx` (10 кейсів) з controllable rAF queue + `vi.useFakeTimers` для детермінованого відтворення enter/exit/rapid-toggle timing. Покриває init (visible/state з useState), enter (visible одразу + state='open' після rAF), exit (state='closed' одразу + visible=false ПІСЛЯ exitDuration), кастомний exitDuration=300ms, rapid toggle open→close→open (`clearTimeout` для попереднього exit-таймера), rapid toggle close→open→close (`cancelAnimationFrame` для попереднього rAF), stress-test з 4-фазним flip (≤1 активний таймер), unmount cleanup для setTimeout і rAF. (2) Bug #333 [LOW]: `ConfirmDialog` без regression-guard exit-animation через Modal — створено `apps/web/src/components/ui/__tests__/confirm-dialog.test.tsx` (10 кейсів) включно з 2 інтеграційними: dialog лишається у DOM 180ms після open→false; re-open ДО завершення exit перериває exit-таймер. (3) Bug #334 [LOW]: `Modal` data-animate/data-state/data-backdrop markers без integration-тестів — додано 3 нові тести у `modal.test.tsx` (тепер 22 кейсів): root має data-animate + data-state="open"; backdrop direct-child з data-backdrop; close→exit→DOM removal cycle через `vi.advanceTimersByTime(180)`. (4) Bug #335 [LOW, OPEN]: re-open flicker — `useAnimatedPresence` рендерить елемент з `data-state="closed"` для 1 paint frame перед flip на `"open"` → modal-out FROM-keyframe (opacity:1, scale:1) видимий 16ms на 60Hz; задокументовано в BUG_REPORT.md з 3 опціями фіксу (useLayoutEffect + одразу setState('open') — рекомендований), відкладено до UX-polish sprint (потребує QA усіх 4 модалок). Baseline: tsc 0 errors web, vitest **274 passed / 25 files** (was 251 → +23 нові: useAnimatedPresence 10 + confirm-dialog 10 + modal 3 нові інтеграційні). Жодне існуюче не зламано.**
 
 Дата: 2026-06-03
 
