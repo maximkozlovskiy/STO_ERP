@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-<PENDING> fix(review): animation system — ConfirmDialog wrapper kept exit, data-animate marker scopes [data-state] rules
+300bda7 fix(review): animation system — kept exit anim through wrappers + scoped data-state rules
 ac48d49 feat(ui): smooth open/close animations for all modals, panels & forms
 3d4c6c5 docs(tester): regression round Cycle 2 — zero new bugs (207 E2E passed)
 0c94b0f docs(memory): update MemoryManual after sto-review-agent cycle 2
