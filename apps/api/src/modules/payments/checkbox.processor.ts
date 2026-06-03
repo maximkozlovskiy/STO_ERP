@@ -49,26 +49,36 @@ export class CheckboxProcessor {
     // 302 Location: http://169.254.169.254/... → fetch (default redirect: 'follow') слідує
     // у cloud metadata всередині privately-routed VPC, обходячи validatePublicUrl на оригіналі.
     // Парний патерн з webhooks.processor.ts:82.
-    const response = await fetch(`${apiUrl}/api/v1/receipts/sell`, {
-      method: 'POST',
-      redirect: 'manual',
-      headers: {
-        Authorization: `Bearer ${branchSettings.checkboxLicenseKey}`,
-        'Content-Type': 'application/json',
-        'X-License-Key': branchSettings.checkboxLicenseKey,
-      },
-      body: JSON.stringify({
-        goods: [
-          {
-            good: { name: 'Послуги автосервісу', price: Math.round(amount * 100) },
-            quantity: 1000,
-          },
-        ],
-        payments: [
-          { type: method === 'cash' ? 'CASH' : 'CASHLESS', value: Math.round(amount * 100) },
-        ],
-      }),
-    });
+    // Offline-first timeout: 15s — без abort signal зависле з'єднання блокує всю чергу
+    // (ПРРО налаштовано на 288 retry × exponential backoff, але тільки якщо ми ВИЙШЛИ з fetch).
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
+    let response: Response;
+    try {
+      response = await fetch(`${apiUrl}/api/v1/receipts/sell`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          Authorization: `Bearer ${branchSettings.checkboxLicenseKey}`,
+          'Content-Type': 'application/json',
+          'X-License-Key': branchSettings.checkboxLicenseKey,
+        },
+        body: JSON.stringify({
+          goods: [
+            {
+              good: { name: 'Послуги автосервісу', price: Math.round(amount * 100) },
+              quantity: 1000,
+            },
+          ],
+          payments: [
+            { type: method === 'cash' ? 'CASH' : 'CASHLESS', value: Math.round(amount * 100) },
+          ],
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     // Bug #273: any 3xx with redirect: 'manual' MUST be rejected — Checkbox API never
     // returns 3xx on a sell endpoint; if it does, treat as suspicious tampering.

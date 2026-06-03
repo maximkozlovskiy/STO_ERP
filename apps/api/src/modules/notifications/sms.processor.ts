@@ -27,15 +27,26 @@ export class SmsProcessor {
   }
 
   private async sendViaTurboSms(phone: string, message: string, apiKey: string, sender: string) {
-    const response = await fetch('https://api.turbosms.ua/message/send.json', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        recipients: [phone],
-        sms: { sender, text: message },
-        token: apiKey,
-      }),
-    });
+    // Offline-first invariant: external HTTP must NEVER hang the worker.
+    // Without a timeout a flaky TurboSMS endpoint (or no internet) blocks
+    // the SMS queue indefinitely — defeats the BullMQ retry-with-backoff design.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    let response: Response;
+    try {
+      response = await fetch('https://api.turbosms.ua/message/send.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipients: [phone],
+          sms: { sender, text: message },
+          token: apiKey,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!response.ok) {
       const err = await response.text();
