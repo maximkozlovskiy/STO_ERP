@@ -1,5 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const kyivToday = () => new Date(KYIV_YMD.format(new Date()));
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -239,7 +242,7 @@ export class WorkOrdersService {
         repairCategory: dto.repairCategory ?? null,
         plannedAt: dto.plannedAt ? new Date(dto.plannedAt) : null,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        documentDate: dto.documentDate ? new Date(dto.documentDate) : new Date(),
+        documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
       },
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },

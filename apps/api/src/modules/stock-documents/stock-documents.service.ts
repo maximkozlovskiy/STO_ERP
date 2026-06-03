@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DocumentType, Prisma, StockDocumentType, StockMovementType } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const kyivToday = () => new Date(KYIV_YMD.format(new Date()));
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -169,7 +172,7 @@ export class StockDocumentsService {
             type: dto.type as StockDocumentType,
             number,
             notes: dto.notes,
-            documentDate: dto.documentDate ? new Date(dto.documentDate) : new Date(),
+            documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
           },
         });
         if (lines.length) {
