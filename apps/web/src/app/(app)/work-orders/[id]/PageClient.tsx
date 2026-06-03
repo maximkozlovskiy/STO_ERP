@@ -1539,12 +1539,14 @@ export default function WorkOrderCardPage() {
                     </div>
                   )}
                   <button
+                    type="button"
+                    aria-label="Видалити файл"
                     onClick={async e => {
                       e.stopPropagation();
                       await apiFetch(`/work-orders/${id}/media/${m.id}`, { method: 'DELETE' });
                       setMedia(prev => prev.filter(x => x.id !== m.id));
                     }}
-                    className="absolute top-1 right-1 hidden group-hover:flex w-6 h-6 bg-destructive text-white rounded-full items-center justify-center text-xs"
+                    className="absolute top-1 right-1 hidden group-hover:flex focus-visible:flex w-6 h-6 bg-destructive text-white rounded-full items-center justify-center text-xs"
                   >
                     ×
                   </button>

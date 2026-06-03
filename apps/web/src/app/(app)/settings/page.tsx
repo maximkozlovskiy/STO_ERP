@@ -40,6 +40,11 @@ import { getCached, setCache } from '@/lib/ref-cache';
 // from class-validator at runtime.
 type CostMethod = 'FIFO' | 'FEFO' | 'LIFO' | 'AVG_COST';
 
+// Kyiv-local date formatter (YYYY-MM-DD) for exchange rate default date.
+// toISOString() returns UTC — between midnight and 2-3 AM Kyiv time it shows yesterday.
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const kyivToday = () => KYIV_YMD.format(new Date());
+
 const COST_METHOD_OPTIONS: { value: CostMethod; label: string; hint: string }[] = [
   { value: 'FIFO', label: 'FIFO', hint: 'Перший прийшов — перший пішов' },
   { value: 'FEFO', label: 'FEFO', hint: 'За терміном придатності (раніший пішов першим)' },
@@ -1025,7 +1030,7 @@ function SettingsPageClient() {
         : {
             currencyId: '',
             currencyDisplay: '',
-            date: new Date().toISOString().split('T')[0],
+            date: kyivToday(),
             rate: '',
             coefficient: '1',
           },

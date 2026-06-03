@@ -88,6 +88,16 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
     };
   }, [open, goodId, warehouseId]);
 
+  // Escape key closes the modal (a11y: §8 Web Frontend).
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
   // Memoize: filter() створює новий масив на кожен ререндер (включно з expandedId зміною).
   // BatchRow обгорнутий у memo нижче — без стабільного array reference memo не спрацьовує
   // ефективно, бо діти все одно отримують нові propsи.
