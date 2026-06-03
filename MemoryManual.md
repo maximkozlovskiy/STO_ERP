@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+b41c608 refactor(api): use shared PHONE_UA_REGEX / IBAN_UA_REGEX in DTO validators
+cde1792 fix(review): sync shared FSM transitions with backend authority
 c7f15dd fix(sync): expose deletedAt in list DTOs + purchase-orders showDeleted/q support
 f253c33 fix(hooks): usePaginatedList — skip false values + no trailing ? in URL
 e50d3a7 refactor(ui): schema-driven panel audit — crm/employees migrated to buildPanelFields
@@ -23,7 +25,9 @@ a0b0da6 refactor(hooks): usePaginatedList factory — reduce hook boilerplate by
 
 Дата: 2026-06-03
 
-TypeScript: ✅ 0 errors (api, web)
+TypeScript: ✅ 0 errors (api, web, shared)
+
+Latest review: 2026-06-03 (sto-review-agent AUTO, HEAD b41c608 ← d87d394, scope: Universal Patterns refactor cycle — SharedStatusConstants/usePaginatedList/useListPage/FSMButtons/useApiMutation/useApiError/shared validators/panel audit) — **1 CRITICAL FSM authority drift + 1 IMPORTANT validator duplication. (1) Shared WO_STATUS_TRANSITIONS і PO_STATUS_TRANSITIONS розійшлися з backend FSM maps (work-orders.fsm.ts / purchase-orders.service.ts PO_TRANSITIONS) — UI на shared константах пропонував би API-rejected переходи або ховав дозволені: WO ESTIMATE бракувало reverse-to-DRAFT, APPROVED бракувало ON_HOLD, COMPLETED мав зайвий ARCHIVED; PO ORDERED бракувало PARTIAL (transition недосяжний); виправлено в packages/shared/src/constants/statuses.ts + мігровано work-orders/[id]/PageClient.tsx з локального TRANSITIONS на shared (видалено дубль 10 рядків). Додано коментар-указівку на backend-авторитет до кожної transition map. (2) booking.dto.ts (clientPhone) і bank-accounts.dto.ts (ibanUA × 2) хардкодили inline regex замість використання PHONE_UA_REGEX/IBAN_UA_REGEX з @sto/shared — мігровано на shared constants. Не-фікси: useApiMutation/useApiError/useListPage ще не мають consumer'ів (infrastructure для майбутніх міграцій — OK); FSMButtons component готовий але не використовується (інтегрується наступним блоком); STATUS_COLORS у work-orders/[id]/PageClient.tsx залишено (Tailwind classes vs Badge variant — інша парадигма). Cross-cutting checks: 0 React.X namespace, 0 any, 0 console.log, 0 window.confirm, всі hover-only кнопки мають focus-visible:opacity-100, всі модифіковані DTO повертають deletedAt, всі findMany мають take:. tsc 0 errors api+web+shared.**
 
 Latest sync: 2026-06-03 (sto-sync-agent, HEAD c7f15dd) — **3 Direction 3 type mismatches + 1 Direction 2 mismatch fixed. (1) invoices/work-orders/stock-documents/purchase-orders toDto() omitted deletedAt → UI used .deletedAt for opacity-60 + FSM button guard but always got undefined; fixed by adding deletedAt to 4 ResponseDtos + 4 service toDtos. (2) purchase-orders controller had no ?q= search or ?showDeleted= param — frontend PurchaseOrdersFilter sends both but backend ignored silently; added q (number+supplier name) + showDeleted to controller and service. (3) useCounterparties.Counterparty.edrpou was string|null (required) but findAll omits it (only findOne via includeEdrpou=true includes it) — changed to edrpou?: string|null. tsc 0 errors api+web.**
 Unit+Contract: ✅ 562/562 passed (api unchanged)
