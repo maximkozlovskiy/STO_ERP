@@ -63,7 +63,7 @@ export class CreateWorkOrderDto {
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD), за замовчуванням — сьогодні' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsISO8601()
+  @IsDateString()
   documentDate?: string;
 }
 
@@ -104,7 +104,7 @@ export class UpdateWorkOrderDto {
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsISO8601()
+  @IsDateString()
   documentDate?: string;
 }
 
