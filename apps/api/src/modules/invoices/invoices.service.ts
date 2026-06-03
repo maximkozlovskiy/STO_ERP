@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InvoiceStatus, Prisma } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
+
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const kyivToday = () => new Date(KYIV_YMD.format(new Date()));
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
@@ -192,7 +195,7 @@ export class InvoicesService {
         number,
         amount: dto.amount,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        documentDate: dto.documentDate ? new Date(dto.documentDate) : new Date(),
+        documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
         notes: dto.notes ?? null,
         status: InvoiceStatus.DRAFT,
       },

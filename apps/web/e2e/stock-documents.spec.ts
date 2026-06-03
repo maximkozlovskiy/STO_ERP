@@ -75,9 +75,19 @@ async function createDocApi(
   return apiPost(page, '/stock-documents', { type, warehouseId, branchId });
 }
 
-async function gotoStockDocs(page: Page) {
+async function gotoStockDocs(page: Page, clearDateFilter = false) {
   await page.goto('/stock-documents');
   await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({ timeout: 20_000 });
+  if (clearDateFilter) {
+    // Bug #345: stock-documents page has kyivToday() date filter by default
+    const dateInputs = page.locator('input[placeholder="Від"], input[placeholder="До"]');
+    const count = await dateInputs.count();
+    for (let i = 0; i < count; i++) {
+      await dateInputs.nth(i).fill('');
+      await dateInputs.nth(i).press('Escape');
+    }
+    await page.waitForTimeout(400);
+  }
 }
 
 // ─── 1. Навігація ─────────────────────────────────────────────────────────────
@@ -278,7 +288,7 @@ test.describe('Складські документи — Detail Panel', () => {
 
   test('клік на рядок → Detail Panel відкривається', async ({ page }) => {
     if (!docId) return test.skip(true, 'Документ не створено');
-    await gotoStockDocs(page);
+    await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
@@ -289,7 +299,7 @@ test.describe('Складські документи — Detail Panel', () => {
 
   test('Detail Panel — показує тип «Списання» і статус «Чернетка»', async ({ page }) => {
     if (!docId) return test.skip(true, 'Документ не створено');
-    await gotoStockDocs(page);
+    await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();

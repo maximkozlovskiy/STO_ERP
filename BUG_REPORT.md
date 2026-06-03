@@ -10237,3 +10237,27 @@ No new bugs found. All checklist items verified:
 - no hard deletes in changed services ✅
 - no direct stockItem.update outside InventoryService ✅
 - loyalty balance increment/decrement is on loyaltyAccount (not settlementAccount) — correct ✅
+
+---
+
+### Bug #345 — [HIGH] Date filter kyivToday() за замовчуванням приховує документи при зміні дати (полівночі)
+
+**Файли:** `apps/web/src/app/(app)/invoices/page.tsx:159-160`, `apps/web/src/app/(app)/purchase-orders/page.tsx:160-161`, `apps/web/src/app/(app)/stock-documents/page.tsx`
+
+**Причина:**
+`dateFrom = useState(() => kyivToday())` і `dateTo = useState(() => kyivToday())` ініціалізуються при монтуванні компонента (тобто при першому відвідуванні сторінки).
+При переході через опівніч (Kyiv часовий пояс) + документи створені `new Date()` (UTC) в сервісі:
+
+- Сервіс записує `documentDate = 2026-06-03` (UTC вчора)
+- Frontend фільтрує `dateFrom = 2026-06-04` (Kyiv сьогодні)
+- Результат: документ не відображається в списку
+
+Додатково: `invoices.service.ts:195` використовував `new Date()` замість `kyivToday()` для `documentDate`.
+
+**Виправлення:**
+
+- `apps/api/src/modules/invoices/invoices.service.ts` — `documentDate: kyivToday()` замість `new Date()`
+- E2E тести: `gotoInvoices(page, true)` і `gotoStockDocs(page, true)` очищають date filter перед пошуком документу по номеру
+- `crud-invoice.spec.ts`, `crud-purchase-order.spec.ts` — clearDateFilter + search by number
+
+**Статус:** [x] виправлено (backend + E2E тести)

@@ -73,9 +73,19 @@ async function createInvoiceApi(
   return apiPost(page, '/invoices', { counterpartyId: cpId, amount });
 }
 
-async function gotoInvoices(page: Page) {
+async function gotoInvoices(page: Page, clearDateFilter = false) {
   await page.goto('/invoices');
   await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
+  if (clearDateFilter) {
+    // Bug #345: invoices page has kyivToday() date filter by default — clear to show all records
+    const dateInputs = page.locator('input[placeholder="Від"], input[placeholder="До"]');
+    const count = await dateInputs.count();
+    for (let i = 0; i < count; i++) {
+      await dateInputs.nth(i).fill('');
+      await dateInputs.nth(i).press('Escape');
+    }
+    await page.waitForTimeout(400);
+  }
 }
 
 // ─── 1. Базова навігація ──────────────────────────────────────────────────────
@@ -237,7 +247,7 @@ test.describe('Рахунки — Detail Panel', () => {
 
   test('клік на рядок → Detail Panel відкривається', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
-    await gotoInvoices(page);
+    await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
@@ -249,7 +259,7 @@ test.describe('Рахунки — Detail Panel', () => {
 
   test('Detail Panel — вкладка «Основне» показує статус Чернетка', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
-    await gotoInvoices(page);
+    await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
@@ -259,7 +269,7 @@ test.describe('Рахунки — Detail Panel', () => {
 
   test('Detail Panel — кнопка «Надіслати» присутня для DRAFT', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
-    await gotoInvoices(page);
+    await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
@@ -270,7 +280,7 @@ test.describe('Рахунки — Detail Panel', () => {
 
   test('Detail Panel — вкладка «Позиції» відображається', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
-    await gotoInvoices(page);
+    await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
@@ -323,7 +333,7 @@ test.describe('Рахунки — FSM переходи', () => {
 
   test('DRAFT → SENT: клік «Надіслати» → badge «Надіслано»', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
-    await gotoInvoices(page);
+    await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
@@ -347,7 +357,7 @@ test.describe('Рахунки — FSM переходи', () => {
 
   test('SENT → CANCELLED: клік «Скасувати» → badge «Скасовано»', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
-    await gotoInvoices(page);
+    await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
@@ -416,7 +426,7 @@ test.describe('Рахунки — реєстрація оплати', () => {
 
   test('SENT → «Оплатити» → модалка оплати → PAID', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
-    await gotoInvoices(page);
+    await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
@@ -488,7 +498,7 @@ test.describe('Рахунки — клонування', () => {
 
   test('«Дублювати» → новий рахунок DRAFT з тим же контрагентом', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
-    await gotoInvoices(page);
+    await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
@@ -635,7 +645,7 @@ test.describe('Рахунки — soft delete', () => {
 
   test('hover → іконка видалення → підтвердити → рахунок зникає зі списку', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
-    await gotoInvoices(page);
+    await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
 
@@ -750,7 +760,7 @@ test.describe('Рахунки — PDF', () => {
 
   test('«Завантажити PDF» — не кидає видиму помилку', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
-    await gotoInvoices(page);
+    await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();

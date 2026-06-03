@@ -145,10 +145,25 @@ test.describe('Рахунки — CRUD', () => {
       return;
     }
 
-    // Знайти рахунок створений через API — рядок ОБОВ'ЯЗКОВО має з'явитись.
-    // Без strict expect — fake-green (Bug #287).
-    await page.reload();
+    // Bug #345: invoices page has kyivToday() date filter by default.
+    // Clear date filters via UI (clear both DatePickerInput fields) to show all records.
+    await page.goto('/invoices');
     await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
+
+    // Clear date filters: find date inputs (placeholder="Від"/"До") and clear them
+    const dateInputs = page.locator('input[placeholder="Від"], input[placeholder="До"]');
+    const dateCount = await dateInputs.count();
+    for (let i = 0; i < dateCount; i++) {
+      await dateInputs.nth(i).fill('');
+      await dateInputs.nth(i).press('Escape');
+    }
+    await page.waitForTimeout(400);
+
+    // Search by number to narrow results
+    const searchInput = page.locator('input[placeholder*="Пошук"]').first();
+    await searchInput.fill(inv.number);
+    await page.waitForTimeout(400);
+
     const row = page.locator(`table tbody tr:has-text("${inv.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();

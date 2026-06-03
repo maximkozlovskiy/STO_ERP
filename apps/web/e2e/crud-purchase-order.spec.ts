@@ -177,8 +177,23 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       return;
     }
 
-    await page.reload();
+    // Bug #345: purchase-orders page has kyivToday() date filter — clear it + search by number
+    await page.goto('/purchase-orders');
     await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    const dateInputs = page.locator('input[placeholder="Від"], input[placeholder="До"]');
+    const dateCount = await dateInputs.count();
+    for (let i = 0; i < dateCount; i++) {
+      await dateInputs.nth(i).fill('');
+      await dateInputs.nth(i).press('Escape');
+    }
+    await page.waitForTimeout(400);
+    const searchInput = page
+      .locator('input[placeholder*="Пошук"], input[placeholder*="пошук"]')
+      .first();
+    if (await searchInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await searchInput.fill(po.number);
+      await page.waitForTimeout(400);
+    }
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     // Перевіряємо що статус "Замовлено" відображається в рядку таблиці
