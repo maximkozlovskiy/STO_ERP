@@ -150,4 +150,77 @@ describe('PurchaseOrders — HTTP Contract', () => {
       expect(serviceMock.applyPricing).toHaveBeenCalledWith('org-1', VALID_UUID);
     });
   });
+
+  // Bug #328 regression guard for commit c7f15dd — controller must forward
+  // ?q= і ?showDeleted= до service. Раніше параметри ігнорувались, frontend
+  // фільтр у /purchase-orders сторінці тихо нічого не робив.
+  describe('GET /purchase-orders (showDeleted + q forwarding)', () => {
+    beforeEach(() => {
+      serviceMock.findAll.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+    });
+
+    it('showDeleted=true → service.findAll отримує true', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/purchase-orders?showDeleted=true',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll).toHaveBeenCalledWith('org-1', 1, 20, undefined, undefined, true);
+    });
+
+    it('showDeleted відсутній → service.findAll отримує false (showDeleted === "true" check)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/purchase-orders',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll).toHaveBeenCalledWith('org-1', 1, 20, undefined, undefined, false);
+    });
+
+    it('q=PO-001 → service.findAll отримує query string', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/purchase-orders?q=PO-001&status=DRAFT',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll).toHaveBeenCalledWith('org-1', 1, 20, 'DRAFT', 'PO-001', false);
+    });
+
+    it('page=2&limit=50&q=test&showDeleted=true → всі параметри прокинуті', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/purchase-orders?page=2&limit=50&q=test&showDeleted=true&status=RECEIVED',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll).toHaveBeenCalledWith('org-1', 2, 50, 'RECEIVED', 'test', true);
+    });
+  });
+
+  // Bug #328 regression guard — deletedAt має бути серіалізовано у відповіді
+  describe('GET /purchase-orders — deletedAt у DTO response', () => {
+    it('toDto результат у items містить deletedAt поле', async () => {
+      const itemWithDeleted = {
+        id: VALID_UUID,
+        number: 'PO-001',
+        status: 'DRAFT',
+        deletedAt: new Date('2026-01-15').toISOString(),
+        totalAmount: 100,
+        supplierName: 'Test',
+      };
+      serviceMock.findAll.mockResolvedValueOnce({
+        items: [itemWithDeleted],
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/purchase-orders?showDeleted=true',
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.items[0]).toHaveProperty('deletedAt');
+      expect(body.items[0].deletedAt).toBe('2026-01-15T00:00:00.000Z');
+    });
+  });
 });

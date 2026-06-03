@@ -9497,3 +9497,110 @@ Baseline:
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-03 — FULL tester audit після Universal Patterns refactor (HEAD 0a60440)
+
+**Scope:** комітів 8cc14e0 → 0a60440 — `SharedStatusConstants`, FSM sync (cde1792), shared Zod validators (b41c608), `usePaginatedList` factory, `useListPage`, `FSMButtons`, `useApiMutation`, `useApiError`, schema-driven panel migration (crm/employees), `deletedAt` у 4 DTO + PO controller `?q`/`?showDeleted` (c7f15dd).
+
+**Перевірені інваріанти (зелено):**
+
+- WorkOrderStatus / InvoiceStatus / PurchaseOrderStatus / StockDocumentStatus / EmployeeStatus — кожен enum value покритий у `Record<string, string>` SharedStatusConstants (label + badge).
+- `WO_STATUS_TRANSITIONS` / `INVOICE_STATUS_TRANSITIONS` / `PO_STATUS_TRANSITIONS` / `STOCK_DOC_STATUS_TRANSITIONS` синхронізовані з backend `WORK_ORDER_TRANSITIONS` / `INV_TRANSITIONS` / `PO_TRANSITIONS` / `DOC_TRANSITIONS` побайтово.
+- `usePaginatedList.buildParams`: `null`/`undefined`/`''`/`false` skip, `0` зберігається, масиви → repeated keys, немає trailing `?` коли всі filters empty. Покрито 8 unit tests у новому `usePaginatedList.test.tsx`.
+- `FSMButtons` рендерить лише `transitions[status]`, `null` для термінальних/невідомих статусів. Покрито 8 unit tests у `fsm-buttons.test.tsx`.
+- `deletedAt?: Date | null` у `InvoiceResponseDto` / `WorkOrderResponseDto` / `PurchaseOrderResponseDto` / `StockDocumentResponseDto` + парний `deletedAt: x.deletedAt ?? null` у відповідному `toDto`. Frontend interfaces `Invoice`/`WorkOrder`/`PurchaseOrder`/`StockDoc` мають `deletedAt?: string | null`.
+- `purchase-orders.controller` приймає `?q=` і `?showDeleted=` і прокидає у `service.findAll(orgId, page, limit, status, q, showDeleted === 'true')`. Покрито 5 contract tests.
+- `PHONE_UA_REGEX` / `IBAN_UA_REGEX` імпортуються з `@sto/shared` у `bank-accounts.dto.ts` + `booking.dto.ts`, нема дубльованих regex літералів.
+
+**Бази:**
+
+- API: 562 → 567 (+5 contract tests для PO `?q`/`?showDeleted`/deletedAt)
+- Web: 218 → 251 (+33 unit tests: usePaginatedList ×8, FSMButtons ×8, useApiMutation ×7, useApiError ×10; +3 пре-існуючі failures у useDetailPanelConfig.test.tsx виправлені)
+- TypeScript: 0 errors (api + web + shared)
+
+---
+
+## Bug #328 — [HIGH] `useListPage` викликає `useBulkSelect<T>([])` з літералом `[]` — нова reference щоразу → effect race + disconnected selection
+
+**Файл:** `apps/web/src/hooks/useListPage.ts:24`
+**Severity:** HIGH (latent — hook ще не used, але один adopt-сайт = бачний bug)
+**Категорія:** react-hooks / stale-reference
+
+**Опис:**
+`useBulkSelect<T>([])` отримує літеральний `[]` що створює нову reference кожного render. `useEffect(items)` у `useBulkSelect` (line 22-34) фіксує `[items]` deps → effect fire-fires щоразу. Гірше: pass-нутий empty array означає `useBulkSelect` НЕ керує реальними рядками — `allSelected`/`someSelected`/`toggleAll` працюють проти 0 елементів. Сторінка яка зробить `const list = useListPage(...)` і покаже `list.bulkSelect.allSelected` отримає завжди `false` навіть коли всі чекбокси проставлені.
+
+**Очікувана поведінка:** `useListPage` приймає `items` опційно (`UseListPageOptions.items`), передає у `useBulkSelect`. Stable empty fallback (`Object.freeze([])`) коли items не передано.
+
+**Фактична поведінка:** літерал `[]` щоразу.
+
+**Фікс:** додано `items?: readonly T[]` у `UseListPageOptions<T>` + module-level `EMPTY = Object.freeze([])` + JSDoc що пояснює необхідність stable reference.
+
+**Статус:** [x] виправлено (apps/web/src/hooks/useListPage.ts)
+
+---
+
+## Bug #329 — [LOW] 3 пре-існуючі failing тести `useDetailPanelConfig.test.tsx` — assertions не врахували `fieldOrder: []` і `AbortSignal`
+
+**Файл:** `apps/web/src/hooks/useDetailPanelConfig.test.tsx:32,107-113,148-154`
+**Severity:** LOW (test-noise) — але baseline-red ховає регресії
+**Категорія:** test-drift / spec-vs-impl
+
+**Опис:**
+Hook після refactor серіалізує повний `PanelFieldConfig` (`{ hiddenFields, fieldOrder }`) у `JSON.stringify` PUT body. Тести assertили `JSON.stringify({key, value: { hiddenFields: ['phone'] }})` без `fieldOrder` — рядки розходились. Перший тест (line 32) асертив `toEqual({ hiddenFields: [] })` для початкового state, але імплементація повертає `{ hiddenFields: [], fieldOrder: [] }`.
+
+**Очікувана поведінка:** assertions співпадають з actual PUT body shape.
+
+**Фактична поведінка:** 3 failing тести у baseline → невидиме drift.
+
+**Фікс:** оновлено три assertions: початковий config містить `fieldOrder: []`; PUT body містить `{ hiddenFields, fieldOrder: [] }`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #330 — [MEDIUM] `useApiMutation` — stale closure `options.onSuccess` через `useCallback` deps з `eslint-disable react-hooks/exhaustive-deps`
+
+**Файл:** `apps/web/src/hooks/useApiMutation.ts:22-43`
+**Severity:** MEDIUM (latent — hook ще не used, але adopt без awareness = silent stale handler)
+**Категорія:** react-hooks / stale-closure
+
+**Опис:**
+`mutate = useCallback(async (args) => { ... options?.onSuccess?.(result) }, [mutationFn, features.toastEnabled])` з `// eslint-disable-next-line react-hooks/exhaustive-deps`. `options` не у deps → `mutate` зберігає reference до `onSuccess` з першого render. Якщо parent ререндерить з новим `onSuccess` (наприклад при зміні derived state) — `mutate` все одно викличе старий. Класичний stale-closure bug.
+
+**Очікувана поведінка:** завжди викликати `latest` `options.onSuccess` / `onError` / `successMsg` / `errorMsg`.
+
+**Фактична поведінка:** замороженy reference з першого render.
+
+**Фікс:** Latest-ref pattern — `optionsRef.current = options` у `useEffect()` (no deps) + `mutate` читає `optionsRef.current` всередині. `mutationFn` теж через ref. Покрито regression-тестом «latest onSuccess — stale closure не виконується».
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #331 — [MEDIUM] Відсутні unit-тести для `usePaginatedList.buildParams` / `FSMButtons` / `useApiMutation` / `useApiError` / `PurchaseOrdersController` `?q`/`?showDeleted`
+
+**Файли:**
+
+- `apps/web/src/hooks/api/usePaginatedList.test.tsx` (новий, 8 tests)
+- `apps/web/src/components/ui/__tests__/fsm-buttons.test.tsx` (новий, 8 tests)
+- `apps/web/src/hooks/useApiMutation.test.tsx` (новий, 7 tests)
+- `apps/web/src/hooks/useApiError.test.tsx` (новий, 10 tests)
+- `apps/api/src/modules/purchase-orders/purchase-orders.contract.spec.ts` (доповнено, +5 tests)
+
+**Severity:** MEDIUM (regression-guard відсутній для universal patterns)
+**Категорія:** test-coverage
+
+**Опис:**
+Universal Patterns rollout додав 4 нові hooks/components і змінив 1 controller. Жоден не мав unit-тестів. Bug #328-#330 знайдені при code-walkthrough, не CI — без regression-guard fix може відкатитись у refactor.
+
+**Фікс:**
+
+- `usePaginatedList`: тести `false`/`null`/`undefined`/`''` skip, `0` preserve, arrays, signal через apiFetch, немає trailing `?` (Bug f253c33 regression).
+- `FSMButtons`: тести allowed transitions, terminal status null, unknown status fallback, click forwarding, disabled, label fallback.
+- `useApiMutation`: success/error path, saving toggle, toast guards, latest-ref pattern (Bug #330), errorMsg fallback, clearError.
+- `useApiError`: parseApiError types, hook initial/setError/handleError/clearError.
+- `PurchaseOrdersController`: `showDeleted=true`/відсутній/`q=`/всі параметри прокинуті у `service.findAll` + `deletedAt` у response items.
+
+**Статус:** [x] виправлено
+
+---

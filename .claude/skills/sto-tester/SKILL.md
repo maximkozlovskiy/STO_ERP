@@ -2825,3 +2825,130 @@ function safeCoeff(value: number | null | undefined): number {
 4. Документувати у JSDoc Modal-компонента: «onChanged: refetch має бути race-guarded».
 
 ---
+
+### 2026-06-03 — Literal `[]` / `{}` як аргумент до custom hook → useEffect race у hook (Bug #328) — frontend, React hooks anti-pattern
+
+**Сигнал:** Custom hook (`useBulkSelect(items)`, `useFiltered(query)`, `useMemoizeDeps(deps)`) приймає масив/об'єкт як аргумент І робить `useEffect(..., [arg])` всередині. Caller передає **літерал** (`[]`, `{}`, `{ status: 'X' }`) щоразу при render. Кожен render: новий референс → effect-deps вважає його зміненим → effect fires кожного render → infinite loop у dev, perf cliff у prod. Часом гірше: hook повертає state що повинен корелюватися з arg-ом, але оскільки реальні дані ніколи не передаються — hook повертає stale/empty state без видимої помилки (TS green, тест без integration green, runtime — feature мертва).
+
+**Причина виникнення:** Композитний hook (`useListPage`) намагається інкапсулювати «все потрібне для list-сторінки» включно з `useBulkSelect`. Розробник пише `useBulkSelect<T>([])` як **placeholder** з ідеєю «caller передасть items через інший шлях». Або вважає що empty array = sane default. Compiler не попереджає бо тип `T[]` приймає літеральний `[]`. ESLint `react-hooks/exhaustive-deps` не ловить бо deps правильні (`[items]`) — проблема у тому що `items` reference нестабільний.
+
+**Підхід до виявлення:**
+
+1. Grep custom hooks що приймають array/object і мають useEffect:
+   ```bash
+   grep -rln "useEffect\|useMemo\|useCallback" apps/web/src/hooks --include="*.ts" |
+     xargs grep -l "function use[A-Z]"
+   ```
+   Для кожного — перевірити чи hook викликається з літералом у будь-якому caller.
+2. Grep callers що передають літерал як аргумент:
+   ```bash
+   grep -rnE "use[A-Z][a-zA-Z]+\(\[\]|use[A-Z][a-zA-Z]+\(\{\}" apps/web/src --include="*.ts" --include="*.tsx" | grep -v ".test."
+   ```
+3. Спеціальний red flag: composite hook (`useListPage`, `useFormState`) що НЕ приймає items/data як параметр але всередині використовує hook що потребує stable reference.
+
+**Підхід до фіксу:**
+
+1. Принцип: **stable reference** для будь-якого arg що йде у `useEffect/useMemo/useCallback` deps. Варіанти:
+   - Caller передає `data?.items ?? STABLE_EMPTY` (де `STABLE_EMPTY = useMemo(() => [], [])` АБО module-level `Object.freeze([])`).
+   - Hook приймає `items?: T[]` опційно, всередині `const safeItems = items ?? EMPTY` (де EMPTY — module-level frozen).
+2. Composite hook що інкапсулює `useBulkSelect` → ОБОВ'ЯЗКОВО приймає `items` як параметр options, документує JSDoc-ом необхідність stable reference, надає `EMPTY` fallback.
+3. JSDoc must-have: «Pass `data?.items ?? EMPTY` from your query hook. Inline `[]` causes effect-deps thrash».
+4. Якщо hook ще не used (infrastructure-only) — теж виправити бо перший adopt = bug.
+
+**Severity:** HIGH (потенційно blocker: infinite render loop або disconnected state). LOW якщо hook не used, але технічний борг high.
+
+**Де шукати ще:**
+
+- `useFiltered(items, query)` / `useGrouped(items, grouper)` / `useColumns(columns)` — будь-який hook що приймає мутабельну колекцію.
+- `useForm({ defaultValues: {...} })` де `defaultValues` літерально передається кожен render.
+- Custom queries: `useQuery({ queryKey: ['x'], ... })` де queryKey = inline array — TanStack Query внутрішньо порівнює по значенню, але user-side custom hook що `JSON.stringify(deps)` пропустить це.
+- Props that flow into `useMemo([...deps])`: `<Component config={{ a, b }} />` створює новий `config` кожного рендера → child useMemo deps thrash.
+
+**Профілактика:**
+
+1. `/sto-dev` SKILL.md: додати правило «Custom hook що приймає array/object аргумент — caller ОБОВ'ЯЗКОВО передає stable reference. Каркас: module-level `EMPTY = Object.freeze([])` як fallback».
+2. `/sto-review` checklist: «Composite hook (useListPage, useFormState) — каждий `useEffect([arg])` всередині має stable arg? Якщо arg — параметр, чи caller pre-stabilized?».
+3. ESLint custom rule: попереджати про `useXxx([])` / `useXxx({})` у JSX/function body де hook не з white-list React core.
+4. Тестово: hook з масивом-аргументом має тест «multiple renders → effect не fires more than expected».
+
+---
+
+### 2026-06-03 — Stale closure у useApiMutation/useCallback з eslint-disable exhaustive-deps (Bug #330) — frontend, React hooks anti-pattern
+
+**Сигнал:** Custom hook повертає `mutate`/`save`/`submit` через `useCallback(..., [partialDeps])` з `// eslint-disable-next-line react-hooks/exhaustive-deps` бо `options` (props object з callback-ами) у deps призведе до identity churn. Дилема: **(a)** включити `options` → identity churn → downstream `useMemo([fn])` invalid → re-runs усього дерева; **(b)** exclude `options` → `mutate` тримає **stale reference** на старі `onSuccess`/`onError`. Parent ререндерить з новим `onSuccess`, `mutate` все одно викликає старий (захоплений на mount).
+
+**Причина виникнення:** Розробник зустрічає identity churn проблему, додає `eslint-disable` як «швидкий fix». Не знає Latest-Ref pattern. ESLint disable виглядає як OK trade-off бо deps comment «mutationFn, features.toastEnabled» — все що ZAGD «варто включати». `options` про себе виглядає stable до першого parent-ререндера що генерує новий handler з cleanup logic.
+
+**Підхід до виявлення:**
+
+1. Grep `eslint-disable.*react-hooks/exhaustive-deps` у custom hook src:
+   ```bash
+   grep -rn "eslint-disable.*exhaustive-deps" apps/web/src/hooks --include="*.ts"
+   ```
+   Для кожного — перевірити що hook повертає callback що читає `options.onSuccess` / `props.onChange` / `callback?.()` всередині.
+2. Grep `useCallback.*options\?\.\|props\?\.\|callback\?\.` всередині custom hook що НЕ у deps:
+   ```bash
+   grep -rnE "useCallback\(.*\b(options|props|callback)\?\." apps/web/src/hooks --include="*.ts"
+   ```
+3. Red flag pattern: hook приймає `options: { onSuccess?, onError? }` як другий аргумент і повертає `useCallback`.
+
+**Підхід до фіксу: Latest-Ref pattern**
+
+```ts
+import { useRef, useEffect, useCallback } from 'react';
+
+export function useApiMutation<T, R>(fn: (a: T) => Promise<R>, options?: Options<R>) {
+  // 1. Ref що завжди має latest props/options
+  const optionsRef = useRef(options);
+  const fnRef = useRef(fn);
+  useEffect(() => {
+    // Sync кожного рендера БЕЗ deps — useEffect runs after every commit
+    optionsRef.current = options;
+    fnRef.current = fn;
+  });
+
+  // 2. Callback читає з ref — завжди latest, але identity stable
+  const mutate = useCallback(async (args: T) => {
+    const opts = optionsRef.current;
+    const result = await fnRef.current(args);
+    opts?.onSuccess?.(result);
+    return result;
+  }, []); // ✅ ПУСТІ deps — `mutate` identity stable назавжди
+
+  return { mutate };
+}
+```
+
+Регресія-guard test:
+
+```ts
+it('latest onSuccess (Bug #330)', async () => {
+  const fn = vi.fn().mockResolvedValue('r');
+  const v1 = vi.fn();
+  const v2 = vi.fn();
+  const { result, rerender } = renderHook(({ onSuccess }) => useApiMutation(fn, { onSuccess }), {
+    initialProps: { onSuccess: v1 },
+  });
+  rerender({ onSuccess: v2 });
+  await act(() => result.current.mutate(undefined));
+  expect(v2).toHaveBeenCalled();
+  expect(v1).not.toHaveBeenCalled();
+});
+```
+
+**Severity:** MEDIUM (silent — UI продовжує працювати з найновішими handlerами здаючись). LOW якщо hook ще не consumed (infrastructure-only).
+
+**Де шукати ще:**
+
+- Будь-який `useMutation`/`useDebounced`/`useThrottled` wrapper з callback options.
+- `useFormSubmit({ onSuccess, onError })` — той самий клас.
+- `useEventListener('click', handler)` — handler через ref щоб не re-bind щоразу.
+- `useInterval(callback, ms)` — класичний Dan Abramov приклад Latest-Ref pattern.
+
+**Профілактика:**
+
+1. `/sto-dev` SKILL.md: додати «Custom hook з callback options — використовуй Latest-Ref pattern: optionsRef + useEffect(no deps). Не disable exhaustive-deps».
+2. `/sto-review` checklist: «`eslint-disable react-hooks/exhaustive-deps` у custom hook → перевірити Latest-Ref. Якщо нема — bug».
+3. Регресія-test для будь-якого custom mutation hook: «latest onSuccess після rerender».
+
+---

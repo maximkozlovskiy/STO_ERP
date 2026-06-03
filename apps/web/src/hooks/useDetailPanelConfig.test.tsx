@@ -29,7 +29,7 @@ describe('useDetailPanelConfig', () => {
       }),
     );
     const { result } = renderHook(() => useDetailPanelConfig('crm'));
-    expect(result.current.config).toEqual({ hiddenFields: [] });
+    expect(result.current.config).toEqual({ hiddenFields: [], fieldOrder: [] });
     expect(result.current.loading).toBe(true);
   });
 
@@ -103,12 +103,16 @@ describe('useDetailPanelConfig', () => {
       hiddenFields: string[];
     };
     expect(stored.hiddenFields).toEqual(['phone']);
-    // PUT надіслано з правильним body
+    // PUT надіслано з правильним body — hook serialises full PanelFieldConfig
+    // ({ hiddenFields, fieldOrder }) + AbortSignal для race-protection.
     expect(apiFetchMock).toHaveBeenCalledWith(
       API_PATH,
       expect.objectContaining({
         method: 'PUT',
-        body: JSON.stringify({ key: 'detail_panel_crm', value: { hiddenFields: ['phone'] } }),
+        body: JSON.stringify({
+          key: 'detail_panel_crm',
+          value: { hiddenFields: ['phone'], fieldOrder: [] },
+        }),
       }),
     );
   });
@@ -149,7 +153,10 @@ describe('useDetailPanelConfig', () => {
       API_PATH,
       expect.objectContaining({
         method: 'PUT',
-        body: JSON.stringify({ key: 'detail_panel_crm', value: { hiddenFields: [] } }),
+        body: JSON.stringify({
+          key: 'detail_panel_crm',
+          value: { hiddenFields: [], fieldOrder: [] },
+        }),
       }),
     );
   });
