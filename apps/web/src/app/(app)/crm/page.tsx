@@ -50,6 +50,7 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
@@ -888,24 +889,7 @@ export default function CrmPage() {
           </Table>
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="shrink-0 flex justify-center gap-1.5 pt-1 pb-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                <button
-                  key={p}
-                  onClick={() => setPage(p)}
-                  className={cn(
-                    'h-8 w-8 rounded-lg text-[13px] font-medium border transition-colors',
-                    p === page
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
-                  )}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          )}
+          <Pagination page={page} totalPages={totalPages} onChange={setPage} />
         </div>
 
         <DetailPanel

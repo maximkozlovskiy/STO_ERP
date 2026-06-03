@@ -18,6 +18,7 @@ import {
 } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Pagination } from '@/components/ui/pagination';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
@@ -294,6 +295,7 @@ export default function StockDocumentsPage() {
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   const limit = 20;
+  const totalPages = Math.ceil(total / limit) || 1;
   const load = invalidate;
 
   useEffect(() => {
@@ -830,29 +832,7 @@ export default function StockDocumentsPage() {
       </div>
 
       {/* Pagination */}
-      {total > limit && (
-        <div className="shrink-0 flex justify-center gap-1.5 pt-1">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === 1}
-            onClick={() => setPage(p => p - 1)}
-          >
-            ← Назад
-          </Button>
-          <span className="h-8 w-8 flex items-center justify-center text-sm text-muted-foreground">
-            {page}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page * limit >= total}
-            onClick={() => setPage(p => p + 1)}
-          >
-            Вперед →
-          </Button>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
       {/* Create modal */}
       <Modal

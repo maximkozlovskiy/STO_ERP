@@ -155,34 +155,7 @@ const GOOD_TYPE_BADGE: Record<string, BadgeVariant> = {
   TOOL: 'success',
 };
 
-function Pagination({
-  page,
-  totalPages,
-  onChange,
-}: {
-  page: number;
-  totalPages: number;
-  onChange: (p: number) => void;
-}) {
-  if (totalPages <= 1) return null;
-  return (
-    <div className="shrink-0 flex justify-center gap-1.5 mt-4">
-      {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-        <button
-          key={p}
-          onClick={() => onChange(p)}
-          className={`h-8 w-8 rounded-lg text-[13px] font-medium border transition-colors ${
-            p === page
-              ? 'bg-primary text-primary-foreground border-primary'
-              : 'border-border text-muted-foreground bg-surface hover:bg-secondary'
-          }`}
-        >
-          {p}
-        </button>
-      ))}
-    </div>
-  );
-}
+import { Pagination } from '@/components/ui/pagination';
 
 // ─── Goods Tab ────────────────────────────────────────────────────────────────
 
