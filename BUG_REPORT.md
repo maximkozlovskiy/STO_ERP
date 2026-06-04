@@ -10294,3 +10294,159 @@ if (payment.fiscalReceiptId) {
 ```
 
 **Статус:** [x] виправлено — idempotency guard added + 3 regression tests (checkbox.processor.spec.ts)
+
+---
+
+## Session 2026-06-04 — Tester cycle 5: CounterpartyContract (HEAD 0a56acd)
+
+### Bug #347 — [CRITICAL/release-blocker] counterparties.service.spec.ts впав через нову constructor-залежність DocumentNumberService
+
+**Файли:** `apps/api/src/modules/counterparties/counterparties.service.spec.ts`
+
+**Причина:**
+Commit 86f4569 (`feat(crm): Договір контрагента`) додав `DocumentNumberService` як constructor-залежність у `CounterpartiesService`:
+
+```ts
+constructor(
+  private readonly prisma: PrismaService,
+  private readonly documentNumberService: DocumentNumberService,
+) {}
+```
+
+Парний `counterparties.service.spec.ts` не оновлений — у `Test.createTestingModule({ providers })` залишився тільки `PrismaService`. Результат:
+
+```
+Nest can't resolve dependencies of the CounterpartiesService (PrismaService, ?).
+Please make sure that the argument DocumentNumberService at index [1] is available
+```
+
+9 з 9 тестів файлу падають при beforeEach -> release-blocker (червоний baseline у наступних tester-сесіях).
+
+Класичний патерн Bug #153-#155 (Stale spec after refactor — new constructor dependency).
+
+**Виправлення:**
+Додано `{ provide: DocumentNumberService, useValue: { next: vi.fn().mockResolvedValue('CON-2026-000001') } }` у providers.
+
+**Статус:** [x] виправлено (9/9 тестів зелені).
+
+---
+
+### Bug #348 — [HIGH] auto-PURCHASE contract при POST /counterparties отримує hardcoded number '1' замість через DocumentNumberService
+
+**Файли:** `apps/api/src/modules/counterparties/counterparties.service.ts:117-128`
+
+**Причина:**
+`create()` сервісу auto-створює primary PURCHASE договір для нового SUPPLIER/BOTH контрагента з `number: '1'` (hardcoded). Тоді як `createContract()` правильно йде через `this.documentNumberService.next(orgId, 'COUNTERPARTY_AGREEMENT')`. Результат — порушення інваріанту monotonic numbering:
+
+1. POST /counterparties {type:SUPPLIER} → auto-PURCHASE `number = '1'`
+2. POST /counterparties/:id/contracts → новий PURCHASE `number = 'ДГ-2026-000001'`
+3. Список договорів: '1', 'ДГ-2026-000001' — порушено порядок і формат.
+
+Severity HIGH — feature розрекламована як «автоматичний договір», номер не зрозумілий користувачу, а УкрПРРО-стиль документації вимагає послідовну нумерацію.
+
+**Виправлення:**
+Заміни hardcoded `'1'` на виклик `this.documentNumberService.next(orgId, 'COUNTERPARTY_AGREEMENT')` ПЕРЕД `$transaction` (next() сам відкриває свій tx через SELECT FOR UPDATE).
+
+**Статус:** [x] виправлено.
+
+---
+
+### Bug #349 — [HIGH] PurchaseOrder findAll/findOne не робить include: { contract } -> contractNumber завжди null у списку і деталі
+
+**Файли:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:106, 126`
+
+**Причина:**
+`toDto()` (рядок 622, 652) описує `contract?: { id; number }` і мапить `contractNumber: po.contract?.number ?? null`. Але `findAll()` (рядок 106) і `findOne()` (рядок 126) НЕ роблять `include: { contract: { select: { id: true, number: true } } }`. Поле undefined -> `contractNumber === null` для всіх PO у списку/деталі.
+
+Класичний Bug #232 — Mass DTO field migration completeness — include audit.
+
+Тільки `create()` робить include правильно. Тобто:
+
+- Створили PO -> відповідь містить `contractNumber: 'ДГ-...'`.
+- Перейшли на список PO -> `contractNumber: null` для тієї ж PO.
+- Відкрили деталь -> `contractNumber: null`.
+
+Feature мертва на read-path.
+
+**Виправлення:**
+Додати `contract: { select: { id: true, number: true } }` у `include` для `findAll()` (рядок 106) і `findOne()` (рядок 126).
+
+**Статус:** [x] виправлено.
+
+---
+
+### Bug #350 — [HIGH] WorkOrder findOne не робить include: { contract } -> contractNumber undefined на detail page
+
+**Файли:** `apps/api/src/modules/work-orders/work-orders.service.ts:155`
+
+**Причина:**
+Аналогічно Bug #349. `toDto()` (рядок 1240) мапить `contractNumber: wo.contract?.number ?? null`, але `findOne()` (рядок 155) include має `vehicle`, `counterparty`, `branch`, `lines`, `parts` — БЕЗ `contract`. Frontend `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx:1011` `{wo.contractNumber && <div>Договір</div>}` ніколи не рендериться — секція "Договір" мертва на detail page WO.
+
+`findAll()` (рядок 117-121) має include правильно. Тому список WO показує `contractNumber`, але деталь — НІ. UX невідповідність.
+
+**Виправлення:**
+Додати `contract: { select: { id: true, number: true } }` у `include` `findOne()`.
+
+**Статус:** [x] виправлено.
+
+---
+
+### Bug #351 — [HIGH] removeContract не auto-promote next contract -> SUPPLIER може залишитись без primary PURCHASE
+
+**Файли:** `apps/api/src/modules/counterparties/counterparties.service.ts:369-392`
+
+**Причина:**
+`removeContract()` блокує видалення останнього договору для SUPPLIER (count <= 1 -> BadRequestException), але якщо у SUPPLIER 2+ PURCHASE договори і видаляється primary — primary НЕ перепризначається на наступний. Результат:
+
+1. SUPPLIER має договори A (primary), B, C
+2. DELETE договір A -> залишилось B, C — БЕЗ primary
+3. POST /purchase-orders без contractId -> findFirst({ orderBy: [{isPrimary:'desc'},{createdAt:'asc'}] }) поверне випадковий non-primary -> інваріант «SUPPLIER має primary PURCHASE» порушений.
+4. Гірший сценарій з BOTH: видалили primary SALE — лишився non-primary SALE — WorkOrder.create() отримує contractId = випадкового SALE а не «обраного» primary.
+
+**Виправлення:**
+У `removeContract()` після soft-delete, якщо `contract.isPrimary && other contracts of same type exist` -> auto-promote next contract (за `createdAt:'asc'`) -> `isPrimary: true`. У межах того ж $transaction.
+
+**Статус:** [x] виправлено.
+
+---
+
+### Bug #352 — [LOW] removeContract count рахує ВСІ договори, не лише PURCHASE для SUPPLIER
+
+**Файли:** `apps/api/src/modules/counterparties/counterparties.service.ts:379-385`
+
+**Причина:**
+
+```ts
+this.prisma.counterpartyContract.count({
+  where: { counterpartyId, orgId, deletedAt: null },  // без contractType
+}),
+...
+if (cp.type === CounterpartyType.SUPPLIER && count <= 1)
+```
+
+Для SUPPLIER зараз працює правильно бо `validateContractType` блокує SUPPLIER+SALE — у БД не може опинитись SALE для SUPPLIER. Але якщо колись додаємо ще один тип договору (наприклад, AGENCY) і не оновлюємо guard — SUPPLIER зможе видалити останній PURCHASE бо count > 1.
+
+Defensive fix: рахувати тільки PURCHASE для SUPPLIER guard.
+
+**Виправлення:**
+Рахувати тільки потрібний contractType.
+
+**Статус:** [x] виправлено.
+
+---
+
+### Bug #353 — [LOW] CreateContractDto.number без @MaxLength -> anti-DoS gap
+
+**Файли:** `apps/api/src/modules/counterparties/counterparties.dto.ts:188, 227`
+
+**Причина:**
+`CreateContractDto.number` і `UpdateContractDto.number` мають `@IsOptional() @IsString() number?: string` без `@MaxLength(N)`. Користувач може надіслати 1MB-рядок який пройде валідацію. DoS-потенціал (§1.4 SKILL.md).
+
+Realistic upper bound: 50 символів (номер форму `ДГ-2026-000001` + custom users 20 символів запас).
+
+**Виправлення:**
+Додати `@MaxLength(50)` для number у CreateContractDto і UpdateContractDto.
+
+**Статус:** [x] виправлено.
+
+### Bugs found this session: 7 (CRITICAL: 1 / HIGH: 4 / LOW: 2)

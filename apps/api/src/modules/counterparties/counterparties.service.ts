@@ -96,6 +96,15 @@ export class CounterpartiesService {
   }
 
   async create(orgId: string, dto: CreateCounterpartyDto): Promise<CounterpartyResponseDto> {
+    // Bug #348: pre-allocate contract number via DocumentNumberService BEFORE
+    // entering the main $transaction. next() uses its own $transaction with
+    // SELECT FOR UPDATE — nesting transactions would deadlock or hide the lock.
+    // Generate the number only when a contract will actually be created.
+    const needsContract = dto.type === 'SUPPLIER' || dto.type === 'BOTH';
+    const contractNumber = needsContract
+      ? await this.documentNumberService.next(orgId, 'COUNTERPARTY_AGREEMENT')
+      : null;
+
     const item = await this.prisma.$transaction(
       async tx => {
         const cp = await tx.counterparty.create({ data: { ...dto, orgId } });
@@ -115,12 +124,12 @@ export class CounterpartiesService {
           });
         }
         // Auto-create primary PURCHASE contract for suppliers
-        if (dto.type === 'SUPPLIER' || dto.type === 'BOTH') {
+        if (needsContract && contractNumber) {
           await tx.counterpartyContract.create({
             data: {
               orgId,
               counterpartyId: cp.id,
-              number: '1',
+              number: contractNumber,
               contractType: ContractType.PURCHASE,
               startDate: new Date(),
               isPrimary: true,
@@ -367,28 +376,72 @@ export class CounterpartiesService {
   }
 
   async removeContract(orgId: string, counterpartyId: string, contractId: string): Promise<void> {
-    const [cp, contract, count] = await Promise.all([
+    // Bug #352: read full contract to know contractType + isPrimary so we can
+    // count only same-type contracts for SUPPLIER guard and auto-promote next
+    // primary after deleting the current primary.
+    const [cp, contract] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
         select: { id: true, type: true },
       }),
       this.prisma.counterpartyContract.findFirst({
         where: { id: contractId, counterpartyId, orgId, deletedAt: null },
-        select: { id: true },
-      }),
-      this.prisma.counterpartyContract.count({
-        where: { counterpartyId, orgId, deletedAt: null },
+        select: { id: true, contractType: true, isPrimary: true },
       }),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     if (!contract) throw new NotFoundException('Договір не знайдено');
-    if (cp.type === CounterpartyType.SUPPLIER && count <= 1)
-      throw new BadRequestException('Постачальник повинен мати хоча б один договір');
 
-    await this.prisma.counterpartyContract.updateMany({
-      where: { id: contractId, counterpartyId, orgId },
-      data: { deletedAt: new Date() },
-    });
+    // Bug #352: count only PURCHASE contracts for SUPPLIER guard (defensive
+    // against future contract types being added). For SUPPLIER, the invariant
+    // is "at least one PURCHASE contract must exist".
+    if (cp.type === CounterpartyType.SUPPLIER) {
+      const purchaseCount = await this.prisma.counterpartyContract.count({
+        where: {
+          counterpartyId,
+          orgId,
+          deletedAt: null,
+          contractType: ContractType.PURCHASE,
+        },
+      });
+      if (purchaseCount <= 1) {
+        throw new BadRequestException('Постачальник повинен мати хоча б один договір');
+      }
+    }
+
+    // Bug #351: if deleting a primary contract, auto-promote the next remaining
+    // contract of the same type to primary. Otherwise the counterparty would be
+    // left without a primary contract for that type — breaking the invariant
+    // used by WorkOrder/PurchaseOrder auto-selection.
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.counterpartyContract.updateMany({
+          where: { id: contractId, counterpartyId, orgId },
+          data: { deletedAt: new Date() },
+        });
+
+        if (contract.isPrimary) {
+          const next = await tx.counterpartyContract.findFirst({
+            where: {
+              counterpartyId,
+              orgId,
+              deletedAt: null,
+              contractType: contract.contractType,
+              id: { not: contractId },
+            },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+          });
+          if (next) {
+            await tx.counterpartyContract.update({
+              where: { id: next.id },
+              data: { isPrimary: true },
+            });
+          }
+        }
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   private toContractDto(c: {

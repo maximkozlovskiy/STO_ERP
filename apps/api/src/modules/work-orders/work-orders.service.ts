@@ -152,10 +152,12 @@ export class WorkOrdersService {
   async findOne(orgId: string, id: string): Promise<WorkOrderDetailDto> {
     const wo = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
+      // Bug #350: include contract so detail shows contractNumber (toDto maps it).
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
+        contract: { select: { id: true, number: true } },
         lines: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },

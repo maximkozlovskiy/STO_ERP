@@ -12,6 +12,7 @@ import {
   IsString,
   Min,
   Max,
+  MaxLength,
   IsArray,
   ArrayMaxSize,
 } from 'class-validator';
@@ -183,9 +184,11 @@ export class GarageResponseDto {
 // ─── CounterpartyContract ─────────────────────────────────
 
 export class CreateContractDto {
+  // Bug #353: @MaxLength anti-DoS — номер документа має реалістичний верхній ліміт.
   @ApiPropertyOptional({ description: 'Номер договору (авто якщо не передано)' })
   @IsOptional()
   @IsString()
+  @MaxLength(50, { message: 'Номер договору не може перевищувати 50 символів' })
   number?: string;
 
   @ApiProperty({ enum: ContractType })
@@ -222,9 +225,11 @@ export class CreateContractDto {
 }
 
 export class UpdateContractDto {
+  // Bug #353: @MaxLength anti-DoS — номер документа має реалістичний верхній ліміт.
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(50, { message: 'Номер договору не може перевищувати 50 символів' })
   number?: string;
 
   @ApiPropertyOptional({ enum: ContractType })

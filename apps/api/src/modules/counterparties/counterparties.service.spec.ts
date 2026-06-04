@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { CounterpartiesService } from './counterparties.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DocumentNumberService } from '../document-number/document-number.service';
 import { CounterpartyQueryDto } from './counterparties.dto';
 
 /**
@@ -36,7 +37,14 @@ describe('CounterpartiesService', () => {
     };
 
     const module = await Test.createTestingModule({
-      providers: [CounterpartiesService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CounterpartiesService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: DocumentNumberService,
+          useValue: { next: vi.fn().mockResolvedValue('CON-2026-000001') },
+        },
+      ],
     }).compile();
 
     service = module.get(CounterpartiesService);
@@ -123,6 +131,276 @@ describe('CounterpartiesService', () => {
     it('кидає NotFoundException якщо контрагента немає в org', async () => {
       prisma.counterparty.findFirst.mockResolvedValueOnce(null);
       await expect(service.findOne('org-1', 'cp-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+});
+
+/**
+ * Bug #348, #351, #352 — regression guards for CounterpartyContract feature.
+ *
+ * Build separate, minimal Prisma mock with counterpartyContract + counterparty
+ * stubs to exercise contract write-paths (create / removeContract).
+ */
+describe('CounterpartiesService — contract flows', () => {
+  let service: CounterpartiesService;
+  let prisma: {
+    counterparty: { create: any; findFirstOrThrow: any; findFirst: any };
+    counterpartyContract: { create: any; count: any; findFirst: any; updateMany: any; update: any };
+    settlementAccount: { create: any };
+    customerGarage: { create: any };
+    $transaction: any;
+  };
+  let docNumbers: { next: ReturnType<typeof vi.fn> };
+
+  beforeEach(async () => {
+    const tx = {
+      counterparty: {
+        create: vi.fn().mockResolvedValue({ id: 'cp-1', type: 'SUPPLIER' }),
+        findFirstOrThrow: vi.fn().mockResolvedValue({
+          id: 'cp-1',
+          orgId: 'org-1',
+          type: 'SUPPLIER',
+          firstName: null,
+          lastName: null,
+          companyName: 'ТОВ Постачальник',
+          edrpou: null,
+          vatPayer: false,
+          phone: null,
+          email: null,
+          notes: null,
+          legalForm: null,
+          legalAddress: null,
+          actualAddress: null,
+          bankAccount: null,
+          bankName: null,
+          contactPerson: null,
+          taxNumber: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          settlementAccount: { balance: 0 },
+        }),
+      },
+      counterpartyContract: {
+        create: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        update: vi.fn().mockResolvedValue({}),
+        findFirst: vi.fn(),
+      },
+      settlementAccount: { create: vi.fn() },
+      customerGarage: { create: vi.fn() },
+    };
+
+    prisma = {
+      counterparty: {
+        create: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+        findFirst: vi.fn(),
+      },
+      counterpartyContract: {
+        create: vi.fn(),
+        count: vi.fn().mockResolvedValue(0),
+        findFirst: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        update: vi.fn(),
+      },
+      settlementAccount: { create: vi.fn() },
+      customerGarage: { create: vi.fn() },
+      // Default: callback signature ($transaction(async tx => ...))
+      $transaction: vi.fn().mockImplementation(async (cb: any) => cb(tx)),
+    };
+
+    docNumbers = { next: vi.fn().mockResolvedValue('ДГ-2026-000001') };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        CounterpartiesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DocumentNumberService, useValue: docNumbers },
+      ],
+    }).compile();
+    service = module.get(CounterpartiesService);
+
+    // expose tx state so tests can assert on its mock fns
+    (service as any).__tx = tx;
+  });
+
+  describe('create — Bug #348: auto-PURCHASE contract use DocumentNumberService', () => {
+    it('SUPPLIER → викликає documentNumberService.next("COUNTERPARTY_AGREEMENT") і використовує отриманий номер', async () => {
+      await service.create('org-1', {
+        type: 'SUPPLIER',
+        companyName: 'ТОВ Постачальник',
+      } as any);
+
+      expect(docNumbers.next).toHaveBeenCalledWith('org-1', 'COUNTERPARTY_AGREEMENT');
+      const tx = (service as any).__tx;
+      expect(tx.counterpartyContract.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            number: 'ДГ-2026-000001',
+            contractType: 'PURCHASE',
+            isPrimary: true,
+          }),
+        }),
+      );
+    });
+
+    it('CLIENT → НЕ викликає documentNumberService.next і НЕ створює договір', async () => {
+      await service.create('org-1', { type: 'CLIENT', firstName: 'Іван' } as any);
+
+      expect(docNumbers.next).not.toHaveBeenCalled();
+      const tx = (service as any).__tx;
+      expect(tx.counterpartyContract.create).not.toHaveBeenCalled();
+    });
+
+    it('BOTH → викликає documentNumberService.next і створює PURCHASE контракт', async () => {
+      await service.create('org-1', { type: 'BOTH', firstName: 'Іван' } as any);
+
+      expect(docNumbers.next).toHaveBeenCalledWith('org-1', 'COUNTERPARTY_AGREEMENT');
+      const tx = (service as any).__tx;
+      expect(tx.counterpartyContract.create).toHaveBeenCalled();
+    });
+
+    it('regression: договір НЕ створюється з hardcoded number="1"', async () => {
+      await service.create('org-1', { type: 'SUPPLIER', companyName: 'ТОВ X' } as any);
+      const tx = (service as any).__tx;
+      const calls = tx.counterpartyContract.create.mock.calls;
+      for (const call of calls) {
+        expect(call[0].data.number).not.toBe('1');
+      }
+    });
+  });
+
+  describe('removeContract — Bug #351: auto-promote next primary', () => {
+    it('soft-delete primary → промотує наступний договір того ж типу у primary', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1', type: 'SUPPLIER' });
+      prisma.counterpartyContract.findFirst.mockResolvedValueOnce({
+        id: 'con-old',
+        contractType: 'PURCHASE',
+        isPrimary: true,
+      });
+      prisma.counterpartyContract.count.mockResolvedValueOnce(2); // >1 → проходить guard
+
+      // Mock $transaction для callback-style з власним tx
+      const txInner = {
+        counterpartyContract: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          findFirst: vi.fn().mockResolvedValue({ id: 'con-next' }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      };
+      prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
+
+      await service.removeContract('org-1', 'cp-1', 'con-old');
+
+      // soft-delete викликано
+      expect(txInner.counterpartyContract.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'con-old', counterpartyId: 'cp-1', orgId: 'org-1' },
+          data: { deletedAt: expect.any(Date) },
+        }),
+      );
+
+      // знаходить наступний за contractType + createdAt asc
+      expect(txInner.counterpartyContract.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            counterpartyId: 'cp-1',
+            orgId: 'org-1',
+            deletedAt: null,
+            contractType: 'PURCHASE',
+            id: { not: 'con-old' },
+          }),
+          orderBy: { createdAt: 'asc' },
+        }),
+      );
+
+      // промотує наступний у primary
+      expect(txInner.counterpartyContract.update).toHaveBeenCalledWith({
+        where: { id: 'con-next' },
+        data: { isPrimary: true },
+      });
+    });
+
+    it('soft-delete НЕ primary → НЕ промотує жодного', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1', type: 'BOTH' });
+      prisma.counterpartyContract.findFirst.mockResolvedValueOnce({
+        id: 'con-secondary',
+        contractType: 'PURCHASE',
+        isPrimary: false,
+      });
+      prisma.counterpartyContract.count.mockResolvedValueOnce(2);
+
+      const txInner = {
+        counterpartyContract: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          findFirst: vi.fn(),
+          update: vi.fn(),
+        },
+      };
+      prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
+
+      await service.removeContract('org-1', 'cp-1', 'con-secondary');
+
+      expect(txInner.counterpartyContract.findFirst).not.toHaveBeenCalled();
+      expect(txInner.counterpartyContract.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removeContract — Bug #352: count тільки PURCHASE для SUPPLIER', () => {
+    it('SUPPLIER → count рахує ТІЛЬКИ contractType:PURCHASE', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1', type: 'SUPPLIER' });
+      prisma.counterpartyContract.findFirst.mockResolvedValueOnce({
+        id: 'con-1',
+        contractType: 'PURCHASE',
+        isPrimary: false,
+      });
+      prisma.counterpartyContract.count.mockResolvedValueOnce(2);
+      prisma.$transaction.mockImplementationOnce(async () => undefined);
+
+      await service.removeContract('org-1', 'cp-1', 'con-1');
+
+      expect(prisma.counterpartyContract.count).toHaveBeenCalledWith({
+        where: {
+          counterpartyId: 'cp-1',
+          orgId: 'org-1',
+          deletedAt: null,
+          contractType: 'PURCHASE',
+        },
+      });
+    });
+
+    it('SUPPLIER → блокує видалення останнього PURCHASE (count <= 1)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1', type: 'SUPPLIER' });
+      prisma.counterpartyContract.findFirst.mockResolvedValueOnce({
+        id: 'con-1',
+        contractType: 'PURCHASE',
+        isPrimary: true,
+      });
+      prisma.counterpartyContract.count.mockResolvedValueOnce(1);
+
+      await expect(service.removeContract('org-1', 'cp-1', 'con-1')).rejects.toThrow(
+        /Постачальник повинен мати хоча б один договір/,
+      );
+    });
+
+    it('CLIENT → не виконує count guard (договір не обов’язковий)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1', type: 'CLIENT' });
+      prisma.counterpartyContract.findFirst.mockResolvedValueOnce({
+        id: 'con-1',
+        contractType: 'SALE',
+        isPrimary: false,
+      });
+      const txInner = {
+        counterpartyContract: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          findFirst: vi.fn(),
+          update: vi.fn(),
+        },
+      };
+      prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
+
+      await service.removeContract('org-1', 'cp-1', 'con-1');
+      expect(prisma.counterpartyContract.count).not.toHaveBeenCalled();
     });
   });
 });

@@ -103,9 +103,11 @@ export class PurchaseOrdersService {
         orderBy: { [sortField]: sortOrder },
         // Lines omitted from list — loaded on demand via findOne when detail opens.
         // Avoids fetching up to 1000 line rows × 20 POs per list request.
+        // Bug #349: include contract so list shows contractNumber (toDto maps it).
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
+          contract: { select: { id: true, number: true } },
           _count: { select: { lines: { where: { deletedAt: null } } } },
         },
       }),
@@ -123,9 +125,11 @@ export class PurchaseOrdersService {
   async findOne(orgId: string, id: string): Promise<PurchaseOrderResponseDto> {
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, orgId, deletedAt: null },
+      // Bug #349: include contract so detail shows contractNumber (toDto maps it).
       include: {
         supplier: { select: { firstName: true, lastName: true, companyName: true } },
         warehouse: { select: { name: true } },
+        contract: { select: { id: true, number: true } },
         lines: {
           where: { deletedAt: null },
           include: {
