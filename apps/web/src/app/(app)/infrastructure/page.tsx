@@ -368,13 +368,13 @@ function InfrastructurePageClient() {
       </div>
 
       {/* Tabs */}
-      <div className="shrink-0 flex gap-1 border-b border-border mb-4">
+      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 mb-5 overflow-x-auto">
         {TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             className={cn(
-              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
               tab === t.key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -385,29 +385,26 @@ function InfrastructurePageClient() {
         ))}
       </div>
 
-      {/* Toolbar: пошук зліва, кнопки справа */}
-      <div className="shrink-0 flex items-center gap-2 mb-4">
-        <div className="relative w-64">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Пошук..."
-            className="w-full pl-8 pr-3 py-1.5 text-sm bg-surface border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-          />
-        </div>
-        <div className="ml-auto flex items-center gap-2">
+      {/* Filters */}
+      <div className="flex gap-3 flex-wrap shrink-0 mb-4">
+        <Input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Пошук..."
+          leftElement={<Search />}
+          className="flex-1 min-w-48"
+        />
+        <div className="flex items-center gap-2 ml-auto">
           <Button
             variant="outline"
-            size="sm"
-            onClick={() => setShowDeleted(v => !v)}
+            size="icon-sm"
             title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
-            className={cn(showDeleted && 'border-warning text-warning')}
+            onClick={() => setShowDeleted(v => !v)}
+            className={showDeleted ? 'border-primary text-primary' : ''}
           >
-            {showDeleted ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
-          <Button size="sm" onClick={ADD_ACTIONS[tab]} leftIcon={<Plus className="h-4 w-4" />}>
+          <Button leftIcon={<Plus className="h-4 w-4" />} onClick={ADD_ACTIONS[tab]}>
             {TABS.find(t => t.key === tab)?.addLabel ?? 'Додати'}
           </Button>
         </div>
